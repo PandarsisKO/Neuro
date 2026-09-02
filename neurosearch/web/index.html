@@ -1,15 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#0f1115">
 <title>Neuro Search</title>
 <style>
-  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736}
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736;--side:250px}
   *{box-sizing:border-box}
+  html,body{height:100%}
   body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
   a{color:#8fb0ff}
-  header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:17px;margin:0;letter-spacing:.3px}
-  header .stats{color:var(--muted);font-size:12px;margin-left:auto}
   select,input,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   input,textarea,select{width:100%}
   textarea{min-height:80px;resize:vertical}
@@ -17,130 +15,212 @@
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.ghost{background:transparent}
   button.small{padding:5px 9px;font-size:13px;border-radius:7px}
-  nav{display:flex;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:49px;z-index:4}
-  nav button{flex:1;border:0;border-radius:0;background:transparent;padding:11px 4px;color:var(--muted);border-bottom:2px solid transparent}
-  nav button.active{color:#fff;border-bottom-color:var(--accent)}
-  main{max-width:960px;margin:0 auto;padding:14px}
-  section{display:none}section.active{display:block}
+  button.danger{color:var(--bad)}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .row>*{flex:1;min-width:0}
   .row>input{min-width:140px}
-  .row>button{flex:0 0 auto}
+  .row>button,.row>label,.row>.fixed{flex:0 0 auto}
   .muted{color:var(--muted);font-size:13px}
+  h2{font-size:18px;margin:0 0 10px}
+  h3{font-size:14px;margin:16px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
   .chip:hover{border-color:var(--accent)}
   .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
-  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.pending{color:var(--warn)}
-  /* chat */
-  #chat{display:flex;flex-direction:column;gap:10px;min-height:40vh;padding-bottom:110px}
-  .msg{max-width:92%;padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.45}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.pending,.st.queued,.st.running{color:var(--warn)}.st.done{color:var(--ok)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
+  dialog::backdrop{background:#0009}
+
+  /* ---- home ---- */
+  #home{max-width:1000px;margin:0 auto;padding:28px 18px}
+  #home h1{font-size:24px;margin:0 0 4px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:18px}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;min-height:130px;display:flex;flex-direction:column;gap:6px}
+  .pcard:hover{border-color:var(--accent)}
+  .pcard .name{font-weight:650;font-size:16px}
+  .pcard .brief{color:var(--muted);font-size:13px;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+  .pcard .meta{font-size:12px;color:var(--muted)}
+  .pcard.new{border-style:dashed;align-items:center;justify-content:center;color:var(--muted)}
+
+  /* ---- workspace ---- */
+  #ws{display:none;height:100vh;height:100dvh}
+  #ws.active{display:flex}
+  aside{width:var(--side);flex:0 0 var(--side);background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  aside .top{padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+  aside .top .back{font-size:12px;color:var(--muted);cursor:pointer}
+  aside .top .pname{font-weight:650;font-size:15px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  aside nav{padding:8px}
+  aside nav .item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
+  aside nav .item.active,aside nav .item:hover{background:var(--panel2);color:#fff}
+  aside nav .item .n{margin-left:auto;font-size:12px;color:var(--muted)}
+  aside .chats{flex:1;overflow:auto;padding:4px 8px 8px;border-top:1px solid var(--line)}
+  aside .chats .c{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:6px;align-items:center}
+  aside .chats .c span{flex:1;overflow:hidden;text-overflow:ellipsis}
+  aside .chats .c.active{background:var(--panel2);color:#fff}
+  aside .chats .c .x{opacity:0;font-size:12px}
+  aside .chats .c:hover .x{opacity:.8}
+  aside .chats .newc{margin:6px 0 6px}
+  aside .foot{padding:10px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  #main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .view{display:none;flex:1;overflow:auto;padding:18px 22px}
+  .view.active{display:block}
+  .view.chatview{display:none;flex-direction:column;padding:0}
+  .view.chatview.active{display:flex}
+
+  /* ---- chat ---- */
+  #chatHead{padding:12px 22px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  #chatHead .title{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #chat{flex:1;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:min(820px,92%);padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.5}
   .msg.user{align-self:flex-end;background:#243266}
   .msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
   .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
   .msg sup{color:#8fb0ff;font-weight:600}
   .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
-  #askbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
-  #askbar .inner{max-width:960px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
-  #askbar textarea{min-height:44px;max-height:160px}
+  #askbar{border-top:1px solid var(--line);padding:10px 22px 12px;background:var(--bg)}
+  #askbar .inner{display:flex;gap:8px;align-items:flex-end;max-width:980px}
+  #askbar textarea{min-height:46px;max-height:180px}
   #askbar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .empty{color:var(--muted);max-width:560px;line-height:1.5}
+
+  /* ---- sources ---- */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .tabs button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:8px 12px;border-bottom:2px solid transparent}
+  .tabs button.active{color:#fff;border-bottom-color:var(--accent)}
+  .pane{display:none}.pane.active{display:block}
   .src{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
   .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:#000;flex:0 0 auto}
+  .src .ico{width:96px;height:54px;border-radius:6px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
   .src .t{font-weight:600;overflow-wrap:anywhere}
   .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
-  .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+  .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
   .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
   .transcript b{color:#8fb0ff;font-weight:500}
-  dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
-  dialog::backdrop{background:#0009}
-  .hits .h{padding:8px 0;border-bottom:1px solid var(--line)}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
-  @keyframes s{to{transform:rotate(360deg)}}
-  @media(max-width:600px){.src img{width:72px;height:40px}.msg{max-width:100%}.src .ph{display:none}}
+  .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;white-space:pre-wrap}
+  .note.gap{border-color:#5a4a1e}
+  @media(max-width:760px){
+    #ws.active{flex-direction:column}
+    aside{width:100%;flex:0 0 auto;max-height:42vh}
+    .view{padding:14px}
+    .src img,.src .ico{width:72px;height:40px}
+    .msg{max-width:100%}
+  }
 </style></head>
 <body>
-<header>
+
+<!-- ============ HOME ============ -->
+<div id="home">
   <h1>Neuro Search</h1>
-  <select id="projectSel" style="width:auto;max-width:50vw" title="Scope"><option value="">All sources</option></select>
-  <span class="stats" id="stats"></span>
-</header>
-<nav>
-  <button data-tab="ask" class="active">Ask</button>
-  <button data-tab="sources">Sources</button>
-  <button data-tab="projects">Projects</button>
-  <button data-tab="ingest">Ingest</button>
-</nav>
-<main>
+  <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
+  <div class="grid" id="projGrid"></div>
+</div>
 
-<section id="tab-ask" class="active">
-  <div class="row" style="margin-bottom:8px">
-    <select id="convSel" style="width:auto"><option value="">New conversation</option></select>
-    <button class="small ghost" onclick="newConversation()">New</button>
-    <button class="small ghost" onclick="delConversation()">Delete</button>
-  </div>
-  <div id="chat"><div class="muted" id="chatHint">Ask anything about your sources. Answers cite the video and timestamp; click a citation to jump to that moment. Inside a project you can also paste video/playlist links to add them, say “refocus the brief on…”, or “pin that as a finding”.</div></div>
-  <div id="askbar"><div class="inner">
-    <div style="flex:1">
-      <textarea id="q" placeholder="Ask a question…" rows="1"></textarea>
-      <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label><span class="muted" id="askStatus"></span></div>
+<!-- ============ WORKSPACE ============ -->
+<div id="ws">
+  <aside>
+    <div class="top">
+      <div class="back" onclick="goHome()">← All projects</div>
+      <div class="pname" id="wsName"></div>
     </div>
-    <button class="primary" id="askBtn" onclick="ask()">Ask</button>
-  </div></div>
-</section>
+    <nav>
+      <div class="item" data-view="chats" onclick="showView('chats')">💬 Chats <span class="n" id="nChats"></span></div>
+      <div class="item" data-view="sources" onclick="showView('sources')">📚 Sources <span class="n" id="nSources"></span></div>
+      <div class="item" data-view="findings" onclick="showView('findings')">📌 Findings <span class="n" id="nFindings"></span></div>
+      <div class="item" data-view="settings" onclick="showView('settings')">⚙︎ Settings</div>
+    </nav>
+    <div class="chats" id="chatList"></div>
+    <div class="foot" id="wsFoot"></div>
+  </aside>
 
-<section id="tab-sources">
-  <div class="card">
-    <div class="row">
-      <input id="srcQ" placeholder="Filter by title or channel…" oninput="debounce(loadSources)">
-      <select id="srcStatus" style="width:auto" onchange="loadSources()"><option value="">Any status</option><option>ready</option><option>pending</option><option>failed</option></select>
-      <select id="srcColl" style="width:auto" onchange="loadSources()"><option value="">Any collection</option></select>
+  <div id="main">
+    <!-- chats -->
+    <div class="view chatview" id="view-chats">
+      <div id="chatHead">
+        <div class="title" id="chatTitle">New chat</div>
+        <button class="small ghost" onclick="renameChat()">Rename</button>
+        <button class="small ghost danger" onclick="deleteChat()">Delete</button>
+      </div>
+      <div id="chat"></div>
+      <div id="askbar"><div class="inner">
+        <div style="flex:1">
+          <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source)" rows="1"></textarea>
+          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label><span class="muted" id="askStatus"></span></div>
+        </div>
+        <button class="primary" id="askBtn" onclick="ask()">Ask</button>
+      </div></div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <span class="muted" id="srcCount"></span>
-      <button class="small" onclick="exportCsv(false)">Export master sheet (CSV)</button>
-      <button class="small" onclick="exportCsv(true)">Export timestamped segments (CSV)</button>
-      <button class="small" onclick="retryFailed()">Retry failed</button>
-    </div>
-  </div>
-  <div id="srcList"></div>
-</section>
 
-<section id="tab-projects">
-  <div class="card">
-    <b>New project</b>
-    <div class="row" style="margin-top:8px"><input id="pName" placeholder="Name (e.g. Pricing objections)"></div>
-    <div class="row" style="margin-top:8px"><textarea id="pBrief" placeholder="Brief — what are you trying to find out? This guides every answer in the project."></textarea></div>
-    <div class="row" style="margin-top:8px"><input id="pTags" placeholder="Auto-include sources with tags (comma separated, optional)"><button class="primary" onclick="createProject()">Create</button></div>
-  </div>
-  <div id="projList"></div>
-</section>
+    <!-- sources -->
+    <div class="view" id="view-sources">
+      <h2>Sources</h2>
+      <div class="card">
+        <div class="tabs">
+          <button class="active" data-pane="link" onclick="showPane('link')">Link</button>
+          <button data-pane="upload" onclick="showPane('upload')">Upload file</button>
+          <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
+          <button data-pane="library" onclick="showPane('library')">From library</button>
+        </div>
+        <div class="pane active" id="pane-link">
+          <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
+          <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
+          <div class="row" style="margin-top:8px"><input id="inTags" placeholder="tags (optional, comma separated)"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
+        </div>
+        <div class="pane" id="pane-upload">
+          <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is.</div>
+          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
+        </div>
+        <div class="pane" id="pane-paste">
+          <div class="row"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
+          <textarea id="inText" style="margin-top:8px" placeholder="Paste a transcript or notes… lines like `12:34 text` keep their timestamps"></textarea>
+          <div class="row" style="margin-top:8px"><button class="primary" onclick="ingestText()">Save</button></div>
+        </div>
+        <div class="pane" id="pane-library">
+          <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
+          <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
+          <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+        </div>
+      </div>
+      <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
+      <div class="row" style="margin-bottom:6px">
+        <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)">
+        <span class="muted fixed" id="srcCount"></span>
+        <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
+        <button class="small" onclick="exportCsv(true)">Segments CSV</button>
+      </div>
+      <div id="srcList"></div>
+    </div>
 
-<section id="tab-ingest">
-  <div class="card">
-    <b>Add from URL</b>
-    <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
-    <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
-    <div class="row" style="margin-top:8px">
-      <input id="inTags" placeholder="tags (comma separated)">
-      <select id="inProject" style="width:auto"><option value="">no project</option></select>
-      <label class="muted" style="flex:0"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label>
-      <button class="primary" onclick="ingestUrls()">Ingest</button>
+    <!-- findings -->
+    <div class="view" id="view-findings">
+      <h2>Findings</h2>
+      <div class="muted" style="margin-bottom:10px">Pinned answers and gaps. Pin from any chat with “pin that” or the button under an answer.</div>
+      <div class="row" style="margin-bottom:14px">
+        <a class="chip" id="expFind" target="_blank">⬇ Findings (.md)</a>
+        <a class="chip" id="expPlan" target="_blank">⬇ Masterplan (.md)</a>
+        <a class="chip" id="expZip" target="_blank">⬇ Masterplan package (.zip — for ChatGPT / Claude / NotebookLM)</a>
+      </div>
+      <div id="notes"></div>
+    </div>
+
+    <!-- settings -->
+    <div class="view" id="view-settings">
+      <h2>Project settings</h2>
+      <div class="card">
+        <label class="muted">Name</label><input id="epName">
+        <label class="muted" style="display:block;margin-top:10px">Brief — what are you trying to find out? Every answer in this project is guided by it. You can also change it from a chat (“refocus on…”).</label>
+        <textarea id="epBrief" style="min-height:120px"></textarea>
+        <label class="muted" style="display:block;margin-top:10px">Auto-include tags — any source carrying one of these tags joins this project automatically (optional)</label>
+        <input id="epTags">
+        <div class="row" style="margin-top:12px"><button class="primary" onclick="saveProject()">Save</button><span class="muted" id="saveMsg"></span></div>
+      </div>
+      <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
+        <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
     </div>
   </div>
-  <div class="card">
-    <b>Upload audio/video file</b> <span class="muted">(transcribed with Whisper)</span>
-    <div class="row" style="margin-top:8px"><input type="file" id="inFile" accept="audio/*,video/*"><input id="inFileTitle" placeholder="title (optional)"><button class="primary" onclick="ingestFile()">Upload</button></div>
-  </div>
-  <div class="card">
-    <b>Paste a transcript</b> <span class="muted">(lines like <code>12:34 text</code> keep their timestamps)</span>
-    <div class="row" style="margin-top:8px"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
-    <textarea id="inText" style="margin-top:8px" placeholder="Paste transcript…"></textarea>
-    <div class="row" style="margin-top:8px"><button class="primary" onclick="ingestText()">Save transcript</button></div>
-  </div>
-  <div class="card"><b>Jobs</b> <span class="muted" id="jobsNote"></span><div id="jobs"></div></div>
-</section>
-</main>
+</div>
 
 <dialog id="dlg"><div id="dlgBody"></div><div class="row" style="margin-top:12px;justify-content:flex-end"><button onclick="dlg.close()">Close</button></div></dialog>
 
@@ -155,50 +235,122 @@ async function api(path, opts = {}) {
   return j;
 }
 const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b) });
+const put = (p, b) => api(p, { method: 'PUT', body: JSON.stringify(b) });
 const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : undefined });
 let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
-const state = { project: localStorage.getItem('ns_project') || '', conv: null, projects: [], collections: [] };
+const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
+const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪' };
 
-// tabs
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
-function showTab(t) {
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
-  document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
-  $('#askbar').style.display = t === 'ask' ? '' : 'none';
-  if (t === 'sources') loadSources(); if (t === 'projects') loadProjects(); if (t === 'ingest') loadJobs();
-  location.hash = t;
+const state = { project: null, conv: null, chats: [], view: 'chats' };
+
+// ================= routing =================
+function route() {
+  const h = location.hash.slice(1).split('/');
+  if (h[0] === 'p' && h[1]) openProject(h[1], h[2] || 'chats', h[3] || null);
+  else goHome();
+}
+window.addEventListener('hashchange', route);
+function setHash(view, conv) { const h = `#p/${state.project.id}/${view}` + (conv ? '/' + conv : ''); if (location.hash !== h) history.replaceState(null, '', h); }
+
+// ================= home =================
+async function goHome() {
+  state.project = null; state.conv = null;
+  $('#ws').classList.remove('active'); $('#home').style.display = '';
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
+  $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
+  $('#projGrid').innerHTML = ps.map(p => `<div class="pcard" onclick="location.hash='#p/${p.id}/chats'">
+      <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.brief || 'No brief yet')}</div>
+      <div class="meta">${p.n_sources} sources · updated ${new Date(p.updated_at * 1000).toLocaleDateString()}</div></div>`).join('')
+    + `<div class="pcard new" onclick="newProjectDialog()">＋ New project</div>`;
+}
+function newProjectDialog() {
+  $('#dlgBody').innerHTML = `<h2>New project</h2>
+    <input id="npName" placeholder="Name (e.g. Pricing objections)">
+    <textarea id="npBrief" style="margin-top:8px" placeholder="Brief — what are you trying to find out? (you can refine this later, including from a chat)"></textarea>
+    <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="primary" onclick="createProject()">Create</button></div>`;
+  dlg.showModal(); $('#npName').focus();
+}
+async function createProject() {
+  const name = $('#npName').value.trim(); if (!name) return;
+  const p = await post('/api/projects', { name, brief: $('#npBrief').value, tags: [] });
+  dlg.close(); location.hash = `#p/${p.id}/sources`;
 }
 
-async function loadStats() {
-  const s = await api('/api/stats');
-  $('#stats').textContent = `${s.ready} sources · ${s.total_hours} h · ${s.chunks} chunks` + (s.pending ? ` · ${s.pending} pending` : '');
-}
-async function loadProjectsList() {
-  state.projects = await api('/api/projects');
-  for (const id of ['#projectSel', '#inProject']) {
-    const sel = $(id); const cur = sel.value;
-    sel.innerHTML = `<option value="">${id === '#projectSel' ? 'All sources' : 'no project'}</option>` + state.projects.map(p => `<option value="${p.id}">${esc(p.name)} (${p.n_sources})</option>`).join('');
-    sel.value = id === '#projectSel' ? state.project : cur;
+// ================= workspace =================
+async function openProject(id, view, conv) {
+  const p = await api('/api/projects/' + id).catch(() => null);
+  if (!p) return goHome();
+  const fresh = !state.project || state.project.id !== id;
+  state.project = p;
+  $('#home').style.display = 'none'; $('#ws').classList.add('active');
+  $('#wsName').textContent = p.name;
+  $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
+  $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', ');
+  $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
+  $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
+  await loadChats();
+  if (fresh || view !== state.view || conv !== state.conv) {
+    if (view === 'chats') await selectChat(conv || (state.chats[0] && state.chats[0].id) || null, false);
+    showView(view, false);
   }
-  if ($('#projectSel').value !== state.project) { state.project = ''; }
 }
-$('#projectSel').onchange = e => { state.project = e.target.value; localStorage.setItem('ns_project', state.project); newConversation(); loadConversations(); };
+function showView(v, push = true) {
+  state.view = v;
+  document.querySelectorAll('aside nav .item').forEach(i => i.classList.toggle('active', i.dataset.view === v));
+  document.querySelectorAll('#main .view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+  if (v === 'sources') { loadSources(); loadJobs(); }
+  if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
+  if (v === 'findings') loadNotes();
+  if (push) setHash(v, v === 'chats' ? state.conv : null);
+}
 
-// ---------------- chat
-async function loadConversations() {
-  const cs = await api('/api/conversations' + (state.project ? `?project_id=${state.project}` : ''));
-  $('#convSel').innerHTML = '<option value="">New conversation</option>' + cs.map(c => `<option value="${c.id}">${esc(c.title || c.id.slice(0, 8))}</option>`).join('');
-  $('#convSel').value = state.conv || '';
+// ---- chats ----
+async function loadChats() {
+  state.chats = await api('/api/conversations?project_id=' + state.project.id);
+  $('#nChats').textContent = state.chats.length;
+  $('#chatList').innerHTML = `<div class="newc"><button class="small" style="width:100%" onclick="newChat()">＋ New chat</button></div>` +
+    state.chats.map(c => `<div class="c ${c.id === state.conv ? 'active' : ''}" onclick="selectChat('${c.id}')"><span>${esc(c.title || 'Untitled chat')}</span></div>`).join('');
 }
-$('#convSel').onchange = async e => { state.conv = e.target.value || null; $('#chat').innerHTML = ''; if (state.conv) { const ms = await api('/api/conversations/' + state.conv); ms.forEach(m => addMsg(m.role, m.content, m.citations || [])); } };
-function newConversation() { state.conv = null; $('#chat').innerHTML = ''; $('#convSel').value = ''; }
-async function delConversation() { if (!state.conv) return; await del('/api/conversations/' + state.conv); newConversation(); loadConversations(); }
+async function newChat() {
+  const c = await post('/api/conversations', { project_id: state.project.id, title: null });
+  await loadChats(); await selectChat(c.id); showView('chats');
+}
+async function selectChat(id, push = true) {
+  state.conv = id;
+  document.querySelectorAll('#chatList .c').forEach((el, i) => el.classList.toggle('active', state.chats[i]?.id === id));
+  const c = state.chats.find(x => x.id === id);
+  $('#chatTitle').textContent = c ? (c.title || 'Untitled chat') : 'New chat';
+  $('#chat').innerHTML = '';
+  if (id) {
+    const ms = await api('/api/conversations/' + id);
+    if (!ms.length) emptyChat(); else ms.forEach(m => addMsg(m.role, m.content, m.citations || []));
+  } else emptyChat();
+  if (push) { showView('chats'); }
+  $('#q').focus();
+}
+function emptyChat() {
+  const p = state.project, n = +($('#nSources').textContent || p.n_sources || 0);
+  $('#chat').innerHTML = `<div class="empty"><b>${esc(p.name)}</b> · ${n} source${n === 1 ? '' : 's'} in scope.<br><br>
+    Every chat here only sees this project's sources, so you can run several independent lines of inquiry on the same material.
+    Answers cite the source and the exact timestamp or page.<br><br>
+    Things you can say: <i>paste a YouTube/playlist link</i> to add it · <i>“refocus the brief on …”</i> · <i>“pin that as a finding”</i>.</div>`;
+}
+async function renameChat() {
+  if (!state.conv) return; const c = state.chats.find(x => x.id === state.conv);
+  const t = prompt('Chat title', c?.title || ''); if (t === null) return;
+  await put('/api/conversations/' + state.conv, { title: t }); await loadChats(); $('#chatTitle').textContent = t || 'Untitled chat';
+}
+async function deleteChat() {
+  if (!state.conv || !confirm('Delete this chat?')) return;
+  await del('/api/conversations/' + state.conv); state.conv = null; await loadChats(); await selectChat(state.chats[0]?.id || null);
+}
 function renderAnswer(text, cites) {
   const byN = Object.fromEntries(cites.map(c => [c.n, c]));
   return esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>` : m);
 }
 function addMsg(role, text, cites = [], extra = {}) {
-  $('#chatHint')?.remove();
+  const empty = $('#chat .empty'); if (empty) empty.remove();
   const d = document.createElement('div'); d.className = 'msg ' + role;
   if (role === 'user') d.textContent = text;
   else {
@@ -206,35 +358,37 @@ function addMsg(role, text, cites = [], extra = {}) {
     if (cites.length) h += `<div class="cites">` + cites.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
     if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
     for (const a of extra.actions || []) {
-      if (a.type === 'brief_updated') h += `<div class="web">✎ Project brief updated: <i>${esc(a.brief)}</i></div>`;
-      if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned a finding to the project.</div>`;
-      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap noted on the project.</div>`;
+      if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;
+      if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
+      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
     }
-    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => `<span class="chip" data-job="${j.job_id}" data-label="${esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48))}">⏳ ${esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48))}</span>`).join('') + `</div>`;
-    if (state.project) h += `<div style="margin-top:8px"><button class="small ghost" onclick='saveNote(this)'>Pin to project notes</button></div>`;
+    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
+    if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
   }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
   return d;
 }
-async function saveNote(btn) {
+async function pinMsg(btn) {
   const d = btn.closest('.msg');
-  await post(`/api/projects/${state.project}/notes`, { content: d.dataset.text, citations: JSON.parse(d.dataset.cites) });
-  btn.textContent = 'Pinned ✓'; btn.disabled = true;
+  await post(`/api/projects/${state.project.id}/notes`, { content: d.dataset.text, citations: JSON.parse(d.dataset.cites) });
+  btn.textContent = 'Pinned ✓'; btn.disabled = true; $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
 }
 async function ask() {
   const q = $('#q').value.trim(); if (!q) return;
+  if (!state.conv) { const c = await post('/api/conversations', { project_id: state.project.id }); state.conv = c.id; await loadChats(); }
   $('#q').value = ''; addMsg('user', q);
-  const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching your sources…</span>';
+  const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching this project\'s sources…</span>';
   $('#askBtn').disabled = true;
   try {
-    const r = await post('/api/ask', { question: q, project_id: state.project || null, conversation_id: state.conv, use_web: $('#useWeb').checked });
+    const r = await post('/api/ask', { question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked });
     thinking.remove();
-    const first = !state.conv; state.conv = r.conversation_id;
     const m = addMsg('assistant', r.answer, r.citations, r);
-    if (first) { await loadConversations(); $('#convSel').value = state.conv; }
+    const c = state.chats.find(x => x.id === state.conv);
+    if (c && !c.title) { await put('/api/conversations/' + state.conv, { title: q.slice(0, 60) }); await loadChats(); $('#chatTitle').textContent = q.slice(0, 60); }
     if (r.ingest_jobs?.length) watchIngest(m, r.ingest_jobs.map(j => j.job_id));
-    if ((r.actions || []).some(a => a.type === 'brief_updated')) loadProjectsList();
+    if ((r.actions || []).some(a => a.type === 'brief_updated')) { state.project.brief = r.project.brief; $('#epBrief').value = r.project.brief; $('#wsFoot').textContent = r.project.brief.slice(0, 140); }
+    if ((r.actions || []).some(a => a.type !== 'brief_updated')) $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
   } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
   $('#askBtn').disabled = false;
 }
@@ -249,141 +403,106 @@ async function watchIngest(msgEl, jobIds) {
       else if (j.status === 'failed') { chip.textContent = `✗ ${label}`; chip.title = j.message || ''; }
       else { chip.textContent = `⏳ ${label} ${j.message ? '· ' + j.message : ''}`; pending++; }
     }
-    loadStats();
-    if (pending) setTimeout(tick, 3000); else { loadProjectsList(); }
+    if (pending) setTimeout(tick, 3000); else { const p = await api('/api/projects/' + state.project.id); state.project = p; $('#nSources').textContent = p.n_sources; }
   };
   setTimeout(tick, 1500);
 }
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
 
-// ---------------- sources
-async function loadCollections() {
-  state.collections = await api('/api/collections');
-  $('#srcColl').innerHTML = '<option value="">Any collection</option>' + state.collections.map(c => `<option value="${c.id}">${esc(c.title || c.kind)} (${c.n_sources})</option>`).join('');
+// ---- sources ----
+function showPane(p) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
+  document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
+  if (p === 'library') loadLibrary();
 }
 async function loadSources() {
-  const p = new URLSearchParams(); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
-  if ($('#srcStatus').value) p.set('status', $('#srcStatus').value); if ($('#srcColl').value) p.set('collection_id', $('#srcColl').value);
-  if (state.project) p.set('project_id', state.project);
+  const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
   const rows = await api('/api/sources?' + p);
-  $('#srcCount').textContent = `${rows.length} sources` + (state.project ? ' in this project' : '');
+  $('#srcCount').textContent = `${rows.length} source${rows.length === 1 ? '' : 's'}`;
+  $('#nSources').textContent = rows.filter(r => r.status === 'ready').length;
   $('#srcList').innerHTML = rows.map(s => `<div class="src">
-    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : '<div class="ph" style="width:96px"></div>'}
+    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
-      <div class="t"><a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a></div>
-      <div class="muted">${esc(s.channel || s.platform)} · ${s.published_at || ''} · ${fmt(s.duration)} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       <div class="actions">
-        <button class="small" onclick="viewTranscript('${s.id}')">Transcript</button>
-        <button class="small" onclick="addToProjectPrompt('${s.id}')">Add to project…</button>
-        <button class="small" onclick="editTags('${s.id}', ${JSON.stringify(s.tags || []).replace(/"/g, '&quot;')})">Tags</button>
-        ${s.status !== 'ready' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
-        <button class="small ghost" onclick="delSource('${s.id}')">Delete</button>
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button>` : ''}
+        ${s.status === 'failed' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
+        <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
       </div>
-    </div></div>`).join('') || '<div class="muted">No sources yet. Add some in the Ingest tab.</div>';
+    </div></div>`).join('') || '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
 }
-const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
 async function viewTranscript(id) {
   const s = await api('/api/sources/' + id);
-  const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : s.url;
+  const isDoc = s.platform === 'document';
+  const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : null;
+  const lab = t => isDoc ? `p. ${Math.round(t)}` : fmt(t);
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
-    <div class="transcript">${s.segments.map(g => `<a href="${esc(link(g.start))}" target="_blank"><b>[${fmt(g.start)}]</b></a> ${esc(g.text)}`).join('\n')}</div>`;
+    <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
 }
-async function addToProjectPrompt(id) {
-  if (!state.projects.length) return alert('Create a project first.');
-  const opts = state.projects.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
-  const n = parseInt(prompt('Add to which project?\n' + opts)); const p = state.projects[n - 1]; if (!p) return;
-  await post(`/api/projects/${p.id}/members`, { source_ids: [id] }); loadProjectsList();
-}
-async function editTags(id, tags) {
-  const v = prompt('Tags (comma separated):', tags.join(', ')); if (v === null) return;
-  await api(`/api/sources/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tags: v.split(',').map(t => t.trim()).filter(Boolean) }) }); loadSources();
-}
-async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); }
-async function retryFailed() { const r = await post('/api/retry-failed'); alert(`Re-queued ${r.requeued}`); loadSources(); }
-async function delSource(id) { if (!confirm('Delete this source and its transcript?')) return; await del('/api/sources/' + id); loadSources(); loadStats(); }
-function exportCsv(seg) { const p = new URLSearchParams(); if (state.project) p.set('project_id', state.project); if ($('#srcColl').value) p.set('collection_id', $('#srcColl').value); location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?` + p; }
-
-// ---------------- projects
-async function loadProjects() {
-  await loadProjectsList(); await loadCollections();
-  $('#projList').innerHTML = state.projects.map(p => `<div class="card" id="proj-${p.id}">
-    <div class="row"><b style="flex:1">${esc(p.name)}</b><span class="muted">${p.n_sources} sources</span>
-      <button class="small" onclick="openProject('${p.id}')">Open</button>
-      <button class="small" onclick="state.project='${p.id}';localStorage.setItem('ns_project','${p.id}');$('#projectSel').value='${p.id}';newConversation();loadConversations();showTab('ask')">Ask</button></div>
-    <div class="muted" style="margin-top:4px">${esc(p.brief || '')}</div>
-    ${(p.tags || []).length ? `<div class="muted">auto-tags: ${p.tags.map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
-  </div>`).join('') || '<div class="muted">No projects yet.</div>';
-}
-async function createProject() {
-  const name = $('#pName').value.trim(); if (!name) return;
-  await post('/api/projects', { name, brief: $('#pBrief').value, tags: $('#pTags').value.split(',').map(t => t.trim()).filter(Boolean) });
-  $('#pName').value = $('#pBrief').value = $('#pTags').value = ''; loadProjects();
-}
-async function openProject(id) {
-  const p = await api('/api/projects/' + id);
-  const srcs = await api('/api/sources?project_id=' + id + '&limit=2000');
-  const collOpts = state.collections.map(c => `<option value="${c.id}">${esc(c.title || c.kind)} (${c.n_sources})</option>`).join('');
-  $('#dlgBody').innerHTML = `
-    <div class="row"><input id="epName" value="${esc(p.name)}"></div>
-    <div class="row" style="margin-top:8px"><textarea id="epBrief" placeholder="Brief">${esc(p.brief || '')}</textarea></div>
-    <div class="row" style="margin-top:8px"><input id="epTags" value="${esc((p.tags || []).join(', '))}" placeholder="auto-include tags"><button class="small primary" onclick="saveProject('${id}')">Save</button><button class="small ghost" onclick="deleteProject('${id}')">Delete project</button></div>
-    <div class="row" style="margin-top:10px">
-      <a class="chip" href="/api/projects/${id}/findings.md" target="_blank">⬇ Findings (.md)</a>
-      <a class="chip" href="/api/projects/${id}/masterplan.md" target="_blank">⬇ Masterplan (.md)</a>
-      <a class="chip" href="/api/projects/${id}/masterplan.zip" target="_blank">⬇ Masterplan package (.zip — for ChatGPT/Claude)</a>
-    </div>
-    <h4 style="margin:14px 0 6px">Collections in this project</h4>
-    ${p.collections.map(c => `<span class="chip">${esc(c.title || c.kind)} <a href="#" onclick="rmMember('${id}',null,'${c.id}');return false">✕</a></span>`).join('') || '<span class="muted">none</span>'}
-    <div class="row" style="margin-top:6px"><select id="addColl"><option value="">Add a playlist/channel…</option>${collOpts}</select><button class="small" onclick="addColl('${id}')">Add</button></div>
-    <h4 style="margin:14px 0 6px">Sources (${srcs.length})</h4>
-    <div style="max-height:30vh;overflow:auto">${srcs.map(s => `<div class="muted" style="padding:3px 0">${esc(s.title)} <a href="#" onclick="rmMember('${id}','${s.id}',null);return false">✕</a></div>`).join('') || '<span class="muted">none — add sources from the Sources tab, link a collection, or set auto-include tags</span>'}</div>
-    <h4 style="margin:14px 0 6px">Pinned notes</h4>
-    ${p.notes.map(n => `<div class="card" style="padding:10px"><div style="white-space:pre-wrap">${renderAnswer(n.content, n.citations || [])}</div>
-      ${(n.citations || []).map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('')}
-      <div><button class="small ghost" onclick="del('/api/notes/${n.id}').then(()=>openProject('${id}'))">remove</button></div></div>`).join('') || '<span class="muted">none yet — pin answers from the Ask tab</span>'}`;
-  dlg.showModal();
-}
-async function saveProject(id) { await api('/api/projects/' + id, { method: 'PUT', body: JSON.stringify({ name: $('#epName').value, brief: $('#epBrief').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) }) }); dlg.close(); loadProjects(); }
-async function deleteProject(id) { if (!confirm('Delete project? Sources are kept.')) return; await del('/api/projects/' + id); dlg.close(); if (state.project === id) { state.project = ''; localStorage.removeItem('ns_project'); } loadProjects(); }
-async function addColl(id) { const c = $('#addColl').value; if (!c) return; await post(`/api/projects/${id}/members`, { collection_ids: [c] }); openProject(id); }
-async function rmMember(id, sid, cid) { await del(`/api/projects/${id}/members`, { source_ids: sid ? [sid] : [], collection_ids: cid ? [cid] : [] }); openProject(id); }
-
-// ---------------- ingest
+async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
+async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
+async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
+function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
 async function ingestUrls() {
   const url = $('#inUrls').value.trim(); if (!url) return;
   const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
-  const r = await post('/api/ingest', { url, tags, project_id: $('#inProject').value || null, force: $('#inForce').checked });
-  $('#inUrls').value = ''; $('#jobsNote').textContent = `queued ${r.jobs.length} job(s)`; loadJobs();
+  await post('/api/ingest', { url, tags, project_id: state.project.id, force: $('#inForce').checked });
+  $('#inUrls').value = ''; loadJobs();
 }
-async function ingestFile() {
-  const f = $('#inFile').files[0]; if (!f) return;
-  const fd = new FormData(); fd.append('file', f); fd.append('title', $('#inFileTitle').value); fd.append('project_id', $('#inProject').value); fd.append('tags', $('#inTags').value);
-  $('#jobsNote').innerHTML = '<span class="spin"></span> uploading & transcribing (this can take a few minutes)…';
-  try { const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) throw new Error(j.error || j.detail); $('#jobsNote').textContent = `transcribed "${j.title}" (${j.chunks} chunks)`; loadStats(); }
-  catch (e) { $('#jobsNote').textContent = 'error: ' + e.message; }
+async function ingestFiles() {
+  const files = [...$('#inFile').files]; if (!files.length) return;
+  for (const f of files) {
+    const fd = new FormData(); fd.append('file', f); if (files.length === 1) fd.append('title', $('#inFileTitle').value); fd.append('project_id', state.project.id); fd.append('tags', $('#inTags').value);
+    const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) alert(j.error || j.detail);
+  }
+  $('#inFile').value = ''; $('#inFileTitle').value = ''; loadJobs();
 }
 async function ingestText() {
   const title = $('#inTextTitle').value.trim(), text = $('#inText').value.trim(); if (!title || !text) return;
-  const r = await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: $('#inProject').value || null, tags: $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean) });
-  $('#inText').value = ''; $('#jobsNote').textContent = `saved "${r.title}" (${r.chunks} chunks)`; loadStats();
+  await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: state.project.id, tags: [] });
+  $('#inText').value = ''; $('#inTextTitle').value = ''; loadSources();
 }
+async function loadLibrary() {
+  const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);
+  const rows = await api('/api/sources?' + p);
+  $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
+}
+async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
 let jobsTimer;
 async function loadJobs() {
-  const js = await api('/api/jobs?limit=40');
-  $('#jobs').innerHTML = js.map(j => `<div class="job"><span class="st ${j.status === 'done' ? 'ready' : j.status === 'failed' ? 'failed' : 'pending'}">${j.status}</span>
-    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.payload.url || j.payload.source_id || j.kind)}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('') || '<div class="muted">No jobs yet.</div>';
+  const js = await api(`/api/projects/${state.project.id}/jobs?limit=30`);
+  const active = js.filter(j => j.status === 'queued' || j.status === 'running');
+  const recentFailed = js.filter(j => j.status === 'failed').slice(0, 5);
+  const show = [...active, ...recentFailed];
+  $('#jobsCard').style.display = show.length ? '' : 'none';
+  $('#jobs').innerHTML = show.map(j => `<div class="job"><span class="st ${j.status}">${j.status}</span>
+    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.payload.url || j.payload.name || j.payload.source_id || j.kind)}</span>
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
   clearTimeout(jobsTimer);
-  if (js.some(j => j.status === 'queued' || j.status === 'running')) jobsTimer = setTimeout(() => { if ($('#tab-ingest').classList.contains('active')) loadJobs(); loadStats(); }, 3000);
+  if (active.length) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
 }
 
-// boot
-(async () => {
-  await loadProjectsList(); $('#projectSel').value = state.project; await loadStats(); await loadConversations(); await loadCollections();
-  showTab((location.hash || '#ask').slice(1));
-  setInterval(loadStats, 30000);
-})();
+// ---- findings ----
+async function loadNotes() {
+  const p = await api('/api/projects/' + state.project.id);
+  const notes = p.notes || []; $('#nFindings').textContent = notes.length;
+  $('#notes').innerHTML = notes.map(n => { const gap = n.content.startsWith('Gap:'); return `<div class="note ${gap ? 'gap' : ''}">${gap ? '⚠ ' : ''}${renderAnswer(n.content, n.citations || [])}
+      ${(n.citations || []).length ? `<div class="cites" style="margin-top:8px">${n.citations.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('')}</div>` : ''}
+      <div class="muted" style="margin-top:6px">${new Date(n.created_at * 1000).toLocaleString()} · <a href="#" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div></div>`; }).join('')
+    || '<div class="empty">Nothing pinned yet. Ask questions in a chat and pin the answers worth keeping — they become the findings document and the masterplan.</div>';
+}
+
+// ---- settings ----
+async function saveProject() {
+  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
+}
+async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }
+
+route();
 </script>
 </body></html>

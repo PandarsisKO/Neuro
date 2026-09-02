@@ -36,6 +36,15 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
                                  progress=progress, force=bool(payload.get("force")))
     if kind == "ingest_source":
         return ingest.ingest_source(payload["source_id"], progress=progress)
+    if kind == "ingest_file":
+        from pathlib import Path
+        path = Path(payload["path"])
+        try:
+            return ingest.ingest_local_file(path, title=payload.get("title"), tags=payload.get("tags"),
+                                            project_id=payload.get("project_id"), progress=progress,
+                                            original_name=payload.get("name"))
+        finally:
+            path.unlink(missing_ok=True)
     if kind == "reembed":
         return {"embedded": embed_pending(limit=payload.get("limit", 100000))}
     raise RuntimeError(f"unknown job kind {kind}")

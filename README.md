@@ -59,6 +59,7 @@ Inside a project's chat (web app or the Claude connector):
 
 - **Paste links to add sources.** Drop a video, playlist or channel URL into the conversation and it's ingested
   into that project on the spot; the chat shows progress and the next answers use the new material.
+- **Multiple chats per project.** Each chat is an isolated thread over the same sources — one per idea.
 - **Refocus the brief.** "Actually, narrow this to how they handle discount requests" — the assistant rewrites
   the project brief and confirms. Every later answer follows the new focus.
 - **Pin findings.** "Pin that" / "save this as a finding" stores the conclusion with its timestamp citations in
@@ -81,12 +82,26 @@ From a project (Projects tab → Open) you can download:
 
 CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
 
-## Web app
+## Web app — how it's organised
 
-`neurosearch serve` runs everything on one port: the mobile-friendly web app at `/`, the REST API at `/api/*`,
-and the MCP endpoint at `/mcp`. Sign in with `NEUROSEARCH_APP_TOKEN`. The Ask tab is a chat with clickable
-citations; Sources lists everything with transcripts, tags, and CSV exports; Projects manages groupings and
-notes; Ingest takes URLs, file uploads and pasted transcripts and shows job progress.
+`neurosearch serve` runs everything on one port. Sign in with `NEUROSEARCH_APP_TOKEN`.
+
+**Projects are the unit of work.** The home screen is a list of projects; open one and everything inside belongs
+to it:
+
+- **Chats** — as many independent chats as you like, each one scoped to *this project's sources only*. Keep the
+  sources fixed and open a new chat for each idea or question you want to explore; they don't bleed into each
+  other. Inside a chat you can paste links to add sources, say "refocus the brief on …", or "pin that".
+- **Sources** — add by link (YouTube video / playlist / channel, podcast, Instagram, mp3/mp4 URL), by uploading a
+  file (mp3, m4a, wav, mp4, mov … are transcribed; PDF, Word, text, markdown are read as documents with page-number
+  citations; SRT/VTT are used as-is), by pasting text, or by pulling something already ingested in another project
+  from the library. Progress for the project's ingest jobs shows at the top.
+- **Findings** — pinned answers and recorded gaps, plus the exports (findings .md, masterplan .md, masterplan
+  package .zip).
+- **Settings** — name, brief (what the project is trying to find out; steers every answer), auto-include tags.
+
+Sources are stored once in a shared library and can belong to many projects, so ingesting the same channel into
+two projects doesn't download it twice. "Remove from project" unlinks; "Delete everywhere" removes the transcript.
 
 ## Deploy to the cloud (Fly.io)
 
@@ -160,6 +175,7 @@ neurosearch/
   config.py      settings from env / .env
   db.py          SQLite schema (sources, segments, chunks+FTS, collections, projects, jobs, conversations)
   media.py       yt-dlp: classify URLs, enumerate playlists/channels, captions, audio download
+  documents.py   PDF / DOCX / text extraction with page numbers
   transcribe.py  Whisper API with ffmpeg splitting for long files
   chunking.py    segments → timestamped chunks
   embeddings.py  OpenAI embeddings

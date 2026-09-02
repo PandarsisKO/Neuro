@@ -168,10 +168,63 @@ def ingest_source(source_id: str, progress: Progress = _noop) -> dict[str, Any]:
 
 
 def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | None = None,
-                      project_id: str | None = None, progress: Progress = _noop) -> dict[str, Any]:
+                      project_id: str | None = None, progress: Progress = _noop,
+                      original_name: str | None = None) -> dict[str, Any]:
+    """Ingest an uploaded file: audio/video is transcribed; PDF/DOCX/TXT are read as documents;
+    .srt/.vtt are parsed as ready-made transcripts."""
+    from .documents import is_document, is_media
+
+    name = original_name or path.name
+    kind_path = Path(name)
+    if kind_path.suffix.lower() in (".srt", ".vtt"):
+        return ingest_subtitle_file(path, title or kind_path.stem, tags, project_id, name)
+    if is_document(kind_path):
+        return ingest_document(path, title or name, tags, project_id, name)
+    if not is_media(kind_path):
+        raise RuntimeError(f"unsupported file type: {kind_path.suffix or 'no extension'}")
+    return _ingest_media_file(path, title or kind_path.stem, tags, project_id, name, progress)
+
+
+def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:
+    from .chunking import build_doc_chunks
+    from .documents import extract_pages
+
+    ext_id = f"doc:{name}:{path.stat().st_size}"
+    src = db.upsert_source(platform="document", external_id=ext_id, url=f"file://{name}", title=title,
+                           status="pending", tags=tags or [])
+    if project_id:
+        db.add_project_sources(project_id, [src["id"]])
+    try:
+        pages = extract_pages(path)
+        segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
+        chunks = build_doc_chunks(pages)
+        db.replace_transcript(src["id"], segments, chunks)
+        db.upsert_source(platform="document", external_id=ext_id, duration=None, transcript_kind="document",
+                         description=f"{len(pages)} pages", status="ready", error=None)
+        n = embed_pending()
+        return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
+                "transcript": "document", "embedded": n}
+    except Exception as e:  # noqa: BLE001
+        db.set_source_status(src["id"], "failed", str(e)[:1000])
+        raise
+
+
+def ingest_subtitle_file(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:
+    raw = path.read_text(errors="replace")
+    if not raw.lstrip().startswith("WEBVTT"):  # srt -> vtt-ish: timestamps use commas
+        raw = "WEBVTT\n\n" + re.sub(r"(\d\d:\d\d:\d\d),(\d{3})", r"\1.\2", raw)
+    segments = media.parse_vtt(raw)
+    payload = {"platform": "file", "external_id": f"sub:{name}:{path.stat().st_size}", "url": f"file://{name}",
+               "title": title, "duration": segments[-1]["end"] if segments else None, "transcript_kind": "captions",
+               "segments": segments, "chapters": []}
+    return store_transcript(payload, tags=tags, project_id=project_id)
+
+
+def _ingest_media_file(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str,
+                       progress: Progress) -> dict[str, Any]:
     """Transcribe an uploaded audio/video file."""
-    ext_id = f"file:{path.name}:{path.stat().st_size}"
-    src = db.upsert_source(platform="file", external_id=ext_id, url=f"file://{path.name}", title=title or path.stem,
+    ext_id = f"file:{name}:{path.stat().st_size}"
+    src = db.upsert_source(platform="file", external_id=ext_id, url=f"file://{name}", title=title,
                            status="pending", tags=tags or [])
     if project_id:
         db.add_project_sources(project_id, [src["id"]])

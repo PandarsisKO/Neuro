@@ -21,7 +21,7 @@ from datetime import date
 from typing import Any
 
 from . import db
-from .chunking import fmt_ts
+from .chunking import fmt_locator, fmt_ts
 from .config import settings
 from .search import deep_link
 
@@ -94,7 +94,7 @@ def transcript_markdown(source: dict[str, Any]) -> str:
     segs = db.get_segments(source["id"])
     head = [f"# {source['title']}", f"- Channel: {source.get('channel') or ''}", f"- Published: {source.get('published_at') or ''}",
             f"- URL: {source['url']}", f"- Duration: {fmt_ts(source['duration'] or 0)}", ""]
-    body = [f"[{fmt_ts(s['start'])}]({deep_link(source['url'], source['platform'], s['start'])}) {s['text']}" for s in segs]
+    body = [f"[{fmt_locator(source['platform'], s['start'])}]({deep_link(source['url'], source['platform'], s['start'])}) {s['text']}" for s in segs]
     return "\n".join(head + body)
 
 

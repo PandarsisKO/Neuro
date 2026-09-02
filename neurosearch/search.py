@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import numpy as np
 
 from . import db
-from .chunking import fmt_ts
+from .chunking import fmt_locator, fmt_ts
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def hit_from_chunk(c: dict[str, Any], score: float) -> dict[str, Any]:
         "url": c.get("url"),
         "start": c["start"],
         "end": c["end"],
-        "timestamp": fmt_ts(c["start"]),
+        "timestamp": fmt_locator(c.get("platform") or "", c["start"]),
         "link": deep_link(c["url"], c.get("platform") or "", c["start"]),
         "text": c["text"],
         "score": round(float(score), 4),
@@ -96,6 +96,7 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
 
 def source_transcript(source_id: str, with_timestamps: bool = True) -> str:
     segs = db.get_segments(source_id)
+    src = db.get_source(source_id) or {}
     if with_timestamps:
-        return "\n".join(f"[{fmt_ts(s['start'])}] {s['text']}" for s in segs)
+        return "\n".join(f"[{fmt_locator(src.get('platform') or '', s['start'])}] {s['text']}" for s in segs)
     return " ".join(s["text"] for s in segs)

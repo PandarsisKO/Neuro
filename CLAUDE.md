@@ -2,7 +2,7 @@
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors). Package lives in `neurosearch/`.
 
-- `config.py` settings from env/.env · `db.py` schema + all SQL · `media.py` yt-dlp (enumerate, captions, audio)
+- `config.py` settings from env/.env · `db.py` schema + all SQL · `media.py` yt-dlp (enumerate, captions, audio) · `documents.py` PDF/DOCX/text → pages
 - `transcribe.py` Whisper API · `chunking.py` segments→chunks · `embeddings.py` OpenAI embeddings
 - `ingest.py` orchestration · `jobs.py` background workers · `search.py` hybrid retrieval · `qa.py` Claude answers w/ citations + project tools · `export.py` findings & masterplan package
 - `api.py` REST + web UI + MCP mount · `mcp_server.py` MCP tools · `cli.py` typer CLI · `web/` single-page UI
@@ -11,3 +11,6 @@ Run locally: `pip install -e . && cp .env.example .env && neurosearch serve`. Te
 YouTube may block datacenter IPs — ingestion can be run from a laptop with the same CLI against the same DB
 (`NEUROSEARCH_DATA_DIR`) or with `NEUROSEARCH_COOKIES_FILE`.
 Keep the DB schema additive (CREATE IF NOT EXISTS) — there is no migration tool.
+
+UI model: projects are the unit; inside a project: chats (many, isolated to project sources), sources, findings, settings.
+Documents use page numbers as start/end in segments/chunks; `fmt_locator` renders 'p. N' vs mm:ss.

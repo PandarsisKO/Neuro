@@ -551,27 +551,30 @@ def delete_project(project_id: str) -> None:
         conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
 
 
-def project_source_ids(project_id: str) -> list[str]:
-    """All ready sources in a project: direct members + members of linked collections + tag matches."""
+def project_source_ids(project_id: str, ready_only: bool = True) -> list[str]:
+    """Sources in a project: direct members + members of linked collections + tag matches.
+    ready_only=True (default) is what search uses; False also returns pending/failed ones for listing."""
     conn = connect()
+    st = "s.status='ready'" if ready_only else "1=1"
     p = conn.execute("SELECT tags FROM projects WHERE id=?", (project_id,)).fetchone()
     if not p:
         return []
     ids: set[str] = set()
     ids.update(r["source_id"] for r in conn.execute(
-        "SELECT ps.source_id FROM project_sources ps JOIN sources s ON s.id=ps.source_id WHERE ps.project_id=? AND s.status='ready'",
+        f"SELECT ps.source_id FROM project_sources ps JOIN sources s ON s.id=ps.source_id WHERE ps.project_id=? AND {st}",
         (project_id,)).fetchall())
     ids.update(r["source_id"] for r in conn.execute(
-        """SELECT sc.source_id FROM project_collections pc
+        f"""SELECT sc.source_id FROM project_collections pc
            JOIN source_collections sc ON sc.collection_id = pc.collection_id
            JOIN sources s ON s.id = sc.source_id
-           WHERE pc.project_id=? AND s.status='ready'""", (project_id,)).fetchall())
+           WHERE pc.project_id=? AND {st}""", (project_id,)).fetchall())
     try:
         tags = json.loads(p["tags"] or "[]")
     except ValueError:
         tags = []
     if tags:
-        for r in conn.execute("SELECT id, tags FROM sources WHERE status='ready' AND tags IS NOT NULL").fetchall():
+        st2 = st.replace("s.status", "status")
+        for r in conn.execute(f"SELECT id, tags FROM sources WHERE {st2} AND tags IS NOT NULL").fetchall():
             try:
                 stags = json.loads(r["tags"] or "[]")
             except ValueError:
@@ -655,6 +658,20 @@ def list_conversations(project_id: str | None = None, limit: int = 50) -> list[d
     else:
         rows = connect().execute("SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def create_conversation(project_id: str | None, title: str | None = None) -> dict[str, Any]:
+    cid = new_id()
+    with tx() as conn:
+        t = now()
+        conn.execute("INSERT INTO conversations (id, project_id, title, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (cid, project_id, title, t, t))
+        return dict(conn.execute("SELECT * FROM conversations WHERE id=?", (cid,)).fetchone())
+
+
+def rename_conversation(conversation_id: str, title: str) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE conversations SET title=?, updated_at=? WHERE id=?", (title, now(), conversation_id))
 
 
 def delete_conversation(conversation_id: str) -> None:

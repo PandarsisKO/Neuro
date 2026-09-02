@@ -162,19 +162,16 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
 @app.post("/api/ingest/file", dependencies=[Depends(require_auth)])
 async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form(None),
                           project_id: str | None = Form(None), tags: str = Form("")) -> dict[str, Any]:
-    dest = settings.media_dir / f"upload_{secrets.token_hex(4)}_{Path(file.filename or 'audio').name}"
+    """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents) or SRT/VTT. Runs as a background job."""
+    name = Path(file.filename or "upload").name
+    dest = settings.media_dir / f"upload_{secrets.token_hex(4)}_{name}"
     with open(dest, "wb") as fh:
         while chunk := await file.read(1 << 20):
             fh.write(chunk)
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-
-    def run() -> dict[str, Any]:
-        try:
-            return ingest.ingest_local_file(dest, title=title, tags=tag_list, project_id=project_id)
-        finally:
-            dest.unlink(missing_ok=True)
-
-    return await anyio.to_thread.run_sync(run)
+    job = jobs.enqueue("ingest_file", {"path": str(dest), "name": name, "title": title or None,
+                                       "tags": tag_list, "project_id": project_id or None})
+    return {"job": job["id"], "name": name}
 
 
 class TextIn(BaseModel):
@@ -244,11 +241,16 @@ async def api_stats() -> dict[str, Any]:
 
 @app.get("/api/sources", dependencies=[Depends(require_auth)])
 async def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
-                      project_id: str | None = None, limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
-    rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=limit if not project_id else 10000, offset=offset)
+                      project_id: str | None = None, not_in_project: str | None = None,
+                      limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
+    rows = db.list_sources(status=status, collection_id=collection_id, query=q,
+                           limit=limit if not (project_id or not_in_project) else 10000, offset=offset)
     if project_id:
-        ids = set(db.project_source_ids(project_id))
+        ids = set(db.project_source_ids(project_id, ready_only=False))
         rows = [r for r in rows if r["id"] in ids][:limit]
+    elif not_in_project:
+        ids = set(db.project_source_ids(not_in_project, ready_only=False))
+        rows = [r for r in rows if r["id"] not in ids][:limit]
     return rows
 
 
@@ -421,6 +423,36 @@ async def api_masterplan_zip(project_id: str, synthesize: bool = True) -> Any:
     fname = re.sub(r"[^A-Za-z0-9_-]+", "_", p["name"])[:40] or "project"
     return StreamingResponse(iter([data]), media_type="application/zip",
                              headers={"Content-Disposition": f"attachment; filename={fname}_masterplan.zip"})
+
+
+@app.get("/api/projects/{project_id}/jobs", dependencies=[Depends(require_auth)])
+async def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
+    """Jobs belonging to this project: URL/file ingests queued for it, plus per-video jobs of its sources."""
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+    out = []
+    for j in db.list_jobs(limit=400):
+        pl = j.get("payload") or {}
+        if pl.get("project_id") == project_id or (j["kind"] == "ingest_source" and pl.get("source_id") in ids):
+            out.append(j)
+        if len(out) >= limit:
+            break
+    return out
+
+
+class ConvIn(BaseModel):
+    project_id: str | None = None
+    title: str | None = None
+
+
+@app.post("/api/conversations", dependencies=[Depends(require_auth)])
+async def api_create_conversation(body: ConvIn) -> dict[str, Any]:
+    return db.create_conversation(body.project_id, body.title)
+
+
+@app.put("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
+async def api_rename_conversation(conversation_id: str, body: ConvIn) -> dict[str, Any]:
+    db.rename_conversation(conversation_id, body.title or "Untitled")
+    return {"ok": True}
 
 
 class NoteIn(BaseModel):

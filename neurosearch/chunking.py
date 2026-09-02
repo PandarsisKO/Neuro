@@ -126,6 +126,45 @@ def _make(segs: list[dict[str, Any]], chapter: str | None) -> dict[str, Any]:
     return {"start": segs[0]["start"], "end": segs[-1]["end"], "text": text}
 
 
+def build_doc_chunks(pages: list[dict[str, Any]], target_chars: int = 1600, overlap_paras: int = 1) -> list[dict[str, Any]]:
+    """Chunk a document. `pages` = [{page:int, text:str}]. Chunks carry start/end = page numbers.
+
+    Paragraphs are packed up to ~target_chars, never splitting a paragraph, with one paragraph of overlap.
+    """
+    paras: list[tuple[int, str]] = []
+    for pg in pages:
+        for para in re.split(r"\n\s*\n", pg["text"] or ""):
+            t = " ".join(para.split())
+            if t:
+                # very long paragraphs get split on sentence boundaries
+                while len(t) > MAX_CHUNK_CHARS:
+                    cut = t.rfind(". ", 0, MAX_CHUNK_CHARS)
+                    cut = cut + 1 if cut > 200 else MAX_CHUNK_CHARS
+                    paras.append((pg["page"], t[:cut].strip()))
+                    t = t[cut:].strip()
+                paras.append((pg["page"], t))
+    chunks: list[dict[str, Any]] = []
+    i = 0
+    while i < len(paras):
+        j, size = i, 0
+        while j < len(paras) and (size == 0 or size + len(paras[j][1]) <= target_chars):
+            size += len(paras[j][1]) + 1
+            j += 1
+        group = paras[i:j]
+        chunks.append({"start": float(group[0][0]), "end": float(group[-1][0]), "text": "\n".join(p[1] for p in group)})
+        if j >= len(paras):
+            break
+        i = max(j - overlap_paras, i + 1)
+    return chunks
+
+
+def fmt_locator(platform: str, start: float) -> str:
+    """Human label for a position: 'p. 12' for documents, mm:ss for media."""
+    if platform == "document":
+        return f"p. {int(start)}"
+    return fmt_ts(start)
+
+
 def fmt_ts(seconds: float) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)

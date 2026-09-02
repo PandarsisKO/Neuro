@@ -155,3 +155,29 @@ def test_ask_tool_loop(monkeypatch):
     notes = db.list_project_notes(p["id"])
     assert notes and notes[0]["citations"][0]["link"].endswith("t=0s")
     assert "Pinned findings so far" in calls[0]["system"] and "update_brief" in [t["name"] for t in calls[0]["tools"]]
+
+
+def test_document_upload_job(client):
+    import time
+    p = client.post("/api/projects", headers=H, json={"name": "Docs", "brief": None}).json()
+    text = "Retention playbook.\n\nChurn drops when onboarding is personal.\n\n" + ("Filler paragraph about pricing anchors. " * 40 + "\n\n") * 6
+    r = client.post("/api/ingest/file", headers=H, data={"project_id": p["id"]},
+                    files={"file": ("playbook.txt", text.encode(), "text/plain")}).json()
+    assert r["job"]
+    for _ in range(50):
+        j = client.get("/api/jobs/" + r["job"], headers=H).json()
+        if j["status"] in ("done", "failed"):
+            break
+        time.sleep(0.2)
+    assert j["status"] == "done", j
+    srcs = client.get("/api/sources", headers=H, params={"project_id": p["id"]}).json()
+    assert srcs and srcs[0]["platform"] == "document" and srcs[0]["title"] == "playbook.txt"
+    hits = client.get("/api/search", headers=H, params={"q": "onboarding personal", "project_id": p["id"]}).json()
+    assert hits and hits[0]["timestamp"].startswith("p. ")
+    jobs_ = client.get(f"/api/projects/{p['id']}/jobs", headers=H).json()
+    assert any(x["id"] == r["job"] for x in jobs_)
+    # chats are isolated per project
+    c = client.post("/api/conversations", headers=H, json={"project_id": p["id"], "title": "Idea A"}).json()
+    client.put("/api/conversations/" + c["id"], headers=H, json={"title": "Idea A2"})
+    convs = client.get("/api/conversations", headers=H, params={"project_id": p["id"]}).json()
+    assert [x["title"] for x in convs] == ["Idea A2"]
