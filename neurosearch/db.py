@@ -131,6 +131,48 @@ CREATE TABLE IF NOT EXISTS project_notes (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS project_facts (
+    id         INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,         -- decision | constraint | requirement | rejected | context
+    content    TEXT NOT NULL,
+    origin     TEXT NOT NULL DEFAULT 'user',   -- user | assistant
+    created_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plans (
+    id         TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    version    INTEGER NOT NULL,
+    plan       TEXT NOT NULL,         -- JSON (structured plan)
+    snapshot   TEXT,                  -- JSON: counts of sources/notes/messages/facts at generation time
+    status     TEXT NOT NULL DEFAULT 'planning',   -- planning | started
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_plans_project ON plans(project_id, version);
+
+CREATE TABLE IF NOT EXISTS plan_items (
+    id         INTEGER PRIMARY KEY,
+    plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+    key        TEXT NOT NULL,         -- stable key e.g. first_steps.0, phases.1.tasks.2, decisions.0, questions.3
+    status     TEXT NOT NULL DEFAULT 'not_started',
+    note       TEXT,
+    updated_at REAL NOT NULL,
+    UNIQUE(plan_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS plan_updates (
+    id         INTEGER PRIMARY KEY,
+    plan_id    TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+    section    TEXT NOT NULL,
+    previous   TEXT,
+    proposed   TEXT NOT NULL,
+    reason     TEXT,
+    status     TEXT NOT NULL DEFAULT 'pending',   -- pending | accepted | rejected
+    created_at REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id         TEXT PRIMARY KEY,
     project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
@@ -164,9 +206,19 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+MIGRATIONS = [
+    ("projects", "context", "ALTER TABLE projects ADD COLUMN context TEXT"),
+    ("projects", "mode", "ALTER TABLE projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'research'"),
+]
+
+
 def init_db() -> None:
     conn = connect()
     conn.executescript(SCHEMA)
+    for table, col, sql in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if col not in cols:
+            conn.execute(sql)
     conn.commit()
 
 
@@ -509,7 +561,7 @@ def create_project(name: str, brief: str | None = None, tags: list[str] | None =
 
 
 def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
-    fields = {k: v for k, v in fields.items() if k in ("name", "brief", "tags") and v is not None}
+    fields = {k: v for k, v in fields.items() if k in ("name", "brief", "tags", "context", "mode") and v is not None}
     if "tags" in fields:
         fields["tags"] = json.dumps(fields["tags"])
     if fields:
@@ -624,6 +676,103 @@ def list_project_notes(project_id: str) -> list[dict[str, Any]]:
 def delete_project_note(note_id: int) -> None:
     with tx() as conn:
         conn.execute("DELETE FROM project_notes WHERE id=?", (note_id,))
+
+
+# ------------------------------------------------------ facts & plans
+
+def add_fact(project_id: str, kind: str, content: str, origin: str = "user") -> dict[str, Any]:
+    with tx() as conn:
+        cur = conn.execute("INSERT INTO project_facts (project_id, kind, content, origin, created_at) VALUES (?,?,?,?,?)",
+                           (project_id, kind, content, origin, now()))
+        return dict(conn.execute("SELECT * FROM project_facts WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def list_facts(project_id: str) -> list[dict[str, Any]]:
+    return [dict(r) for r in connect().execute(
+        "SELECT * FROM project_facts WHERE project_id=? ORDER BY created_at", (project_id,)).fetchall()]
+
+
+def delete_fact(fact_id: int) -> None:
+    with tx() as conn:
+        conn.execute("DELETE FROM project_facts WHERE id=?", (fact_id,))
+
+
+def project_snapshot(project_id: str) -> dict[str, int]:
+    """Counts used to detect 'research changed since the plan was built'."""
+    conn = connect()
+    n_msgs = conn.execute("SELECT COUNT(*) n FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.project_id=?",
+                          (project_id,)).fetchone()["n"]
+    return {
+        "sources": len(project_source_ids(project_id)),
+        "notes": conn.execute("SELECT COUNT(*) n FROM project_notes WHERE project_id=?", (project_id,)).fetchone()["n"],
+        "facts": conn.execute("SELECT COUNT(*) n FROM project_facts WHERE project_id=?", (project_id,)).fetchone()["n"],
+        "messages": n_msgs,
+    }
+
+
+def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], carry_statuses_from: str | None = None) -> dict[str, Any]:
+    pid = new_id()
+    with tx() as conn:
+        v = conn.execute("SELECT COALESCE(MAX(version),0)+1 v FROM plans WHERE project_id=?", (project_id,)).fetchone()["v"]
+        t = now()
+        conn.execute("INSERT INTO plans (id, project_id, version, plan, snapshot, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+                     (pid, project_id, v, json.dumps(plan), json.dumps(snapshot), t, t))
+        if carry_statuses_from:
+            rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
+            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)",
+                             [(pid, r["key"], r["status"], r["note"], t) for r in rows])
+    return get_plan(pid)  # type: ignore[return-value]
+
+
+def get_plan(plan_id: str) -> dict[str, Any] | None:
+    row = connect().execute("SELECT * FROM plans WHERE id=?", (plan_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["plan"] = json.loads(d["plan"] or "{}")
+    d["snapshot"] = json.loads(d["snapshot"] or "{}")
+    d["items"] = {r["key"]: {"status": r["status"], "note": r["note"]} for r in
+                  connect().execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (plan_id,)).fetchall()}
+    d["updates"] = [dict(r) for r in connect().execute(
+        "SELECT * FROM plan_updates WHERE plan_id=? ORDER BY created_at", (plan_id,)).fetchall()]
+    return d
+
+
+def latest_plan(project_id: str) -> dict[str, Any] | None:
+    row = connect().execute("SELECT id FROM plans WHERE project_id=? ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
+    return get_plan(row["id"]) if row else None
+
+
+def list_plans(project_id: str) -> list[dict[str, Any]]:
+    return [dict(r) for r in connect().execute(
+        "SELECT id, version, status, created_at FROM plans WHERE project_id=? ORDER BY version DESC", (project_id,)).fetchall()]
+
+
+def set_plan_status(plan_id: str, status: str) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE plans SET status=?, updated_at=? WHERE id=?", (status, now(), plan_id))
+
+
+def set_item_status(plan_id: str, key: str, status: str, note: str | None = None) -> None:
+    with tx() as conn:
+        conn.execute("""INSERT INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)
+                        ON CONFLICT(plan_id, key) DO UPDATE SET status=excluded.status,
+                        note=COALESCE(excluded.note, plan_items.note), updated_at=excluded.updated_at""",
+                     (plan_id, key, status, note, now()))
+
+
+def add_plan_updates(plan_id: str, updates: list[dict[str, Any]]) -> None:
+    with tx() as conn:
+        conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending'", (plan_id,))
+        conn.executemany("INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, created_at) VALUES (?,?,?,?,?,?)",
+                         [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), now()) for u in updates])
+
+
+def set_update_status(update_id: int, status: str) -> dict[str, Any] | None:
+    with tx() as conn:
+        conn.execute("UPDATE plan_updates SET status=? WHERE id=?", (status, update_id))
+        row = conn.execute("SELECT * FROM plan_updates WHERE id=?", (update_id,)).fetchone()
+        return dict(row) if row else None
 
 
 # --------------------------------------------------------- conversations

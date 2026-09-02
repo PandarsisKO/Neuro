@@ -101,6 +101,26 @@
   .transcript b{color:#8fb0ff;font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;white-space:pre-wrap}
   .note.gap{border-color:#5a4a1e}
+  /* ---- plan ---- */
+  .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .modes div{flex:1;text-align:center;padding:7px;font-size:13px;cursor:pointer;color:var(--muted)}
+  .modes div.active{background:var(--accent);color:#fff}
+  .plan h2{margin-top:26px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  .plan h2:first-child{margin-top:0}
+  .plan .item{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .plan .item .body{flex:1;min-width:0}
+  .plan .item select{width:auto;font-size:12px;padding:4px 6px}
+  .plan .k{font-weight:600}
+  .plan .basis{font-size:11px;color:var(--muted)}
+  .plan .ev a{font-size:11px}
+  .plan .tag{font-size:11px;padding:1px 6px;border-radius:999px;background:var(--chip);color:var(--muted);margin-left:4px}
+  .plan .tag.high,.plan .tag.blocking{color:var(--bad)} .plan .tag.medium,.plan .tag.soon{color:var(--warn)} .plan .tag.now{color:var(--warn)}
+  .plan table{border-collapse:collapse;width:100%;font-size:13px} .plan th,.plan td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top} .plan th{background:var(--panel2)}
+  .plan .ready{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
+  .banner{background:#2a2410;border:1px solid #5a4a1e;border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .upd{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
+  .upd .prev{color:var(--muted);text-decoration:line-through}
+  .conf.high{color:var(--ok)} .conf.medium{color:var(--warn)} .conf.needs_research{color:var(--bad)}
   @media(max-width:760px){
     #ws.active{flex-direction:column}
     aside{width:100%;flex:0 0 auto;max-height:42vh}
@@ -125,10 +145,12 @@
       <div class="back" onclick="goHome()">← All projects</div>
       <div class="pname" id="wsName"></div>
     </div>
+    <div class="modes"><div id="modeResearch" class="active" onclick="showView('chats')">Research</div><div id="modePlan" onclick="showView('plan')">Plan</div></div>
     <nav>
       <div class="item" data-view="chats" onclick="showView('chats')">💬 Chats <span class="n" id="nChats"></span></div>
       <div class="item" data-view="sources" onclick="showView('sources')">📚 Sources <span class="n" id="nSources"></span></div>
       <div class="item" data-view="findings" onclick="showView('findings')">📌 Findings <span class="n" id="nFindings"></span></div>
+      <div class="item" data-view="plan" onclick="showView('plan')">🧭 Master Plan <span class="n" id="nPlan"></span></div>
       <div class="item" data-view="settings" onclick="showView('settings')">⚙︎ Settings</div>
     </nav>
     <div class="chats" id="chatList"></div>
@@ -205,6 +227,11 @@
       <div id="notes"></div>
     </div>
 
+    <!-- plan -->
+    <div class="view" id="view-plan">
+      <div id="planWrap"></div>
+    </div>
+
     <!-- settings -->
     <div class="view" id="view-settings">
       <h2>Project settings</h2>
@@ -214,7 +241,14 @@
         <textarea id="epBrief" style="min-height:120px"></textarea>
         <label class="muted" style="display:block;margin-top:10px">Auto-include tags — any source carrying one of these tags joins this project automatically (optional)</label>
         <input id="epTags">
+        <label class="muted" style="display:block;margin-top:10px">Project context for the Master Planner — goals, budget, deadline, your experience level, tools/accounts you already have, anything already decided.</label>
+        <textarea id="epContext" style="min-height:110px" placeholder="e.g. Budget ~$500. Need it live by end of October. I've never set up DNS before. We already pay for Google Workspace and Squarespace."></textarea>
         <div class="row" style="margin-top:12px"><button class="primary" onclick="saveProject()">Save</button><span class="muted" id="saveMsg"></span></div>
+      </div>
+      <div class="card"><b>Decisions, constraints & requirements</b>
+        <div class="muted">Recorded automatically when you state them in a chat ("we're going with X", "budget is Y"). Add or remove here.</div>
+        <div id="facts" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:8px"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
       </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
@@ -286,7 +320,8 @@ async function openProject(id, view, conv) {
   $('#home').style.display = 'none'; $('#ws').classList.add('active');
   $('#wsName').textContent = p.name;
   $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
-  $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', ');
+  $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
+  $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
   $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
   await loadChats();
@@ -302,6 +337,9 @@ function showView(v, push = true) {
   if (v === 'sources') { loadSources(); loadJobs(); }
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
+  if (v === 'plan') loadPlan();
+  if (v === 'settings') api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || []));
+  $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
 
@@ -361,6 +399,7 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;
       if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
       if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
+      if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
     }
     if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
     if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
@@ -498,10 +537,114 @@ async function loadNotes() {
 
 // ---- settings ----
 async function saveProject() {
-  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, context: $('#epContext').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
   state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
 }
 async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }
+
+// ---- facts ----
+function renderFacts(facts) {
+  $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span style="flex:1">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
+}
+async function addFact() {
+  const t = $('#factText').value.trim(); if (!t) return;
+  await post(`/api/projects/${state.project.id}/facts`, { kind: $('#factKind').value, content: t }); $('#factText').value = '';
+  const p = await api('/api/projects/' + state.project.id); renderFacts(p.facts);
+}
+
+// ---- master plan ----
+const STATUSES = ['not_started', 'ready', 'blocked', 'in_progress', 'complete', 'needs_research', 'needs_decision'];
+const stLabel = s => (s || 'not_started').replace(/_/g, ' ');
+let planState = null;
+async function loadPlan() {
+  const r = await api(`/api/projects/${state.project.id}/plan`);
+  planState = r;
+  $('#nPlan').textContent = r.plan ? `v${r.plan.version}` : '';
+  if (!r.plan) return renderNoPlan();
+  renderPlan(r);
+}
+function renderNoPlan() {
+  const p = state.project;
+  $('#planWrap').innerHTML = `<h2>Master Plan</h2>
+    <div class="empty" style="margin-bottom:14px">Research answers <i>what do we need to know?</i> The Master Plan answers <i>given everything we know, how do we accomplish this?</i> — goal, recommended approach and alternatives, first steps you can start today, phases, dependencies, decisions (now vs later), tools, costs, risks with mitigations, beginner gotchas, what to ignore for now, open questions, and a ready-to-start checklist. Every recommendation is tied to its evidence and rated for confidence.</div>
+    <div class="card"><b>Before building: tell the planner about the project</b>
+      <div class="muted">Budget, deadline, your experience level, tools and accounts you already have, anything already decided. The more it knows, the more practical the plan.</div>
+      <textarea id="planCtx" style="margin-top:8px;min-height:100px" placeholder="e.g. Budget ~$500. Need it live by end of October. I've never set up DNS before. We already pay for Google Workspace.">${esc(p.context || '')}</textarea>
+      <div class="muted" style="margin-top:6px">${p.n_sources} sources · ${$('#nFindings').textContent || 0} findings · ${$('#nChats').textContent || 0} chats will be used.</div>
+      <div class="row" style="margin-top:10px"><button class="primary" id="buildBtn" onclick="buildPlan()">Build Master Plan</button><span class="muted" id="buildMsg"></span></div>
+    </div>`;
+}
+async function buildPlan(instructions) {
+  const btn = $('#buildBtn'); if (btn) btn.disabled = true;
+  const ctx = $('#planCtx'); if (ctx) { await put('/api/projects/' + state.project.id, { name: state.project.name, context: ctx.value }); state.project.context = ctx.value; $('#epContext').value = ctx.value; }
+  const msg = $('#buildMsg'); if (msg) msg.innerHTML = '<span class="spin"></span> reading the research and writing the plan (30–90 s)…';
+  try { await post(`/api/projects/${state.project.id}/plan/build`, { instructions: instructions || null }); await loadPlan(); }
+  catch (e) { if (msg) msg.textContent = 'error: ' + e.message; if (btn) btn.disabled = false; else alert(e.message); }
+}
+function ev(ids, emap) {
+  if (!ids?.length) return '';
+  const parts = ids.map(i => emap[i]).filter(Boolean).map(e => e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label));
+  return parts.length ? `<div class="ev muted">based on: ${parts.join(' · ')}</div>` : '';
+}
+function statusSel(key) {
+  const cur = planState.plan.items[key]?.status || 'not_started';
+  return `<select onchange="setItem('${key}', this.value)">${STATUSES.map(s => `<option value="${s}" ${s === cur ? 'selected' : ''}>${stLabel(s)}</option>`).join('')}</select>`;
+}
+async function setItem(key, status) { await put(`/api/plans/${planState.plan.id}/items/${encodeURIComponent(key)}`, { status }); planState.plan.items[key] = { status }; }
+function basis(x) { return x.basis ? `<span class="basis">basis: ${esc(x.basis)}${x.confidence ? ' · confidence: ' + esc(x.confidence.replace('_', ' ')) : ''}</span>` : ''; }
+function renderPlan(r) {
+  const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
+  const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
+  let h = `<div class="row" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
+    <button class="small" onclick="checkUpdates()">${r.research_changed ? '⚠ Research changed — check for updates' : 'Check for updates'}</button>
+    <button class="small" onclick="rebuildPrompt()">Rebuild…</button>
+    <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ Plan (.md)</a>
+    <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page (.html)</a></div>`;
+  if (pending.length || accepted.length) {
+    h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
+      pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>
+        <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
+      (accepted.length ? `<div class="row" style="margin-top:8px"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
+  }
+  h += `<div class="plan">`;
+  const g = p.goal || {};
+  h += `<h2>1. Goal</h2><p>${esc(g.outcome || '')}</p>${g.constraints?.length ? `<p><b>Constraints:</b> ${g.constraints.map(esc).join('; ')}</p>` : ''}${g.success?.length ? `<p><b>Success looks like:</b> ${g.success.map(esc).join('; ')}</p>` : ''}${ev(g.evidence, E)}`;
+  const a = p.approach || {};
+  h += `<h2>2. Recommended approach</h2><p class="k">${esc(a.recommended || '')}</p><p>${esc(a.why || '')}</p>` +
+    (a.alternatives?.length ? `<p class="muted">Alternatives considered:</p><ul>${a.alternatives.map(x => `<li><b>${esc(x.option)}</b> — ${esc(x.why_not)}</li>`).join('')}</ul>` : '') + basis(a) + ev(a.evidence, E);
+  h += `<h2>3. First steps</h2>` + (p.first_steps || []).map((s, i) => `<div class="item"><div style="flex:0 0 22px;color:var(--muted)">${i + 1}.</div><div class="body"><span class="k">${esc(s.action)}</span>${s.today ? '<span class="tag">today</span>' : ''}<div class="muted">${esc(s.detail || '')}</div>${ev(s.evidence, E)}</div>${statusSel('first_steps.' + i)}</div>`).join('');
+  if (p.phases?.length) { h += `<h2>4. Phases</h2>`; p.phases.forEach((ph, i) => { h += `<h3 style="text-transform:none;color:var(--text);font-size:15px">Phase ${i + 1} — ${esc(ph.name)}</h3><div class="muted">${esc(ph.objective || '')}</div>` +
+      (ph.tasks || []).map((t, j) => `<div class="item"><div class="body">${esc(t.task)}${t.detail ? `<div class="muted">${esc(t.detail)}</div>` : ''}</div>${statusSel(`phases.${i}.tasks.${j}`)}</div>`).join('') +
+      (ph.dependencies?.length ? `<div class="muted" style="margin-top:6px">Depends on: ${ph.dependencies.map(esc).join('; ')}</div>` : '') + (ph.decisions?.length ? `<div class="muted">Decisions needed: ${ph.decisions.map(esc).join('; ')}</div>` : '') + (ph.outcome ? `<div class="muted">Outcome: ${esc(ph.outcome)}</div>` : ''); }); }
+  if (p.dependencies?.length) h += `<h2>5. Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
+  if (p.decisions?.length) h += `<h2>6. Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}</div>${statusSel('decisions.' + i)}</div>`).join('');
+  if (p.tools?.length) h += `<h2>7. Tools & services</h2><table><tr><th>Need</th><th>Tool</th><th>Free</th><th>Premium</th><th>Cost</th><th>Tier</th><th>Why</th></tr>` + p.tools.map(t => `<tr><td>${esc(t.need)}</td><td>${esc(t.tool)}</td><td>${esc(t.free_option || '—')}</td><td>${esc(t.premium_option || '—')}</td><td>${esc(t.cost || '—')}</td><td>${esc(t.tier || '')}</td><td>${esc(t.why || '')}${ev(t.evidence, E)}</td></tr>`).join('') + `</table>`;
+  const c = p.costs; if (c) { h += `<h2>8. Costs</h2>`; for (const [k, l] of [['upfront', 'Upfront'], ['recurring', 'Recurring'], ['optional', 'Optional upgrades'], ['services', 'Professional services']]) if (c[k]?.length) h += `<p><b>${l}:</b> ${c[k].map(x => `${esc(x.item)} (${esc(x.amount)})`).join('; ')}</p>`;
+    if (c.contingency) h += `<p><b>Contingency:</b> ${esc(c.contingency)}</p>`; h += `<p>Minimum viable budget: <b>${esc(c.minimum || '?')}</b> · Recommended: <b>${esc(c.recommended || '?')}</b> · Premium: <b>${esc(c.premium || '?')}</b></p>${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}${ev(c.evidence, E)}`; }
+  if (p.risks?.length) h += `<h2>9. Risks</h2>` + [...p.risks].sort((x, y) => ({ high: 0, medium: 1, low: 2 }[x.priority] ?? 1) - ({ high: 0, medium: 1, low: 2 }[y.priority] ?? 1)).map(r => `<div class="item"><div class="body"><span class="k">${esc(r.risk)}</span><span class="tag ${r.priority}">${esc(r.priority || 'medium')}</span><div class="muted">Mitigation: ${esc(r.mitigation || '')}</div></div></div>`).join('');
+  if (p.gotchas?.length) h += `<h2>10. Beginner gotchas</h2>` + p.gotchas.map(g => `<div class="item"><div class="body"><span class="k">${esc(g.gotcha)}</span><div class="muted">${esc(g.avoid || '')}</div></div></div>`).join('');
+  if (p.defer?.length) h += `<h2>11. What we don't need to worry about yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
+  if (p.open_questions?.length) h += `<h2>12. Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div style="margin-top:4px"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">🔍 Research this</button></div></div>${statusSel('open_questions.' + i)}</div>`).join('');
+  if (p.confidence?.length) h += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
+  const rd = p.ready; if (rd) h += `<h2>Ready to start</h2><div class="ready"><b>Your first three actions</b><ol>${(rd.first_three || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol><p><b>Estimated initial cost:</b> ${esc(rd.initial_cost || '?')}</p><p><b>What you need before beginning:</b> ${(rd.need_before || []).map(esc).join('; ') || 'nothing special'}</p><p><b>Current blockers:</b> ${(rd.blockers || []).map(esc).join('; ') || 'none'}</p>
+    ${started ? '<span class="tag">🚀 Project started — track progress with the status controls above.</span>' : `<button class="primary" onclick="startProject()">Start project</button> <span class="muted">marks first steps as ready and switches the project into execution.</span>`}</div>`;
+  const evs = Object.entries(E); if (evs.length) h += `<h2>Evidence</h2><div class="muted">${evs.map(([id, e]) => `<span class="chip">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)} <span class="basis">${esc(e.kind)}</span></span>`).join(' ')}</div>`;
+  h += `</div>`;
+  $('#planWrap').innerHTML = h;
+}
+async function checkUpdates() {
+  $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="chk"><span class="spin"></span> comparing new research against the plan…</div>');
+  try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" style="margin-bottom:8px">No material changes — the plan still holds.</div>'); }
+  catch (e) { alert(e.message); $('#chk')?.remove(); }
+}
+async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
+async function applyUpdates() { $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding the plan with the accepted changes…</div>'); try { await post(`/api/projects/${state.project.id}/plan/apply`); } catch (e) { alert(e.message); } await loadPlan(); }
+async function rebuildPrompt() { const i = prompt('Any instructions for the rebuild? (optional — e.g. "assume a $300 budget", "we decided against Webflow")'); if (i === null) return; $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding…</div>'); await buildPlan(i || null); }
+async function startProject() { await post(`/api/plans/${planState.plan.id}/start`); await loadPlan(); }
+async function researchThis(q) {
+  const c = await post('/api/conversations', { project_id: state.project.id, title: q.slice(0, 60) });
+  await loadChats(); await selectChat(c.id); $('#q').value = q; $('#q').focus();
+}
 
 route();
 </script>

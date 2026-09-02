@@ -169,7 +169,8 @@ continue the research: the synthesized masterplan, every pinned finding with tim
 transcripts, and the question/answer history.
 
 ## Files
-- masterplan.md — start here. Purpose, summary, key insights with citations, actions, open questions.
+- master_plan.md / .html — the Master Plan (if one was built): goal, approach, first steps, phases, decisions, tools, costs, risks, gotchas, open questions.
+- masterplan.md — research synthesis: purpose, summary, key insights with citations, actions, open questions.
 - findings.md — the brief plus every pinned finding and gap, each with [Title @ mm:ss](link) citations.
 - conversations.md — the Q&A history.
 - sources.csv — one row per source with URL and the transcript file name.
@@ -210,6 +211,11 @@ def build_masterplan_zip(project_id: str, synthesize: bool = True) -> bytes:
         z.writestr("conversations.md", f"# {p['name']} — conversations\n\n" + convs)
         z.writestr("sources.csv", sources_csv(srcs))
         z.writestr("context.json", json.dumps(ctx, indent=1, default=str))
+        plan = db.latest_plan(project_id)
+        if plan:
+            from .planner import plan_html, plan_markdown
+            z.writestr("master_plan.md", plan_markdown(plan, p))
+            z.writestr("master_plan.html", plan_html(plan, p))
         for i, s in enumerate(srcs, 1):
             z.writestr(f"transcripts/{i:03d} - {_safe(s['title'])}.md", transcript_markdown(s))
     return buf.getvalue()

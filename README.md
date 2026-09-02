@@ -82,6 +82,32 @@ From a project (Projects tab → Open) you can download:
 
 CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
 
+## Master Planner (Plan mode)
+
+Research answers *what do we need to know?* — the **Master Plan** answers *given everything we know, how do we
+accomplish this?* Every project has a **Research | Plan** switch. Building the plan reads the whole project —
+sources, findings, chats, uploaded documents, recorded decisions/constraints, and the project context you give it
+(budget, deadline, experience level, tools you already have) — and produces:
+
+1. Goal · 2. Recommended approach (with alternatives and why not) · 3. First steps you can start today ·
+4. Phases fitted to the project · 5. Dependencies (blocking vs non-blocking) · 6. Decisions (decide now vs later,
+with a recommendation) · 7. Tools & services (required / recommended / optional, free vs premium, cost) ·
+8. Costs (minimum / recommended / premium, estimates flagged) · 9. Risks with mitigations, prioritised ·
+10. Beginner gotchas · 11. What we don't need to worry about yet · 12. Open questions (blocking / soon / nice) ·
+plan confidence · Ready to start.
+
+Every recommendation carries its **basis** (research-backed, user-provided, planner judgement, or estimate) and
+links to the evidence it rests on, so nothing is a black box. Items have statuses (not started, ready, blocked, in
+progress, complete, needs research, needs decision). **Research this** on an open question opens a new chat with
+the question ready to run. When research changes after the plan was built, **Check for updates** shows the
+previous vs. proposed recommendation and why — accept, keep, or research further; accepted changes rebuild the plan
+(statuses carry over). **Start project** marks the first steps ready and moves the project into execution.
+
+Share it: **Plan (.md)** or **Share page (.html)** — a clean standalone page for teammates; both are also included
+in the masterplan package. Decisions and constraints you state in chat ("we're going with X", "budget is $500")
+are recorded automatically and visible in Settings. CLI: `neurosearch project plan "Site move" --build`,
+`--html --out plan.html`. MCP: `build_master_plan`, `get_master_plan`, `record_fact`.
+
 ## Web app — how it's organised
 
 `neurosearch serve` runs everything on one port. Sign in with `NEUROSEARCH_APP_TOKEN`.
@@ -98,6 +124,7 @@ to it:
   from the library. Progress for the project's ingest jobs shows at the top.
 - **Findings** — pinned answers and recorded gaps, plus the exports (findings .md, masterplan .md, masterplan
   package .zip).
+- **Master Plan** — Plan mode (see above).
 - **Settings** — name, brief (what the project is trying to find out; steers every answer), auto-include tags.
 
 Sources are stored once in a shared library and can belong to many projects, so ingesting the same channel into
@@ -184,6 +211,7 @@ neurosearch/
   search.py      hybrid retrieval + deep links
   qa.py          Claude answers with citations, chat-ingest, project tools (+ optional web search)
   export.py      findings document and masterplan package
+  planner.py     Master Planner: plan generation, updates, statuses, markdown/HTML rendering
   remote.py      extract locally, store on a remote server
   api.py         FastAPI: REST, web UI, MCP mount, auth
   mcp_server.py  MCP tools

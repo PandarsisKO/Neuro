@@ -57,8 +57,14 @@ You can shape the project as you talk:
 - save_finding: when the user says to pin, save, remember or note something, or asks you to record a
   conclusion. Save a self-contained finding in plain prose with the same [n] citations you used.
 - note_gap: record a coverage gap you identified (see Gap detection).
+- record_fact: when the user states a decision ("we're going with X"), a constraint (budget, deadline, must/must-not),
+  a requirement, or rejects an option, record it so the Master Planner can use it. Kinds: decision | constraint |
+  requirement | rejected. Do not record things you merely inferred.
 Pinned findings so far (do not repeat them unless asked; build on them):
 {findings}
+Known project facts (decisions, constraints, requirements):
+{facts}
+Project context from the user: {context}
 """
 
 
@@ -82,6 +88,9 @@ def _project_tools() -> list[dict[str, Any]]:
          "input_schema": {"type": "object", "properties": {"content": {"type": "string"}}, "required": ["content"]}},
         {"name": "note_gap", "description": "Record a coverage gap in the project's sources and the suggested next step.",
          "input_schema": {"type": "object", "properties": {"gap": {"type": "string"}}, "required": ["gap"]}},
+        {"name": "record_fact", "description": "Record a user-stated decision, constraint, requirement or rejected option for the planner.",
+         "input_schema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["decision", "constraint", "requirement", "rejected"]},
+                                                           "content": {"type": "string"}}, "required": ["kind", "content"]}},
     ]
 
 
@@ -140,7 +149,9 @@ def ask(
     if project:
         notes = db.list_project_notes(project["id"])[:15]
         findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
-        project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings)
+        facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
+        project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings,
+                                             facts=facts, context=project.get("context") or "(none)")
     else:
         project_block = ""
     system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
@@ -246,6 +257,13 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
             pending_findings.append(content)
             actions.append({"type": "finding_saved", "content": content})
         return "finding pinned"
+    if name == "record_fact":
+        content = (inp.get("content") or "").strip()
+        kind = inp.get("kind") or "decision"
+        if content:
+            db.add_fact(project["id"], kind, content, origin="user")
+            actions.append({"type": "fact_recorded", "kind": kind, "content": content})
+        return "recorded"
     if name == "note_gap":
         gap = (inp.get("gap") or "").strip()
         if gap:
@@ -275,4 +293,6 @@ def render_markdown(result: dict[str, Any]) -> str:
             out.append("\nProject brief updated.")
         elif a["type"] == "finding_saved":
             out.append("\nPinned a finding to the project.")
+        elif a["type"] == "fact_recorded":
+            out.append(f"\nRecorded {a['kind']}: {a['content']}")
     return "\n".join(out)

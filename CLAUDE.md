@@ -14,3 +14,5 @@ Keep the DB schema additive (CREATE IF NOT EXISTS) — there is no migration too
 
 UI model: projects are the unit; inside a project: chats (many, isolated to project sources), sources, findings, settings.
 Documents use page numbers as start/end in segments/chunks; `fmt_locator` renders 'p. N' vs mm:ss.
+Master Planner lives in `planner.py` (structured plan JSON + evidence map; `plan_markdown`/`plan_html`); statuses in plan_items keyed like `first_steps.0`.
+Tests use `tests/fake_claude.py` in place of the Anthropic client.

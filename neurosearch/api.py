@@ -342,6 +342,7 @@ class ProjectIn(BaseModel):
     name: str
     brief: str | None = None
     tags: list[str] = []
+    context: str | None = None
 
 
 @app.get("/api/projects", dependencies=[Depends(require_auth)])
@@ -361,12 +362,14 @@ async def api_project(project_id: str) -> dict[str, Any]:
         raise HTTPException(404)
     p["notes"] = db.list_project_notes(project_id)
     p["conversations"] = db.list_conversations(project_id)
+    p["facts"] = db.list_facts(project_id)
+    p["has_plan"] = db.latest_plan(project_id) is not None
     return p
 
 
 @app.put("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
 async def api_update_project(project_id: str, body: ProjectIn) -> dict[str, Any]:
-    p = db.update_project(project_id, name=body.name, brief=body.brief, tags=body.tags)
+    p = db.update_project(project_id, name=body.name, brief=body.brief, tags=body.tags, context=body.context)
     if not p:
         raise HTTPException(404)
     return p
@@ -453,6 +456,115 @@ async def api_create_conversation(body: ConvIn) -> dict[str, Any]:
 async def api_rename_conversation(conversation_id: str, body: ConvIn) -> dict[str, Any]:
     db.rename_conversation(conversation_id, body.title or "Untitled")
     return {"ok": True}
+
+
+# ------------------------------------------------------------ planner
+
+class FactIn(BaseModel):
+    kind: str = "decision"
+    content: str
+
+
+@app.get("/api/projects/{project_id}/facts", dependencies=[Depends(require_auth)])
+async def api_facts(project_id: str) -> list[dict[str, Any]]:
+    return db.list_facts(project_id)
+
+
+@app.post("/api/projects/{project_id}/facts", dependencies=[Depends(require_auth)])
+async def api_add_fact(project_id: str, body: FactIn) -> dict[str, Any]:
+    return db.add_fact(project_id, body.kind, body.content)
+
+
+@app.delete("/api/facts/{fact_id}", dependencies=[Depends(require_auth)])
+async def api_delete_fact(fact_id: int) -> dict[str, Any]:
+    db.delete_fact(fact_id)
+    return {"ok": True}
+
+
+class BuildIn(BaseModel):
+    instructions: str | None = None
+
+
+@app.get("/api/projects/{project_id}/plan", dependencies=[Depends(require_auth)])
+async def api_plan(project_id: str) -> dict[str, Any]:
+    from . import planner
+    plan = db.latest_plan(project_id)
+    return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False,
+            "versions": db.list_plans(project_id)}
+
+
+@app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])
+async def api_plan_build(project_id: str, body: BuildIn) -> dict[str, Any]:
+    from . import planner
+    return await anyio.to_thread.run_sync(lambda: planner.build_plan(project_id, body.instructions))
+
+
+@app.post("/api/projects/{project_id}/plan/check-updates", dependencies=[Depends(require_auth)])
+async def api_plan_check(project_id: str) -> dict[str, Any]:
+    from . import planner
+    ups = await anyio.to_thread.run_sync(lambda: planner.suggest_updates(project_id))
+    return {"updates": ups, "plan": db.latest_plan(project_id)}
+
+
+class UpdateStatusIn(BaseModel):
+    status: str  # accepted | rejected
+
+
+@app.post("/api/plan-updates/{update_id}", dependencies=[Depends(require_auth)])
+async def api_plan_update_status(update_id: int, body: UpdateStatusIn) -> dict[str, Any]:
+    row = db.set_update_status(update_id, body.status)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+@app.post("/api/projects/{project_id}/plan/apply", dependencies=[Depends(require_auth)])
+async def api_plan_apply(project_id: str) -> dict[str, Any]:
+    from . import planner
+    return await anyio.to_thread.run_sync(lambda: planner.apply_accepted_updates(project_id))
+
+
+class ItemIn(BaseModel):
+    status: str
+    note: str | None = None
+
+
+@app.put("/api/plans/{plan_id}/items/{key}", dependencies=[Depends(require_auth)])
+async def api_plan_item(plan_id: str, key: str, body: ItemIn) -> dict[str, Any]:
+    db.set_item_status(plan_id, key, body.status, body.note)
+    return {"ok": True}
+
+
+@app.post("/api/plans/{plan_id}/start", dependencies=[Depends(require_auth)])
+async def api_plan_start(plan_id: str) -> dict[str, Any]:
+    plan = db.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(404)
+    db.set_plan_status(plan_id, "started")
+    for i, _ in enumerate(plan["plan"].get("first_steps") or []):
+        if plan["items"].get(f"first_steps.{i}", {}).get("status", "not_started") == "not_started":
+            db.set_item_status(plan_id, f"first_steps.{i}", "ready")
+    db.update_project(plan["project_id"], mode="execute")
+    return db.get_plan(plan_id) or {}
+
+
+@app.get("/api/projects/{project_id}/plan.md", dependencies=[Depends(require_auth)])
+async def api_plan_md(project_id: str) -> Any:
+    from .planner import plan_markdown
+    plan, p = db.latest_plan(project_id), db.get_project(project_id)
+    if not plan or not p:
+        raise HTTPException(404, "no plan yet")
+    return StreamingResponse(iter([plan_markdown(plan, p)]), media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=master_plan.md"})
+
+
+@app.get("/api/projects/{project_id}/plan.html", dependencies=[Depends(require_auth)])
+async def api_plan_html(project_id: str) -> Any:
+    from .planner import plan_html
+    plan, p = db.latest_plan(project_id), db.get_project(project_id)
+    if not plan or not p:
+        raise HTTPException(404, "no plan yet")
+    return HTMLResponse(plan_html(plan, p))
 
 
 class NoteIn(BaseModel):

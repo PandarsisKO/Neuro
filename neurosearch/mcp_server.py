@@ -179,6 +179,41 @@ async def masterplan(project: str) -> str:
 
 
 @mcp.tool()
+async def build_master_plan(project: str, instructions: str | None = None) -> str:
+    """Build (or rebuild) the project's Master Plan — an actionable, evidence-grounded plan: goal, recommended
+    approach, first steps, phases, dependencies, decisions, tools, costs, risks, gotchas, what to defer, open
+    questions, confidence, ready-to-start. Returns it as markdown."""
+    from . import planner
+
+    p = _resolve_project(project)
+    assert p
+    row = await anyio.to_thread.run_sync(lambda: planner.build_plan(p["id"], instructions))
+    return planner.plan_markdown(row, db.get_project(p["id"]) or p)
+
+
+@mcp.tool()
+def get_master_plan(project: str) -> str:
+    """The project's current Master Plan as markdown (with item statuses), or a note that none exists yet."""
+    from . import planner
+
+    p = _resolve_project(project)
+    assert p
+    row = db.latest_plan(p["id"])
+    if not row:
+        return "No Master Plan yet — call build_master_plan."
+    return planner.plan_markdown(row, p)
+
+
+@mcp.tool()
+def record_fact(project: str, kind: str, content: str) -> str:
+    """Record a decision, constraint, requirement or rejected option on the project (used by the Master Planner)."""
+    p = _resolve_project(project)
+    assert p
+    db.add_fact(p["id"], kind, content)
+    return "Recorded."
+
+
+@mcp.tool()
 def update_brief(project: str, brief: str) -> str:
     """Replace a project's brief (what it is trying to find out)."""
     p = _resolve_project(project)

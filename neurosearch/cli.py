@@ -288,6 +288,28 @@ def project_masterplan(project: str, out: Optional[Path] = None, no_synthesize: 
     typer.echo(f"wrote {out} ({len(data) // 1024} KB)")
 
 
+@project_app.command("plan")
+def project_plan(project: str, build: bool = typer.Option(False, help="(Re)build the plan first"),
+                 out: Optional[Path] = None, html: bool = False) -> None:
+    """Show or export the Master Plan (markdown, or --html for a shareable page)."""
+    from . import planner
+
+    _init()
+    pid = _project_id(project)
+    assert pid
+    if build:
+        planner.build_plan(pid)
+    row = db.latest_plan(pid)
+    if not row:
+        typer.echo("no plan yet — run with --build"); raise typer.Exit(1)
+    p = db.get_project(pid)
+    text = planner.plan_html(row, p) if html else planner.plan_markdown(row, p)  # type: ignore[arg-type]
+    if out:
+        out.write_text(text); typer.echo(f"wrote {out}")
+    else:
+        typer.echo(text)
+
+
 @project_app.command("delete")
 def project_delete(project: str) -> None:
     _init()

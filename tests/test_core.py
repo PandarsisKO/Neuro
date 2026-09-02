@@ -181,3 +181,44 @@ def test_document_upload_job(client):
     client.put("/api/conversations/" + c["id"], headers=H, json={"title": "Idea A2"})
     convs = client.get("/api/conversations", headers=H, params={"project_id": p["id"]}).json()
     assert [x["title"] for x in convs] == ["Idea A2"]
+
+
+def test_master_planner(client, monkeypatch):
+    import anthropic
+    from tests.fake_claude import Anthropic
+    from neurosearch import planner
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(planner.settings, "anthropic_api_key", "fake")
+    p = client.post("/api/projects", headers=H, json={"name": "Site move", "brief": "Move site off Squarespace", "context": "Budget $500"}).json()
+    client.post(f"/api/projects/{p['id']}/facts", headers=H, json={"kind": "constraint", "content": "budget under $500"})
+    src = db.find_source("youtube", "abc123def45"); db.add_project_sources(p["id"], [src["id"]])
+    client.post(f"/api/projects/{p['id']}/notes", headers=H, json={"content": "Cloudflare Pages is free [1]", "citations": [
+        {"n": 1, "title": "Imported video", "timestamp": "0:00", "link": "https://www.youtube.com/watch?v=abc123def45&t=0s"}]})
+    assert client.get(f"/api/projects/{p['id']}/plan", headers=H).json()["plan"] is None
+    row = client.post(f"/api/projects/{p['id']}/plan/build", headers=H, json={}).json()
+    assert row["version"] == 1 and row["plan"]["approach"]["recommended"].startswith("Static export")
+    assert "U1" in row["plan"]["_evidence"] and row["plan"]["_evidence"]["U1"]["kind"] == "user"
+    assert db.get_project(p["id"])["mode"] == "plan"
+    # statuses + markdown/html
+    client.put(f"/api/plans/{row['id']}/items/first_steps.0", headers=H, json={"status": "in_progress"})
+    md = client.get(f"/api/projects/{p['id']}/plan.md", headers=H).text
+    assert "## 3. First steps" in md and "`in progress`" in md and "watch?v=abc123def45" in md and "Beginner gotchas" in md
+    html = client.get(f"/api/projects/{p['id']}/plan.html", headers=H).text
+    assert "<table>" in html and "Ready to start" in html and "<script" not in html
+    # research changed -> suggested updates -> accept -> apply (new version keeps statuses)
+    client.post(f"/api/projects/{p['id']}/notes", headers=H, json={"content": "Cloudflare forms are limited", "citations": []})
+    assert client.get(f"/api/projects/{p['id']}/plan", headers=H).json()["research_changed"] is True
+    r = client.post(f"/api/projects/{p['id']}/plan/check-updates", headers=H).json()
+    assert r["updates"] and r["plan"]["updates"][0]["status"] == "pending"
+    uid = r["plan"]["updates"][0]["id"]
+    client.post(f"/api/plan-updates/{uid}", headers=H, json={"status": "accepted"})
+    row2 = client.post(f"/api/projects/{p['id']}/plan/apply", headers=H).json()
+    assert row2["version"] == 2 and row2["items"]["first_steps.0"]["status"] == "in_progress"
+    # start project
+    started = client.post(f"/api/plans/{row2['id']}/start", headers=H).json()
+    assert started["status"] == "started" and started["items"]["first_steps.1"]["status"] == "ready"
+    assert db.get_project(p["id"])["mode"] == "execute"
+    # masterplan zip now carries the plan
+    import io, zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get(f"/api/projects/{p['id']}/masterplan.zip?synthesize=false", headers=H).content))
+    assert "master_plan.md" in z.namelist() and "master_plan.html" in z.namelist()
