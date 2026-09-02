@@ -79,7 +79,7 @@
     <button class="small ghost" onclick="newConversation()">New</button>
     <button class="small ghost" onclick="delConversation()">Delete</button>
   </div>
-  <div id="chat"><div class="muted" id="chatHint">Ask anything about your sources. Answers cite the video and timestamp; click a citation to jump to that moment.</div></div>
+  <div id="chat"><div class="muted" id="chatHint">Ask anything about your sources. Answers cite the video and timestamp; click a citation to jump to that moment. Inside a project you can also paste video/playlist links to add them, say “refocus the brief on…”, or “pin that as a finding”.</div></div>
   <div id="askbar"><div class="inner">
     <div style="flex:1">
       <textarea id="q" placeholder="Ask a question…" rows="1"></textarea>
@@ -195,7 +195,7 @@ function newConversation() { state.conv = null; $('#chat').innerHTML = ''; $('#c
 async function delConversation() { if (!state.conv) return; await del('/api/conversations/' + state.conv); newConversation(); loadConversations(); }
 function renderAnswer(text, cites) {
   const byN = Object.fromEntries(cites.map(c => [c.n, c]));
-  return esc(text).replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>` : m);
+  return esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>` : m);
 }
 function addMsg(role, text, cites = [], extra = {}) {
   $('#chatHint')?.remove();
@@ -205,6 +205,12 @@ function addMsg(role, text, cites = [], extra = {}) {
     let h = renderAnswer(text, cites);
     if (cites.length) h += `<div class="cites">` + cites.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
     if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
+    for (const a of extra.actions || []) {
+      if (a.type === 'brief_updated') h += `<div class="web">✎ Project brief updated: <i>${esc(a.brief)}</i></div>`;
+      if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned a finding to the project.</div>`;
+      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap noted on the project.</div>`;
+    }
+    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => `<span class="chip" data-job="${j.job_id}" data-label="${esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48))}">⏳ ${esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48))}</span>`).join('') + `</div>`;
     if (state.project) h += `<div style="margin-top:8px"><button class="small ghost" onclick='saveNote(this)'>Pin to project notes</button></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
   }
@@ -225,10 +231,28 @@ async function ask() {
     const r = await post('/api/ask', { question: q, project_id: state.project || null, conversation_id: state.conv, use_web: $('#useWeb').checked });
     thinking.remove();
     const first = !state.conv; state.conv = r.conversation_id;
-    addMsg('assistant', r.answer, r.citations, r);
+    const m = addMsg('assistant', r.answer, r.citations, r);
     if (first) { await loadConversations(); $('#convSel').value = state.conv; }
+    if (r.ingest_jobs?.length) watchIngest(m, r.ingest_jobs.map(j => j.job_id));
+    if ((r.actions || []).some(a => a.type === 'brief_updated')) loadProjectsList();
   } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
   $('#askBtn').disabled = false;
+}
+async function watchIngest(msgEl, jobIds) {
+  const tick = async () => {
+    let pending = 0;
+    for (const id of jobIds) {
+      const j = await api('/api/jobs/' + id).catch(() => null); if (!j) continue;
+      const chip = msgEl.querySelector(`[data-job="${id}"]`); if (!chip) continue;
+      const label = chip.dataset.label;
+      if (j.status === 'done') { const r = j.result || {}; chip.textContent = `✓ ${r.title || label}` + (r.found ? ` (${r.found} videos, ${r.queued} queued)` : ''); }
+      else if (j.status === 'failed') { chip.textContent = `✗ ${label}`; chip.title = j.message || ''; }
+      else { chip.textContent = `⏳ ${label} ${j.message ? '· ' + j.message : ''}`; pending++; }
+    }
+    loadStats();
+    if (pending) setTimeout(tick, 3000); else { loadProjectsList(); }
+  };
+  setTimeout(tick, 1500);
 }
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
 
@@ -305,6 +329,11 @@ async function openProject(id) {
     <div class="row"><input id="epName" value="${esc(p.name)}"></div>
     <div class="row" style="margin-top:8px"><textarea id="epBrief" placeholder="Brief">${esc(p.brief || '')}</textarea></div>
     <div class="row" style="margin-top:8px"><input id="epTags" value="${esc((p.tags || []).join(', '))}" placeholder="auto-include tags"><button class="small primary" onclick="saveProject('${id}')">Save</button><button class="small ghost" onclick="deleteProject('${id}')">Delete project</button></div>
+    <div class="row" style="margin-top:10px">
+      <a class="chip" href="/api/projects/${id}/findings.md" target="_blank">⬇ Findings (.md)</a>
+      <a class="chip" href="/api/projects/${id}/masterplan.md" target="_blank">⬇ Masterplan (.md)</a>
+      <a class="chip" href="/api/projects/${id}/masterplan.zip" target="_blank">⬇ Masterplan package (.zip — for ChatGPT/Claude)</a>
+    </div>
     <h4 style="margin:14px 0 6px">Collections in this project</h4>
     ${p.collections.map(c => `<span class="chip">${esc(c.title || c.kind)} <a href="#" onclick="rmMember('${id}',null,'${c.id}');return false">✕</a></span>`).join('') || '<span class="muted">none</span>'}
     <div class="row" style="margin-top:6px"><select id="addColl"><option value="">Add a playlist/channel…</option>${collOpts}</select><button class="small" onclick="addColl('${id}')">Add</button></div>

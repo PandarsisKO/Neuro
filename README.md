@@ -53,6 +53,34 @@ answered from that project's sources only, and the brief is passed to Claude so 
 Answers can be pinned as notes on the project. Use `--web` / the "also search the web" toggle to let Claude
 supplement with live web search — web findings are labelled separately from what the transcripts say.
 
+### Growing a project by talking to it
+
+Inside a project's chat (web app or the Claude connector):
+
+- **Paste links to add sources.** Drop a video, playlist or channel URL into the conversation and it's ingested
+  into that project on the spot; the chat shows progress and the next answers use the new material.
+- **Refocus the brief.** "Actually, narrow this to how they handle discount requests" — the assistant rewrites
+  the project brief and confirms. Every later answer follows the new focus.
+- **Pin findings.** "Pin that" / "save this as a finding" stores the conclusion with its timestamp citations in
+  the project's notes (or click *Pin to project notes* under any answer).
+- **Gap detection.** When the sources only partly cover a question the answer ends with a `Gap:` line saying
+  what's missing and the best next step (a kind of source to add, or a web search), and the gap is recorded on
+  the project so it shows up in the findings document.
+
+### Findings document and the masterplan package
+
+From a project (Projects tab → Open) you can download:
+
+- **Findings (.md)** — brief, every pinned finding and open gap with `[Title @ mm:ss](link)` citations, source list.
+- **Masterplan (.md)** — a Claude-written synthesis: purpose, executive summary, key insights by theme with
+  citations, recommended actions, open questions, how to continue.
+- **Masterplan package (.zip)** — everything another AI tool or collaborator needs to pick the project up:
+  `README.md` (with a ready-made prompt), `masterplan.md`, `findings.md`, `conversations.md`, `sources.csv`,
+  `transcripts/` (full timestamped transcripts, one file per source) and `context.json`. Upload the markdown files
+  to ChatGPT, Claude, NotebookLM, etc. and continue there with full context and working citation links.
+
+CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
+
 ## Web app
 
 `neurosearch serve` runs everything on one port: the mobile-friendly web app at `/`, the REST API at `/api/*`,
@@ -99,7 +127,7 @@ https://<your-app-name>.fly.dev/mcp/<NEUROSEARCH_APP_TOKEN>
 
 (The token in the URL is the authentication — the connector UI has no field for headers. Keep the URL private.)
 Claude then gets tools: `search_knowledge`, `ask`, `list_projects`, `create_project`, `add_to_project`,
-`list_sources`, `list_collections`, `get_transcript`, `ingest`, `job_status`, `save_note`. So from your phone
+`list_sources`, `list_collections`, `get_transcript`, `ingest`, `job_status`, `findings`, `masterplan`, `update_brief`, `save_note`. So from your phone
 you can say "search my Pricing project for how they handle discount requests" or "ingest this playlist into
 the Pricing project" and get timestamped links back.
 
@@ -138,7 +166,8 @@ neurosearch/
   ingest.py      extract_transcript / store_transcript / ingest_url orchestration
   jobs.py        background worker threads
   search.py      hybrid retrieval + deep links
-  qa.py          Claude answers with citations (+ optional web search)
+  qa.py          Claude answers with citations, chat-ingest, project tools (+ optional web search)
+  export.py      findings document and masterplan package
   remote.py      extract locally, store on a remote server
   api.py         FastAPI: REST, web UI, MCP mount, auth
   mcp_server.py  MCP tools

@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import secrets
 import tempfile
 from contextlib import asynccontextmanager
@@ -392,6 +393,34 @@ async def api_remove_members(project_id: str, body: MembersIn) -> dict[str, Any]
     db.remove_project_sources(project_id, body.source_ids)
     db.remove_project_collections(project_id, body.collection_ids)
     return db.get_project(project_id) or {}
+
+
+@app.get("/api/projects/{project_id}/findings.md", dependencies=[Depends(require_auth)])
+async def api_findings(project_id: str) -> Any:
+    from .export import findings_markdown
+    text = await anyio.to_thread.run_sync(lambda: findings_markdown(project_id))
+    return StreamingResponse(iter([text]), media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=findings.md"})
+
+
+@app.get("/api/projects/{project_id}/masterplan.md", dependencies=[Depends(require_auth)])
+async def api_masterplan_md(project_id: str) -> Any:
+    from .export import synthesize_masterplan
+    text = await anyio.to_thread.run_sync(lambda: synthesize_masterplan(project_id))
+    return StreamingResponse(iter([text]), media_type="text/markdown; charset=utf-8",
+                             headers={"Content-Disposition": "attachment; filename=masterplan.md"})
+
+
+@app.get("/api/projects/{project_id}/masterplan.zip", dependencies=[Depends(require_auth)])
+async def api_masterplan_zip(project_id: str, synthesize: bool = True) -> Any:
+    from .export import build_masterplan_zip
+    p = db.get_project(project_id)
+    if not p:
+        raise HTTPException(404)
+    data = await anyio.to_thread.run_sync(lambda: build_masterplan_zip(project_id, synthesize=synthesize))
+    fname = re.sub(r"[^A-Za-z0-9_-]+", "_", p["name"])[:40] or "project"
+    return StreamingResponse(iter([data]), media_type="application/zip",
+                             headers={"Content-Disposition": f"attachment; filename={fname}_masterplan.zip"})
 
 
 class NoteIn(BaseModel):

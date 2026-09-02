@@ -261,6 +261,33 @@ def project_add(project: str, source_ids: list[str] = typer.Argument(None),
     typer.echo(f"{p['name']} now has {p['n_sources']} sources")  # type: ignore[index]
 
 
+@project_app.command("findings")
+def project_findings(project: str, out: Optional[Path] = None) -> None:
+    """Print (or write) the findings document for a project."""
+    from .export import findings_markdown
+
+    _init()
+    text = findings_markdown(_project_id(project))  # type: ignore[arg-type]
+    if out:
+        out.write_text(text); typer.echo(f"wrote {out}")
+    else:
+        typer.echo(text)
+
+
+@project_app.command("masterplan")
+def project_masterplan(project: str, out: Optional[Path] = None, no_synthesize: bool = False) -> None:
+    """Export the portable masterplan package (zip) for use in ChatGPT/Claude/other tools."""
+    from .export import build_masterplan_zip
+
+    _init()
+    pid = _project_id(project)
+    assert pid
+    data = build_masterplan_zip(pid, synthesize=not no_synthesize)
+    out = out or Path(f"{project.replace(' ', '_')}_masterplan.zip")
+    out.write_bytes(data)
+    typer.echo(f"wrote {out} ({len(data) // 1024} KB)")
+
+
 @project_app.command("delete")
 def project_delete(project: str) -> None:
     _init()

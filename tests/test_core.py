@@ -102,3 +102,56 @@ def test_mcp_path_token(client):
     assert ok.status_code == 200 and "Neuro Search" in ok.text
     ok2 = client.post("/mcp", json=init, headers={**hdr, **H})
     assert ok2.status_code == 200
+
+
+def test_chat_url_ingest_and_exports(client, monkeypatch):
+    p = client.post("/api/projects", headers=H, json={"name": "Chat proj", "brief": "test brief"}).json()
+    # a message that is only links -> queued into the project, no Claude call needed
+    r = client.post("/api/ask", headers=H, json={"question": "https://www.youtube.com/watch?v=zzzzzzzzzzz add this",
+                                                 "project_id": p["id"]}).json()
+    assert r["ingest_jobs"] and "Queued 1 link" in r["answer"]
+    job = client.get("/api/jobs/" + r["ingest_jobs"][0]["job_id"], headers=H).json()
+    assert job["payload"]["project_id"] == p["id"]
+    # findings + masterplan package without synthesis
+    client.post(f"/api/projects/{p['id']}/notes", headers=H, json={"content": "Finding one [1]", "citations": [
+        {"n": 1, "title": "Imported video", "timestamp": "0:00", "link": "https://www.youtube.com/watch?v=abc123def45&t=0s"}]})
+    md = client.get(f"/api/projects/{p['id']}/findings.md", headers=H).text
+    assert "Finding one" in md and "watch?v=abc123def45&t=0s" in md
+    import io, zipfile
+    z = zipfile.ZipFile(io.BytesIO(client.get(f"/api/projects/{p['id']}/masterplan.zip?synthesize=false", headers=H).content))
+    names = z.namelist()
+    assert {"README.md", "masterplan.md", "findings.md", "sources.csv", "context.json", "conversations.md"} <= set(names)
+
+
+def test_ask_tool_loop(monkeypatch):
+    """Claude calls save_finding + update_brief, then answers; citations resolve and notes are stored."""
+    import anthropic
+    from neurosearch import qa
+    monkeypatch.setattr(qa.settings, "anthropic_api_key", "fake")
+    p = db.create_project("Loop", "old brief")
+    src = db.find_source("youtube", "abc123def45")
+    db.add_project_sources(p["id"], [src["id"]])
+
+    class Blk:
+        def __init__(self, **kw): self.__dict__.update(kw)
+    calls = []
+
+    class Msgs:
+        def create(self, **kw):
+            calls.append(kw)
+            if len(calls) == 1:
+                return Blk(stop_reason="tool_use", content=[
+                    Blk(type="tool_use", id="t1", name="update_brief", input={"brief": "new brief about retention"}),
+                    Blk(type="tool_use", id="t2", name="save_finding", input={"content": "They discuss retention tactics [1]."}),
+                ])
+            assert kw["messages"][-1]["role"] == "user" and kw["messages"][-1]["content"][0]["type"] == "tool_result"
+            return Blk(stop_reason="end_turn", content=[Blk(type="text", text="Retention comes up early [1].", citations=None)])
+
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **kw: Blk(messages=Msgs()))
+    res = qa.ask("refocus on retention and pin what they say", project_id=p["id"], conversation_id="conv1")
+    assert res["citations"] and res["citations"][0]["title"] == "Imported video"
+    assert {a["type"] for a in res["actions"]} == {"brief_updated", "finding_saved"}
+    assert db.get_project(p["id"])["brief"] == "new brief about retention"
+    notes = db.list_project_notes(p["id"])
+    assert notes and notes[0]["citations"][0]["link"].endswith("t=0s")
+    assert "Pinned findings so far" in calls[0]["system"] and "update_brief" in [t["name"] for t in calls[0]["tools"]]

@@ -4,7 +4,7 @@ Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors). Package lives in `neuros
 
 - `config.py` settings from env/.env · `db.py` schema + all SQL · `media.py` yt-dlp (enumerate, captions, audio)
 - `transcribe.py` Whisper API · `chunking.py` segments→chunks · `embeddings.py` OpenAI embeddings
-- `ingest.py` orchestration · `jobs.py` background workers · `search.py` hybrid retrieval · `qa.py` Claude answers w/ citations
+- `ingest.py` orchestration · `jobs.py` background workers · `search.py` hybrid retrieval · `qa.py` Claude answers w/ citations + project tools · `export.py` findings & masterplan package
 - `api.py` REST + web UI + MCP mount · `mcp_server.py` MCP tools · `cli.py` typer CLI · `web/` single-page UI
 
 Run locally: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest`.

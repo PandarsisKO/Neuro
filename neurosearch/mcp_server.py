@@ -157,6 +157,37 @@ def job_status(job_id: str | None = None) -> str:
 
 
 @mcp.tool()
+def findings(project: str) -> str:
+    """The project's findings document: brief, every pinned finding and gap with timestamp links, source list."""
+    from .export import findings_markdown
+
+    p = _resolve_project(project)
+    assert p
+    return findings_markdown(p["id"])
+
+
+@mcp.tool()
+async def masterplan(project: str) -> str:
+    """Write the project's masterplan (Claude-synthesized: purpose, summary, insights with citations, actions,
+    open questions). The web app can download the full portable package (zip with transcripts) at
+    /api/projects/<id>/masterplan.zip."""
+    from .export import synthesize_masterplan
+
+    p = _resolve_project(project)
+    assert p
+    return await anyio.to_thread.run_sync(lambda: synthesize_masterplan(p["id"]))
+
+
+@mcp.tool()
+def update_brief(project: str, brief: str) -> str:
+    """Replace a project's brief (what it is trying to find out)."""
+    p = _resolve_project(project)
+    assert p
+    db.update_project(p["id"], brief=brief)
+    return "Brief updated."
+
+
+@mcp.tool()
 def save_note(project: str, content: str) -> str:
     """Pin a finding to a project's notes so it shows up in the project view."""
     p = _resolve_project(project)
