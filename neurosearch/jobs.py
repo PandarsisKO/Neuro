@@ -1,0 +1,85 @@
+"""Tiny background job runner: a few worker threads pulling from the jobs table.
+
+Good enough for one user and hundreds of videos; survives restarts (running jobs are re-queued).
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from typing import Any
+
+from . import db, ingest
+from .config import settings
+from .embeddings import embed_pending
+
+log = logging.getLogger(__name__)
+
+_stop = threading.Event()
+_threads: list[threading.Thread] = []
+
+
+def enqueue(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return db.create_job(kind, payload)
+
+
+def run_job(job: dict[str, Any]) -> dict[str, Any]:
+    jid = job["id"]
+    payload = job["payload"] or {}
+
+    def progress(p: float, m: str) -> None:
+        db.update_job(jid, progress=p, message=m)
+
+    kind = job["kind"]
+    if kind == "ingest_url":
+        return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
+                                 progress=progress, force=bool(payload.get("force")))
+    if kind == "ingest_source":
+        return ingest.ingest_source(payload["source_id"], progress=progress)
+    if kind == "reembed":
+        return {"embedded": embed_pending(limit=payload.get("limit", 100000))}
+    raise RuntimeError(f"unknown job kind {kind}")
+
+
+def _worker(n: int) -> None:
+    log.info("worker %d started", n)
+    while not _stop.is_set():
+        job = db.claim_job()
+        if not job:
+            _stop.wait(1.5)
+            continue
+        try:
+            result = run_job(job)
+            db.update_job(job["id"], status="done", progress=1.0, message="done", result=result)
+        except Exception as e:  # noqa: BLE001
+            log.warning("job %s failed: %s", job["id"], e)
+            db.update_job(job["id"], status="failed", message=f"error: {e}")
+
+
+def start_workers(n: int | None = None) -> None:
+    n = n or settings.workers
+    db.init_db()
+    requeued = db.requeue_stale_running_jobs()
+    if requeued:
+        log.info("re-queued %d interrupted jobs", requeued)
+    _stop.clear()
+    for i in range(n):
+        t = threading.Thread(target=_worker, args=(i,), daemon=True, name=f"ns-worker-{i}")
+        t.start()
+        _threads.append(t)
+
+
+def stop_workers() -> None:
+    _stop.set()
+    for t in _threads:
+        t.join(timeout=2)
+    _threads.clear()
+
+
+def wait_for_idle(poll: float = 1.0) -> None:
+    """Block until there are no queued or running jobs (CLI use)."""
+    while True:
+        row = db.connect().execute("SELECT COUNT(*) n FROM jobs WHERE status IN ('queued','running')").fetchone()
+        if row["n"] == 0:
+            return
+        time.sleep(poll)

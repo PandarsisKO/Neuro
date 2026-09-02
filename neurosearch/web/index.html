@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f1115">
+<title>Neuro Search</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+  a{color:#8fb0ff}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;letter-spacing:.3px}
+  header .stats{color:var(--muted);font-size:12px;margin-left:auto}
+  select,input,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  input,textarea,select{width:100%}
+  textarea{min-height:80px;resize:vertical}
+  button{cursor:pointer;white-space:nowrap}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.ghost{background:transparent}
+  button.small{padding:5px 9px;font-size:13px;border-radius:7px}
+  nav{display:flex;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:49px;z-index:4}
+  nav button{flex:1;border:0;border-radius:0;background:transparent;padding:11px 4px;color:var(--muted);border-bottom:2px solid transparent}
+  nav button.active{color:#fff;border-bottom-color:var(--accent)}
+  main{max-width:960px;margin:0 auto;padding:14px}
+  section{display:none}section.active{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row>*{flex:1;min-width:0}
+  .row>input{min-width:140px}
+  .row>button{flex:0 0 auto}
+  .muted{color:var(--muted);font-size:13px}
+  .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
+  .chip:hover{border-color:var(--accent)}
+  .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.pending{color:var(--warn)}
+  /* chat */
+  #chat{display:flex;flex-direction:column;gap:10px;min-height:40vh;padding-bottom:110px}
+  .msg{max-width:92%;padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.45}
+  .msg.user{align-self:flex-end;background:#243266}
+  .msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+  .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
+  .msg sup{color:#8fb0ff;font-weight:600}
+  .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
+  #askbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
+  #askbar .inner{max-width:960px;margin:0 auto;display:flex;gap:8px;align-items:flex-end}
+  #askbar textarea{min-height:44px;max-height:160px}
+  #askbar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .src{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:#000;flex:0 0 auto}
+  .src .t{font-weight:600;overflow-wrap:anywhere}
+  .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+  .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
+  .transcript b{color:#8fb0ff;font-weight:500}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
+  dialog::backdrop{background:#0009}
+  .hits .h{padding:8px 0;border-bottom:1px solid var(--line)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  @media(max-width:600px){.src img{width:72px;height:40px}.msg{max-width:100%}.src .ph{display:none}}
+</style></head>
+<body>
+<header>
+  <h1>Neuro Search</h1>
+  <select id="projectSel" style="width:auto;max-width:50vw" title="Scope"><option value="">All sources</option></select>
+  <span class="stats" id="stats"></span>
+</header>
+<nav>
+  <button data-tab="ask" class="active">Ask</button>
+  <button data-tab="sources">Sources</button>
+  <button data-tab="projects">Projects</button>
+  <button data-tab="ingest">Ingest</button>
+</nav>
+<main>
+
+<section id="tab-ask" class="active">
+  <div class="row" style="margin-bottom:8px">
+    <select id="convSel" style="width:auto"><option value="">New conversation</option></select>
+    <button class="small ghost" onclick="newConversation()">New</button>
+    <button class="small ghost" onclick="delConversation()">Delete</button>
+  </div>
+  <div id="chat"><div class="muted" id="chatHint">Ask anything about your sources. Answers cite the video and timestamp; click a citation to jump to that moment.</div></div>
+  <div id="askbar"><div class="inner">
+    <div style="flex:1">
+      <textarea id="q" placeholder="Ask a question…" rows="1"></textarea>
+      <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label><span class="muted" id="askStatus"></span></div>
+    </div>
+    <button class="primary" id="askBtn" onclick="ask()">Ask</button>
+  </div></div>
+</section>
+
+<section id="tab-sources">
+  <div class="card">
+    <div class="row">
+      <input id="srcQ" placeholder="Filter by title or channel…" oninput="debounce(loadSources)">
+      <select id="srcStatus" style="width:auto" onchange="loadSources()"><option value="">Any status</option><option>ready</option><option>pending</option><option>failed</option></select>
+      <select id="srcColl" style="width:auto" onchange="loadSources()"><option value="">Any collection</option></select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="muted" id="srcCount"></span>
+      <button class="small" onclick="exportCsv(false)">Export master sheet (CSV)</button>
+      <button class="small" onclick="exportCsv(true)">Export timestamped segments (CSV)</button>
+      <button class="small" onclick="retryFailed()">Retry failed</button>
+    </div>
+  </div>
+  <div id="srcList"></div>
+</section>
+
+<section id="tab-projects">
+  <div class="card">
+    <b>New project</b>
+    <div class="row" style="margin-top:8px"><input id="pName" placeholder="Name (e.g. Pricing objections)"></div>
+    <div class="row" style="margin-top:8px"><textarea id="pBrief" placeholder="Brief — what are you trying to find out? This guides every answer in the project."></textarea></div>
+    <div class="row" style="margin-top:8px"><input id="pTags" placeholder="Auto-include sources with tags (comma separated, optional)"><button class="primary" onclick="createProject()">Create</button></div>
+  </div>
+  <div id="projList"></div>
+</section>
+
+<section id="tab-ingest">
+  <div class="card">
+    <b>Add from URL</b>
+    <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
+    <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <input id="inTags" placeholder="tags (comma separated)">
+      <select id="inProject" style="width:auto"><option value="">no project</option></select>
+      <label class="muted" style="flex:0"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label>
+      <button class="primary" onclick="ingestUrls()">Ingest</button>
+    </div>
+  </div>
+  <div class="card">
+    <b>Upload audio/video file</b> <span class="muted">(transcribed with Whisper)</span>
+    <div class="row" style="margin-top:8px"><input type="file" id="inFile" accept="audio/*,video/*"><input id="inFileTitle" placeholder="title (optional)"><button class="primary" onclick="ingestFile()">Upload</button></div>
+  </div>
+  <div class="card">
+    <b>Paste a transcript</b> <span class="muted">(lines like <code>12:34 text</code> keep their timestamps)</span>
+    <div class="row" style="margin-top:8px"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
+    <textarea id="inText" style="margin-top:8px" placeholder="Paste transcript…"></textarea>
+    <div class="row" style="margin-top:8px"><button class="primary" onclick="ingestText()">Save transcript</button></div>
+  </div>
+  <div class="card"><b>Jobs</b> <span class="muted" id="jobsNote"></span><div id="jobs"></div></div>
+</section>
+</main>
+
+<dialog id="dlg"><div id="dlgBody"></div><div class="row" style="margin-top:12px;justify-content:flex-end"><button onclick="dlg.close()">Close</button></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (r.status === 401) { location.reload(); return; }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+  return j;
+}
+const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b) });
+const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : undefined });
+let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
+const state = { project: localStorage.getItem('ns_project') || '', conv: null, projects: [], collections: [] };
+
+// tabs
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
+  $('#askbar').style.display = t === 'ask' ? '' : 'none';
+  if (t === 'sources') loadSources(); if (t === 'projects') loadProjects(); if (t === 'ingest') loadJobs();
+  location.hash = t;
+}
+
+async function loadStats() {
+  const s = await api('/api/stats');
+  $('#stats').textContent = `${s.ready} sources · ${s.total_hours} h · ${s.chunks} chunks` + (s.pending ? ` · ${s.pending} pending` : '');
+}
+async function loadProjectsList() {
+  state.projects = await api('/api/projects');
+  for (const id of ['#projectSel', '#inProject']) {
+    const sel = $(id); const cur = sel.value;
+    sel.innerHTML = `<option value="">${id === '#projectSel' ? 'All sources' : 'no project'}</option>` + state.projects.map(p => `<option value="${p.id}">${esc(p.name)} (${p.n_sources})</option>`).join('');
+    sel.value = id === '#projectSel' ? state.project : cur;
+  }
+  if ($('#projectSel').value !== state.project) { state.project = ''; }
+}
+$('#projectSel').onchange = e => { state.project = e.target.value; localStorage.setItem('ns_project', state.project); newConversation(); loadConversations(); };
+
+// ---------------- chat
+async function loadConversations() {
+  const cs = await api('/api/conversations' + (state.project ? `?project_id=${state.project}` : ''));
+  $('#convSel').innerHTML = '<option value="">New conversation</option>' + cs.map(c => `<option value="${c.id}">${esc(c.title || c.id.slice(0, 8))}</option>`).join('');
+  $('#convSel').value = state.conv || '';
+}
+$('#convSel').onchange = async e => { state.conv = e.target.value || null; $('#chat').innerHTML = ''; if (state.conv) { const ms = await api('/api/conversations/' + state.conv); ms.forEach(m => addMsg(m.role, m.content, m.citations || [])); } };
+function newConversation() { state.conv = null; $('#chat').innerHTML = ''; $('#convSel').value = ''; }
+async function delConversation() { if (!state.conv) return; await del('/api/conversations/' + state.conv); newConversation(); loadConversations(); }
+function renderAnswer(text, cites) {
+  const byN = Object.fromEntries(cites.map(c => [c.n, c]));
+  return esc(text).replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>` : m);
+}
+function addMsg(role, text, cites = [], extra = {}) {
+  $('#chatHint')?.remove();
+  const d = document.createElement('div'); d.className = 'msg ' + role;
+  if (role === 'user') d.textContent = text;
+  else {
+    let h = renderAnswer(text, cites);
+    if (cites.length) h += `<div class="cites">` + cites.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
+    if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
+    if (state.project) h += `<div style="margin-top:8px"><button class="small ghost" onclick='saveNote(this)'>Pin to project notes</button></div>`;
+    d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
+  }
+  $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
+  return d;
+}
+async function saveNote(btn) {
+  const d = btn.closest('.msg');
+  await post(`/api/projects/${state.project}/notes`, { content: d.dataset.text, citations: JSON.parse(d.dataset.cites) });
+  btn.textContent = 'Pinned ✓'; btn.disabled = true;
+}
+async function ask() {
+  const q = $('#q').value.trim(); if (!q) return;
+  $('#q').value = ''; addMsg('user', q);
+  const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching your sources…</span>';
+  $('#askBtn').disabled = true;
+  try {
+    const r = await post('/api/ask', { question: q, project_id: state.project || null, conversation_id: state.conv, use_web: $('#useWeb').checked });
+    thinking.remove();
+    const first = !state.conv; state.conv = r.conversation_id;
+    addMsg('assistant', r.answer, r.citations, r);
+    if (first) { await loadConversations(); $('#convSel').value = state.conv; }
+  } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  $('#askBtn').disabled = false;
+}
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
+
+// ---------------- sources
+async function loadCollections() {
+  state.collections = await api('/api/collections');
+  $('#srcColl').innerHTML = '<option value="">Any collection</option>' + state.collections.map(c => `<option value="${c.id}">${esc(c.title || c.kind)} (${c.n_sources})</option>`).join('');
+}
+async function loadSources() {
+  const p = new URLSearchParams(); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  if ($('#srcStatus').value) p.set('status', $('#srcStatus').value); if ($('#srcColl').value) p.set('collection_id', $('#srcColl').value);
+  if (state.project) p.set('project_id', state.project);
+  const rows = await api('/api/sources?' + p);
+  $('#srcCount').textContent = `${rows.length} sources` + (state.project ? ' in this project' : '');
+  $('#srcList').innerHTML = rows.map(s => `<div class="src">
+    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : '<div class="ph" style="width:96px"></div>'}
+    <div style="flex:1;min-width:0">
+      <div class="t"><a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a></div>
+      <div class="muted">${esc(s.channel || s.platform)} · ${s.published_at || ''} · ${fmt(s.duration)} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      <div class="actions">
+        <button class="small" onclick="viewTranscript('${s.id}')">Transcript</button>
+        <button class="small" onclick="addToProjectPrompt('${s.id}')">Add to project…</button>
+        <button class="small" onclick="editTags('${s.id}', ${JSON.stringify(s.tags || []).replace(/"/g, '&quot;')})">Tags</button>
+        ${s.status !== 'ready' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        <button class="small ghost" onclick="delSource('${s.id}')">Delete</button>
+      </div>
+    </div></div>`).join('') || '<div class="muted">No sources yet. Add some in the Ingest tab.</div>';
+}
+const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
+async function viewTranscript(id) {
+  const s = await api('/api/sources/' + id);
+  const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : s.url;
+  $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
+    <div class="transcript">${s.segments.map(g => `<a href="${esc(link(g.start))}" target="_blank"><b>[${fmt(g.start)}]</b></a> ${esc(g.text)}`).join('\n')}</div>`;
+  dlg.showModal();
+}
+async function addToProjectPrompt(id) {
+  if (!state.projects.length) return alert('Create a project first.');
+  const opts = state.projects.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+  const n = parseInt(prompt('Add to which project?\n' + opts)); const p = state.projects[n - 1]; if (!p) return;
+  await post(`/api/projects/${p.id}/members`, { source_ids: [id] }); loadProjectsList();
+}
+async function editTags(id, tags) {
+  const v = prompt('Tags (comma separated):', tags.join(', ')); if (v === null) return;
+  await api(`/api/sources/${id}/tags`, { method: 'PUT', body: JSON.stringify({ tags: v.split(',').map(t => t.trim()).filter(Boolean) }) }); loadSources();
+}
+async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); }
+async function retryFailed() { const r = await post('/api/retry-failed'); alert(`Re-queued ${r.requeued}`); loadSources(); }
+async function delSource(id) { if (!confirm('Delete this source and its transcript?')) return; await del('/api/sources/' + id); loadSources(); loadStats(); }
+function exportCsv(seg) { const p = new URLSearchParams(); if (state.project) p.set('project_id', state.project); if ($('#srcColl').value) p.set('collection_id', $('#srcColl').value); location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?` + p; }
+
+// ---------------- projects
+async function loadProjects() {
+  await loadProjectsList(); await loadCollections();
+  $('#projList').innerHTML = state.projects.map(p => `<div class="card" id="proj-${p.id}">
+    <div class="row"><b style="flex:1">${esc(p.name)}</b><span class="muted">${p.n_sources} sources</span>
+      <button class="small" onclick="openProject('${p.id}')">Open</button>
+      <button class="small" onclick="state.project='${p.id}';localStorage.setItem('ns_project','${p.id}');$('#projectSel').value='${p.id}';newConversation();loadConversations();showTab('ask')">Ask</button></div>
+    <div class="muted" style="margin-top:4px">${esc(p.brief || '')}</div>
+    ${(p.tags || []).length ? `<div class="muted">auto-tags: ${p.tags.map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>` : ''}
+  </div>`).join('') || '<div class="muted">No projects yet.</div>';
+}
+async function createProject() {
+  const name = $('#pName').value.trim(); if (!name) return;
+  await post('/api/projects', { name, brief: $('#pBrief').value, tags: $('#pTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  $('#pName').value = $('#pBrief').value = $('#pTags').value = ''; loadProjects();
+}
+async function openProject(id) {
+  const p = await api('/api/projects/' + id);
+  const srcs = await api('/api/sources?project_id=' + id + '&limit=2000');
+  const collOpts = state.collections.map(c => `<option value="${c.id}">${esc(c.title || c.kind)} (${c.n_sources})</option>`).join('');
+  $('#dlgBody').innerHTML = `
+    <div class="row"><input id="epName" value="${esc(p.name)}"></div>
+    <div class="row" style="margin-top:8px"><textarea id="epBrief" placeholder="Brief">${esc(p.brief || '')}</textarea></div>
+    <div class="row" style="margin-top:8px"><input id="epTags" value="${esc((p.tags || []).join(', '))}" placeholder="auto-include tags"><button class="small primary" onclick="saveProject('${id}')">Save</button><button class="small ghost" onclick="deleteProject('${id}')">Delete project</button></div>
+    <h4 style="margin:14px 0 6px">Collections in this project</h4>
+    ${p.collections.map(c => `<span class="chip">${esc(c.title || c.kind)} <a href="#" onclick="rmMember('${id}',null,'${c.id}');return false">✕</a></span>`).join('') || '<span class="muted">none</span>'}
+    <div class="row" style="margin-top:6px"><select id="addColl"><option value="">Add a playlist/channel…</option>${collOpts}</select><button class="small" onclick="addColl('${id}')">Add</button></div>
+    <h4 style="margin:14px 0 6px">Sources (${srcs.length})</h4>
+    <div style="max-height:30vh;overflow:auto">${srcs.map(s => `<div class="muted" style="padding:3px 0">${esc(s.title)} <a href="#" onclick="rmMember('${id}','${s.id}',null);return false">✕</a></div>`).join('') || '<span class="muted">none — add sources from the Sources tab, link a collection, or set auto-include tags</span>'}</div>
+    <h4 style="margin:14px 0 6px">Pinned notes</h4>
+    ${p.notes.map(n => `<div class="card" style="padding:10px"><div style="white-space:pre-wrap">${renderAnswer(n.content, n.citations || [])}</div>
+      ${(n.citations || []).map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('')}
+      <div><button class="small ghost" onclick="del('/api/notes/${n.id}').then(()=>openProject('${id}'))">remove</button></div></div>`).join('') || '<span class="muted">none yet — pin answers from the Ask tab</span>'}`;
+  dlg.showModal();
+}
+async function saveProject(id) { await api('/api/projects/' + id, { method: 'PUT', body: JSON.stringify({ name: $('#epName').value, brief: $('#epBrief').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) }) }); dlg.close(); loadProjects(); }
+async function deleteProject(id) { if (!confirm('Delete project? Sources are kept.')) return; await del('/api/projects/' + id); dlg.close(); if (state.project === id) { state.project = ''; localStorage.removeItem('ns_project'); } loadProjects(); }
+async function addColl(id) { const c = $('#addColl').value; if (!c) return; await post(`/api/projects/${id}/members`, { collection_ids: [c] }); openProject(id); }
+async function rmMember(id, sid, cid) { await del(`/api/projects/${id}/members`, { source_ids: sid ? [sid] : [], collection_ids: cid ? [cid] : [] }); openProject(id); }
+
+// ---------------- ingest
+async function ingestUrls() {
+  const url = $('#inUrls').value.trim(); if (!url) return;
+  const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const r = await post('/api/ingest', { url, tags, project_id: $('#inProject').value || null, force: $('#inForce').checked });
+  $('#inUrls').value = ''; $('#jobsNote').textContent = `queued ${r.jobs.length} job(s)`; loadJobs();
+}
+async function ingestFile() {
+  const f = $('#inFile').files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('file', f); fd.append('title', $('#inFileTitle').value); fd.append('project_id', $('#inProject').value); fd.append('tags', $('#inTags').value);
+  $('#jobsNote').innerHTML = '<span class="spin"></span> uploading & transcribing (this can take a few minutes)…';
+  try { const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) throw new Error(j.error || j.detail); $('#jobsNote').textContent = `transcribed "${j.title}" (${j.chunks} chunks)`; loadStats(); }
+  catch (e) { $('#jobsNote').textContent = 'error: ' + e.message; }
+}
+async function ingestText() {
+  const title = $('#inTextTitle').value.trim(), text = $('#inText').value.trim(); if (!title || !text) return;
+  const r = await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: $('#inProject').value || null, tags: $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  $('#inText').value = ''; $('#jobsNote').textContent = `saved "${r.title}" (${r.chunks} chunks)`; loadStats();
+}
+let jobsTimer;
+async function loadJobs() {
+  const js = await api('/api/jobs?limit=40');
+  $('#jobs').innerHTML = js.map(j => `<div class="job"><span class="st ${j.status === 'done' ? 'ready' : j.status === 'failed' ? 'failed' : 'pending'}">${j.status}</span>
+    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.payload.url || j.payload.source_id || j.kind)}</span>
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('') || '<div class="muted">No jobs yet.</div>';
+  clearTimeout(jobsTimer);
+  if (js.some(j => j.status === 'queued' || j.status === 'running')) jobsTimer = setTimeout(() => { if ($('#tab-ingest').classList.contains('active')) loadJobs(); loadStats(); }, 3000);
+}
+
+// boot
+(async () => {
+  await loadProjectsList(); $('#projectSel').value = state.project; await loadStats(); await loadConversations(); await loadCollections();
+  showTab((location.hash || '#ask').slice(1));
+  setInterval(loadStats, 30000);
+})();
+</script>
+</body></html>
