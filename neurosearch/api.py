@@ -343,6 +343,15 @@ class ProjectIn(BaseModel):
     brief: str | None = None
     tags: list[str] = []
     context: str | None = None
+    goal: str | None = None
+    audience: str | None = None
+    output_pref: str | None = None
+    source_prefs: str | None = None
+    questions: list[str] | None = None
+    # create-only extras
+    facts: list[dict[str, str]] | None = None     # [{kind, content}]
+    urls: list[str] | None = None                 # initial sources to ingest
+    start_chats: bool = True                      # one chat per starting question
 
 
 @app.get("/api/projects", dependencies=[Depends(require_auth)])
@@ -352,7 +361,23 @@ async def api_projects() -> list[dict[str, Any]]:
 
 @app.post("/api/projects", dependencies=[Depends(require_auth)])
 async def api_create_project(body: ProjectIn) -> dict[str, Any]:
-    return db.create_project(body.name, body.brief, body.tags)
+    p = db.create_project(body.name, body.brief, body.tags)
+    db.update_project(p["id"], context=body.context, goal=body.goal, audience=body.audience, output_pref=body.output_pref,
+                      source_prefs=body.source_prefs, questions=body.questions or [])
+    for f in body.facts or []:
+        if f.get("content"):
+            db.add_fact(p["id"], f.get("kind") or "constraint", f["content"])
+    if body.start_chats:
+        for q in body.questions or []:
+            db.create_conversation(p["id"], q[:80])
+    job_ids = []
+    for u in body.urls or []:
+        u = u.strip()
+        if u:
+            job_ids.append(jobs.enqueue("ingest_url", {"url": u, "tags": [], "project_id": p["id"]})["id"])
+    out = db.get_project(p["id"]) or p
+    out["jobs"] = job_ids
+    return out
 
 
 @app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
@@ -361,6 +386,7 @@ async def api_project(project_id: str) -> dict[str, Any]:
     if not p:
         raise HTTPException(404)
     p["notes"] = db.list_project_notes(project_id)
+    p["suggested"] = db.list_project_notes(project_id, status="suggested")
     p["conversations"] = db.list_conversations(project_id)
     p["facts"] = db.list_facts(project_id)
     p["has_plan"] = db.latest_plan(project_id) is not None
@@ -369,7 +395,8 @@ async def api_project(project_id: str) -> dict[str, Any]:
 
 @app.put("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
 async def api_update_project(project_id: str, body: ProjectIn) -> dict[str, Any]:
-    p = db.update_project(project_id, name=body.name, brief=body.brief, tags=body.tags, context=body.context)
+    p = db.update_project(project_id, name=body.name, brief=body.brief, tags=body.tags, context=body.context, goal=body.goal,
+                          audience=body.audience, output_pref=body.output_pref, source_prefs=body.source_prefs, questions=body.questions)
     if not p:
         raise HTTPException(404)
     return p
@@ -565,6 +592,44 @@ async def api_plan_html(project_id: str) -> Any:
     if not plan or not p:
         raise HTTPException(404, "no plan yet")
     return HTMLResponse(plan_html(plan, p))
+
+
+class SuggestIn(BaseModel):
+    source_ids: list[str] | None = None   # default: every ready source not yet analysed for this project
+    force: bool = False                    # re-analyse even if already done
+
+
+@app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
+async def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
+    ids = body.source_ids or (db.project_source_ids(project_id) if body.force else db.sources_needing_suggestions(project_id))
+    if not ids:
+        return {"job": None, "sources": 0}
+    job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids})
+    return {"job": job["id"], "sources": len(ids)}
+
+
+class NoteStatusIn(BaseModel):
+    status: str  # approved | dismissed | suggested
+
+
+@app.post("/api/notes/{note_id}/status", dependencies=[Depends(require_auth)])
+async def api_note_status(note_id: int, body: NoteStatusIn) -> dict[str, Any]:
+    row = db.set_note_status(note_id, body.status)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
+class BulkNotesIn(BaseModel):
+    note_ids: list[int]
+    status: str
+
+
+@app.post("/api/notes/bulk-status", dependencies=[Depends(require_auth)])
+async def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
+    for nid in body.note_ids:
+        db.set_note_status(nid, body.status)
+    return {"ok": True, "n": len(body.note_ids)}
 
 
 class NoteIn(BaseModel):

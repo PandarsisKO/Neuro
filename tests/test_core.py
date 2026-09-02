@@ -222,3 +222,53 @@ def test_master_planner(client, monkeypatch):
     import io, zipfile
     z = zipfile.ZipFile(io.BytesIO(client.get(f"/api/projects/{p['id']}/masterplan.zip?synthesize=false", headers=H).content))
     assert "master_plan.md" in z.namelist() and "master_plan.html" in z.namelist()
+
+
+def test_suggested_findings(client, monkeypatch):
+    import anthropic, time
+    from tests.fake_claude import Anthropic
+    from neurosearch import findings, jobs
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(findings.settings, "anthropic_api_key", "fake")
+    monkeypatch.setattr(jobs.settings, "anthropic_api_key", "fake")
+    p = client.post("/api/projects", headers=H, json={"name": "Suggest", "brief": "hosting"}).json()
+    r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free for static sites\n3:40 never touch MX records", project_id=p["id"])
+    # auto-queued suggestion job runs in the background worker
+    for _ in range(60):
+        pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
+        if pj["suggested"]:
+            break
+        time.sleep(0.2)
+    assert len(pj["suggested"]) == 2 and pj["notes"] == []
+    top = pj["suggested"][0]
+    assert top["importance"] == 5 and top["citations"][0]["timestamp"] == "0:05" and top["status"] == "suggested"
+    src = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
+    assert src["substance"] == 72 and "DNS" in src["summary"]
+    # approve one, dismiss one -> only approved counts for exports/planner
+    client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})
+    client.post(f"/api/notes/{pj['suggested'][1]['id']}/status", headers=H, json={"status": "dismissed"})
+    pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
+    assert len(pj["notes"]) == 1 and pj["suggested"] == []
+    md = client.get(f"/api/projects/{p['id']}/findings.md", headers=H).text
+    assert "Cloudflare Pages is free" in md and "MX records" not in md
+    # nothing left to analyse; force re-analyses
+    assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={}).json()["job"] is None
+    assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={"force": True}).json()["sources"] == 1
+
+
+def test_project_onboarding(client):
+    body = {"name": "Onboard", "goal": "site live on cheaper host", "brief": "which host", "context": "Budget: $500",
+            "questions": ["Which hosts do practitioners recommend?", "What breaks during DNS moves?"],
+            "facts": [{"kind": "constraint", "content": "Budget: $500"}, {"kind": "rejected", "content": "Wix"}],
+            "urls": ["https://www.youtube.com/watch?v=aaaaaaaaaaa"], "audience": "me", "output_pref": "a recommendation",
+            "source_prefs": "practitioners over marketers"}
+    p = client.post("/api/projects", headers=H, json=body).json()
+    assert p["goal"] == "site live on cheaper host" and p["questions"] == body["questions"] and len(p["jobs"]) == 1
+    full = client.get(f"/api/projects/{p['id']}", headers=H).json()
+    assert [c["title"] for c in full["conversations"]] == body["questions"][::-1] or len(full["conversations"]) == 2
+    assert {f["kind"] for f in full["facts"]} == {"constraint", "rejected"}
+    steering = db.project_steering(full)
+    assert "Goal (what done looks like): site live" in steering and "practitioners" in steering and "Starting questions" in steering
+    # settings round-trip keeps the new fields
+    upd = client.put(f"/api/projects/{p['id']}", headers=H, json={"name": "Onboard", "goal": "g2", "questions": ["q3"]}).json()
+    assert upd["goal"] == "g2" and upd["questions"] == ["q3"] and upd["audience"] == "me"

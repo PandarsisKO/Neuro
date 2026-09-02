@@ -82,6 +82,26 @@ From a project (Projects tab → Open) you can download:
 
 CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
 
+### Suggested findings
+
+Most long videos and podcasts are mostly fluff. When a source finishes ingesting into a project, the assistant
+reads the whole transcript against the project's brief and proposes the 3–12 findings that matter — each a
+self-contained claim with a timestamp, a short quote and an importance rating — and scores the source's
+**substance** (0–100) with a two-line summary so the Sources list shows at a glance what is worth your time.
+Suggestions wait in the Findings tab (grouped by source) until you approve or dismiss them; only approved findings
+feed the exports and the Master Plan. "Analyse new sources" / "Re-analyse all" run it on demand; per-source
+"Suggest findings" is on every source. Turn auto-analysis off with `NEUROSEARCH_AUTO_SUGGEST=false`.
+
+### Starting a project well
+
+"New project" is a four-step setup because the assistant and the planner are only as good as what they know at
+the start: **Basics** (name, the goal — what "done" looks like, the brief — what you need to find out, and starting
+questions that each become a ready-made chat), **Situation** (budget, deadline, your experience, tools and accounts
+you already have, hard constraints, what's already decided or rejected — all recorded as requirements), **Sources**
+(links to start with, and what kinds of sources you trust), and **Output** (who it's for and what you want at the
+end). Everything is editable later in Settings, and every prompt — chat answers, suggested findings, the Master
+Plan — is steered by it.
+
 ## Master Planner (Plan mode)
 
 Research answers *what do we need to know?* — the **Master Plan** answers *given everything we know, how do we
@@ -211,6 +231,7 @@ neurosearch/
   search.py      hybrid retrieval + deep links
   qa.py          Claude answers with citations, chat-ingest, project tools (+ optional web search)
   export.py      findings document and masterplan package
+  findings.py    suggested findings + substance scoring per source
   planner.py     Master Planner: plan generation, updates, statuses, markdown/HTML rendering
   remote.py      extract locally, store on a remote server
   api.py         FastAPI: REST, web UI, MCP mount, auth

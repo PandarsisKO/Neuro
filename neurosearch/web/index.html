@@ -99,7 +99,8 @@
   .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
   .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
   .transcript b{color:#8fb0ff;font-weight:500}
-  .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;white-space:pre-wrap}
+  .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .note .body{white-space:pre-wrap}
   .note.gap{border-color:#5a4a1e}
   /* ---- plan ---- */
   .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -218,7 +219,8 @@
     <!-- findings -->
     <div class="view" id="view-findings">
       <h2>Findings</h2>
-      <div class="muted" style="margin-bottom:10px">Pinned answers and gaps. Pin from any chat with “pin that” or the button under an answer.</div>
+      <div class="muted" style="margin-bottom:10px">Approved findings feed the exports and the Master Plan. The assistant reads every source against the brief and proposes findings below — approve the ones worth keeping. You can also pin from any chat.</div>
+      <div id="suggestedWrap"></div>
       <div class="row" style="margin-bottom:14px">
         <a class="chip" id="expFind" target="_blank">⬇ Findings (.md)</a>
         <a class="chip" id="expPlan" target="_blank">⬇ Masterplan (.md)</a>
@@ -237,8 +239,13 @@
       <h2>Project settings</h2>
       <div class="card">
         <label class="muted">Name</label><input id="epName">
+        <label class="muted" style="display:block;margin-top:10px">Goal — what does "done" look like?</label><input id="epGoal">
         <label class="muted" style="display:block;margin-top:10px">Brief — what are you trying to find out? Every answer in this project is guided by it. You can also change it from a chat (“refocus on…”).</label>
         <textarea id="epBrief" style="min-height:120px"></textarea>
+        <label class="muted" style="display:block;margin-top:10px">Who is this for?</label><input id="epAudience">
+        <label class="muted" style="display:block;margin-top:10px">What do you want at the end?</label><input id="epOutput">
+        <label class="muted" style="display:block;margin-top:10px">Source preferences</label><input id="epSourcePrefs">
+        <label class="muted" style="display:block;margin-top:10px">Starting / standing questions (one per line)</label><textarea id="epQuestions" style="min-height:70px"></textarea>
         <label class="muted" style="display:block;margin-top:10px">Auto-include tags — any source carrying one of these tags joins this project automatically (optional)</label>
         <input id="epTags">
         <label class="muted" style="display:block;margin-top:10px">Project context for the Master Planner — goals, budget, deadline, your experience level, tools/accounts you already have, anything already decided.</label>
@@ -294,21 +301,56 @@ async function goHome() {
   const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
   $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
   $('#projGrid').innerHTML = ps.map(p => `<div class="pcard" onclick="location.hash='#p/${p.id}/chats'">
-      <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.brief || 'No brief yet')}</div>
+      <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.goal || p.brief || 'No brief yet')}</div>
       <div class="meta">${p.n_sources} sources · updated ${new Date(p.updated_at * 1000).toLocaleDateString()}</div></div>`).join('')
     + `<div class="pcard new" onclick="newProjectDialog()">＋ New project</div>`;
 }
-function newProjectDialog() {
-  $('#dlgBody').innerHTML = `<h2>New project</h2>
-    <input id="npName" placeholder="Name (e.g. Pricing objections)">
-    <textarea id="npBrief" style="margin-top:8px" placeholder="Brief — what are you trying to find out? (you can refine this later, including from a chat)"></textarea>
-    <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="primary" onclick="createProject()">Create</button></div>`;
-  dlg.showModal(); $('#npName').focus();
+const WIZ = { step: 0, data: {} };
+function newProjectDialog() { WIZ.step = 0; WIZ.data = {}; renderWizard(); dlg.showModal(); }
+function wizField(id, label, ph, rows) {
+  const v = esc(WIZ.data[id] || '');
+  return `<label class="muted" style="display:block;margin-top:10px">${label}</label>` + (rows ? `<textarea id="w_${id}" rows="${rows}" placeholder="${esc(ph)}">${v}</textarea>` : `<input id="w_${id}" placeholder="${esc(ph)}" value="${v}">`);
 }
+function wizCollect() { document.querySelectorAll('#dlgBody [id^=w_]').forEach(el => WIZ.data[el.id.slice(2)] = el.value); }
+function renderWizard() {
+  const steps = ['Basics', 'Situation', 'Sources', 'Output'];
+  let body = `<h2 style="margin-bottom:2px">New project</h2><div class="muted" style="margin-bottom:6px">${steps.map((t, i) => `<span style="${i === WIZ.step ? 'color:#fff;font-weight:600' : ''}">${i + 1}. ${t}</span>`).join(' &nbsp;›&nbsp; ')}</div>`;
+  if (WIZ.step === 0) body += wizField('name', 'Project name', 'e.g. Move the site off Squarespace') +
+    wizField('goal', 'Goal — what does "done" look like?', 'e.g. The marketing site is live on a cheaper host with no email downtime, by the end of October.', 2) +
+    wizField('brief', 'Brief — what do you need to find out?', 'e.g. Which static host suits a small brochure site, how to migrate without breaking DNS/email, realistic costs.', 3) +
+    wizField('questions', 'Starting questions (one per line — each becomes a chat you can pick up immediately)', 'Which hosts do practitioners actually recommend for small static sites?\nWhat goes wrong during DNS migrations?\nWhat does this realistically cost per year?', 4);
+  if (WIZ.step === 1) body += `<div class="muted" style="margin-top:8px">Everything here is treated as a requirement by the assistant and the Master Planner — not a suggestion. Leave blank what doesn't apply.</div>` +
+    wizField('budget', 'Budget', 'e.g. up to $500 one-off, under $20/month recurring') +
+    wizField('deadline', 'Deadline / timing', 'e.g. live by Oct 31; can only work on it weekends') +
+    wizField('experience', 'Your experience with this', 'e.g. comfortable with Squarespace, never touched DNS, no coding') +
+    wizField('tools', 'Tools, accounts and assets you already have', 'e.g. Google Workspace, Squarespace, a Cloudflare account, existing domain') +
+    wizField('constraints', 'Hard constraints (must / must not)', 'e.g. must keep the same domain; must not lose SEO; no agencies', 2) +
+    wizField('decided', 'Already decided or already rejected', 'e.g. decided: keep Google Workspace for email · rejected: Wix', 2);
+  if (WIZ.step === 2) body += wizField('urls', 'Links to start with (one per line — videos, playlists, whole channels, podcasts). You can add files after the project is created.', 'https://www.youtube.com/@somechannel\nhttps://www.youtube.com/watch?v=…', 5) +
+    wizField('source_prefs', 'Source preferences (optional)', 'e.g. prefer practitioners over marketers; ignore anything older than 2024; weight official docs highly', 2) +
+    `<div class="muted" style="margin-top:8px">New sources are read against your brief automatically and suggested findings appear in the Findings tab for approval.</div>`;
+  if (WIZ.step === 3) body += wizField('audience', 'Who is this for?', 'e.g. just me · my two co-founders · a client who needs a recommendation') +
+    wizField('output_pref', 'What do you want at the end?', 'e.g. a clear recommendation and a step-by-step migration plan · a comparison of 3 options · a content brief for a video · a shortlist of vendors', 2) +
+    `<div class="muted" style="margin-top:8px">This shapes tone, depth and what the Master Plan emphasises. You can change everything later in Settings.</div>`;
+  body += `<div class="row" style="margin-top:14px;justify-content:flex-end">${WIZ.step > 0 ? '<button onclick="wizNav(-1)">Back</button>' : ''}${WIZ.step < 3 ? '<button class="primary" onclick="wizNav(1)">Next</button>' : '<button class="primary" id="wizCreate" onclick="createProject()">Create project</button>'}${WIZ.step < 3 && WIZ.step > 0 ? '<button class="ghost" onclick="createProject()">Skip &amp; create</button>' : ''}</div>`;
+  $('#dlgBody').innerHTML = body; ($('#w_name') || $('#dlgBody input, #dlgBody textarea'))?.focus();
+}
+function wizNav(d) { wizCollect(); if (WIZ.step === 0 && !(WIZ.data.name || '').trim()) { $('#w_name').focus(); return; } WIZ.step += d; renderWizard(); }
 async function createProject() {
-  const name = $('#npName').value.trim(); if (!name) return;
-  const p = await post('/api/projects', { name, brief: $('#npBrief').value, tags: [] });
-  dlg.close(); location.hash = `#p/${p.id}/sources`;
+  wizCollect();
+  const d = WIZ.data; if (!(d.name || '').trim()) { WIZ.step = 0; renderWizard(); return; }
+  const lines = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean);
+  const ctx = [['Budget', d.budget], ['Deadline', d.deadline], ['Experience', d.experience], ['Tools/accounts available', d.tools], ['Constraints', d.constraints], ['Already decided/rejected', d.decided]]
+    .filter(([, v]) => v && v.trim()).map(([k, v]) => `${k}: ${v.trim()}`).join('\n');
+  const facts = [];
+  if (d.budget) facts.push({ kind: 'constraint', content: 'Budget: ' + d.budget.trim() });
+  if (d.deadline) facts.push({ kind: 'constraint', content: 'Deadline: ' + d.deadline.trim() });
+  lines(d.constraints).forEach(c => facts.push({ kind: 'constraint', content: c }));
+  lines(d.decided).forEach(c => facts.push({ kind: /reject/i.test(c) ? 'rejected' : 'decision', content: c.replace(/^(decided|rejected)\s*:\s*/i, '') }));
+  const btn = $('#wizCreate'); if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  const p = await post('/api/projects', { name: d.name.trim(), goal: d.goal || null, brief: d.brief || null, context: ctx || null, questions: lines(d.questions),
+    facts, urls: lines(d.urls), source_prefs: d.source_prefs || null, audience: d.audience || null, output_pref: d.output_pref || null, tags: [] });
+  dlg.close(); location.hash = `#p/${p.id}/${lines(d.urls).length ? 'sources' : 'chats'}`;
 }
 
 // ================= workspace =================
@@ -321,6 +363,7 @@ async function openProject(id, view, conv) {
   $('#wsName').textContent = p.name;
   $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
   $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
+  $('#epGoal').value = p.goal || ''; $('#epAudience').value = p.audience || ''; $('#epOutput').value = p.output_pref || ''; $('#epSourcePrefs').value = p.source_prefs || ''; $('#epQuestions').value = (p.questions || []).join('\n');
   $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
   $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
@@ -362,7 +405,8 @@ async function selectChat(id, push = true) {
   $('#chat').innerHTML = '';
   if (id) {
     const ms = await api('/api/conversations/' + id);
-    if (!ms.length) emptyChat(); else ms.forEach(m => addMsg(m.role, m.content, m.citations || []));
+    if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
+    else ms.forEach(m => addMsg(m.role, m.content, m.citations || []));
   } else emptyChat();
   if (push) { showView('chats'); }
   $('#q').focus();
@@ -372,7 +416,8 @@ function emptyChat() {
   $('#chat').innerHTML = `<div class="empty"><b>${esc(p.name)}</b> · ${n} source${n === 1 ? '' : 's'} in scope.<br><br>
     Every chat here only sees this project's sources, so you can run several independent lines of inquiry on the same material.
     Answers cite the source and the exact timestamp or page.<br><br>
-    Things you can say: <i>paste a YouTube/playlist link</i> to add it · <i>“refocus the brief on …”</i> · <i>“pin that as a finding”</i>.</div>`;
+    Things you can say: <i>paste a YouTube/playlist link</i> to add it · <i>“refocus the brief on …”</i> · <i>“pin that as a finding”</i>.
+    ${(p.questions || []).length ? `<br><br>Starting questions:<br>${p.questions.map(q => `<a href="#" class="chip" onclick="$('#q').value=${JSON.stringify(q).replace(/"/g, '&quot;')};$('#q').focus();return false">${esc(q)}</a>`).join(' ')}` : ''}</div>`;
 }
 async function renameChat() {
   if (!state.conv) return; const c = state.chats.find(x => x.id === state.conv);
@@ -465,8 +510,9 @@ async function loadSources() {
       <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button>` : ''}
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button><button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${s.status === 'failed' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
         <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
@@ -482,6 +528,7 @@ async function viewTranscript(id) {
     <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
 }
+async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
 async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
 async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
@@ -519,7 +566,7 @@ async function loadJobs() {
   const show = [...active, ...recentFailed];
   $('#jobsCard').style.display = show.length ? '' : 'none';
   $('#jobs').innerHTML = show.map(j => `<div class="job"><span class="st ${j.status}">${j.status}</span>
-    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.payload.url || j.payload.name || j.payload.source_id || j.kind)}</span>
+    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
   clearTimeout(jobsTimer);
   if (active.length) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
@@ -528,16 +575,37 @@ async function loadJobs() {
 // ---- findings ----
 async function loadNotes() {
   const p = await api('/api/projects/' + state.project.id);
-  const notes = p.notes || []; $('#nFindings').textContent = notes.length;
-  $('#notes').innerHTML = notes.map(n => { const gap = n.content.startsWith('Gap:'); return `<div class="note ${gap ? 'gap' : ''}">${gap ? '⚠ ' : ''}${renderAnswer(n.content, n.citations || [])}
+  const notes = p.notes || [], sug = p.suggested || []; $('#nFindings').textContent = notes.length + (sug.length ? ` +${sug.length}` : '');
+  const bySrc = {}; sug.forEach(n => { const k = (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
+  $('#suggestedWrap').innerHTML = `<div class="card" style="border-color:#2f4a8a">
+      <div class="row"><b style="flex:1">Suggested findings ${sug.length ? `(${sug.length})` : ''}</b>
+        ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
+        <button class="small" onclick="suggestNow(false)">Analyse new sources</button><button class="small ghost" onclick="suggestNow(true)">Re-analyse all</button></div>
+      <div class="muted" id="sugMsg"></div>
+      ${Object.entries(bySrc).map(([title, list]) => `<h3>${esc(title)}</h3>` + list.map(n => `<div class="note" style="border-left:3px solid var(--accent)">
+        ${n.importance ? `<span class="tag">importance ${n.importance}/5</span> ` : ''}<span class="body">${renderAnswer(n.content, n.citations || [])}</span>
+        ${(n.citations || []).length ? `<div class="cites" style="margin-top:6px">${n.citations.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">${esc(c.title)} @ ${c.timestamp}</a>`).join('')}</div>` : ''}
+        <div class="row" style="margin-top:8px"><button class="small primary" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button></div></div>`).join('')).join('')
+        || '<div class="muted" style="margin-top:6px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>'}
+    </div>`;
+  $('#notes').innerHTML = (notes.length ? '<h3>Approved</h3>' : '') + notes.map(n => { const gap = n.content.startsWith('Gap:'); return `<div class="note ${gap ? 'gap' : ''}">${gap ? '⚠ ' : ''}<span class="body">${renderAnswer(n.content, n.citations || [])}</span>
       ${(n.citations || []).length ? `<div class="cites" style="margin-top:8px">${n.citations.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('')}</div>` : ''}
       <div class="muted" style="margin-top:6px">${new Date(n.created_at * 1000).toLocaleString()} · <a href="#" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div></div>`; }).join('')
-    || '<div class="empty">Nothing pinned yet. Ask questions in a chat and pin the answers worth keeping — they become the findings document and the masterplan.</div>';
+    || '<div class="empty">Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.</div>';
+}
+async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
+async function bulkNotes(ids, status) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadNotes(); }
+async function suggestNow(force) {
+  const r = await post(`/api/projects/${state.project.id}/suggest`, { force });
+  if (!r.job) { $('#sugMsg').textContent = 'Every source has already been analysed for this project.'; return; }
+  $('#sugMsg').innerHTML = `<span class="spin"></span> reading ${r.sources} source${r.sources === 1 ? '' : 's'}…`;
+  const tick = async () => { const j = await api('/api/jobs/' + r.job); if (j.status === 'done' || j.status === 'failed') { await loadNotes(); } else { $('#sugMsg').innerHTML = `<span class="spin"></span> ${esc(j.message || 'working…')}`; setTimeout(tick, 2500); } };
+  setTimeout(tick, 2000);
 }
 
 // ---- settings ----
 async function saveProject() {
-  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, context: $('#epContext').value, tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, context: $('#epContext').value, goal: $('#epGoal').value, audience: $('#epAudience').value, output_pref: $('#epOutput').value, source_prefs: $('#epSourcePrefs').value, questions: $('#epQuestions').value.split('\n').map(t => t.trim()).filter(Boolean), tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
   state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
 }
 async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }

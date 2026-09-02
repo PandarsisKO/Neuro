@@ -208,7 +208,18 @@ def connect() -> sqlite3.Connection:
 
 MIGRATIONS = [
     ("projects", "context", "ALTER TABLE projects ADD COLUMN context TEXT"),
+    ("project_notes", "status", "ALTER TABLE project_notes ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'"),
+    ("project_notes", "source_id", "ALTER TABLE project_notes ADD COLUMN source_id TEXT"),
+    ("project_notes", "importance", "ALTER TABLE project_notes ADD COLUMN importance INTEGER"),
+    ("sources", "summary", "ALTER TABLE sources ADD COLUMN summary TEXT"),
+    ("sources", "substance", "ALTER TABLE sources ADD COLUMN substance INTEGER"),
+    ("project_sources", "suggested_at", "ALTER TABLE project_sources ADD COLUMN suggested_at REAL"),
     ("projects", "mode", "ALTER TABLE projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'research'"),
+    ("projects", "goal", "ALTER TABLE projects ADD COLUMN goal TEXT"),
+    ("projects", "audience", "ALTER TABLE projects ADD COLUMN audience TEXT"),
+    ("projects", "output_pref", "ALTER TABLE projects ADD COLUMN output_pref TEXT"),
+    ("projects", "source_prefs", "ALTER TABLE projects ADD COLUMN source_prefs TEXT"),
+    ("projects", "questions", "ALTER TABLE projects ADD COLUMN questions TEXT"),
 ]
 
 
@@ -245,7 +256,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     d = dict(row)
-    for k in ("tags", "payload", "result", "citations"):
+    for k in ("tags", "payload", "result", "citations", "questions"):
         if k in d and isinstance(d[k], str):
             try:
                 d[k] = json.loads(d[k])
@@ -549,6 +560,32 @@ def requeue_stale_running_jobs() -> int:
 
 # -------------------------------------------------------------- projects
 
+def project_steering(p: dict[str, Any]) -> str:
+    """Everything the user told us up front, as one block for prompts."""
+    lines = []
+    if p.get("goal"):
+        lines.append(f"Goal (what done looks like): {p['goal']}")
+    if p.get("brief"):
+        lines.append(f"Brief (what we need to find out): {p['brief']}")
+    if p.get("context"):
+        lines.append(f"Situation (budget, deadline, experience, tools, constraints): {p['context']}")
+    if p.get("audience"):
+        lines.append(f"Who this is for: {p['audience']}")
+    if p.get("output_pref"):
+        lines.append(f"Desired outcome/output: {p['output_pref']}")
+    if p.get("source_prefs"):
+        lines.append(f"Source preferences: {p['source_prefs']}")
+    qs = p.get("questions") or []
+    if isinstance(qs, str):
+        try:
+            qs = json.loads(qs)
+        except ValueError:
+            qs = []
+    if qs:
+        lines.append("Starting questions: " + " | ".join(qs))
+    return "\n".join(lines) or "(nothing provided)"
+
+
 def create_project(name: str, brief: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
     pid = new_id()
     with tx() as conn:
@@ -561,9 +598,11 @@ def create_project(name: str, brief: str | None = None, tags: list[str] | None =
 
 
 def update_project(project_id: str, **fields: Any) -> dict[str, Any] | None:
-    fields = {k: v for k, v in fields.items() if k in ("name", "brief", "tags", "context", "mode") and v is not None}
-    if "tags" in fields:
-        fields["tags"] = json.dumps(fields["tags"])
+    fields = {k: v for k, v in fields.items()
+              if k in ("name", "brief", "tags", "context", "mode", "goal", "audience", "output_pref", "source_prefs", "questions") and v is not None}
+    for k in ("tags", "questions"):
+        if k in fields and not isinstance(fields[k], str):
+            fields[k] = json.dumps(fields[k])
     if fields:
         fields["updated_at"] = now()
         sets = ", ".join(f"{k}=?" for k in fields)
@@ -638,7 +677,7 @@ def project_source_ids(project_id: str, ready_only: bool = True) -> list[str]:
 
 def add_project_sources(project_id: str, source_ids: list[str]) -> None:
     with tx() as conn:
-        conn.executemany("INSERT OR IGNORE INTO project_sources VALUES (?,?)", [(project_id, s) for s in source_ids])
+        conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
 
 
@@ -659,18 +698,70 @@ def remove_project_collections(project_id: str, collection_ids: list[str]) -> No
                          [(project_id, c) for c in collection_ids])
 
 
-def add_project_note(project_id: str, content: str, citations: list | None = None) -> dict[str, Any]:
+def add_project_note(project_id: str, content: str, citations: list | None = None, status: str = "approved",
+                     source_id: str | None = None, importance: int | None = None) -> dict[str, Any]:
     with tx() as conn:
         cur = conn.execute(
-            "INSERT INTO project_notes (project_id, content, citations, created_at) VALUES (?,?,?,?)",
-            (project_id, content, json.dumps(citations or []), now()),
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance) VALUES (?,?,?,?,?,?,?)",
+            (project_id, content, json.dumps(citations or []), now(), status, source_id, importance),
         )
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (cur.lastrowid,)).fetchone())  # type: ignore[return-value]
 
 
-def list_project_notes(project_id: str) -> list[dict[str, Any]]:
-    return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
-        "SELECT * FROM project_notes WHERE project_id=? ORDER BY created_at DESC", (project_id,)).fetchall()]
+def list_project_notes(project_id: str, status: str | None = "approved") -> list[dict[str, Any]]:
+    """Approved notes by default (what exports and the planner use). status=None returns all."""
+    if status:
+        rows = connect().execute("SELECT * FROM project_notes WHERE project_id=? AND status=? ORDER BY importance DESC, created_at DESC",
+                                 (project_id, status)).fetchall()
+    else:
+        rows = connect().execute("SELECT * FROM project_notes WHERE project_id=? ORDER BY created_at DESC", (project_id,)).fetchall()
+    return [row_to_dict(r) for r in rows]  # type: ignore[misc]
+
+
+def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
+    with tx() as conn:
+        conn.execute("UPDATE project_notes SET status=?, created_at=CASE WHEN ?='approved' THEN ? ELSE created_at END WHERE id=?",
+                     (status, status, now(), note_id))
+        return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
+
+
+def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, Any]]) -> int:
+    """Replace pending suggestions for (project, source); dismissed/approved ones are kept."""
+    with tx() as conn:
+        conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
+        t = now()
+        conn.executemany(
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance) VALUES (?,?,?,?,?,?,?)",
+            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance")) for n in notes])
+        conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
+        if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
+            conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
+    return len(notes)
+
+
+def sources_needing_suggestions(project_id: str) -> list[str]:
+    """Ready sources in the project that have never had findings suggested for this project."""
+    conn = connect()
+    done = {r["source_id"] for r in conn.execute(
+        "SELECT source_id FROM project_sources WHERE project_id=? AND suggested_at IS NOT NULL", (project_id,)).fetchall()}
+    done |= {r["source_id"] for r in conn.execute(
+        "SELECT DISTINCT source_id FROM project_notes WHERE project_id=? AND source_id IS NOT NULL", (project_id,)).fetchall()}
+    return [s for s in project_source_ids(project_id) if s not in done]
+
+
+def projects_for_source(source_id: str) -> list[str]:
+    """Projects this source belongs to (direct membership or via a linked collection)."""
+    conn = connect()
+    ids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=?", (source_id,)).fetchall()}
+    ids |= {r["project_id"] for r in conn.execute(
+        """SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id
+           WHERE sc.source_id=?""", (source_id,)).fetchall()}
+    return sorted(ids)
+
+
+def set_source_summary(source_id: str, summary: str | None, substance: int | None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE sources SET summary=?, substance=?, updated_at=? WHERE id=?", (summary, substance, now(), source_id))
 
 
 def delete_project_note(note_id: int) -> None:

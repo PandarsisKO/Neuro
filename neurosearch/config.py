@@ -38,6 +38,7 @@ class Settings:
     allow_transcription: bool = field(default_factory=lambda: (_env("NEUROSEARCH_ALLOW_TRANSCRIPTION", "true") or "").lower() == "true")
     max_transcribe_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_TRANSCRIBE_MINUTES", "240") or 240))
     workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_WORKERS", "2") or 2))
+    auto_suggest: bool = field(default_factory=lambda: (_env("NEUROSEARCH_AUTO_SUGGEST", "true") or "").lower() == "true")
 
     # Chunking (seconds)
     chunk_target_seconds: int = field(default_factory=lambda: int(_env("NEUROSEARCH_CHUNK_SECONDS", "60") or 60))

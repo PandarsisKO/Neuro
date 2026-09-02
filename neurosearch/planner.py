@@ -97,7 +97,7 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
         preview = " ".join(x["text"] for x in segs[:40])[:500]
         add("S", s["title"] or s["url"], f"{s['title']} ({s.get('channel') or s['platform']}): {preview}", s["url"])
     # retrieval: chunks most relevant to the brief/context and to open questions in chats
-    queries = [q for q in [project.get("brief"), project.get("context")] if q]
+    queries = [q for q in [project.get("brief"), project.get("goal"), project.get("context")] if q] + list(project.get("questions") or [])
     for c in db.list_conversations(project_id, limit=20):
         for m in db.get_messages(c["id"], limit=50):
             if m["role"] == "user" and len(m["content"]) < 300:
@@ -117,9 +117,9 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
 
 
 def _material(project_id: str, project: dict[str, Any], ev: list[dict[str, Any]]) -> str:
-    parts = [f"PROJECT: {project['name']}", f"BRIEF: {project.get('brief') or '(none)'}",
-             f"PROJECT CONTEXT (goals, budget, deadline, experience, tools available — from the user):\n{project.get('context') or '(none given)'}",
-             "", "EVIDENCE (cite these ids):"]
+    parts = [f"PROJECT: {project['name']}",
+             "WHAT THE USER TOLD US (goal, brief, situation, audience, desired output — treat as requirements):",
+             db.project_steering(project), "", "EVIDENCE (cite these ids):"]
     parts += [f"[{e['id']}] {e['text']}" for e in ev]
     parts.append("\nRESEARCH CONVERSATIONS (Q/A, most recent last):")
     budget = 40000

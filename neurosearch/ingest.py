@@ -149,8 +149,17 @@ def store_transcript(payload: dict[str, Any], tags: list[str] | None = None, pro
     progress(0.9, "embedding…")
     n_emb = embed_pending()
     progress(1.0, "done")
+    _after_ready(src["id"], project_id)
     return {"source_id": src["id"], "title": src["title"], "segments": len(segments), "chunks": len(chunks),
             "transcript": fields.get("transcript_kind"), "embedded": n_emb}
+
+
+def _after_ready(source_id: str, project_id: str | None = None) -> None:
+    try:
+        from .jobs import enqueue_suggestions
+        enqueue_suggestions(source_id, project_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not queue suggestions: %s", e)
 
 
 def ingest_source(source_id: str, progress: Progress = _noop) -> dict[str, Any]:
@@ -202,6 +211,7 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
         db.upsert_source(platform="document", external_id=ext_id, duration=None, transcript_kind="document",
                          description=f"{len(pages)} pages", status="ready", error=None)
         n = embed_pending()
+        _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "document", "embedded": n}
     except Exception as e:  # noqa: BLE001
@@ -239,6 +249,7 @@ def _ingest_media_file(path: Path, title: str, tags: list[str] | None, project_i
         db.upsert_source(platform="file", external_id=ext_id, duration=duration, transcript_kind="transcribed",
                          language=lang, status="ready", error=None)
         n = embed_pending()
+        _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": src["title"], "segments": len(segments), "chunks": len(chunks), "embedded": n}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
@@ -259,6 +270,7 @@ def ingest_text(title: str, text: str, url: str | None = None, tags: list[str] |
     db.replace_transcript(src["id"], segments, chunks)
     db.upsert_source(platform="manual", external_id=ext_id, duration=duration, transcript_kind="manual", status="ready")
     n = embed_pending()
+    _after_ready(src["id"], project_id)
     return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks), "embedded": n}
 
 

@@ -45,6 +45,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
                                             original_name=payload.get("name"))
         finally:
             path.unlink(missing_ok=True)
+    if kind == "suggest_findings":
+        from .findings import suggest_for_project
+        return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress)
     if kind == "reembed":
         return {"embedded": embed_pending(limit=payload.get("limit", 100000))}
     raise RuntimeError(f"unknown job kind {kind}")
@@ -92,3 +95,12 @@ def wait_for_idle(poll: float = 1.0) -> None:
         if row["n"] == 0:
             return
         time.sleep(poll)
+
+
+def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
+    """After a source becomes ready: queue finding suggestions for each project it belongs to (if enabled)."""
+    if not settings.auto_suggest or not settings.anthropic_api_key:
+        return
+    pids = [project_id] if project_id else db.projects_for_source(source_id)
+    for pid in pids:
+        db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]})

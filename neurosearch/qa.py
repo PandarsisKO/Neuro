@@ -64,7 +64,8 @@ Pinned findings so far (do not repeat them unless asked; build on them):
 {findings}
 Known project facts (decisions, constraints, requirements):
 {facts}
-Project context from the user: {context}
+What the user told us when setting up the project (treat as requirements, not suggestions):
+{steering}
 """
 
 
@@ -151,7 +152,7 @@ def ask(
         findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
         facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
         project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings,
-                                             facts=facts, context=project.get("context") or "(none)")
+                                             facts=facts, steering=db.project_steering(project))
     else:
         project_block = ""
     system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
