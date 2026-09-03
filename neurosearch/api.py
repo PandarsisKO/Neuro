@@ -13,6 +13,7 @@ import csv
 import io
 import logging
 import re
+import time
 import secrets
 import tempfile
 from contextlib import asynccontextmanager
@@ -230,6 +231,26 @@ def api_ingest_html(project_id: str, body: HtmlIn) -> dict[str, Any]:
     if len(body.html) > 8_000_000:
         raise HTTPException(413, "page too large")
     return ingest.ingest_webpage(body.url, tags=body.tags, project_id=project_id, title=body.title, html=body.html)
+
+
+class SessionIngestIn(BaseModel):
+    url: str
+    title: str | None = None
+    cookies: list[dict[str, Any]] = []
+    tags: list[str] = []
+
+
+@app.post("/api/projects/{project_id}/ingest/with-session", dependencies=[Depends(require_auth)])
+def api_ingest_with_session(project_id: str, body: SessionIngestIn) -> dict[str, Any]:
+    """One video/post from a site that needs a login (Instagram reel, private Vimeo…): the extension lends the
+    browser's cookies for that host; they are kept server-side only, one file per request."""
+    import hashlib
+    from .courses import write_cookie_file
+    name = "session-" + hashlib.sha1(f"{body.url}{time.time()}".encode()).hexdigest()[:12]
+    cookies_file = write_cookie_file(body.cookies, name) if body.cookies else None
+    job = jobs.enqueue("ingest_url", {"url": body.url, "tags": body.tags, "project_id": project_id, "title": body.title,
+                                      "cookies_file": cookies_file, "referer": body.url, "review": False})
+    return {"job_id": job["id"], "cookies": bool(cookies_file)}
 
 
 class RankIn(BaseModel):

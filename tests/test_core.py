@@ -564,3 +564,16 @@ def test_blocked_site_message(monkeypatch):
     import pytest
     with pytest.raises(webpage.Blocked, match="blocks automated readers"):
         webpage.fetch("https://x.com/a")
+
+
+def test_instagram_urls(client):
+    from neurosearch import media, ingest
+    assert media.classify_url("https://www.instagram.com/sbaloanguy1/") == "instagram_profile"
+    assert media.classify_url("https://www.instagram.com/reel/Cabc123/") == "instagram"
+    import pytest
+    with pytest.raises(RuntimeError, match="individual reel"):
+        ingest.ingest_url("https://www.instagram.com/sbaloanguy1/")
+    p = client.post("/api/projects", headers=H, json={"name": "IG", "brief": "x"}).json()
+    r = client.post(f"/api/projects/{p['id']}/ingest/with-session", headers=H, json={"url": "https://www.instagram.com/reel/Cabc123/",
+        "cookies": [{"domain": ".instagram.com", "name": "sessionid", "value": "abc", "path": "/", "secure": True}]}).json()
+    j = db.get_job(r["job_id"]); assert r["cookies"] and j["payload"]["cookies_file"].endswith(".txt") and j["payload"]["review"] is False

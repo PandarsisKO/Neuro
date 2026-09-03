@@ -17,6 +17,21 @@ $('#sendPage').onclick = async () => {
   $('#sendPage').disabled = true; $('#pageMsg').textContent = 'capturing page…';
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const host = new URL(tab.url).hostname.replace(/^www\./, '');
+    const MEDIA = ['instagram.com', 'tiktok.com', 'vimeo.com', 'loom.com', 'facebook.com', 'x.com', 'twitter.com', 'wistia.com'];
+    if (MEDIA.some(h => host === h || host.endsWith('.' + h))) {
+      // a video/post page: send the link plus this site's cookies so the app can download it as you
+      $('#pageMsg').textContent = 'collecting this site\'s session…';
+      let cookies = [];
+      const base = host.split('.').slice(-2).join('.');
+      for (const dom of new Set([host, base, '.' + base])) { try { cookies = cookies.concat(await chrome.cookies.getAll({ domain: dom })); } catch (e) {} }
+      const seen = new Set(); cookies = cookies.filter(c => { const k = c.domain + '|' + c.name + '|' + c.path; if (seen.has(k)) return false; seen.add(k); return true; });
+      const r = await api(`/api/projects/${pid}/ingest/with-session`, { method: 'POST', body: JSON.stringify({ url: tab.url, title: tab.title,
+        cookies: cookies.map(c => ({ domain: c.domain, name: c.name, value: c.value, path: c.path, secure: c.secure, expirationDate: c.expirationDate })) }) });
+      await chrome.storage.local.set({ lastProject: pid });
+      $('#pageMsg').innerHTML = `<span class="ok">Queued this video${r.cookies ? ' with your session' : ''}.</span> Watch the app's Sources tab.`;
+      $('#sendPage').disabled = false; return;
+    }
     const [{ result: cap }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href, title: document.title, html: document.documentElement.outerHTML }) });
     $('#pageMsg').textContent = 'sending…';
     const r = await api(`/api/projects/${pid}/ingest/html`, { method: 'POST', body: JSON.stringify({ url: cap.url, title: cap.title, html: cap.html }) });

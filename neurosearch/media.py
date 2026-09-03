@@ -90,7 +90,9 @@ def classify_url(url: str) -> str:
             return "channel"
         return "video"
     if "instagram.com" in host:
-        return "instagram"
+        if re.search(r"/(reel|reels|p|tv)/[A-Za-z0-9_-]+", u.path):
+            return "instagram"
+        return "instagram_profile"
     if "loom.com" in host:
         return "media"
     from .webpage import looks_like_media

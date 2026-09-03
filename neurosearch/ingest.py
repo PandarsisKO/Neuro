@@ -101,7 +101,11 @@ def ingest_url(
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
     if kind == "web":
-        return ingest_webpage(url, tags=tags, project_id=project_id, title=title, progress=progress)
+        return ingest_webpage(url, tags=tags, project_id=project_id, title=title, progress=progress, html=None)
+    if kind == "instagram_profile":
+        raise RuntimeError("Instagram profiles can't be listed without logging in, and bulk pulls with a login get accounts "
+                           "flagged. Paste individual reel or post links instead (instagram.com/reel/… or /p/…) — or open a "
+                           "reel in Chrome and use the extension → Send this page.")
     platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
     ext_id = _external_id_from_url(url, platform)
     existing = db.find_source(platform, ext_id) if ext_id else None
@@ -168,6 +172,10 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop,
     progress(0.05, "fetching metadata…")
     info = media.fetch_info(url, cookies_file=cookies_file, referer=referer)
     if not info:
+        if platform == "instagram" and not cookies_file:
+            raise RuntimeError("Instagram wants a login for this reel. Open it in Chrome and use the Neuro Search extension → "
+                               "'Send this page' (it lends your Instagram session for this one video), or paste the reel's "
+                               "text into Sources → Paste text.")
         raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
     fields = media.info_to_source_fields(info, platform)
     if min_date and fields.get("published_at") and fields["published_at"] < min_date:
