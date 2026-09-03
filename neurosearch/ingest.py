@@ -111,8 +111,8 @@ def ingest_url(
         mx = min(max_videos or settings.default_max_videos or media.IG_MAX, media.IG_MAX)
         info, entries = media.enumerate_instagram(url, cookies_file, limit=media.IG_MAX)
         if not entries:
-            raise RuntimeError("Instagram returned no posts for that profile (private account you don't follow, or a "
-                               "temporary block — try again later).")
+            raise RuntimeError("Instagram listed no posts for that profile with your session (private account you don't "
+                               "follow, or Instagram is rate-limiting — wait a few minutes and send it again).")
         coll = db.upsert_collection("instagram", info["id"], info["url"], info["title"])
         if project_id:
             db.add_project_collections(project_id, [coll["id"]])

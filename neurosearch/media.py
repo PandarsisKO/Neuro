@@ -102,8 +102,11 @@ def enumerate_instagram(url: str, cookies_file: str, limit: int = IG_MAX) -> tup
     limit = max(1, min(int(limit or IG_MAX), IG_MAX))
     entries: list[dict[str, Any]] = []
     seen: set[str] = set()
-    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, url, extract_flat=True, skip_download=True, playlistend=limit)) as ydl:
+    lg = _Collect()
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, url, extract_flat=True, skip_download=True, playlistend=limit, logger=lg)) as ydl:
         res = ydl.extract_info(f"https://www.instagram.com/{user}/", download=False)
+    if not res and lg.last():
+        raise RuntimeError(_friendly(lg.last(), url))
     for e in _flatten(res or {}):
         vid = e.get("id") or ""
         u = e.get("url") or e.get("webpage_url") or ""
@@ -231,17 +234,50 @@ def _flatten(res: dict[str, Any]) -> list[dict[str, Any]]:
 
 # ------------------------------------------------------ metadata/captions
 
+class _Collect:
+    """yt-dlp logger that keeps the real error text (ignoreerrors=True otherwise swallows it)."""
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+    def debug(self, msg: str) -> None: pass
+    def info(self, msg: str) -> None: pass
+    def warning(self, msg: str) -> None:
+        log.debug("yt-dlp: %s", msg)
+    def error(self, msg: str) -> None:
+        m = re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).replace("ERROR: ", "")
+        m = re.split(r";\s*please report this issue", m)[0].strip()
+        self.errors.append(m)
+        log.warning("yt-dlp: %s", msg)
+    def last(self) -> str:
+        return self.errors[-1][:400] if self.errors else ""
+
+
+def _friendly(err: str, url: str) -> str:
+    e = err.lower()
+    if "instagram" in url:
+        if "login" in e or "log in" in e or "authentication" in e or "rate-limit" in e or "429" in e or "401" in e:
+            return "Instagram wants a login for this (or rate-limited the session). If you sent it through the extension, " \
+                   "try again in a few minutes; Instagram sometimes refuses the first request from a new client. Detail: " + err
+        if "no video" in e or "unsupported" in e or "image" in e or "there is no video" in e:
+            return "This Instagram post has no video (images/carousel) — nothing to transcribe. Detail: " + err
+    return err
+
+
 def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
-    """Full metadata for one item (no download)."""
-    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True)) as ydl:
+    """Full metadata for one item (no download). Raises RuntimeError carrying yt-dlp's real reason on failure."""
+    lg = _Collect()
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, logger=lg)) as ydl:
         try:
             info = ydl.extract_info(url, download=False)
         except Exception as e:  # noqa: BLE001
             if BOT_CHECK.search(str(e)):
                 raise
-            raise RuntimeError(f"metadata fetch failed: {e}") from e
+            raise RuntimeError(_friendly(f"metadata fetch failed: {e}", url)) from e
     if info and info.get("_type") == "playlist" and info.get("entries"):
         info = next((e for e in info["entries"] if e), None)
+    if not info and lg.last():
+        if BOT_CHECK.search(lg.last()):
+            raise RuntimeError(lg.last())   # polite() turns this into a RateLimited pause on exit
+        raise RuntimeError(_friendly(lg.last(), url))
     return info
 
 
