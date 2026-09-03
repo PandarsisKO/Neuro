@@ -192,6 +192,25 @@ CREATE TABLE IF NOT EXISTS discoveries (
 );
 CREATE INDEX IF NOT EXISTS ix_discoveries_project ON discoveries(project_id, status);
 
+CREATE TABLE IF NOT EXISTS usage (
+    id            INTEGER PRIMARY KEY,
+    ts            REAL NOT NULL,
+    kind          TEXT NOT NULL,     -- answer | findings | plan | discover | synthesis | embed | whisper
+    model         TEXT,
+    input_tokens  INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    seconds       REAL DEFAULT 0,
+    cost          REAL NOT NULL,
+    project_id    TEXT,
+    source_id     TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
+
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id         TEXT PRIMARY KEY,
     project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
@@ -591,6 +610,19 @@ def skip_queued_siblings(collection_id: str, reason: str) -> int:
                          (reason, now(), pl.get("source_id")))
             n += 1
     return n
+
+
+def kv_get(key: str) -> str | None:
+    row = connect().execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def kv_set(key: str, value: str | None) -> None:
+    with tx() as conn:
+        if value is None:
+            conn.execute("DELETE FROM kv WHERE key=?", (key,))
+        else:
+            conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
 def requeue_job(job_id: str, delay: float = 0, message: str | None = None) -> None:

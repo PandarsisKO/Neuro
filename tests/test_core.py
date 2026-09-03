@@ -371,3 +371,32 @@ def test_age_cutoff(client, monkeypatch):
             db.update_job(j["id"], status="failed", message=str(e))
     statuses = {s["external_id"]: s["status"] for s in db.list_sources(limit=1000) if s["external_id"] in dates}
     assert statuses["vid00000000"] == "ready" and statuses["vid10000000"] == "skipped" and statuses["vid20000000"] == "skipped"
+
+
+def test_budget_valve(client, monkeypatch):
+    from neurosearch import usage, jobs
+    # record spend then set a tiny daily budget -> paid jobs wait, queue keeps order, resume when raised
+    usage.record("findings", "claude-sonnet-4-6", input_tokens=1_000_000, output_tokens=0)   # $3
+    u = client.get("/api/usage", headers=H).json()
+    assert u["today"] >= 3.0 and u["blocked"] is None
+    client.post("/api/usage/budget", headers=H, json={"daily": 2})
+    u = client.get("/api/usage", headers=H).json()
+    assert "daily budget reached" in (u["blocked"] or "")
+    ok, reason, wait = usage.check()
+    assert not ok and wait >= 60
+    j = db.create_job("reembed", {})
+    # run the worker loop body once: the job must be re-queued, not failed
+    job = db.claim_job()
+    try:
+        jobs.run_job(job)
+    except usage.BudgetPaused as e:
+        db.requeue_job(job["id"], delay=min(e.wait, 3600), message=f"paused: {e}")
+    row = db.get_job(j["id"])
+    assert row["status"] == "queued" and "paused" in row["message"]
+    # manual pause/resume clears the wait
+    client.post("/api/usage/budget", headers=H, json={"daily": 100, "paused": True})
+    assert "paused by you" in client.get("/api/usage", headers=H).json()["blocked"]
+    client.post("/api/usage/budget", headers=H, json={"paused": False})
+    assert client.get("/api/usage", headers=H).json()["blocked"] is None
+    assert db.get_job(j["id"])["not_before"] is None
+    db.update_job(j["id"], status="done")

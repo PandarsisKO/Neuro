@@ -166,6 +166,37 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
     return {"jobs": [j["id"] for j in created]}
 
 
+@app.get("/api/usage", dependencies=[Depends(require_auth)])
+async def api_usage() -> dict[str, Any]:
+    from . import usage
+    t = usage.totals()
+    ok, reason, _ = usage.check()
+    t["blocked"] = None if ok else reason
+    return t
+
+
+class BudgetIn(BaseModel):
+    daily: float | None = None
+    monthly: float | None = None
+    paused: bool | None = None
+
+
+@app.post("/api/usage/budget", dependencies=[Depends(require_auth)])
+async def api_budget(body: BudgetIn) -> dict[str, Any]:
+    from . import usage
+    if body.daily is not None:
+        db.kv_set("daily_budget", str(body.daily))
+    if body.monthly is not None:
+        db.kv_set("monthly_budget", str(body.monthly))
+    if body.paused is not None:
+        db.kv_set("queue_paused", "1" if body.paused else None)
+        if not body.paused:
+            # wake anything waiting on the valve
+            with db.tx() as conn:
+                conn.execute("UPDATE jobs SET not_before=NULL WHERE status='queued'")
+    return usage.totals()
+
+
 @app.get("/api/defaults", dependencies=[Depends(require_auth)])
 async def api_defaults() -> dict[str, Any]:
     return {"since_years": settings.default_since_years, "max_videos": settings.default_max_videos}

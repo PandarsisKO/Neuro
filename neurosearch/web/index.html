@@ -161,7 +161,7 @@
 
 <!-- ============ HOME ============ -->
 <div id="home">
-  <div class="top"><h1>Neuro Search</h1><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
+  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
   <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
   <div class="grid" id="projGrid"></div>
 </div>
@@ -183,7 +183,7 @@
     </nav>
     <div class="chats" id="chatList"></div>
     <div class="foot" id="wsFoot"></div>
-    <div style="padding:8px 12px;border-top:1px solid var(--line)"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted" id="sideSpend" style="font-size:11.5px" title="estimated API spend"></span></div>
   </aside>
 
   <div id="main">
@@ -307,6 +307,11 @@
         <div id="facts" style="margin-top:8px"></div>
         <div class="row" style="margin-top:8px"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
       </div>
+      <div class="card"><b>Spending valve</b>
+        <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>
+        <div class="row" style="margin-top:8px"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
+        <div class="muted" id="bBreak" style="margin-top:6px"></div>
+      </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
     </div>
@@ -353,7 +358,12 @@ window.addEventListener('hashchange', route);
 function setHash(view, conv) { const h = `#p/${state.project.id}/${view}` + (conv ? '/' + conv : ''); if (location.hash !== h) history.replaceState(null, '', h); }
 
 // ================= home =================
+async function loadSpend() {
+  try { const u = await api('/api/usage'); const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '');
+    const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } return u; } catch (e) { return null; }
+}
 async function goHome() {
+  loadSpend();
   state.project = null; state.conv = null;
   $('#ws').classList.remove('active'); $('#home').style.display = '';
   if (location.hash) history.replaceState(null, '', location.pathname);
@@ -415,7 +425,7 @@ async function openProject(id, view, conv) {
   const fresh = !state.project || state.project.id !== id;
   state.project = p;
   $('#home').style.display = 'none'; $('#ws').classList.add('active');
-  $('#wsName').textContent = p.name;
+  $('#wsName').textContent = p.name; loadSpend();
   $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
   $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
   $('#epGoal').value = p.goal || ''; $('#epAudience').value = p.audience || ''; $('#epOutput').value = p.output_pref || ''; $('#epSourcePrefs').value = p.source_prefs || ''; $('#epQuestions').value = (p.questions || []).join('\n');
@@ -436,7 +446,7 @@ function showView(v, push = true) {
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
   if (v === 'plan') loadPlan();
-  if (v === 'settings') api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || []));
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); }
   $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
@@ -620,6 +630,13 @@ async function loadCoursePane() {
   const cs = (await api('/api/collections')).filter(c => c.kind === 'course');
   $('#courseList').innerHTML = cs.length ? '<b>Imported courses</b>' + cs.map(c => `<div class="muted" style="padding:4px 0">🎓 ${esc(c.title)} — ${c.n_sources} videos</div>`).join('') : '';
 }
+async function loadBudget() {
+  const u = await api('/api/usage'); $('#bDaily').value = u.daily_budget; $('#bMonthly').value = u.monthly_budget;
+  const kinds = Object.entries(u.month_by_kind || {}).map(([k, v]) => `${k} $${v.toFixed(2)}`).join(' · ');
+  $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
+}
+async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
+async function togglePause(p) { await post('/api/usage/budget', { paused: p }); loadJobs(); }
 async function loadDiscoveries() {
   const ds = await api(`/api/projects/${state.project.id}/discoveries`);
   const show = ds.filter(d => d.status !== 'dismissed');
@@ -666,10 +683,11 @@ async function loadJobs() {
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
   const recentFailed = js.filter(j => j.status === 'failed').slice(0, 5);
   const show = [...active, ...recentFailed];
-  const st = await api('/api/stats');
-  $('#jobsCard').style.display = show.length || st.youtube?.paused ? '' : 'none';
+  const st = await api('/api/stats'); const u = await loadSpend();
+  $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
+  if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
-  $('#jobs').innerHTML = show.map(j => `<div class="job"><span class="st ${j.status}">${j.status}</span>
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
   clearTimeout(jobsTimer);

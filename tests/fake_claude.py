@@ -55,7 +55,8 @@ class _Msgs:
             text = "# Plan\n\nSynthesized."
         else:
             text = "Answer from the sources [1]."
-        return _Blk(stop_reason="end_turn", content=[_Blk(type="text", text=text, citations=None)])
+        return _Blk(stop_reason="end_turn", model="claude-sonnet-4-6", usage=_Blk(input_tokens=12000, output_tokens=800, server_tool_use=None),
+                    content=[_Blk(type="text", text=text, citations=None)])
 
 
 class Anthropic:

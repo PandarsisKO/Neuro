@@ -63,6 +63,11 @@ def discover(project_id: str, refine: str | None = None, count: int = 10) -> dic
         tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],
         messages=[{"role": "user", "content": "\n".join(user)}],
     )
+    try:
+        from . import usage
+        usage.record_anthropic(resp, "discover", project_id=project_id)
+    except Exception:  # noqa: BLE001
+        pass
     text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text").strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     s, e = text.find("{"), text.rfind("}")

@@ -88,6 +88,11 @@ def transcribe_file(
                     kwargs["language"] = language
                 res = client.audio.transcriptions.create(**kwargs)
             detected = detected or getattr(res, "language", None)
+            try:
+                from . import usage
+                usage.record("whisper", settings.transcribe_model, seconds=float(getattr(res, "duration", 0) or 0) or PIECE_SECONDS)
+            except Exception:  # noqa: BLE001
+                pass
             for s in getattr(res, "segments", None) or []:
                 start = float(getattr(s, "start", 0)) + offset
                 end = float(getattr(s, "end", start)) + offset

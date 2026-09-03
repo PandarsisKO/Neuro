@@ -184,6 +184,11 @@ def ask(
         if tools:
             kwargs["tools"] = tools
         resp = client.messages.create(**kwargs)
+        try:
+            from . import usage
+            usage.record_anthropic(resp, "answer", project_id=project_id)
+        except Exception:  # noqa: BLE001
+            pass
         tool_results: list[dict[str, Any]] = []
         for block in resp.content:
             btype = getattr(block, "type", None)

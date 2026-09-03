@@ -31,6 +31,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         db.update_job(jid, progress=p, message=m)
 
     kind = job["kind"]
+    from . import usage
+    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed"):
+        usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
                                  progress=progress, force=bool(payload.get("force")),
@@ -69,6 +72,14 @@ def _worker(n: int) -> None:
             db.update_job(job["id"], status="done", progress=1.0, message="done", result=result)
         except Exception as e:  # noqa: BLE001
             from .media import RateLimited, rate_limit_status
+            from .usage import BudgetPaused
+            if isinstance(e, BudgetPaused):
+                db.requeue_job(job["id"], delay=min(e.wait, 3600), message=f"paused: {e}")
+                sid = (job.get("payload") or {}).get("source_id")
+                if sid:
+                    db.set_source_status(sid, "pending")
+                _stop.wait(5)
+                continue
             if isinstance(e, RateLimited) or isinstance(getattr(e, "__cause__", None), RateLimited):
                 db.requeue_job(job["id"], delay=rate_limit_status()["seconds_left"] + 5, message=f"paused: {e}")
                 # keep the source from showing as failed

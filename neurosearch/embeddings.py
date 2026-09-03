@@ -22,6 +22,11 @@ def embed_texts(texts: list[str]) -> list[np.ndarray]:
     for i in range(0, len(texts), BATCH):
         batch = [t[:8000] for t in texts[i:i + BATCH]]
         res = client.embeddings.create(model=settings.embedding_model, input=batch)
+        try:
+            from . import usage
+            usage.record("embed", settings.embedding_model, input_tokens=int(getattr(getattr(res, "usage", None), "total_tokens", 0) or 0))
+        except Exception:  # noqa: BLE001
+            pass
         for d in sorted(res.data, key=lambda d: d.index):
             v = np.asarray(d.embedding, dtype=np.float32)
             out.append(v / (np.linalg.norm(v) or 1.0))

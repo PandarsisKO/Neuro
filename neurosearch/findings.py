@@ -75,14 +75,17 @@ def _windows(segs: list[dict[str, Any]], platform: str) -> list[str]:
     return out
 
 
-def _call(system: str, user: str) -> dict[str, Any]:
+def _call(system: str, user: str, project_id: str | None = None, source_id: str | None = None) -> dict[str, Any]:
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     import anthropic
+    from . import usage
 
+    usage.guard(usage.estimate_findings(len(user)))
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=system,
                                   messages=[{"role": "user", "content": user}])
+    usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
@@ -108,7 +111,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     substances: list[int] = []
     for i, w in enumerate(windows):
         part = f" (part {i + 1}/{len(windows)})" if len(windows) > 1 else ""
-        res = _call(SYSTEM, head + f"\nTRANSCRIPT{part}:\n{w}\n\nExtract the findings now.")
+        res = _call(SYSTEM, head + f"\nTRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id)
         if res.get("summary"):
             summaries.append(str(res["summary"]))
         if isinstance(res.get("substance"), (int, float)):
@@ -148,6 +151,12 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             suggest_for_source(project_id, sid)
             done += 1
         except Exception as e:  # noqa: BLE001
+            from .usage import BudgetPaused
+            if isinstance(e, BudgetPaused):
+                # hand the remaining sources back to the queue as a fresh job and stop
+                remaining = ids[i:]
+                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining})
+                raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)
     return {"sources": len(ids), "done": done, "failed": len(failed)}

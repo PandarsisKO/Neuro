@@ -182,6 +182,18 @@ fly deploy
 Then open `https://<your-app-name>.fly.dev` on your phone and sign in with the token. Railway/Render work
 the same way with the Dockerfile — just mount a persistent volume at `/data` and set the same env vars.
 
+### The spending valve (and picking up where it left off)
+
+Every paid call — answers, findings analysis, plans, discovery, embeddings, Whisper — is logged with an estimated
+cost, shown as "$x today · $y this month" in the sidebar. Set a **daily** and **monthly budget** in Settings
+(defaults $5 / $50, or `NEUROSEARCH_DAILY_BUDGET_USD` / `NEUROSEARCH_MONTHLY_BUDGET_USD`). When a budget is
+reached the background queue **pauses** — nothing fails, nothing is lost, jobs keep their order — and resumes at
+midnight / the 1st, or immediately when you raise the limit. **Pause queue / Resume** in Sources gives you the same
+valve by hand. The queue lives in the database, survives restarts, and never re-does a finished video, so a
+400-video channel can be spread over several days without babysitting. Things you start yourself (a chat
+question, a plan build) are still allowed while the queue is paused. Prices are estimates; override with
+`NEUROSEARCH_PRICES='{"claude-sonnet-4-6":[3,15]}'` if the models or rates change.
+
 ### Only recent videos (whole channels)
 
 Channels and playlists default to **videos from the last 2 years, at most 150** (`NEUROSEARCH_SINCE_YEARS`,

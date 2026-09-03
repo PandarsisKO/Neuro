@@ -136,6 +136,8 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop,
         dur = (info.get("duration") or 0) / 60
         if dur > settings.max_transcribe_minutes:
             raise RuntimeError(f"no captions and duration {dur:.0f} min exceeds transcription limit")
+        from . import usage
+        usage.guard(usage.estimate_transcription(info.get("duration")))
         progress(0.2, "no captions; downloading audio…")
         audio = media.download_audio(url, cookies_file=cookies_file, referer=referer)
         try:
@@ -218,7 +220,8 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
         return store_transcript(payload, progress=progress)
     except Exception as e:  # noqa: BLE001
         from .media import RateLimited
-        if isinstance(e, RateLimited):
+        from .usage import BudgetPaused
+        if isinstance(e, (RateLimited, BudgetPaused)):
             raise
         log.exception("ingest failed for %s", source_id)
         db.set_source_status(source_id, "failed", str(e)[:1000])

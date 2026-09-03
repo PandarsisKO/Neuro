@@ -150,6 +150,11 @@ def _call_claude(system: str, user: str, max_tokens: int = 12000) -> str:
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     resp = client.messages.create(model=settings.answer_model, max_tokens=max_tokens, system=system,
                                   messages=[{"role": "user", "content": user}])
+    try:
+        from . import usage
+        usage.record_anthropic(resp, "plan")
+    except Exception:  # noqa: BLE001
+        pass
     return "".join(getattr(b, "text", "") for b in resp.content)
 
 

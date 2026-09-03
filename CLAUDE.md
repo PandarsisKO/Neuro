@@ -20,3 +20,4 @@ Suggested findings: `findings.py`; notes have status suggested|approved|dismisse
 Project steering fields (goal, audience, output_pref, source_prefs, questions, context) are rendered by `db.project_steering` into every prompt.
 Discover sources: `discover.py` (Claude + web_search) → `discoveries` table; UI pane in Sources.
 Course import: `extension/` (MV3; scanner.js runs in the page, popup.js posts to /api/projects/{id}/course-import) → `courses.py` writes data/cookies/<collection>.txt; ingest_url jobs carry cookies_file/referer/title/collection_id.
+Spend/budget: `usage.py` (usage table, `guard()` raises BudgetPaused → jobs re-queue with not_before; kv table holds budgets + queue_paused).

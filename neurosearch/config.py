@@ -44,6 +44,9 @@ class Settings:
     # bulk defaults for channels/playlists: only videos newer than this many years, and at most this many
     default_since_years: float = field(default_factory=lambda: float(_env("NEUROSEARCH_SINCE_YEARS", "2") or 2))
     default_max_videos: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_VIDEOS", "150") or 150))
+    daily_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_DAILY_BUDGET_USD", "5") or 5))
+    monthly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_MONTHLY_BUDGET_USD", "50") or 50))
+    prices_json: str | None = field(default_factory=lambda: _env("NEUROSEARCH_PRICES"))
     auto_suggest: bool = field(default_factory=lambda: (_env("NEUROSEARCH_AUTO_SUGGEST", "true") or "").lower() == "true")
 
     # Chunking (seconds)

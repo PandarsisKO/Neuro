@@ -154,6 +154,11 @@ def synthesize_masterplan(project_id: str) -> str:
         model=settings.answer_model, max_tokens=6000, system=MASTERPLAN_SYSTEM,
         messages=[{"role": "user", "content": f"Project name: {p['name']}\n\n" + "\n".join(material) + "\n\nWrite the masterplan now."}],
     )
+    try:
+        from . import usage
+        usage.record_anthropic(resp, "synthesis", project_id=project_id)
+    except Exception:  # noqa: BLE001
+        pass
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
     return text or _fallback_masterplan(p)
 
