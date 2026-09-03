@@ -571,28 +571,38 @@ function showPane(p) {
   if (p === 'discover') loadDiscoveries();
   if (p === 'course') loadCoursePane();
 }
+let rvSig = '';
+const rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
+const rvFilterText = {};
 async function loadReviews() {
   const rvs = await api(`/api/projects/${state.project.id}/reviews`).catch(() => []);
+  // Only rebuild the card when the list itself changed; the poller calls this every few seconds
+  const sig = rvs.map(c => c.id + ':' + c.proposed.map(s => s.id).join(',')).join('|');
+  if (sig === rvSig) return;
+  rvSig = sig;
   $('#reviewWrap').innerHTML = rvs.map(c => {
+    const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
     const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
     const est = (n * 0.04).toFixed(2);
     return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
       <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted">${n} videos${mins ? ` · ${Math.round(mins / 60)} h` : ''} · ≈ $${est} to analyse</span></div>
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Untick what you don't want, then start. Videos older than your cutoff are skipped automatically once dates are known.</div>
-      <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" oninput="rvFilter('${c.id}', this.value)"></div>
-      <div class="list">${c.proposed.map(s => `<label class="li"><input type="checkbox" checked data-id="${s.id}"><span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span><span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
+      <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
+      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)"><span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span><span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}')">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }
-function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') l.querySelector('input').checked = on; }); }
-function rvFilter(id, q) { q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
+function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); }
+function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
+function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
 async function rvStart(id) {
   const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
   if (!ids.length) return alert('Nothing selected.');
   const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
+  delete rvUnchecked[id]; delete rvFilterText[id]; rvSig = '';
   loadReviews(); loadJobs(); loadSources();
 }
-async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); loadReviews(); }
+async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; rvSig = ''; loadReviews(); }
 async function loadSources() {
   loadReviews();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
