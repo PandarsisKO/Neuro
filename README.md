@@ -82,6 +82,14 @@ From a project (Projects tab → Open) you can download:
 
 CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
 
+### Discover sources (for when you don't know where to start)
+
+Sources → **Discover** searches the web for the leading creators, channels and podcasts for the project's brief
+and returns ~10 with who they are, why they matter for *your* brief, their angle or bias, a fit rating, depth
+level, and a starting video. Add the starting video or the whole channel with one click, dismiss what you don't
+want, and steer another run ("more practitioners, fewer gurus", "podcasts only"). Suggestions persist on the
+project and later runs skip what's already been proposed or added.
+
 ### Suggested findings
 
 Most long videos and podcasts are mostly fluff. When a source finishes ingesting into a project, the assistant
@@ -232,6 +240,7 @@ neurosearch/
   qa.py          Claude answers with citations, chat-ingest, project tools (+ optional web search)
   export.py      findings document and masterplan package
   findings.py    suggested findings + substance scoring per source
+  discover.py    find creators/channels/podcasts for the brief (web search)
   planner.py     Master Planner: plan generation, updates, statuses, markdown/HTML rendering
   remote.py      extract locally, store on a remote server
   api.py         FastAPI: REST, web UI, MCP mount, auth

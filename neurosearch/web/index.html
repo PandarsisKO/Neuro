@@ -104,6 +104,11 @@
   .transcript b{color:var(--link);font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
   .note .body{white-space:pre-wrap}
+  .d{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;background:var(--panel);box-shadow:var(--shadow)}
+  .d .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap} .d .h .nm{font-weight:650;font-size:15px}
+  .d .why{margin-top:4px;font-size:13.5px} .d .angle{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .d .sw{margin-top:6px;font-size:13px} .d .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .d.added{opacity:.75}
   .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start;box-shadow:var(--shadow)}
   .f .imp{flex:0 0 26px;text-align:center;font-size:11px;color:var(--muted);padding-top:3px}
   .f .imp b{display:block;font-size:15px;color:var(--warn)}
@@ -200,6 +205,7 @@
           <button data-pane="upload" onclick="showPane('upload')">Upload file</button>
           <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
           <button data-pane="library" onclick="showPane('library')">From library</button>
+          <button data-pane="discover" onclick="showPane('discover')">✨ Discover</button>
         </div>
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
@@ -219,6 +225,12 @@
           <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
           <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
           <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+        </div>
+        <div class="pane" id="pane-discover">
+          <div class="muted">Don't know where to start? The assistant searches the web for the leading creators, channels and podcasts for <i>this project's brief</i>, tells you why each matters and what their angle is, and gives you a starting video. Add a whole channel or just the starting video.</div>
+          <div class="row" style="margin-top:8px"><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
+          <div class="muted" id="discMsg" style="margin-top:6px"></div>
+          <div id="discList" style="margin-top:10px"></div>
         </div>
       </div>
       <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
@@ -518,6 +530,7 @@ function showPane(p) {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
   document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
   if (p === 'library') loadLibrary();
+  if (p === 'discover') loadDiscoveries();
 }
 async function loadSources() {
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
@@ -578,6 +591,39 @@ async function loadLibrary() {
   const rows = await api('/api/sources?' + p);
   $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
 }
+async function loadDiscoveries() {
+  const ds = await api(`/api/projects/${state.project.id}/discoveries`);
+  const show = ds.filter(d => d.status !== 'dismissed');
+  const KIND = { youtube_channel: '▶ YouTube channel', podcast: '🎙 Podcast', newsletter: '✉ Newsletter', website: '🌐 Website', person: '👤 Person' };
+  const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
+  $('#discList').innerHTML = show.map(d => `<div class="d ${d.status}">
+    <div class="h"><span class="nm">${d.url ? `<a href="${esc(d.url)}" target="_blank">${esc(d.name)}</a>` : esc(d.name)}</span><span class="tag">${KIND[d.kind] || esc(d.kind || '')}</span>${d.fit ? `<span class="tag" style="color:var(--warn)">fit ${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? `<span class="tag">${esc(d.depth)}</span>` : ''}${d.status === 'added' ? '<span class="tag" style="color:var(--ok)">added</span>' : ''}</div>
+    <div class="muted">${esc(d.known_for || '')}</div>
+    <div class="why">${esc(d.why || '')}</div>
+    ${d.angle ? `<div class="angle">Angle: ${esc(d.angle)}</div>` : ''}
+    ${(d.start_with || []).length ? `<div class="sw">Start with: ${d.start_with.map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">${esc(v.title)}</a>` : esc(v.title)).join(' · ')}</div>` : ''}
+    <div class="acts">
+      ${(d.start_with || []).filter(v => v.url && /youtu|\.mp3|podcast/i.test(v.url)).map(v => `<button class="small primary" onclick="discAdd(${d.id}, ${q(v.url)}, false)">＋ Add “${esc(v.title.slice(0, 40))}”</button>`).join('')}
+      ${d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url) ? `<button class="small" onclick="discAdd(${d.id}, ${q(d.url)}, true)">＋ Add whole channel</button>` : ''}
+      ${d.url && /youtube\.com/.test(d.url) ? `<a class="chip" href="${esc(d.url.replace(/\/$/, ''))}/videos" target="_blank">Browse videos</a>` : ''}
+      ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">Dismiss</button>` : ''}
+    </div></div>`).join('') || '<div class="muted">No suggestions yet — click <b>Find sources</b>.</div>';
+  if (show.length && show[0].note) $('#discMsg').textContent = show[0].note;
+}
+async function runDiscover() {
+  const btn = $('#discBtn'); btn.disabled = true; $('#discMsg').innerHTML = '<span class="spin"></span> searching the web for the people worth learning from (20–60 s)…';
+  try { const r = await post(`/api/projects/${state.project.id}/discover`, { refine: $('#discRefine').value || null }); $('#discMsg').textContent = (r.note || '') + (r.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); await loadDiscoveries(); }
+  catch (e) { $('#discMsg').textContent = 'error: ' + e.message; }
+  btn.disabled = false;
+}
+async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
+async function discAdd(id, url, whole) {
+  if (whole && !confirm('Add the whole channel? Every video will be transcribed and analysed — for a big channel that can take a while and cost a few dollars in API usage.')) return;
+  await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
+  await post(`/api/discoveries/${id}/status`, { status: 'added' });
+  loadDiscoveries(); loadJobs(); loadSources();
+}
+
 async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
 let jobsTimer;
 async function loadJobs() {

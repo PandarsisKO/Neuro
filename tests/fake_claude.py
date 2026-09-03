@@ -36,7 +36,14 @@ class _Blk:
 class _Msgs:
     def create(self, **kw):
         system = kw.get("system", "")
-        if "research analyst reading a transcript" in system:
+        if "research librarian" in system:
+            text = json.dumps({"note": "Start with the practitioner, then the contrarian.", "sources": [
+                {"name": "Dave Ramsey", "kind": "youtube_channel", "url": "https://www.youtube.com/@TheRamseyShow", "known_for": "Debt-free living",
+                 "why": "The most-cited mainstream voice on personal finance basics.", "angle": "Anti-debt absolutist; dismisses credit strategies.",
+                 "start_with": [{"title": "The 7 Baby Steps", "url": "https://www.youtube.com/watch?v=abc123def45"}], "fit": 5, "depth": "beginner"},
+                {"name": "The Money Guy Show", "kind": "youtube_channel", "url": "https://www.youtube.com/@MoneyGuyShow", "known_for": "Financial order of operations",
+                 "why": "More nuanced on investing than Ramsey.", "angle": "CFP-driven, pro-index-funds.", "start_with": [], "fit": 4, "depth": "intermediate"}]})
+        elif "research analyst reading a transcript" in system:
             text = json.dumps({"summary": "Compares static hosts and warns about DNS.", "substance": 72, "findings": [
                 {"title": "Cloudflare Pages is free", "finding": "Cloudflare Pages is free for static sites", "ts": "0:05", "quote": "cloudflare pages is free for static sites", "importance": 5},
                 {"title": "Leave MX records alone", "finding": "Never touch MX records during a migration", "ts": "3:40", "quote": "never touch MX records", "importance": 4}]})

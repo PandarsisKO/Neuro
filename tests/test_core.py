@@ -272,3 +272,21 @@ def test_project_onboarding(client):
     # settings round-trip keeps the new fields
     upd = client.put(f"/api/projects/{p['id']}", headers=H, json={"name": "Onboard", "goal": "g2", "questions": ["q3"]}).json()
     assert upd["goal"] == "g2" and upd["questions"] == ["q3"] and upd["audience"] == "me"
+
+
+def test_discover_sources(client, monkeypatch):
+    import anthropic
+    from tests.fake_claude import Anthropic
+    from neurosearch import discover
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(discover.settings, "anthropic_api_key", "fake")
+    p = client.post("/api/projects", headers=H, json={"name": "Money", "brief": "get out of debt and start investing"}).json()
+    r = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={}).json()
+    assert r["added"] == 2 and r["items"][0]["name"] == "Dave Ramsey" and r["items"][0]["start_with"][0]["url"].startswith("https")
+    # second run doesn't duplicate
+    r2 = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={"refine": "more contrarian"}).json()
+    assert r2["added"] == 0
+    ds = client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()
+    assert len(ds) == 2 and ds[0]["fit"] == 5
+    client.post(f"/api/discoveries/{ds[1]['id']}/status", headers=H, json={"status": "dismissed"})
+    assert [d["status"] for d in client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()] == ["new", "dismissed"]

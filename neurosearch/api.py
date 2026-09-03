@@ -609,6 +609,33 @@ async def api_plan_html(project_id: str) -> Any:
     return HTMLResponse(plan_html(plan, p))
 
 
+class DiscoverIn(BaseModel):
+    refine: str | None = None
+
+
+@app.get("/api/projects/{project_id}/discoveries", dependencies=[Depends(require_auth)])
+async def api_discoveries(project_id: str) -> list[dict[str, Any]]:
+    return db.list_discoveries(project_id)
+
+
+@app.post("/api/projects/{project_id}/discover", dependencies=[Depends(require_auth)])
+async def api_discover(project_id: str, body: DiscoverIn) -> dict[str, Any]:
+    from .discover import discover
+    return await anyio.to_thread.run_sync(lambda: discover(project_id, body.refine))
+
+
+class DiscStatusIn(BaseModel):
+    status: str   # added | dismissed | new
+
+
+@app.post("/api/discoveries/{disc_id}/status", dependencies=[Depends(require_auth)])
+async def api_discovery_status(disc_id: int, body: DiscStatusIn) -> dict[str, Any]:
+    row = db.set_discovery_status(disc_id, body.status)
+    if not row:
+        raise HTTPException(404)
+    return row
+
+
 class SuggestIn(BaseModel):
     source_ids: list[str] | None = None   # default: every ready source not yet analysed for this project
     force: bool = False                    # re-analyse even if already done

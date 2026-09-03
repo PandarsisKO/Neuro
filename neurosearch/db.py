@@ -173,6 +173,25 @@ CREATE TABLE IF NOT EXISTS plan_updates (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS discoveries (
+    id         INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    kind       TEXT,
+    url        TEXT,
+    known_for  TEXT,
+    why        TEXT,
+    angle      TEXT,
+    start_with TEXT,                  -- JSON list of {title, url}
+    fit        INTEGER,
+    depth      TEXT,
+    note       TEXT,                  -- run-level note from the librarian
+    refine     TEXT,                  -- the refinement text that produced this run, if any
+    status     TEXT NOT NULL DEFAULT 'new',   -- new | added | dismissed
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_discoveries_project ON discoveries(project_id, status);
+
 CREATE TABLE IF NOT EXISTS conversations (
     id         TEXT PRIMARY KEY,
     project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
@@ -774,6 +793,47 @@ def sources_being_analysed(project_id: str) -> set[str]:
         if pl.get("project_id") == project_id:
             out.update(pl.get("source_ids") or [])
     return out
+
+
+def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = "", refine: str | None = None) -> list[dict[str, Any]]:
+    existing = {d["name"].lower() for d in list_discoveries(project_id)}
+    out = []
+    with tx() as conn:
+        for it in items:
+            if it["name"].lower() in existing:
+                continue
+            cur = conn.execute(
+                """INSERT INTO discoveries (project_id, name, kind, url, known_for, why, angle, start_with, fit, depth, note, refine, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (project_id, it["name"], it.get("kind"), it.get("url"), it.get("known_for"), it.get("why"), it.get("angle"),
+                 json.dumps(it.get("start_with") or []), it.get("fit"), it.get("depth"), note, refine, now()))
+            out.append(cur.lastrowid)
+    rows = [d for d in list_discoveries(project_id) if d["id"] in set(out)]
+    return rows
+
+
+def list_discoveries(project_id: str, status: str | None = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM discoveries WHERE project_id=?"
+    args: list[Any] = [project_id]
+    if status:
+        sql += " AND status=?"; args.append(status)
+    sql += " ORDER BY fit DESC, created_at DESC"
+    rows = []
+    for r in connect().execute(sql, args).fetchall():
+        d = dict(r)
+        try:
+            d["start_with"] = json.loads(d.get("start_with") or "[]")
+        except ValueError:
+            d["start_with"] = []
+        rows.append(d)
+    return rows
+
+
+def set_discovery_status(disc_id: int, status: str) -> dict[str, Any] | None:
+    with tx() as conn:
+        conn.execute("UPDATE discoveries SET status=? WHERE id=?", (status, disc_id))
+        row = conn.execute("SELECT * FROM discoveries WHERE id=?", (disc_id,)).fetchone()
+        return dict(row) if row else None
 
 
 def projects_for_source(source_id: str) -> list[str]:

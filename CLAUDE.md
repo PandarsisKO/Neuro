@@ -18,3 +18,4 @@ Master Planner lives in `planner.py` (structured plan JSON + evidence map; `plan
 Tests use `tests/fake_claude.py` in place of the Anthropic client.
 Suggested findings: `findings.py`; notes have status suggested|approved|dismissed (list_project_notes defaults to approved).
 Project steering fields (goal, audience, output_pref, source_prefs, questions, context) are rendered by `db.project_steering` into every prompt.
+Discover sources: `discover.py` (Claude + web_search) → `discoveries` table; UI pane in Sources.
