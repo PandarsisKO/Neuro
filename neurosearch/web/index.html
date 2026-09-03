@@ -365,14 +365,14 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.10.4';
+const UI_VERSION = '0.10.5';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
     if (v !== UI_VERSION) {
       const d = document.createElement('div'); d.className = 'banner'; d.id = 'verBanner';
       d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:99;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
-      d.innerHTML = `⚠️ The page is version ${UI_VERSION} but the server is running ${v === 'old' ? 'an older version' : 'version ' + esc(v)}. Restart it to pick up the new code: in the terminal press <b>Ctrl+C</b>, then run <b>neurosearch serve</b>, then reload this page.`;
+      d.innerHTML = `⚠️ The page is version ${UI_VERSION} but the server is running ${v === 'old' ? 'an older version' : 'version ' + esc(v)}. Restart it to pick up the new code: in the terminal press <b>Ctrl+C</b>, then run <b>./start</b> (it will auto-restart on future updates), then reload this page.`;
       document.body.appendChild(d);
     }
   } catch (e) { /* offline */ }

@@ -22,11 +22,24 @@ def _init() -> None:
 
 
 @app.command()
-def serve(host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
-    """Run the web app + API + MCP endpoint (background workers included)."""
+def serve(host: str = "0.0.0.0", port: int = 8000,
+          reload: bool = typer.Option(False, help="Restart automatically when the code changes (so updates apply without Ctrl+C)")) -> None:
+    """Run the web app + API + MCP endpoint (background workers included). Alias: `neurosearch start`."""
     import uvicorn
 
-    uvicorn.run("neurosearch.api:app", host=host, port=port, reload=reload)
+    from . import __version__
+    typer.echo(f"Neuro Search v{__version__} → http://localhost:{port}  (Ctrl+C to stop)")
+    if reload:
+        uvicorn.run("neurosearch.api:app", host=host, port=port, reload=True,
+                    reload_dirs=[str(Path(__file__).parent)], reload_includes=["*.py", "*.html"])
+    else:
+        uvicorn.run("neurosearch.api:app", host=host, port=port)
+
+
+@app.command()
+def start(port: int = 8000) -> None:
+    """Start the app with auto-restart on code updates (same as `serve --reload`)."""
+    serve(port=port, reload=True)
 
 
 @app.command()

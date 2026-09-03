@@ -33,7 +33,7 @@ neurosearch ingest "https://www.youtube.com/playlist?list=..."     # a playlist
 neurosearch ingest "https://www.youtube.com/@somechannel" -t sales  # a whole channel, tagged
 neurosearch ask "what do they say about pricing objections?"
 neurosearch export --segments   # master sheet CSV with one row per timestamped chunk
-neurosearch serve               # web app at http://localhost:8000
+./start   # or: neurosearch start (auto-restarts on updates) · neurosearch serve (plain)               # web app at http://localhost:8000
 ```
 
 Ingestion runs in the background: playlists and channels fan out into one job per video, two at a time.
