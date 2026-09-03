@@ -114,17 +114,20 @@
   .d .dwhy{font-size:13px;margin-top:2px;color:var(--text)}
   .d .dmeta{font-size:12px;color:var(--muted);margin-top:3px}
   .d .dlinks{font-size:12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
-  .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start;box-shadow:var(--shadow)}
-  .f .imp{flex:0 0 26px;text-align:center;font-size:11px;color:var(--muted);padding-top:3px}
-  .f .imp b{display:block;font-size:15px;color:var(--warn)}
+  .f{display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:flex-start}
+  .f:last-child{border-bottom:0}
+  .f .fi{flex:0 0 44px;font-size:9px;letter-spacing:1px;color:var(--warn);padding-top:5px;white-space:nowrap} .f .fi .dim{color:var(--line)}
   .f .main{flex:1;min-width:0}
-  .f .ttl{font-weight:600;line-height:1.3}
-  .f .txt{font-size:13.5px;color:var(--text);margin-top:2px;line-height:1.45}
-  .f .quote{font-size:12.5px;color:var(--muted);font-style:italic;margin-top:4px;border-left:2px solid var(--line);padding-left:8px}
-  .f .meta{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
-  .f .meta .chip{margin:0}
-  .f .act{flex:0 0 auto;display:flex;gap:4px;flex-direction:column}
-  .f .act button{padding:4px 8px;font-size:12px}
+  .f .ttl{font-weight:650;font-size:14.5px;line-height:1.3}
+  .f .txt{font-size:13px;color:var(--muted);margin-top:1px;line-height:1.4}
+  .f .meta{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;font-size:12px}
+  .f .meta .chip{margin:0;padding:1px 7px;font-size:11.5px}
+  .f .qtoggle{font-size:11.5px;color:var(--muted)} .f .quote{font-size:12px;color:var(--muted);font-style:italic;flex-basis:100%}
+  .f .act{flex:0 0 auto;display:flex;gap:4px}
+  .f .act button{padding:3px 8px;font-size:12px}
+  .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
+  .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .fgroup .gh b{color:var(--text);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .note.gap{border-color:var(--banner-line);background:var(--banner)}
   /* ---- plan ---- */
   .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -263,13 +266,11 @@
     <!-- findings -->
     <div class="view" id="view-findings">
       <h2>Findings</h2>
-      <div class="muted" style="margin-bottom:10px">Approved findings feed the exports and the Master Plan. The assistant reads every source against the brief and proposes findings below — approve the ones worth keeping. You can also pin from any chat.</div>
+      <div class="row" style="margin-bottom:10px"><span class="muted" style="flex:1">What's worth keeping. Approved findings feed the exports and the Master Plan.</span>
+        <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
+        <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
+        <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
       <div id="suggestedWrap"></div>
-      <div class="row" style="margin-bottom:14px">
-        <a class="chip fixed" id="expFind" target="_blank">⬇ Findings (.md)</a>
-        <a class="chip fixed" id="expPlan" target="_blank">⬇ Research synthesis (.md)</a>
-        <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip — for ChatGPT / Claude / NotebookLM)</a>
-      </div>
       <div id="notes"></div>
     </div>
 
@@ -677,27 +678,39 @@ async function loadNotes() {
   const srcs = await api('/api/sources?project_id=' + state.project.id + '&limit=2000');
   const analysing = srcs.filter(x => x.analysing).length;
   if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
-  $('#suggestedWrap').innerHTML = (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') + `<div class="card" style="border-color:var(--suggest-line)">
-      <div class="row"><b style="flex:1">Suggested findings ${sug.length ? `(${sug.length})` : ''}</b>
-        ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
-        <button class="small" onclick="suggestNow(false)">Analyse new sources</button><button class="small ghost" onclick="suggestNow(true)">Re-analyse all</button></div>
-      <div class="muted" id="sugMsg"></div>
-      ${Object.entries(bySrc).map(([title, list]) => `<h3>${esc(title)}</h3>` + list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button>`)).join('')).join('')
-        || '<div class="muted" style="margin-top:6px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>'}
-    </div>`;
-  $('#notes').innerHTML = (notes.length ? '<h3>Approved</h3>' : '') + notes.map(n => n.content.startsWith('Gap:')
-      ? `<div class="note gap">⚠ <span class="body">${renderAnswer(n.content, n.citations || [])}</span><div class="muted" style="margin-top:6px"><a href="#" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div></div>`
-      : findingCard(n, `<button class="small ghost" onclick="del('/api/notes/${n.id}').then(loadNotes)">remove</button>`)).join('')
+  $('#suggestedWrap').innerHTML = (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') +
+    `<div class="row" style="margin-bottom:8px"><h3 style="margin:0;flex:1">Suggested ${sug.length ? `(${sug.length})` : ''}</h3>
+      ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
+      <button class="small ghost" onclick="suggestNow(false)" title="Analyse sources that haven't been read yet">Analyse new</button><button class="small ghost" onclick="suggestNow(true)" title="Read every source again">Re-analyse all</button></div>
+    <div class="muted" id="sugMsg"></div>` +
+    (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
+      list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
+      || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
+  const gaps = notes.filter(n => n.content.startsWith('Gap:')), ok = notes.filter(n => !n.content.startsWith('Gap:'));
+  const byS = {}; ok.forEach(n => { const k = (n.citations?.[0]?.title) || 'Pinned from chat'; (byS[k] = byS[k] || []).push(n); });
+  $('#notes').innerHTML = (ok.length ? `<h3 style="margin-top:18px">Approved (${ok.length})</h3>` : '') +
+    Object.entries(byS).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span></div>` +
+      list.map(n => findingCard(n, `<button class="small ghost" title="remove" onclick="del('/api/notes/${n.id}').then(loadNotes)">✕</button>`)).join('') + `</div>`).join('') +
+    (gaps.length ? `<h3>Gaps (${gaps.length})</h3>` + gaps.map(n => `<div class="note gap">⚠ <span class="body">${renderAnswer(n.content.slice(4), n.citations || [])}</span> <a href="#" class="muted" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div>`).join('') : '')
     || '<div class="empty">Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.</div>';
+}
+function splitFinding(n) {
+  // headline + one-line body; legacy/pinned notes get a headline derived from their first sentence
+  const raw = n.content.replace(/\s*\[\d+\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  if (n.title) return { title: n.title, body: raw };
+  const m = raw.match(/^(.{12,90}?[.!?])(\s|$)/);
+  const t = m ? m[1] : raw.slice(0, 80) + (raw.length > 80 ? '…' : '');
+  const rest = m ? raw.slice(m[1].length).trim() : (raw.length > 80 ? raw : '');
+  return { title: t.replace(/[.!?]$/, ''), body: rest };
 }
 function findingCard(n, actions) {
   const c = (n.citations || [])[0];
-  const body = n.content.replace(/\s*\[\d+\]\s*$/, '');
-  const imp = n.importance ? `<div class="imp"><b>${'●'.repeat(Math.min(n.importance, 5))}</b>${n.importance}/5</div>` : '<div class="imp"></div>';
+  const { title, body } = splitFinding(n);
+  const imp = n.importance ? `<span class="fi" title="importance ${n.importance}/5">${'●'.repeat(n.importance)}<span class="dim">${'●'.repeat(5 - n.importance)}</span></span>` : '<span class="fi"></span>';
   return `<div class="f">${imp}<div class="main">
-      ${n.title ? `<div class="ttl">${esc(n.title)}</div><div class="txt">${esc(body)}</div>` : `<div class="ttl" style="font-weight:500;white-space:pre-wrap">${renderAnswer(body, n.citations || [])}</div>`}
-      ${c?.snippet ? `<div class="quote">“${esc(c.snippet)}”</div>` : ''}
-      <div class="meta">${(n.citations || []).map(x => `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title)} @ ${x.timestamp}</a>`).join('')}${n.created_at && !actions ? `<span class="muted">${new Date(n.created_at * 1000).toLocaleDateString()}</span>` : ''}</div>
+      <div class="ttl">${esc(title)}</div>
+      ${body ? `<div class="txt">${esc(body)}</div>` : ''}
+      <div class="meta">${(n.citations || []).map(x => `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
     </div><div class="act">${actions}</div></div>`;
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
