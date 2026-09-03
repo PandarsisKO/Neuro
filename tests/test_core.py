@@ -435,3 +435,44 @@ def test_cancel_queued(client):
     assert r["cancelled"] >= 1 and db.get_job(j["id"])["status"] == "done" and db.get_job(j["id"])["message"] == "cancelled"
     assert db.get_source(src["id"])["status"] == "proposed"
     assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]["proposed"][0]["id"] == src["id"]
+
+
+def test_relevance_ranking(client, monkeypatch):
+    from neurosearch import ingest, media, relevance
+    import anthropic
+    from tests.fake_claude import Anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(relevance.settings, "anthropic_api_key", "fake")
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UCr", "title": "Chan", "url": url},
+        [{"id": f"rk{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=rk{i}00000000", "title": f"V{i}",
+          "description": "about money" if i % 2 else "vlog", "view_count": 1000 * i, "duration": 600} for i in range(6)]))
+    p = client.post("/api/projects", headers=H, json={"name": "Rank", "brief": "getting out of debt"}).json()
+    r = ingest.ingest_url("https://www.youtube.com/@chan", project_id=p["id"], max_videos=2)
+    assert r["proposed"] == 6                      # whole pool is listed, not just the first 2
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    assert rv["meta"]["ranked"] is False and rv["meta"]["max_videos"] == 2
+    job = [j for j in client.get(f"/api/projects/{p['id']}/jobs", headers=H).json() if j["kind"] == "rank_proposed"][0]
+    res = relevance.rank_collection(rv["id"], p["id"], want=2)
+    assert res["ranked"] == 6
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    assert rv["meta"]["ranked"] is True
+    scores = [s["relevance"] for s in rv["proposed"]]
+    assert scores == sorted(scores, reverse=True) and scores[0] == 90 and scores[-1] == 20
+    assert rv["proposed"][0]["relevance_why"] == "on topic" and rv["proposed"][0]["description"] == "about money"
+    # re-rank endpoint queues a job and resets the flag
+    assert "job_id" in client.post(f"/api/collections/{rv['id']}/rank", headers=H, json={"want": 3}).json()
+    assert db.review_meta(rv["id"])["ranked"] is False and db.review_meta(rv["id"])["max_videos"] == 3
+
+
+def test_cancel_single_job(client):
+    p = client.post("/api/projects", headers=H, json={"name": "Cancel1", "brief": "x"}).json()
+    ids = []
+    for k in ("a", "b"):
+        src = db.upsert_source(platform="youtube", external_id=f"one{k}0000000", url=f"https://www.youtube.com/watch?v=one{k}0000000", status="pending", title=f"Video {k}")
+        db.add_project_sources(p["id"], [src["id"]])
+        ids.append(db.create_job("ingest_source", {"source_id": src["id"]})["id"])
+    js = client.get(f"/api/projects/{p['id']}/jobs", headers=H).json()
+    assert any(j.get("label") == "Video a" for j in js)
+    assert client.post(f"/api/jobs/{ids[0]}/cancel", headers=H).json()["cancelled"] == 1
+    assert db.get_job(ids[0])["message"] == "cancelled" and db.get_job(ids[1])["status"] == "queued"
+    assert client.post(f"/api/jobs/{ids[0]}/cancel", headers=H).status_code == 409

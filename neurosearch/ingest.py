@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
-from . import db, media
+from . import db, media, relevance
 from .chunking import build_chunks, normalize_segments
 from .config import settings
 from .embeddings import embed_pending
@@ -58,8 +58,11 @@ def ingest_url(
         mx = settings.default_max_videos if max_videos is None else max_videos
         min_date = _cutoff_date(sy)
         total_found = len(entries)
-        if mx and mx > 0:
+        if mx and mx > 0 and not review:
             entries = entries[:mx]
+        elif review:
+            # keep a bigger pool so the relevance ranker can pick the best `mx`, not just the newest
+            entries = entries[:max(relevance.POOL, mx or 0)]
         queued, skipped, proposed = 0, 0, 0
         for i, e in enumerate(entries):
             existing = db.find_source("youtube", e["id"])
@@ -68,6 +71,8 @@ def ingest_url(
                 platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"),
                 duration=e.get("duration"), tags=_merge_tags(existing, tags) if existing else tags,
                 status=("ready" if already else ("proposed" if review else "pending")),
+                **({"description": e["description"]} if e.get("description") else {}),
+                **({"view_count": e["view_count"]} if e.get("view_count") else {}),
             )
             db.link_source_collection(src["id"], coll["id"])
             if already:
@@ -81,7 +86,9 @@ def ingest_url(
             if i % 25 == 0:
                 progress(0.05 + 0.9 * i / len(entries), f"listed {i + 1}/{len(entries)}")
         if review and proposed:
-            db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel", "project_id": project_id}))
+            db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel",
+                                                          "project_id": project_id, "max_videos": mx, "ranked": False}))
+            db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
                 "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped,
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}

@@ -156,6 +156,8 @@ def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                     "url": e.get("url") if str(e.get("url", "")).startswith("http") else f"https://www.youtube.com/watch?v={vid}",
                     "title": e.get("title"),
                     "duration": e.get("duration"),
+                    "description": (e.get("description") or None),
+                    "view_count": e.get("view_count"),
                 })
     return info, entries
 

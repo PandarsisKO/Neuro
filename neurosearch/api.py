@@ -8,6 +8,7 @@ If NEUROSEARCH_APP_TOKEN is unset, everything is open (local use only!).
 """
 from __future__ import annotations
 
+import json
 import csv
 import io
 import logging
@@ -214,6 +215,24 @@ async def api_reviews(project_id: str) -> list[dict[str, Any]]:
 
 class ApproveIn(BaseModel):
     source_ids: list[str] | None = None   # None = all proposed
+
+
+class RankIn(BaseModel):
+    project_id: str | None = None
+    want: int | None = None
+
+
+@app.post("/api/collections/{collection_id}/rank", dependencies=[Depends(require_auth)])
+async def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
+    """(Re-)rank a pending review's videos by relevance to the project brief. Runs in the background."""
+    meta = db.review_meta(collection_id)
+    meta["ranked"] = False; meta.pop("rank_note", None)
+    if body.want:
+        meta["max_videos"] = body.want
+    db.kv_set(f"review:{collection_id}", json.dumps(meta))
+    job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": body.project_id or meta.get("project_id"),
+                                          "want": body.want or meta.get("max_videos")})
+    return {"job_id": job["id"]}
 
 
 @app.post("/api/collections/{collection_id}/approve", dependencies=[Depends(require_auth)])
@@ -549,7 +568,24 @@ async def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, A
             out.append(j)
         if len(out) >= limit:
             break
+    titles = db.source_titles({sid for j in out for sid in ((j.get("payload") or {}).get("source_ids") or [(j.get("payload") or {}).get("source_id")]) if sid})
+    for j in out:
+        pl = j.get("payload") or {}
+        sids = pl.get("source_ids") or ([pl["source_id"]] if pl.get("source_id") else [])
+        if sids:
+            j["label"] = titles.get(sids[0], sids[0]) + (f" +{len(sids) - 1} more" if len(sids) > 1 else "")
     return out
+
+
+@app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
+async def api_cancel_job(job_id: str) -> dict[str, Any]:
+    """Cancel one queued job. A queued video goes back to the Review card; running jobs can't be interrupted."""
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    if j["status"] != "queued":
+        raise HTTPException(409, f"job is {j['status']}, only queued jobs can be cancelled")
+    return {"cancelled": db.cancel_queued_jobs(job_ids=[job_id])}
 
 
 class ConvIn(BaseModel):

@@ -128,6 +128,10 @@
   .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .rv .li input{width:auto}
   .rv .li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rv .li .why{color:var(--muted);font-size:12px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rv .sc{display:inline-block;min-width:30px;text-align:center;font-size:11px;font-weight:600;padding:1px 5px;border-radius:999px;background:var(--line);color:var(--muted)}
+  .rv .sc.hi{background:#dcfce7;color:#166534}.rv .sc.mid{background:#fef3c7;color:#92400e}
+  [data-theme="dark"] .rv .sc.hi{background:#14532d;color:#bbf7d0}[data-theme="dark"] .rv .sc.mid{background:#78350f;color:#fde68a}
   .rv .list{max-height:320px;overflow:auto;margin-top:6px}
   .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
   .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
@@ -221,12 +225,12 @@
           <button data-pane="course" onclick="showPane('course')">🎓 Import a course</button>
         </div>
         <div class="pane active" id="pane-link">
-          <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line. Single videos start right away; channels and playlists are listed first for you to approve.</div>
+          <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
           <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
           <div class="row" style="margin-top:8px">
             <label class="muted" title="For channels and playlists">Channels/playlists: only the last
               <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
-            <label class="muted">max <input id="inMax" type="number" min="0" value="150" style="width:70px;padding:4px 6px"> videos</label>
+            <label class="muted">best <input id="inMax" type="number" min="0" value="20" style="width:70px;padding:4px 6px"> videos</label>
             <span style="flex:1"></span>
             <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
         </div>
@@ -574,35 +578,57 @@ function showPane(p) {
 let rvSig = '';
 const rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
 const rvFilterText = {};
+const rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
+function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
 async function loadReviews() {
   const rvs = await api(`/api/projects/${state.project.id}/reviews`).catch(() => []);
-  // Only rebuild the card when the list itself changed; the poller calls this every few seconds
-  const sig = rvs.map(c => c.id + ':' + c.proposed.map(s => s.id).join(',')).join('|');
+  // Only rebuild the card when the list (or its ranking) changed; the poller calls this every few seconds
+  const sig = rvs.map(c => c.id + ':' + (c.meta && c.meta.ranked ? 'R' : 'r') + ':' + c.proposed.map(s => s.id + (s.relevance == null ? '' : '=' + s.relevance)).join(',')).join('|');
   if (sig === rvSig) return;
   rvSig = sig;
   $('#reviewWrap').innerHTML = rvs.map(c => {
+    const meta = c.meta || {}, want = meta.max_videos || 0, ranked = !!meta.ranked;
+    const scored = ranked && c.proposed.some(s => s.relevance != null);
     const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
+    if (scored && !rvAutoApplied[c.id]) {   // first time we see scores: tick the best `want`, untick the rest
+      rvAutoApplied[c.id] = true; off.clear();
+      c.proposed.forEach((s, i) => { if ((want && i >= want) || !s.relevance) off.add(s.id); });
+    }
     const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
-    const est = (n * 0.04).toFixed(2);
+    const nSel = c.proposed.filter(s => !off.has(s.id)).length;
+    const est = (nSel * 0.04).toFixed(2);
+    const rankLine = !ranked
+      ? `<span class="muted">⏳ Ranking these by relevance to your brief… (titles &amp; descriptions only, nothing downloaded)</span>`
+      : scored
+        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.</span>
+           <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
+        : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
     return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
-      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted">${n} videos${mins ? ` · ${Math.round(mins / 60)} h` : ''} · ≈ $${est} to analyse</span></div>
-      <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Untick what you don't want, then start. Videos older than your cutoff are skipped automatically once dates are known.</div>
+      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 60)} h listed` : ''} · ≈ $<span id="rvest-${c.id}">${est}</span> to analyse</span></div>
+      <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.</div>
+      <div class="row" style="margin-top:4px">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
-      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)"><span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span><span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
+      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}')">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }
-function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); }
+function rvCount(id) {
+  const all = [...document.querySelectorAll(`#rv-${id} input[type=checkbox]`)], n = all.filter(i => i.checked).length;
+  const a = $(`#rvsel-${id}`), b = $(`#rvest-${id}`); if (a) a.textContent = n; if (b) b.textContent = (n * 0.04).toFixed(2);
+}
+function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); rvCount(id); }
 function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
+function rvTop(id, n) { document.querySelectorAll(`#rv-${id} .li`).forEach((l, i) => { const inp = l.querySelector('input'); inp.checked = i < n; rvRemember(id, inp); }); }
 function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
+async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); rvSig = ''; loadReviews(); setTimeout(loadReviews, 4000); }
 async function rvStart(id) {
   const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
   if (!ids.length) return alert('Nothing selected.');
   const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
-  delete rvUnchecked[id]; delete rvFilterText[id]; rvSig = '';
+  delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; rvSig = '';
   loadReviews(); loadJobs(); loadSources();
 }
-async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; rvSig = ''; loadReviews(); }
+async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; rvSig = ''; loadReviews(); }
 async function loadSources() {
   loadReviews();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
@@ -720,6 +746,14 @@ async function discAdd(id, url, whole) {
 
 async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
 let jobsTimer;
+function jobLabel(j) {
+  const what = j.label || j.payload.url || j.payload.name || j.payload.source_id || '';
+  if (j.kind === 'suggest_findings') return 'finding suggestions · ' + what;
+  if (j.kind === 'rank_proposed') return 'ranking videos by relevance';
+  if (j.kind === 'ingest_source') return 'transcript · ' + what;
+  return what || j.kind;
+}
+async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = ''; loadJobs(); loadReviews(); }
 async function loadJobs() {
   const js = await api(`/api/projects/${state.project.id}/jobs?limit=30`);
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
@@ -730,12 +764,12 @@ async function loadJobs() {
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button><button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
-    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
+    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
   if (active.length || analysing) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
-  if (active.some(j => j.kind === 'ingest_url')) setTimeout(loadReviews, 3500);
+  if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(loadReviews, 3500);
 }
 
 // ---- findings ----

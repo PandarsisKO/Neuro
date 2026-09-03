@@ -47,6 +47,10 @@ class _Msgs:
             text = json.dumps({"summary": "Compares static hosts and warns about DNS.", "substance": 72, "findings": [
                 {"title": "Cloudflare Pages: free static hosting", "finding": "Free tier covers a brochure site with no bandwidth bill.", "ts": "0:05", "quote": "cloudflare pages is free for static sites", "importance": 5},
                 {"title": "Leave MX records alone", "finding": "Changing MX during a site move is how email breaks; only touch A/CNAME.", "ts": "3:40", "quote": "never touch MX records", "importance": 4}]})
+        elif "research triage assistant" in system:
+            import re as _re
+            idx = [int(m) for m in _re.findall(r"^\[(\d+)\] ", kw["messages"][0]["content"], flags=_re.M)]
+            text = json.dumps({"scores": [{"i": i, "score": (90 if i % 2 else 20), "why": "on topic" if i % 2 else "filler"} for i in idx]})
         elif "Master Planner reviewing" in system:
             text = json.dumps(UPDATES)
         elif "You are Master Planner" in system:

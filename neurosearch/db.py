@@ -260,6 +260,9 @@ MIGRATIONS = [
     ("projects", "output_pref", "ALTER TABLE projects ADD COLUMN output_pref TEXT"),
     ("projects", "source_prefs", "ALTER TABLE projects ADD COLUMN source_prefs TEXT"),
     ("projects", "questions", "ALTER TABLE projects ADD COLUMN questions TEXT"),
+    ("sources", "view_count", "ALTER TABLE sources ADD COLUMN view_count INTEGER"),
+    ("sources", "relevance", "ALTER TABLE sources ADD COLUMN relevance INTEGER"),
+    ("sources", "relevance_why", "ALTER TABLE sources ADD COLUMN relevance_why TEXT"),
 ]
 
 
@@ -552,6 +555,13 @@ def get_job(job_id: str) -> dict[str, Any] | None:
     return row_to_dict(connect().execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone())
 
 
+def source_titles(ids: set[str]) -> dict[str, str]:
+    if not ids:
+        return {}
+    q = ",".join("?" for _ in ids)
+    return {r["id"]: (r["title"] or r["url"]) for r in connect().execute(f"SELECT id, title, url FROM sources WHERE id IN ({q})", tuple(ids)).fetchall()}
+
+
 def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
         "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
@@ -615,7 +625,29 @@ def skip_queued_siblings(collection_id: str, reason: str) -> int:
 def proposed_sources(collection_id: str) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
         """SELECT s.* FROM sources s JOIN source_collections sc ON sc.source_id=s.id
-           WHERE sc.collection_id=? AND s.status='proposed' ORDER BY s.created_at""", (collection_id,)).fetchall()]
+           WHERE sc.collection_id=? AND s.status='proposed'
+           ORDER BY (s.relevance IS NULL), s.relevance DESC, s.created_at""", (collection_id,)).fetchall()]
+
+
+def set_relevance(source_id: str, score: int | None, why: str | None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE sources SET relevance=?, relevance_why=?, updated_at=? WHERE id=?",
+                     (score, why, now(), source_id))
+
+
+def review_meta(collection_id: str) -> dict[str, Any]:
+    try:
+        return json.loads(kv_get(f"review:{collection_id}") or "{}")
+    except ValueError:
+        return {}
+
+
+def mark_review_ranked(collection_id: str, note: str | None = None) -> None:
+    meta = review_meta(collection_id)
+    meta["ranked"] = True
+    if note:
+        meta["rank_note"] = note
+    kv_set(f"review:{collection_id}", json.dumps(meta))
 
 
 def pending_reviews(project_id: str) -> list[dict[str, Any]]:
@@ -626,7 +658,7 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
         (project_id,)).fetchall():
         props = proposed_sources(c["id"])
         if props:
-            d = dict(c); d["proposed"] = props; out.append(d)
+            d = dict(c); d["proposed"] = props; d["meta"] = review_meta(c["id"]); out.append(d)
     return out
 
 
@@ -643,14 +675,17 @@ def kv_set(key: str, value: str | None) -> None:
             conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
-def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | None = None) -> int:
-    """Cancel every queued job (optionally only some kinds / one project). Pending sources go back to 'proposed'
-    so they can be approved later from the Review card instead of silently disappearing."""
+def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | None = None,
+                       job_ids: list[str] | None = None) -> int:
+    """Cancel every queued job (optionally only some kinds / one project / specific ids). Pending sources go back
+    to 'proposed' so they can be approved later from the Review card instead of silently disappearing."""
     n = 0
     with tx() as conn:
         rows = conn.execute("SELECT id, kind, payload FROM jobs WHERE status='queued'").fetchall()
         for r in rows:
             if kinds and r["kind"] not in kinds:
+                continue
+            if job_ids is not None and r["id"] not in job_ids:
                 continue
             try:
                 pl = json.loads(r["payload"])
@@ -667,7 +702,8 @@ def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | N
                 cid = pl.get("collection_id")
                 if cid:
                     conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO NOTHING",
-                                 (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first")})))
+                                 (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first"),
+                                                            "ranked": True, "rank_note": "returned from the queue — sorted by their earlier relevance scores"})))
             n += 1
     return n
 
