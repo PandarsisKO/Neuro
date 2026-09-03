@@ -349,6 +349,36 @@ def api_retry(source_id: str) -> dict[str, Any]:
     return {"job": jobs.enqueue("ingest_source", {"source_id": source_id})["id"]}
 
 
+class ProjectIn(BaseModel):
+    project_id: str
+
+
+def _requeue_sources(project_id: str, status: str) -> dict[str, Any]:
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+    n = 0
+    for s in db.list_sources(status=status, limit=10000):
+        if s["id"] not in ids:
+            continue
+        db.set_source_status(s["id"], "pending")
+        if s["platform"] == "web" or (s["platform"] == "media" and not s.get("transcript_kind")):
+            jobs.enqueue("ingest_url", {"url": s["url"], "tags": s.get("tags") or [], "force": True, "review": False, "project_id": project_id})
+        else:
+            jobs.enqueue("ingest_source", {"source_id": s["id"]})   # no min_date → the cutoff is deliberately ignored
+        n += 1
+    return {"queued": n}
+
+
+@app.post("/api/sources/retry-skipped", dependencies=[Depends(require_auth)])
+def api_retry_skipped(body: ProjectIn) -> dict[str, Any]:
+    """Queue every skipped (older-than-cutoff) source of a project anyway."""
+    return _requeue_sources(body.project_id, "skipped")
+
+
+@app.post("/api/sources/retry-failed-in-project", dependencies=[Depends(require_auth)])
+def api_retry_failed_in_project(body: ProjectIn) -> dict[str, Any]:
+    return _requeue_sources(body.project_id, "failed")
+
+
 @app.post("/api/retry-failed", dependencies=[Depends(require_auth)])
 def api_retry_failed() -> dict[str, Any]:
     failed = db.list_sources(status="failed", limit=10000)

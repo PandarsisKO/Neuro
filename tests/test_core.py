@@ -629,3 +629,13 @@ def test_transient_failures_retry_then_fail(client, monkeypatch):
     r = client.post(f"/api/jobs/{j['id']}/retry", headers=H).json()
     assert db.get_job(r["job_id"])["status"] == "queued" and db.get_job(j["id"])["message"].startswith("retried")
     assert client.post("/api/jobs/retry-failed", headers=H, json={}).json()["retried"] == 0
+
+
+def test_ingest_skipped_anyway(client):
+    p = client.post("/api/projects", headers=H, json={"name": "Skip", "brief": "x"}).json()
+    src = db.upsert_source(platform="youtube", external_id="oldvid00001", url="https://www.youtube.com/watch?v=oldvid00001", status="skipped", error="published 2019-01-01, before cutoff 2024-09-03")
+    db.add_project_sources(p["id"], [src["id"]])
+    r = client.post("/api/sources/retry-skipped", headers=H, json={"project_id": p["id"]}).json()
+    assert r["queued"] == 1 and db.get_source(src["id"])["status"] == "pending"
+    j = [j for j in db.list_jobs(20) if j["kind"] == "ingest_source" and j["payload"]["source_id"] == src["id"]][0]
+    assert "min_date" not in j["payload"]

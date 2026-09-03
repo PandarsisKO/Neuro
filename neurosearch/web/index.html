@@ -28,7 +28,7 @@
   .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
   .chip:hover{border-color:var(--accent)}
   .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
-  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued,.st.running{color:var(--warn)}.st.done{color:var(--ok)}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued,.st.running{color:var(--accent);background:var(--user)}.st.done{color:var(--ok)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
@@ -371,7 +371,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.7';
+const UI_VERSION = '0.11.8';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -689,7 +689,9 @@ async function loadSources() {
   $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
   const f = state.srcFilter || 'all';
   const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : s.status === f)).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
-  $('#srcCount').textContent = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}`;
+  $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
+    (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
+    (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '');
   const liveLine = s => {
     if (s.status === 'pending' && s.job) {
       const j = s.job;
@@ -712,6 +714,7 @@ async function loadSources() {
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button><button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
         <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
       </div>
@@ -727,6 +730,8 @@ async function viewTranscript(id) {
   dlg.showModal();
 }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
+async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
 async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
 async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
