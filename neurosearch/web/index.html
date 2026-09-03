@@ -358,6 +358,19 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
+const UI_VERSION = '0.10.2';
+async function checkVersion() {
+  try {
+    const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
+    if (v !== UI_VERSION) {
+      const d = document.createElement('div'); d.className = 'banner'; d.id = 'verBanner';
+      d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:99;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+      d.innerHTML = `⚠️ The page is version ${UI_VERSION} but the server is running ${v === 'old' ? 'an older version' : 'version ' + esc(v)}. Restart it to pick up the new code: in the terminal press <b>Ctrl+C</b>, then run <b>neurosearch serve</b>, then reload this page.`;
+      document.body.appendChild(d);
+    }
+  } catch (e) { /* offline */ }
+}
+checkVersion();
 function route() {
   const h = location.hash.slice(1).split('/');
   if (h[0] === 'p' && h[1]) openProject(h[1], h[2] || 'chats', h[3] || null);
@@ -615,7 +628,12 @@ async function loadReviews() {
     </div>`; }).join('');
 }
 const rvData = {};   // collection id -> proposed rows (for live cost estimates)
+function estFallback(s) {   // same formula as usage.estimate_video, for servers that don't send `est`
+  const mins = Math.max((s.duration || 0) / 60, 1), chars = mins * 1000, windows = Math.max(1, Math.ceil(chars / 60000));
+  return { analyse: (chars / 4 + windows * 1500) / 1e6 * 3 + windows * 800 / 1e6 * 15, whisper: mins * 0.006 };
+}
 function rvEstimate(rows) {
+  rows = rows.map(s => s.est ? s : { ...s, est: estFallback(s) });
   const a = rows.reduce((t, s) => t + (s.est?.analyse || 0), 0), w = rows.reduce((t, s) => t + (s.est?.whisper || 0), 0);
   const hrs = rows.reduce((t, s) => t + (s.duration || 0), 0) / 3600;
   return `<span title="Findings analysis + embeddings, assuming YouTube captions exist (free). Videos without captions are transcribed with Whisper at $0.006/min — worst case +$${w.toFixed(2)} if none of them have captions.">≈ <b>$${a.toFixed(2)}</b> to analyse ${hrs.toFixed(1)} h of selected video <span class="muted">· up to +$${w.toFixed(2)} more if captions are missing (Whisper)</span></span>`;

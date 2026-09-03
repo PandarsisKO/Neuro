@@ -320,6 +320,12 @@ async def api_retry_failed() -> dict[str, Any]:
 
 # -------------------------------------------------------------- sources
 
+@app.get("/api/version")
+async def api_version() -> dict[str, str]:
+    from . import __version__
+    return {"version": __version__}
+
+
 @app.get("/api/stats", dependencies=[Depends(require_auth)])
 async def api_stats() -> dict[str, Any]:
     from .media import rate_limit_status
