@@ -23,6 +23,9 @@ PLAN = {
                         "research_prompt": "Is our domain registered directly with Squarespace or a third-party registrar?"}],
     "confidence": [{"area": "Hosting choice", "level": "high", "note": "two sources agree"}, {"area": "Timeline", "level": "needs_research", "note": "depends on registrar"}],
     "ready": {"first_three": ["Export the site", "Document DNS", "Create Cloudflare account"], "initial_cost": "~$15", "need_before": ["Squarespace admin login"], "blockers": []},
+    "this_week": [{"action": "Export the Squarespace site to a local folder", "why": "backup before anything", "time": "30 min"}],
+    "refine_questions": [{"question": "Where is the domain registered?", "why": "changes the DNS procedure", "kind": "fact", "options": ["Squarespace", "GoDaddy", "Other"]},
+                         {"question": "Do you need a contact form?", "why": "static hosts need a form service", "kind": "decision", "options": ["Yes", "No"]}],
 }
 UPDATES = [{"section": "Recommended approach", "previous": "Static export + Cloudflare Pages", "proposed": "Static export + Netlify",
             "reason": "New finding says Cloudflare form handling is limited."}]

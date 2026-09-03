@@ -50,7 +50,10 @@ PLAN_SCHEMA = """{
  "defer": [{"item": str, "until": str}],
  "open_questions": [{"question": str, "category": "blocking|soon|nice", "why": str, "research_prompt": str}],
  "confidence": [{"area": str, "level": "high|medium|needs_research", "note": str}],
- "ready": {"first_three": [str], "initial_cost": str, "need_before": [str], "blockers": [str]}
+ "ready": {"first_three": [str], "initial_cost": str, "need_before": [str], "blockers": [str]},
+ "this_week": [{"action": str, "why": str, "time": str}],          // 3-5 concrete things to do in the next 7 days, each doable in a sitting
+ "refine_questions": [{"question": str, "why": str, "kind": "fact|decision|preference",
+                       "options": [str]}]                           // 4-7 questions whose ANSWERS would most change/improve this plan; options optional
 }"""
 
 SYSTEM = """You are Master Planner, an experienced project lead. You turn a project's research into a realistic plan for
@@ -79,6 +82,12 @@ Behaviour:
 - Open questions: only ones that could materially change the plan. Categorise blocking / soon / nice and write a
   research_prompt the user can run as-is.
 - Phases must fit THIS project; do not force a template. Keep the whole plan tight — clarity over volume.
+- this_week: the plan must end in motion — 3-5 concrete actions for the next seven days, each finishable in one
+  sitting, phrased as an instruction ("Call two SBA lenders and ask X"), with why it matters and a time estimate.
+- refine_questions: the plan is a draft that improves with answers. Ask the 4-7 questions whose answers would most
+  change it — facts only the user knows (cash available, hours per week, location, skills), decisions they must make,
+  preferences that steer the approach. Say why each matters. Offer 2-4 options when the answer is a choice. Never ask
+  what the research or the user's brief already answers.
 
 Output ONLY a JSON object matching this schema (omit fields you have nothing for; evidence ids come from the list):
 """ + PLAN_SCHEMA
@@ -490,6 +499,14 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
             if qs:
                 out.append(f"**{label}**")
                 out += [f"- {q.get('question')}{st(f'open_questions.{i}')} — {q.get('why', '')}" for i, q in qs]
+        out.append("")
+    if p.get("this_week"):
+        out.append("## This week")
+        out += [f"{i + 1}. **{t.get('action')}** — {t.get('why', '')}{(' _(' + t['time'] + ')_') if t.get('time') else ''}" for i, t in enumerate(p["this_week"])]
+        out.append("")
+    if p.get("refine_questions"):
+        out.append("## Questions that would sharpen this plan")
+        out += [f"- **{q.get('question')}** — {q.get('why', '')}{(' Options: ' + ' / '.join(q['options'])) if q.get('options') else ''}" for q in p["refine_questions"]]
         out.append("")
     if p.get("confidence"):
         out.append("## Plan confidence")
