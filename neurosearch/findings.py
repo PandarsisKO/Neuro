@@ -24,8 +24,10 @@ the project brief — concrete claims, numbers, techniques, recommendations, war
 examples — and ignore fluff (intros, sponsor reads, banter, repetition, vague motivation).
 
 Rules:
-- Each finding is one self-contained sentence or two that would still make sense a month from now without the video.
-  Prefer specifics: "X recommends anchoring at 3x the target price before conceding" beats "they talk about anchoring".
+- Each finding has a "title" (a crisp headline, at most 8 words, no trailing period) and a "finding": ONE plain
+  sentence (max two) that would still make sense a month from now without the video. Prefer specifics:
+  "Anchor at 3x the target price before conceding" beats "they talk about anchoring". No preamble like
+  "The speaker says".
 - Give the timestamp (the [m:ss] marker just before the passage) and a short verbatim quote (≤ 25 words).
 - Rate importance 1–5 for THIS brief (5 = directly answers what the project is trying to find out).
 - Extract nothing that is not in the transcript. If the transcript has nothing relevant, return an empty list.
@@ -34,7 +36,7 @@ Rules:
   two-sentence summary of what it actually covers.
 
 Output ONLY JSON:
-{"summary": str, "substance": int, "findings": [{"finding": str, "ts": "m:ss or h:mm:ss or p. N", "quote": str, "importance": int}]}"""
+{"summary": str, "substance": int, "findings": [{"title": str, "finding": str, "ts": "m:ss or h:mm:ss or p. N", "quote": str, "importance": int}]}"""
 
 
 def _ts_to_seconds(ts: str, platform: str) -> float | None:
@@ -120,11 +122,10 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
                           "timestamp": fmt_locator(platform, start), "start": start, "end": start, "platform": platform,
                           "snippet": (f.get("quote") or "")[:300]})
         content = f["finding"].strip()
-        if f.get("quote"):
-            content += f' — "{str(f["quote"]).strip()}" [1]'
-        elif cites:
+        if cites and "[1]" not in content:
             content += " [1]"
-        notes.append({"content": content, "citations": cites, "importance": int(f.get("importance") or 0)})
+        notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
+                      "importance": int(f.get("importance") or 0)})
     n = db.replace_suggestions(project_id, source_id, notes)
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None

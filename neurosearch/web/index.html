@@ -101,6 +101,17 @@
   .transcript b{color:#8fb0ff;font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
   .note .body{white-space:pre-wrap}
+  .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start}
+  .f .imp{flex:0 0 26px;text-align:center;font-size:11px;color:var(--muted);padding-top:3px}
+  .f .imp b{display:block;font-size:15px;color:var(--warn)}
+  .f .main{flex:1;min-width:0}
+  .f .ttl{font-weight:600;line-height:1.3}
+  .f .txt{font-size:13.5px;color:var(--text);margin-top:2px;line-height:1.45}
+  .f .quote{font-size:12.5px;color:var(--muted);font-style:italic;margin-top:4px;border-left:2px solid var(--line);padding-left:8px}
+  .f .meta{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  .f .meta .chip{margin:0}
+  .f .act{flex:0 0 auto;display:flex;gap:4px;flex-direction:column}
+  .f .act button{padding:4px 8px;font-size:12px}
   .note.gap{border-color:#5a4a1e}
   /* ---- plan ---- */
   .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
@@ -306,39 +317,35 @@ async function goHome() {
     + `<div class="pcard new" onclick="newProjectDialog()">＋ New project</div>`;
 }
 const WIZ = { step: 0, data: {} };
-function newProjectDialog() { WIZ.step = 0; WIZ.data = {}; renderWizard(); dlg.showModal(); }
+function newProjectDialog() { WIZ.step = 0; WIZ.data = {}; WIZ.open = {}; renderWizard(); dlg.showModal(); }
 function wizField(id, label, ph, rows) {
   const v = esc(WIZ.data[id] || '');
   return `<label class="muted" style="display:block;margin-top:10px">${label}</label>` + (rows ? `<textarea id="w_${id}" rows="${rows}" placeholder="${esc(ph)}">${v}</textarea>` : `<input id="w_${id}" placeholder="${esc(ph)}" value="${v}">`);
 }
 function wizCollect() { document.querySelectorAll('#dlgBody [id^=w_]').forEach(el => WIZ.data[el.id.slice(2)] = el.value); }
 function renderWizard() {
-  const steps = ['Basics', 'Situation', 'Sources', 'Output'];
-  let body = `<h2 style="margin-bottom:2px">New project</h2><div class="muted" style="margin-bottom:6px">${steps.map((t, i) => `<span style="${i === WIZ.step ? 'color:#fff;font-weight:600' : ''}">${i + 1}. ${t}</span>`).join(' &nbsp;›&nbsp; ')}</div>`;
-  if (WIZ.step === 0) body += wizField('name', 'Project name', 'e.g. Move the site off Squarespace') +
-    wizField('goal', 'Goal — what does "done" look like?', 'e.g. The marketing site is live on a cheaper host with no email downtime, by the end of October.', 2) +
-    wizField('brief', 'Brief — what do you need to find out?', 'e.g. Which static host suits a small brochure site, how to migrate without breaking DNS/email, realistic costs.', 3) +
-    wizField('questions', 'Starting questions (one per line — each becomes a chat you can pick up immediately)', 'Which hosts do practitioners actually recommend for small static sites?\nWhat goes wrong during DNS migrations?\nWhat does this realistically cost per year?', 4);
-  if (WIZ.step === 1) body += `<div class="muted" style="margin-top:8px">Everything here is treated as a requirement by the assistant and the Master Planner — not a suggestion. Leave blank what doesn't apply.</div>` +
-    wizField('budget', 'Budget', 'e.g. up to $500 one-off, under $20/month recurring') +
-    wizField('deadline', 'Deadline / timing', 'e.g. live by Oct 31; can only work on it weekends') +
-    wizField('experience', 'Your experience with this', 'e.g. comfortable with Squarespace, never touched DNS, no coding') +
-    wizField('tools', 'Tools, accounts and assets you already have', 'e.g. Google Workspace, Squarespace, a Cloudflare account, existing domain') +
-    wizField('constraints', 'Hard constraints (must / must not)', 'e.g. must keep the same domain; must not lose SEO; no agencies', 2) +
-    wizField('decided', 'Already decided or already rejected', 'e.g. decided: keep Google Workspace for email · rejected: Wix', 2);
-  if (WIZ.step === 2) body += wizField('urls', 'Links to start with (one per line — videos, playlists, whole channels, podcasts). You can add files after the project is created.', 'https://www.youtube.com/@somechannel\nhttps://www.youtube.com/watch?v=…', 5) +
-    wizField('source_prefs', 'Source preferences (optional)', 'e.g. prefer practitioners over marketers; ignore anything older than 2024; weight official docs highly', 2) +
-    `<div class="muted" style="margin-top:8px">New sources are read against your brief automatically and suggested findings appear in the Findings tab for approval.</div>`;
-  if (WIZ.step === 3) body += wizField('audience', 'Who is this for?', 'e.g. just me · my two co-founders · a client who needs a recommendation') +
-    wizField('output_pref', 'What do you want at the end?', 'e.g. a clear recommendation and a step-by-step migration plan · a comparison of 3 options · a content brief for a video · a shortlist of vendors', 2) +
-    `<div class="muted" style="margin-top:8px">This shapes tone, depth and what the Master Plan emphasises. You can change everything later in Settings.</div>`;
-  body += `<div class="row" style="margin-top:14px;justify-content:flex-end">${WIZ.step > 0 ? '<button onclick="wizNav(-1)">Back</button>' : ''}${WIZ.step < 3 ? '<button class="primary" onclick="wizNav(1)">Next</button>' : '<button class="primary" id="wizCreate" onclick="createProject()">Create project</button>'}${WIZ.step < 3 && WIZ.step > 0 ? '<button class="ghost" onclick="createProject()">Skip &amp; create</button>' : ''}</div>`;
-  $('#dlgBody').innerHTML = body; ($('#w_name') || $('#dlgBody input, #dlgBody textarea'))?.focus();
+  const open = WIZ.open || {};
+  const sec = (key, title, inner) => `<details ${open[key] ? 'open' : ''} ontoggle="WIZ.open=WIZ.open||{};WIZ.open['${key}']=this.open" style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;color:var(--muted)">${title}</summary>${inner}</details>`;
+  let body = `<h2 style="margin-bottom:2px">New project</h2><div class="muted">Three things get you going. Everything else is optional and can be added now or later in Settings.</div>` +
+    wizField('name', 'Project name', 'e.g. Grow the roofing business to $2M') +
+    wizField('brief', 'What are you trying to find out or accomplish?', 'e.g. How top service-business operators price, sell and scale — so I can raise our average ticket and systematise sales.', 3) +
+    wizField('urls', 'Links to start with (optional — videos, playlists, whole channels, podcasts; one per line)', 'https://www.youtube.com/watch?v=…\nhttps://www.youtube.com/@somechannel', 3) +
+    sec('q', 'Starting questions — each becomes a ready-made chat', wizField('questions', 'One per line', 'What do they say about raising average ticket?\nHow do they structure the sales process?', 3)) +
+    sec('s', 'Your situation — budget, deadline, experience, what you already have or decided', wizField('goal', 'What does "done" look like?', 'e.g. A written playbook and a 90-day plan we can act on') +
+      wizField('budget', 'Budget', 'e.g. under $500') + wizField('deadline', 'Deadline / timing', 'e.g. by end of October') +
+      wizField('experience', 'Your experience with this', 'e.g. 5 years running the business, never built a sales system') +
+      wizField('tools', 'Tools and accounts you already have', 'e.g. HubSpot, Google Workspace') +
+      wizField('constraints', 'Hard constraints (must / must not)', 'e.g. no new hires this year', 2) +
+      wizField('decided', 'Already decided or rejected', 'e.g. decided: keep HubSpot · rejected: outsourcing sales', 2)) +
+    sec('o', 'Output — who it\'s for and what you want at the end', wizField('audience', 'Who is this for?', 'e.g. just me · my partner · a client') +
+      wizField('output_pref', 'What do you want at the end?', 'e.g. a recommendation and a step-by-step plan · a comparison · a content brief', 2) +
+      wizField('source_prefs', 'Source preferences', 'e.g. practitioners over marketers; nothing older than 2024'));
+  body += `<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="primary" id="wizCreate" onclick="createProject()">Create project</button></div>`;
+  $('#dlgBody').innerHTML = body; $('#w_name')?.focus();
 }
-function wizNav(d) { wizCollect(); if (WIZ.step === 0 && !(WIZ.data.name || '').trim()) { $('#w_name').focus(); return; } WIZ.step += d; renderWizard(); }
 async function createProject() {
   wizCollect();
-  const d = WIZ.data; if (!(d.name || '').trim()) { WIZ.step = 0; renderWizard(); return; }
+  const d = WIZ.data; if (!(d.name || '').trim()) { $('#w_name')?.focus(); return; }
   const lines = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean);
   const ctx = [['Budget', d.budget], ['Deadline', d.deadline], ['Experience', d.experience], ['Tools/accounts available', d.tools], ['Constraints', d.constraints], ['Already decided/rejected', d.decided]]
     .filter(([, v]) => v && v.trim()).map(([k, v]) => `${k}: ${v.trim()}`).join('\n');
@@ -511,6 +518,7 @@ async function loadSources() {
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button><button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${s.status === 'failed' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
@@ -569,7 +577,8 @@ async function loadJobs() {
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
   clearTimeout(jobsTimer);
-  if (active.length) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
+  const analysing = !!document.querySelector('#srcList .spin');
+  if (active.length || analysing) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
 }
 
 // ---- findings ----
@@ -577,21 +586,31 @@ async function loadNotes() {
   const p = await api('/api/projects/' + state.project.id);
   const notes = p.notes || [], sug = p.suggested || []; $('#nFindings').textContent = notes.length + (sug.length ? ` +${sug.length}` : '');
   const bySrc = {}; sug.forEach(n => { const k = (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
-  $('#suggestedWrap').innerHTML = `<div class="card" style="border-color:#2f4a8a">
+  const srcs = await api('/api/sources?project_id=' + state.project.id + '&limit=2000');
+  const analysing = srcs.filter(x => x.analysing).length;
+  if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
+  $('#suggestedWrap').innerHTML = (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') + `<div class="card" style="border-color:#2f4a8a">
       <div class="row"><b style="flex:1">Suggested findings ${sug.length ? `(${sug.length})` : ''}</b>
         ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
         <button class="small" onclick="suggestNow(false)">Analyse new sources</button><button class="small ghost" onclick="suggestNow(true)">Re-analyse all</button></div>
       <div class="muted" id="sugMsg"></div>
-      ${Object.entries(bySrc).map(([title, list]) => `<h3>${esc(title)}</h3>` + list.map(n => `<div class="note" style="border-left:3px solid var(--accent)">
-        ${n.importance ? `<span class="tag">importance ${n.importance}/5</span> ` : ''}<span class="body">${renderAnswer(n.content, n.citations || [])}</span>
-        ${(n.citations || []).length ? `<div class="cites" style="margin-top:6px">${n.citations.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">${esc(c.title)} @ ${c.timestamp}</a>`).join('')}</div>` : ''}
-        <div class="row" style="margin-top:8px"><button class="small primary" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button></div></div>`).join('')).join('')
+      ${Object.entries(bySrc).map(([title, list]) => `<h3>${esc(title)}</h3>` + list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">Dismiss</button>`)).join('')).join('')
         || '<div class="muted" style="margin-top:6px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>'}
     </div>`;
-  $('#notes').innerHTML = (notes.length ? '<h3>Approved</h3>' : '') + notes.map(n => { const gap = n.content.startsWith('Gap:'); return `<div class="note ${gap ? 'gap' : ''}">${gap ? '⚠ ' : ''}<span class="body">${renderAnswer(n.content, n.citations || [])}</span>
-      ${(n.citations || []).length ? `<div class="cites" style="margin-top:8px">${n.citations.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('')}</div>` : ''}
-      <div class="muted" style="margin-top:6px">${new Date(n.created_at * 1000).toLocaleString()} · <a href="#" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div></div>`; }).join('')
+  $('#notes').innerHTML = (notes.length ? '<h3>Approved</h3>' : '') + notes.map(n => n.content.startsWith('Gap:')
+      ? `<div class="note gap">⚠ <span class="body">${renderAnswer(n.content, n.citations || [])}</span><div class="muted" style="margin-top:6px"><a href="#" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div></div>`
+      : findingCard(n, `<button class="small ghost" onclick="del('/api/notes/${n.id}').then(loadNotes)">remove</button>`)).join('')
     || '<div class="empty">Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.</div>';
+}
+function findingCard(n, actions) {
+  const c = (n.citations || [])[0];
+  const body = n.content.replace(/\s*\[\d+\]\s*$/, '');
+  const imp = n.importance ? `<div class="imp"><b>${'●'.repeat(Math.min(n.importance, 5))}</b>${n.importance}/5</div>` : '<div class="imp"></div>';
+  return `<div class="f">${imp}<div class="main">
+      ${n.title ? `<div class="ttl">${esc(n.title)}</div><div class="txt">${esc(body)}</div>` : `<div class="ttl" style="font-weight:500;white-space:pre-wrap">${renderAnswer(body, n.citations || [])}</div>`}
+      ${c?.snippet ? `<div class="quote">“${esc(c.snippet)}”</div>` : ''}
+      <div class="meta">${(n.citations || []).map(x => `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title)} @ ${x.timestamp}</a>`).join('')}${n.created_at && !actions ? `<span class="muted">${new Date(n.created_at * 1000).toLocaleDateString()}</span>` : ''}</div>
+    </div><div class="act">${actions}</div></div>`;
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
 async function bulkNotes(ids, status) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadNotes(); }

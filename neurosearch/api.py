@@ -248,6 +248,14 @@ async def api_sources(status: str | None = None, collection_id: str | None = Non
     if project_id:
         ids = set(db.project_source_ids(project_id, ready_only=False))
         rows = [r for r in rows if r["id"] in ids][:limit]
+        counts = db.suggestion_counts(project_id)
+        analysing = db.sources_being_analysed(project_id)
+        for r in rows:
+            c = counts.get(r["id"], {})
+            r["suggested"] = c.get("suggested", 0)
+            r["approved"] = c.get("approved", 0)
+            r["analysing"] = r["id"] in analysing
+            r["analysed"] = r["id"] in counts or r["id"] in db.analysed_sources(project_id)
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))
         rows = [r for r in rows if r["id"] not in ids][:limit]
@@ -417,6 +425,13 @@ class MembersIn(BaseModel):
 async def api_add_members(project_id: str, body: MembersIn) -> dict[str, Any]:
     db.add_project_sources(project_id, body.source_ids)
     db.add_project_collections(project_id, body.collection_ids)
+    for sid in body.source_ids:
+        src = db.get_source(sid)
+        if src and src["status"] == "ready":
+            jobs.enqueue_suggestions(sid, project_id)
+    if body.collection_ids:
+        for sid in db.sources_needing_suggestions(project_id):
+            jobs.enqueue_suggestions(sid, project_id)
     return db.get_project(project_id) or {}
 
 

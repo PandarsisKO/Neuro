@@ -38,8 +38,8 @@ class _Msgs:
         system = kw.get("system", "")
         if "research analyst reading a transcript" in system:
             text = json.dumps({"summary": "Compares static hosts and warns about DNS.", "substance": 72, "findings": [
-                {"finding": "Cloudflare Pages is free for static sites", "ts": "0:05", "quote": "cloudflare pages is free for static sites", "importance": 5},
-                {"finding": "Never touch MX records during a migration", "ts": "3:40", "quote": "never touch MX records", "importance": 4}]})
+                {"title": "Cloudflare Pages is free", "finding": "Cloudflare Pages is free for static sites", "ts": "0:05", "quote": "cloudflare pages is free for static sites", "importance": 5},
+                {"title": "Leave MX records alone", "finding": "Never touch MX records during a migration", "ts": "3:40", "quote": "never touch MX records", "importance": 4}]})
         elif "Master Planner reviewing" in system:
             text = json.dumps(UPDATES)
         elif "You are Master Planner" in system:

@@ -144,7 +144,7 @@ def ask(
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
-    hits = search(question, limit=limit, source_ids=source_ids)
+    hits = _hits_for(question, limit, source_ids)
     history = db.get_messages(conversation_id, limit=12) if conversation_id else []
 
     if project:
@@ -235,6 +235,31 @@ def ask(
         "ingest_jobs": ingest_jobs,
         "actions": actions,
     }
+
+
+FULL_CONTEXT_CHARS = 90000  # if everything in scope fits in this, skip retrieval and hand Claude the whole thing
+
+
+def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> list[dict[str, Any]]:
+    """Retrieval, except when the scoped material is small enough to include in full (better for
+    'summarise this' / 'main points' questions, which retrieval handles badly)."""
+    from .search import hit_from_chunk
+
+    if source_ids and "__none__" not in source_ids and len(source_ids) <= 6:
+        chunks: list[dict[str, Any]] = []
+        total = 0
+        for sid in source_ids:
+            src = db.get_source(sid) or {}
+            for c in db.get_chunks(sid):
+                c.update(title=src.get("title"), url=src.get("url"), platform=src.get("platform"),
+                         channel=src.get("channel"), published_at=src.get("published_at"))
+                chunks.append(c)
+                total += len(c["text"])
+        if chunks and total <= FULL_CONTEXT_CHARS:
+            # de-overlap: chunks overlap by design; keep every other chunk's overlap out by trimming nothing —
+            # cheap and fine for the model. Order by source then time.
+            return [hit_from_chunk(c, 1.0) for c in chunks]
+    return search(question, limit=limit, source_ids=source_ids)
 
 
 def _pj(project: dict[str, Any] | None) -> dict[str, Any] | None:

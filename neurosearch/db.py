@@ -211,6 +211,7 @@ MIGRATIONS = [
     ("project_notes", "status", "ALTER TABLE project_notes ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'"),
     ("project_notes", "source_id", "ALTER TABLE project_notes ADD COLUMN source_id TEXT"),
     ("project_notes", "importance", "ALTER TABLE project_notes ADD COLUMN importance INTEGER"),
+    ("project_notes", "title", "ALTER TABLE project_notes ADD COLUMN title TEXT"),
     ("sources", "summary", "ALTER TABLE sources ADD COLUMN summary TEXT"),
     ("sources", "substance", "ALTER TABLE sources ADD COLUMN substance INTEGER"),
     ("project_sources", "suggested_at", "ALTER TABLE project_sources ADD COLUMN suggested_at REAL"),
@@ -731,8 +732,8 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
         conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
         t = now()
         conn.executemany(
-            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance) VALUES (?,?,?,?,?,?,?)",
-            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance")) for n in notes])
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title) VALUES (?,?,?,?,?,?,?,?)",
+            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title")) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
@@ -747,6 +748,32 @@ def sources_needing_suggestions(project_id: str) -> list[str]:
     done |= {r["source_id"] for r in conn.execute(
         "SELECT DISTINCT source_id FROM project_notes WHERE project_id=? AND source_id IS NOT NULL", (project_id,)).fetchall()}
     return [s for s in project_source_ids(project_id) if s not in done]
+
+
+def suggestion_counts(project_id: str) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for r in connect().execute(
+        "SELECT source_id, status, COUNT(*) n FROM project_notes WHERE project_id=? AND source_id IS NOT NULL GROUP BY source_id, status",
+        (project_id,)).fetchall():
+        out.setdefault(r["source_id"], {})[r["status"]] = r["n"]
+    return out
+
+
+def analysed_sources(project_id: str) -> set[str]:
+    return {r["source_id"] for r in connect().execute(
+        "SELECT source_id FROM project_sources WHERE project_id=? AND suggested_at IS NOT NULL", (project_id,)).fetchall()}
+
+
+def sources_being_analysed(project_id: str) -> set[str]:
+    out: set[str] = set()
+    for r in connect().execute("SELECT payload FROM jobs WHERE kind='suggest_findings' AND status IN ('queued','running')").fetchall():
+        try:
+            pl = json.loads(r["payload"])
+        except ValueError:
+            continue
+        if pl.get("project_id") == project_id:
+            out.update(pl.get("source_ids") or [])
+    return out
 
 
 def projects_for_source(source_id: str) -> list[str]:

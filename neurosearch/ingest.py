@@ -69,6 +69,7 @@ def ingest_url(
     if existing and existing["status"] == "ready" and not force:
         if project_id:
             db.add_project_sources(project_id, [existing["id"]])
+            _after_ready(existing["id"], project_id)
         if tags:
             db.upsert_source(platform=platform, external_id=ext_id, tags=_merge_tags(existing, tags))
         return {"kind": kind, "source_id": existing["id"], "already_ingested": True, "title": existing["title"]}

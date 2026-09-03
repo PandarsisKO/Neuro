@@ -55,7 +55,7 @@ def findings_markdown(project_id: str) -> str:
     if not findings:
         out.append("(no findings pinned yet — pin answers from the Ask tab or ask the assistant to save a finding)")
     for i, n in enumerate(reversed(findings), 1):
-        out.append(f"### {i}. {n['content'].splitlines()[0][:90]}")
+        out.append(f"### {i}. {n.get('title') or n['content'].splitlines()[0][:90]}")
         out.append(n["content"])
         cites = n.get("citations") or []
         if cites:
