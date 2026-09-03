@@ -93,6 +93,9 @@ def classify_url(url: str) -> str:
         return "instagram"
     if "loom.com" in host:
         return "media"
+    from .webpage import looks_like_media
+    if not looks_like_media(url):
+        return "web"
     return "media"
 
 

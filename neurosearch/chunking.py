@@ -162,6 +162,8 @@ def fmt_locator(platform: str, start: float) -> str:
     """Human label for a position: 'p. 12' for documents, mm:ss for media."""
     if platform == "document":
         return f"p. {int(start)}"
+    if platform == "web":
+        return f"§ {int(start)}"
     return fmt_ts(start)
 
 

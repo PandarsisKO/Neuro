@@ -510,3 +510,22 @@ def test_review_discard_last(client, monkeypatch):
     rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
     assert client.post(f"/api/collections/{rv['id']}/approve", headers=H, json={"source_ids": []}).json()["dropped"] == 1
     assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json() == []
+
+
+def test_webpage_source(client, monkeypatch):
+    from neurosearch import webpage, media
+    html = ("<html><head><title>Buying a boring business</title></head><body><nav><a>Home</a></nav><article><h1>Buying a boring business</h1>"
+            + "".join(f"<p>Paragraph {i}: SBA lenders want a debt service coverage ratio above 1.25 and a seller note for part of the price.</p>" for i in range(40))
+            + "</article><footer>x</footer></body></html>")
+    monkeypatch.setattr(webpage, "fetch", lambda url, timeout=40.0: (url, "text/html; charset=utf-8", html.encode()))
+    assert media.classify_url("https://example.com/blog/boring-business") == "web"
+    assert media.classify_url("https://vimeo.com/12345") == "media"
+    assert media.classify_url("https://cdn.example.com/ep1.mp3") == "media"
+    p = client.post("/api/projects", headers=H, json={"name": "Web", "brief": "buying businesses"}).json()
+    from neurosearch import ingest
+    r = ingest.ingest_url("https://example.com/blog/boring-business", project_id=p["id"])
+    assert r["kind"] == "web" and r["segments"] >= 1 and r["title"] == "Buying a boring business"
+    src = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
+    assert src["platform"] == "web" and src["status"] == "ready" and src["channel"] == "example.com"
+    hits = client.get("/api/search?q=debt+service+coverage&project_id=" + p["id"], headers=H).json()
+    assert hits and hits[0]["timestamp"].startswith("§ ")

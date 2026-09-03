@@ -41,12 +41,12 @@ Rules:
   two-sentence summary of what it actually covers.
 
 Output ONLY JSON:
-{"summary": str, "substance": int, "findings": [{"title": str, "finding": str, "ts": "m:ss or h:mm:ss or p. N", "quote": str, "importance": int}]}"""
+{"summary": str, "substance": int, "findings": [{"title": str, "finding": str, "ts": "m:ss or h:mm:ss, or p. N / § N for documents and web pages", "quote": str, "importance": int}]}"""
 
 
 def _ts_to_seconds(ts: str, platform: str) -> float | None:
     ts = (ts or "").strip()
-    m = re.match(r"p\.?\s*(\d+)", ts)
+    m = re.match(r"(?:p\.?|§|section)\s*(\d+)", ts, flags=re.I)
     if m:
         return float(m.group(1))
     parts = ts.replace("[", "").replace("]", "").split(":")
@@ -58,7 +58,7 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
         return float(nums[0] * 3600 + nums[1] * 60 + nums[2])
     if len(nums) == 2:
         return float(nums[0] * 60 + nums[1])
-    if len(nums) == 1 and platform == "document":
+    if len(nums) == 1 and platform in ("document", "web"):
         return float(nums[0])
     return None
 

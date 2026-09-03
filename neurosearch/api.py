@@ -112,21 +112,21 @@ EXT_DIR = Path(__file__).parent.parent / "extension"
 
 
 @app.exception_handler(RuntimeError)
-async def _runtime_error(_r: Request, exc: RuntimeError) -> JSONResponse:
+def _runtime_error(_r: Request, exc: RuntimeError) -> JSONResponse:
     return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 # ---------------------------------------------------------------- web ui
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> Any:
+def index(request: Request) -> Any:
     if not _token_ok(_request_token(request)):
         return HTMLResponse((WEB_DIR / "login.html").read_text())
     return HTMLResponse((WEB_DIR / "index.html").read_text())
 
 
 @app.post("/login")
-async def login(token: str = Form(...)) -> Any:
+def login(token: str = Form(...)) -> Any:
     if not _token_ok(token):
         return HTMLResponse((WEB_DIR / "login.html").read_text().replace("<!--ERR-->", "<p class=err>Wrong token.</p>"), status_code=401)
     resp = RedirectResponse("/", status_code=303)
@@ -135,14 +135,14 @@ async def login(token: str = Form(...)) -> Any:
 
 
 @app.get("/logout")
-async def logout() -> Any:
+def logout() -> Any:
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie("ns_token")
     return resp
 
 
 @app.get("/health")
-async def health() -> dict[str, Any]:
+def health() -> dict[str, Any]:
     return {"ok": True, **db.source_stats()}
 
 
@@ -158,7 +158,7 @@ class IngestIn(BaseModel):
 
 
 @app.post("/api/ingest", dependencies=[Depends(require_auth)])
-async def api_ingest(body: IngestIn) -> dict[str, Any]:
+def api_ingest(body: IngestIn) -> dict[str, Any]:
     urls = [u.strip() for u in body.url.replace(",", "\n").splitlines() if u.strip()]
     if not urls:
         raise HTTPException(400, "no url")
@@ -168,7 +168,7 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
 
 
 @app.get("/api/usage", dependencies=[Depends(require_auth)])
-async def api_usage() -> dict[str, Any]:
+def api_usage() -> dict[str, Any]:
     from . import usage
     t = usage.totals()
     ok, reason, _ = usage.check()
@@ -183,7 +183,7 @@ class BudgetIn(BaseModel):
 
 
 @app.post("/api/usage/budget", dependencies=[Depends(require_auth)])
-async def api_budget(body: BudgetIn) -> dict[str, Any]:
+def api_budget(body: BudgetIn) -> dict[str, Any]:
     from . import usage
     if body.daily is not None:
         db.kv_set("daily_budget", str(body.daily))
@@ -203,13 +203,13 @@ class CancelIn(BaseModel):
 
 
 @app.post("/api/jobs/cancel-queued", dependencies=[Depends(require_auth)])
-async def api_cancel_queued(body: CancelIn) -> dict[str, Any]:
+def api_cancel_queued(body: CancelIn) -> dict[str, Any]:
     """Stop everything that hasn't started. Queued videos go back to the Review card for later approval."""
     return {"cancelled": db.cancel_queued_jobs(project_id=body.project_id)}
 
 
 @app.get("/api/projects/{project_id}/reviews", dependencies=[Depends(require_auth)])
-async def api_reviews(project_id: str) -> list[dict[str, Any]]:
+def api_reviews(project_id: str) -> list[dict[str, Any]]:
     return db.pending_reviews(project_id)
 
 
@@ -223,7 +223,7 @@ class RankIn(BaseModel):
 
 
 @app.post("/api/collections/{collection_id}/rank", dependencies=[Depends(require_auth)])
-async def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
+def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
     """(Re-)rank a pending review's videos by relevance to the project brief. Runs in the background."""
     meta = db.review_meta(collection_id)
     meta["ranked"] = False; meta.pop("rank_note", None)
@@ -236,12 +236,12 @@ async def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
 
 
 @app.post("/api/collections/{collection_id}/approve", dependencies=[Depends(require_auth)])
-async def api_approve(collection_id: str, body: ApproveIn) -> dict[str, Any]:
+def api_approve(collection_id: str, body: ApproveIn) -> dict[str, Any]:
     return ingest.approve_proposed(collection_id, body.source_ids)
 
 
 @app.get("/api/defaults", dependencies=[Depends(require_auth)])
-async def api_defaults() -> dict[str, Any]:
+def api_defaults() -> dict[str, Any]:
     return {"since_years": settings.default_since_years, "max_videos": settings.default_max_videos}
 
 
@@ -289,12 +289,12 @@ async def api_import(body: ImportIn) -> dict[str, Any]:
 
 
 @app.get("/api/jobs", dependencies=[Depends(require_auth)])
-async def api_jobs(limit: int = 50) -> list[dict[str, Any]]:
+def api_jobs(limit: int = 50) -> list[dict[str, Any]]:
     return db.list_jobs(limit)
 
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])
-async def api_job(job_id: str) -> dict[str, Any]:
+def api_job(job_id: str) -> dict[str, Any]:
     j = db.get_job(job_id)
     if not j:
         raise HTTPException(404)
@@ -302,7 +302,7 @@ async def api_job(job_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/sources/{source_id}/retry", dependencies=[Depends(require_auth)])
-async def api_retry(source_id: str) -> dict[str, Any]:
+def api_retry(source_id: str) -> dict[str, Any]:
     if not db.get_source(source_id):
         raise HTTPException(404)
     db.set_source_status(source_id, "pending")
@@ -310,7 +310,7 @@ async def api_retry(source_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/retry-failed", dependencies=[Depends(require_auth)])
-async def api_retry_failed() -> dict[str, Any]:
+def api_retry_failed() -> dict[str, Any]:
     failed = db.list_sources(status="failed", limit=10000)
     for s in failed:
         db.set_source_status(s["id"], "pending")
@@ -321,19 +321,19 @@ async def api_retry_failed() -> dict[str, Any]:
 # -------------------------------------------------------------- sources
 
 @app.get("/api/version")
-async def api_version() -> dict[str, str]:
+def api_version() -> dict[str, str]:
     from . import __version__
     return {"version": __version__}
 
 
 @app.get("/api/stats", dependencies=[Depends(require_auth)])
-async def api_stats() -> dict[str, Any]:
+def api_stats() -> dict[str, Any]:
     from .media import rate_limit_status
     return {**db.source_stats(), "youtube": rate_limit_status()}
 
 
 @app.get("/api/sources", dependencies=[Depends(require_auth)])
-async def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
+def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
                       project_id: str | None = None, not_in_project: str | None = None,
                       limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
     rows = db.list_sources(status=status, collection_id=collection_id, query=q,
@@ -356,7 +356,7 @@ async def api_sources(status: str | None = None, collection_id: str | None = Non
 
 
 @app.get("/api/sources/{source_id}", dependencies=[Depends(require_auth)])
-async def api_source(source_id: str) -> dict[str, Any]:
+def api_source(source_id: str) -> dict[str, Any]:
     s = db.get_source(source_id)
     if not s:
         raise HTTPException(404)
@@ -365,7 +365,7 @@ async def api_source(source_id: str) -> dict[str, Any]:
 
 
 @app.delete("/api/sources/{source_id}", dependencies=[Depends(require_auth)])
-async def api_delete_source(source_id: str) -> dict[str, Any]:
+def api_delete_source(source_id: str) -> dict[str, Any]:
     db.delete_source(source_id)
     return {"ok": True}
 
@@ -375,7 +375,7 @@ class TagsIn(BaseModel):
 
 
 @app.put("/api/sources/{source_id}/tags", dependencies=[Depends(require_auth)])
-async def api_set_tags(source_id: str, body: TagsIn) -> dict[str, Any]:
+def api_set_tags(source_id: str, body: TagsIn) -> dict[str, Any]:
     s = db.get_source(source_id)
     if not s:
         raise HTTPException(404)
@@ -383,7 +383,7 @@ async def api_set_tags(source_id: str, body: TagsIn) -> dict[str, Any]:
 
 
 @app.get("/api/sources/{source_id}/transcript.txt", dependencies=[Depends(require_auth)])
-async def api_transcript(source_id: str, timestamps: bool = True) -> Any:
+def api_transcript(source_id: str, timestamps: bool = True) -> Any:
     s = db.get_source(source_id)
     if not s:
         raise HTTPException(404)
@@ -392,14 +392,14 @@ async def api_transcript(source_id: str, timestamps: bool = True) -> Any:
 
 
 @app.get("/api/collections", dependencies=[Depends(require_auth)])
-async def api_collections() -> list[dict[str, Any]]:
+def api_collections() -> list[dict[str, Any]]:
     return db.list_collections()
 
 
 # --------------------------------------------------------------- export
 
 @app.get("/api/export/sources.csv", dependencies=[Depends(require_auth)])
-async def export_sources(project_id: str | None = None, collection_id: str | None = None) -> Any:
+def export_sources(project_id: str | None = None, collection_id: str | None = None) -> Any:
     """Master sheet: one row per source."""
     rows = db.list_sources(collection_id=collection_id, limit=100000)
     if project_id:
@@ -418,7 +418,7 @@ async def export_sources(project_id: str | None = None, collection_id: str | Non
 
 
 @app.get("/api/export/segments.csv", dependencies=[Depends(require_auth)])
-async def export_segments(project_id: str | None = None, collection_id: str | None = None) -> Any:
+def export_segments(project_id: str | None = None, collection_id: str | None = None) -> Any:
     """Granular sheet: one row per timestamped chunk with a deep link."""
     from .search import deep_link
     rows = db.list_sources(collection_id=collection_id, status="ready", limit=100000)
@@ -456,12 +456,12 @@ class ProjectIn(BaseModel):
 
 
 @app.get("/api/projects", dependencies=[Depends(require_auth)])
-async def api_projects() -> list[dict[str, Any]]:
+def api_projects() -> list[dict[str, Any]]:
     return db.list_projects()
 
 
 @app.post("/api/projects", dependencies=[Depends(require_auth)])
-async def api_create_project(body: ProjectIn) -> dict[str, Any]:
+def api_create_project(body: ProjectIn) -> dict[str, Any]:
     p = db.create_project(body.name, body.brief, body.tags)
     db.update_project(p["id"], context=body.context, goal=body.goal, audience=body.audience, output_pref=body.output_pref,
                       source_prefs=body.source_prefs, questions=body.questions or [])
@@ -482,7 +482,7 @@ async def api_create_project(body: ProjectIn) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-async def api_project(project_id: str) -> dict[str, Any]:
+def api_project(project_id: str) -> dict[str, Any]:
     p = db.get_project(project_id)
     if not p:
         raise HTTPException(404)
@@ -495,7 +495,7 @@ async def api_project(project_id: str) -> dict[str, Any]:
 
 
 @app.put("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-async def api_update_project(project_id: str, body: ProjectIn) -> dict[str, Any]:
+def api_update_project(project_id: str, body: ProjectIn) -> dict[str, Any]:
     p = db.update_project(project_id, name=body.name, brief=body.brief, tags=body.tags, context=body.context, goal=body.goal,
                           audience=body.audience, output_pref=body.output_pref, source_prefs=body.source_prefs, questions=body.questions)
     if not p:
@@ -504,7 +504,7 @@ async def api_update_project(project_id: str, body: ProjectIn) -> dict[str, Any]
 
 
 @app.delete("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-async def api_delete_project(project_id: str) -> dict[str, Any]:
+def api_delete_project(project_id: str) -> dict[str, Any]:
     db.delete_project(project_id)
     return {"ok": True}
 
@@ -515,7 +515,7 @@ class MembersIn(BaseModel):
 
 
 @app.post("/api/projects/{project_id}/members", dependencies=[Depends(require_auth)])
-async def api_add_members(project_id: str, body: MembersIn) -> dict[str, Any]:
+def api_add_members(project_id: str, body: MembersIn) -> dict[str, Any]:
     db.add_project_sources(project_id, body.source_ids)
     db.add_project_collections(project_id, body.collection_ids)
     for sid in body.source_ids:
@@ -529,7 +529,7 @@ async def api_add_members(project_id: str, body: MembersIn) -> dict[str, Any]:
 
 
 @app.delete("/api/projects/{project_id}/members", dependencies=[Depends(require_auth)])
-async def api_remove_members(project_id: str, body: MembersIn) -> dict[str, Any]:
+def api_remove_members(project_id: str, body: MembersIn) -> dict[str, Any]:
     db.remove_project_sources(project_id, body.source_ids)
     db.remove_project_collections(project_id, body.collection_ids)
     return db.get_project(project_id) or {}
@@ -564,7 +564,7 @@ async def api_masterplan_zip(project_id: str, synthesize: bool = True) -> Any:
 
 
 @app.get("/api/projects/{project_id}/jobs", dependencies=[Depends(require_auth)])
-async def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
+def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
     """Jobs belonging to this project: URL/file ingests queued for it, plus per-video jobs of its sources."""
     ids = set(db.project_source_ids(project_id, ready_only=False))
     out = []
@@ -584,7 +584,7 @@ async def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, A
 
 
 @app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
-async def api_cancel_job(job_id: str) -> dict[str, Any]:
+def api_cancel_job(job_id: str) -> dict[str, Any]:
     """Cancel one queued job. A queued video goes back to the Review card; running jobs can't be interrupted."""
     j = db.get_job(job_id)
     if not j:
@@ -600,12 +600,12 @@ class ConvIn(BaseModel):
 
 
 @app.post("/api/conversations", dependencies=[Depends(require_auth)])
-async def api_create_conversation(body: ConvIn) -> dict[str, Any]:
+def api_create_conversation(body: ConvIn) -> dict[str, Any]:
     return db.create_conversation(body.project_id, body.title)
 
 
 @app.put("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
-async def api_rename_conversation(conversation_id: str, body: ConvIn) -> dict[str, Any]:
+def api_rename_conversation(conversation_id: str, body: ConvIn) -> dict[str, Any]:
     db.rename_conversation(conversation_id, body.title or "Untitled")
     return {"ok": True}
 
@@ -618,17 +618,17 @@ class FactIn(BaseModel):
 
 
 @app.get("/api/projects/{project_id}/facts", dependencies=[Depends(require_auth)])
-async def api_facts(project_id: str) -> list[dict[str, Any]]:
+def api_facts(project_id: str) -> list[dict[str, Any]]:
     return db.list_facts(project_id)
 
 
 @app.post("/api/projects/{project_id}/facts", dependencies=[Depends(require_auth)])
-async def api_add_fact(project_id: str, body: FactIn) -> dict[str, Any]:
+def api_add_fact(project_id: str, body: FactIn) -> dict[str, Any]:
     return db.add_fact(project_id, body.kind, body.content)
 
 
 @app.delete("/api/facts/{fact_id}", dependencies=[Depends(require_auth)])
-async def api_delete_fact(fact_id: int) -> dict[str, Any]:
+def api_delete_fact(fact_id: int) -> dict[str, Any]:
     db.delete_fact(fact_id)
     return {"ok": True}
 
@@ -638,7 +638,7 @@ class BuildIn(BaseModel):
 
 
 @app.get("/api/projects/{project_id}/plan", dependencies=[Depends(require_auth)])
-async def api_plan(project_id: str) -> dict[str, Any]:
+def api_plan(project_id: str) -> dict[str, Any]:
     from . import planner
     plan = db.latest_plan(project_id)
     return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False,
@@ -663,7 +663,7 @@ class UpdateStatusIn(BaseModel):
 
 
 @app.post("/api/plan-updates/{update_id}", dependencies=[Depends(require_auth)])
-async def api_plan_update_status(update_id: int, body: UpdateStatusIn) -> dict[str, Any]:
+def api_plan_update_status(update_id: int, body: UpdateStatusIn) -> dict[str, Any]:
     row = db.set_update_status(update_id, body.status)
     if not row:
         raise HTTPException(404)
@@ -682,13 +682,13 @@ class ItemIn(BaseModel):
 
 
 @app.put("/api/plans/{plan_id}/items/{key}", dependencies=[Depends(require_auth)])
-async def api_plan_item(plan_id: str, key: str, body: ItemIn) -> dict[str, Any]:
+def api_plan_item(plan_id: str, key: str, body: ItemIn) -> dict[str, Any]:
     db.set_item_status(plan_id, key, body.status, body.note)
     return {"ok": True}
 
 
 @app.post("/api/plans/{plan_id}/start", dependencies=[Depends(require_auth)])
-async def api_plan_start(plan_id: str) -> dict[str, Any]:
+def api_plan_start(plan_id: str) -> dict[str, Any]:
     plan = db.get_plan(plan_id)
     if not plan:
         raise HTTPException(404)
@@ -701,7 +701,7 @@ async def api_plan_start(plan_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/projects/{project_id}/plan.md", dependencies=[Depends(require_auth)])
-async def api_plan_md(project_id: str) -> Any:
+def api_plan_md(project_id: str) -> Any:
     from .planner import plan_markdown
     plan, p = db.latest_plan(project_id), db.get_project(project_id)
     if not plan or not p:
@@ -711,7 +711,7 @@ async def api_plan_md(project_id: str) -> Any:
 
 
 @app.get("/api/projects/{project_id}/plan.html", dependencies=[Depends(require_auth)])
-async def api_plan_html(project_id: str) -> Any:
+def api_plan_html(project_id: str) -> Any:
     from .planner import plan_html
     plan, p = db.latest_plan(project_id), db.get_project(project_id)
     if not plan or not p:
@@ -725,7 +725,7 @@ class DiscoverIn(BaseModel):
 
 
 @app.get("/api/projects/{project_id}/discoveries", dependencies=[Depends(require_auth)])
-async def api_discoveries(project_id: str) -> list[dict[str, Any]]:
+def api_discoveries(project_id: str) -> list[dict[str, Any]]:
     return db.list_discoveries(project_id)
 
 
@@ -743,7 +743,7 @@ class DiscStatusIn(BaseModel):
 
 
 @app.post("/api/discoveries/{disc_id}/status", dependencies=[Depends(require_auth)])
-async def api_discovery_status(disc_id: int, body: DiscStatusIn) -> dict[str, Any]:
+def api_discovery_status(disc_id: int, body: DiscStatusIn) -> dict[str, Any]:
     row = db.set_discovery_status(disc_id, body.status)
     if not row:
         raise HTTPException(404)
@@ -759,13 +759,13 @@ class CourseImportIn(BaseModel):
 
 
 @app.post("/api/projects/{project_id}/course-import", dependencies=[Depends(require_auth)])
-async def api_course_import(project_id: str, body: CourseImportIn) -> dict[str, Any]:
+def api_course_import(project_id: str, body: CourseImportIn) -> dict[str, Any]:
     from .courses import import_course
     return import_course(project_id, body.course, body.lessons, body.cookies)
 
 
 @app.get("/extension.zip")
-async def extension_zip(request: Request) -> Any:
+def extension_zip(request: Request) -> Any:
     """The course-importer browser extension, zipped for download (sign-in required)."""
     if not _token_ok(_request_token(request)):
         raise HTTPException(401)
@@ -781,7 +781,7 @@ async def extension_zip(request: Request) -> Any:
 
 
 @app.get("/api/whoami")
-async def api_whoami(request: Request) -> dict[str, Any]:
+def api_whoami(request: Request) -> dict[str, Any]:
     """Addresses this server is reachable at (for the extension setup)."""
     import socket
     host = request.headers.get("host", "")
@@ -800,7 +800,7 @@ class SuggestIn(BaseModel):
 
 
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
-async def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
+def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
     ids = body.source_ids or (db.project_source_ids(project_id) if body.force else db.sources_needing_suggestions(project_id))
     if not ids:
         return {"job": None, "sources": 0}
@@ -813,7 +813,7 @@ class NoteStatusIn(BaseModel):
 
 
 @app.post("/api/notes/{note_id}/status", dependencies=[Depends(require_auth)])
-async def api_note_status(note_id: int, body: NoteStatusIn) -> dict[str, Any]:
+def api_note_status(note_id: int, body: NoteStatusIn) -> dict[str, Any]:
     row = db.set_note_status(note_id, body.status)
     if not row:
         raise HTTPException(404)
@@ -826,7 +826,7 @@ class BulkNotesIn(BaseModel):
 
 
 @app.post("/api/notes/bulk-status", dependencies=[Depends(require_auth)])
-async def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
+def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
     for nid in body.note_ids:
         db.set_note_status(nid, body.status)
     return {"ok": True, "n": len(body.note_ids)}
@@ -838,12 +838,12 @@ class NoteIn(BaseModel):
 
 
 @app.post("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
-async def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
+def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
     return db.add_project_note(project_id, body.content, body.citations)
 
 
 @app.delete("/api/notes/{note_id}", dependencies=[Depends(require_auth)])
-async def api_delete_note(note_id: int) -> dict[str, Any]:
+def api_delete_note(note_id: int) -> dict[str, Any]:
     db.delete_project_note(note_id)
     return {"ok": True}
 
@@ -873,16 +873,16 @@ async def api_ask(body: AskIn) -> dict[str, Any]:
 
 
 @app.get("/api/conversations", dependencies=[Depends(require_auth)])
-async def api_conversations(project_id: str | None = None) -> list[dict[str, Any]]:
+def api_conversations(project_id: str | None = None) -> list[dict[str, Any]]:
     return db.list_conversations(project_id)
 
 
 @app.get("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
-async def api_conversation(conversation_id: str) -> list[dict[str, Any]]:
+def api_conversation(conversation_id: str) -> list[dict[str, Any]]:
     return db.get_messages(conversation_id, limit=200)
 
 
 @app.delete("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])
-async def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
+def api_delete_conversation(conversation_id: str) -> dict[str, Any]:
     db.delete_conversation(conversation_id)
     return {"ok": True}

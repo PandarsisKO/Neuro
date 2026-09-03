@@ -279,12 +279,32 @@ def init_db() -> None:
 @contextmanager
 def tx() -> Iterator[sqlite3.Connection]:
     conn = connect()
+    if getattr(_local, "batch", 0):      # inside batch(): the batch commits, not each tx
+        yield conn
+        return
     try:
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+
+
+@contextmanager
+def batch() -> Iterator[None]:
+    """Group many small writes into one transaction (bulk listings). Keeps the write lock briefly held
+    once instead of hundreds of times, so API requests and other workers aren't starved."""
+    _local.batch = getattr(_local, "batch", 0) + 1
+    try:
+        yield
+        if _local.batch == 1:
+            connect().commit()
+    except Exception:
+        if _local.batch == 1:
+            connect().rollback()
+        raise
+    finally:
+        _local.batch -= 1
 
 
 def now() -> float:

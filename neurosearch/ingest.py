@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable
 
@@ -64,7 +65,9 @@ def ingest_url(
             # keep a bigger pool so the relevance ranker can pick the best `mx`, not just the newest
             entries = entries[:max(relevance.POOL, mx or 0)]
         queued, skipped, proposed = 0, 0, 0
-        for i, e in enumerate(entries):
+
+        def _list_one(i: int, e: dict[str, Any]) -> None:
+            nonlocal queued, skipped, proposed
             existing = db.find_source("youtube", e["id"])
             already = bool(existing and existing["status"] == "ready" and not force)
             src = db.upsert_source(
@@ -83,8 +86,12 @@ def ingest_url(
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
                                                 "collection_id": coll["id"], "newest_first": kind == "channel"})
                 queued += 1
-            if i % 25 == 0:
-                progress(0.05 + 0.9 * i / len(entries), f"listed {i + 1}/{len(entries)}")
+
+        for start in range(0, len(entries), 50):
+            with db.batch():   # one transaction per 50 videos instead of ~3 per video (keeps the API responsive)
+                for i, e in enumerate(entries[start:start + 50], start=start):
+                    _list_one(i, e)
+            progress(0.05 + 0.9 * min(start + 50, len(entries)) / len(entries), f"listed {min(start + 50, len(entries))}/{len(entries)}")
         if review and proposed:
             db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel",
                                                           "project_id": project_id, "max_videos": mx, "ranked": False}))
@@ -93,6 +100,8 @@ def ingest_url(
                 "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped,
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
+    if kind == "web":
+        return ingest_webpage(url, tags=tags, project_id=project_id, title=title, progress=progress)
     platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
     ext_id = _external_id_from_url(url, platform)
     existing = db.find_source(platform, ext_id) if ext_id else None
@@ -305,6 +314,36 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
         _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "document", "embedded": n}
+    except Exception as e:  # noqa: BLE001
+        db.set_source_status(src["id"], "failed", str(e)[:1000])
+        raise
+
+
+def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | None = None,
+                   title: str | None = None, progress: Progress = _noop) -> dict[str, Any]:
+    """An article / web page (or a PDF link) as a source; sections are cited as '§ N'."""
+    from .chunking import build_doc_chunks
+    from .webpage import read_page
+
+    ext_id = re.sub(r"^https?://(www\.)?", "", url.strip()).rstrip("/")
+    src = db.upsert_source(platform="web", external_id=ext_id, url=url, title=title, status="pending", tags=tags or [])
+    if project_id:
+        db.add_project_sources(project_id, [src["id"]])
+    try:
+        progress(0.1, "fetching page…")
+        page = read_page(url)
+        pages = page["pages"]
+        segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
+        chunks = build_doc_chunks(pages)
+        db.replace_transcript(src["id"], segments, chunks)
+        db.upsert_source(platform="web", external_id=ext_id, title=title or page["title"], url=page["url"],
+                         transcript_kind=page["kind"], description=f"{len(pages)} sections",
+                         channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None)
+        progress(0.7, "embedding…")
+        n = embed_pending()
+        _after_ready(src["id"], project_id)
+        return {"kind": "web", "source_id": src["id"], "title": title or page["title"], "segments": len(segments),
+                "chunks": len(chunks), "transcript": page["kind"], "embedded": n}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise
