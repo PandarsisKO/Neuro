@@ -192,10 +192,10 @@ def api_budget(body: BudgetIn) -> dict[str, Any]:
         db.kv_set("monthly_budget", str(body.monthly))
     if body.paused is not None:
         db.kv_set("queue_paused", "1" if body.paused else None)
-        if not body.paused:
-            # wake anything waiting on the valve
-            with db.tx() as conn:
-                conn.execute("UPDATE jobs SET not_before=NULL WHERE status='queued'")
+    if body.paused is False or body.daily is not None or body.monthly is not None:
+        # wake anything waiting on the valve — a raised budget or a Resume should take effect now, not at midnight
+        with db.tx() as conn:
+            conn.execute("UPDATE jobs SET not_before=NULL, message=NULL WHERE status='queued' AND (message LIKE 'paused:%' OR not_before IS NOT NULL)")
     return usage.totals()
 
 

@@ -398,7 +398,7 @@ def test_budget_valve(client, monkeypatch):
     assert not ok and wait >= 60
     j = db.create_job("reembed", {})
     # run the worker loop body once: the job must be re-queued, not failed
-    job = db.claim_job()
+    job = db.claim_job(("reembed",))
     try:
         jobs.run_job(job)
     except usage.BudgetPaused as e:
@@ -639,3 +639,11 @@ def test_ingest_skipped_anyway(client):
     assert r["queued"] == 1 and db.get_source(src["id"])["status"] == "pending"
     j = [j for j in db.list_jobs(20) if j["kind"] == "ingest_source" and j["payload"]["source_id"] == src["id"]][0]
     assert "min_date" not in j["payload"]
+
+
+def test_raising_budget_wakes_paused_jobs(client):
+    j = db.create_job("suggest_findings", {"project_id": "x", "source_ids": []})
+    db.requeue_job(j["id"], delay=3600, message="paused: daily budget reached")
+    assert db.get_job(j["id"])["not_before"] is not None
+    client.post("/api/usage/budget", headers=H, json={"daily": 20})
+    assert db.get_job(j["id"])["not_before"] is None
