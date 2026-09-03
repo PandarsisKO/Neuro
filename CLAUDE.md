@@ -19,3 +19,4 @@ Tests use `tests/fake_claude.py` in place of the Anthropic client.
 Suggested findings: `findings.py`; notes have status suggested|approved|dismissed (list_project_notes defaults to approved).
 Project steering fields (goal, audience, output_pref, source_prefs, questions, context) are rendered by `db.project_steering` into every prompt.
 Discover sources: `discover.py` (Claude + web_search) → `discoveries` table; UI pane in Sources.
+Course import: `extension/` (MV3; scanner.js runs in the page, popup.js posts to /api/projects/{id}/course-import) → `courses.py` writes data/cookies/<collection>.txt; ingest_url jobs carry cookies_file/referer/title/collection_id.

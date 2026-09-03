@@ -33,7 +33,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     kind = job["kind"]
     if kind == "ingest_url":
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
-                                 progress=progress, force=bool(payload.get("force")))
+                                 progress=progress, force=bool(payload.get("force")),
+                                 cookies_file=payload.get("cookies_file"), referer=payload.get("referer"),
+                                 title=payload.get("title"), collection_id=payload.get("collection_id"))
     if kind == "ingest_source":
         return ingest.ingest_source(payload["source_id"], progress=progress)
     if kind == "ingest_file":

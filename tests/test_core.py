@@ -290,3 +290,26 @@ def test_discover_sources(client, monkeypatch):
     assert len(ds) == 2 and ds[0]["fit"] == 5
     client.post(f"/api/discoveries/{ds[1]['id']}/status", headers=H, json={"status": "dismissed"})
     assert [d["status"] for d in client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()] == ["new", "dismissed"]
+
+
+def test_course_import(client):
+    from neurosearch.courses import normalise_embed, write_cookie_file
+    assert normalise_embed("https://www.loom.com/embed/abc123DEF?sid=1") == "https://www.loom.com/share/abc123DEF"
+    assert normalise_embed("https://player.vimeo.com/video/12345?h=zz9") == "https://vimeo.com/12345/zz9"
+    assert normalise_embed("https://www.youtube-nocookie.com/embed/abc123def45?rel=0") == "https://www.youtube.com/watch?v=abc123def45"
+    p = client.post("/api/projects", headers=H, json={"name": "Course", "brief": "the course"}).json()
+    r = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Sales Mastery", "url": "https://school.example.com/courses/sales"},
+        "lessons": [
+            {"title": "Welcome", "module": "Module 1", "page_url": "https://school.example.com/lessons/1", "video_urls": ["https://www.loom.com/embed/xyz789"]},
+            {"title": "Text only", "module": "Module 1", "page_url": "https://school.example.com/lessons/2", "video_urls": []},
+        ],
+        "cookies": [{"domain": ".example.com", "name": "session", "value": "s3cr3t", "path": "/", "secure": True, "expirationDate": 1900000000}]}).json()
+    assert r["queued"] == 1 and r["no_video"] == ["Text only"] and r["cookies"] is True
+    jobs_ = client.get(f"/api/projects/{p['id']}/jobs", headers=H).json()
+    j = next(x for x in jobs_ if x["kind"] == "ingest_url")
+    assert j["payload"]["title"] == "Module 1 › Welcome" and j["payload"]["referer"].endswith("/lessons/1")
+    assert open(j["payload"]["cookies_file"]).read().count("s3cr3t") == 1
+    cs = client.get("/api/collections", headers=H).json()
+    assert any(c["kind"] == "course" and c["title"] == "Sales Mastery" for c in cs)
+    assert client.get("/extension.zip", headers=H).status_code == 200

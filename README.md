@@ -82,6 +82,17 @@ From a project (Projects tab → Open) you can download:
 
 CLI: `neurosearch project findings "Pricing"` · `neurosearch project masterplan "Pricing"`.
 
+### Importing a course you're logged into (Loom / Vimeo / Wistia behind a paywall)
+
+Sources → **Import a course**. Download the small browser extension (Chrome, Edge, Brave, Arc), load it via
+`chrome://extensions` → Developer mode → Load unpacked, and point it at your app address + password once. Then log
+into the course in that browser, open the page listing the lessons, click the extension → **Scan this course**. It
+follows the lesson links inside your logged-in session, finds each embedded player (Loom, Vimeo, Wistia, YouTube,
+mp4), shows the list, and sends the videos plus your session cookies to the app, which downloads and transcribes
+them as "Module › Lesson" sources in a course collection. The app never sees a password; cookies live only on the
+server in `data/cookies/`. Works from another computer on your network (the pane shows the address to use) or from
+anywhere if the app is deployed.
+
 ### Discover sources (for when you don't know where to start)
 
 Sources → **Discover** searches the web for the leading creators, channels and podcasts for the project's brief
@@ -241,6 +252,8 @@ neurosearch/
   export.py      findings document and masterplan package
   findings.py    suggested findings + substance scoring per source
   discover.py    find creators/channels/podcasts for the brief (web search)
+  courses.py     course import: cookies file + per-lesson ingest jobs (fed by extension/)
+extension/       Chromium extension: scans a logged-in course page and sends lessons + cookies to the app
   planner.py     Master Planner: plan generation, updates, statuses, markdown/HTML rendering
   remote.py      extract locally, store on a remote server
   api.py         FastAPI: REST, web UI, MCP mount, auth

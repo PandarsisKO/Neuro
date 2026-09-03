@@ -27,6 +27,10 @@ def ingest_url(
     project_id: str | None = None,
     progress: Progress = _noop,
     force: bool = False,
+    cookies_file: str | None = None,
+    referer: str | None = None,
+    title: str | None = None,
+    collection_id: str | None = None,
 ) -> dict[str, Any]:
     """Entry point for any URL. Playlists/channels fan out into one job per video.
 
@@ -74,21 +78,24 @@ def ingest_url(
             db.upsert_source(platform=platform, external_id=ext_id, tags=_merge_tags(existing, tags))
         return {"kind": kind, "source_id": existing["id"], "already_ingested": True, "title": existing["title"]}
     src = db.upsert_source(platform=platform, external_id=ext_id, url=url, status="pending",
-                           tags=_merge_tags(existing, tags) if existing else tags)
+                           tags=_merge_tags(existing, tags) if existing else tags, title=title)
     if project_id:
         db.add_project_sources(project_id, [src["id"]])
-    result = ingest_source(src["id"], progress=progress)
+    if collection_id:
+        db.link_source_collection(src["id"], collection_id)
+    result = ingest_source(src["id"], progress=progress, cookies_file=cookies_file, referer=referer, keep_title=title)
     return {"kind": kind, **result}
 
 
-def extract_transcript(url: str, platform: str, progress: Progress = _noop) -> dict[str, Any]:
+def extract_transcript(url: str, platform: str, progress: Progress = _noop,
+                       cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any]:
     """Fetch metadata + transcript for one URL WITHOUT touching the database.
 
     Returns a portable payload: source fields + segments + chapters. This is what the CLI ships
     to a remote server with `neurosearch ingest --remote`, and what ingest_source stores locally.
     """
     progress(0.05, "fetching metadata…")
-    info = media.fetch_info(url)
+    info = media.fetch_info(url, cookies_file=cookies_file, referer=referer)
     if not info:
         raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
     fields = media.info_to_source_fields(info, platform)
@@ -96,7 +103,7 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop) -> d
     segments: list[dict[str, Any]] = []
     kind, lang = None, None
     progress(0.15, "looking for captions…")
-    caps = media.fetch_captions(info)
+    caps = media.fetch_captions(info, cookies_file=cookies_file)
     if caps:
         segments, lang = caps
         kind = "captions"
@@ -105,7 +112,7 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop) -> d
         if dur > settings.max_transcribe_minutes:
             raise RuntimeError(f"no captions and duration {dur:.0f} min exceeds transcription limit")
         progress(0.2, "no captions; downloading audio…")
-        audio = media.download_audio(url)
+        audio = media.download_audio(url, cookies_file=cookies_file, referer=referer)
         try:
             segments, lang = transcribe_file(audio, progress=lambda p, m: progress(0.3 + 0.5 * p, m))
         finally:
@@ -163,13 +170,16 @@ def _after_ready(source_id: str, project_id: str | None = None) -> None:
         log.warning("could not queue suggestions: %s", e)
 
 
-def ingest_source(source_id: str, progress: Progress = _noop) -> dict[str, Any]:
+def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str | None = None,
+                  referer: str | None = None, keep_title: str | None = None) -> dict[str, Any]:
     src = db.get_source(source_id)
     if not src:
         raise RuntimeError(f"source {source_id} not found")
     try:
-        payload = extract_transcript(src["url"], src["platform"], progress=progress)
+        payload = extract_transcript(src["url"], src["platform"], progress=progress, cookies_file=cookies_file, referer=referer)
         payload["external_id"] = payload.get("external_id") or src["external_id"]
+        if keep_title:
+            payload["title"] = keep_title
         return store_transcript(payload, progress=progress)
     except Exception as e:  # noqa: BLE001
         log.exception("ingest failed for %s", source_id)

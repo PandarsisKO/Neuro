@@ -42,7 +42,7 @@ def classify_url(url: str) -> str:
     return "media"
 
 
-def _base_opts(**extra: Any) -> dict[str, Any]:
+def _base_opts(cookies_file: str | None = None, referer: str | None = None, **extra: Any) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
@@ -51,8 +51,11 @@ def _base_opts(**extra: Any) -> dict[str, Any]:
         "retries": 3,
         "socket_timeout": 30,
     }
-    if settings.cookies_file and Path(settings.cookies_file).exists():
-        opts["cookiefile"] = settings.cookies_file
+    cf = cookies_file or settings.cookies_file
+    if cf and Path(cf).exists():
+        opts["cookiefile"] = cf
+    if referer:
+        opts["http_headers"] = {"Referer": referer, "Origin": referer.split("/", 3)[0] + "//" + referer.split("/", 3)[2]}
     opts.update(extra)
     return opts
 
@@ -117,9 +120,9 @@ def _flatten(res: dict[str, Any]) -> list[dict[str, Any]]:
 
 # ------------------------------------------------------ metadata/captions
 
-def fetch_info(url: str) -> dict[str, Any] | None:
+def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
     """Full metadata for one item (no download)."""
-    with yt_dlp.YoutubeDL(_base_opts(skip_download=True)) as ydl:
+    with yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True)) as ydl:
         try:
             info = ydl.extract_info(url, download=False)
         except Exception as e:  # noqa: BLE001
@@ -148,7 +151,7 @@ def info_to_source_fields(info: dict[str, Any], platform: str) -> dict[str, Any]
     }
 
 
-def fetch_captions(info: dict[str, Any]) -> tuple[list[dict[str, Any]], str] | None:
+def fetch_captions(info: dict[str, Any], cookies_file: str | None = None) -> tuple[list[dict[str, Any]], str] | None:
     """Return (segments, lang) using uploaded subtitles if present, else auto captions. None if neither."""
     langs = settings.caption_langs
     for pool_name in ("subtitles", "automatic_captions"):
@@ -160,7 +163,7 @@ def fetch_captions(info: dict[str, Any]) -> tuple[list[dict[str, Any]], str] | N
             if not fmt or not fmt.get("url"):
                 continue
             try:
-                raw = _download_text(fmt["url"])
+                raw = _download_text(fmt["url"], cookies_file)
                 segs = parse_json3(raw) if fmt["ext"] == "json3" else parse_vtt(raw)
             except Exception as e:  # noqa: BLE001
                 log.warning("caption download failed (%s/%s): %s", pool_name, lang, e)
@@ -177,8 +180,8 @@ def _lang_candidates(pool: dict[str, Any], preferred: list[str]) -> list[str]:
     return cands
 
 
-def _download_text(url: str) -> str:
-    with yt_dlp.YoutubeDL(_base_opts()) as ydl:
+def _download_text(url: str, cookies_file: str | None = None) -> str:
+    with yt_dlp.YoutubeDL(_base_opts(cookies_file)) as ydl:
         with ydl.urlopen(url) as resp:  # honours cookies/proxy settings
             return resp.read().decode("utf-8", errors="replace")
 
@@ -240,11 +243,13 @@ def parse_vtt(raw: str) -> list[dict[str, Any]]:
 
 # ------------------------------------------------------------- audio
 
-def download_audio(url: str, dest_dir: Path | None = None) -> Path:
+def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | None = None,
+                   referer: str | None = None) -> Path:
     """Download best audio as m4a/mp3 for transcription. Returns the file path."""
     dest_dir = dest_dir or settings.media_dir
     dest_dir.mkdir(parents=True, exist_ok=True)
     opts = _base_opts(
+        cookies_file, referer,
         format="bestaudio/best",
         outtmpl=str(dest_dir / "%(id)s.%(ext)s"),
         postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "64"}],

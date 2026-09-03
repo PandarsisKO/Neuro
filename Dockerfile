@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certi
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY neurosearch ./neurosearch
+COPY extension ./extension
 RUN pip install --no-cache-dir . && pip install --no-cache-dir -U yt-dlp
 
 ENV NEUROSEARCH_DATA_DIR=/data

@@ -20,6 +20,7 @@ from typing import Any
 
 import anyio
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
@@ -104,6 +105,9 @@ mcp_app = mcp.streamable_http_app(
 )
 app.mount("/mcp", mcp_app)
 app.add_middleware(TokenPathMiddleware)
+# the browser extension calls the API from an extension origin; auth is the Bearer token, so open CORS is fine
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+EXT_DIR = Path(__file__).parent.parent / "extension"
 
 
 @app.exception_handler(RuntimeError)
@@ -634,6 +638,50 @@ async def api_discovery_status(disc_id: int, body: DiscStatusIn) -> dict[str, An
     if not row:
         raise HTTPException(404)
     return row
+
+
+# --------------------------------------------------------- course import
+
+class CourseImportIn(BaseModel):
+    course: dict[str, Any]
+    lessons: list[dict[str, Any]]
+    cookies: list[dict[str, Any]] | None = None
+
+
+@app.post("/api/projects/{project_id}/course-import", dependencies=[Depends(require_auth)])
+async def api_course_import(project_id: str, body: CourseImportIn) -> dict[str, Any]:
+    from .courses import import_course
+    return import_course(project_id, body.course, body.lessons, body.cookies)
+
+
+@app.get("/extension.zip")
+async def extension_zip(request: Request) -> Any:
+    """The course-importer browser extension, zipped for download (sign-in required)."""
+    if not _token_ok(_request_token(request)):
+        raise HTTPException(401)
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(EXT_DIR.glob("*")):
+            if f.is_file():
+                z.write(f, f"neurosearch-course-importer/{f.name}")
+    buf.seek(0)
+    return StreamingResponse(iter([buf.getvalue()]), media_type="application/zip",
+                             headers={"Content-Disposition": "attachment; filename=neurosearch-course-importer.zip"})
+
+
+@app.get("/api/whoami")
+async def api_whoami(request: Request) -> dict[str, Any]:
+    """Addresses this server is reachable at (for the extension setup)."""
+    import socket
+    host = request.headers.get("host", "")
+    lan = None
+    try:
+        s_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s_.connect(("8.8.8.8", 80)); lan = s_.getsockname()[0]; s_.close()
+    except OSError:
+        pass
+    port = host.split(":")[1] if ":" in host else "80"
+    return {"host": host, "lan_url": f"http://{lan}:{port}" if lan else None, "hostname": socket.gethostname()}
 
 
 class SuggestIn(BaseModel):

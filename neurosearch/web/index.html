@@ -206,6 +206,7 @@
           <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
           <button data-pane="library" onclick="showPane('library')">From library</button>
           <button data-pane="discover" onclick="showPane('discover')">✨ Discover</button>
+          <button data-pane="course" onclick="showPane('course')">🎓 Import a course</button>
         </div>
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
@@ -225,6 +226,17 @@
           <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
           <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
           <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+        </div>
+        <div class="pane" id="pane-course">
+          <div class="muted">For courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia, a members-only site…). A small browser extension runs <i>inside your own logged-in browser</i>, finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session — no password is ever shared with the app.</div>
+          <ol style="margin:10px 0 0;padding-left:18px;line-height:1.7">
+            <li><a id="extDl" href="/extension.zip">Download the extension</a> and unzip it.</li>
+            <li>In Chrome / Edge / Brave / Arc open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b>, pick the unzipped <code>neurosearch-course-importer</code> folder. Pin it to the toolbar.</li>
+            <li>Click the extension once to set it up: app address <code id="appAddr">…</code>, and the app password.</li>
+            <li>Log into the course, open the page that lists all the lessons, click the extension → <b>Scan this course</b> → check the list → <b>Send to Neuro Search</b>.</li>
+          </ol>
+          <div class="muted" style="margin-top:8px">Videos land below as “Module › Lesson” and are transcribed and analysed like any other source. Session cookies are stored only on this server, in <code>data/cookies/</code>, and are used solely to download those videos.</div>
+          <div id="courseList" style="margin-top:10px"></div>
         </div>
         <div class="pane" id="pane-discover">
           <div class="muted">Don't know where to start? The assistant searches the web for the leading creators, channels and podcasts for <i>this project's brief</i>, tells you why each matters and what their angle is, and gives you a starting video. Add a whole channel or just the starting video.</div>
@@ -531,6 +543,7 @@ function showPane(p) {
   document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
   if (p === 'library') loadLibrary();
   if (p === 'discover') loadDiscoveries();
+  if (p === 'course') loadCoursePane();
 }
 async function loadSources() {
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
@@ -590,6 +603,11 @@ async function loadLibrary() {
   const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);
   const rows = await api('/api/sources?' + p);
   $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
+}
+async function loadCoursePane() {
+  try { const w = await api('/api/whoami'); const addr = w.lan_url && location.hostname === 'localhost' ? `${w.lan_url} (from another computer on your network) or ${location.origin} (this computer)` : location.origin; $('#appAddr').textContent = addr; } catch (e) { $('#appAddr').textContent = location.origin; }
+  const cs = (await api('/api/collections')).filter(c => c.kind === 'course');
+  $('#courseList').innerHTML = cs.length ? '<b>Imported courses</b>' + cs.map(c => `<div class="muted" style="padding:4px 0">🎓 ${esc(c.title)} — ${c.n_sources} videos</div>`).join('') : '';
 }
 async function loadDiscoveries() {
   const ds = await api(`/api/projects/${state.project.id}/discoveries`);
