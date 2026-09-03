@@ -24,11 +24,16 @@ the project brief — concrete claims, numbers, techniques, recommendations, war
 examples — and ignore fluff (intros, sponsor reads, banter, repetition, vague motivation).
 
 Rules:
-- Each finding has a "title" (a crisp headline, at most 8 words, no trailing period) and a "finding": ONE plain
-  sentence (max two) that would still make sense a month from now without the video. Prefer specifics:
-  "Anchor at 3x the target price before conceding" beats "they talk about anchoring". No preamble like
-  "The speaker says".
-- Give the timestamp (the [m:ss] marker just before the passage) and a short verbatim quote (≤ 25 words).
+- "title": the meat in ≤ 8 words — the claim, number, or action itself. Write it like a headline, in the
+  imperative or as a fact. NEVER "X says/recommends/states/advises"; the speaker is implied.
+    bad:  "Hormozi recommends adding a speed/priority upsell (e.g. 20% fee to move to the…"
+    good: "20% priority fee = pure-margin upsell"
+    bad:  "Hormozi states the very first step of starting any business from scratch is alwa…"
+    good: "Step one: form an LLC to accept money"
+- "finding": ONE sentence with what the title leaves out — the how, the why, the numbers, the condition. It must
+  NOT restate the title and must NOT contain the quote. If the title already says everything, use "".
+    good: "Customers who want the job done this week pay 20% extra to jump the queue; demand routinely exceeds capacity so it costs nothing to offer."
+- "quote": ≤ 20 verbatim words from the transcript that back it up. "ts": the [m:ss] marker just before it.
 - Rate importance 1–5 for THIS brief (5 = directly answers what the project is trying to find out).
 - Extract nothing that is not in the transcript. If the transcript has nothing relevant, return an empty list.
 - Aim for the 3–12 findings that matter, not everything that was said. Fewer, sharper findings are better.

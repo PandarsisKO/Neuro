@@ -250,7 +250,7 @@ def test_suggested_findings(client, monkeypatch):
     pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
     assert len(pj["notes"]) == 1 and pj["suggested"] == []
     md = client.get(f"/api/projects/{p['id']}/findings.md", headers=H).text
-    assert "Cloudflare Pages is free" in md and "MX records" not in md
+    assert "Cloudflare Pages: free static hosting" in md and "MX records" not in md
     # nothing left to analyse; force re-analyses
     assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={}).json()["job"] is None
     assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={"force": True}).json()["sources"] == 1
