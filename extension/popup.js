@@ -2,9 +2,29 @@ const $ = s => document.querySelector(s);
 let cfg = {}, result = null;
 
 async function load() {
-  cfg = await chrome.storage.local.get(['appUrl', 'token']);
-  if (cfg.appUrl && cfg.token) { $('#setup').style.display = 'none'; $('#main').style.display = ''; $('#cfg').textContent = cfg.appUrl; }
+  cfg = await chrome.storage.local.get(['appUrl', 'token', 'lastProject']);
+  if (cfg.appUrl && cfg.token) {
+    $('#setup').style.display = 'none'; $('#main').style.display = ''; $('#cfg').textContent = cfg.appUrl;
+    try {
+      const ps = await api('/api/projects');
+      $('#pageProject').innerHTML = ps.map(p => `<option value="${p.id}" ${p.id === cfg.lastProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
+    } catch (e) { $('#pageMsg').textContent = 'Could not load projects: ' + e.message; }
+  }
 }
+
+$('#sendPage').onclick = async () => {
+  const pid = $('#pageProject').value; if (!pid) return;
+  $('#sendPage').disabled = true; $('#pageMsg').textContent = 'capturing page…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [{ result: cap }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href, title: document.title, html: document.documentElement.outerHTML }) });
+    $('#pageMsg').textContent = 'sending…';
+    const r = await api(`/api/projects/${pid}/ingest/html`, { method: 'POST', body: JSON.stringify({ url: cap.url, title: cap.title, html: cap.html }) });
+    await chrome.storage.local.set({ lastProject: pid });
+    $('#pageMsg').innerHTML = `<span class="ok">Added “${esc(r.title)}” (${r.segments} sections).</span> Findings will be suggested in the app.`;
+  } catch (e) { $('#pageMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
+  $('#sendPage').disabled = false;
+};
 $('#saveSetup').onclick = async () => {
   const appUrl = $('#appUrl').value.trim().replace(/\/$/, ''), token = $('#token').value.trim();
   if (!appUrl || !token) return;

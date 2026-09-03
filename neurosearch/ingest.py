@@ -320,7 +320,7 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
 
 
 def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | None = None,
-                   title: str | None = None, progress: Progress = _noop) -> dict[str, Any]:
+                   title: str | None = None, progress: Progress = _noop, html: str | None = None) -> dict[str, Any]:
     """An article / web page (or a PDF link) as a source; sections are cited as '§ N'."""
     from .chunking import build_doc_chunks
     from .webpage import read_page
@@ -331,7 +331,7 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
         db.add_project_sources(project_id, [src["id"]])
     try:
         progress(0.1, "fetching page…")
-        page = read_page(url)
+        page = read_page(url, html_text=html)
         pages = page["pages"]
         segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
         chunks = build_doc_chunks(pages)

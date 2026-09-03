@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Neuro Search — Course Importer",
-  "version": "1.0",
-  "description": "Send the videos from a course you're logged into to your Neuro Search project.",
+  "name": "Neuro Search",
+  "version": "1.1",
+  "description": "Send the page you are reading, or the videos of a course you are logged into, to your Neuro Search project.",
   "permissions": ["activeTab", "scripting", "cookies", "storage"],
   "host_permissions": ["<all_urls>"],
-  "action": { "default_popup": "popup.html", "default_title": "Neuro Search course importer" },
+  "action": { "default_popup": "popup.html", "default_title": "Neuro Search" },
   "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
 }

@@ -225,7 +225,7 @@
           <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
           <button data-pane="library" onclick="showPane('library')">From library</button>
           <button data-pane="discover" onclick="showPane('discover')">✨ Discover</button>
-          <button data-pane="course" onclick="showPane('course')">🎓 Import a course</button>
+          <button data-pane="course" onclick="showPane('course')">🧩 Browser extension</button>
         </div>
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
@@ -252,12 +252,12 @@
           <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
         </div>
         <div class="pane" id="pane-course">
-          <div class="muted">For courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia, a members-only site…). A small browser extension runs <i>inside your own logged-in browser</i>, finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session — no password is ever shared with the app.</div>
+          <div class="muted">A small browser extension that runs <i>inside your own logged-in browser</i>. Two jobs: <b>Send this page</b> — any article or guide, including sites that block automated readers (you'll see "blocks automated readers (HTTP 403)" in the queue) or need a login; and <b>Course importer</b> — for courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia…): it finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session. No password is ever shared with the app.</div>
           <ol style="margin:10px 0 0;padding-left:18px;line-height:1.7">
             <li><a id="extDl" href="/extension.zip">Download the extension</a> and unzip it.</li>
             <li>In Chrome / Edge / Brave / Arc open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b>, pick the unzipped <code>neurosearch-course-importer</code> folder. Pin it to the toolbar.</li>
             <li>Click the extension once to set it up: app address <code id="appAddr">…</code>, and the app password.</li>
-            <li>Log into the course, open the page that lists all the lessons, click the extension → <b>Scan this course</b> → check the list → <b>Send to Neuro Search</b>.</li>
+            <li>For an article: open it, click the extension → <b>Send this page</b>. For a course: log in, open the page listing all lessons, click the extension → <b>Scan this course</b> → check the list → <b>Send to Neuro Search</b>.</li>
           </ol>
           <div class="muted" style="margin-top:8px">Videos land below as “Module › Lesson” and are transcribed and analysed like any other source. Session cookies are stored only on this server, in <code>data/cookies/</code>, and are used solely to download those videos.</div>
           <div id="courseList" style="margin-top:10px"></div>
@@ -365,7 +365,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.10.7';
+const UI_VERSION = '0.10.8';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';

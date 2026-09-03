@@ -217,6 +217,21 @@ class ApproveIn(BaseModel):
     source_ids: list[str] | None = None   # None = all proposed
 
 
+class HtmlIn(BaseModel):
+    url: str
+    html: str
+    title: str | None = None
+    tags: list[str] = []
+
+
+@app.post("/api/projects/{project_id}/ingest/html", dependencies=[Depends(require_auth)])
+def api_ingest_html(project_id: str, body: HtmlIn) -> dict[str, Any]:
+    """A page captured by the browser extension (for sites that block automated readers or need a login)."""
+    if len(body.html) > 8_000_000:
+        raise HTTPException(413, "page too large")
+    return ingest.ingest_webpage(body.url, tags=body.tags, project_id=project_id, title=body.title, html=body.html)
+
+
 class RankIn(BaseModel):
     project_id: str | None = None
     want: int | None = None

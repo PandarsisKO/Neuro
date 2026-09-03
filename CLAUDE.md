@@ -23,3 +23,4 @@ Course import: `extension/` (MV3; scanner.js runs in the page, popup.js posts to
 Spend/budget: `usage.py` (usage table, `guard()` raises BudgetPaused → jobs re-queue with not_before; kv table holds budgets + queue_paused).
 Relevance ranking: `relevance.py` scores proposed channel/playlist videos (titles+descriptions, `rank_proposed` job) → sources.relevance/relevance_why; review meta in kv `review:<collection>` carries max_videos/ranked; the UI pre-ticks the best `max_videos`.
 Web pages: `webpage.py` (fetch + section HTML; PDF links go through documents.extract_pages) → platform 'web', sections cited as '§ N'; `media.classify_url` returns 'web' for non-media hosts. API endpoints are plain `def` (threadpool) so SQLite work never blocks the event loop; `db.batch()` groups bulk-listing writes.
+Sites that block fetches (403) raise `webpage.Blocked` with a hint; the extension's 'Send this page' posts the rendered HTML to /api/projects/{id}/ingest/html.

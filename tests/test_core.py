@@ -539,3 +539,28 @@ def test_rank_parse_tolerates_bad_json():
     res = parse_scores(bad)
     assert res.get("repaired") and [(x["i"], x["score"]) for x in res["scores"]] == [(0, 90), (1, 10)]
     assert res["scores"][0]["why"] == 'buying "boring" businesses'
+
+
+def test_ingest_html_from_extension(client):
+    p = client.post("/api/projects", headers=H, json={"name": "Ext", "brief": "buying businesses"}).json()
+    html = "<html><head><title>Learning Center</title></head><body><main><h1>Due diligence checklist</h1>" + "".join(
+        f"<p>Item {i}: verify three years of tax returns and reconcile them against the P&amp;L before making an offer.</p>" for i in range(30)) + "</main></body></html>"
+    r = client.post(f"/api/projects/{p['id']}/ingest/html", headers=H, json={"url": "https://www.bizbuysell.com/learning-center/", "html": html}).json()
+    assert r["kind"] == "web" and r["title"] == "Learning Center" and r["segments"] >= 1
+    assert client.get(f"/api/sources/{r['source_id']}", headers=H).json()["status"] == "ready"
+
+
+def test_blocked_site_message(monkeypatch):
+    import httpx
+    from neurosearch import webpage
+    class R:  # minimal httpx-like response
+        status_code = 403; headers = {}; content = b""; url = "https://x.com/a"
+    class C:
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def get(self, url): return R()
+    monkeypatch.setattr(httpx, "Client", C)
+    import pytest
+    with pytest.raises(webpage.Blocked, match="blocks automated readers"):
+        webpage.fetch("https://x.com/a")

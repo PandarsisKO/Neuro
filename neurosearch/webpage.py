@@ -112,16 +112,39 @@ def extract_sections(html_text: str) -> tuple[str, list[dict[str, Any]]]:
     return title, [{"page": i + 1, "text": s} for i, s in enumerate(merged)]
 
 
+HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1",
+}
+
+
+class Blocked(RuntimeError):
+    """The site refused an automated reader (403/401/429/challenge page)."""
+
+
 def fetch(url: str, timeout: float = 40.0) -> tuple[str, str, bytes]:
     """GET the URL. Returns (final_url, content_type, body)."""
-    with httpx.Client(follow_redirects=True, timeout=timeout, headers={"User-Agent": UA, "Accept": "text/html,application/pdf,*/*"}) as c:
+    with httpx.Client(follow_redirects=True, timeout=timeout, headers=HEADERS) as c:
         r = c.get(url)
+        if r.status_code in (401, 403, 429, 503):
+            raise Blocked(f"{urlparse(url).netloc} blocks automated readers (HTTP {r.status_code}). "
+                          "Open the page in Chrome and use the Neuro Search extension → 'Send this page', "
+                          "or copy the text into Sources → Paste text.")
         r.raise_for_status()
         return str(r.url), (r.headers.get("content-type") or "").lower(), r.content
 
 
-def read_page(url: str) -> dict[str, Any]:
-    """Fetch and section a page. Returns {title, url, pages, kind} where kind is 'webpage' or 'document' (PDF)."""
+def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:
+    """Fetch (or use the supplied HTML) and section a page.
+    Returns {title, url, pages, kind} where kind is 'webpage' or 'document' (PDF)."""
+    if html_text is not None:
+        title, pages = extract_sections(html_text)
+        if not pages or sum(len(p["text"]) for p in pages) < 200:
+            raise RuntimeError("no readable text on that page")
+        return {"title": html.unescape(title) or url, "url": url, "pages": pages, "kind": "webpage"}
     final, ctype, body = fetch(url)
     if "pdf" in ctype or final.lower().split("?")[0].endswith(".pdf"):
         from .documents import extract_pages
