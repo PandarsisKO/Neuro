@@ -94,6 +94,10 @@
   .tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
   .pane{display:none}.pane.active{display:block}
   .src{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .src.live{background:linear-gradient(90deg,var(--user) 0,transparent 55%);border-radius:8px;padding-left:6px}
+  .chipf{flex:none;white-space:nowrap;font-size:12px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);cursor:pointer;color:var(--muted)}
+  .chipf.on{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .chipf b{font-weight:600}
   .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:var(--chip);flex:0 0 auto}
   .src .ico{width:96px;height:54px;border-radius:6px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
   .src .t{font-weight:600;overflow-wrap:anywhere}
@@ -271,8 +275,9 @@
       </div>
       <div id="reviewWrap"></div>
       <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
-      <div class="row" style="margin-bottom:6px">
-        <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)">
+      <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
+        <div id="srcChips" class="row" style="gap:4px"></div>
+        <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
         <span class="muted fixed" id="srcCount"></span>
         <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
         <button class="small" onclick="exportCsv(true)">Segments CSV</button>
@@ -366,7 +371,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.6';
+const UI_VERSION = '0.11.7';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -674,20 +679,39 @@ async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was down
 async function loadSources() {
   loadReviews();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
-  const rows = await api('/api/sources?' + p);
-  $('#srcCount').textContent = `${rows.length} source${rows.length === 1 ? '' : 's'}`;
-  $('#nSources').textContent = rows.filter(r => r.status === 'ready').length;
-  $('#srcList').innerHTML = rows.map(s => `<div class="src">
+  const all = await api('/api/sources?' + p);
+  $('#nSources').textContent = all.filter(r => r.status === 'ready').length;
+  // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
+  const bucket = s => (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
+  const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length,
+                   ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length };
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['skipped', 'Skipped', counts.skipped]];
+  $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
+  const f = state.srcFilter || 'all';
+  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : s.status === f)).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  $('#srcCount').textContent = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}`;
+  const liveLine = s => {
+    if (s.status === 'pending' && s.job) {
+      const j = s.job;
+      if (j.status === 'running') return `<span class="spin"></span> ${esc(j.message || 'working…')} <span class="muted">· ${ago(j.updated_at || Date.now() / 1000)} ago</span>`;
+      if (j.waiting_until && j.waiting_until > Date.now() / 1000) return `⏸ ${esc(j.message || 'waiting')} <span class="muted">· resumes in ${ago(2 * Date.now() / 1000 - j.waiting_until)}</span>`;
+      return `⏳ waiting in line · #${j.position}${j.message ? ' · ' + esc(j.message) : ''}`;
+    }
+    if (s.status === 'pending') return '⏳ pending (no job — use Retry)';
+    return '';
+  };
+  $('#srcList').innerHTML = rows.map(s => `<div class="src ${bucket(s) === 0 ? 'live' : ''}">
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
       <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button><button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
-        ${s.status === 'failed' ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
         <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
       </div>

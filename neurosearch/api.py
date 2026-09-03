@@ -339,9 +339,13 @@ def api_job(job_id: str) -> dict[str, Any]:
 
 @app.post("/api/sources/{source_id}/retry", dependencies=[Depends(require_auth)])
 def api_retry(source_id: str) -> dict[str, Any]:
-    if not db.get_source(source_id):
+    src = db.get_source(source_id)
+    if not src:
         raise HTTPException(404)
     db.set_source_status(source_id, "pending")
+    if src["platform"] == "web" or (src["platform"] == "media" and not src.get("transcript_kind")):
+        # links that never produced a transcript go back through the URL router (web page vs media detection)
+        return {"job": jobs.enqueue("ingest_url", {"url": src["url"], "tags": src.get("tags") or [], "force": True, "review": False})["id"]}
     return {"job": jobs.enqueue("ingest_source", {"source_id": source_id})["id"]}
 
 
@@ -379,12 +383,17 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         rows = [r for r in rows if r["id"] in ids and r["status"] != "proposed"][:limit]
         counts = db.suggestion_counts(project_id)
         analysing = db.sources_being_analysed(project_id)
+        live = db.live_job_by_source()
+        analysed_ids = db.analysed_sources(project_id)
         for r in rows:
             c = counts.get(r["id"], {})
             r["suggested"] = c.get("suggested", 0)
             r["approved"] = c.get("approved", 0)
             r["analysing"] = r["id"] in analysing
-            r["analysed"] = r["id"] in counts or r["id"] in db.analysed_sources(project_id)
+            r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
+            j = live.get(r["id"])
+            if j:
+                r["job"] = j          # {status, message, position, updated_at}
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))
         rows = [r for r in rows if r["id"] not in ids][:limit]

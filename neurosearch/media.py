@@ -263,12 +263,12 @@ class _Collect:
     def warning(self, msg: str) -> None:
         m = re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).replace("WARNING: ", "")
         _note("⚠ " + m)
-        log.warning("yt-dlp: %s", m)
+        log.info("yt-dlp: %s", m)
     def error(self, msg: str) -> None:
         m = re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).replace("ERROR: ", "")
         m = re.split(r";\s*please report this issue", m)[0].strip()
         self.errors.append(m)
-        log.warning("yt-dlp: %s", msg)
+        log.info("yt-dlp: %s", m)
     def last(self) -> str:
         return self.errors[-1][:400] if self.errors else ""
 

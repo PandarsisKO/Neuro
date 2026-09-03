@@ -744,6 +744,25 @@ def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | N
     return n
 
 
+def live_job_by_source() -> dict[str, dict[str, Any]]:
+    """source_id -> the queued/running ingest job working on it (with its queue position), for the Sources list."""
+    out: dict[str, dict[str, Any]] = {}
+    pos = 0
+    for r in connect().execute("SELECT id, kind, status, message, payload, updated_at, started_at, not_before FROM jobs "
+                               "WHERE status IN ('queued','running') AND kind IN ('ingest_source','ingest_url','ingest_file') ORDER BY created_at").fetchall():
+        try:
+            pl = json.loads(r["payload"] or "{}")
+        except ValueError:
+            continue
+        if r["status"] == "queued":
+            pos += 1
+        sid = pl.get("source_id")
+        if sid and sid not in out:
+            out[sid] = {"status": r["status"], "message": r["message"], "position": pos if r["status"] == "queued" else 0,
+                        "updated_at": r["updated_at"] or r["started_at"], "waiting_until": r["not_before"]}
+    return out
+
+
 def set_job_payload(job_id: str, payload: dict[str, Any]) -> None:
     with tx() as conn:
         conn.execute("UPDATE jobs SET payload=? WHERE id=?", (json.dumps(payload), job_id))
