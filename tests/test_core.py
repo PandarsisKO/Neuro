@@ -668,3 +668,10 @@ def test_plan_has_analysis_and_repairs_truncated_json(client, monkeypatch):
     cut = '{"goal": {"outcome": "x", "constraints": ["a"]}, "first_steps": [{"action": "do it", "detail": "now"}, {"action": "half'
     fixed = planner._parse_json(cut)
     assert fixed["goal"]["outcome"] == "x" and fixed["first_steps"][0]["action"] == "do it"
+
+
+def test_backup_snapshot():
+    p = db.backup(keep=2)
+    assert p.exists() and p.stat().st_size > 0
+    import sqlite3
+    assert sqlite3.connect(str(p)).execute("select count(*) from projects").fetchone()[0] >= 1

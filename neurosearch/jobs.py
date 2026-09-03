@@ -144,6 +144,21 @@ def start_workers(n: int | None = None) -> None:
     t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
     t.start()
     _threads.append(t)
+    t = threading.Thread(target=_backup_loop, daemon=True, name="ns-backup")
+    t.start()
+    _threads.append(t)
+
+
+def _backup_loop(every: float = 3600.0) -> None:
+    """Snapshot the database on startup and every hour, so nothing (chats, findings, plans) is more than an
+    hour from recoverable. Snapshots: <data>/backups/."""
+    while not _stop.is_set():
+        try:
+            p = db.backup()
+            log.info("database snapshot: %s", p.name)
+        except Exception as e:  # noqa: BLE001
+            log.warning("backup failed: %s", e)
+        _stop.wait(every)
 
 
 def stop_workers() -> None:

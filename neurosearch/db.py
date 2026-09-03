@@ -9,6 +9,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from pathlib import Path
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -761,6 +762,25 @@ def live_job_by_source() -> dict[str, dict[str, Any]]:
             out[sid] = {"status": r["status"], "message": r["message"], "position": pos if r["status"] == "queued" else 0,
                         "updated_at": r["updated_at"] or r["started_at"], "waiting_until": r["not_before"]}
     return out
+
+
+def backup(keep: int = 48) -> Path:
+    """Consistent online snapshot of the database (SQLite backup API — safe while the app is running).
+    Files land in <data>/backups/neurosearch-YYYYmmdd-HHMM.db; the newest `keep` are retained."""
+    import datetime as _dt
+    d = settings.data_dir / "backups"
+    d.mkdir(parents=True, exist_ok=True)
+    dest = d / f"neurosearch-{_dt.datetime.now():%Y%m%d-%H%M}.db"
+    src = connect()
+    out = sqlite3.connect(str(dest))
+    try:
+        src.backup(out)
+    finally:
+        out.close()
+    olds = sorted(d.glob("neurosearch-*.db"))
+    for f in olds[:-keep]:
+        f.unlink(missing_ok=True)
+    return dest
 
 
 def set_job_payload(job_id: str, payload: dict[str, Any]) -> None:

@@ -178,6 +178,13 @@ def cancel(kind: Optional[str] = typer.Option(None, help="only this job kind, e.
 
 
 @app.command()
+def backup() -> None:
+    """Snapshot the database now (also happens automatically on start and hourly) → data/backups/."""
+    _init()
+    typer.echo(str(db.backup()))
+
+
+@app.command()
 def status() -> None:
     """Knowledge base stats and recent jobs."""
     _init()

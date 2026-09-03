@@ -26,3 +26,4 @@ Web pages: `webpage.py` (fetch + section HTML; PDF links go through documents.ex
 Sites that block fetches (403) raise `webpage.Blocked` with a hint; the extension's 'Send this page' posts the rendered HTML to /api/projects/{id}/ingest/html.
 Instagram: profiles only with the user's own session via the extension (`media.enumerate_instagram`, cap IG_MAX=40, review card, per-site politeness in `media.polite`); review meta carries cookies_file/referer into ingest_source jobs.
 Retries: transient errors (jobs.TRANSIENT) re-queue with backoff up to MAX_ATTEMPTS (payload._attempts); failed jobs can be retried (/api/jobs/{id}/retry, /api/jobs/retry-failed) or dismissed.
+NEVER write to data/neurosearch.db from outside the running app (another OS/VM through a mount corrupts the WAL and loses recent transactions) — use the API/CLI. Hourly snapshots: db.backup() → data/backups/.
