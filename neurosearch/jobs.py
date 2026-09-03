@@ -35,9 +35,11 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
                                  progress=progress, force=bool(payload.get("force")),
                                  cookies_file=payload.get("cookies_file"), referer=payload.get("referer"),
-                                 title=payload.get("title"), collection_id=payload.get("collection_id"))
+                                 title=payload.get("title"), collection_id=payload.get("collection_id"),
+                                 since_years=payload.get("since_years"), max_videos=payload.get("max_videos"))
     if kind == "ingest_source":
-        return ingest.ingest_source(payload["source_id"], progress=progress)
+        return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
+                                    collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")))
     if kind == "ingest_file":
         from pathlib import Path
         path = Path(payload["path"])
@@ -66,6 +68,15 @@ def _worker(n: int) -> None:
             result = run_job(job)
             db.update_job(job["id"], status="done", progress=1.0, message="done", result=result)
         except Exception as e:  # noqa: BLE001
+            from .media import RateLimited, rate_limit_status
+            if isinstance(e, RateLimited) or isinstance(getattr(e, "__cause__", None), RateLimited):
+                db.requeue_job(job["id"], delay=rate_limit_status()["seconds_left"] + 5, message=f"paused: {e}")
+                # keep the source from showing as failed
+                sid = (job.get("payload") or {}).get("source_id")
+                if sid:
+                    db.set_source_status(sid, "pending")
+                _stop.wait(5)
+                continue
             log.warning("job %s failed: %s", job["id"], e)
             db.update_job(job["id"], status="failed", message=f"error: {e}")
 

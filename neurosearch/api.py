@@ -152,6 +152,8 @@ class IngestIn(BaseModel):
     tags: list[str] = []
     project_id: str | None = None
     force: bool = False
+    since_years: float | None = None   # channels/playlists: only videos newer than this (0 = all); default from settings
+    max_videos: int | None = None      # channels/playlists: cap (0 = no cap); default from settings
 
 
 @app.post("/api/ingest", dependencies=[Depends(require_auth)])
@@ -159,8 +161,14 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
     urls = [u.strip() for u in body.url.replace(",", "\n").splitlines() if u.strip()]
     if not urls:
         raise HTTPException(400, "no url")
-    created = [jobs.enqueue("ingest_url", {"url": u, "tags": body.tags, "project_id": body.project_id, "force": body.force}) for u in urls]
+    created = [jobs.enqueue("ingest_url", {"url": u, "tags": body.tags, "project_id": body.project_id, "force": body.force,
+                                           "since_years": body.since_years, "max_videos": body.max_videos}) for u in urls]
     return {"jobs": [j["id"] for j in created]}
+
+
+@app.get("/api/defaults", dependencies=[Depends(require_auth)])
+async def api_defaults() -> dict[str, Any]:
+    return {"since_years": settings.default_since_years, "max_videos": settings.default_max_videos}
 
 
 @app.post("/api/ingest/file", dependencies=[Depends(require_auth)])
@@ -240,7 +248,8 @@ async def api_retry_failed() -> dict[str, Any]:
 
 @app.get("/api/stats", dependencies=[Depends(require_auth)])
 async def api_stats() -> dict[str, Any]:
-    return db.source_stats()
+    from .media import rate_limit_status
+    return {**db.source_stats(), "youtube": rate_limit_status()}
 
 
 @app.get("/api/sources", dependencies=[Depends(require_auth)])

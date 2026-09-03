@@ -38,6 +38,12 @@ class Settings:
     allow_transcription: bool = field(default_factory=lambda: (_env("NEUROSEARCH_ALLOW_TRANSCRIPTION", "true") or "").lower() == "true")
     max_transcribe_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_TRANSCRIBE_MINUTES", "240") or 240))
     workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_WORKERS", "2") or 2))
+    # politeness: seconds to wait between YouTube fetches (randomised ±50%), and how long to back off after a bot-check
+    yt_delay: float = field(default_factory=lambda: float(_env("NEUROSEARCH_YT_DELAY", "4") or 4))
+    yt_backoff_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_YT_BACKOFF_MINUTES", "20") or 20))
+    # bulk defaults for channels/playlists: only videos newer than this many years, and at most this many
+    default_since_years: float = field(default_factory=lambda: float(_env("NEUROSEARCH_SINCE_YEARS", "2") or 2))
+    default_max_videos: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_VIDEOS", "150") or 150))
     auto_suggest: bool = field(default_factory=lambda: (_env("NEUROSEARCH_AUTO_SUGGEST", "true") or "").lower() == "true")
 
     # Chunking (seconds)

@@ -31,9 +31,12 @@ def ingest_url(
     referer: str | None = None,
     title: str | None = None,
     collection_id: str | None = None,
+    since_years: float | None = None,
+    max_videos: int | None = None,
 ) -> dict[str, Any]:
     """Entry point for any URL. Playlists/channels fan out into one job per video.
 
+    `since_years` / `max_videos` limit bulk pulls (default from settings; 0 = no limit).
     Returns a summary dict.
     """
     url = url.strip()
@@ -48,6 +51,12 @@ def ingest_url(
         coll = db.upsert_collection(kind, info.get("id"), info.get("url") or url, info.get("title"))
         if project_id:
             db.add_project_collections(project_id, [coll["id"]])
+        sy = settings.default_since_years if since_years is None else since_years
+        mx = settings.default_max_videos if max_videos is None else max_videos
+        min_date = _cutoff_date(sy)
+        total_found = len(entries)
+        if mx and mx > 0:
+            entries = entries[:mx]
         queued, skipped = 0, 0
         for i, e in enumerate(entries):
             existing = db.find_source("youtube", e["id"])
@@ -60,12 +69,14 @@ def ingest_url(
             if existing and existing["status"] == "ready" and not force:
                 skipped += 1
             else:
-                db.create_job("ingest_source", {"source_id": src["id"]})
+                db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
+                                                "collection_id": coll["id"], "newest_first": kind == "channel"})
                 queued += 1
             if i % 25 == 0:
                 progress(0.05 + 0.9 * i / len(entries), f"queued {i + 1}/{len(entries)}")
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
-                "found": len(entries), "queued": queued, "already_ingested": skipped}
+                "found": total_found, "queued": queued, "already_ingested": skipped,
+                "limits": {"since": min_date, "max_videos": mx}}
 
     platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
     ext_id = _external_id_from_url(url, platform)
@@ -87,8 +98,20 @@ def ingest_url(
     return {"kind": kind, **result}
 
 
+def _cutoff_date(years: float | None) -> str | None:
+    if not years or years <= 0:
+        return None
+    from datetime import date, timedelta
+    return (date.today() - timedelta(days=int(years * 365.25))).isoformat()
+
+
+class TooOld(RuntimeError):
+    pass
+
+
 def extract_transcript(url: str, platform: str, progress: Progress = _noop,
-                       cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any]:
+                       cookies_file: str | None = None, referer: str | None = None,
+                       min_date: str | None = None) -> dict[str, Any]:
     """Fetch metadata + transcript for one URL WITHOUT touching the database.
 
     Returns a portable payload: source fields + segments + chapters. This is what the CLI ships
@@ -99,6 +122,8 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop,
     if not info:
         raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
     fields = media.info_to_source_fields(info, platform)
+    if min_date and fields.get("published_at") and fields["published_at"] < min_date:
+        raise TooOld(f"published {fields['published_at']}, before cutoff {min_date}")
 
     segments: list[dict[str, Any]] = []
     kind, lang = None, None
@@ -171,17 +196,30 @@ def _after_ready(source_id: str, project_id: str | None = None) -> None:
 
 
 def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str | None = None,
-                  referer: str | None = None, keep_title: str | None = None) -> dict[str, Any]:
+                  referer: str | None = None, keep_title: str | None = None, min_date: str | None = None,
+                  collection_id: str | None = None, newest_first: bool = False) -> dict[str, Any]:
     src = db.get_source(source_id)
     if not src:
         raise RuntimeError(f"source {source_id} not found")
     try:
-        payload = extract_transcript(src["url"], src["platform"], progress=progress, cookies_file=cookies_file, referer=referer)
+        try:
+            payload = extract_transcript(src["url"], src["platform"], progress=progress, cookies_file=cookies_file,
+                                         referer=referer, min_date=min_date)
+        except TooOld as e:
+            db.set_source_status(source_id, "skipped", str(e))
+            n = 0
+            if newest_first and collection_id:
+                # a channel's Videos tab is newest-first: everything still queued behind this one is older too
+                n = db.skip_queued_siblings(collection_id, reason=f"older than cutoff {min_date}")
+            return {"source_id": source_id, "skipped": True, "reason": str(e), "also_skipped": n}
         payload["external_id"] = payload.get("external_id") or src["external_id"]
         if keep_title:
             payload["title"] = keep_title
         return store_transcript(payload, progress=progress)
     except Exception as e:  # noqa: BLE001
+        from .media import RateLimited
+        if isinstance(e, RateLimited):
+            raise
         log.exception("ingest failed for %s", source_id)
         db.set_source_status(source_id, "failed", str(e)[:1000])
         raise

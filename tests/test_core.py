@@ -313,3 +313,61 @@ def test_course_import(client):
     cs = client.get("/api/collections", headers=H).json()
     assert any(c["kind"] == "course" and c["title"] == "Sales Mastery" for c in cs)
     assert client.get("/extension.zip", headers=H).status_code == 200
+
+
+def test_rate_limit_backoff(monkeypatch):
+    from neurosearch import media
+    monkeypatch.setattr(media.settings, "yt_delay", 0.0)
+    monkeypatch.setattr(media.settings, "yt_backoff_minutes", 1)
+    media._yt_paused_until = 0.0
+    db.init_db()
+    # a bot-check error inside a polite() block converts to RateLimited and starts the pause
+    with pytest.raises(media.RateLimited):
+        with media.polite("https://www.youtube.com/watch?v=abc123def45"):
+            raise Exception("ERROR: Sign in to confirm you’re not a bot")
+    assert media.rate_limit_status()["paused"] is True
+    # while paused, further youtube fetches are refused immediately; non-youtube is unaffected
+    with pytest.raises(media.RateLimited):
+        with media.polite("https://www.youtube.com/watch?v=zzz"):
+            pass
+    with media.polite("https://www.loom.com/share/x"):
+        pass
+    media._yt_paused_until = 0.0
+    # job requeue with not_before is skipped by claim_job until due
+    j = db.create_job("reembed", {})
+    db.requeue_job(j["id"], delay=3600, message="paused")
+    row = db.get_job(j["id"])
+    assert row["status"] == "queued" and row["not_before"] > db.now() + 3000 and row["message"] == "paused"
+    claimed = set()
+    while (c := db.claim_job()):
+        claimed.add(c["id"]); db.update_job(c["id"], status="done")
+    assert j["id"] not in claimed
+    db.requeue_job(j["id"], delay=0)
+    assert db.claim_job()["id"] == j["id"]
+
+
+def test_age_cutoff(client, monkeypatch):
+    from neurosearch import ingest, media
+    # fake a channel with 3 videos newest-first; metadata says the 2nd is old
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UC1", "title": "Chan", "url": url},
+        [{"id": f"vid{i}0000000", "url": f"https://www.youtube.com/watch?v=vid{i}0000000", "title": f"V{i}"} for i in range(3)]))
+    dates = {"vid00000000": "2026-06-01", "vid10000000": "2019-01-01", "vid20000000": "2018-01-01"}
+    def fake_extract(url, platform, progress=None, cookies_file=None, referer=None, min_date=None):
+        vid = url.split("v=")[1]
+        if min_date and dates[vid] < min_date:
+            raise ingest.TooOld(f"published {dates[vid]}, before cutoff {min_date}")
+        return {"platform": "youtube", "external_id": vid, "url": url, "title": vid, "published_at": dates[vid], "duration": 60,
+                "transcript_kind": "captions", "segments": [{"start": 0, "end": 5, "text": "hello content"}], "chapters": []}
+    monkeypatch.setattr(ingest, "extract_transcript", fake_extract)
+    p = client.post("/api/projects", headers=H, json={"name": "Cutoff", "brief": "x"}).json()
+    r = ingest.ingest_url("https://www.youtube.com/@chan", project_id=p["id"], since_years=2, max_videos=10)
+    assert r["queued"] == 3 and r["limits"]["since"] is not None
+    # run the queued jobs synchronously
+    from neurosearch import jobs
+    while (j := db.claim_job()):
+        try:
+            res = jobs.run_job(j); db.update_job(j["id"], status="done", result=res)
+        except Exception as e:  # noqa: BLE001
+            db.update_job(j["id"], status="failed", message=str(e))
+    statuses = {s["external_id"]: s["status"] for s in db.list_sources(limit=1000) if s["external_id"] in dates}
+    assert statuses["vid00000000"] == "ready" and statuses["vid10000000"] == "skipped" and statuses["vid20000000"] == "skipped"

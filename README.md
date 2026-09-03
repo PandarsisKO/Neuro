@@ -182,6 +182,22 @@ fly deploy
 Then open `https://<your-app-name>.fly.dev` on your phone and sign in with the token. Railway/Render work
 the same way with the Dockerfile — just mount a persistent volume at `/data` and set the same env vars.
 
+### Only recent videos (whole channels)
+
+Channels and playlists default to **videos from the last 2 years, at most 150** (`NEUROSEARCH_SINCE_YEARS`,
+`NEUROSEARCH_MAX_VIDEOS`; both adjustable per pull in Sources → Link). Older videos are marked *skipped* rather
+than transcribed, and because a channel's Videos tab is newest-first, the first too-old video cancels the rest of
+that channel's queue so no time or money is spent finding out the remaining 400 are older still.
+
+### Being polite to YouTube (whole channels)
+
+Bulk pulls are the thing that gets a home IP temporarily rate-limited ("Sign in to confirm you're not a bot" —
+clears in hours, not a ban). The app fetches from YouTube one video at a time with a randomised pause between
+them (`NEUROSEARCH_YT_DELAY`, default 4 s), and if YouTube throws the bot-check it pauses all YouTube fetches for
+`NEUROSEARCH_YT_BACKOFF_MINUTES` (default 20), re-queues the affected videos, and shows the pause in the Sources
+tab. For a 300-video channel expect roughly half an hour of background work. Instagram is far stricter — treat it
+as one reel at a time, and avoid bulk pulls with your own login cookies.
+
 ### If YouTube blocks the cloud server
 
 YouTube frequently refuses caption/audio downloads from datacenter IPs ("Sign in to confirm you're not a

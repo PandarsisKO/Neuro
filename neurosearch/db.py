@@ -234,6 +234,7 @@ MIGRATIONS = [
     ("sources", "summary", "ALTER TABLE sources ADD COLUMN summary TEXT"),
     ("sources", "substance", "ALTER TABLE sources ADD COLUMN substance INTEGER"),
     ("project_sources", "suggested_at", "ALTER TABLE project_sources ADD COLUMN suggested_at REAL"),
+    ("jobs", "not_before", "ALTER TABLE jobs ADD COLUMN not_before REAL"),
     ("projects", "mode", "ALTER TABLE projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'research'"),
     ("projects", "goal", "ALTER TABLE projects ADD COLUMN goal TEXT"),
     ("projects", "audience", "ALTER TABLE projects ADD COLUMN audience TEXT"),
@@ -541,7 +542,8 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
 def claim_job() -> dict[str, Any] | None:
     """Atomically claim the oldest queued job."""
     with tx() as conn:
-        row = conn.execute("SELECT id FROM jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+        row = conn.execute("SELECT id FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?) ORDER BY created_at LIMIT 1",
+                           (now(),)).fetchone()
         if not row:
             return None
         cur = conn.execute(
@@ -569,6 +571,32 @@ def update_job(job_id: str, *, progress: float | None = None, message: str | Non
         return
     with tx() as conn:
         conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id=?", (*args, job_id))
+
+
+def skip_queued_siblings(collection_id: str, reason: str) -> int:
+    """Cancel still-queued ingest_source jobs for a collection and mark their sources skipped."""
+    n = 0
+    with tx() as conn:
+        rows = conn.execute("SELECT id, payload FROM jobs WHERE status='queued' AND kind='ingest_source'").fetchall()
+        for r in rows:
+            try:
+                pl = json.loads(r["payload"])
+            except ValueError:
+                continue
+            if pl.get("collection_id") != collection_id:
+                continue
+            conn.execute("UPDATE jobs SET status='done', finished_at=?, message=?, result=? WHERE id=?",
+                         (now(), "skipped: " + reason, json.dumps({"skipped": True, "reason": reason}), r["id"]))
+            conn.execute("UPDATE sources SET status='skipped', error=?, updated_at=? WHERE id=? AND status='pending'",
+                         (reason, now(), pl.get("source_id")))
+            n += 1
+    return n
+
+
+def requeue_job(job_id: str, delay: float = 0, message: str | None = None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, not_before=?, message=? WHERE id=?",
+                     (now() + delay, message, job_id))
 
 
 def requeue_stale_running_jobs() -> int:

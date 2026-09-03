@@ -17,6 +17,60 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
+# --- politeness / rate-limit handling -------------------------------------------------------------
+import random
+import threading
+import time as _time
+
+_yt_lock = threading.Lock()          # one YouTube fetch at a time, app-wide
+_yt_last = 0.0
+_yt_paused_until = 0.0
+BOT_CHECK = re.compile(r"confirm you.re not a bot|sign in to confirm|HTTP Error 429|too many requests|rate.?limit", re.I)
+
+
+class RateLimited(RuntimeError):
+    """YouTube asked us to slow down; the job runner re-queues instead of failing."""
+
+
+def _is_youtube(url: str) -> bool:
+    return any(h in url for h in ("youtube.com", "youtu.be"))
+
+
+def polite(url: str):
+    """Context manager: serialise YouTube requests and space them out; honour a global pause after a bot-check."""
+    class _Ctx:
+        def __enter__(self):
+            if not _is_youtube(url):
+                return self
+            _yt_lock.acquire()
+            global _yt_last
+            wait = max(0.0, _yt_paused_until - _time.time())
+            if wait > 0:
+                _yt_lock.release()
+                raise RateLimited(f"YouTube rate limit — paused for another {int(wait // 60) + 1} min")
+            gap = settings.yt_delay * random.uniform(0.5, 1.5) - (_time.time() - _yt_last)
+            if gap > 0:
+                _time.sleep(gap)
+            return self
+        def __exit__(self, et, ev, tb):
+            if not _is_youtube(url):
+                return False
+            global _yt_last, _yt_paused_until
+            _yt_last = _time.time()
+            _yt_lock.release()
+            if ev is not None and BOT_CHECK.search(str(ev)):
+                _yt_paused_until = _time.time() + settings.yt_backoff_minutes * 60
+                log.warning("YouTube bot-check/rate limit hit; pausing YouTube fetches for %d min", settings.yt_backoff_minutes)
+                raise RateLimited(f"YouTube asked us to slow down; pausing {settings.yt_backoff_minutes} min then retrying") from ev
+            return False
+    return _Ctx()
+
+
+def rate_limit_status() -> dict[str, Any]:
+    left = max(0.0, _yt_paused_until - _time.time())
+    return {"paused": left > 0, "seconds_left": int(left)}
+
+
 YT_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"}
 
 
@@ -122,10 +176,12 @@ def _flatten(res: dict[str, Any]) -> list[dict[str, Any]]:
 
 def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
     """Full metadata for one item (no download)."""
-    with yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True)) as ydl:
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True)) as ydl:
         try:
             info = ydl.extract_info(url, download=False)
         except Exception as e:  # noqa: BLE001
+            if BOT_CHECK.search(str(e)):
+                raise
             raise RuntimeError(f"metadata fetch failed: {e}") from e
     if info and info.get("_type") == "playlist" and info.get("entries"):
         info = next((e for e in info["entries"] if e), None)
@@ -255,7 +311,7 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
         postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "64"}],
         ignoreerrors=False,
     )
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with polite(url), yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         if info and info.get("_type") == "playlist" and info.get("entries"):
             info = next((e for e in info["entries"] if e), None)

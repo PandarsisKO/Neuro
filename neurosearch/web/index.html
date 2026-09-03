@@ -28,7 +28,7 @@
   .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
   .chip:hover{border-color:var(--accent)}
   .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
-  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.pending,.st.queued,.st.running{color:var(--warn)}.st.done{color:var(--ok)}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued,.st.running{color:var(--warn)}.st.done{color:var(--ok)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
@@ -219,7 +219,12 @@
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link. One per line.</div>
           <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
-          <div class="row" style="margin-top:8px"><input id="inTags" placeholder="tags (optional, comma separated)"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
+          <div class="row" style="margin-top:8px">
+            <label class="muted" title="For channels and playlists">Channels/playlists: only the last
+              <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
+            <label class="muted">max <input id="inMax" type="number" min="0" value="150" style="width:70px;padding:4px 6px"> videos</label>
+            <span style="flex:1"></span>
+            <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
         </div>
         <div class="pane" id="pane-upload">
           <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is.</div>
@@ -589,7 +594,7 @@ function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sou
 async function ingestUrls() {
   const url = $('#inUrls').value.trim(); if (!url) return;
   const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
-  await post('/api/ingest', { url, tags, project_id: state.project.id, force: $('#inForce').checked });
+  await post('/api/ingest', { url, tags, project_id: state.project.id, force: $('#inForce').checked, since_years: +$('#inSince').value, max_videos: +$('#inMax').value });
   $('#inUrls').value = ''; loadJobs();
 }
 async function ingestFiles() {
@@ -648,7 +653,7 @@ async function runDiscover() {
 }
 async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
 async function discAdd(id, url, whole) {
-  if (whole && !confirm('Add the whole channel? Every video will be transcribed and analysed — for a big channel that can take a while and cost a few dollars in API usage.')) return;
+  if (whole && !confirm('Add this channel? Only videos from the last 2 years (max 150) are pulled by default — change that in the Link tab. Each video is transcribed and analysed (a few cents each).')) return;
   await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
   await post(`/api/discoveries/${id}/status`, { status: 'added' });
   loadDiscoveries(); loadJobs(); loadSources();
@@ -661,7 +666,9 @@ async function loadJobs() {
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
   const recentFailed = js.filter(j => j.status === 'failed').slice(0, 5);
   const show = [...active, ...recentFailed];
-  $('#jobsCard').style.display = show.length ? '' : 'none';
+  const st = await api('/api/stats');
+  $('#jobsCard').style.display = show.length || st.youtube?.paused ? '' : 'none';
+  if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   $('#jobs').innerHTML = show.map(j => `<div class="job"><span class="st ${j.status}">${j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
