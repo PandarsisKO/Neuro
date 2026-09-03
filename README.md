@@ -194,6 +194,14 @@ valve by hand. The queue lives in the database, survives restarts, and never re-
 question, a plan build) are still allowed while the queue is paused. Prices are estimates; override with
 `NEUROSEARCH_PRICES='{"claude-sonnet-4-6":[3,15]}'` if the models or rates change.
 
+### Channels and playlists wait for approval
+
+A single video starts ingesting the moment you paste it. A channel or playlist does not: it is listed first (a
+cheap, free enumeration) and shows up in Sources as **Review before starting** — every video with its length, a
+cost estimate, select all / none / filter — and nothing is downloaded, transcribed or analysed until you press
+**Start ingesting selected**. Discard drops the list. This applies wherever a channel link comes in: the Link tab,
+a chat message, Discover's "+ Channel", or the new-project form. (The CLI keeps the old immediate behaviour.)
+
 ### Only recent videos (whole channels)
 
 Channels and playlists default to **videos from the last 2 years, at most 150** (`NEUROSEARCH_SINCE_YEARS`,

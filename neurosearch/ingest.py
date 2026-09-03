@@ -1,6 +1,7 @@
 """Ingest orchestration: URL -> source rows -> transcript -> chunks -> embeddings."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -33,11 +34,13 @@ def ingest_url(
     collection_id: str | None = None,
     since_years: float | None = None,
     max_videos: int | None = None,
+    review: bool = True,
 ) -> dict[str, Any]:
-    """Entry point for any URL. Playlists/channels fan out into one job per video.
+    """Entry point for any URL. Single videos ingest immediately. Playlists/channels are listed first and,
+    with review=True (the default), wait as 'proposed' sources until the user approves them
+    (see approve_proposed); with review=False they fan out into one job per video straight away.
 
     `since_years` / `max_videos` limit bulk pulls (default from settings; 0 = no limit).
-    Returns a summary dict.
     """
     url = url.strip()
     kind = media.classify_url(url)
@@ -57,26 +60,31 @@ def ingest_url(
         total_found = len(entries)
         if mx and mx > 0:
             entries = entries[:mx]
-        queued, skipped = 0, 0
+        queued, skipped, proposed = 0, 0, 0
         for i, e in enumerate(entries):
             existing = db.find_source("youtube", e["id"])
+            already = bool(existing and existing["status"] == "ready" and not force)
             src = db.upsert_source(
                 platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"),
                 duration=e.get("duration"), tags=_merge_tags(existing, tags) if existing else tags,
-                status=(existing["status"] if existing and existing["status"] == "ready" and not force else "pending"),
+                status=("ready" if already else ("proposed" if review else "pending")),
             )
             db.link_source_collection(src["id"], coll["id"])
-            if existing and existing["status"] == "ready" and not force:
+            if already:
                 skipped += 1
+            elif review:
+                proposed += 1
             else:
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
                                                 "collection_id": coll["id"], "newest_first": kind == "channel"})
                 queued += 1
             if i % 25 == 0:
-                progress(0.05 + 0.9 * i / len(entries), f"queued {i + 1}/{len(entries)}")
+                progress(0.05 + 0.9 * i / len(entries), f"listed {i + 1}/{len(entries)}")
+        if review and proposed:
+            db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel", "project_id": project_id}))
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
-                "found": total_found, "queued": queued, "already_ingested": skipped,
-                "limits": {"since": min_date, "max_videos": mx}}
+                "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped,
+                "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
     platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
     ext_id = _external_id_from_url(url, platform)
@@ -96,6 +104,30 @@ def ingest_url(
         db.link_source_collection(src["id"], collection_id)
     result = ingest_source(src["id"], progress=progress, cookies_file=cookies_file, referer=referer, keep_title=title)
     return {"kind": kind, **result}
+
+
+def approve_proposed(collection_id: str, source_ids: list[str] | None = None) -> dict[str, Any]:
+    """Start ingesting the chosen proposed sources of a collection; drop the rest of the proposals."""
+    import json as _json
+    meta = {}
+    try:
+        meta = _json.loads(db.kv_get(f"review:{collection_id}") or "{}")
+    except ValueError:
+        pass
+    rows = db.proposed_sources(collection_id)
+    chosen = set(source_ids) if source_ids is not None else {r["id"] for r in rows}
+    started, dropped = 0, 0
+    for r in rows:
+        if r["id"] in chosen:
+            db.set_source_status(r["id"], "pending")
+            db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
+                                            "collection_id": collection_id, "newest_first": bool(meta.get("newest_first"))})
+            started += 1
+        else:
+            db.delete_source(r["id"])
+            dropped += 1
+    db.kv_set(f"review:{collection_id}", None)
+    return {"collection_id": collection_id, "started": started, "dropped": dropped}
 
 
 def _cutoff_date(years: float | None) -> str | None:

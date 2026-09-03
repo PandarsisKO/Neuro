@@ -39,7 +39,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
                                  progress=progress, force=bool(payload.get("force")),
                                  cookies_file=payload.get("cookies_file"), referer=payload.get("referer"),
                                  title=payload.get("title"), collection_id=payload.get("collection_id"),
-                                 since_years=payload.get("since_years"), max_videos=payload.get("max_videos"))
+                                 since_years=payload.get("since_years"), max_videos=payload.get("max_videos"),
+                                 review=payload.get("review", True))
     if kind == "ingest_source":
         return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
                                     collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")))

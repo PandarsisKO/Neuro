@@ -197,6 +197,20 @@ async def api_budget(body: BudgetIn) -> dict[str, Any]:
     return usage.totals()
 
 
+@app.get("/api/projects/{project_id}/reviews", dependencies=[Depends(require_auth)])
+async def api_reviews(project_id: str) -> list[dict[str, Any]]:
+    return db.pending_reviews(project_id)
+
+
+class ApproveIn(BaseModel):
+    source_ids: list[str] | None = None   # None = all proposed
+
+
+@app.post("/api/collections/{collection_id}/approve", dependencies=[Depends(require_auth)])
+async def api_approve(collection_id: str, body: ApproveIn) -> dict[str, Any]:
+    return ingest.approve_proposed(collection_id, body.source_ids)
+
+
 @app.get("/api/defaults", dependencies=[Depends(require_auth)])
 async def api_defaults() -> dict[str, Any]:
     return {"since_years": settings.default_since_years, "max_videos": settings.default_max_videos}
@@ -291,7 +305,7 @@ async def api_sources(status: str | None = None, collection_id: str | None = Non
                            limit=limit if not (project_id or not_in_project) else 10000, offset=offset)
     if project_id:
         ids = set(db.project_source_ids(project_id, ready_only=False))
-        rows = [r for r in rows if r["id"] in ids][:limit]
+        rows = [r for r in rows if r["id"] in ids and r["status"] != "proposed"][:limit]
         counts = db.suggestion_counts(project_id)
         analysing = db.sources_being_analysed(project_id)
         for r in rows:

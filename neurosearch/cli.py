@@ -57,7 +57,7 @@ def ingest(
             typer.echo(f"no project '{project}'"); raise typer.Exit(1)
         pid = p["id"]
     for u in urls:
-        j = jobs.enqueue("ingest_url", {"url": u, "tags": tag, "project_id": pid, "force": force})
+        j = jobs.enqueue("ingest_url", {"url": u, "tags": tag, "project_id": pid, "force": force, "review": False})
         typer.echo(f"queued {j['id'][:8]}  {u}")
     if wait:
         _run_until_idle()

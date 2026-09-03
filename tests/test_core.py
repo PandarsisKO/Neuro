@@ -360,8 +360,16 @@ def test_age_cutoff(client, monkeypatch):
                 "transcript_kind": "captions", "segments": [{"start": 0, "end": 5, "text": "hello content"}], "chapters": []}
     monkeypatch.setattr(ingest, "extract_transcript", fake_extract)
     p = client.post("/api/projects", headers=H, json={"name": "Cutoff", "brief": "x"}).json()
+    # default: channel is listed and waits for approval
     r = ingest.ingest_url("https://www.youtube.com/@chan", project_id=p["id"], since_years=2, max_videos=10)
-    assert r["queued"] == 3 and r["limits"]["since"] is not None
+    assert r["proposed"] == 3 and r["queued"] == 0 and r["review"] is True and r["limits"]["since"] is not None
+    reviews = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()
+    assert len(reviews) == 1 and len(reviews[0]["proposed"]) == 3
+    # proposed sources are hidden from the project's source list
+    assert all(x["status"] != "proposed" for x in client.get("/api/sources", headers=H, params={"project_id": p["id"]}).json())
+    # approve all -> jobs created
+    a = client.post(f"/api/collections/{reviews[0]['id']}/approve", headers=H, json={}).json()
+    assert a["started"] == 3 and a["dropped"] == 0
     # run the queued jobs synchronously
     from neurosearch import jobs
     while (j := db.claim_job()):
@@ -400,3 +408,19 @@ def test_budget_valve(client, monkeypatch):
     assert client.get("/api/usage", headers=H).json()["blocked"] is None
     assert db.get_job(j["id"])["not_before"] is None
     db.update_job(j["id"], status="done")
+
+
+def test_review_partial_approve(client, monkeypatch):
+    from neurosearch import ingest, media
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "PLx", "title": "List", "url": url},
+        [{"id": f"pl{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=pl{i}0000000", "title": f"P{i}"} for i in range(4)]))
+    p = client.post("/api/projects", headers=H, json={"name": "Review", "brief": "x"}).json()
+    r = ingest.ingest_url("https://www.youtube.com/playlist?list=PLx", project_id=p["id"])
+    assert r["proposed"] == 4
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    keep = [s["id"] for s in rv["proposed"][:2]]
+    a = client.post(f"/api/collections/{rv['id']}/approve", headers=H, json={"source_ids": keep}).json()
+    assert a["started"] == 2 and a["dropped"] == 2
+    assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json() == []
+    jobs_ = [j for j in client.get(f"/api/projects/{p['id']}/jobs", headers=H).json() if j["kind"] == "ingest_source"]
+    assert {j["payload"]["source_id"] for j in jobs_} >= set(keep)

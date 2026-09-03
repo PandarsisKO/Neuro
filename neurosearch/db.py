@@ -612,6 +612,24 @@ def skip_queued_siblings(collection_id: str, reason: str) -> int:
     return n
 
 
+def proposed_sources(collection_id: str) -> list[dict[str, Any]]:
+    return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
+        """SELECT s.* FROM sources s JOIN source_collections sc ON sc.source_id=s.id
+           WHERE sc.collection_id=? AND s.status='proposed' ORDER BY s.created_at""", (collection_id,)).fetchall()]
+
+
+def pending_reviews(project_id: str) -> list[dict[str, Any]]:
+    """Collections linked to this project that still have proposed (unapproved) sources."""
+    out = []
+    for c in connect().execute(
+        """SELECT c.* FROM collections c JOIN project_collections pc ON pc.collection_id=c.id WHERE pc.project_id=?""",
+        (project_id,)).fetchall():
+        props = proposed_sources(c["id"])
+        if props:
+            d = dict(c); d["proposed"] = props; out.append(d)
+    return out
+
+
 def kv_get(key: str) -> str | None:
     row = connect().execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return row["value"] if row else None

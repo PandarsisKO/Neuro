@@ -126,9 +126,12 @@ def ask(
         question_wo = URL_RE.sub("", question).strip(" \n,;:-—")
         if len(question_wo.split()) < 4:  # nothing left to answer: just confirm
             where = f" into project **{project['name']}**" if project else ""
-            answer = (f"Queued {len(urls)} link{'s' if len(urls) > 1 else ''} for ingestion{where}. "
-                      "Playlists and channels expand into every video; I'll use the new sources as soon as "
-                      "they're ready — ask again in a minute.")
+            from .media import classify_url
+            bulk = [u for u in urls if classify_url(u) in ("playlist", "channel")]
+            answer = (f"Queued {len(urls)} link{'s' if len(urls) > 1 else ''}{where}. "
+                      + ("Channels and playlists are listed first and wait for your approval in **Sources → Review** before anything is transcribed. "
+                         if bulk else "")
+                      + "I'll use new sources as soon as they're ready — ask again in a minute.")
             if conversation_id:
                 db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
                 db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id)
