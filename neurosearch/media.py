@@ -312,7 +312,9 @@ def _with_timeout(fn: Any, seconds: float, what: str) -> Any:
 def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
     """Full metadata for one item (no download). Raises RuntimeError carrying yt-dlp's real reason on failure."""
     lg = _Collect()
-    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, logger=lg)) as ydl:
+    # noplaylist: a watch?v=…&list=… link means THAT video, not the whole playlist (which made single-video
+    # fetches crawl every entry and sit in "fetching metadata" for many minutes)
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, noplaylist=True, logger=lg)) as ydl:
         try:
             info = _with_timeout(lambda: ydl.extract_info(url, download=False), FETCH_TIMEOUT, "metadata fetch")
         except Exception as e:  # noqa: BLE001
@@ -446,6 +448,7 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
     dest_dir.mkdir(parents=True, exist_ok=True)
     opts = _base_opts(
         cookies_file, referer,
+        noplaylist=True,
         format="bestaudio/best",
         outtmpl=str(dest_dir / "%(id)s.%(ext)s"),
         postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "64"}],

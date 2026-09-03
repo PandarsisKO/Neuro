@@ -736,6 +736,10 @@ def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | N
                     conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO NOTHING",
                                  (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first"),
                                                             "ranked": True, "rank_note": "returned from the queue — sorted by their earlier relevance scores"})))
+            elif r["kind"] == "ingest_url" and pl.get("url"):
+                # a single link that never started: mark its placeholder source so it is visible and retryable
+                conn.execute("UPDATE sources SET status='failed', error='cancelled before it started — use Retry', updated_at=? WHERE url=? AND status='pending'",
+                             (now(), pl["url"]))
             n += 1
     return n
 

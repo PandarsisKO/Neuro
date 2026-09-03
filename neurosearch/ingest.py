@@ -295,11 +295,10 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
                                          referer=referer, min_date=min_date)
         except TooOld as e:
             db.set_source_status(source_id, "skipped", str(e))
-            n = 0
-            if newest_first and collection_id:
-                # a channel's Videos tab is newest-first: everything still queued behind this one is older too
-                n = db.skip_queued_siblings(collection_id, reason=f"older than cutoff {min_date}")
-            return {"source_id": source_id, "skipped": True, "reason": str(e), "also_skipped": n}
+            # NB: we no longer skip the rest of the collection when one video is too old — approved lists are
+            # relevance-ranked (not chronological) and channel listings mix the Videos and Shorts tabs, so
+            # "everything after this is older" was wrong and threw away most of a selection.
+            return {"source_id": source_id, "skipped": True, "reason": str(e)}
         payload["external_id"] = payload.get("external_id") or src["external_id"]
         if keep_title:
             payload["title"] = keep_title
