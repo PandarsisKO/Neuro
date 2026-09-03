@@ -365,7 +365,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.10.6';
+const UI_VERSION = '0.10.7';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -808,11 +808,12 @@ function jobLabel(j) {
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
   return what || j.kind;
 }
+async function dismissJob(id) { await post(`/api/jobs/${id}/dismiss`, {}).catch(e => toast(e.message || e, 'err')); loadJobs(); }
 async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = null; loadJobs(); loadReviews(); }
 async function loadJobs() {
   const js = await api(`/api/projects/${state.project.id}/jobs?limit=30`);
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
-  const recentFailed = js.filter(j => j.status === 'failed').slice(0, 5);
+  const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
   const st = await api('/api/stats'); const u = await loadSpend();
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
@@ -820,7 +821,7 @@ async function loadJobs() {
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button><button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
   if (active.length || analysing) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);

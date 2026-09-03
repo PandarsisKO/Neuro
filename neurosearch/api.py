@@ -583,6 +583,18 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
     return out
 
 
+@app.post("/api/jobs/{job_id}/dismiss", dependencies=[Depends(require_auth)])
+def api_dismiss_job(job_id: str) -> dict[str, Any]:
+    """Hide a failed job from the In-progress card (keeps the error in the history)."""
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    if j["status"] != "failed":
+        raise HTTPException(409, "only failed jobs can be dismissed")
+    db.update_job(job_id, status="done", message=f"dismissed — {j.get('message') or 'failed'}"[:500])
+    return {"ok": True}
+
+
 @app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
 def api_cancel_job(job_id: str) -> dict[str, Any]:
     """Cancel one queued job. A queued video goes back to the Review card; running jobs can't be interrupted."""
