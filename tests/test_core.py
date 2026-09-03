@@ -424,3 +424,14 @@ def test_review_partial_approve(client, monkeypatch):
     assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json() == []
     jobs_ = [j for j in client.get(f"/api/projects/{p['id']}/jobs", headers=H).json() if j["kind"] == "ingest_source"]
     assert {j["payload"]["source_id"] for j in jobs_} >= set(keep)
+
+
+def test_cancel_queued(client):
+    p = client.post("/api/projects", headers=H, json={"name": "Cancel", "brief": "x"}).json()
+    src = db.upsert_source(platform="youtube", external_id="cancelme001", url="https://www.youtube.com/watch?v=cancelme001", status="pending")
+    coll = db.upsert_collection("channel", "UCc", "u", "Chan"); db.link_source_collection(src["id"], coll["id"]); db.add_project_collections(p["id"], [coll["id"]])
+    j = db.create_job("ingest_source", {"source_id": src["id"], "collection_id": coll["id"], "min_date": "2024-01-01"})
+    r = client.post("/api/jobs/cancel-queued", headers=H, json={}).json()
+    assert r["cancelled"] >= 1 and db.get_job(j["id"])["status"] == "done" and db.get_job(j["id"])["message"] == "cancelled"
+    assert db.get_source(src["id"])["status"] == "proposed"
+    assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]["proposed"][0]["id"] == src["id"]

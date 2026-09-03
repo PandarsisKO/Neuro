@@ -664,6 +664,10 @@ async function loadBudget() {
   $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
 }
 async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
+async function cancelQueued() {
+  if (!confirm('Cancel everything that has not started yet? Finished videos are kept; the rest go back to the Review card so you can approve a smaller set later.')) return;
+  const r = await post('/api/jobs/cancel-queued', { project_id: state.project.id }); alert(`Cancelled ${r.cancelled} queued job(s).`); loadJobs(); loadSources();
+}
 async function togglePause(p) { await post('/api/usage/budget', { paused: p }); loadJobs(); }
 async function loadDiscoveries() {
   const ds = await api(`/api/projects/${state.project.id}/discoveries`);
@@ -715,7 +719,7 @@ async function loadJobs() {
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
-  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button><button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(j.kind === 'suggest_findings' ? 'suggesting findings' : (j.payload.url || j.payload.name || j.payload.source_id || j.kind))}</span>
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span></div>`).join('');
   clearTimeout(jobsTimer);

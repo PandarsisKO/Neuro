@@ -155,6 +155,15 @@ def ask(question: str, project: Optional[str] = typer.Option(None, "-p"), web: b
 
 
 @app.command()
+def cancel(kind: Optional[str] = typer.Option(None, help="only this job kind, e.g. ingest_source")) -> None:
+    """Cancel every queued job (nothing that hasn't started will run). Queued videos become 'proposed' so you can
+    approve some of them later from the Review card in the app."""
+    _init()
+    n = db.cancel_queued_jobs(kinds=(kind,) if kind else None)
+    typer.echo(f"cancelled {n} queued job(s)")
+
+
+@app.command()
 def status() -> None:
     """Knowledge base stats and recent jobs."""
     _init()

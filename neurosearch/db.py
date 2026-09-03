@@ -643,6 +643,35 @@ def kv_set(key: str, value: str | None) -> None:
             conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
+def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | None = None) -> int:
+    """Cancel every queued job (optionally only some kinds / one project). Pending sources go back to 'proposed'
+    so they can be approved later from the Review card instead of silently disappearing."""
+    n = 0
+    with tx() as conn:
+        rows = conn.execute("SELECT id, kind, payload FROM jobs WHERE status='queued'").fetchall()
+        for r in rows:
+            if kinds and r["kind"] not in kinds:
+                continue
+            try:
+                pl = json.loads(r["payload"])
+            except ValueError:
+                pl = {}
+            if project_id and pl.get("project_id") not in (None, project_id):
+                continue
+            conn.execute("UPDATE jobs SET status='done', finished_at=?, message='cancelled', result=? WHERE id=?",
+                         (now(), json.dumps({"cancelled": True}), r["id"]))
+            sid = pl.get("source_id")
+            if sid and r["kind"] == "ingest_source":
+                conn.execute("UPDATE sources SET status='proposed', updated_at=? WHERE id=? AND status='pending'", (now(), sid))
+                # remember the review context so approval later still applies the cutoff
+                cid = pl.get("collection_id")
+                if cid:
+                    conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO NOTHING",
+                                 (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first")})))
+            n += 1
+    return n
+
+
 def requeue_job(job_id: str, delay: float = 0, message: str | None = None) -> None:
     with tx() as conn:
         conn.execute("UPDATE jobs SET status='queued', started_at=NULL, not_before=?, message=? WHERE id=?",

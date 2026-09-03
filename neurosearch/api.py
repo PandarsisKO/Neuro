@@ -197,6 +197,16 @@ async def api_budget(body: BudgetIn) -> dict[str, Any]:
     return usage.totals()
 
 
+class CancelIn(BaseModel):
+    project_id: str | None = None
+
+
+@app.post("/api/jobs/cancel-queued", dependencies=[Depends(require_auth)])
+async def api_cancel_queued(body: CancelIn) -> dict[str, Any]:
+    """Stop everything that hasn't started. Queued videos go back to the Review card for later approval."""
+    return {"cancelled": db.cancel_queued_jobs(project_id=body.project_id)}
+
+
 @app.get("/api/projects/{project_id}/reviews", dependencies=[Depends(require_auth)])
 async def api_reviews(project_id: str) -> list[dict[str, Any]]:
     return db.pending_reviews(project_id)
