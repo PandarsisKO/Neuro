@@ -28,7 +28,7 @@
   .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
   .chip:hover{border-color:var(--accent)}
   .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
-  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued,.st.running{color:var(--accent);background:var(--user)}.st.done{color:var(--ok)}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued{color:var(--muted)}.st.running,.st.active{color:var(--accent);background:var(--user)}.st.done{color:var(--ok)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
@@ -371,7 +371,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.8';
+const UI_VERSION = '0.11.9';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -702,11 +702,11 @@ async function loadSources() {
     if (s.status === 'pending') return '⏳ pending (no job — use Retry)';
     return '';
   };
-  $('#srcList').innerHTML = rows.map(s => `<div class="src ${bucket(s) === 0 ? 'live' : ''}">
+  $('#srcList').innerHTML = rows.map(s => `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
       <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
-      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status}">${s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
