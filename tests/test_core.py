@@ -476,3 +476,37 @@ def test_cancel_single_job(client):
     assert client.post(f"/api/jobs/{ids[0]}/cancel", headers=H).json()["cancelled"] == 1
     assert db.get_job(ids[0])["message"] == "cancelled" and db.get_job(ids[1])["status"] == "queued"
     assert client.post(f"/api/jobs/{ids[0]}/cancel", headers=H).status_code == 409
+
+
+def test_discover_background_and_pause_turn(client, monkeypatch):
+    import anthropic
+    from tests.fake_claude import Anthropic, _Msgs
+    from neurosearch import discover, jobs
+    calls = {"n": 0}
+    orig = _Msgs.create
+    def create(self, **kw):   # first call returns a paused turn with no text, second the real answer
+        calls["n"] += 1
+        r = orig(self, **kw)
+        if calls["n"] == 1:
+            r.stop_reason = "pause_turn"; r.content = []
+        return r
+    monkeypatch.setattr(_Msgs, "create", create)
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(discover.settings, "anthropic_api_key", "fake")
+    p = client.post("/api/projects", headers=H, json={"name": "BG", "brief": "get out of debt"}).json()
+    r = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={"background": True}).json()
+    job = db.get_job(r["job_id"]); assert job["kind"] == "discover"
+    res = jobs.run_job(job)
+    assert calls["n"] == 2 and res["added"] == 2
+    assert len(client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()) == 2
+
+
+def test_review_discard_last(client, monkeypatch):
+    from neurosearch import ingest, media
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "PLd", "title": "L", "url": url},
+        [{"id": "dl00000000a", "url": "https://www.youtube.com/watch?v=dl00000000a", "title": "only one"}]))
+    p = client.post("/api/projects", headers=H, json={"name": "Last", "brief": "x"}).json()
+    ingest.ingest_url("https://www.youtube.com/playlist?list=PLd", project_id=p["id"])
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    assert client.post(f"/api/collections/{rv['id']}/approve", headers=H, json={"source_ids": []}).json()["dropped"] == 1
+    assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json() == []

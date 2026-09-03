@@ -32,7 +32,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
 
     kind = job["kind"]
     from . import usage
-    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed"):
+    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover"):
         usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
@@ -56,6 +56,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "suggest_findings":
         from .findings import suggest_for_project
         return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress)
+    if kind == "discover":
+        from .discover import discover
+        return discover(payload["project_id"], payload.get("refine"), progress=progress)
     if kind == "rank_proposed":
         from .relevance import rank_collection
         return rank_collection(payload["collection_id"], payload.get("project_id"), want=payload.get("want"), progress=progress)

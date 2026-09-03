@@ -37,7 +37,8 @@ Output ONLY JSON:
 Return about 10 sources. Never invent URLs: if unsure, give the search you'd run instead (e.g. "youtube.com/results?search_query=...")."""
 
 
-def discover(project_id: str, refine: str | None = None, count: int = 10) -> dict[str, Any]:
+def discover(project_id: str, refine: str | None = None, count: int = 10,
+             progress: Any = None) -> dict[str, Any]:
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
@@ -57,21 +58,36 @@ def discover(project_id: str, refine: str | None = None, count: int = 10) -> dic
         user.append(f"REFINEMENT FROM THE USER: {refine}")
     user.append(f"\nPropose about {count} sources now.")
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    resp = client.messages.create(
-        model=settings.answer_model, max_tokens=6000, system=SYSTEM,
-        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],
-        messages=[{"role": "user", "content": "\n".join(user)}],
-    )
-    try:
-        from . import usage
-        usage.record_anthropic(resp, "discover", project_id=project_id)
-    except Exception:  # noqa: BLE001
-        pass
-    text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text").strip()
+    from . import usage
+    usage.guard(0.15)
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=240.0, max_retries=2)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": "\n".join(user)}]
+    text = ""
+    for turn in range(6):
+        if progress:
+            progress(min(0.1 + 0.15 * turn, 0.9), "searching the web…" if turn else "thinking about who to look for…")
+        resp = client.messages.create(
+            model=settings.answer_model, max_tokens=6000, system=SYSTEM,
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],
+            messages=messages,
+        )
+        try:
+            usage.record_anthropic(resp, "discover", project_id=project_id)
+        except Exception:  # noqa: BLE001
+            pass
+        text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text").strip()
+        # With server-side web search the API can hand back a partial turn ("pause_turn"); continue it.
+        if getattr(resp, "stop_reason", None) == "pause_turn":
+            messages = messages + [{"role": "assistant", "content": resp.content}]
+            continue
+        break
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
-    data = json.loads(text[s:e + 1]) if s >= 0 else {"sources": []}
+    try:
+        data = json.loads(text[s:e + 1]) if s >= 0 else {"sources": []}
+    except ValueError:
+        log.warning("discover: could not parse model output: %s", text[:300])
+        data = {"sources": [], "note": "The search came back in an unexpected format — try again (or add a steer)."}
     items = []
     for d in data.get("sources") or []:
         if not isinstance(d, dict) or not d.get("name"):

@@ -721,6 +721,7 @@ async def api_plan_html(project_id: str) -> Any:
 
 class DiscoverIn(BaseModel):
     refine: str | None = None
+    background: bool = False   # True → returns {"job_id"}; poll /api/jobs/{id}
 
 
 @app.get("/api/projects/{project_id}/discoveries", dependencies=[Depends(require_auth)])
@@ -730,6 +731,9 @@ async def api_discoveries(project_id: str) -> list[dict[str, Any]]:
 
 @app.post("/api/projects/{project_id}/discover", dependencies=[Depends(require_auth)])
 async def api_discover(project_id: str, body: DiscoverIn) -> dict[str, Any]:
+    if body.background:
+        job = jobs.enqueue("discover", {"project_id": project_id, "refine": body.refine})
+        return {"job_id": job["id"]}
     from .discover import discover
     return await anyio.to_thread.run_sync(lambda: discover(project_id, body.refine))
 

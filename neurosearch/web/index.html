@@ -358,7 +358,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.10.2';
+const UI_VERSION = '0.10.3';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -588,7 +588,7 @@ function showPane(p) {
   if (p === 'discover') loadDiscoveries();
   if (p === 'course') loadCoursePane();
 }
-let rvSig = '';
+let rvSig = null;
 const rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
 const rvFilterText = {};
 const rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
@@ -647,15 +647,15 @@ function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id]
 function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
 function rvTop(id, n) { document.querySelectorAll(`#rv-${id} .li`).forEach((l, i) => { const inp = l.querySelector('input'); inp.checked = i < n; rvRemember(id, inp); }); }
 function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
-async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); rvSig = ''; loadReviews(); setTimeout(loadReviews, 4000); }
+async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); rvSig = null; loadReviews(); setTimeout(loadReviews, 4000); }
 async function rvStart(id) {
   const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
   if (!ids.length) return alert('Nothing selected.');
   const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
-  delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; rvSig = '';
+  delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; rvSig = null;
   loadReviews(); loadJobs(); loadSources();
 }
-async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; rvSig = ''; loadReviews(); }
+async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; rvSig = null; loadReviews(); }
 async function loadSources() {
   loadReviews();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
@@ -758,9 +758,22 @@ async function loadDiscoveries() {
   if (show.length && show[0].note) $('#discMsg').textContent = show[0].note;
 }
 async function runDiscover() {
-  const btn = $('#discBtn'); btn.disabled = true; $('#discMsg').innerHTML = '<span class="spin"></span> searching the web for the people worth learning from (20–60 s)…';
-  try { const r = await post(`/api/projects/${state.project.id}/discover`, { refine: $('#discRefine').value || null }); $('#discMsg').textContent = (r.note || '') + (r.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); await loadDiscoveries(); }
-  catch (e) { $('#discMsg').textContent = 'error: ' + e.message; }
+  const btn = $('#discBtn'); btn.disabled = true;
+  const t0 = Date.now(), tick = m => { $('#discMsg').innerHTML = `<span class="spin"></span> ${esc(m || 'searching the web for the people worth learning from')} · ${Math.round((Date.now() - t0) / 1000)}s (usually 30–90 s)`; };
+  tick();
+  try {
+    const r = await post(`/api/projects/${state.project.id}/discover`, { refine: $('#discRefine').value || null, background: true });
+    if (r.job_id) {
+      for (;;) {
+        await new Promise(res => setTimeout(res, 2500));
+        const j = await api(`/api/jobs/${r.job_id}`);
+        if (j.status === 'done') { const res = j.result || {}; $('#discMsg').textContent = (res.note || '') + (res.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); break; }
+        if (j.status === 'failed') { $('#discMsg').textContent = 'error: ' + (j.message || 'discover failed'); break; }
+        tick(j.message);
+      }
+    } else { $('#discMsg').textContent = (r.note || '') + (r.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); }
+    await loadDiscoveries();
+  } catch (e) { $('#discMsg').textContent = 'error: ' + e.message; }
   btn.disabled = false;
 }
 async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
@@ -780,7 +793,7 @@ function jobLabel(j) {
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
   return what || j.kind;
 }
-async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = ''; loadJobs(); loadReviews(); }
+async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = null; loadJobs(); loadReviews(); }
 async function loadJobs() {
   const js = await api(`/api/projects/${state.project.id}/jobs?limit=30`);
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
