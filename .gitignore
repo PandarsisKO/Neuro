@@ -11,3 +11,6 @@ build/
 dist/
 .DS_Store
 cookies.txt
+_to_delete*
+data_backup*
+*.tgz
