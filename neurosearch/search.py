@@ -23,6 +23,9 @@ def deep_link(url: str, platform: str, start: float) -> str:
     host = urlparse(url).netloc
     if "vimeo.com" in host:
         return f"{url}#t={t}s"
+    if "loom.com" in host:
+        base = url.split("?")[0]
+        return f"{base}?t={t}"
     if url.startswith(("http://", "https://")) and platform == "media":
         return f"{url}#t={t}"
     return url

@@ -37,6 +37,8 @@ def classify_url(url: str) -> str:
         return "video"
     if "instagram.com" in host:
         return "instagram"
+    if "loom.com" in host:
+        return "media"
     return "media"
 
 
