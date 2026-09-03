@@ -25,12 +25,13 @@ channels already in the project.
 
 For each source give:
 - name, kind (youtube_channel | podcast | newsletter | website | person), url (the canonical channel/show page),
-- known_for (one line), why (one or two sentences: why it matters for THIS brief), angle (their bias/lens, honest),
+- gist: at most 5 words that say what they are for (e.g. "debt-free budgeting basics", "index-fund investing, CFP-led"),
+- why: ONE sentence, max 20 words, why it matters for THIS brief; angle: their bias/lens in max 12 words,
 - start_with: 1–2 specific episodes/videos to begin with — title and URL if you found them, else title only,
 - fit: 1–5 (5 = directly on the brief), depth: "beginner" | "intermediate" | "advanced".
 
 Output ONLY JSON:
-{"sources": [{"name": str, "kind": str, "url": str, "known_for": str, "why": str, "angle": str,
+{"sources": [{"name": str, "kind": str, "url": str, "gist": str, "why": str, "angle": str,
               "start_with": [{"title": str, "url": str}], "fit": int, "depth": str}],
  "note": str}   // note: one or two sentences on how you'd sequence them, or caveats about the space
 Return about 10 sources. Never invent URLs: if unsure, give the search you'd run instead (e.g. "youtube.com/results?search_query=...")."""
@@ -72,7 +73,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10) -> dic
             continue
         items.append({
             "name": str(d.get("name"))[:120], "kind": str(d.get("kind") or "youtube_channel"), "url": str(d.get("url") or ""),
-            "known_for": str(d.get("known_for") or "")[:300], "why": str(d.get("why") or "")[:600], "angle": str(d.get("angle") or "")[:300],
+            "known_for": str(d.get("gist") or d.get("known_for") or "")[:80], "why": str(d.get("why") or "")[:300], "angle": str(d.get("angle") or "")[:160],
             "start_with": [x for x in (d.get("start_with") or []) if isinstance(x, dict) and x.get("title")][:3],
             "fit": int(d.get("fit") or 3), "depth": str(d.get("depth") or ""),
         })

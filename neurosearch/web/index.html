@@ -104,11 +104,16 @@
   .transcript b{color:var(--link);font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
   .note .body{white-space:pre-wrap}
-  .d{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;background:var(--panel);box-shadow:var(--shadow)}
+  .d{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:6px;background:var(--panel);box-shadow:var(--shadow)}
   .d .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap} .d .h .nm{font-weight:650;font-size:15px}
   .d .why{margin-top:4px;font-size:13.5px} .d .angle{font-size:12.5px;color:var(--muted);margin-top:2px}
   .d .sw{margin-top:6px;font-size:13px} .d .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-  .d.added{opacity:.75}
+  .d.added{opacity:.7}
+  .d .dh{display:flex;gap:12px;align-items:flex-start} .d .dmain{flex:1;min-width:0} .d .dacts{flex:0 0 auto;display:flex;gap:4px}
+  .d .dt{font-size:15px;line-height:1.3} .d .gist{font-weight:600;color:var(--text)}
+  .d .dwhy{font-size:13px;margin-top:2px;color:var(--text)}
+  .d .dmeta{font-size:12px;color:var(--muted);margin-top:3px}
+  .d .dlinks{font-size:12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start;box-shadow:var(--shadow)}
   .f .imp{flex:0 0 26px;text-align:center;font-size:11px;color:var(--muted);padding-top:3px}
   .f .imp b{display:block;font-size:15px;color:var(--warn)}
@@ -239,7 +244,7 @@
           <div id="courseList" style="margin-top:10px"></div>
         </div>
         <div class="pane" id="pane-discover">
-          <div class="muted">Don't know where to start? The assistant searches the web for the leading creators, channels and podcasts for <i>this project's brief</i>, tells you why each matters and what their angle is, and gives you a starting video. Add a whole channel or just the starting video.</div>
+          <div class="muted">Who should this project learn from? Searches the web for the best creators, channels and podcasts for your brief.</div>
           <div class="row" style="margin-top:8px"><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
           <div class="muted" id="discMsg" style="margin-top:6px"></div>
           <div id="discList" style="margin-top:10px"></div>
@@ -614,18 +619,24 @@ async function loadDiscoveries() {
   const show = ds.filter(d => d.status !== 'dismissed');
   const KIND = { youtube_channel: '▶ YouTube channel', podcast: '🎙 Podcast', newsletter: '✉ Newsletter', website: '🌐 Website', person: '👤 Person' };
   const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
-  $('#discList').innerHTML = show.map(d => `<div class="d ${d.status}">
-    <div class="h"><span class="nm">${d.url ? `<a href="${esc(d.url)}" target="_blank">${esc(d.name)}</a>` : esc(d.name)}</span><span class="tag">${KIND[d.kind] || esc(d.kind || '')}</span>${d.fit ? `<span class="tag" style="color:var(--warn)">fit ${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? `<span class="tag">${esc(d.depth)}</span>` : ''}${d.status === 'added' ? '<span class="tag" style="color:var(--ok)">added</span>' : ''}</div>
-    <div class="muted">${esc(d.known_for || '')}</div>
-    <div class="why">${esc(d.why || '')}</div>
-    ${d.angle ? `<div class="angle">Angle: ${esc(d.angle)}</div>` : ''}
-    ${(d.start_with || []).length ? `<div class="sw">Start with: ${d.start_with.map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">${esc(v.title)}</a>` : esc(v.title)).join(' · ')}</div>` : ''}
-    <div class="acts">
-      ${(d.start_with || []).filter(v => v.url && /youtu|\.mp3|podcast/i.test(v.url)).map(v => `<button class="small primary" onclick="discAdd(${d.id}, ${q(v.url)}, false)">＋ Add “${esc(v.title.slice(0, 40))}”</button>`).join('')}
-      ${d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url) ? `<button class="small" onclick="discAdd(${d.id}, ${q(d.url)}, true)">＋ Add whole channel</button>` : ''}
-      ${d.url && /youtube\.com/.test(d.url) ? `<a class="chip" href="${esc(d.url.replace(/\/$/, ''))}/videos" target="_blank">Browse videos</a>` : ''}
-      ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">Dismiss</button>` : ''}
-    </div></div>`).join('') || '<div class="muted">No suggestions yet — click <b>Find sources</b>.</div>';
+  $('#discList').innerHTML = show.map(d => {
+    const vids = (d.start_with || []).filter(v => v.url && /youtu|\.mp3|podcast|loom|vimeo/i.test(v.url));
+    const isChan = d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url);
+    return `<div class="d ${d.status}">
+    <div class="dh">
+      <div class="dmain">
+        <div class="dt"><b>${esc(d.name)}</b>${d.known_for ? ` <span class="gist">— ${esc(d.known_for)}</span>` : ''}</div>
+        <div class="dwhy">${esc(d.why || '')}</div>
+        <div class="dmeta">${KIND[d.kind] || esc(d.kind || '')}${d.fit ? ` · fit <span style="color:var(--warn)">${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? ` · ${esc(d.depth)}` : ''}${d.angle ? ` · <span title="angle / bias">${esc(d.angle)}</span>` : ''}${d.status === 'added' ? ' · <span style="color:var(--ok)">added ✓</span>' : ''}</div>
+      </div>
+      <div class="dacts">
+        ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false)">＋ Start video</button>` : ''}
+        ${isChan ? `<button class="small" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true)">＋ Channel</button>` : ''}
+        ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
+      </div>
+    </div>
+    ${(d.start_with || []).length || d.url ? `<div class="dlinks">${(d.start_with || []).map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">▶ ${esc(v.title)}</a>` : `<span>▶ ${esc(v.title)}</span>`).join(' · ')}${d.url ? `${(d.start_with || []).length ? ' · ' : ''}<a href="${esc(d.url)}" target="_blank">open ${KIND[d.kind] ? KIND[d.kind].replace(/^\S+ /, '') : 'page'} ↗</a>` : ''}</div>` : ''}
+    </div>`; }).join('') || '<div class="muted">No suggestions yet — click <b>Find sources</b>.</div>';
   if (show.length && show[0].note) $('#discMsg').textContent = show[0].note;
 }
 async function runDiscover() {
