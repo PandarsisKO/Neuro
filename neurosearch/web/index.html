@@ -1,22 +1,23 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9">
 <title>Neuro Search</title>
 <style>
-  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736;--side:250px}
+  :root{--bg:#f6f7f9;--panel:#ffffff;--panel2:#eef1f5;--line:#e1e5eb;--text:#1b1f27;--muted:#5f6878;--accent:#2f5bea;--accent-text:#fff;--link:#2f5bea;--ok:#1a9d63;--warn:#b7791f;--bad:#d2413a;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
+  [data-theme=dark]{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--accent-text:#fff;--link:#8fb0ff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
-  a{color:#8fb0ff}
+  a{color:var(--link)}
   select,input,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   input,textarea,select{width:100%}
   textarea{min-height:80px;resize:vertical}
   button{cursor:pointer;white-space:nowrap}
-  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
   button.ghost{background:transparent}
   button.small{padding:5px 9px;font-size:13px;border-radius:7px}
   button.danger{color:var(--bad)}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .row>*{flex:1;min-width:0}
   .row>input{min-width:140px}
@@ -31,18 +32,20 @@
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
-  dialog::backdrop{background:#0009}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
 
+  .themeBtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 9px;font-size:12px;border-radius:999px}
+  #home .top{display:flex;align-items:flex-start;gap:12px} #home .top h1{flex:1}
   /* ---- home ---- */
   #home{max-width:1000px;margin:0 auto;padding:28px 18px}
   #home h1{font-size:24px;margin:0 0 4px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:18px}
-  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;min-height:130px;display:flex;flex-direction:column;gap:6px}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;min-height:130px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow)}
   .pcard:hover{border-color:var(--accent)}
   .pcard .name{font-weight:650;font-size:16px}
   .pcard .brief{color:var(--muted);font-size:13px;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
   .pcard .meta{font-size:12px;color:var(--muted)}
-  .pcard.new{border-style:dashed;align-items:center;justify-content:center;color:var(--muted)}
+  .pcard.new{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);box-shadow:none;background:transparent}
 
   /* ---- workspace ---- */
   #ws{display:none;height:100vh;height:100dvh}
@@ -53,12 +56,12 @@
   aside .top .pname{font-weight:650;font-size:15px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   aside nav{padding:8px}
   aside nav .item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
-  aside nav .item.active,aside nav .item:hover{background:var(--panel2);color:#fff}
+  aside nav .item.active,aside nav .item:hover{background:var(--panel2);color:var(--text)}
   aside nav .item .n{margin-left:auto;font-size:12px;color:var(--muted)}
   aside .chats{flex:1;overflow:auto;padding:4px 8px 8px;border-top:1px solid var(--line)}
   aside .chats .c{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:6px;align-items:center}
   aside .chats .c span{flex:1;overflow:hidden;text-overflow:ellipsis}
-  aside .chats .c.active{background:var(--panel2);color:#fff}
+  aside .chats .c.active{background:var(--panel2);color:var(--text)}
   aside .chats .c .x{opacity:0;font-size:12px}
   aside .chats .c:hover .x{opacity:.8}
   aside .chats .newc{margin:6px 0 6px}
@@ -74,10 +77,10 @@
   #chatHead .title{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #chat{flex:1;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:10px}
   .msg{max-width:min(820px,92%);padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.5}
-  .msg.user{align-self:flex-end;background:#243266}
+  .msg.user{align-self:flex-end;background:var(--user);color:var(--user-text)}
   .msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
   .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
-  .msg sup{color:#8fb0ff;font-weight:600}
+  .msg sup{color:var(--link);font-weight:600}
   .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
   #askbar{border-top:1px solid var(--line);padding:10px 22px 12px;background:var(--bg)}
   #askbar .inner{display:flex;gap:8px;align-items:flex-end;max-width:980px}
@@ -88,20 +91,20 @@
   /* ---- sources ---- */
   .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
   .tabs button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:8px 12px;border-bottom:2px solid transparent}
-  .tabs button.active{color:#fff;border-bottom-color:var(--accent)}
+  .tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
   .pane{display:none}.pane.active{display:block}
   .src{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
-  .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:#000;flex:0 0 auto}
+  .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:var(--chip);flex:0 0 auto}
   .src .ico{width:96px;height:54px;border-radius:6px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
   .src .t{font-weight:600;overflow-wrap:anywhere}
   .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
   .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
   .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
-  .transcript b{color:#8fb0ff;font-weight:500}
+  .transcript b{color:var(--link);font-weight:500}
   .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
   .note .body{white-space:pre-wrap}
-  .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start}
+  .f{display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel);align-items:flex-start;box-shadow:var(--shadow)}
   .f .imp{flex:0 0 26px;text-align:center;font-size:11px;color:var(--muted);padding-top:3px}
   .f .imp b{display:block;font-size:15px;color:var(--warn)}
   .f .main{flex:1;min-width:0}
@@ -112,11 +115,11 @@
   .f .meta .chip{margin:0}
   .f .act{flex:0 0 auto;display:flex;gap:4px;flex-direction:column}
   .f .act button{padding:4px 8px;font-size:12px}
-  .note.gap{border-color:#5a4a1e}
+  .note.gap{border-color:var(--banner-line);background:var(--banner)}
   /* ---- plan ---- */
   .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
   .modes div{flex:1;text-align:center;padding:7px;font-size:13px;cursor:pointer;color:var(--muted)}
-  .modes div.active{background:var(--accent);color:#fff}
+  .modes div.active{background:var(--accent);color:var(--accent-text)}
   .plan h2{margin-top:26px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}
   .plan h2:first-child{margin-top:0}
   .plan .item{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -129,7 +132,7 @@
   .plan .tag.high,.plan .tag.blocking{color:var(--bad)} .plan .tag.medium,.plan .tag.soon{color:var(--warn)} .plan .tag.now{color:var(--warn)}
   .plan table{border-collapse:collapse;width:100%;font-size:13px} .plan th,.plan td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top} .plan th{background:var(--panel2)}
   .plan .ready{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
-  .banner{background:#2a2410;border:1px solid #5a4a1e;border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .banner{background:var(--banner);border:1px solid var(--banner-line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
   .upd{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
   .upd .prev{color:var(--muted);text-decoration:line-through}
   .conf.high{color:var(--ok)} .conf.medium{color:var(--warn)} .conf.needs_research{color:var(--bad)}
@@ -145,7 +148,7 @@
 
 <!-- ============ HOME ============ -->
 <div id="home">
-  <h1>Neuro Search</h1>
+  <div class="top"><h1>Neuro Search</h1><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
   <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
   <div class="grid" id="projGrid"></div>
 </div>
@@ -167,6 +170,7 @@
     </nav>
     <div class="chats" id="chatList"></div>
     <div class="foot" id="wsFoot"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--line)"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
   </aside>
 
   <div id="main">
@@ -233,9 +237,9 @@
       <div class="muted" style="margin-bottom:10px">Approved findings feed the exports and the Master Plan. The assistant reads every source against the brief and proposes findings below — approve the ones worth keeping. You can also pin from any chat.</div>
       <div id="suggestedWrap"></div>
       <div class="row" style="margin-bottom:14px">
-        <a class="chip" id="expFind" target="_blank">⬇ Findings (.md)</a>
-        <a class="chip" id="expPlan" target="_blank">⬇ Masterplan (.md)</a>
-        <a class="chip" id="expZip" target="_blank">⬇ Masterplan package (.zip — for ChatGPT / Claude / NotebookLM)</a>
+        <a class="chip fixed" id="expFind" target="_blank">⬇ Findings (.md)</a>
+        <a class="chip fixed" id="expPlan" target="_blank">⬇ Research synthesis (.md)</a>
+        <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip — for ChatGPT / Claude / NotebookLM)</a>
       </div>
       <div id="notes"></div>
     </div>
@@ -294,6 +298,15 @@ const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = M
 const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪' };
 
 const state = { project: null, conv: null, chats: [], view: 'chats' };
+
+// ---- theme (light by default; remembered per browser) ----
+function applyTheme(t) {
+  if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); else document.documentElement.removeAttribute('data-theme');
+  document.querySelectorAll('.themeBtn').forEach(b => b.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark');
+  try { localStorage.setItem('ns_theme', t); } catch (e) {}
+}
+function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
+try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
 function route() {
@@ -589,7 +602,7 @@ async function loadNotes() {
   const srcs = await api('/api/sources?project_id=' + state.project.id + '&limit=2000');
   const analysing = srcs.filter(x => x.analysing).length;
   if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
-  $('#suggestedWrap').innerHTML = (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') + `<div class="card" style="border-color:#2f4a8a">
+  $('#suggestedWrap').innerHTML = (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') + `<div class="card" style="border-color:var(--suggest-line)">
       <div class="row"><b style="flex:1">Suggested findings ${sug.length ? `(${sug.length})` : ''}</b>
         ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
         <button class="small" onclick="suggestNow(false)">Analyse new sources</button><button class="small ghost" onclick="suggestNow(true)">Re-analyse all</button></div>

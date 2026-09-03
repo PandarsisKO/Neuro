@@ -2,13 +2,15 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Neuro Search — sign in</title>
 <style>
-  body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:#0f1115;color:#e6e6e6;display:flex;min-height:100vh;align-items:center;justify-content:center}
-  form{background:#171a21;padding:28px;border-radius:14px;width:min(360px,90vw);box-shadow:0 10px 40px #0008}
+  :root{--bg:#f6f7f9;--panel:#fff;--line:#e1e5eb;--text:#1b1f27;--accent:#2f5bea;--bad:#d2413a}
+  [data-theme=dark]{--bg:#0f1115;--panel:#171a21;--line:#2a2f3a;--text:#e6e6e6;--accent:#4f7cff;--bad:#ff7b7b}
+  body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;align-items:center;justify-content:center}
+  form{background:var(--panel);padding:28px;border-radius:14px;width:min(360px,90vw);border:1px solid var(--line);box-shadow:0 10px 40px rgba(0,0,0,.12)}
   h1{font-size:20px;margin:0 0 14px}
-  input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid #2a2f3a;background:#0f1115;color:#fff;font-size:16px}
-  button{margin-top:12px;width:100%;padding:12px;border:0;border-radius:8px;background:#4f7cff;color:#fff;font-size:16px}
-  .err{color:#ff7b7b}
-</style></head><body>
+  input{width:100%;box-sizing:border-box;padding:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:16px}
+  button{margin-top:12px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:16px}
+  .err{color:var(--bad)}
+</style><script>try{if(localStorage.getItem('ns_theme')==='dark')document.documentElement.setAttribute('data-theme','dark')}catch(e){}</script></head><body>
 <form method="post" action="/login">
   <h1>Neuro Search</h1>
   <!--ERR-->
