@@ -43,7 +43,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
                                  review=payload.get("review", True))
     if kind == "ingest_source":
         return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
-                                    collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")))
+                                    collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")),
+                                    cookies_file=payload.get("cookies_file"), referer=payload.get("referer"))
     if kind == "ingest_file":
         from pathlib import Path
         path = Path(payload["path"])

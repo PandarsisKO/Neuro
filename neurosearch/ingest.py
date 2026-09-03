@@ -103,9 +103,38 @@ def ingest_url(
     if kind == "web":
         return ingest_webpage(url, tags=tags, project_id=project_id, title=title, progress=progress, html=None)
     if kind == "instagram_profile":
-        raise RuntimeError("Instagram profiles can't be listed without logging in, and bulk pulls with a login get accounts "
-                           "flagged. Paste individual reel or post links instead (instagram.com/reel/… or /p/…) — or open a "
-                           "reel in Chrome and use the extension → Send this page.")
+        if not cookies_file:
+            raise RuntimeError("Instagram profiles can't be listed without logging in. Open the profile in Chrome and use the "
+                               "extension → Send this page (it lends your session; the newest posts are listed for review, "
+                               "max 40, fetched slowly) — or paste individual reel links (instagram.com/reel/…).")
+        progress(0.02, "listing profile with your session…")
+        mx = min(max_videos or settings.default_max_videos or media.IG_MAX, media.IG_MAX)
+        info, entries = media.enumerate_instagram(url, cookies_file, limit=media.IG_MAX)
+        if not entries:
+            raise RuntimeError("Instagram returned no posts for that profile (private account you don't follow, or a "
+                               "temporary block — try again later).")
+        coll = db.upsert_collection("instagram", info["id"], info["url"], info["title"])
+        if project_id:
+            db.add_project_collections(project_id, [coll["id"]])
+        min_date = _cutoff_date(settings.default_since_years if since_years is None else since_years)
+        proposed, skipped = 0, 0
+        with db.batch():
+            for e in entries:
+                existing = db.find_source("instagram", e["id"])
+                already = bool(existing and existing["status"] == "ready" and not force)
+                src = db.upsert_source(platform="instagram", external_id=e["id"], url=e["url"], title=e.get("title"),
+                                       duration=e.get("duration"), description=e.get("description"), view_count=e.get("view_count"),
+                                       tags=_merge_tags(existing, tags) if existing else tags,
+                                       status="ready" if already else "proposed")
+                db.link_source_collection(src["id"], coll["id"])
+                skipped += already
+                proposed += not already
+        db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": True, "project_id": project_id,
+                                                      "max_videos": mx, "ranked": False, "cookies_file": cookies_file,
+                                                      "referer": info["url"]}))
+        db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
+        return {"kind": "instagram_profile", "collection_id": coll["id"], "title": coll.get("title"), "found": len(entries),
+                "proposed": proposed, "already_ingested": skipped, "review": proposed > 0}
     platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
     ext_id = _external_id_from_url(url, platform)
     existing = db.find_source(platform, ext_id) if ext_id else None
@@ -141,7 +170,8 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
         if r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
             db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
-                                            "collection_id": collection_id, "newest_first": bool(meta.get("newest_first"))})
+                                            "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
+                                            "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")})
             started += 1
         else:
             db.delete_source(r["id"])

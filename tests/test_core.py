@@ -571,9 +571,26 @@ def test_instagram_urls(client):
     assert media.classify_url("https://www.instagram.com/sbaloanguy1/") == "instagram_profile"
     assert media.classify_url("https://www.instagram.com/reel/Cabc123/") == "instagram"
     import pytest
-    with pytest.raises(RuntimeError, match="individual reel"):
+    with pytest.raises(RuntimeError, match="lends your session"):
         ingest.ingest_url("https://www.instagram.com/sbaloanguy1/")
     p = client.post("/api/projects", headers=H, json={"name": "IG", "brief": "x"}).json()
     r = client.post(f"/api/projects/{p['id']}/ingest/with-session", headers=H, json={"url": "https://www.instagram.com/reel/Cabc123/",
         "cookies": [{"domain": ".instagram.com", "name": "sessionid", "value": "abc", "path": "/", "secure": True}]}).json()
     j = db.get_job(r["job_id"]); assert r["cookies"] and j["payload"]["cookies_file"].endswith(".txt") and j["payload"]["review"] is False
+
+
+def test_instagram_profile_with_session(client, monkeypatch, tmp_path):
+    from neurosearch import ingest, media
+    ck = tmp_path / "ig.txt"; ck.write_text("# cookies")
+    monkeypatch.setattr(media, "enumerate_instagram", lambda url, cookies_file, limit=40: (
+        {"id": "ig:sbaloanguy1", "title": "@sbaloanguy1 (Instagram)", "url": "https://www.instagram.com/sbaloanguy1/"},
+        [{"id": f"ig{i}", "url": f"https://www.instagram.com/reel/ig{i}/", "title": f"SBA tip {i}", "duration": 45} for i in range(5)]))
+    p = client.post("/api/projects", headers=H, json={"name": "IGP", "brief": "sba loans"}).json()
+    r = ingest.ingest_url("https://www.instagram.com/sbaloanguy1/", project_id=p["id"], cookies_file=str(ck), review=False)
+    assert r["kind"] == "instagram_profile" and r["proposed"] == 5 and r["review"]
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    assert rv["kind"] == "instagram" and rv["meta"]["cookies_file"] == str(ck)
+    a = client.post(f"/api/collections/{rv['id']}/approve", headers=H, json={"source_ids": [rv["proposed"][0]["id"]]}).json()
+    assert a["started"] == 1
+    job = [j for j in db.list_jobs(50) if j["kind"] == "ingest_source"][0]
+    assert job["payload"]["cookies_file"] == str(ck) and job["payload"]["referer"].startswith("https://www.instagram.com/")

@@ -36,39 +36,89 @@ def _is_youtube(url: str) -> bool:
     return any(h in url for h in ("youtube.com", "youtu.be"))
 
 
+def _site(url: str) -> str | None:
+    """Sites we deliberately go slow on: one request at a time, spaced out, global pause after a bot-check."""
+    if _is_youtube(url):
+        return "youtube"
+    if "instagram.com" in url:
+        return "instagram"
+    return None
+
+
+# per-site politeness state: lock, last request time, paused-until
+_sites: dict[str, dict[str, Any]] = {
+    "youtube": {"lock": _yt_lock, "last": 0.0, "until": 0.0, "delay": lambda: settings.yt_delay},
+    "instagram": {"lock": threading.Lock(), "last": 0.0, "until": 0.0, "delay": lambda: max(settings.yt_delay * 3, 12.0)},
+}
+
+
 def polite(url: str):
-    """Context manager: serialise YouTube requests and space them out; honour a global pause after a bot-check."""
+    """Context manager: serialise requests to touchy sites (YouTube, Instagram) and space them out;
+    honour a global per-site pause after a bot-check."""
+    site = _site(url)
+
     class _Ctx:
         def __enter__(self):
-            if not _is_youtube(url):
+            if not site:
                 return self
-            _yt_lock.acquire()
-            global _yt_last
-            wait = max(0.0, _yt_paused_until - _time.time())
+            st = _sites[site]
+            st["lock"].acquire()
+            wait = max(0.0, st["until"] - _time.time())
             if wait > 0:
-                _yt_lock.release()
-                raise RateLimited(f"YouTube rate limit — paused for another {int(wait // 60) + 1} min")
-            gap = settings.yt_delay * random.uniform(0.5, 1.5) - (_time.time() - _yt_last)
+                st["lock"].release()
+                raise RateLimited(f"{site.title()} rate limit — paused for another {int(wait // 60) + 1} min")
+            gap = st["delay"]() * random.uniform(0.6, 1.6) - (_time.time() - st["last"])
             if gap > 0:
                 _time.sleep(gap)
             return self
+
         def __exit__(self, et, ev, tb):
-            if not _is_youtube(url):
+            if not site:
                 return False
-            global _yt_last, _yt_paused_until
-            _yt_last = _time.time()
-            _yt_lock.release()
+            st = _sites[site]
+            st["last"] = _time.time()
+            st["lock"].release()
             if ev is not None and BOT_CHECK.search(str(ev)):
-                _yt_paused_until = _time.time() + settings.yt_backoff_minutes * 60
-                log.warning("YouTube bot-check/rate limit hit; pausing YouTube fetches for %d min", settings.yt_backoff_minutes)
-                raise RateLimited(f"YouTube asked us to slow down; pausing {settings.yt_backoff_minutes} min then retrying") from ev
+                st["until"] = _time.time() + settings.yt_backoff_minutes * 60
+                log.warning("%s bot-check/rate limit hit; pausing for %d min", site, settings.yt_backoff_minutes)
+                raise RateLimited(f"{site.title()} asked us to slow down; pausing {settings.yt_backoff_minutes} min then retrying") from ev
             return False
     return _Ctx()
 
 
 def rate_limit_status() -> dict[str, Any]:
-    left = max(0.0, _yt_paused_until - _time.time())
-    return {"paused": left > 0, "seconds_left": int(left)}
+    left = max(0.0, _sites["youtube"]["until"] - _time.time())
+    ig = max(0.0, _sites["instagram"]["until"] - _time.time())
+    return {"paused": left > 0, "seconds_left": int(left), "instagram_paused": ig > 0, "instagram_seconds_left": int(ig)}
+
+
+IG_MAX = 40   # hard cap per profile pull — one logged-in account, keep it looking human
+
+
+def enumerate_instagram(url: str, cookies_file: str, limit: int = IG_MAX) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """List the most recent reels/posts of a profile using the user's own session (never without one)."""
+    m = re.search(r"instagram\.com/([A-Za-z0-9_.]+)/?", url)
+    user = m.group(1) if m else url
+    limit = max(1, min(int(limit or IG_MAX), IG_MAX))
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, url, extract_flat=True, skip_download=True, playlistend=limit)) as ydl:
+        res = ydl.extract_info(f"https://www.instagram.com/{user}/", download=False)
+    for e in _flatten(res or {}):
+        vid = e.get("id") or ""
+        u = e.get("url") or e.get("webpage_url") or ""
+        if not u.startswith("http"):
+            u = f"https://www.instagram.com/p/{vid}/" if vid else ""
+        if not vid or vid in seen or not u:
+            continue
+        seen.add(vid)
+        cap = (e.get("title") or e.get("description") or "").strip().replace("\n", " ")
+        entries.append({"id": vid, "url": u, "title": cap[:120] or f"Instagram post {vid}", "description": cap[:500] or None,
+                        "duration": e.get("duration"), "view_count": e.get("view_count") or e.get("like_count")})
+        if len(entries) >= limit:
+            break
+    info = {"id": f"ig:{user}", "title": f"@{user} (Instagram)", "url": f"https://www.instagram.com/{user}/"}
+    return info, entries
 
 
 YT_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"}
