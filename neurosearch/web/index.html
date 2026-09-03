@@ -365,7 +365,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.2';
+const UI_VERSION = '0.11.3';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -812,8 +812,18 @@ async function retryJob(id) { await post(`/api/jobs/${id}/retry`, {}).catch(e =>
 async function retryFailed() { const r = await post('/api/jobs/retry-failed', { project_id: state.project.id }); toast(`↻ ${r.retried} job${r.retried === 1 ? '' : 's'} queued again`); loadJobs(); }
 async function dismissJob(id) { await post(`/api/jobs/${id}/dismiss`, {}).catch(e => toast(e.message || e, 'err')); loadJobs(); }
 async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = null; loadJobs(); loadReviews(); }
+let pollFails = 0;
 async function loadJobs() {
-  const js = await api(`/api/projects/${state.project.id}/jobs?limit=30`);
+  clearTimeout(jobsTimer);
+  let js;
+  try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`); pollFails = 0; $('#offline')?.remove(); }
+  catch (e) {
+    // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet
+    pollFails++;
+    if (!$('#offline')) { const d = document.createElement('div'); d.id = 'offline'; d.className = 'banner'; d.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99'; d.textContent = '⟳ reconnecting to the server…'; document.body.appendChild(d); }
+    jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, Math.min(3000 * pollFails, 15000));
+    return;
+  }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running');
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
@@ -826,8 +836,10 @@ async function loadJobs() {
     <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
-  if (active.length || analysing) jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources(); } }, 3000);
-  if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(loadReviews, 3500);
+  // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
+  const every = (active.length || analysing) ? 3000 : 15000;
+  jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, every);
+  if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
 }
 
 // ---- findings ----
