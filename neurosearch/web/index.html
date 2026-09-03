@@ -365,7 +365,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.10.5';
+const UI_VERSION = '0.10.6';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -621,7 +621,7 @@ async function loadReviews() {
     const rankLine = !ranked
       ? `<span class="muted">⏳ Ranking these by relevance to your brief… (titles &amp; descriptions only, nothing downloaded)</span>`
       : scored
-        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.</span>
+        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.${meta.rank_note ? ` <span style="color:var(--warn)">${esc(meta.rank_note)}</span>` : ''}</span>
            <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
         : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
     return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">

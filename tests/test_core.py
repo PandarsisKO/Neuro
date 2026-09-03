@@ -529,3 +529,13 @@ def test_webpage_source(client, monkeypatch):
     assert src["platform"] == "web" and src["status"] == "ready" and src["channel"] == "example.com"
     hits = client.get("/api/search?q=debt+service+coverage&project_id=" + p["id"], headers=H).json()
     assert hits and hits[0]["timestamp"].startswith("§ ")
+
+
+def test_rank_parse_tolerates_bad_json():
+    from neurosearch.relevance import parse_scores
+    good = '{"scores":[{"i":0,"score":90,"why":"on topic"},{"i":1,"score":10,"why":"filler"}]}'
+    assert [x["score"] for x in parse_scores(good)["scores"]] == [90, 10]
+    bad = '```json\n{"scores":[{"i":0,"score":90,"why":"buying "boring" businesses"},{"i":1,"score":10,"why":"filler"},{"i":2,"score":55,"why":"cut off'
+    res = parse_scores(bad)
+    assert res.get("repaired") and [(x["i"], x["score"]) for x in res["scores"]] == [(0, 90), (1, 10)]
+    assert res["scores"][0]["why"] == 'buying "boring" businesses'
