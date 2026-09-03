@@ -131,6 +131,11 @@
   .f .act button{padding:3px 8px;font-size:12px}
   .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .rv .li input{width:auto}
+  .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .swot{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel)}
+  .swot .swh{font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}
+  .swot.s .swh{color:var(--ok)}.swot.w .swh{color:var(--bad)}.swot.o .swh{color:var(--accent)}.swot.t .swh{color:var(--warn)}
+  .swot .swi{padding:4px 0;border-top:1px solid var(--line);font-size:13px}.swot .swi:first-of-type{border-top:0}
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;transition:.2s;z-index:100;max-width:80vw;box-shadow:0 6px 24px rgba(0,0,0,.2)}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   #toast.err{background:#b91c1c;color:#fff}
@@ -371,7 +376,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.10';
+const UI_VERSION = '0.12.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -988,9 +993,21 @@ function renderNoPlan() {
 async function buildPlan(instructions) {
   const btn = $('#buildBtn'); if (btn) btn.disabled = true;
   const ctx = $('#planCtx'); if (ctx) { await put('/api/projects/' + state.project.id, { name: state.project.name, context: ctx.value }); state.project.context = ctx.value; $('#epContext').value = ctx.value; }
-  const msg = $('#buildMsg'); if (msg) msg.innerHTML = '<span class="spin"></span> reading the research and writing the plan (30–90 s)…';
-  try { await post(`/api/projects/${state.project.id}/plan/build`, { instructions: instructions || null }); await loadPlan(); }
-  catch (e) { if (msg) msg.textContent = 'error: ' + e.message; if (btn) btn.disabled = false; else alert(e.message); }
+  const msg = $('#buildMsg');
+  const t0 = Date.now(), tick = m => { if (msg) msg.innerHTML = `<span class="spin"></span> ${esc(m || 'reading the research…')} · ${Math.round((Date.now() - t0) / 1000)}s <span class="muted">(analysis first, then the plan — usually 1–3 min)</span>`; };
+  tick();
+  try {
+    const r = await post(`/api/projects/${state.project.id}/plan/build`, { instructions: instructions || null, background: true });
+    for (;;) {
+      await new Promise(res => setTimeout(res, 2500));
+      const j = await api(`/api/jobs/${r.job_id}`).catch(() => null);
+      if (!j) { tick('reconnecting…'); continue; }
+      if (j.status === 'done') break;
+      if (j.status === 'failed') throw new Error(j.message || 'plan build failed');
+      tick(j.message);
+    }
+    await loadPlan();
+  } catch (e) { if (msg) msg.textContent = 'error: ' + e.message; if (btn) btn.disabled = false; else toast(e.message, 'err'); }
 }
 function ev(ids, emap) {
   if (!ids?.length) return '';
@@ -1018,6 +1035,17 @@ function renderPlan(r) {
       (accepted.length ? `<div class="row" style="margin-top:8px"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
   }
   h += `<div class="plan">`;
+  const an = p.analysis; if (an) {
+    const cell = x => `<b>${esc(x.point || '')}</b>${x.so_what ? `<div class="muted">${esc(x.so_what)}</div>` : ''}${ev(x.evidence, E)}`;
+    const col = (title, arr, cls) => `<div class="swot ${cls}"><div class="swh">${title}</div>${(arr || []).map(x => `<div class="swi">${cell(x)}</div>`).join('') || '<div class="muted">—</div>'}</div>`;
+    h += `<h2>0. Where you stand</h2><p>${esc(an.situation || '')}</p>`;
+    if (an.swot) h += `<div class="swotgrid">${col('Strengths', an.swot.strengths, 's')}${col('Weaknesses', an.swot.weaknesses, 'w')}${col('Opportunities', an.swot.opportunities, 'o')}${col('Threats', an.swot.threats, 't')}</div>`;
+    if (an.readiness?.length) h += `<p><b>Readiness</b></p><div class="row" style="flex-wrap:wrap;gap:6px">${an.readiness.map(r => `<span class="chip" title="${esc(r.note || '')}"><span class="conf ${r.level === 'ready' ? 'high' : r.level === 'partly' ? 'medium' : 'needs_research'}">●</span> ${esc(r.area)} <span class="muted">· ${esc(r.level)}${r.note ? ' — ' + esc(r.note) : ''}</span></span>`).join('')}</div>`;
+    if (an.options?.length) h += `<p><b>Paths compared</b></p><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td style="color:var(--warn)">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table>`;
+    if (an.assumptions?.length) h += `<p><b>Assumptions this plan rests on</b></p>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
+    if (an.failure_patterns?.length) h += `<p><b>Why people fail at this</b> <span class="muted">— per the sources</span></p>` + an.failure_patterns.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.pattern)}</span>${x.seen_in ? ` <span class="muted">(${esc(x.seen_in)})</span>` : ''}<div class="muted">Avoid: ${esc(x.avoid || '')}</div>${ev(x.evidence, E)}</div></div>`).join('');
+    if (an.verdict) h += `<div class="ready" style="margin-top:10px"><b>Verdict:</b> ${esc(an.verdict)}</div>`;
+  }
   const g = p.goal || {};
   h += `<h2>1. Goal</h2><p>${esc(g.outcome || '')}</p>${g.constraints?.length ? `<p><b>Constraints:</b> ${g.constraints.map(esc).join('; ')}</p>` : ''}${g.success?.length ? `<p><b>Success looks like:</b> ${g.success.map(esc).join('; ')}</p>` : ''}${ev(g.evidence, E)}`;
   const a = p.approach || {};

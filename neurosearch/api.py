@@ -745,6 +745,7 @@ def api_delete_fact(fact_id: int) -> dict[str, Any]:
 
 class BuildIn(BaseModel):
     instructions: str | None = None
+    background: bool = False   # True → {"job_id"}; poll /api/jobs/{id}
 
 
 @app.get("/api/projects/{project_id}/plan", dependencies=[Depends(require_auth)])
@@ -758,6 +759,8 @@ def api_plan(project_id: str) -> dict[str, Any]:
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])
 async def api_plan_build(project_id: str, body: BuildIn) -> dict[str, Any]:
     from . import planner
+    if body.background:
+        return {"job_id": jobs.enqueue("build_plan", {"project_id": project_id, "instructions": body.instructions})["id"]}
     return await anyio.to_thread.run_sync(lambda: planner.build_plan(project_id, body.instructions))
 
 

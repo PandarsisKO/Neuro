@@ -23,7 +23,7 @@ _threads: list[threading.Thread] = []
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded", re.I)
-RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "rank_proposed", "discover")
+RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "rank_proposed", "discover", "build_plan")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 
@@ -68,6 +68,10 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "suggest_findings":
         from .findings import suggest_for_project
         return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress)
+    if kind == "build_plan":
+        from .planner import build_plan
+        row = build_plan(payload["project_id"], payload.get("instructions"), progress=progress)
+        return {"plan_id": row["id"], "version": row["version"]}
     if kind == "discover":
         from .discover import discover
         return discover(payload["project_id"], payload.get("refine"), progress=progress)
@@ -79,7 +83,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     raise RuntimeError(f"unknown job kind {kind}")
 
 
-ANALYSIS_KINDS = ("suggest_findings", "rank_proposed", "discover", "reembed")
+ANALYSIS_KINDS = ("suggest_findings", "rank_proposed", "discover", "reembed", "build_plan")
 
 
 def _worker(n: int, kinds: tuple[str, ...] | None = None) -> None:

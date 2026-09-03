@@ -55,6 +55,16 @@ class _Msgs:
             import re as _re
             idx = [int(m) for m in _re.findall(r"^\[(\d+)\] ", kw["messages"][0]["content"], flags=_re.M)]
             text = json.dumps({"scores": [{"i": i, "score": (90 if i % 2 else 20), "why": "on topic" if i % 2 else "filler"} for i in idx]})
+        elif "Master Planner's analyst" in system:
+            text = json.dumps({"situation": "You have a small budget and a live site to move.", "swot": {
+                "strengths": [{"point": "Existing content", "so_what": "Nothing to write, just move"}], "weaknesses": [{"point": "No DNS experience", "so_what": "Get help before touching records"}],
+                "opportunities": [{"point": "Static hosting is free", "so_what": "Recurring cost can drop to zero", "evidence": ["S1"]}], "threats": [{"point": "Email breaks on DNS change", "so_what": "Sequence carefully", "evidence": ["C1"]}]},
+                "readiness": [{"area": "money", "level": "ready", "note": "budget covers it"}, {"area": "skills", "level": "gap", "note": "DNS"}],
+                "options": [{"path": "Static + Cloudflare", "summary": "export and host free", "cost": "$0-15", "time_to_result": "1 week", "risk": "low", "fit": 5, "why_fit": "cheapest, sources agree", "evidence": ["S1"]},
+                            {"path": "Webflow", "summary": "rebuild", "cost": "$20/mo", "time_to_result": "3 weeks", "risk": "medium", "fit": 2, "why_fit": "over budget"}],
+                "assumptions": [{"assumption": "Site is mostly static", "if_wrong": "need a CMS", "how_to_check": "list dynamic features"}],
+                "failure_patterns": [{"pattern": "Changing MX with the A record", "seen_in": "two videos", "avoid": "leave MX alone", "evidence": ["C1"]}],
+                "verdict": "Proceed with the static export path."})
         elif "Master Planner reviewing" in system:
             text = json.dumps(UPDATES)
         elif "You are Master Planner" in system:
@@ -65,6 +75,22 @@ class _Msgs:
             text = "Answer from the sources [1]."
         return _Blk(stop_reason="end_turn", model="claude-sonnet-4-6", usage=_Blk(input_tokens=12000, output_tokens=800, server_tool_use=None),
                     content=[_Blk(type="text", text=text, citations=None)])
+
+
+class _Stream:
+    def __init__(self, msg):
+        self._msg = msg
+        self.text_stream = iter([b.text for b in msg.content if getattr(b, "type", "") == "text"])
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def get_final_message(self): return self._msg
+
+
+def _stream(self, **kw):
+    return _Stream(self.create(**kw))
+
+
+_Msgs.stream = _stream
 
 
 class Anthropic:

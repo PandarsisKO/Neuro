@@ -647,3 +647,24 @@ def test_raising_budget_wakes_paused_jobs(client):
     assert db.get_job(j["id"])["not_before"] is not None
     client.post("/api/usage/budget", headers=H, json={"daily": 20})
     assert db.get_job(j["id"])["not_before"] is None
+
+
+def test_plan_has_analysis_and_repairs_truncated_json(client, monkeypatch):
+    import anthropic
+    from tests.fake_claude import Anthropic
+    from neurosearch import planner
+    monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
+    monkeypatch.setattr(planner.settings, "anthropic_api_key", "fake")
+    p = client.post("/api/projects", headers=H, json={"name": "Plan2", "brief": "move the site", "goal": "cheap fast host"}).json()
+    row = client.post(f"/api/projects/{p['id']}/plan/build", headers=H, json={}).json()
+    an = row["plan"]["analysis"]
+    assert an["swot"]["strengths"][0]["point"] == "Existing content" and an["options"][0]["fit"] == 5 and an["verdict"]
+    md = client.get(f"/api/projects/{p['id']}/plan.md", headers=H).text
+    assert "## 0. Where you stand" in md and "| Strengths | Weaknesses |" in md and "Paths compared" in md
+    # background build path
+    r = client.post(f"/api/projects/{p['id']}/plan/build", headers=H, json={"background": True}).json()
+    assert db.get_job(r["job_id"])["kind"] == "build_plan"
+    # truncated output gets repaired instead of crashing
+    cut = '{"goal": {"outcome": "x", "constraints": ["a"]}, "first_steps": [{"action": "do it", "detail": "now"}, {"action": "half'
+    fixed = planner._parse_json(cut)
+    assert fixed["goal"]["outcome"] == "x" and fixed["first_steps"][0]["action"] == "do it"

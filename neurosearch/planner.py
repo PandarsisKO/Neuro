@@ -18,6 +18,18 @@ from .search import search
 
 log = logging.getLogger(__name__)
 
+ANALYSIS_SCHEMA = """{
+ "situation": str,                       // 3-5 sentences: where this person stands today, in plain words
+ "swot": {"strengths": [{"point": str, "so_what": str}], "weaknesses": [{"point": str, "so_what": str}],
+          "opportunities": [{"point": str, "so_what": str, "evidence": [id]}], "threats": [{"point": str, "so_what": str, "evidence": [id]}]},
+ "readiness": [{"area": str, "level": "ready|partly|gap", "note": str}],      // money, time, skills, network, mindset, legal/admin…
+ "options": [{"path": str, "summary": str, "cost": str, "time_to_result": str, "risk": "low|medium|high",
+              "fit": 1-5, "why_fit": str, "evidence": [id]}],                     // 2-4 realistic paths, honestly compared
+ "assumptions": [{"assumption": str, "if_wrong": str, "how_to_check": str}],   // the beliefs the plan rests on
+ "failure_patterns": [{"pattern": str, "seen_in": str, "avoid": str, "evidence": [id]}],   // why people fail at this, per the sources
+ "verdict": str                          // 2-3 sentences: the honest take on whether/how to proceed
+}"""
+
 PLAN_SCHEMA = """{
  "goal": {"outcome": str, "constraints": [str], "success": [str], "evidence": [id]},
  "approach": {"recommended": str, "why": str, "alternatives": [{"option": str, "why_not": str}],
@@ -72,6 +84,22 @@ Output ONLY a JSON object matching this schema (omit fields you have nothing for
 """ + PLAN_SCHEMA
 
 
+ANALYSIS_SYSTEM = """You are Master Planner's analyst. Before any plan is written, give someone who is unsure how to start an
+honest, grounded read of their situation — the kind a seasoned operator would give a friend over coffee.
+
+Do a real SWOT: strengths/weaknesses are about THIS person's situation (what they told us: money, time, skills,
+assets, constraints); opportunities/threats come from the research (market, what practitioners say works, what
+burns people). Every point carries a "so_what" — what it means for how they should act. Then rate readiness by
+area, compare 2-4 realistic paths on cost / time-to-result / risk / fit, list the assumptions everything rests on
+and how to check each cheaply, and pull out the failure patterns the sources describe. Finish with a verdict.
+
+Be specific and cite evidence ids. Never invent facts; if the research is thin on something, say so.
+Output ONLY a JSON object matching this schema:
+""" + ANALYSIS_SCHEMA
+
+MATERIAL_CHARS = 170_000        # keep the prompt comfortably inside the model's window
+
+
 def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     """Build the numbered evidence list handed to Claude, and a map id -> display info."""
     ev: list[dict[str, Any]] = []
@@ -92,10 +120,13 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
         add("F", label, n["content"][:1200], first["link"] if first else None)
     sids = db.project_source_ids(project_id)
     srcs = [s for s in db.list_sources(limit=100000) if s["id"] in set(sids)]
-    for s in srcs:
-        segs = db.get_segments(s["id"])
-        preview = " ".join(x["text"] for x in segs[:40])[:500]
-        add("S", s["title"] or s["url"], f"{s['title']} ({s.get('channel') or s['platform']}): {preview}", s["url"])
+    srcs.sort(key=lambda s: -(s.get("substance") or 0))          # most substantive first; big projects get capped
+    for s in srcs[:80]:
+        text = s.get("summary")
+        if not text:
+            segs = db.get_segments(s["id"])
+            text = " ".join(x["text"] for x in segs[:40])[:400]
+        add("S", s["title"] or s["url"], f"{s['title']} ({s.get('channel') or s['platform']}): {text}", s["url"])
     # retrieval: chunks most relevant to the brief/context and to open questions in chats
     queries = [q for q in [project.get("brief"), project.get("goal"), project.get("context")] if q] + list(project.get("questions") or [])
     for c in db.list_conversations(project_id, limit=20):
@@ -122,7 +153,7 @@ def _material(project_id: str, project: dict[str, Any], ev: list[dict[str, Any]]
              db.project_steering(project), "", "EVIDENCE (cite these ids):"]
     parts += [f"[{e['id']}] {e['text']}" for e in ev]
     parts.append("\nRESEARCH CONVERSATIONS (Q/A, most recent last):")
-    budget = 40000
+    budget = max(10000, MATERIAL_CHARS - sum(len(x) for x in parts))
     for c in db.list_conversations(project_id, limit=30)[::-1]:
         for m in db.get_messages(c["id"], limit=100):
             line = f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1500]}"
@@ -133,46 +164,121 @@ def _material(project_id: str, project: dict[str, Any], ev: list[dict[str, Any]]
     return "\n".join(parts)
 
 
+def _repair_json(text: str) -> str:
+    """Best effort for output that was cut off mid-way: drop the dangling tail and close what is open."""
+    for cut in range(len(text), max(0, len(text) - 20000), -1):
+        chunk = text[:cut].rstrip().rstrip(",")
+        if not chunk.endswith(("}", "]", '"', "e", "l")):   # true/false/null or a closed value
+            continue
+        opens = []
+        in_str = esc = False
+        for ch in chunk:
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch in "{[":
+                opens.append(ch)
+            elif ch in "}]":
+                if opens:
+                    opens.pop()
+        if in_str:
+            continue
+        candidate = chunk + "".join("}" if o == "{" else "]" for o in reversed(opens))
+        try:
+            json.loads(candidate)
+            return candidate
+        except ValueError:
+            continue
+    raise RuntimeError("planner returned JSON that could not be repaired")
+
+
 def _parse_json(text: str) -> dict[str, Any]:
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < 0:
+    if start < 0:
         raise RuntimeError("planner returned no JSON")
-    return json.loads(text[start:end + 1])
+    body = text[start:end + 1] if end > start else text[start:]
+    try:
+        return json.loads(body)
+    except ValueError:
+        log.warning("planner: repairing malformed/truncated JSON (%d chars)", len(body))
+        return json.loads(_repair_json(text[start:]))
 
 
-def _call_claude(system: str, user: str, max_tokens: int = 12000) -> str:
+def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any = None, label: str = "writing") -> str:
+    """Streamed so long plans are never cut off by request timeouts; reports progress as the text grows."""
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     import anthropic
+    from . import usage
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    resp = client.messages.create(model=settings.answer_model, max_tokens=max_tokens, system=system,
-                                  messages=[{"role": "user", "content": user}])
+    usage.guard(0.5)
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=600.0, max_retries=2)
+    parts: list[str] = []
+    n = 0
+    with client.messages.stream(model=settings.answer_model, max_tokens=max_tokens, system=system,
+                                messages=[{"role": "user", "content": user}]) as stream:
+        for text in stream.text_stream:
+            parts.append(text)
+            n += len(text)
+            if progress and n % 2000 < len(text):
+                progress(None, f"{label}… {n // 4:,} tokens so far")
+        final = stream.get_final_message()
     try:
-        from . import usage
-        usage.record_anthropic(resp, "plan")
+        usage.record_anthropic(final, "plan")
     except Exception:  # noqa: BLE001
         pass
-    return "".join(getattr(b, "text", "") for b in resp.content)
+    if getattr(final, "stop_reason", None) == "max_tokens":
+        log.warning("planner: output hit max_tokens (%d) — will repair", max_tokens)
+    return "".join(parts)
 
 
-def build_plan(project_id: str, instructions: str | None = None) -> dict[str, Any]:
-    """Generate (or regenerate) the Master Plan for a project. Returns the stored plan row."""
+def build_plan(project_id: str, instructions: str | None = None, progress: Any = None) -> dict[str, Any]:
+    """Generate (or regenerate) the Master Plan for a project in two passes — situation analysis (SWOT,
+    readiness, options, assumptions, failure patterns) and then the plan itself. Returns the stored plan row."""
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
+    if progress:
+        progress(0.05, "gathering the research…")
     ev, emap = _evidence(project_id, project)
     material = _material(project_id, project, ev)
     prev = db.latest_plan(project_id)
+
+    # ---- pass 1: situation analysis ----
+    if progress:
+        progress(0.15, "analysing the situation (SWOT, readiness, options)…")
+    analysis: dict[str, Any] = {}
+    try:
+        a_user = material + ("\n\nINSTRUCTIONS FROM THE USER:\n" + instructions if instructions else "") + "\n\nWrite the situation analysis JSON now."
+        analysis = _parse_json(_call_claude(ANALYSIS_SYSTEM, a_user, max_tokens=7000, progress=progress, label="analysing"))
+    except Exception as e:  # noqa: BLE001
+        log.warning("planner: analysis pass failed, continuing without it: %s", e)
+
+    # ---- pass 2: the plan, informed by the analysis ----
+    if progress:
+        progress(0.5, "writing the plan…")
     user = material
+    if analysis:
+        user += "\n\nSITUATION ANALYSIS (yours, from a first pass — build the plan on it, especially the recommended option, assumptions and failure patterns):\n" + json.dumps(analysis)[:20000]
     if prev:
-        user += "\n\nPREVIOUS PLAN (keep what still holds; change only what the research or instructions justify):\n" + json.dumps(prev["plan"])[:30000]
+        user += "\n\nPREVIOUS PLAN (keep what still holds; change only what the research or instructions justify):\n" + json.dumps({k: v for k, v in prev["plan"].items() if not k.startswith("_") and k != "analysis"})[:20000]
     if instructions:
         user += "\n\nINSTRUCTIONS FOR THIS REVISION:\n" + instructions
-    user += "\n\nWrite the Master Plan JSON now."
-    plan = _parse_json(_call_claude(SYSTEM, user))
+    user += "\n\nWrite the Master Plan JSON now. Keep it tight: the whole document under ~5000 words."
+    plan = _parse_json(_call_claude(SYSTEM, user, progress=progress, label="writing the plan"))
+    if analysis:
+        plan["analysis"] = analysis
+    if progress:
+        progress(0.95, "saving…")
     plan["_evidence"] = emap
     plan["_generated"] = date.today().isoformat()
     snapshot = db.project_snapshot(project_id)
@@ -272,6 +378,34 @@ def plan_markdown(plan_row: dict[str, Any], project: dict[str, Any]) -> str:
         return f" `{s.replace('_', ' ')}`" if s and s != "not_started" else ""
 
     out = [f"# {project['name']} — Master Plan", f"_Version {plan_row['version']} · generated {p.get('_generated', '')} · status: {plan_row['status']}_", ""]
+    an = p.get("analysis") or {}
+    if an:
+        out += ["## 0. Where you stand — situation analysis", an.get("situation", ""), ""]
+        sw = an.get("swot") or {}
+        if sw:
+            out += ["| Strengths | Weaknesses |", "|---|---|"]
+            S, W = sw.get("strengths") or [], sw.get("weaknesses") or []
+            for i in range(max(len(S), len(W))):
+                a_ = S[i] if i < len(S) else {}; b_ = W[i] if i < len(W) else {}
+                out.append(f"| {a_.get('point', '')}{(' — _' + a_['so_what'] + '_') if a_.get('so_what') else ''} | {b_.get('point', '')}{(' — _' + b_['so_what'] + '_') if b_.get('so_what') else ''} |")
+            out += ["", "| Opportunities | Threats |", "|---|---|"]
+            O, T = sw.get("opportunities") or [], sw.get("threats") or []
+            for i in range(max(len(O), len(T))):
+                a_ = O[i] if i < len(O) else {}; b_ = T[i] if i < len(T) else {}
+                out.append(f"| {a_.get('point', '')}{(' — _' + a_['so_what'] + '_') if a_.get('so_what') else ''}{L(a_.get('evidence'), emap)} | {b_.get('point', '')}{(' — _' + b_['so_what'] + '_') if b_.get('so_what') else ''}{L(b_.get('evidence'), emap)} |")
+            out.append("")
+        if an.get("readiness"):
+            out += ["**Readiness:**"] + [f"- {r.get('area')}: `{r.get('level', '')}` — {r.get('note', '')}" for r in an["readiness"]] + [""]
+        if an.get("options"):
+            out += ["**Paths compared:**", "| Path | Cost | Time to result | Risk | Fit | Why |", "|---|---|---|---|---|---|"]
+            out += [f"| **{o.get('path')}** — {o.get('summary', '')} | {o.get('cost', '')} | {o.get('time_to_result', '')} | {o.get('risk', '')} | {'★' * int(o.get('fit') or 0)} | {o.get('why_fit', '')}{L(o.get('evidence'), emap)} |" for o in an["options"]]
+            out.append("")
+        if an.get("assumptions"):
+            out += ["**Assumptions this plan rests on:**"] + [f"- **{x.get('assumption')}** — if wrong: {x.get('if_wrong', '')} · check: {x.get('how_to_check', '')}" for x in an["assumptions"]] + [""]
+        if an.get("failure_patterns"):
+            out += ["**Why people fail at this (per the sources):**"] + [f"- **{x.get('pattern')}** — {x.get('avoid', '')}{(' _(' + x['seen_in'] + ')_') if x.get('seen_in') else ''}{L(x.get('evidence'), emap)}" for x in an["failure_patterns"]] + [""]
+        if an.get("verdict"):
+            out += [f"**Verdict:** {an['verdict']}", ""]
     g = p.get("goal") or {}
     out += ["## 1. Goal", g.get("outcome", ""), ""]
     if g.get("constraints"):
