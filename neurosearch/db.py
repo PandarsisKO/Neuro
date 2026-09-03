@@ -658,7 +658,13 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
         (project_id,)).fetchall():
         props = proposed_sources(c["id"])
         if props:
-            d = dict(c); d["proposed"] = props; d["meta"] = review_meta(c["id"]); out.append(d)
+            from . import usage
+            rate = usage.observed_rate_per_minute()
+            for s in props:
+                s["est"] = usage.estimate_video(s.get("duration"), rate)
+            d = dict(c); d["proposed"] = props; d["meta"] = review_meta(c["id"])
+            d["meta"]["rate_basis"] = "your usage so far" if rate is not None else "list prices"
+            out.append(d)
     return out
 
 

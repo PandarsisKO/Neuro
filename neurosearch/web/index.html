@@ -588,6 +588,7 @@ async function loadReviews() {
   rvSig = sig;
   $('#reviewWrap').innerHTML = rvs.map(c => {
     const meta = c.meta || {}, want = meta.max_videos || 0, ranked = !!meta.ranked;
+    rvData[c.id] = c.proposed;
     const scored = ranked && c.proposed.some(s => s.relevance != null);
     const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
     if (scored && !rvAutoApplied[c.id]) {   // first time we see scores: tick the best `want`, untick the rest
@@ -596,7 +597,7 @@ async function loadReviews() {
     }
     const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
     const nSel = c.proposed.filter(s => !off.has(s.id)).length;
-    const est = (nSel * 0.04).toFixed(2);
+    const est = rvEstimate(c.proposed.filter(s => !off.has(s.id)));
     const rankLine = !ranked
       ? `<span class="muted">⏳ Ranking these by relevance to your brief… (titles &amp; descriptions only, nothing downloaded)</span>`
       : scored
@@ -604,7 +605,8 @@ async function loadReviews() {
            <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
         : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
     return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
-      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 60)} h listed` : ''} · ≈ $<span id="rvest-${c.id}">${est}</span> to analyse</span></div>
+      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
+      <div style="margin-top:3px;font-size:13px">💵 <span id="rvest-${c.id}">${est}</span></div>
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.</div>
       <div class="row" style="margin-top:4px">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
@@ -612,9 +614,16 @@ async function loadReviews() {
       <div class="row" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}')">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }
+const rvData = {};   // collection id -> proposed rows (for live cost estimates)
+function rvEstimate(rows) {
+  const a = rows.reduce((t, s) => t + (s.est?.analyse || 0), 0), w = rows.reduce((t, s) => t + (s.est?.whisper || 0), 0);
+  const hrs = rows.reduce((t, s) => t + (s.duration || 0), 0) / 3600;
+  return `<span title="Findings analysis + embeddings, assuming YouTube captions exist (free). Videos without captions are transcribed with Whisper at $0.006/min — worst case +$${w.toFixed(2)} if none of them have captions.">≈ <b>$${a.toFixed(2)}</b> to analyse ${hrs.toFixed(1)} h of selected video <span class="muted">· up to +$${w.toFixed(2)} more if captions are missing (Whisper)</span></span>`;
+}
 function rvCount(id) {
-  const all = [...document.querySelectorAll(`#rv-${id} input[type=checkbox]`)], n = all.filter(i => i.checked).length;
-  const a = $(`#rvsel-${id}`), b = $(`#rvest-${id}`); if (a) a.textContent = n; if (b) b.textContent = (n * 0.04).toFixed(2);
+  const all = [...document.querySelectorAll(`#rv-${id} input[type=checkbox]`)], on = new Set(all.filter(i => i.checked).map(i => i.dataset.id));
+  const a = $(`#rvsel-${id}`), b = $(`#rvest-${id}`); if (a) a.textContent = on.size;
+  if (b) b.innerHTML = rvEstimate((rvData[id] || []).filter(s => on.has(s.id)));
 }
 function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); rvCount(id); }
 function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }

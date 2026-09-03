@@ -124,6 +124,39 @@ def estimate_transcription(duration_s: float | None) -> float:
     return (duration_s or 0) / 60 * WHISPER_PER_MINUTE
 
 
+CHARS_PER_MINUTE = 1000      # ~150 wpm of speech plus timestamp prefixes
+
+
+def estimate_video(duration_s: float | None, rate_per_min: float | None = None) -> dict[str, float]:
+    """Expected cost of one video that arrives with captions: findings analysis + embeddings (transcription is
+    free when captions exist). Returns {"analyse": $, "whisper": $ if captions turn out to be missing}."""
+    mins = max((duration_s or 0) / 60, 1.0)
+    if rate_per_min is not None:
+        analyse = mins * rate_per_min
+    else:
+        from .findings import WINDOW_CHARS
+        chars = mins * CHARS_PER_MINUTE
+        windows = max(1, int(-(-chars // WINDOW_CHARS)))
+        pin, pout = _price(settings.answer_model)
+        analyse = (chars / 4 + windows * 1500) / 1e6 * pin + windows * 800 / 1e6 * pout
+        analyse += chars / 4 / 1e6 * _price(settings.embedding_model)[0]
+    return {"analyse": round(analyse, 4), "whisper": round(mins * WHISPER_PER_MINUTE, 4)}
+
+
+def observed_rate_per_minute(min_sources: int = 5) -> float | None:
+    """What findings analysis has actually cost per minute of video so far (None until enough history)."""
+    try:
+        row = db.connect().execute(
+            """SELECT COUNT(DISTINCT u.source_id) n, SUM(u.cost) c, SUM(s.duration) d
+               FROM (SELECT source_id, SUM(cost) cost FROM usage WHERE kind='findings' AND source_id IS NOT NULL GROUP BY source_id) u
+               JOIN sources s ON s.id=u.source_id WHERE s.duration>0""").fetchone()
+        if row and row["n"] and row["n"] >= min_sources and row["d"]:
+            return float(row["c"]) / (float(row["d"]) / 60)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def estimate_findings(n_chars: int) -> float:
     # ~4 chars per token in, ~600 tokens out per window
     pin, pout = _price(settings.answer_model)
