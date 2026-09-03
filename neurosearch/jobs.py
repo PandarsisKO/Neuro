@@ -5,6 +5,7 @@ Good enough for one user and hundreds of videos; survives restarts (running jobs
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from typing import Any
@@ -17,6 +18,14 @@ log = logging.getLogger(__name__)
 
 _stop = threading.Event()
 _threads: list[threading.Thread] = []
+
+
+# Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
+TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
+                       r"try again|slow down|login for this|please wait|overloaded", re.I)
+RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "rank_proposed", "discover")
+MAX_ATTEMPTS = 4
+RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 
 
 def enqueue(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -95,6 +104,17 @@ def _worker(n: int) -> None:
                 if sid:
                     db.set_source_status(sid, "pending")
                 _stop.wait(5)
+                continue
+            # transient problem? retry later, up to MAX_ATTEMPTS, with growing gaps — nothing is lost
+            payload = job.get("payload") or {}
+            attempts = int(payload.get("_attempts") or 0) + 1
+            if TRANSIENT.search(str(e)) and attempts < MAX_ATTEMPTS and job["kind"] in RETRYABLE:
+                delay = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
+                db.set_job_payload(job["id"], {**payload, "_attempts": attempts})
+                db.requeue_job(job["id"], delay=delay, message=f"retry {attempts + 1}/{MAX_ATTEMPTS} in {delay // 60} min — {str(e)[:200]}")
+                sid = payload.get("source_id")
+                if sid:
+                    db.set_source_status(sid, "pending")
                 continue
             log.warning("job %s failed: %s", job["id"], e)
             db.update_job(job["id"], status="failed", message=f"error: {e}")

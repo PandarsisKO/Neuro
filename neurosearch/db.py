@@ -734,6 +734,36 @@ def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | N
     return n
 
 
+def set_job_payload(job_id: str, payload: dict[str, Any]) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET payload=? WHERE id=?", (json.dumps(payload), job_id))
+
+
+def retry_job(job_id: str) -> dict[str, Any] | None:
+    """Re-queue a failed job as a fresh attempt (same kind + payload); the old row is marked as retried."""
+    j = get_job(job_id)
+    if not j or j["status"] != "failed":
+        return None
+    payload = {k: v for k, v in (j.get("payload") or {}).items() if k != "_attempts"}
+    new = create_job(j["kind"], payload)
+    update_job(job_id, status="done", message=f"retried → {new['id'][:8]} — {j.get('message') or ''}"[:500])
+    sid = payload.get("source_id")
+    if sid:
+        set_source_status(sid, "pending")
+    return new
+
+
+def failed_jobs(project_id: str | None = None, since_hours: float = 48) -> list[dict[str, Any]]:
+    out = []
+    for j in list_jobs(limit=1000):
+        if j["status"] != "failed" or (now() - (j.get("finished_at") or j.get("created_at") or 0)) > since_hours * 3600:
+            continue
+        if project_id and (j.get("payload") or {}).get("project_id") not in (None, project_id):
+            continue
+        out.append(j)
+    return out
+
+
 def requeue_job(job_id: str, delay: float = 0, message: str | None = None) -> None:
     with tx() as conn:
         conn.execute("UPDATE jobs SET status='queued', started_at=NULL, not_before=?, message=? WHERE id=?",

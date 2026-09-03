@@ -594,3 +594,34 @@ def test_instagram_profile_with_session(client, monkeypatch, tmp_path):
     assert a["started"] == 1
     job = [j for j in db.list_jobs(50) if j["kind"] == "ingest_source"][0]
     assert job["payload"]["cookies_file"] == str(ck) and job["payload"]["referer"].startswith("https://www.instagram.com/")
+
+
+def test_transient_failures_retry_then_fail(client, monkeypatch):
+    from neurosearch import jobs, ingest
+    calls = {"n": 0}
+    def boom(url, **kw):
+        calls["n"] += 1
+        raise RuntimeError("Instagram wants a login for this (or rate-limited the session)")
+    monkeypatch.setattr(ingest, "ingest_url", boom)
+    j = db.create_job("ingest_url", {"url": "https://www.instagram.com/reel/x/", "project_id": None})
+    jobs.run_job  # noqa
+    # drive the worker loop by hand: run + handle like _worker does
+    def step():
+        job = db.get_job(j["id"])
+        try:
+            db.update_job(job["id"], status="done", result=jobs.run_job(job))
+        except Exception as e:  # noqa: BLE001
+            payload = job.get("payload") or {}
+            attempts = int(payload.get("_attempts") or 0) + 1
+            if jobs.TRANSIENT.search(str(e)) and attempts < jobs.MAX_ATTEMPTS:
+                db.set_job_payload(job["id"], {**payload, "_attempts": attempts}); db.requeue_job(job["id"], delay=0, message="retry")
+            else:
+                db.update_job(job["id"], status="failed", message=f"error: {e}")
+    for _ in range(jobs.MAX_ATTEMPTS):
+        step()
+    assert calls["n"] == jobs.MAX_ATTEMPTS and db.get_job(j["id"])["status"] == "failed"
+    assert jobs.TRANSIENT.search("HTTP Error 429: Too Many Requests") and not jobs.TRANSIENT.search("This Instagram post has no video")
+    # manual retry endpoint creates a fresh job and retires the failed one
+    r = client.post(f"/api/jobs/{j['id']}/retry", headers=H).json()
+    assert db.get_job(r["job_id"])["status"] == "queued" and db.get_job(j["id"])["message"].startswith("retried")
+    assert client.post("/api/jobs/retry-failed", headers=H, json={}).json()["retried"] == 0

@@ -619,6 +619,29 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
     return out
 
 
+@app.post("/api/jobs/{job_id}/retry", dependencies=[Depends(require_auth)])
+def api_retry_job(job_id: str) -> dict[str, Any]:
+    """Try a failed job again (fresh attempt, same input)."""
+    new = db.retry_job(job_id)
+    if not new:
+        raise HTTPException(409, "only failed jobs can be retried")
+    return {"job_id": new["id"]}
+
+
+class RetryAllIn(BaseModel):
+    project_id: str | None = None
+
+
+@app.post("/api/jobs/retry-failed", dependencies=[Depends(require_auth)])
+def api_retry_failed(body: RetryAllIn) -> dict[str, Any]:
+    """Re-queue every failed job of the last 48 h (optionally one project)."""
+    n = 0
+    for j in db.failed_jobs(body.project_id):
+        if db.retry_job(j["id"]):
+            n += 1
+    return {"retried": n}
+
+
 @app.post("/api/jobs/{job_id}/dismiss", dependencies=[Depends(require_auth)])
 def api_dismiss_job(job_id: str) -> dict[str, Any]:
     """Hide a failed job from the In-progress card (keeps the error in the history)."""
