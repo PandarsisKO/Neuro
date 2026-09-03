@@ -18,7 +18,7 @@ Master Planner lives in `planner.py` (structured plan JSON + evidence map; `plan
 Tests use `tests/fake_claude.py` in place of the Anthropic client.
 Suggested findings: `findings.py`; notes have status suggested|approved|dismissed (list_project_notes defaults to approved).
 Project steering fields (goal, audience, output_pref, source_prefs, questions, context) are rendered by `db.project_steering` into every prompt.
-Discover sources: `discover.py` (Claude + web_search) → `discoveries` table; UI pane in Sources.
+Discover sources: `discover.py` — pass 1 no-tools shortlist (instant, saved immediately), pass 2 web_search verify/top-up (`db.update_discovery`); `discoveries` table; UI pane in Sources polls during the job.
 Course import: `extension/` (MV3; scanner.js runs in the page, popup.js posts to /api/projects/{id}/course-import) → `courses.py` writes data/cookies/<collection>.txt; ingest_url jobs carry cookies_file/referer/title/collection_id.
 Spend/budget: `usage.py` (usage table, `guard()` raises BudgetPaused → jobs re-queue with not_before; kv table holds budgets + queue_paused).
 Relevance ranking: `relevance.py` scores proposed channel/playlist videos (titles+descriptions, `rank_proposed` job) → sources.relevance/relevance_why; review meta in kv `review:<collection>` carries max_videos/ranked; the UI pre-ticks the best `max_videos`.

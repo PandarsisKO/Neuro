@@ -36,7 +36,11 @@ class _Blk:
 class _Msgs:
     def create(self, **kw):
         system = kw.get("system", "")
-        if "research librarian" in system:
+        if "checking a shortlist" in system:
+            text = json.dumps({"fixes": [{"name": "Dave Ramsey", "url": "https://www.youtube.com/@TheRamseyShow", "start_with": [{"title": "Baby Steps", "url": "https://www.youtube.com/watch?v=zzz"}]}],
+                               "added": [{"name": "BiggerPockets", "kind": "podcast", "url": "https://www.biggerpockets.com/podcasts", "gist": "real estate investing", "why": "The largest REI community podcast.", "angle": "pro-leverage", "fit": 4, "depth": "beginner"}],
+                               "note": "verified"})
+        elif "research librarian" in system:
             text = json.dumps({"note": "Start with the practitioner, then the contrarian.", "sources": [
                 {"name": "Dave Ramsey", "kind": "youtube_channel", "url": "https://www.youtube.com/@TheRamseyShow", "gist": "debt-free budgeting basics",
                  "why": "The most-cited mainstream voice on getting out of debt.", "angle": "Anti-debt absolutist; dismisses credit strategies.",

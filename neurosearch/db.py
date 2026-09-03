@@ -1017,6 +1017,17 @@ def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = ""
     return rows
 
 
+def update_discovery(disc_id: int, url: str | None = None, start_with: list[dict[str, Any]] | None = None) -> None:
+    sets, args = [], []
+    if url:
+        sets.append("url=?"); args.append(url)
+    if start_with:
+        sets.append("start_with=?"); args.append(json.dumps(start_with))
+    if sets:
+        with tx() as conn:
+            conn.execute(f"UPDATE discoveries SET {', '.join(sets)} WHERE id=?", (*args, disc_id))
+
+
 def list_discoveries(project_id: str, status: str | None = None) -> list[dict[str, Any]]:
     sql = "SELECT * FROM discoveries WHERE project_id=?"
     args: list[Any] = [project_id]

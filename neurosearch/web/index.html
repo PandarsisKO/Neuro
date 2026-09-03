@@ -366,7 +366,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.4';
+const UI_VERSION = '0.11.5';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -747,7 +747,7 @@ async function cancelQueued() {
   const r = await post('/api/jobs/cancel-queued', { project_id: state.project.id }); alert(`Cancelled ${r.cancelled} queued job(s).`); loadJobs(); loadSources();
 }
 async function togglePause(p) { await post('/api/usage/budget', { paused: p }); loadJobs(); }
-async function loadDiscoveries() {
+async function loadDiscoveries(keepMsg = false) {
   const ds = await api(`/api/projects/${state.project.id}/discoveries`);
   const show = ds.filter(d => d.status !== 'dismissed');
   const KIND = { youtube_channel: '▶ YouTube channel', podcast: '🎙 Podcast', newsletter: '✉ Newsletter', website: '🌐 Website', person: '👤 Person' };
@@ -771,11 +771,11 @@ async function loadDiscoveries() {
     </div>
     ${(d.start_with || []).length || d.url ? `<div class="dlinks">${(d.start_with || []).map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">▶ ${esc(v.title)}</a>` : `<span>▶ ${esc(v.title)}</span>`).join(' · ')}${d.url ? `${(d.start_with || []).length ? ' · ' : ''}<a href="${esc(d.url)}" target="_blank">open ${KIND[d.kind] ? KIND[d.kind].replace(/^\S+ /, '') : 'page'} ↗</a>` : ''}</div>` : ''}
     </div>`; }).join('') || '<div class="muted">No suggestions yet — click <b>Find sources</b>.</div>';
-  if (show.length && show[0].note) $('#discMsg').textContent = show[0].note;
+  if (!keepMsg && show.length && show[0].note) $('#discMsg').textContent = show[0].note;
 }
 async function runDiscover() {
   const btn = $('#discBtn'); btn.disabled = true;
-  const t0 = Date.now(), tick = m => { $('#discMsg').innerHTML = `<span class="spin"></span> ${esc(m || 'searching the web for the people worth learning from')} · ${Math.round((Date.now() - t0) / 1000)}s (usually 30–90 s)`; };
+  const t0 = Date.now(), tick = m => { $('#discMsg').innerHTML = `<span class="spin"></span> ${esc(m || 'searching the web for the people worth learning from')} · ${Math.round((Date.now() - t0) / 1000)}s (first results in ~10 s, links verified after)`; };
   tick();
   try {
     const r = await post(`/api/projects/${state.project.id}/discover`, { refine: $('#discRefine').value || null, background: true });
@@ -786,6 +786,7 @@ async function runDiscover() {
         if (j.status === 'done') { const res = j.result || {}; $('#discMsg').textContent = (res.note || '') + (res.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); break; }
         if (j.status === 'failed') { $('#discMsg').textContent = 'error: ' + (j.message || 'discover failed'); break; }
         tick(j.message);
+        if ((j.progress || 0) >= 0.45) loadDiscoveries(true);   // first take is in — show it while links are verified
       }
     } else { $('#discMsg').textContent = (r.note || '') + (r.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); }
     await loadDiscoveries();

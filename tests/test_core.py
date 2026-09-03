@@ -282,14 +282,18 @@ def test_discover_sources(client, monkeypatch):
     monkeypatch.setattr(discover.settings, "anthropic_api_key", "fake")
     p = client.post("/api/projects", headers=H, json={"name": "Money", "brief": "get out of debt and start investing"}).json()
     r = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={}).json()
-    assert r["added"] == 2 and r["items"][0]["name"] == "Dave Ramsey" and r["items"][0]["start_with"][0]["url"].startswith("https")
+    assert r["added"] == 3 and r["verified"] == 1 and r["extra"] == 1 and r["items"][0]["name"] == "Dave Ramsey"
+    ds = client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()
+    ramsey = [d for d in ds if d["name"] == "Dave Ramsey"][0]
+    assert ramsey["start_with"][0]["title"] == "Baby Steps"        # verification pass patched the starting video
     # second run doesn't duplicate
     r2 = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={"refine": "more contrarian"}).json()
     assert r2["added"] == 0
     ds = client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()
-    assert len(ds) == 2 and ds[0]["fit"] == 5
+    assert len(ds) == 3 and ds[0]["fit"] == 5
     client.post(f"/api/discoveries/{ds[1]['id']}/status", headers=H, json={"status": "dismissed"})
-    assert [d["status"] for d in client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()] == ["new", "dismissed"]
+    sts = [d["status"] for d in client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()]
+    assert sts.count("dismissed") == 1 and sts.count("new") == 2
 
 
 def test_course_import(client):
@@ -487,7 +491,7 @@ def test_discover_background_and_pause_turn(client, monkeypatch):
     def create(self, **kw):   # first call returns a paused turn with no text, second the real answer
         calls["n"] += 1
         r = orig(self, **kw)
-        if calls["n"] == 1:
+        if calls["n"] == 2:   # the web-search (verify) pass hands back a paused turn first
             r.stop_reason = "pause_turn"; r.content = []
         return r
     monkeypatch.setattr(_Msgs, "create", create)
@@ -497,8 +501,8 @@ def test_discover_background_and_pause_turn(client, monkeypatch):
     r = client.post(f"/api/projects/{p['id']}/discover", headers=H, json={"background": True}).json()
     job = db.get_job(r["job_id"]); assert job["kind"] == "discover"
     res = jobs.run_job(job)
-    assert calls["n"] == 2 and res["added"] == 2
-    assert len(client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()) == 2
+    assert calls["n"] == 3 and res["added"] == 3 and res["verified"] == 1
+    assert len(client.get(f"/api/projects/{p['id']}/discoveries", headers=H).json()) == 3
 
 
 def test_review_discard_last(client, monkeypatch):
