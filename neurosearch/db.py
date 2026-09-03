@@ -263,6 +263,7 @@ MIGRATIONS = [
     ("sources", "view_count", "ALTER TABLE sources ADD COLUMN view_count INTEGER"),
     ("sources", "relevance", "ALTER TABLE sources ADD COLUMN relevance INTEGER"),
     ("sources", "relevance_why", "ALTER TABLE sources ADD COLUMN relevance_why TEXT"),
+    ("jobs", "updated_at", "ALTER TABLE jobs ADD COLUMN updated_at REAL"),
 ]
 
 
@@ -588,11 +589,15 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     ).fetchall()]
 
 
-def claim_job() -> dict[str, Any] | None:
-    """Atomically claim the oldest queued job."""
+def claim_job(kinds: tuple[str, ...] | None = None) -> dict[str, Any] | None:
+    """Atomically claim the oldest queued job (optionally only of some kinds)."""
     with tx() as conn:
-        row = conn.execute("SELECT id FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?) ORDER BY created_at LIMIT 1",
-                           (now(),)).fetchone()
+        q = "SELECT id FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
+        args: list[Any] = [now()]
+        if kinds:
+            q += f" AND kind IN ({','.join('?' for _ in kinds)})"
+            args += list(kinds)
+        row = conn.execute(q + " ORDER BY created_at LIMIT 1", args).fetchone()
         if not row:
             return None
         cur = conn.execute(
@@ -618,6 +623,7 @@ def update_job(job_id: str, *, progress: float | None = None, message: str | Non
         sets.append("result=?"); args.append(json.dumps(result))
     if not sets:
         return
+    sets.append("updated_at=?"); args.append(now())
     with tx() as conn:
         conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id=?", (*args, job_id))
 

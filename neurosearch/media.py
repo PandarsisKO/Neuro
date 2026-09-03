@@ -234,14 +234,36 @@ def _flatten(res: dict[str, Any]) -> list[dict[str, Any]]:
 
 # ------------------------------------------------------ metadata/captions
 
+_tl = threading.local()
+
+
+def set_progress_hook(fn: Any) -> None:
+    """jobs.run_job installs the job's progress callback here so yt-dlp's own warnings appear on the job row."""
+    _tl.progress = fn
+
+
+def _note(msg: str) -> None:
+    fn = getattr(_tl, "progress", None)
+    if fn:
+        try:
+            fn(None, msg[:300])
+        except Exception:  # noqa: BLE001
+            pass
+
+
 class _Collect:
     """yt-dlp logger that keeps the real error text (ignoreerrors=True otherwise swallows it)."""
     def __init__(self) -> None:
         self.errors: list[str] = []
-    def debug(self, msg: str) -> None: pass
-    def info(self, msg: str) -> None: pass
+    def debug(self, msg: str) -> None:
+        if msg.startswith("[download]") or "Downloading" in msg:
+            _note(re.sub(r"\x1b\[[0-9;]*m", "", msg).strip())
+    def info(self, msg: str) -> None:
+        _note(re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).strip())
     def warning(self, msg: str) -> None:
-        log.debug("yt-dlp: %s", msg)
+        m = re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).replace("WARNING: ", "")
+        _note("⚠ " + m)
+        log.warning("yt-dlp: %s", m)
     def error(self, msg: str) -> None:
         m = re.sub(r"\x1b\[[0-9;]*m", "", str(msg)).replace("ERROR: ", "")
         m = re.split(r";\s*please report this issue", m)[0].strip()
@@ -262,12 +284,37 @@ def _friendly(err: str, url: str) -> str:
     return err
 
 
+FETCH_TIMEOUT = 240   # seconds; a metadata fetch that takes longer is stuck, not slow
+
+
+def _with_timeout(fn: Any, seconds: float, what: str) -> Any:
+    """Run fn() in a helper thread; give up after `seconds` (the thread finishes on its own later)."""
+    box: dict[str, Any] = {}
+    hook = getattr(_tl, "progress", None)
+
+    def run() -> None:
+        _tl.progress = hook
+        try:
+            box["value"] = fn()
+        except BaseException as e:  # noqa: BLE001
+            box["error"] = e
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(seconds)
+    if t.is_alive():
+        raise RuntimeError(f"{what} timed out after {int(seconds // 60)} min — the connection stalled; will try again later")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
     """Full metadata for one item (no download). Raises RuntimeError carrying yt-dlp's real reason on failure."""
     lg = _Collect()
     with polite(url), yt_dlp.YoutubeDL(_base_opts(cookies_file, referer, skip_download=True, logger=lg)) as ydl:
         try:
-            info = ydl.extract_info(url, download=False)
+            info = _with_timeout(lambda: ydl.extract_info(url, download=False), FETCH_TIMEOUT, "metadata fetch")
         except Exception as e:  # noqa: BLE001
             if BOT_CHECK.search(str(e)):
                 raise

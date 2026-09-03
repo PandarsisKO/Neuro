@@ -350,6 +350,7 @@ function toast(msg, kind = '') {
 const put = (p, b) => api(p, { method: 'PUT', body: JSON.stringify(b) });
 const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : undefined });
 let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
+const ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
 const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
 const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐' };
 
@@ -365,7 +366,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.11.3';
+const UI_VERSION = '0.11.4';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -833,7 +834,7 @@ async function loadJobs() {
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up

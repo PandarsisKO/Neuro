@@ -36,9 +36,11 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     jid = job["id"]
     payload = job["payload"] or {}
 
-    def progress(p: float, m: str) -> None:
+    def progress(p: float | None, m: str) -> None:
         db.update_job(jid, progress=p, message=m)
 
+    from . import media
+    media.set_progress_hook(progress)
     kind = job["kind"]
     from . import usage
     if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover"):
@@ -77,10 +79,13 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     raise RuntimeError(f"unknown job kind {kind}")
 
 
-def _worker(n: int) -> None:
-    log.info("worker %d started", n)
+ANALYSIS_KINDS = ("suggest_findings", "rank_proposed", "discover", "reembed")
+
+
+def _worker(n: int, kinds: tuple[str, ...] | None = None) -> None:
+    log.info("worker %d started%s", n, f" ({', '.join(kinds)})" if kinds else "")
     while not _stop.is_set():
-        job = db.claim_job()
+        job = db.claim_job(kinds)
         if not job:
             _stop.wait(1.5)
             continue
@@ -131,6 +136,10 @@ def start_workers(n: int | None = None) -> None:
         t = threading.Thread(target=_worker, args=(i,), daemon=True, name=f"ns-worker-{i}")
         t.start()
         _threads.append(t)
+    # one extra worker that only does the cheap Claude jobs, so findings/ranking never wait behind slow downloads
+    t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
+    t.start()
+    _threads.append(t)
 
 
 def stop_workers() -> None:
