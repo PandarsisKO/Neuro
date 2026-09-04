@@ -326,6 +326,11 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
         return ingest_subtitle_file(path, title or kind_path.stem, tags, project_id, name)
     from .sheets import is_spreadsheet
     if is_spreadsheet(kind_path):
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError:
+            raise RuntimeError("spreadsheet support needs a dependency that isn't installed yet — stop the server (Ctrl+C) "
+                               "and run ./start once; it installs it, then Retry this file") from None
         return ingest_spreadsheet(path, title or kind_path.stem, tags, project_id, name)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
@@ -337,7 +342,7 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
 def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:
     """A workbook: each sheet becomes a searchable page, and its formulas become a calculator the chat can run."""
     from .chunking import build_doc_chunks
-    from .sheets import read_workbook, save_model, store_file
+    from .sheets import files_dir, read_workbook, save_model, store_file
 
     ext_id = f"sheet:{name}:{path.stat().st_size}"
     src = db.upsert_source(platform="spreadsheet", external_id=ext_id, url=f"file://{name}", title=title,
@@ -345,13 +350,14 @@ def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_i
     if project_id:
         db.add_project_sources(project_id, [src["id"]])
     try:
+        if path.parent != files_dir():
+            path = store_file(path, src["id"], Path(name).suffix)      # keep the original so Retry works
         model = read_workbook(path)
         pages = [{"page": i + 1, "text": s["text"]} for i, s in enumerate(model["sheets"])]
         segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
         chunks = build_doc_chunks(pages)
         db.replace_transcript(src["id"], segments, chunks)
-        stored = store_file(path, src["id"], Path(name).suffix)
-        save_model(src["id"], stored.name, model)
+        save_model(src["id"], path.name, model)
         db.upsert_source(platform="spreadsheet", external_id=ext_id, duration=None, transcript_kind="spreadsheet",
                          description=f"{len(pages)} sheet{'s' if len(pages) != 1 else ''} · {len(model['inputs'])} inputs · {len(model['outputs'])} calculated outputs",
                          status="ready", error=None)

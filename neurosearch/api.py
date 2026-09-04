@@ -365,6 +365,19 @@ def api_retry(source_id: str) -> dict[str, Any]:
     src = db.get_source(source_id)
     if not src:
         raise HTTPException(404)
+    if src["platform"] in ("spreadsheet", "document", "file"):
+        # uploaded files: re-read the kept copy (spreadsheets keep theirs in data/files); otherwise ask for a re-upload
+        from .sheets import files_dir
+        name = src["url"].replace("file://", "")
+        kept = next(iter(files_dir().glob(f"{source_id}.*")), None)
+        if not kept:
+            raise HTTPException(400, f"'{name}' isn't on disk any more — upload it again (drag it into Upload file) and it will replace this entry")
+        import shutil, tempfile
+        tmp = Path(tempfile.gettempdir()) / f"retry-{source_id}{kept.suffix}"
+        shutil.copyfile(kept, tmp)
+        db.set_source_status(source_id, "pending")
+        return {"job": jobs.enqueue("ingest_file", {"path": str(tmp), "name": name, "title": src.get("title"), "tags": src.get("tags") or [],
+                                                    "project_id": None})["id"]}
     db.set_source_status(source_id, "pending")
     if src["platform"] == "web" or (src["platform"] == "media" and not src.get("transcript_kind")):
         # links that never produced a transcript go back through the URL router (web page vs media detection)
