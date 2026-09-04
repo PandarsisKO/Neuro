@@ -715,3 +715,21 @@ def test_youtube_search_link_becomes_review(client, monkeypatch):
     assert r["proposed"] == 4 and r["review"] and r["title"].startswith("YouTube search")
     rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()
     assert rv and len(rv[0]["proposed"]) == 4
+
+
+def test_bot_check_pauses_instead_of_failing(monkeypatch):
+    from neurosearch import media
+    class FakeYDL:
+        def __init__(self, opts): self.lg = opts["logger"]
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def extract_info(self, url, download=False):
+            self.lg.error("ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies-from-browser"); return None
+    monkeypatch.setattr(media.yt_dlp, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(media.settings, "yt_delay", 0)
+    media._sites["youtube"]["until"] = 0
+    import pytest
+    with pytest.raises(media.RateLimited):
+        media.fetch_info("https://www.youtube.com/watch?v=abc")
+    assert media.rate_limit_status()["paused"]
+    media._sites["youtube"]["until"] = 0   # don't leak the pause into other tests

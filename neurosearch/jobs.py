@@ -22,7 +22,7 @@ _threads: list[threading.Thread] = []
 
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
-                       r"try again|slow down|login for this|please wait|overloaded", re.I)
+                       r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
 RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "rank_proposed", "discover", "build_plan")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts

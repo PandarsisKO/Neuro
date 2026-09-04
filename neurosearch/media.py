@@ -351,12 +351,13 @@ def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = 
             if BOT_CHECK.search(str(e)):
                 raise
             raise RuntimeError(_friendly(f"metadata fetch failed: {e}", url)) from e
-    if info and info.get("_type") == "playlist" and info.get("entries"):
-        info = next((e for e in info["entries"] if e), None)
-    if not info and lg.last():
-        if BOT_CHECK.search(lg.last()):
-            raise RuntimeError(lg.last())   # polite() turns this into a RateLimited pause on exit
-        raise RuntimeError(_friendly(lg.last(), url))
+        if info and info.get("_type") == "playlist" and info.get("entries"):
+            info = next((e for e in info["entries"] if e), None)
+        if not info and lg.last():
+            # raised INSIDE the polite() block so a bot-check becomes a RateLimited pause (site-wide, 20 min), not a failure
+            if BOT_CHECK.search(lg.last()):
+                raise RuntimeError("YouTube bot-check: " + lg.last())
+            raise RuntimeError(_friendly(lg.last(), url))
     return info
 
 
