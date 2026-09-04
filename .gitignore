@@ -12,3 +12,5 @@ dist/
 .DS_Store
 cookies.txt
 data/backups/
+_update.tgz
+_to_delete/
