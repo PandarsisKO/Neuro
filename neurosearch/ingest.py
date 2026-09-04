@@ -289,6 +289,9 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
     src = db.get_source(source_id)
     if not src:
         raise RuntimeError(f"source {source_id} not found")
+    if src["platform"] in ("spreadsheet", "document", "file", "manual"):
+        db.set_source_status(source_id, "failed", "this is an uploaded file, not a link — use Retry on its row in Sources, or upload it again")
+        raise RuntimeError("uploaded files can't be fetched like a link — use Retry on the source row, or upload the file again")
     try:
         try:
             payload = extract_transcript(src["url"], src["platform"], progress=progress, cookies_file=cookies_file,

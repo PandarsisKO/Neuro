@@ -365,6 +365,11 @@ def api_retry(source_id: str) -> dict[str, Any]:
     src = db.get_source(source_id)
     if not src:
         raise HTTPException(404)
+    return _retry_source(src)
+
+
+def _retry_source(src: dict[str, Any]) -> dict[str, Any]:
+    source_id = src["id"]
     if src["platform"] in ("spreadsheet", "document", "file"):
         # uploaded files: re-read the kept copy (spreadsheets keep theirs in data/files); otherwise ask for a re-upload
         from .sheets import files_dir
@@ -697,6 +702,13 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
 @app.post("/api/jobs/{job_id}/retry", dependencies=[Depends(require_auth)])
 def api_retry_job(job_id: str) -> dict[str, Any]:
     """Try a failed job again (fresh attempt, same input)."""
+    j = db.get_job(job_id)
+    if j and j["status"] == "failed" and j["kind"] == "ingest_source":
+        src = db.get_source((j.get("payload") or {}).get("source_id") or "")
+        if src and src["platform"] in ("spreadsheet", "document", "file", "web", "media"):
+            # uploaded files / pages must go through their own reader, never the video downloader
+            db.update_job(job_id, status="done", message=f"retried via source — {j.get('message') or ''}"[:500])
+            return {"job_id": _retry_source(src)["job"]}
     new = db.retry_job(job_id)
     if not new:
         raise HTTPException(409, "only failed jobs can be retried")
