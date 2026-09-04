@@ -132,6 +132,11 @@
   .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .rv .li input{width:auto}
   .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .fun{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:var(--shadow)}
+  .funh{font-weight:700;margin-bottom:8px}
+  .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
+  .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
   .calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .ci{display:flex;gap:8px;align-items:center;padding:3px 0}.ci span{flex:1;font-size:13px}.ci input{width:140px;text-align:right}
   .co{display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -200,6 +205,7 @@
   <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
   <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
   <div class="grid" id="projGrid"></div>
+  <div id="homeFun"></div>
 </div>
 
 <!-- ============ WORKSPACE ============ -->
@@ -345,6 +351,7 @@
         <div id="facts" style="margin-top:8px"></div>
         <div class="row" style="margin-top:8px"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
       </div>
+      <div id="projFun"></div>
       <div class="card"><b>Spending valve</b>
         <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>
         <div class="row" style="margin-top:8px"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
@@ -369,6 +376,36 @@ async function api(path, opts = {}) {
   return j;
 }
 const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b) });
+// ---- fun stats: how much did we not have to watch? ----
+const YARDSTICKS = [   // [label, hours] — things people know the length of
+  ['all eight seasons of Game of Thrones', 70.5], ['a New York → Los Angeles drive, non-stop', 41], ['every Marvel movie back to back', 60],
+  ['the entire Harry Potter film series', 19.7], ['a transatlantic flight', 7.5], ['a full night\'s sleep', 8],
+  ['the extended Lord of the Rings trilogy', 11.4], ['the Star Wars saga (all nine)', 21.5], ['the Beatles\' entire studio catalogue', 10.5]];
+const BOOKS = [['the whole Lord of the Rings trilogy plus The Hobbit', 576000], ['War and Peace', 587000], ['the Bible, cover to cover', 783000],
+  ['all seven Harry Potter books', 1084000], ['Moby-Dick', 209000], ['the complete works of Shakespeare', 884000]];
+function funCard(f, title) {
+  if (!f || !f.sources) return '';
+  const h = f.hours, secs = f.seconds;
+  const d = Math.floor(secs / 86400), hh = Math.floor(secs % 86400 / 3600), mm = Math.floor(secs % 3600 / 60);
+  const straight = d ? `${d} day${d === 1 ? '' : 's'}, ${hh} h ${mm} min` : `${hh} h ${mm} min`;
+  const weeks = h / 40;
+  // pick a yardstick that gives a satisfying multiple (between 1.2× and 12×), else the closest
+  const pick = (list, val) => { const ok = list.filter(([, n]) => val / n >= 1.2 && val / n <= 12); const [l, n] = (ok.length ? ok : list).reduce((a, b) => Math.abs(val / b[1] - 3) < Math.abs(val / a[1] - 3) ? b : a); return { label: l, times: val / n }; };
+  const x = v => v >= 10 ? Math.round(v) + '×' : v >= 2 ? v.toFixed(1).replace(/\.0$/, '') + '×' : v >= 1.2 ? v.toFixed(1) + '×' : (v * 100).toFixed(0) + '% of';
+  const y = h >= 0.5 ? pick(YARDSTICKS, h) : null, b = f.words >= 20000 ? pick(BOOKS, f.words) : null;
+  const plat = Object.entries(f.by_platform || {}).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${n} ${({ youtube: 'YouTube video', media: 'podcast/audio', web: 'web page', document: 'document', instagram: 'reel', spreadsheet: 'spreadsheet', file: 'file', manual: 'pasted text' })[k] || k}${n === 1 ? '' : 's'}`).join(' · ');
+  const per = f.hours && f.spend ? `$${(f.spend / f.hours).toFixed(2)} per hour of material` : '';
+  return `<div class="fun"><div class="funh">📊 ${title}</div>
+    <div class="funrow">
+      <div class="funstat"><b>${h.toLocaleString()}</b><span>hours of audio &amp; video, read for you</span></div>
+      <div class="funstat"><b>${straight}</b><span>if you watched it all back to back${weeks >= 1 ? ` — ${weeks.toFixed(1)} working weeks` : ''}</span></div>
+      <div class="funstat"><b>${(f.words / 1000).toFixed(0)}k</b><span>words of transcript${b ? ` — ${x(b.times)} ${esc(b.label)}` : ''}</span></div>
+      ${y ? `<div class="funstat"><b>${x(y.times)}</b><span>${esc(y.label)}</span></div>` : ''}
+      ${f.findings ? `<div class="funstat"><b>${f.findings}</b><span>approved findings pulled out of it</span></div>` : ''}
+      ${f.spend ? `<div class="funstat"><b>$${f.spend.toFixed(2)}</b><span>spent${per ? ` — ${per}` : ''}</span></div>` : ''}
+    </div>
+    <div class="muted" style="margin-top:6px">${f.sources} sources: ${plat}${f.longest ? ` · longest: “${esc(f.longest.title)}” (${f.longest.hours} h)` : ''}</div></div>`;
+}
 function toast(msg, kind = '') {
   let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
   t.textContent = msg; t.className = 'show ' + kind; clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 4500);
@@ -392,7 +429,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.13.3';
+const UI_VERSION = '0.13.4';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -425,6 +462,7 @@ async function goHome() {
   if (location.hash) history.replaceState(null, '', location.pathname);
   const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
   $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
+  api('/api/stats/fun').then(f => { $('#homeFun').innerHTML = funCard(f, 'Your research in numbers'); }).catch(() => {});
   $('#projGrid').innerHTML = ps.map(p => `<div class="pcard" onclick="location.hash='#p/${p.id}/chats'">
       <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.goal || p.brief || 'No brief yet')}</div>
       <div class="meta">${p.n_sources} sources · updated ${new Date(p.updated_at * 1000).toLocaleDateString()}</div></div>`).join('')
@@ -502,7 +540,7 @@ function showView(v, push = true) {
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
   if (v === 'plan') loadPlan();
-  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); }
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); api('/api/stats/fun?project_id=' + state.project.id).then(f => { $('#projFun').innerHTML = funCard(f, 'This project in numbers'); }).catch(() => {}); }
   $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }

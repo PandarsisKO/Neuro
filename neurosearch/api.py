@@ -437,6 +437,11 @@ def api_version() -> dict[str, str]:
     return {"version": __version__}
 
 
+@app.get("/api/stats/fun", dependencies=[Depends(require_auth)])
+def api_fun_stats(project_id: str | None = None) -> dict[str, Any]:
+    return db.fun_stats(project_id)
+
+
 @app.get("/api/stats", dependencies=[Depends(require_auth)])
 def api_stats() -> dict[str, Any]:
     from .media import rate_limit_status

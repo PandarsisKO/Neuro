@@ -400,6 +400,34 @@ def delete_source(source_id: str) -> None:
         conn.execute("DELETE FROM sources WHERE id=?", (source_id,))
 
 
+def fun_stats(project_id: str | None = None) -> dict[str, Any]:
+    """Numbers for the 'your research in numbers' card: hours of media, words, spend, comparisons."""
+    conn = connect()
+    if project_id:
+        ids = set(project_source_ids(project_id))
+        rows = [r for r in conn.execute("SELECT id, platform, duration, title FROM sources WHERE status='ready'").fetchall() if r["id"] in ids]
+    else:
+        rows = conn.execute("SELECT id, platform, duration, title FROM sources WHERE status='ready'").fetchall()
+    ids_sql = ",".join("?" for _ in rows) or "''"
+    chars = conn.execute(f"SELECT COALESCE(SUM(LENGTH(text)),0) FROM segments WHERE source_id IN ({ids_sql})", tuple(r["id"] for r in rows)).fetchone()[0] if rows else 0
+    secs = sum(r["duration"] or 0 for r in rows)
+    media = [r for r in rows if r["duration"]]
+    longest = max(media, key=lambda r: r["duration"], default=None)
+    by_platform: dict[str, int] = {}
+    for r in rows:
+        by_platform[r["platform"]] = by_platform.get(r["platform"], 0) + 1
+    try:
+        q = "SELECT COALESCE(SUM(cost),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
+        spend = float(conn.execute(q, (project_id,) if project_id else ()).fetchone()[0])
+    except sqlite3.OperationalError:
+        spend = 0.0
+    findings = conn.execute("SELECT COUNT(*) FROM project_notes WHERE status='approved'" + (" AND project_id=?" if project_id else ""),
+                            (project_id,) if project_id else ()).fetchone()[0]
+    return {"sources": len(rows), "with_duration": len(media), "seconds": int(secs), "hours": round(secs / 3600, 1),
+            "words": int(chars / 5.2), "by_platform": by_platform, "spend": round(spend, 2), "findings": findings,
+            "longest": {"title": longest["title"], "hours": round(longest["duration"] / 3600, 1)} if longest else None}
+
+
 def source_stats() -> dict[str, Any]:
     conn = connect()
     r = conn.execute(
