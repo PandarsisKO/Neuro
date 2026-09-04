@@ -703,3 +703,15 @@ def test_spreadsheet_source_and_calculator(client, tmp_path):
     assert abs(out["outputs"]["DSCR"] - 1.29) < 0.01 and abs(out["outputs"]["Monthly payment"] - 9715.32) < 1
     # the chat sees it as a tool
     assert sheets.calculators_for_project(p["id"])[0]["title"] == "deal"
+
+
+def test_youtube_search_link_becomes_review(client, monkeypatch):
+    from neurosearch import ingest, media
+    assert media.classify_url("https://www.youtube.com/results?search_query=sba+loans") == "youtube_search"
+    monkeypatch.setattr(media, "enumerate_search", lambda q, limit=30: ({"id": f"search:{q}", "title": f"YouTube search: {q}", "url": "https://www.youtube.com/results?search_query=" + q},
+        [{"id": f"sr{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=sr{i}00000000", "title": f"{q} video {i}", "duration": 600} for i in range(4)]))
+    p = client.post("/api/projects", headers=H, json={"name": "Srch", "brief": "sba loans"}).json()
+    r = ingest.ingest_url("https://www.youtube.com/results?search_query=sba+loans", project_id=p["id"], review=False)
+    assert r["proposed"] == 4 and r["review"] and r["title"].startswith("YouTube search")
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()
+    assert rv and len(rv[0]["proposed"]) == 4

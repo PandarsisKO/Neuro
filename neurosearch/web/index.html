@@ -253,7 +253,7 @@
           <button data-pane="course" onclick="showPane('course')">🧩 Browser extension</button>
         </div>
         <div class="pane active" id="pane-link">
-          <div class="muted">YouTube video, playlist or channel · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
+          <div class="muted">YouTube video, playlist, channel or <b>search link</b> (results are listed for review) · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
           <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
           <div class="row" style="margin-top:8px">
             <label class="muted" title="For channels and playlists">Channels/playlists: only the last
@@ -392,7 +392,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.13.2';
+const UI_VERSION = '0.13.3';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -823,7 +823,9 @@ async function loadDiscoveries(keepMsg = false) {
   const KIND = { youtube_channel: '▶ YouTube channel', podcast: '🎙 Podcast', newsletter: '✉ Newsletter', website: '🌐 Website', person: '👤 Person' };
   const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
   $('#discList').innerHTML = show.map(d => {
-    const vids = (d.start_with || []).filter(v => v.url && /youtu|\.mp3|podcast|loom|vimeo/i.test(v.url));
+    const isSearch = u => /youtube\.com\/results\?/.test(u || '');
+    const vids = (d.start_with || []).filter(v => v.url && !isSearch(v.url) && /youtu|\.mp3|podcast|loom|vimeo/i.test(v.url));
+    const searches = [...(d.start_with || []).map(v => v.url), d.url].filter(isSearch);
     const isChan = d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url);
     return `<div class="d ${d.status}">
     <div class="dh">
@@ -835,7 +837,8 @@ async function loadDiscoveries(keepMsg = false) {
       <div class="dacts">
         ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false)">＋ Start video</button>` : ''}
         ${isChan ? `<button class="small" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true)">＋ Channel</button>` : ''}
-        ${!isChan && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small ${d.kind === 'website' || d.kind === 'newsletter' ? 'primary' : ''}" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false)">＋ Add page</button>` : ''}
+        ${searches.length ? `<button class="small" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true)">🔍 Search YouTube</button>` : ''}
+        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small ${d.kind === 'website' || d.kind === 'newsletter' ? 'primary' : ''}" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false)">＋ Add page</button>` : ''}
         ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
       </div>
     </div>
@@ -865,7 +868,7 @@ async function runDiscover() {
 }
 async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
 async function discAdd(id, url, whole) {
-  if (whole && !confirm('List this channel\'s videos for review? Nothing is downloaded until you approve the list in Sources.')) return;
+  if (whole && !confirm('List these videos for review? Nothing is downloaded until you approve the list in Sources.')) return;
   await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
   await post(`/api/discoveries/${id}/status`, { status: 'added' });
   loadDiscoveries(); loadJobs(); loadSources();

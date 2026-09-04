@@ -47,9 +47,24 @@ def ingest_url(
     kind = media.classify_url(url)
     tags = tags or []
 
+    if kind == "youtube_search":
+        # a YouTube search link (Discover hands these out when it isn't sure of a channel): list the top results
+        # for review + relevance ranking, exactly like a playlist — never blindly download a search page
+        query = media.search_query_of(url)
+        if not query:
+            raise RuntimeError("that YouTube search link has no query in it")
+        progress(0.02, f"searching YouTube for “{query}”…")
+        info, entries = media.enumerate_search(query, limit=30)
+        if not entries:
+            raise RuntimeError(f"YouTube returned no results for “{query}”")
+        kind = "playlist"       # from here on it is handled like a playlist review (below)
+        review = True
+    else:
+        info = entries = None
     if kind in ("playlist", "channel"):
         progress(0.02, f"listing {kind}…")
-        info, entries = media.enumerate_entries(url)
+        if entries is None:
+            info, entries = media.enumerate_entries(url)
         if not entries:
             raise RuntimeError(f"no videos found for {kind}: {url}")
         coll = db.upsert_collection(kind, info.get("id"), info.get("url") or url, info.get("title"))

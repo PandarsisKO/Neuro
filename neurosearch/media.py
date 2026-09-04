@@ -137,6 +137,8 @@ def classify_url(url: str) -> str:
             return "playlist"
         if u.path.startswith("/playlist"):
             return "playlist"
+        if u.path.startswith("/results"):
+            return "youtube_search"
         if host == "youtu.be" or u.path in ("/watch",) or u.path.startswith(("/shorts/", "/live/", "/embed/")):
             return "video"
         if u.path.startswith(("/@", "/channel/", "/c/", "/user/")):
@@ -173,6 +175,34 @@ def _base_opts(cookies_file: str | None = None, referer: str | None = None, **ex
 
 
 # ------------------------------------------------------------ enumeration
+
+def search_query_of(url: str) -> str:
+    """The query behind a youtube.com/results?search_query=… link."""
+    q = parse_qs(urlparse(url).query).get("search_query") or parse_qs(urlparse(url).query).get("q") or [""]
+    return q[0].strip()
+
+
+def enumerate_search(query: str, limit: int = 30) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Top YouTube results for a query, listed without downloading (same shape as enumerate_entries)."""
+    limit = max(1, min(int(limit or 30), 50))
+    lg = _Collect()
+    entries: list[dict[str, Any]] = []
+    with polite("https://www.youtube.com/results"), yt_dlp.YoutubeDL(_base_opts(extract_flat=True, skip_download=True, logger=lg)) as ydl:
+        res = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    seen: set[str] = set()
+    for e in _flatten(res or {}):
+        vid = e.get("id")
+        if not vid or vid in seen:
+            continue
+        seen.add(vid)
+        entries.append({"id": vid, "url": e.get("url") if str(e.get("url", "")).startswith("http") else f"https://www.youtube.com/watch?v={vid}",
+                        "title": e.get("title"), "duration": e.get("duration"), "description": e.get("description") or None,
+                        "view_count": e.get("view_count"), "channel": e.get("channel") or e.get("uploader")})
+    if not entries and lg.last():
+        raise RuntimeError(lg.last())
+    info = {"id": f"search:{query.lower()}", "title": f"YouTube search: {query}", "url": f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}"}
+    return info, entries
+
 
 def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """List videos in a playlist or channel without downloading anything.
