@@ -222,8 +222,11 @@ def _parse_json(text: str) -> dict[str, Any]:
         return json.loads(_repair_json(text[start:]))
 
 
-def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any = None, label: str = "writing") -> str:
-    """Streamed so long plans are never cut off by request timeouts; reports progress as the text grows."""
+def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any = None, label: str = "writing",
+                 shared: str | None = None) -> str:
+    """Streamed so long plans are never cut off by request timeouts; reports progress as the text grows.
+    `shared` (the research material) goes first as a cached system block: the analysis pass writes it to the
+    prompt cache, the plan pass and any rebuild within a few minutes read it back at a tenth of the price."""
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     import anthropic
@@ -231,9 +234,13 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
 
     usage.guard(0.5)
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=600.0, max_retries=2)
+    sys_blocks: Any = system
+    if shared:
+        sys_blocks = [usage.cached_block("RESEARCH MATERIAL for the project (your instructions follow it):\n\n" + shared),
+                      {"type": "text", "text": system}]
     parts: list[str] = []
     n = 0
-    with client.messages.stream(model=settings.answer_model, max_tokens=max_tokens, system=system,
+    with client.messages.stream(model=settings.answer_model, max_tokens=max_tokens, system=sys_blocks,
                                 messages=[{"role": "user", "content": user}]) as stream:
         for text in stream.text_stream:
             parts.append(text)
@@ -267,15 +274,15 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
         progress(0.15, "analysing the situation (SWOT, readiness, options)…")
     analysis: dict[str, Any] = {}
     try:
-        a_user = material + ("\n\nINSTRUCTIONS FROM THE USER:\n" + instructions if instructions else "") + "\n\nWrite the situation analysis JSON now."
-        analysis = _parse_json(_call_claude(ANALYSIS_SYSTEM, a_user, max_tokens=7000, progress=progress, label="analysing"))
+        a_user = ("INSTRUCTIONS FROM THE USER:\n" + instructions + "\n\n" if instructions else "") + "Using the research material above, write the situation analysis JSON now."
+        analysis = _parse_json(_call_claude(ANALYSIS_SYSTEM, a_user, max_tokens=7000, progress=progress, label="analysing", shared=material))
     except Exception as e:  # noqa: BLE001
         log.warning("planner: analysis pass failed, continuing without it: %s", e)
 
     # ---- pass 2: the plan, informed by the analysis ----
     if progress:
         progress(0.5, "writing the plan…")
-    user = material
+    user = "Build the plan from the research material above."
     if analysis:
         user += "\n\nSITUATION ANALYSIS (yours, from a first pass — build the plan on it, especially the recommended option, assumptions and failure patterns):\n" + json.dumps(analysis)[:20000]
     if prev:
@@ -283,7 +290,7 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
     if instructions:
         user += "\n\nINSTRUCTIONS FOR THIS REVISION:\n" + instructions
     user += "\n\nWrite the Master Plan JSON now. Keep it tight: the whole document under ~5000 words."
-    plan = _parse_json(_call_claude(SYSTEM, user, progress=progress, label="writing the plan"))
+    plan = _parse_json(_call_claude(SYSTEM, user, progress=progress, label="writing the plan", shared=material))
     if analysis:
         plan["analysis"] = analysis
     if progress:

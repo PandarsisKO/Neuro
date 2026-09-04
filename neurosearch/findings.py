@@ -75,7 +75,10 @@ def _windows(segs: list[dict[str, Any]], platform: str) -> list[str]:
     return out
 
 
-def _call(system: str, user: str, project_id: str | None = None, source_id: str | None = None) -> dict[str, Any]:
+def _call(system: str, user: str, project_id: str | None = None, source_id: str | None = None, head: str = "") -> dict[str, Any]:
+    """`head` (project + source framing) is sent as a second system block ending a cached prefix, so the second and
+    later windows of a long transcript, and every source analysed for the same project within a few minutes, only
+    pay a tenth for those instructions."""
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     import anthropic
@@ -83,7 +86,10 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
 
     usage.guard(usage.estimate_findings(len(user)))
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=system,
+    sys_blocks = [{"type": "text", "text": system}] + ([usage.cached_block(head, min_chars=len(system))] if head else [])
+    if not head:
+        sys_blocks = [usage.cached_block(system)]
+    resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=sys_blocks,
                                   messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
@@ -111,7 +117,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     substances: list[int] = []
     for i, w in enumerate(windows):
         part = f" (part {i + 1}/{len(windows)})" if len(windows) > 1 else ""
-        res = _call(SYSTEM, head + f"\nTRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id)
+        res = _call(SYSTEM, f"TRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id, head=head)
         if res.get("summary"):
             summaries.append(str(res["summary"]))
         if isinstance(res.get("substance"), (int, float)):

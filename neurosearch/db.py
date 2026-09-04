@@ -265,6 +265,9 @@ MIGRATIONS = [
     ("sources", "relevance", "ALTER TABLE sources ADD COLUMN relevance INTEGER"),
     ("sources", "relevance_why", "ALTER TABLE sources ADD COLUMN relevance_why TEXT"),
     ("jobs", "updated_at", "ALTER TABLE jobs ADD COLUMN updated_at REAL"),
+    ("usage", "cache_read", "ALTER TABLE usage ADD COLUMN cache_read INTEGER DEFAULT 0"),
+    ("usage", "cache_write", "ALTER TABLE usage ADD COLUMN cache_write INTEGER DEFAULT 0"),
+    ("usage", "saved", "ALTER TABLE usage ADD COLUMN saved REAL DEFAULT 0"),
 ]
 
 
@@ -419,12 +422,14 @@ def fun_stats(project_id: str | None = None) -> dict[str, Any]:
     try:
         q = "SELECT COALESCE(SUM(cost),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
         spend = float(conn.execute(q, (project_id,) if project_id else ()).fetchone()[0])
+        q = "SELECT COALESCE(SUM(saved),0) FROM usage" + (" WHERE project_id=?" if project_id else "")
+        saved = float(conn.execute(q, (project_id,) if project_id else ()).fetchone()[0])
     except sqlite3.OperationalError:
-        spend = 0.0
+        spend, saved = 0.0, 0.0
     findings = conn.execute("SELECT COUNT(*) FROM project_notes WHERE status='approved'" + (" AND project_id=?" if project_id else ""),
                             (project_id,) if project_id else ()).fetchone()[0]
     return {"sources": len(rows), "with_duration": len(media), "seconds": int(secs), "hours": round(secs / 3600, 1),
-            "words": int(chars / 5.2), "by_platform": by_platform, "spend": round(spend, 2), "findings": findings,
+            "words": int(chars / 5.2), "by_platform": by_platform, "spend": round(spend, 2), "saved": round(saved, 2), "findings": findings,
             "longest": {"title": longest["title"], "hours": round(longest["duration"] / 3600, 1)} if longest else None}
 
 

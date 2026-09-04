@@ -403,6 +403,7 @@ function funCard(f, title) {
       ${y ? `<div class="funstat"><b>${x(y.times)}</b><span>${esc(y.label)}</span></div>` : ''}
       ${f.findings ? `<div class="funstat"><b>${f.findings}</b><span>approved findings pulled out of it</span></div>` : ''}
       ${f.spend ? `<div class="funstat"><b>$${f.spend.toFixed(2)}</b><span>spent${per ? ` — ${per}` : ''}</span></div>` : ''}
+      ${f.saved >= 0.01 ? `<div class="funstat"><b>$${f.saved.toFixed(2)}</b><span>saved by prompt caching</span></div>` : ''}
     </div>
     <div class="muted" style="margin-top:6px">${f.sources} sources: ${plat}${f.longest ? ` · longest: “${esc(f.longest.title)}” (${f.longest.hours} h)` : ''}</div></div>`;
 }
@@ -429,7 +430,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.13.5';
+const UI_VERSION = '0.14.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -847,7 +848,7 @@ async function loadCoursePane() {
 async function loadBudget() {
   const u = await api('/api/usage'); $('#bDaily').value = u.daily_budget; $('#bMonthly').value = u.monthly_budget;
   const kinds = Object.entries(u.month_by_kind || {}).map(([k, v]) => `${k} $${v.toFixed(2)}`).join(' · ');
-  $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
+  $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.month_saved >= 0.01 ? ` · prompt caching saved $${u.month_saved.toFixed(2)}` : '') + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
 }
 async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
 async function cancelQueued() {

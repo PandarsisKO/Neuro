@@ -24,6 +24,40 @@ PRICES: dict[str, tuple[float, float]] = {
 }
 WHISPER_PER_MINUTE = 0.006
 WEB_SEARCH_PER_CALL = 0.01
+CACHE_WRITE_MULT = 1.25      # 5-minute cache writes cost 1.25x the normal input price
+CACHE_READ_MULT = 0.10       # cache reads cost 0.1x
+CACHE_MIN_CHARS = 4500       # ~1024 tokens: prefixes shorter than this are never cached by the API, so don't mark them
+
+
+def cache_control() -> dict[str, str]:
+    return {"type": "ephemeral"}
+
+
+def cached_block(text: str, min_chars: int = 0) -> dict[str, Any]:
+    """A system/content text block that ends a cacheable prefix. The API ignores breakpoints on prefixes under
+    ~1024 tokens, so callers pass the size of everything before the block in min_chars to skip pointless marks."""
+    b: dict[str, Any] = {"type": "text", "text": text}
+    if len(text) + min_chars >= CACHE_MIN_CHARS:
+        b["cache_control"] = cache_control()
+    return b
+
+
+def mark_last(messages: list[dict[str, Any]]) -> None:
+    """Move the conversation breakpoint to the last block of the last message (in place). Earlier breakpoints are
+    removed — the API still finds the previously cached prefixes, so each tool round / chat turn reads the whole
+    earlier conversation from cache and only pays full price for what is new."""
+    for m in messages:
+        if isinstance(m.get("content"), list):
+            for b in m["content"]:
+                if isinstance(b, dict):
+                    b.pop("cache_control", None)
+    if not messages:
+        return
+    last = messages[-1]
+    if isinstance(last.get("content"), str):
+        last["content"] = [{"type": "text", "text": last["content"]}]
+    if isinstance(last.get("content"), list) and last["content"] and isinstance(last["content"][-1], dict):
+        last["content"][-1]["cache_control"] = cache_control()
 
 
 def _price(model: str) -> tuple[float, float]:
@@ -41,17 +75,23 @@ def _price(model: str) -> tuple[float, float]:
 
 
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
-           searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None) -> float:
+           searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
+           cache_read: int = 0, cache_write: int = 0) -> float:
+    """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately."""
+    saved = 0.0
     if cost is None:
         if kind == "whisper":
             cost = seconds / 60 * WHISPER_PER_MINUTE
         else:
             pin, pout = _price(model)
-            cost = input_tokens / 1e6 * pin + output_tokens / 1e6 * pout + searches * WEB_SEARCH_PER_CALL
+            cost = ((input_tokens + cache_write * CACHE_WRITE_MULT + cache_read * CACHE_READ_MULT) / 1e6 * pin
+                    + output_tokens / 1e6 * pout + searches * WEB_SEARCH_PER_CALL)
+            # what the same call would have cost with every token at full price, minus what it did cost
+            saved = (cache_read * (1 - CACHE_READ_MULT) - cache_write * (CACHE_WRITE_MULT - 1)) / 1e6 * pin
     try:
         with db.tx() as conn:
-            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id))
+            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
     return cost
@@ -65,7 +105,9 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
     except Exception:  # noqa: BLE001
         pass
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
-                  output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id)
+                  output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
+                  cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
+                  cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0))
 
 
 def _sum_since(ts: float) -> float:
@@ -79,7 +121,9 @@ def totals() -> dict[str, Any]:
     month0 = datetime(now.year, now.month, 1).timestamp()
     by_kind = {r["kind"]: float(r["c"]) for r in db.connect().execute(
         "SELECT kind, SUM(cost) c FROM usage WHERE ts>=? GROUP BY kind", (month0,)).fetchall()}
+    saved = db.connect().execute("SELECT COALESCE(SUM(saved),0) s, COALESCE(SUM(cache_read),0) r FROM usage WHERE ts>=?", (month0,)).fetchone()
     return {"today": round(_sum_since(day0), 4), "month": round(_sum_since(month0), 4), "month_by_kind": by_kind,
+            "month_saved": round(float(saved["s"] or 0), 4), "month_cached_tokens": int(saved["r"] or 0),
             "daily_budget": budget("daily"), "monthly_budget": budget("monthly"), "paused": db.kv_get("queue_paused") == "1"}
 
 

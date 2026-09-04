@@ -33,7 +33,7 @@ Return ONLY JSON: {"scores":[{"i":<index>,"score":<0-100>,"why":"<max 8 words>"}
 Never use double quotes or backslashes inside "why" (write Boring not "Boring")."""
 
 
-def _call(system: str, user: str, project_id: str | None, collection_id: str) -> dict[str, Any]:
+def _call(system: str, user: str, project_id: str | None, collection_id: str, head: str = "") -> dict[str, Any]:
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
     import anthropic
@@ -41,7 +41,8 @@ def _call(system: str, user: str, project_id: str | None, collection_id: str) ->
 
     usage.guard(0.02)
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    resp = client.messages.create(model=settings.answer_model, max_tokens=6000, system=system,
+    sys_blocks = [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system))] if head else system
+    resp = client.messages.create(model=settings.answer_model, max_tokens=6000, system=sys_blocks,
                                   messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "rank", project_id=project_id)
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
@@ -109,9 +110,9 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         batch = pool[b:b + BATCH]
         if progress:
             progress(b / len(pool), f"ranking {b + 1}-{min(b + BATCH, len(pool))} of {len(pool)}")
-        user = head + "\nVIDEOS:\n" + "\n".join(_line(i, s) for i, s in enumerate(batch)) + "\n\nScore them now."
+        user = "VIDEOS:\n" + "\n".join(_line(i, s) for i, s in enumerate(batch)) + "\n\nScore them now."
         try:
-            res = _call(SYSTEM, user, project_id, collection_id)
+            res = _call(SYSTEM, user, project_id, collection_id, head=head)
         except Exception as e:  # noqa: BLE001
             from .usage import BudgetPaused
             if isinstance(e, BudgetPaused):

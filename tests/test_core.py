@@ -154,7 +154,7 @@ def test_ask_tool_loop(monkeypatch):
     assert db.get_project(p["id"])["brief"] == "new brief about retention"
     notes = db.list_project_notes(p["id"])
     assert notes and notes[0]["citations"][0]["link"].endswith("t=0s")
-    assert "Pinned findings so far" in calls[0]["system"] and "update_brief" in [t["name"] for t in calls[0]["tools"]]
+    assert "Pinned findings so far" in calls[0]["system"][0]["text"] and "update_brief" in [t["name"] for t in calls[0]["tools"]]
 
 
 def test_document_upload_job(client):
@@ -733,3 +733,20 @@ def test_bot_check_pauses_instead_of_failing(monkeypatch):
         media.fetch_info("https://www.youtube.com/watch?v=abc")
     assert media.rate_limit_status()["paused"]
     media._sites["youtube"]["until"] = 0   # don't leak the pause into other tests
+
+
+def test_usage_prices_cache_tokens_and_helpers(tmp_path, monkeypatch):
+    from neurosearch import usage
+    # 10k cached-read tokens cost a tenth; 2k cache writes cost 1.25x; 1k plain input at full price
+    cost = usage.record("answer", "claude-sonnet-4-6", input_tokens=1000, output_tokens=0, cache_read=10000, cache_write=2000)
+    assert abs(cost - (1000 + 2000 * 1.25 + 10000 * 0.1) / 1e6 * 3.0) < 1e-9
+    t = usage.totals()
+    assert t["month_saved"] > 0 and t["month_cached_tokens"] >= 10000
+    # tiny prefixes are not marked (the API would ignore it), big ones are
+    assert "cache_control" not in usage.cached_block("short")
+    assert usage.cached_block("x" * 5000)["cache_control"] == {"type": "ephemeral"}
+    msgs = [{"role": "user", "content": [{"type": "text", "text": "a", "cache_control": {"type": "ephemeral"}}]},
+            {"role": "assistant", "content": "b"}, {"role": "user", "content": "c"}]
+    usage.mark_last(msgs)
+    assert "cache_control" not in msgs[0]["content"][0]
+    assert msgs[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}

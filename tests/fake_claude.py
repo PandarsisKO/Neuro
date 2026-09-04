@@ -39,6 +39,8 @@ class _Blk:
 class _Msgs:
     def create(self, **kw):
         system = kw.get("system", "")
+        if isinstance(system, list):      # cached prompt blocks
+            system = "\n".join(b.get("text", "") for b in system if isinstance(b, dict))
         if "checking a shortlist" in system:
             text = json.dumps({"fixes": [{"name": "Dave Ramsey", "url": "https://www.youtube.com/@TheRamseyShow", "start_with": [{"title": "Baby Steps", "url": "https://www.youtube.com/watch?v=zzz"}]}],
                                "added": [{"name": "BiggerPockets", "kind": "podcast", "url": "https://www.biggerpockets.com/podcasts", "gist": "real estate investing", "why": "The largest REI community podcast.", "angle": "pro-leverage", "fit": 4, "depth": "beginner"}],

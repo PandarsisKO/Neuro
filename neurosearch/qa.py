@@ -163,7 +163,7 @@ def ask(
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
-    hits = _hits_for(question, limit, source_ids)
+    hits, full_context = _hits_for(question, limit, source_ids)
     history = db.get_messages(conversation_id, limit=12) if conversation_id else []
 
     if project:
@@ -176,7 +176,19 @@ def ask(
         project_block = ""
     system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
 
+    from . import usage
+
     context = build_context(hits) if hits else "(no relevant excerpts were found in the knowledge base)"
+    # Prompt caching: the rules + project block (+ tools before them) are the same every turn of a chat, so they end
+    # a cached prefix. When the whole scoped material fits in the prompt it is identical every turn too, so it goes
+    # into the system prompt (cached) instead of the message; retrieval excerpts differ per question and stay in
+    # the message, where the breakpoint still saves the re-sends during tool rounds.
+    system_blocks: list[dict[str, Any]] = [usage.cached_block(system)]
+    if full_context and hits:
+        system_blocks.append(usage.cached_block(f"The user's material (cite it as [n]):\n<excerpts>\n{context}\n</excerpts>", min_chars=len(system)))
+        excerpt_part = "(The excerpts are in your instructions above.)"
+    else:
+        excerpt_part = f"<excerpts>\n{context}\n</excerpts>"
     messages: list[dict[str, Any]] = []
     for m in history:
         if m["role"] in ("user", "assistant") and m["content"]:
@@ -184,7 +196,7 @@ def ask(
     note = ""
     if ingest_jobs:
         note = f"\n(Note: the user also pasted {len(ingest_jobs)} link(s) which are now being ingested; mention they'll be available shortly.)"
-    messages.append({"role": "user", "content": f"<excerpts>\n{context}\n</excerpts>\n\nQuestion: {question}{note}"})
+    messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
 
     tools: list[dict[str, Any]] = []
     if use_web:
@@ -203,12 +215,12 @@ def ask(
     pending_findings: list[str] = []
 
     for _round in range(6):
-        kwargs: dict[str, Any] = dict(model=settings.answer_model, max_tokens=2000, system=system, messages=messages)
+        usage.mark_last(messages)
+        kwargs: dict[str, Any] = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages)
         if tools:
             kwargs["tools"] = tools
         resp = client.messages.create(**kwargs)
         try:
-            from . import usage
             usage.record_anthropic(resp, "answer", project_id=project_id)
         except Exception:  # noqa: BLE001
             pass
@@ -268,9 +280,9 @@ def ask(
 FULL_CONTEXT_CHARS = 90000  # if everything in scope fits in this, skip retrieval and hand Claude the whole thing
 
 
-def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> list[dict[str, Any]]:
+def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> tuple[list[dict[str, Any]], bool]:
     """Retrieval, except when the scoped material is small enough to include in full (better for
-    'summarise this' / 'main points' questions, which retrieval handles badly)."""
+    'summarise this' / 'main points' questions, which retrieval handles badly). Returns (hits, is_full_context)."""
     from .search import hit_from_chunk
 
     if source_ids and "__none__" not in source_ids and len(source_ids) <= 6:
@@ -286,8 +298,8 @@ def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> list[d
         if chunks and total <= FULL_CONTEXT_CHARS:
             # de-overlap: chunks overlap by design; keep every other chunk's overlap out by trimming nothing —
             # cheap and fine for the model. Order by source then time.
-            return [hit_from_chunk(c, 1.0) for c in chunks]
-    return search(question, limit=limit, source_ids=source_ids)
+            return [hit_from_chunk(c, 1.0) for c in chunks], True
+    return search(question, limit=limit, source_ids=source_ids), False
 
 
 def _pj(project: dict[str, Any] | None) -> dict[str, Any] | None:
