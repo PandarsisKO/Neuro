@@ -675,3 +675,31 @@ def test_backup_snapshot():
     assert p.exists() and p.stat().st_size > 0
     import sqlite3
     assert sqlite3.connect(str(p)).execute("select count(*) from projects").fetchone()[0] >= 1
+
+
+def test_spreadsheet_source_and_calculator(client, tmp_path):
+    import openpyxl
+    from neurosearch import ingest, sheets
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Deal"
+    for i, (k, v) in enumerate([("Purchase price", 500000), ("Down payment %", 0.1), ("Interest rate", 0.105), ("Term (years)", 10), ("Annual SDE", 150000)], 1):
+        ws.cell(i, 1, k); ws.cell(i, 2, v)
+    ws["A7"] = "Loan amount"; ws["B7"] = "=B1*(1-B2)"
+    ws["A8"] = "Monthly payment"; ws["B8"] = "=-PMT(B3/12,B4*12,B7)"
+    ws["A9"] = "Annual debt service"; ws["B9"] = "=B8*12"
+    ws["A10"] = "DSCR"; ws["B10"] = "=ROUND(B5/B9,2)"
+    f = tmp_path / "deal.xlsx"; wb.save(f)
+    p = client.post("/api/projects", headers=H, json={"name": "Calc", "brief": "buy a business"}).json()
+    r = ingest.ingest_local_file(f, project_id=p["id"], original_name="deal.xlsx")
+    assert r["transcript"] == "spreadsheet" and r["inputs"] == 5 and r["outputs"] == 4
+    src = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
+    assert src["platform"] == "spreadsheet" and src["status"] == "ready"
+    m = client.get(f"/api/sources/{r['source_id']}/calculator", headers=H).json()
+    assert [i["label"] for i in m["inputs"]][:2] == ["Purchase price", "Down payment %"]
+    # searchable as text
+    hits = client.get("/api/search?q=DSCR&project_id=" + p["id"], headers=H).json()
+    assert hits and hits[0]["timestamp"].startswith("sheet")
+    # calculator by label, with a changed input
+    out = client.post(f"/api/sources/{r['source_id']}/calculate", headers=H, json={"inputs": {"purchase price": "800,000"}, "outputs": ["DSCR", "Monthly payment"]}).json()
+    assert abs(out["outputs"]["DSCR"] - 1.29) < 0.01 and abs(out["outputs"]["Monthly payment"] - 9715.32) < 1
+    # the chat sees it as a tool
+    assert sheets.calculators_for_project(p["id"])[0]["title"] == "deal"

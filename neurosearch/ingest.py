@@ -324,11 +324,44 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
     kind_path = Path(name)
     if kind_path.suffix.lower() in (".srt", ".vtt"):
         return ingest_subtitle_file(path, title or kind_path.stem, tags, project_id, name)
+    from .sheets import is_spreadsheet
+    if is_spreadsheet(kind_path):
+        return ingest_spreadsheet(path, title or kind_path.stem, tags, project_id, name)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
     if not is_media(kind_path):
         raise RuntimeError(f"unsupported file type: {kind_path.suffix or 'no extension'}")
     return _ingest_media_file(path, title or kind_path.stem, tags, project_id, name, progress)
+
+
+def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:
+    """A workbook: each sheet becomes a searchable page, and its formulas become a calculator the chat can run."""
+    from .chunking import build_doc_chunks
+    from .sheets import read_workbook, save_model, store_file
+
+    ext_id = f"sheet:{name}:{path.stat().st_size}"
+    src = db.upsert_source(platform="spreadsheet", external_id=ext_id, url=f"file://{name}", title=title,
+                           status="pending", tags=tags or [])
+    if project_id:
+        db.add_project_sources(project_id, [src["id"]])
+    try:
+        model = read_workbook(path)
+        pages = [{"page": i + 1, "text": s["text"]} for i, s in enumerate(model["sheets"])]
+        segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
+        chunks = build_doc_chunks(pages)
+        db.replace_transcript(src["id"], segments, chunks)
+        stored = store_file(path, src["id"], Path(name).suffix)
+        save_model(src["id"], stored.name, model)
+        db.upsert_source(platform="spreadsheet", external_id=ext_id, duration=None, transcript_kind="spreadsheet",
+                         description=f"{len(pages)} sheet{'s' if len(pages) != 1 else ''} · {len(model['inputs'])} inputs · {len(model['outputs'])} calculated outputs",
+                         status="ready", error=None)
+        n = embed_pending()
+        _after_ready(src["id"], project_id)
+        return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
+                "transcript": "spreadsheet", "embedded": n, "inputs": len(model["inputs"]), "outputs": len(model["outputs"])}
+    except Exception as e:  # noqa: BLE001
+        db.set_source_status(src["id"], "failed", str(e)[:1000])
+        raise
 
 
 def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:

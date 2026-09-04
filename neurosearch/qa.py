@@ -81,6 +81,22 @@ def build_context(hits: list[dict[str, Any]]) -> str:
     return "\n\n".join(lines)
 
 
+def _calc_tool(calcs: list[dict[str, Any]]) -> dict[str, Any]:
+    desc = ["Run one of the project's spreadsheet calculators with new inputs and read the recomputed outputs. "
+            "The spreadsheet's own formulas do the maths. Refer to inputs/outputs by their labels (or cell addresses). "
+            "Always show the user which inputs you set and the resulting outputs, and cite the spreadsheet by name."]
+    for c in calcs:
+        ins = ", ".join(f"{i['label']} (now {i['value']})" for i in c["inputs"][:25])
+        outs = ", ".join(o["label"] for o in c["outputs"][:25])
+        desc.append(f"CALCULATOR source_id={c['source_id']} '{c['title']}': INPUTS: {ins or '(none detected)'} → OUTPUTS: {outs or '(none detected)'}")
+    return {"name": "calculate", "description": "\n".join(desc)[:4000],
+            "input_schema": {"type": "object", "properties": {
+                "source_id": {"type": "string"},
+                "inputs": {"type": "object", "description": "label or cell → new value", "additionalProperties": True},
+                "outputs": {"type": "array", "items": {"type": "string"}, "description": "labels or cells to read; omit for all"}},
+                "required": ["source_id"]}}
+
+
 def _project_tools() -> list[dict[str, Any]]:
     return [
         {"name": "update_brief", "description": "Replace the project's brief with a rewritten version that reflects the user's new focus.",
@@ -175,6 +191,10 @@ def ask(
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": 4})
     if project:
         tools += _project_tools()
+        from .sheets import calculators_for_project
+        calcs = calculators_for_project(project["id"])
+        if calcs:
+            tools.append(_calc_tool(calcs))
 
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     answer_parts: list[str] = []
@@ -278,6 +298,15 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
               pending_findings: list[str], actions: list[dict[str, Any]]) -> str:
     if not project:
         return "no project in scope"
+    if name == "calculate":
+        from .sheets import calculate
+        import json as _json
+        try:
+            res = calculate(inp.get("source_id") or "", inp.get("inputs") or {}, inp.get("outputs") or None)
+            actions.append({"type": "calculated", "source_id": inp.get("source_id"), "inputs": res["inputs_applied"], "outputs": res["outputs"]})
+            return _json.dumps(res, default=str)
+        except Exception as e:  # noqa: BLE001
+            return f"calculation failed: {e}"
     if name == "update_brief":
         brief = (inp.get("brief") or "").strip()
         if not brief:

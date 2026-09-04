@@ -337,6 +337,29 @@ def api_job(job_id: str) -> dict[str, Any]:
     return j
 
 
+class CalcIn(BaseModel):
+    inputs: dict[str, Any] = {}
+    outputs: list[str] | None = None
+
+
+@app.get("/api/sources/{source_id}/calculator", dependencies=[Depends(require_auth)])
+def api_calculator(source_id: str) -> dict[str, Any]:
+    from .sheets import load_model
+    try:
+        return load_model(source_id)
+    except RuntimeError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/sources/{source_id}/calculate", dependencies=[Depends(require_auth)])
+def api_calculate(source_id: str, body: CalcIn) -> dict[str, Any]:
+    from .sheets import calculate
+    try:
+        return calculate(source_id, body.inputs, body.outputs)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, str(e))
+
+
 @app.post("/api/sources/{source_id}/retry", dependencies=[Depends(require_auth)])
 def api_retry(source_id: str) -> dict[str, Any]:
     src = db.get_source(source_id)

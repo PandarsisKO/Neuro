@@ -46,7 +46,7 @@ Output ONLY JSON:
 
 def _ts_to_seconds(ts: str, platform: str) -> float | None:
     ts = (ts or "").strip()
-    m = re.match(r"(?:p\.?|§|section)\s*(\d+)", ts, flags=re.I)
+    m = re.match(r"(?:p\.?|§|section|sheet)\s*(\d+)", ts, flags=re.I)
     if m:
         return float(m.group(1))
     parts = ts.replace("[", "").replace("]", "").split(":")
@@ -58,7 +58,7 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
         return float(nums[0] * 3600 + nums[1] * 60 + nums[2])
     if len(nums) == 2:
         return float(nums[0] * 60 + nums[1])
-    if len(nums) == 1 and platform in ("document", "web"):
+    if len(nums) == 1 and platform in ("document", "web", "spreadsheet"):
         return float(nums[0])
     return None
 

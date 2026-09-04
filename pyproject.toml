@@ -1,6 +1,6 @@
 [project]
 name = "neurosearch"
-version = "0.12.2"
+version = "0.13.0"
 description = "Turn videos, podcasts and audio into a queryable, citation-backed knowledge base."
 requires-python = ">=3.11"
 dependencies = [
@@ -16,6 +16,8 @@ dependencies = [
     "typer>=0.12",
     "python-multipart>=0.0.9",
     "pypdf>=4.0",
+    "openpyxl>=3.1",
+    "formulas[excel]>=1.2",
     "python-docx>=1.1",
 ]
 

@@ -132,6 +132,9 @@
   .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .rv .li input{width:auto}
   .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .ci{display:flex;gap:8px;align-items:center;padding:3px 0}.ci span{flex:1;font-size:13px}.ci input{width:140px;text-align:right}
+  .co{display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
   .swot{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel)}
   .swot .swh{font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}
   .swot.s .swh{color:var(--ok)}.swot.w .swh{color:var(--bad)}.swot.o .swh{color:var(--accent)}.swot.t .swh{color:var(--warn)}
@@ -260,8 +263,8 @@
             <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
         </div>
         <div class="pane" id="pane-upload">
-          <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is.</div>
-          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
+          <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is. <b>Spreadsheets (xlsx, csv)</b> become searchable <i>and</i> usable as calculators: the chat can change the inputs and read what the workbook's own formulas compute.</div>
+          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
         </div>
         <div class="pane" id="pane-paste">
           <div class="row"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
@@ -375,7 +378,7 @@ const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : u
 let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
 const ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
 const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
-const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐' };
+const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐', spreadsheet: '🧮' };
 
 const state = { project: null, conv: null, chats: [], view: 'chats' };
 
@@ -389,7 +392,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.12.2';
+const UI_VERSION = '0.13.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -563,6 +566,7 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
       if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
       if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
+      if (a.type === 'calculated') h += `<div class="web">🧮 Ran the spreadsheet with ${Object.entries(a.inputs || {}).map(([k, v]) => `${esc(k)} = ${esc(String(v))}`).join(', ') || 'current inputs'} → ${Object.entries(a.outputs || {}).slice(0, 6).map(([k, v]) => `<b>${esc(k)}</b>: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : esc(String(v))}`).join(' · ')}</div>`;
     }
     if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
     if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
@@ -730,7 +734,7 @@ async function loadSources() {
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">Transcript</button><button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
@@ -740,12 +744,31 @@ async function loadSources() {
 }
 async function viewTranscript(id) {
   const s = await api('/api/sources/' + id);
-  const isDoc = s.platform === 'document', isWeb = s.platform === 'web';
+  const isDoc = s.platform === 'document', isWeb = s.platform === 'web', isSheet = s.platform === 'spreadsheet';
   const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : (isWeb ? s.url : null);
-  const lab = t => isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : fmt(t);
+  const lab = t => isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
     <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
+}
+async function openCalc(id) {
+  const m = await api(`/api/sources/${id}/calculator`);
+  const fmtv = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : +v.toFixed(4)) : esc(String(v ?? ''));
+  $('#dlgBody').innerHTML = `<b>🧮 ${esc(m.file)}</b> <span class="muted">— change any input, then Recalculate. The workbook's own formulas do the maths. In chat you can just ask: "run the calculator with price 800k".</span>
+    <div class="calcgrid" style="margin-top:10px"><div><div class="starth">Inputs</div>${m.inputs.map((i, n) => `<label class="ci"><span title="${esc(i.cell)}">${esc(i.label)}</span><input data-cell="${esc(i.cell)}" value="${esc(String(i.value))}"></label>`).join('') || '<div class="muted">No labelled inputs found.</div>'}
+      <button class="primary" style="margin-top:8px" onclick="runCalc('${id}')">Recalculate</button> <span class="muted" id="calcMsg"></span></div>
+    <div><div class="starth">Outputs</div><div id="calcOut">${m.outputs.map(o => `<div class="co"><span title="${esc(o.cell)} ${esc(o.formula || '')}">${esc(o.label)}</span><b>${fmtv(o.value)}</b></div>`).join('') || '<div class="muted">No formula outputs found.</div>'}</div></div></div>`;
+  dlg.showModal();
+}
+async function runCalc(id) {
+  const inputs = {}; document.querySelectorAll('#dlgBody .ci input').forEach(i => { if (i.value !== '') inputs[i.dataset.cell] = i.value; });
+  $('#calcMsg').innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await post(`/api/sources/${id}/calculate`, { inputs });
+    const fmtv = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : +v.toFixed(4)) : esc(String(v ?? ''));
+    $('#calcOut').innerHTML = Object.entries(r.outputs).map(([k, v]) => `<div class="co"><span>${esc(k)}</span><b>${fmtv(v)}</b></div>`).join('');
+    $('#calcMsg').textContent = r.unknown_inputs?.length ? 'ignored: ' + r.unknown_inputs.join(', ') : '✓';
+  } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
 }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }

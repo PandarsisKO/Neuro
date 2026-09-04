@@ -164,6 +164,8 @@ def fmt_locator(platform: str, start: float) -> str:
         return f"p. {int(start)}"
     if platform == "web":
         return f"§ {int(start)}"
+    if platform == "spreadsheet":
+        return f"sheet {int(start)}"
     return fmt_ts(start)
 
 
