@@ -207,6 +207,22 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
 
+CREATE TABLE IF NOT EXISTS invocations (
+    id                  TEXT PRIMARY KEY,
+    job_id              TEXT,
+    run_id              TEXT,
+    task                TEXT,
+    provider            TEXT NOT NULL,
+    model               TEXT,
+    input_hash          TEXT,
+    state               TEXT NOT NULL,     -- intent | in_flight | completed | outcome_unknown | failed
+    requested_at        REAL NOT NULL,
+    completed_at        REAL,
+    provider_request_id TEXT,
+    error               TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_invocations_state ON invocations(state, requested_at);
+
 CREATE TABLE IF NOT EXISTS job_events (
     id         INTEGER PRIMARY KEY,
     ts         REAL NOT NULL,
@@ -835,6 +851,49 @@ DEP_POLICIES = ("ALL_SUCCESS", "ALL_TERMINAL", "ANY_SUCCESS")
 LEASE_SECONDS = 120.0
 
 
+# ---- provider invocation ledger: exactly-once is only guaranteed for database effects; a synchronous API call whose
+# response was lost is an *ambiguous* execution (the provider may have charged us). We record intent before the
+# request and mark in-flight calls of a dead run OUTCOME_UNKNOWN on recovery, so no preventable duplicate is made and
+# every ambiguous one is visible and accounted for.
+
+def invocation_start(provider: str, task: str | None, model: str | None, input_hash: str | None, job_id: str | None, run_id: str | None) -> str:
+    iid = new_id()
+    t = now()
+    with tx() as conn:
+        conn.execute("INSERT INTO invocations (id, job_id, run_id, task, provider, model, input_hash, state, requested_at) VALUES (?,?,?,?,?,?,?,'intent',?)",
+                     (iid, job_id, run_id, task, provider, model, input_hash, t))
+        conn.execute("UPDATE invocations SET state='in_flight' WHERE id=?", (iid,))
+    return iid
+
+
+def invocation_finish(iid: str, state: str, provider_request_id: str | None = None, error: str | None = None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE invocations SET state=?, completed_at=?, provider_request_id=?, error=? WHERE id=?",
+                     (state, now(), provider_request_id, (error or None) and error[:500], iid))
+
+
+def mark_ambiguous_invocations(job_id: str, run_id: str | None, conn: sqlite3.Connection | None = None) -> int:
+    """A run died: every call it had in flight is now OUTCOME_UNKNOWN."""
+    c = conn or connect()
+    rows = c.execute("SELECT id, task, model FROM invocations WHERE job_id=? AND state='in_flight'" + (" AND run_id=?" if run_id else ""),
+                     (job_id, *([run_id] if run_id else []))).fetchall()
+    for r in rows:
+        c.execute("UPDATE invocations SET state='outcome_unknown', completed_at=? WHERE id=?", (now(), r["id"]))
+        job_event(job_id, "ambiguous_external_execution", run_id=run_id, conn=c, invocation=r["id"], task=r["task"], model=r["model"])
+    if conn is None:
+        c.commit()
+    return len(rows)
+
+
+def ambiguous_invocations(limit: int = 100) -> list[dict[str, Any]]:
+    return [dict(r) for r in connect().execute("SELECT * FROM invocations WHERE state='outcome_unknown' ORDER BY requested_at DESC LIMIT ?", (limit,)).fetchall()]
+
+
+def invocation_counts(since: float | None = None) -> dict[str, int]:
+    q = "SELECT state, COUNT(*) n FROM invocations" + (" WHERE requested_at>=?" if since else "") + " GROUP BY state"
+    return {r["state"]: r["n"] for r in connect().execute(q, (since,) if since else ()).fetchall()}
+
+
 def job_event(job_id: str, event_type: str, *, run_id: str | None = None, stage: str | None = None, conn: sqlite3.Connection | None = None, **payload: Any) -> None:
     """Append to the job's history (jobs = current state, job_events = what happened)."""
     row = (time.time(), job_id, run_id, event_type, stage, json.dumps(payload, default=str) if payload else None)
@@ -881,7 +940,10 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
     active return the existing job instead of a duplicate."""
     assert dependency_policy in DEP_POLICIES, dependency_policy
     key = dedupe_key or dedupe_key_for(kind, payload)
+    blocked_by = list(dict.fromkeys(blocked_by)) if blocked_by else None      # de-duplicated, order kept
     with tx() as conn:
+        if blocked_by:
+            _check_no_cycle(conn, None, blocked_by)
         if key:
             marks = ",".join("?" for _ in JOB_ACTIVE)
             ex = conn.execute(f"SELECT id FROM jobs WHERE dedupe_key=? AND status IN ({marks}) ORDER BY created_at LIMIT 1", (key, *JOB_ACTIVE)).fetchone()
@@ -896,6 +958,42 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
         )
         job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
     return get_job(jid)  # type: ignore[return-value]
+
+
+class DependencyCycle(ValueError):
+    pass
+
+
+def _check_no_cycle(conn: sqlite3.Connection, job_id: str | None, deps: list[str]) -> None:
+    """Reject self-dependency, duplicates, and any direct or transitive cycle through blocked_by. A brand-new job
+    (job_id None) cannot close a cycle — nothing depends on it yet — so only its list is validated."""
+    if job_id is None:
+        return
+    if job_id in deps:
+        raise DependencyCycle("a job cannot depend on itself")
+    seen: set[str] = set()
+    frontier = list(deps)
+    while frontier:
+        cur = frontier.pop()
+        if cur == job_id:
+            raise DependencyCycle(f"dependency cycle: {job_id[:8]} would wait on itself through {cur[:8]}")
+        if cur in seen:
+            continue
+        seen.add(cur)
+        r = conn.execute("SELECT blocked_by FROM jobs WHERE id=?", (cur,)).fetchone()
+        if r and r["blocked_by"]:
+            try:
+                frontier.extend(json.loads(r["blocked_by"]))
+            except ValueError:
+                pass
+
+
+def set_dependencies(job_id: str, deps: list[str]) -> None:
+    """Rewire a job's dependencies, refusing cycles."""
+    with tx() as conn:
+        _check_no_cycle(conn, job_id, deps)
+        conn.execute("UPDATE jobs SET blocked_by=?, updated_at=? WHERE id=?", (json.dumps(deps) if deps else None, now(), job_id))
+        job_event(job_id, "dependencies_set", conn=conn, blocked_by=deps)
 
 
 def dependency_report(job: dict[str, Any], conn: sqlite3.Connection | None = None) -> dict[str, Any]:
@@ -1024,6 +1122,7 @@ def recover_expired_leases(all_running: bool = False) -> list[str]:
         q = "SELECT id, run_id, worker_id, kind FROM jobs WHERE status='running'" + ("" if all_running else " AND (lease_until IS NULL OR lease_until < ?)")
         for r in conn.execute(q, () if all_running else (t,)).fetchall():
             job_event(r["id"], "lease_expired", run_id=r["run_id"], conn=conn, worker_id=r["worker_id"], at_startup=all_running)
+            mark_ambiguous_invocations(r["id"], r["run_id"], conn=conn)
             conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, "
                          "message=?, updated_at=? WHERE id=?", ("recovered: worker lease expired — resuming from the last completed stage", t, r["id"]))
             job_event(r["id"], "recovered", conn=conn)
@@ -1478,7 +1577,9 @@ def health() -> dict[str, Any]:
         disk = {"free_gb": round(du.free / 1e9, 1), "db_mb": round(settings.db_path.stat().st_size / 1e6, 1)}
     except OSError:
         disk = {}
+    inv = invocation_counts()
     return {"db": {"integrity": _j("db:last_integrity"), "path": str(settings.db_path)},
+            "invocations": {**inv, "ambiguous": inv.get("outcome_unknown", 0)},
             "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
             "jobs": {**jobs_by, "stale_running": stale, "expired_leases": stale, "leased": leased,
                      "external_pending": jobs_by.get("external_pending", 0)},
@@ -1514,7 +1615,10 @@ def retry_job(job_id: str) -> dict[str, Any] | None:
                 continue
             if job_id not in deps:
                 continue
+            old_deps = list(deps)
             deps = [new["id"] if x == job_id else x for x in deps]
+            _check_no_cycle(conn, d["id"], deps)
+            job_event(d["id"], "dependency_rewired", conn=conn, previous=old_deps, now=deps, retried_upstream=job_id, replacement=new["id"])
             if d["status"] == "failed" and (d["message"] or "").startswith("error: not run — "):
                 conn.execute("UPDATE jobs SET blocked_by=?, status='queued', finished_at=NULL, message='waiting for upstream jobs (retried)', updated_at=? WHERE id=?",
                              (json.dumps(deps), now(), d["id"]))

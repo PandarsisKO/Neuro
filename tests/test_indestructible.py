@@ -315,3 +315,71 @@ def test_crash_recovery_equivalence_40_sources(tmp_path, seed):
     assert counts["findings_calls"] == ref_counts["findings_calls"]
     ref_db.close()
 
+
+
+# ---------------------------------------------------------------- D closeout: ambiguous paid calls, cancel vs delete, cycles
+
+def test_ambiguous_external_execution_is_detected_and_accounted(tmp_path):
+    """Exactly-once holds for database effects only. A synchronous provider call whose response is lost is an
+    OUTCOME_UNKNOWN invocation: recovery marks it, the ledger shows it, the retry is visible as a second call."""
+    urls = crashkit.write_fixtures(tmp_path / "fx", 1, captions_every=0)      # transcription = a paid synchronous call
+    p = _project_with(urls)
+    sim = crashkit.Sim()
+    jobs.CRASH_AT["provider_response_lost"] = 1                               # the provider finished (and charged); we die before recording it
+    assert sim.step(("ingest_url",)) == "crashed"
+    amb = db.ambiguous_invocations()
+    assert len(amb) == 1 and amb[0]["task"] == "transcribe" and amb[0]["provider"] == "openai" and amb[0]["state"] == "outcome_unknown"
+    job = db.list_jobs(5)[0]
+    assert any(e["event_type"] == "ambiguous_external_execution" for e in db.job_events(job["id"]))
+    assert db.health()["invocations"]["ambiguous"] == 1
+    sim.run_until_idle()
+    # the work completed on retry; the ledger shows two transcription invocations — one unknown, one completed — so the
+    # possible double charge is accounted for rather than hidden
+    inv = db.connect().execute("SELECT state, COUNT(*) n FROM invocations WHERE task='transcribe' GROUP BY state").fetchall()
+    assert {r["state"]: r["n"] for r in inv} == {"outcome_unknown": 1, "completed": 1}
+    assert db.list_sources(limit=5)[0]["status"] == "ready"
+    # normal completed calls are accounted as completed with the provider's request id when it gives one
+    done = db.connect().execute("SELECT COUNT(*) FROM invocations WHERE state='completed'").fetchone()[0]
+    assert done >= 3 and db.connect().execute("SELECT COUNT(*) FROM invocations WHERE state='in_flight'").fetchone()[0] == 0
+
+
+def test_cancel_preserves_completed_stages_delete_removes_them(tmp_path):
+    """Cancel = stop further processing, keep durable checkpoints (a retry resumes, never re-transcribes).
+    Delete source = actually remove the durable artifacts."""
+    urls = crashkit.write_fixtures(tmp_path / "fx", 1, captions_every=0)
+    p = _project_with(urls)
+    sim = crashkit.Sim()
+    jobs.CANCEL_AT["transcript_complete"] = 1                                 # user presses cancel right after transcription landed
+    assert sim.step(("ingest_url",)) == "cancelled"
+    s = db.list_sources(limit=5)[0]
+    assert s["stage"] == "transcript" and db.get_segments(s["id"]) and not db.get_chunks(s["id"]) and s["status"] == "failed" and "Retry resumes" in s["error"]
+    assert _counts()["whisper"] == 1
+    job = db.list_jobs(5)[0]
+    assert job["status"] == "cancelled"
+    # retry: resumes from chunks — no download, no second transcription
+    new = db.retry_job(job["id"]) if job["status"] == "failed" else db.create_job("ingest_url", {"url": urls[0], "project_id": p["id"]})
+    sim.run_until_idle()
+    s = db.get_source(s["id"])
+    assert s["status"] == "ready" and s["stage"] == "ready" and _counts()["whisper"] == 1
+    # delete really removes
+    assert db.delete_source(s["id"]) is not None and db.get_source(s["id"]) is None and not db.get_segments(s["id"])
+
+
+def test_dependency_cycles_are_rejected():
+    a = db.create_job("reembed", {"limit": 1})
+    b = db.create_job("reembed", {"limit": 2}, blocked_by=[a["id"]])
+    c = db.create_job("reembed", {"limit": 3}, blocked_by=[b["id"]])
+    with pytest.raises(db.DependencyCycle):
+        db.set_dependencies(a["id"], [c["id"]])                               # A → B → C → A
+    with pytest.raises(db.DependencyCycle):
+        db.set_dependencies(a["id"], [a["id"]])                               # self
+    with pytest.raises(db.DependencyCycle):
+        db.set_dependencies(b["id"], [c["id"]])                               # direct cycle B ⇄ C
+    assert db.get_job(a["id"])["blocked_by"] is None                          # nothing was rewired
+    d = db.create_job("reembed", {"limit": 4}, blocked_by=[a["id"], a["id"], b["id"]])
+    assert d["blocked_by"] == [a["id"], b["id"]]                              # duplicates collapse
+    # retry rewiring keeps the old relationship in the history
+    db.update_job(a["id"], status="failed", message="error: x")
+    new = db.retry_job(a["id"])
+    ev = [e for e in db.job_events(b["id"]) if e["event_type"] == "dependency_rewired"][0]
+    assert ev["payload"]["previous"] == [a["id"]] and ev["payload"]["now"] == [new["id"]]

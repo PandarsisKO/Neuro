@@ -65,8 +65,16 @@ _current = threading.local()
 CRASH_AT: dict[str, int] = {}          # crash point name -> remaining crashes (tests); env NEUROSEARCH_CRASH_AT=name is one-shot
 
 
+CANCEL_AT: dict[str, int] = {}         # tests: request cancellation of the current job when execution reaches this point
+
+
 def crash_point(name: str) -> None:
     """Deterministic destructive testing: die here if asked to (see D12). Never triggers unless configured."""
+    if CANCEL_AT.get(name, 0) > 0:
+        CANCEL_AT[name] -= 1
+        jid = getattr(_current, "job_id", None)
+        if jid:
+            db.request_cancel(jid)
     n = CRASH_AT.get(name, 0)
     if n > 0:
         CRASH_AT[name] = n - 1
@@ -293,9 +301,14 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         return "external_pending"
     except Cancelled:
         db.finish_job(jid, run_id, "cancelled", message="cancelled")
-        sid = (job.get("payload") or {}).get("source_id")
+        pl = job.get("payload") or {}
+        sid = pl.get("source_id")
         if sid and job["kind"] == "ingest_source":
-            db.set_source_status(sid, "proposed")
+            db.set_source_status(sid, "proposed")          # back to the review card; completed stages are kept for a retry
+        elif job["kind"] == "ingest_url" and pl.get("url"):
+            with db.tx() as conn:                          # a single link: visible + retryable; stages are kept, Retry resumes
+                conn.execute("UPDATE sources SET status='failed', error=?, updated_at=? WHERE url=? AND status='pending'",
+                             ("cancelled — Retry resumes from the last completed stage", db.now(), pl["url"]))
         return "cancelled"
     except Exception as e:  # noqa: BLE001
         from .media import RateLimited, rate_limit_status
