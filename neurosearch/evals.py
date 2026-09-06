@@ -266,6 +266,22 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
     rep["returned_models"] = sorted({t["model"] for t in by_task.values() if t.get("model")})
     rep["validators"] = {k: v for k, v in rep["quality"].items() if k in ("citation_validity", "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity")}
     rep["validation_events"] = {r["kind"]: r["n"] for r in db.connect().execute("SELECT kind, COUNT(*) n FROM validation_events WHERE ts>=? GROUP BY kind", (usage_from,)).fetchall()}
+    # logical invocations vs transport attempts (a retry must never look like a second research task)
+    inv_rows = db.connect().execute("SELECT task, state, COUNT(*) n, COUNT(DISTINCT logical_id) logical FROM invocations WHERE requested_at>=? GROUP BY task, state", (usage_from,)).fetchall()
+    inv: dict[str, Any] = {"logical": 0, "attempts": 0, "by_state": {}, "by_task": {}}
+    for r in inv_rows:
+        inv["attempts"] += r["n"]
+        inv["by_state"][r["state"]] = inv["by_state"].get(r["state"], 0) + r["n"]
+        t = inv["by_task"].setdefault(r["task"] or "?", {"attempts": 0, "logical": 0, "failed_attempts": 0})
+        t["attempts"] += r["n"]
+        if r["state"] == "completed":
+            t["logical"] += r["logical"]
+        elif r["state"] == "failed":
+            t["failed_attempts"] += r["n"]
+    inv["logical"] = db.connect().execute("SELECT COUNT(DISTINCT logical_id) FROM invocations WHERE requested_at>=?", (usage_from,)).fetchone()[0]
+    inv["outcome_unknown"] = inv["by_state"].get("outcome_unknown", 0)
+    inv["sdk_retries"] = "disabled (max_retries=0); every attempt is a ledger row"
+    rep["invocations"] = inv
     rep["performance"]["total_s"] = round(time.time() - t_all, 2)
 
     # ---- gates
@@ -293,6 +309,7 @@ def format_report(rep: dict[str, Any]) -> str:
              f"  Plan evidence integrity    {pct(q.get('plan_evidence_validity'))}   ({q.get('plan_evidence_refs')} references)" + (f"   ERROR {q['plan_error']}" if q.get("plan_error") else ""),
              f"  Calculator                 {'ok' if q.get('calculator_ok') else 'FAILED'}   DSCR {q.get('calculator_dscr')}",
              f"  Validation events          " + (", ".join(f"{k} {n}" for k, n in (rep.get("validation_events") or {}).items()) or "none"),
+             f"  Provider calls             {rep.get('invocations', {}).get('logical', 0)} logical · {rep.get('invocations', {}).get('attempts', 0)} transport attempts · outcome unknown {rep.get('invocations', {}).get('outcome_unknown', 0)} · returned models {', '.join(rep.get('returned_models') or []) or '—'}",
              ""]
     if fake:
         lines += ["MODEL QUALITY", "  Not evaluated (fake provider). The numbers below only show the pipeline can carry them; run `neurosearch eval --live`.", ""]

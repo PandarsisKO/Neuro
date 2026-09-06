@@ -59,7 +59,11 @@ E0 PREFLIGHT (0.17.2)
 [x] Typed provider errors                       providers.classify_error by exception class/status, never message text; job-level retry branches on the type (legacy regex kept only for yt-dlp text)
 [x] Flaky test isolated                         the two barrier tests run on a private database (isolated_db fixture) away from the API client's worker threads
 [x] pytest × 20 clean, neurosearch eval × 10 clean
-[ ] Live Sonnet 4.6 baseline                     ← Kyle, on the Mac at 0.17.2: neurosearch eval --live --baseline ; commit evals/. Then FREEZE prompts, retrieval, chunking, cache layout and worker count until the Sonnet 5 comparison is done.
+[x] Report carries run metadata for the freeze  logical calls vs transport attempts, outcome_unknown count, returned model ids (0.17.3 — report metadata only, no pipeline change)
+[ ] Live Sonnet 4.6 baseline                     ← Kyle, on the Mac at 0.17.3: pause the app's queue (or stop the app), then `neurosearch eval --live --baseline`, commit evals/, `git tag sonnet-4.6-baseline`. Then FREEZE prompts, retrieval, chunking, cache layout, budgets, fixtures and worker count until the Sonnet 5 comparison is done.
+
+E1 gate — router equivalence: the same model, inputs and inference settings through the contract system must reproduce the 0.17.x results (fake Tier 1 byte-for-byte on tokens/validators; live within noise). If introducing contracts moves the numbers, E1 has a bug. No prompt changes in E1.
+E2 — shadow migration task by task (relevance, findings, chat, discover.quick, discover.verify, planner.analysis, planner.build, plan.update): same prompt + same inputs + different model first; per-task quality/tokens/thinking/reliability/economics/performance; migrate only what passes; a mixed 4.6/5 release is legitimate. Prompt tuning for Sonnet 5 only after the like-for-like comparison.
 
 MISSION E — MODEL PLATFORM + SONNET 5          NEXT (0.18.0)  — keep it narrow: contracts, explicit retries, typed errors, Sonnet 5 support, thinking policies, immutable 4.6/5 per-task comparison, migrate what passes
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
