@@ -83,6 +83,19 @@ def plan_evidence_ids(obj: Any) -> list[str]:
     return out
 
 
+def drop_evidence_ids(obj: Any, bad: set[str]) -> None:
+    """Remove the given ids from every "evidence" list, in place."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "evidence" and isinstance(v, list):
+                v[:] = [x for x in v if str(x) not in bad]
+            else:
+                drop_evidence_ids(v, bad)
+    elif isinstance(obj, list):
+        for x in obj:
+            drop_evidence_ids(x, bad)
+
+
 def check_plan_evidence(plan: dict[str, Any], known: set[str]) -> tuple[int, list[str]]:
     """(number of references, the ones that point at nothing)."""
     refs = plan_evidence_ids({k: v for k, v in plan.items() if not k.startswith("_")})

@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import threading
 from typing import Any, Iterator
 
@@ -46,8 +47,31 @@ def context(**fields: Any) -> Iterator[None]:
         _local.ctx = before
 
 
+_SECRETS = [
+    (re.compile(r"(sk-ant-[A-Za-z0-9_-]{6})[A-Za-z0-9_-]+"), r"\1…"),                 # Anthropic keys
+    (re.compile(r"\b(sk-[A-Za-z0-9_-]{4})[A-Za-z0-9_-]{12,}"), r"\1…"),                # OpenAI keys
+    (re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s'\"]+"), r"\1[redacted]"),
+    (re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{8,}"), r"\1[redacted]"),
+    (re.compile(r"(?i)((?:api[_-]?key|token|password|passwd|secret|cookie|session[_-]?id|x-api-key)\s*[=:]\s*)[^\s,;'\"&]+"), r"\1[redacted]"),
+    (re.compile(r"(?i)(/mcp/)[A-Za-z0-9._~-]{8,}"), r"\1[redacted]"),                   # MCP url token
+    (re.compile(r"(?i)([?&](?:sig|signature|x-amz-signature|x-goog-signature|token|key|auth|access_token|expires)=)[^&\s]+"), r"\1[redacted]"),
+]
+
+
+def redact(text: str) -> str:
+    for pat, rep in _SECRETS:
+        text = pat.sub(rep, text)
+    return text
+
+
 class ContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+            if redact(msg) != msg:
+                record.msg, record.args = redact(msg), ()
+        except Exception:  # noqa: BLE001
+            pass
         ctx = get()
         for k in FIELDS:
             setattr(record, k, ctx.get(k))

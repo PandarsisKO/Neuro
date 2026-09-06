@@ -458,10 +458,16 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.15.0';
+const UI_VERSION = '0.15.1';
 async function checkVersion() {
   try {
-    const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
+    const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
+    if (j.fake_ai && !$('#fakeBanner')) {
+      const f = document.createElement('div'); f.id = 'fakeBanner';
+      f.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:98;background:#b45309;color:#fff;text-align:center;padding:6px;font-weight:700;letter-spacing:.02em';
+      f.textContent = '⚠ FAKE AI MODE — no real model calls are being made (NEUROSEARCH_FAKE_AI=1). Answers, findings and plans are stand-ins.';
+      document.body.appendChild(f);
+    }
     if (v !== UI_VERSION) {
       const d = document.createElement('div'); d.className = 'banner'; d.id = 'verBanner';
       d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:99;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
@@ -610,7 +616,7 @@ async function selectChat(id, push = true) {
   if (id) {
     const ms = await api('/api/conversations/' + id);
     if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
-    else ms.forEach(m => addMsg(m.role, m.content, m.citations || []));
+    else ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false }));
   } else emptyChat();
   if (push) { showView('chats'); }
   $('#q').focus();
@@ -643,6 +649,9 @@ function addMsg(role, text, cites = [], extra = {}) {
   else {
     let h = renderAnswer(text, cites);
     if (cites.length) h += `<div class="cites">` + cites.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
+    const val = extra.validation || extra.meta || {};
+    if (val.warning) h += `<div class="web" style="color:var(--warn)">⚠ ${esc(val.warning)}</div>`;
+    else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
     if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
     for (const a of extra.actions || []) {
       if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;

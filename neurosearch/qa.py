@@ -247,14 +247,40 @@ def ask(
 
     answer = "\n".join(p for p in answer_parts if p.strip()).strip()
 
-    # citations must point at excerpts we actually supplied; anything else is stripped and counted
-    from .evidence import check_citations, strip_citations
+    # Citations must point at excerpts we actually supplied. A bad one is NOT silently removed (that would turn a
+    # falsely-cited claim into a confident uncited one): the model gets one repair round; if it still cites
+    # nothing, the answer is rendered as-is with a validation warning the user can see.
+    from .evidence import check_citations
     _valid, invalid = check_citations(answer + " " + " ".join(pending_findings), len(hits))
+    validation: dict[str, Any] = {}
     if invalid:
-        log.warning("answer cited excerpts that do not exist: %s", invalid)
-        answer = strip_citations(answer, invalid)
-        pending_findings = [strip_citations(f, invalid) for f in pending_findings]
-        db.kv_bump("evidence:citations_invalid", len(invalid))
+        log.warning("answer cited excerpts that do not exist: %s — asking for a repair", invalid)
+        db.validation_event("citation_validation_failed", {"invalid": invalid, "excerpts": len(hits), "answer": answer[:600]}, project_id=project_id)
+        try:
+            messages.append({"role": "assistant", "content": resp.content})
+            messages.append({"role": "user", "content": f"Your answer cites {', '.join(f'[{n}]' for n in invalid)} but only excerpts [1]–[{len(hits)}] were provided"
+                             + (" (no excerpts were provided)" if not hits else "") + ". Rewrite the whole answer using only citations that exist; "
+                             "if a claim is not supported by any excerpt, say so plainly instead of citing. Keep everything else the same."})
+            usage.mark_last(messages)
+            kwargs = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages,
+                          extra_headers={"x-neurosearch-task": "answer.repair"})
+            resp2 = client.messages.create(**kwargs)
+            usage.record_anthropic(resp2, "answer", project_id=project_id)
+            repaired = "\n".join(getattr(b, "text", "") for b in resp2.content if getattr(b, "type", None) == "text").strip()
+            v2, inv2 = check_citations(repaired + " " + " ".join(pending_findings), len(hits))
+            if repaired and not inv2:
+                validation = {"repaired": True, "originally_invalid": invalid}
+                db.validation_event("citation_repaired", {"invalid": invalid}, project_id=project_id)
+                answer, _valid, invalid = repaired, v2, []
+            else:
+                invalid = inv2 or invalid
+        except Exception as e:  # noqa: BLE001
+            log.warning("citation repair failed: %s", e)
+        if invalid:
+            validation = {"invalid_citations": invalid,
+                          "warning": f"This answer cites {', '.join(f'[{n}]' for n in invalid)}, which do not correspond to any excerpt from your sources. "
+                                     "Treat those claims as unverified."}
+            db.kv_bump("evidence:citations_invalid", len(invalid))
     db.kv_bump("evidence:citations_checked", len(_valid) + len(invalid))
 
     cited_nums = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", answer + " " + " ".join(pending_findings))})
@@ -273,7 +299,7 @@ def ask(
 
     if conversation_id:
         db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
-        db.save_message(conversation_id, "assistant", answer, citations=citations, project_id=project_id)
+        db.save_message(conversation_id, "assistant", answer, citations=citations, project_id=project_id, meta=validation or None)
 
     return {
         "answer": answer,
@@ -286,6 +312,7 @@ def ask(
         "ingest_jobs": ingest_jobs,
         "actions": actions,
         "invalid_citations": invalid,
+        "validation": validation,
     }
 
 

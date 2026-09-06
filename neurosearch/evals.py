@@ -22,6 +22,33 @@ log = logging.getLogger(__name__)
 
 GOLDEN = Path(__file__).parent.parent / "tests" / "fixtures" / "golden"
 GATES = {"retrieval_recall_at_10": 0.90, "citation_validity": 1.0, "finding_quote_validity": 0.98, "plan_evidence_validity": 1.0}
+# What Tier 1 can prove (the pipeline handles AI-shaped output correctly) vs what only a real model can show
+PIPELINE_METRICS = ("retrieval_recall_at_5", "retrieval_recall_at_10", "retrieval_mrr", "locator_accuracy", "citation_validity",
+                    "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity", "calculator_ok", "fixture_evidence_present")
+MODEL_METRICS = ("golden_evidence_recall", "answers_cite_expected_source", "gap_detection", "contradiction_surfaced")
+# request parameters per task as the call sites set them today (recorded so a migration can compare like with like)
+REQUEST_PARAMS = {"answer.chat": {"max_tokens": 2000}, "answer.repair": {"max_tokens": 2000}, "findings.extract": {"max_tokens": 4000},
+                  "rank.relevance": {"max_tokens": 6000}, "discover.quick": {"max_tokens": 3500}, "discover.verify": {"max_tokens": 2500},
+                  "planner.analysis": {"max_tokens": 7000}, "planner.build": {"max_tokens": 16000}, "planner.update": {"max_tokens": 4000}}
+
+
+def prompt_versions() -> dict[str, str]:
+    """A short hash per system prompt — changes when the prompt changes, so baselines say what they measured."""
+    import hashlib
+    from . import discover, findings, planner, qa, relevance
+    h = lambda t: hashlib.sha1(t.encode()).hexdigest()[:8]  # noqa: E731
+    return {"findings.extract": h(findings.SYSTEM), "answer.chat": h(qa.SYSTEM + qa.PROJECT_BLOCK), "rank.relevance": h(relevance.SYSTEM),
+            "planner.analysis": h(planner.ANALYSIS_SYSTEM), "planner.build": h(planner.SYSTEM), "planner.update": h(planner.UPDATE_SYSTEM),
+            "discover.quick": h(discover.QUICK_SYSTEM), "discover.verify": h(discover.VERIFY_SYSTEM)}
+
+
+def git_sha() -> str:
+    import subprocess
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5,
+                              cwd=str(Path(__file__).parent.parent)).stdout.strip() or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
 
 
 # ------------------------------------------------------------------ loading the corpus
@@ -72,7 +99,13 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
 
     t_all = time.time()
     usage_from = time.time()
-    rep: dict[str, Any] = {"tier": "live" if live else "fake", "model": settings.answer_model if live else "fake", "gates": {}, "quality": {}, "volume": {}, "economics": {}, "performance": {}}
+    from . import __version__
+    rep: dict[str, Any] = {"tier": "live" if live else "fake", "model": settings.answer_model if live else "fake",
+                           "app_version": __version__, "git_sha": git_sha(), "provider": "anthropic" if live else "fake",
+                           "requested_model": settings.answer_model if live else "fake", "embedding_model": settings.embedding_model if live else "fake",
+                           "prompt_versions": prompt_versions(), "request_params": REQUEST_PARAMS,
+                           "thinking_policy": "n/a (model has no adaptive thinking; nothing requested)", "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "gates": {}, "quality": {}, "volume": {}, "economics": {}, "performance": {}}
 
     t0 = time.time()
     g = load_golden(root)
@@ -230,6 +263,9 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
                      "cache_write_tokens": tot["cache_write"],
                      "cache_read_rate": round(tot["cache_read"] / max(1, tot["input_tokens"] + tot["cache_read"] + tot["cache_write"]), 4)}
     rep["economics"] = {"cost": round(tot["cost"], 4), "cost_per_source_hour": round(tot["cost"] / hours, 4) if hours else None, "media_hours": round(hours, 2)}
+    rep["returned_models"] = sorted({t["model"] for t in by_task.values() if t.get("model")})
+    rep["validators"] = {k: v for k, v in rep["quality"].items() if k in ("citation_validity", "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity")}
+    rep["validation_events"] = {r["kind"]: r["n"] for r in db.connect().execute("SELECT kind, COUNT(*) n FROM validation_events WHERE ts>=? GROUP BY kind", (usage_from,)).fetchall()}
     rep["performance"]["total_s"] = round(time.time() - t_all, 2)
 
     # ---- gates
@@ -248,19 +284,27 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
 def format_report(rep: dict[str, Any]) -> str:
     q, v, e, p = rep["quality"], rep["volume"], rep["economics"], rep["performance"]
     pct = lambda x: "—" if x is None else f"{x * 100:.1f}%"  # noqa: E731
-    lines = [f"Neuro Search eval · {rep['tier']} · model {rep['model']}", "",
-             "QUALITY",
+    fake = rep["tier"] != "live"
+    lines = [f"Neuro Search eval · {rep['tier']} · model {rep['model']} · app {rep.get('app_version')} @ {rep.get('git_sha')}", "",
+             "PIPELINE QUALITY  (does Neuro Search process AI-shaped output correctly?)",
              f"  Retrieval recall@5 / @10   {pct(q.get('retrieval_recall_at_5'))} / {pct(q.get('retrieval_recall_at_10'))}   MRR {q.get('retrieval_mrr')}   locator {pct(q.get('locator_accuracy'))}   ({q.get('questions')} questions)",
-             f"  Citation validity          {pct(q.get('citation_validity'))}   cites expected source {pct(q.get('answers_cite_expected_source'))}   gap detection {pct(q.get('gap_detection'))}   contradictions surfaced {pct(q.get('contradiction_surfaced'))}",
-             f"  Finding quote validity     {pct(q.get('finding_quote_validity'))}   ({q.get('findings_suggested')} suggested, {q.get('findings_rejected')} rejected, stored verified {pct(q.get('stored_findings_verified'))})",
-             f"  Golden evidence recall     {pct(q.get('golden_evidence_recall'))}   (planted nuggets that became findings)",
-             f"  Plan evidence validity     {pct(q.get('plan_evidence_validity'))}   ({q.get('plan_evidence_refs')} references)" + (f"   ERROR {q['plan_error']}" if q.get("plan_error") else ""),
+             f"  Citation integrity         {pct(q.get('citation_validity'))}   (invalid [n] caught, repaired or flagged)",
+             f"  Evidence integrity         {pct(q.get('finding_quote_validity'))}   ({q.get('findings_suggested')} findings kept, {q.get('findings_rejected')} rejected; stored re-verified {pct(q.get('stored_findings_verified'))})",
+             f"  Plan evidence integrity    {pct(q.get('plan_evidence_validity'))}   ({q.get('plan_evidence_refs')} references)" + (f"   ERROR {q['plan_error']}" if q.get("plan_error") else ""),
              f"  Calculator                 {'ok' if q.get('calculator_ok') else 'FAILED'}   DSCR {q.get('calculator_dscr')}",
-             "", "VOLUME",
-             f"  Input tokens {v['input_tokens']:,}   output {v['output_tokens']:,}   cache read {v['cache_read_tokens']:,}   cache write {v['cache_write_tokens']:,}   cache read rate {pct(v['cache_read_rate'])}"]
+             f"  Validation events          " + (", ".join(f"{k} {n}" for k, n in (rep.get("validation_events") or {}).items()) or "none"),
+             ""]
+    if fake:
+        lines += ["MODEL QUALITY", "  Not evaluated (fake provider). The numbers below only show the pipeline can carry them; run `neurosearch eval --live`.", ""]
+    else:
+        lines += ["MODEL QUALITY", ""]
+    lines += [f"  Golden evidence recall     {pct(q.get('golden_evidence_recall'))}   (planted nuggets that became findings)",
+              f"  Cites expected source      {pct(q.get('answers_cite_expected_source'))}   gap detection {pct(q.get('gap_detection'))}   contradictions surfaced {pct(q.get('contradiction_surfaced'))}",
+              "", "VOLUME",
+              f"  Input tokens {v['input_tokens']:,}   output {v['output_tokens']:,}   cache read {v['cache_read_tokens']:,}   cache write {v['cache_write_tokens']:,}   cache read rate {pct(v['cache_read_rate'])}"]
     for k, t in sorted(v["by_task"].items()):
-        lines.append(f"    {k:10s} {t['calls']:3d} calls   in {t['input_tokens']:>8,}   out {t['output_tokens']:>7,}   cached {t['cache_read']:>8,}   ${t['cost']:.4f}")
-    lines += ["", "ECONOMICS", f"  Cost ${e['cost']:.4f}   per source-hour ${e['cost_per_source_hour']}   ({e['media_hours']} h of media)",
+        lines.append(f"    {k:10s} {t['calls']:3d} calls   in {t['input_tokens']:>8,}   out {t['output_tokens']:>7,}   cached {t['cache_read']:>8,}   ${t['cost']:.4f}   {t.get('model')}")
+    lines += ["", "ECONOMICS", f"  Cost ${e['cost']:.4f}   per source-hour ${e['cost_per_source_hour']}   ({e['media_hours']} h of media)" + ("   [fake token estimates at list price]" if fake else ""),
               "", "PERFORMANCE", f"  ingest {p['ingest_s']}s   retrieval {p['retrieval_s_per_q']}s/q   findings {p['findings_s']}s   answer {p['answer_s_per_q']}s/q   plan {p['plan_s']}s   total {p['total_s']}s",
               "", "GATES"]
     for k, g in rep["gates"].items():

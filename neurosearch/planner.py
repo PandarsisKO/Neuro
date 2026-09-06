@@ -295,11 +295,15 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
         progress(0.95, "saving…")
     plan["_evidence"] = emap
     plan["_generated"] = date.today().isoformat()
-    from .evidence import check_plan_evidence
+    from .evidence import check_plan_evidence, drop_evidence_ids
     n_refs, dangling = check_plan_evidence(plan, set(emap))
     if dangling:
-        log.warning("plan references evidence ids that do not exist: %s", dangling[:10])
-    plan["_evidence_check"] = {"references": n_refs, "dangling": dangling}
+        # evidence references are optional decoration on a plan item; an unknown id is removed rather than stored,
+        # so a plan never becomes current while pointing at evidence that does not exist
+        log.warning("plan references evidence ids that do not exist — removed: %s", dangling[:10])
+        drop_evidence_ids(plan, set(dangling))
+        db.validation_event("plan_evidence_removed", {"removed": dangling, "references": n_refs}, project_id=project_id)
+    plan["_evidence_check"] = {"references": n_refs, "dangling": dangling, "removed": bool(dangling)}
     db.kv_bump("evidence:plan_refs_checked", n_refs)
     db.kv_bump("evidence:plan_refs_dangling", len(dangling))
     snapshot = db.project_snapshot(project_id)

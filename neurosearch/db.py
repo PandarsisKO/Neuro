@@ -207,6 +207,19 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
 
+CREATE TABLE IF NOT EXISTS validation_events (
+    id          INTEGER PRIMARY KEY,
+    ts          REAL NOT NULL,
+    kind        TEXT NOT NULL,      -- finding_validation_failed | citation_validation_failed | citation_repaired | plan_evidence_removed
+    project_id  TEXT,
+    source_id   TEXT,
+    job_id      TEXT,
+    model       TEXT,
+    prompt_version TEXT,
+    detail      TEXT                -- JSON: the rejected candidate / the offending markers / the removed ids
+);
+CREATE INDEX IF NOT EXISTS ix_validation_events_ts ON validation_events(ts);
+
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -268,6 +281,7 @@ MIGRATIONS = [
     ("usage", "cache_read", "ALTER TABLE usage ADD COLUMN cache_read INTEGER DEFAULT 0"),
     ("usage", "cache_write", "ALTER TABLE usage ADD COLUMN cache_write INTEGER DEFAULT 0"),
     ("usage", "saved", "ALTER TABLE usage ADD COLUMN saved REAL DEFAULT 0"),
+    ("messages", "meta", "ALTER TABLE messages ADD COLUMN meta TEXT"),
 ]
 
 
@@ -324,7 +338,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     d = dict(row)
-    for k in ("tags", "payload", "result", "citations", "questions"):
+    for k in ("tags", "payload", "result", "citations", "questions", "meta"):
         if k in d and isinstance(d[k], str):
             try:
                 d[k] = json.loads(d[k])
@@ -728,6 +742,38 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def validation_event(kind: str, detail: dict[str, Any], *, project_id: str | None = None, source_id: str | None = None,
+                     model: str | None = None, prompt_version: str | None = None) -> None:
+    """Diagnostic record of a validator decision. Rejected findings are never shown to the user, but they are never
+    lost either — "this video produced only two findings" can be answered."""
+    from .logctx import get as _ctx
+    ctx = _ctx()
+    with tx() as conn:
+        conn.execute("INSERT INTO validation_events (ts, kind, project_id, source_id, job_id, model, prompt_version, detail) VALUES (?,?,?,?,?,?,?,?)",
+                     (time.time(), kind, project_id or ctx.get("project_id"), source_id or ctx.get("source_id"), ctx.get("job_id"),
+                      model or ctx.get("model"), prompt_version, json.dumps(detail, default=str)[:4000]))
+
+
+def validation_events(kind: str | None = None, source_id: str | None = None, project_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    q, args = "SELECT * FROM validation_events WHERE 1=1", []
+    if kind:
+        q += " AND kind=?"; args.append(kind)
+    if source_id:
+        q += " AND source_id=?"; args.append(source_id)
+    if project_id:
+        q += " AND project_id=?"; args.append(project_id)
+    rows = connect().execute(q + " ORDER BY id DESC LIMIT ?", (*args, limit)).fetchall()
+    out = []
+    for r in rows:
+        d = row_to_dict(r)
+        try:
+            d["detail"] = json.loads(d["detail"] or "{}")
+        except ValueError:
+            pass
+        out.append(d)
+    return out
+
+
 def kv_bump(key: str, n: int = 1) -> None:
     """Atomic integer counter in kv (evidence/validator stats)."""
     if not n:
@@ -882,6 +928,7 @@ def health() -> dict[str, Any]:
     jobs_by = {r["status"]: r["n"] for r in q}
     stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND COALESCE(updated_at, created_at) < ?", (time.time() - 1800,)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling")}
+    ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
         disk = {"free_gb": round(du.free / 1e9, 1), "db_mb": round(settings.db_path.stat().st_size / 1e6, 1)}
@@ -1328,7 +1375,7 @@ def set_update_status(update_id: int, status: str) -> dict[str, Any] | None:
 # --------------------------------------------------------- conversations
 
 def save_message(conversation_id: str, role: str, content: str, citations: list | None = None,
-                 title: str | None = None, project_id: str | None = None) -> None:
+                 title: str | None = None, project_id: str | None = None, meta: dict[str, Any] | None = None) -> None:
     with tx() as conn:
         t = now()
         conn.execute(
@@ -1337,14 +1384,15 @@ def save_message(conversation_id: str, role: str, content: str, citations: list 
         )
         conn.execute("UPDATE conversations SET updated_at=?, title=COALESCE(title, ?) WHERE id=?", (t, title, conversation_id))
         conn.execute(
-            "INSERT INTO messages (conversation_id, role, content, citations, created_at) VALUES (?,?,?,?,?)",
-            (conversation_id, role, content, json.dumps(citations) if citations is not None else None, t),
+            "INSERT INTO messages (conversation_id, role, content, citations, created_at, meta) VALUES (?,?,?,?,?,?)",
+            (conversation_id, role, content, json.dumps(citations) if citations is not None else None, t,
+             json.dumps(meta) if meta else None),
         )
 
 
 def get_messages(conversation_id: str, limit: int = 20) -> list[dict[str, Any]]:
     rows = connect().execute(
-        "SELECT role, content, citations, created_at FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+        "SELECT role, content, citations, created_at, meta FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
         (conversation_id, limit),
     ).fetchall()
     return [row_to_dict(r) for r in reversed(rows)]  # type: ignore[misc]

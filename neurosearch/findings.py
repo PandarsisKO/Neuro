@@ -20,6 +20,11 @@ log = logging.getLogger(__name__)
 WINDOW_CHARS = 60000  # ~15k tokens of transcript per call
 TASK = {"x-neurosearch-task": "findings.extract"}
 
+
+def prompt_version() -> str:
+    import hashlib
+    return "findings-" + hashlib.sha1(SYSTEM.encode()).hexdigest()[:8]
+
 SYSTEM = """You are a research analyst reading a transcript on behalf of a project. Extract the findings that matter for
 the project brief — concrete claims, numbers, techniques, recommendations, warnings, disagreements, or notable
 examples — and ignore fluff (intros, sponsor reads, banter, repetition, vague motivation).
@@ -129,6 +134,10 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
             if why:
                 rejected += 1
                 log.info("finding rejected (%s): %s", why, str(f.get("title") or f.get("finding"))[:80])
+                db.validation_event("finding_validation_failed", {"candidate_title": f.get("title"), "candidate_quote": f.get("quote"),
+                                                                  "candidate_finding": f.get("finding"), "claimed_locator": f.get("ts"),
+                                                                  "reason": why, "window": i + 1, "windows": len(windows)},
+                                    project_id=project_id, source_id=source_id, prompt_version=prompt_version())
                 continue
             all_findings.append(f)
     if rejected:

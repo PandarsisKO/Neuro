@@ -181,7 +181,8 @@ def cancel(kind: Optional[str] = typer.Option(None, help="only this job kind, e.
 
 @app.command("eval")
 def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models (costs money) instead of the deterministic fakes"),
-             baseline: bool = typer.Option(False, help="Freeze this run's numbers as evals/baseline-<model>.json"),
+             baseline: bool = typer.Option(False, help="Freeze this run as evals/baseline-<version>-<git sha>-<model>.json (never overwrites; see --force)"),
+             force: bool = typer.Option(False, help="Allow --baseline to overwrite an existing baseline file"),
              compare: Optional[Path] = typer.Option(None, help="Baseline JSON to diff against"),
              out: Optional[Path] = typer.Option(None, help="Write the full report JSON here"),
              keep: bool = typer.Option(False, help="Keep the temporary database (path is printed)")) -> None:
@@ -208,7 +209,10 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
             typer.echo("  " + line)
     if baseline:
         d = Path("evals"); d.mkdir(exist_ok=True)
-        f = d / f"baseline-{rep['model'].replace('/', '_')}.json"
+        f = d / f"baseline-{rep['app_version']}-{rep['git_sha']}-{rep['model'].replace('/', '_').replace('claude-', '')}.json"
+        if f.exists() and not force:
+            typer.echo(f"\nREFUSING to overwrite the existing baseline {f} — a baseline is a historical measurement; pass --force if you really mean it")
+            raise typer.Exit(code=2)
         f.write_text(json.dumps(rep, indent=1))
         typer.echo(f"\nbaseline written → {f}")
     if out:

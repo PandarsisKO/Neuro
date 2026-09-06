@@ -144,8 +144,11 @@ def _findings(system: str, user: str) -> str:
     return json.dumps({"summary": "Covers " + " ".join(first.split()[:25]) + ".", "substance": substance, "findings": findings})
 
 
-def _answer(system: str, messages: list[dict[str, Any]]) -> str:
+def _answer(system: str, messages: list[dict[str, Any]], task: str = "answer.chat") -> str:
     text = system + "\n" + "\n".join(_content_text(m.get("content")) for m in messages)
+    bad = os.environ.get("NEUROSEARCH_FAKE_AI_BAD_CITATIONS")
+    if bad and (task != "answer.repair" or bad == "stubborn"):
+        return "SBA loans normally require ten percent down [17]."
     ex = re.search(r"<excerpts>(.*?)</excerpts>", text, re.S)
     nums = re.findall(r"^\[(\d+)\] ", ex.group(1), re.M) if ex else []
     q = re.findall(r"Question:\s*(.+)", text)
@@ -225,7 +228,7 @@ class _Msgs:
         elif task == "export.synthesis":
             text = "# Plan\n\nSynthesized."
         else:
-            text = _answer(system, messages)
+            text = _answer(system, messages, task)
         # token accounting, including a simulated prompt cache
         all_in = system + "\n".join(_content_text(m.get("content")) for m in messages)
         total = _tokens(all_in) + 20 * len(kw.get("tools") or [])

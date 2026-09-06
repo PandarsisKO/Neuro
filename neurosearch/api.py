@@ -435,9 +435,9 @@ def api_retry_failed() -> dict[str, Any]:
 # -------------------------------------------------------------- sources
 
 @app.get("/api/version")
-def api_version() -> dict[str, str]:
+def api_version() -> dict[str, Any]:
     from . import __version__
-    return {"version": __version__}
+    return {"version": __version__, "fake_ai": settings.fake_ai}
 
 
 @app.get("/api/stats/fun", dependencies=[Depends(require_auth)])
@@ -460,6 +460,12 @@ def api_backup() -> dict[str, Any]:
     chk = db.integrity_check()
     p = db.backup()
     return {"path": str(p), "integrity": chk, "verified": db.verify_database(p)}
+
+
+@app.get("/api/validation-events", dependencies=[Depends(require_auth)])
+def api_validation_events(kind: str | None = None, source_id: str | None = None, project_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    """Diagnostics: what the evidence validators rejected or repaired (never shown as findings, never lost)."""
+    return db.validation_events(kind=kind, source_id=source_id, project_id=project_id, limit=limit)
 
 
 @app.get("/api/stats", dependencies=[Depends(require_auth)])

@@ -855,3 +855,129 @@ def test_migrates_old_databases_without_losing_rows(version, tmp_path, monkeypat
         except Exception:
             pass
         db._local.conn = None
+
+
+def test_rejected_findings_are_kept_as_diagnostics(client, monkeypatch):
+    from neurosearch import findings, evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_QUOTES", "1")
+    g = evals.load_golden()
+    sid = g["sources"]["yt02"]
+    res = findings.suggest_for_source(g["project_id"], sid)
+    assert res["suggested"] == 0 and res["rejected_quotes"] > 0
+    ev = client.get(f"/api/validation-events?source_id={sid}&kind=finding_validation_failed", headers=H).json()
+    assert len(ev) == res["rejected_quotes"]
+    d = ev[0]["detail"]
+    assert d["reason"] == "quote not found in transcript" and d["candidate_quote"] and d["claimed_locator"] and ev[0]["prompt_version"].startswith("findings-")
+    assert ev[0]["project_id"] == g["project_id"] and ev[0]["model"] == "fake"
+
+
+def test_invalid_citations_are_repaired_not_stripped(client, monkeypatch):
+    from neurosearch import qa, evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    g = evals.load_golden()
+    # first answer cites [17]; the repair round fixes it
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_CITATIONS", "1")
+    r = qa.ask("What is the minimum down payment?", project_id=g["project_id"], conversation_id="cv-repair")
+    assert r["validation"].get("repaired") and r["validation"]["originally_invalid"] == [17] and "[17]" not in r["answer"] and r["citations"]
+    kinds = {e["kind"] for e in db.validation_events(project_id=g["project_id"])}
+    assert {"citation_validation_failed", "citation_repaired"} <= kinds
+    # a stubborn model keeps citing [17]: the marker is NOT removed, the answer carries a visible warning, and it is persisted
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_CITATIONS", "stubborn")
+    r = qa.ask("What is the minimum down payment?", project_id=g["project_id"], conversation_id="cv-repair")
+    assert "[17]" in r["answer"] and r["validation"]["invalid_citations"] == [17] and "unverified" in r["validation"]["warning"]
+    last = db.get_messages("cv-repair")[-1]
+    assert last["meta"]["invalid_citations"] == [17]
+
+
+def test_plan_dangling_evidence_is_removed_and_recorded(client, monkeypatch):
+    from neurosearch import planner, evals, fake_ai
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    g = evals.load_golden()
+    # make the fake plan reference an evidence id that does not exist
+    orig = fake_ai._with_evidence
+    monkeypatch.setattr(fake_ai, "_with_evidence", lambda obj, ids: orig(obj, ids[:1] + ["Z99"]))
+    row = planner.build_plan(g["project_id"])
+    chk = row["plan"]["_evidence_check"]
+    assert "Z99" in chk["dangling"] and chk["removed"]
+    from neurosearch.evidence import plan_evidence_ids
+    assert "Z99" not in plan_evidence_ids({k: v for k, v in row["plan"].items() if not k.startswith("_")})
+    assert any(e["kind"] == "plan_evidence_removed" for e in db.validation_events(project_id=g["project_id"]))
+
+
+def test_health_requires_auth_and_version_flags_fake_mode(client, monkeypatch):
+    assert client.get("/api/health").status_code == 401
+    assert client.get("/api/validation-events").status_code == 401
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    assert client.get("/api/version").json()["fake_ai"] is True
+
+
+def test_log_redaction():
+    from neurosearch.logctx import redact
+    s = redact("key sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ used; Authorization: Bearer abc.def-ghi_123456; cookie=sessionid=xyz; "
+               "url https://x.com/f.mp4?X-Amz-Signature=deadbeef1234&x=1 mcp at /mcp/t0kent0kent0ken and sk-proj-abcdefghijklmnopqrstuvwxyz")
+    for leak in ("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abc.def-ghi_123456", "deadbeef1234", "t0kent0kent0ken", "abcdefghijklmnopqrstuvwxyz", "sessionid=xyz"):
+        assert leak not in s, (leak, s)
+    assert "x=1" in s and redact("plain message about tokens per task") == "plain message about tokens per task"
+
+
+def test_fake_providers_cannot_see_eval_expectations():
+    # the fakes may only see what the real provider sees: the prompt. No imports of, or file reads from, the eval side.
+    src = pathlib.Path("neurosearch/fake_ai.py").read_text()
+    code = "\n".join(ln for ln in src.splitlines() if not ln.strip().startswith(("#", '"""')) and '"""' not in ln)
+    for forbidden in ("manifest", "from . import evals", "import evals", "golden", "tests/", "open("):
+        assert forbidden not in code, forbidden
+    # the only file the fake may read is the transcription sidecar that stands in for the audio it was handed
+    reads = [ln for ln in code.splitlines() if "read_text(" in ln]
+    assert reads and all("side." in ln for ln in reads), reads
+
+
+CANON = [
+    ("youtu.be/ABCDEFGHIJK", "https://www.youtube.com/watch?v=ABCDEFGHIJK"),
+    ("https://www.youtube.com/watch?v=ABCDEFGHIJK&t=50", "https://www.youtube.com/watch?v=ABCDEFGHIJK"),
+    ("https://www.youtube.com/watch?v=ABCDEFGHIJK&list=XYZ", "https://www.youtube.com/watch?v=ABCDEFGHIJK"),
+    ("https://www.youtube.com/watch?feature=share&v=ABCDEFGHIJK", "https://www.youtube.com/watch?v=ABCDEFGHIJK"),
+    ("https://example.com/a?utm_source=x", "https://example.com/a"),
+    ("https://example.com/a?product=12", "https://example.com/a?product=12"),          # real content parameters are kept
+    ("https://example.com/a?product=12&utm_medium=m&fbclid=q", "https://example.com/a?product=12"),
+    ("https://example.com/a?page=2&q=hvac", "https://example.com/a?page=2&q=hvac"),
+    ("http://Example.com:80/A/B/", "https://example.com/A/B"),                           # path case is meaningful, host case is not
+    ("https://example.com/", "https://example.com/"),
+    ("https://www.instagram.com/p/Cabc123/?igsh=zzz", "https://www.instagram.com/p/Cabc123/"),
+    ("https://example.com/ep1.mp3?token=abc", "https://example.com/ep1.mp3?token=abc"),  # a signed media url must keep its token
+]
+
+
+@pytest.mark.parametrize("raw,expected", CANON)
+def test_canonical_url_corpus(raw, expected):
+    assert media.canonical_url(raw) == expected
+
+
+def test_backup_restore_round_trip(client, tmp_path, monkeypatch):
+    """verified backup != verified recovery: restore into a fresh data dir and read everything back through the app code."""
+    import shutil
+    from neurosearch import evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    g = evals.load_golden()
+    db.save_message("cv-restore", "user", "hello", project_id=g["project_id"])
+    before = {t: db.connect().execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("sources", "segments", "chunks", "projects", "project_notes", "conversations", "messages", "plans")}
+    snap = db.backup()
+    fresh = tmp_path / "restored"; fresh.mkdir()
+    shutil.copy(snap, fresh / "neurosearch.db")
+    old_dir = settings.data_dir
+    monkeypatch.setattr(settings, "data_dir", fresh)
+    db._local.conn = None
+    try:
+        db.init_db()
+        after = {t: db.connect().execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in before}
+        assert after == before
+        assert db.get_project(g["project_id"])["name"].startswith("Golden") and db.get_messages("cv-restore")[0]["content"] == "hello"
+        assert db.fts_search("equity injection") and db.list_sources(limit=5)
+    finally:
+        db.connect().close(); db._local.conn = None
+        monkeypatch.setattr(settings, "data_dir", old_dir)
