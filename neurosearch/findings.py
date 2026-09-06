@@ -25,6 +25,12 @@ def prompt_version() -> str:
     import hashlib
     return "findings-" + hashlib.sha1(SYSTEM.encode()).hexdigest()[:8]
 
+
+def input_hash(project: dict[str, Any] | str, source_id: str) -> str:
+    """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision) and
+    the prompt. Staleness compares this, not database rows."""
+    return db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version())
+
 SYSTEM = """You are a research analyst reading a transcript on behalf of a project. Extract the findings that matter for
 the project brief — concrete claims, numbers, techniques, recommendations, warnings, disagreements, or notable
 examples — and ignore fluff (intros, sponsor reads, banter, repetition, vague motivation).
@@ -164,7 +170,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
                       "importance": int(f.get("importance") or 0)})
     prov = {"model": _last_model.get("model"), "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
-            "facts_revision": db.facts_revision(project_id)}
+            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id)}
     n = db.replace_suggestions(project_id, source_id, notes, provenance=prov)
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None

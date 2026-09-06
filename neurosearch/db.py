@@ -210,6 +210,7 @@ CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
 CREATE TABLE IF NOT EXISTS project_source_analysis (
     project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    analysis_kind   TEXT NOT NULL,      -- relevance | summary   (one artifact per AI task, each with its own provenance)
     summary         TEXT,
     substance       INTEGER,
     relevance       INTEGER,
@@ -218,12 +219,14 @@ CREATE TABLE IF NOT EXISTS project_source_analysis (
     provider        TEXT,
     prompt_version  TEXT,
     schema_version  TEXT,
+    input_hash      TEXT,               -- hash of the exact inputs this task saw (what staleness compares)
     source_revision TEXT,
     brief_revision  TEXT,
     facts_revision  TEXT,
+    status          TEXT NOT NULL DEFAULT 'current',   -- current | legacy_unverified
     created_at      REAL NOT NULL,
     updated_at      REAL NOT NULL,
-    PRIMARY KEY (project_id, source_id)
+    PRIMARY KEY (project_id, source_id, analysis_kind)
 );
 
 CREATE TABLE IF NOT EXISTS validation_events (
@@ -314,11 +317,39 @@ MIGRATIONS = [
     ("discoveries", "model", "ALTER TABLE discoveries ADD COLUMN model TEXT"),
     ("discoveries", "prompt_version", "ALTER TABLE discoveries ADD COLUMN prompt_version TEXT"),
     ("discoveries", "brief_revision", "ALTER TABLE discoveries ADD COLUMN brief_revision TEXT"),
+    ("project_notes", "input_hash", "ALTER TABLE project_notes ADD COLUMN input_hash TEXT"),
+    ("jobs", "blocked_by", "ALTER TABLE jobs ADD COLUMN blocked_by TEXT"),
 ]
+
+
+def _rekey_source_analysis(conn: sqlite3.Connection) -> None:
+    """0.16.0 keyed project_source_analysis by (project, source) with ONE provenance set for two different AI tasks.
+    0.16.1 keys it by (project, source, analysis_kind). Rebuild the table once, splitting old rows into their kinds."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(project_source_analysis)").fetchall()}
+    if not cols or "analysis_kind" in cols:
+        return
+    conn.execute("ALTER TABLE project_source_analysis RENAME TO project_source_analysis_v0")
+    conn.executescript(SCHEMA)
+    for r in conn.execute("SELECT * FROM project_source_analysis_v0").fetchall():
+        d = dict(r)
+        status = "legacy_unverified" if d.get("provider") == "migrated" else "current"
+        base = (d["project_id"], d["source_id"], d.get("model"), d.get("provider"), d.get("prompt_version"), d.get("schema_version"),
+                d.get("source_revision"), d.get("brief_revision"), d.get("facts_revision"), status, d["created_at"], d["updated_at"])
+        if d.get("relevance") is not None or d.get("relevance_why"):
+            conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, analysis_kind, relevance, relevance_why, model, provider,
+                            prompt_version, schema_version, source_revision, brief_revision, facts_revision, status, created_at, updated_at)
+                            VALUES (?,?,'relevance',?,?,?,?,?,?,?,?,?,?,?,?)""", (base[0], base[1], d["relevance"], d.get("relevance_why"), *base[2:]))
+        if d.get("summary") is not None or d.get("substance") is not None:
+            conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, analysis_kind, summary, substance, model, provider,
+                            prompt_version, schema_version, source_revision, brief_revision, facts_revision, status, created_at, updated_at)
+                            VALUES (?,?,'summary',?,?,?,?,?,?,?,?,?,?,?,?)""", (base[0], base[1], d["summary"], d.get("substance"), *base[2:]))
+    conn.execute("DROP TABLE project_source_analysis_v0")
+    conn.commit()
 
 
 def init_db() -> None:
     conn = connect()
+    _rekey_source_analysis(conn)
     conn.executescript(SCHEMA)
     for table, col, sql in MIGRATIONS:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
@@ -342,8 +373,13 @@ def _migrate_source_analysis(conn: sqlite3.Connection) -> None:
         pids |= {r["project_id"] for r in conn.execute(
             "SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id WHERE sc.source_id=?", (s["id"],)).fetchall()}
         for pid in pids:
-            conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, summary, substance, relevance, relevance_why, provider, created_at, updated_at)
-                            VALUES (?,?,?,?,?,?,'migrated',?,?)""", (pid, s["id"], s["summary"], s["substance"], s["relevance"], s["relevance_why"], t, t))
+            # preserved, but NOT current: the old global value may have been written against another project's brief
+            if s["summary"] is not None or s["substance"] is not None:
+                conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, analysis_kind, summary, substance, provider, status, created_at, updated_at)
+                                VALUES (?,?,'summary',?,?,'migrated','legacy_unverified',?,?)""", (pid, s["id"], s["summary"], s["substance"], t, t))
+            if s["relevance"] is not None:
+                conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, analysis_kind, relevance, relevance_why, provider, status, created_at, updated_at)
+                                VALUES (?,?,'relevance',?,?,'migrated','legacy_unverified',?,?)""", (pid, s["id"], s["relevance"], s["relevance_why"], t, t))
             n += 1
     conn.execute("INSERT INTO kv (key, value) VALUES ('migrated:project_source_analysis','1') ON CONFLICT(key) DO UPDATE SET value='1'")
     conn.commit()
@@ -395,7 +431,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     d = dict(row)
-    for k in ("tags", "payload", "result", "citations", "questions", "meta"):
+    for k in ("tags", "payload", "result", "citations", "questions", "meta", "blocked_by"):
         if k in d and isinstance(d[k], str):
             try:
                 d[k] = json.loads(d[k])
@@ -728,14 +764,36 @@ def list_collections() -> list[dict[str, Any]]:
 
 # ------------------------------------------------------------------ jobs
 
-def create_job(kind: str, payload: dict) -> dict[str, Any]:
+def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None) -> dict[str, Any]:
+    """blocked_by: job ids that must finish (status done) before this one can be claimed. If any of them fails or is
+    cancelled, this job fails too ("upstream failed") rather than running against stale inputs."""
     jid = new_id()
     with tx() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at) VALUES (?,?,?,?)",
-            (jid, kind, json.dumps(payload), now()),
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message) VALUES (?,?,?,?,?,?)",
+            (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
+             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None),
         )
     return get_job(jid)  # type: ignore[return-value]
+
+
+def _deps_state(conn: sqlite3.Connection, blocked_by: str | None) -> str:
+    """'ready' | 'waiting' | 'failed:<job id>' for a job's dependency list."""
+    try:
+        deps = json.loads(blocked_by) if blocked_by else []
+    except ValueError:
+        deps = []
+    if not deps:
+        return "ready"
+    marks = ",".join("?" for _ in deps)
+    rows = {r["id"]: r["status"] for r in conn.execute(f"SELECT id, status FROM jobs WHERE id IN ({marks})", deps).fetchall()}
+    for d in deps:
+        st = rows.get(d, "missing")
+        if st in ("failed", "cancelled", "missing"):
+            return f"failed:{d}"
+        if st != "done":
+            return "waiting"
+    return "ready"
 
 
 def get_job(job_id: str) -> dict[str, Any] | None:
@@ -758,12 +816,20 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
 def claim_job(kinds: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """Atomically claim the oldest queued job (optionally only of some kinds)."""
     with tx() as conn:
-        q = "SELECT id FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
+        q = "SELECT id, blocked_by FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
         args: list[Any] = [now()]
         if kinds:
             q += f" AND kind IN ({','.join('?' for _ in kinds)})"
             args += list(kinds)
-        row = conn.execute(q + " ORDER BY created_at LIMIT 1", args).fetchone()
+        row = None
+        for cand in conn.execute(q + " ORDER BY created_at LIMIT 50", args).fetchall():
+            st = _deps_state(conn, cand["blocked_by"] if "blocked_by" in cand.keys() else None)
+            if st == "ready":
+                row = cand
+                break
+            if st.startswith("failed:"):
+                conn.execute("UPDATE jobs SET status='failed', finished_at=?, message=? WHERE id=? AND status='queued'",
+                             (now(), f"error: not run — upstream job {st[7:15]} failed or was cancelled, so its inputs are not current", cand["id"]))
         if not row:
             return None
         cur = conn.execute(
@@ -823,7 +889,7 @@ def proposed_sources(collection_id: str, project_id: str | None = None) -> list[
     for r in connect().execute(
             """SELECT s.*, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why
                FROM sources s JOIN source_collections sc ON sc.source_id=s.id
-               LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=?
+               LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=? AND a.analysis_kind='relevance'
                WHERE sc.collection_id=? AND s.status='proposed'
                ORDER BY (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
         d = row_to_dict(r)
@@ -841,29 +907,43 @@ def set_relevance(source_id: str, score: int | None, why: str | None, project_id
     """Relevance of a source TO A PROJECT (there is no such thing as relevance in general)."""
     if project_id is None:
         return
-    upsert_analysis(project_id, source_id, relevance=score, relevance_why=why, **prov)
+    upsert_analysis(project_id, source_id, "relevance", relevance=score, relevance_why=why, **prov)
 
 
-def upsert_analysis(project_id: str, source_id: str, **fields: Any) -> None:
-    """Write project-relative analysis (summary/substance/relevance) with its provenance. Only given fields change."""
+ANALYSIS_KINDS = ("relevance", "summary")
+
+
+def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **fields: Any) -> None:
+    """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
+    assert analysis_kind in ANALYSIS_KINDS, analysis_kind
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "source_revision", "brief_revision", "facts_revision"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status"}
     f = {k: v for k, v in fields.items() if k in allowed}
+    f.setdefault("status", "current")
     t = now()
     with tx() as conn:
-        conn.execute("INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, created_at, updated_at) VALUES (?,?,?,?)", (project_id, source_id, t, t))
-        if f:
-            sets = ", ".join(f"{k}=?" for k in f) + ", updated_at=?"
-            conn.execute(f"UPDATE project_source_analysis SET {sets} WHERE project_id=? AND source_id=?", (*f.values(), t, project_id, source_id))
+        conn.execute("INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, analysis_kind, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (project_id, source_id, analysis_kind, t, t))
+        sets = ", ".join(f"{k}=?" for k in f) + ", updated_at=?"
+        conn.execute(f"UPDATE project_source_analysis SET {sets} WHERE project_id=? AND source_id=? AND analysis_kind=?", (*f.values(), t, project_id, source_id, analysis_kind))
 
 
-def project_analysis(project_id: str) -> dict[str, dict[str, Any]]:
-    """source_id → analysis row for a project."""
-    return {r["source_id"]: dict(r) for r in connect().execute("SELECT * FROM project_source_analysis WHERE project_id=?", (project_id,)).fetchall()}
+def project_analysis(project_id: str, kind: str = "summary") -> dict[str, dict[str, Any]]:
+    """source_id → analysis row of one kind for a project."""
+    return {r["source_id"]: dict(r) for r in connect().execute(
+        "SELECT * FROM project_source_analysis WHERE project_id=? AND analysis_kind=?", (project_id, kind)).fetchall()}
 
 
-def get_analysis(project_id: str, source_id: str) -> dict[str, Any] | None:
-    row = connect().execute("SELECT * FROM project_source_analysis WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone()
+def project_analyses(project_id: str) -> dict[str, dict[str, dict[str, Any]]]:
+    """source_id → {kind → row}; what the source card combines."""
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for r in connect().execute("SELECT * FROM project_source_analysis WHERE project_id=?", (project_id,)).fetchall():
+        out.setdefault(r["source_id"], {})[r["analysis_kind"]] = dict(r)
+    return out
+
+
+def get_analysis(project_id: str, source_id: str, kind: str = "summary") -> dict[str, Any] | None:
+    row = connect().execute("SELECT * FROM project_source_analysis WHERE project_id=? AND source_id=? AND analysis_kind=?", (project_id, source_id, kind)).fetchone()
     return dict(row) if row else None
 
 
@@ -1321,9 +1401,9 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
         conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
         t = now()
         conn.executemany(
-            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title"),
-              prov.get("model"), prov.get("prompt_version"), srev, brev) for n in notes])
+              prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash")) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
@@ -1436,7 +1516,7 @@ def set_source_summary(source_id: str, summary: str | None, substance: int | Non
     """A summary/substance score is written against a project's brief, so it belongs to (project, source)."""
     if project_id is None:
         return
-    upsert_analysis(project_id, source_id, summary=summary, substance=substance, **prov)
+    upsert_analysis(project_id, source_id, "summary", summary=summary, substance=substance, **prov)
 
 
 def delete_project_note(note_id: int) -> None:

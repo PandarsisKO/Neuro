@@ -30,7 +30,7 @@ SAMPLE = {   # meaningful values by column name; anything else gets a type defau
     "channel_url": None, "error": None, "embedding": None, "item_key": "first_steps.0", "status_note": None, "section": "s",
     "previous": "p", "proposed": "q", "reason": "r", "gist": "g", "why": "w", "angle": "a", "fit": 4, "depth": "beginner",
     "context": None, "mode": "research", "goal": None, "audience": None, "output_pref": None, "source_prefs": None, "questions": "[]",
-    "summary": None, "substance": None, "suggested_at": None, "not_before": None, "relevance": None, "relevance_why": None, "view_count": None,
+    "summary": "legacy summary written for some brief", "substance": 40, "suggested_at": None, "not_before": None, "relevance": 66, "relevance_why": "on topic", "view_count": None,
     "origin": "user", "verified": 0, "note": "", "refine": None, "start_with": "[]", "version": 1, "cache_read": 0, "cache_write": 0, "saved": 0.0,
 }
 IDS = {"sources": "SRC1", "projects": "PRJ1", "conversations": "CONV1", "collections": "COL1", "plans": "PLAN1", "project_notes": "N1",

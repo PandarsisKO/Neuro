@@ -487,12 +487,15 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         analysing = db.sources_being_analysed(project_id)
         live = db.live_job_by_source()
         analysed_ids = db.analysed_sources(project_id)
-        analysis = db.project_analysis(project_id)
+        analyses = db.project_analyses(project_id)
+        prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at")
         for r in rows:
-            a = analysis.get(r["id"]) or {}
-            for k in ("summary", "substance", "relevance", "relevance_why"):
-                r[k] = a.get(k)                       # project-relative: what THIS project's brief made of the source
-            r["analysis"] = {k: a.get(k) for k in ("model", "provider", "prompt_version", "source_revision", "brief_revision", "updated_at")} if a else None
+            kinds = analyses.get(r["id"]) or {}
+            sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
+            r["summary"], r["substance"] = sm.get("summary"), sm.get("substance")            # project-relative: what THIS brief made of the source
+            r["relevance"], r["relevance_why"] = rv.get("relevance"), rv.get("relevance_why")
+            r["analysis"] = {k: {pk: v.get(pk) for pk in prov_keys} for k, v in kinds.items()} or None   # per task, each with its own provenance
+            r["legacy_analysis"] = any(v.get("status") == "legacy_unverified" for v in kinds.values())
             c = counts.get(r["id"], {})
             r["suggested"] = c.get("suggested", 0)
             r["approved"] = c.get("approved", 0)

@@ -15,27 +15,44 @@ from typing import Any
 from . import db
 from .config import settings
 
-CURRENT, STALE, REBUILDING, MISSING, SUPERSEDED = "current", "stale", "rebuilding", "missing", "superseded"
+CURRENT, STALE, REBUILDING, MISSING, SUPERSEDED, LEGACY = "current", "stale", "rebuilding", "missing", "superseded", "legacy_unverified"
 
 
-def _live_jobs(project_id: str) -> list[dict[str, Any]]:
-    return [j for j in db.list_jobs(500) if j["status"] in ("queued", "running")
-            and (j.get("payload") or {}).get("project_id") == project_id]
+def _project_jobs(project_id: str) -> list[dict[str, Any]]:
+    return [j for j in db.list_jobs(2000) if (j.get("payload") or {}).get("project_id") == project_id]
+
+
+def _job_note(j: dict[str, Any]) -> str:
+    """Rebuilding · waiting for budget / running / queued — derived from the real job row."""
+    msg = j.get("message") or ""
+    if msg.startswith("paused:"):
+        return "waiting for budget" if "budget" in msg else "paused: " + msg[7:60].strip()
+    return j["status"]
 
 
 def assess(project_id: str) -> dict[str, Any]:
     """Which artifacts are stale, why, and what a rebuild would cost."""
-    from . import usage
+    from . import findings, usage
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
     cur = db.project_revisions(project_id)
-    live = _live_jobs(project_id)
+    pjobs = _project_jobs(project_id)
+    live = [j for j in pjobs if j["status"] in ("queued", "running")]
     rate = usage.observed_rate_per_minute()
 
-    # ---- findings / source analysis, per source
-    analysis = db.project_analysis(project_id)
-    rebuilding_sources = {sid for j in live if j["kind"] == "suggest_findings" for sid in ((j.get("payload") or {}).get("source_ids") or [])}
+    # ---- findings / source analysis, per source (the 'summary' artifact + its findings share the same task inputs)
+    analysis = db.project_analysis(project_id, "summary")
+    live_by_source: dict[str, dict[str, Any]] = {}
+    last_failed: dict[str, dict[str, Any]] = {}
+    for j in sorted(pjobs, key=lambda j: j["created_at"]):
+        if j["kind"] != "suggest_findings":
+            continue
+        for sid in (j.get("payload") or {}).get("source_ids") or []:
+            if j["status"] in ("queued", "running"):
+                live_by_source[sid] = j
+            elif j["status"] == "failed":
+                last_failed[sid] = j
     sources: list[dict[str, Any]] = []
     stale_findings_cost = 0.0
     all_srcs = {s["id"]: s for s in db.list_sources(limit=100000)}
@@ -45,39 +62,63 @@ def assess(project_id: str) -> dict[str, Any]:
             continue
         a = analysis.get(sid)
         reasons: list[str] = []
-        if sid in rebuilding_sources:
+        note = None
+        if sid in live_by_source:
             status = REBUILDING
-        elif not a or not a.get("brief_revision"):
-            status = MISSING if not a else STALE
-            if a:
-                reasons.append("analysed before revisions were recorded")
-        else:
+            note = _job_note(live_by_source[sid])
+        elif not a:
+            status = MISSING
+        elif a.get("status") == LEGACY:
+            status = LEGACY
+            reasons.append("preserved from Neuro Search 0.15 — its original project context cannot be verified")
+        elif a.get("input_hash"):
+            # exact-input comparison: transcript + steering + prompt, as the task saw them
+            if a["input_hash"] != findings.input_hash(project, sid):
+                srev = s.get("revision") or db.source_revision(sid)
+                if a.get("brief_revision") != cur["brief_revision"]:
+                    reasons.append("brief changed")
+                if a.get("source_revision") and srev and a["source_revision"] != srev:
+                    reasons.append("transcript changed")
+                if a.get("prompt_version") != findings.prompt_version():
+                    reasons.append("analysis prompt changed")
+                reasons = reasons or ["inputs changed"]
+            status = STALE if reasons else CURRENT
+        elif not a.get("brief_revision"):
+            status = STALE
+            reasons.append("analysed before revisions were recorded")
+        else:                                                       # 0.16.0 rows: revisions only
             srev = s.get("revision") or db.source_revision(sid)
             if a.get("brief_revision") != cur["brief_revision"]:
                 reasons.append("brief changed")
             if a.get("source_revision") and srev and a["source_revision"] != srev:
                 reasons.append("transcript changed")
             status = STALE if reasons else CURRENT
+        if status == STALE and sid in last_failed and last_failed[sid]["created_at"] > (a or {}).get("updated_at", 0):
+            reasons.append("last rebuild failed: " + (last_failed[sid].get("message") or "")[:120])
         est = 0.0
-        if status in (STALE, MISSING):
+        if status in (STALE, MISSING, LEGACY):
             if s.get("duration"):
                 est = usage.estimate_video(s["duration"], rate)["analyse"]
             else:
                 chars = db.connect().execute("SELECT COALESCE(SUM(LENGTH(text)),0) FROM segments WHERE source_id=?", (sid,)).fetchone()[0]
                 est = usage.estimate_findings(int(chars))
-            if status == STALE:
+            if status in (STALE, LEGACY):
                 stale_findings_cost += est
-        sources.append({"source_id": sid, "title": s.get("title"), "status": status, "reasons": reasons, "estimate": round(est, 4),
-                        "analysed_at": (a or {}).get("updated_at"), "model": (a or {}).get("model")})
-    stale_sources = [x for x in sources if x["status"] == STALE]
+        sources.append({"source_id": sid, "title": s.get("title"), "status": status, "note": note, "reasons": reasons, "estimate": round(est, 4),
+                        "analysed_at": (a or {}).get("updated_at"), "model": (a or {}).get("model"), "provider": (a or {}).get("provider")})
+    stale_sources = [x for x in sources if x["status"] in (STALE, LEGACY)]
 
     # ---- plan
     plan = db.latest_plan(project_id)
     plan_info: dict[str, Any] = {"status": MISSING, "reasons": [], "estimate": 0.0}
     if plan:
         reasons = []
-        if any(j["kind"] == "build_plan" for j in live):
+        plan_jobs = [j for j in live if j["kind"] == "build_plan"]
+        if plan_jobs:
             plan_info["status"] = REBUILDING
+            j = plan_jobs[0]
+            plan_info["note"] = "waiting for research to finish re-analysing" if j.get("blocked_by") and j["status"] == "queued" and any(
+                d in {x["id"] for x in live} for d in (j["blocked_by"] or [])) else _job_note(j)
         else:
             if not plan.get("brief_revision"):
                 reasons.append("built before revisions were recorded")
@@ -90,6 +131,9 @@ def assess(project_id: str) -> dict[str, Any]:
                     n_new = sum(1 for sid in db.project_source_ids(project_id) if (all_srcs.get(sid) or {}).get("updated_at", 0) > plan["created_at"])
                     reasons.append(f"{n_new} source{'s' if n_new != 1 else ''} added or changed since" if n_new else "sources changed")
             plan_info["status"] = STALE if reasons else CURRENT
+            failed = [j for j in pjobs if j["kind"] == "build_plan" and j["status"] == "failed" and j["created_at"] > plan["created_at"]]
+            if reasons and failed:
+                reasons.append("last rebuild failed: " + (failed[-1].get("message") or "")[:120])
         plan_info.update({"reasons": reasons, "version": plan["version"], "plan_id": plan["id"], "built_at": plan["created_at"], "model": plan.get("model")})
         if plan_info["status"] == STALE:
             plan_info["estimate"] = round(_plan_estimate(project_id), 4)
@@ -105,13 +149,18 @@ def assess(project_id: str) -> dict[str, Any]:
     total = round(stale_findings_cost + plan_info["estimate"], 4)
     daily_left = max(0.0, t["daily_budget"] - t["today"]) if t["daily_budget"] > 0 else None
     return {"project_id": project_id, "revisions": cur, "plan": plan_info, "sources": sources, "discoveries": disc_info,
-            "stale_sources": len(stale_sources), "missing_sources": sum(1 for x in sources if x["status"] == MISSING),
+            "stale_sources": len(stale_sources), "legacy_sources": sum(1 for x in sources if x["status"] == LEGACY),
+            "missing_sources": sum(1 for x in sources if x["status"] == MISSING),
             "rebuilding": sum(1 for x in sources if x["status"] == REBUILDING) + (plan_info["status"] == REBUILDING),
             "estimate": {"findings": round(stale_findings_cost, 4), "plan": plan_info["estimate"], "total": total,
                          "basis": "your usage so far" if rate is not None else "list prices"},
             "budget": {"daily_remaining": None if daily_left is None else round(daily_left, 2), "daily": t["daily_budget"], "paused": t["paused"],
                        "fits": daily_left is None or total <= daily_left},
             "anything_stale": bool(stale_sources) or plan_info["status"] == STALE}
+
+
+def live_findings_jobs(project_id: str) -> list[dict[str, Any]]:
+    return [j for j in _project_jobs(project_id) if j["kind"] == "suggest_findings" and j["status"] in ("queued", "running")]
 
 
 def _plan_estimate(project_id: str) -> float:
@@ -131,9 +180,12 @@ def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str
     a = assess(project_id)
     jobs: list[dict[str, Any]] = []
     if "findings" in what:
-        targets = [x["source_id"] for x in a["sources"] if x["status"] == STALE and (not source_ids or x["source_id"] in source_ids)]
+        targets = [x["source_id"] for x in a["sources"] if x["status"] in (STALE, LEGACY) and (not source_ids or x["source_id"] in source_ids)]
         for sid in targets:                                           # one job per source: independent, resumable, individually current
             jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}))
     if "plan" in what and a["plan"]["status"] == STALE:
-        jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"}))
+        # dependency barrier: the plan must not be built until the research it depends on is current again. If a
+        # findings job fails, the plan job fails with it instead of quietly planning over stale evidence.
+        upstream = [j["id"] for j in jobs] + [j["id"] for j in live_findings_jobs(project_id)]
+        jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"}, blocked_by=upstream or None))
     return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"]}

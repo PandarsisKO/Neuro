@@ -128,7 +128,7 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
         label = (first["title"] + " @ " + first["timestamp"]) if first else "pinned finding"
         add("F", label, n["content"][:1200], first["link"] if first else None, source_id=(first or {}).get("source_id") or n.get("source_id"))
     sids = db.project_source_ids(project_id)
-    analysis = db.project_analysis(project_id)                    # summaries/substance are project-relative
+    analysis = db.project_analysis(project_id, "summary")         # summaries/substance are project-relative
     srcs = [s for s in db.list_sources(limit=100000) if s["id"] in set(sids)]
     srcs.sort(key=lambda s: -((analysis.get(s["id"]) or {}).get("substance") or 0))   # most substantive first; big projects get capped
     for s in srcs[:80]:

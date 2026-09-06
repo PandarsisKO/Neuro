@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.16.0';
+const UI_VERSION = '0.16.1';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -828,7 +828,7 @@ async function loadSources() {
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
-      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
+      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
@@ -1050,17 +1050,23 @@ function renderStaleCard(elId, what) {
   const money = v => '$' + (+v).toFixed(2);
   let h = '';
   if (what === 'findings') {
-    const stale = s.sources.filter(x => x.status === 'stale'), reb = s.sources.filter(x => x.status === 'rebuilding');
-    if (!stale.length && !reb.length) { el.innerHTML = ''; return; }
+    const stale = s.sources.filter(x => x.status === 'stale'), legacy = s.sources.filter(x => x.status === 'legacy_unverified'), reb = s.sources.filter(x => x.status === 'rebuilding');
+    if (!stale.length && !legacy.length && !reb.length) { el.innerHTML = ''; return; }
     const why = [...new Set(stale.flatMap(x => x.reasons))].join(', ');
-    h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${stale.length ? `${stale.length} source${stale.length === 1 ? '' : 's'} analysed against an older brief` : ''}${reb.length ? `${stale.length ? ' · ' : ''}${reb.length} re-analysing…` : ''}</b>
+    const rebNote = [...new Set(reb.map(x => x.note).filter(Boolean))].join(', ');
+    const parts = [];
+    if (stale.length) parts.push(`${stale.length} source${stale.length === 1 ? '' : 's'} analysed against older inputs`);
+    if (legacy.length) parts.push(`${legacy.length} legacy analys${legacy.length === 1 ? 'is' : 'es'} (preserved from 0.15 — original project context cannot be verified)`);
+    if (reb.length) parts.push(`${reb.length} re-analysing${rebNote ? ' · ' + esc(rebNote) : '…'}`);
+    stale.push(...legacy);
+    h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${parts.join(' · ')}</b>
       <div class="muted">${why ? `Why: ${esc(why)}. ` : ''}Their findings are still readable and usable — they just may not reflect what the project is about now. Nothing is re-run unless you ask.</div>
       ${stale.length ? `<div class="row" style="margin-top:8px"><span class="muted">Re-analyse: est. <b>${money(s.estimate.findings)}</b> (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
         <button class="small primary" onclick="rebuildStale(['findings'])">Re-analyse ${stale.length} stale</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
   } else {
     const p = s.plan;
     if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
-    if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt…</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
+    if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
     else h = `<div class="card" style="border-color:var(--warn)"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
       <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
       <div class="row" style="margin-top:8px"><span class="muted">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>

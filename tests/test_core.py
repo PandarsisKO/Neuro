@@ -250,8 +250,9 @@ def test_suggested_findings(client, monkeypatch):
     assert all(quote_in_text(n["citations"][0]["snippet"], " ".join(x["text"] for x in db.get_segments(r["source_id"]))) for n in pj["suggested"])
     # summary/substance are project-relative: they live on the project's listing, not the global source row
     src = [x for x in client.get(f"/api/sources?project_id={p['id']}", headers=H).json() if x["id"] == r["source_id"]][0]
-    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers") and src["analysis"]["prompt_version"].startswith("findings-")
-    assert src["analysis"]["source_revision"] and src["analysis"]["brief_revision"]
+    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers") and src["analysis"]["summary"]["prompt_version"].startswith("findings-")
+    assert src["analysis"]["summary"]["source_revision"] and src["analysis"]["summary"]["brief_revision"] and src["analysis"]["summary"]["input_hash"]
+    assert "relevance" not in src["analysis"] and not src["legacy_analysis"]           # never ranked: no relevance artifact, and nothing pretends otherwise
     assert client.get(f"/api/sources/{r['source_id']}", headers=H).json()["analyses"][0]["project_id"] == p["id"]
     # approve one, dismiss one -> only approved counts for exports/planner
     client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})
@@ -829,7 +830,7 @@ def test_backup_is_verified_and_health_reports_it(client):
         db.verify_database(bad)
 
 
-@pytest.mark.parametrize("version", ["0.1.0", "0.12.0", "0.13.0", "0.14.0"])
+@pytest.mark.parametrize("version", ["0.1.0", "0.12.0", "0.13.0", "0.14.0", "0.16.0"])
 def test_migrates_old_databases_without_losing_rows(version, tmp_path, monkeypatch):
     """Fixture databases were created by those versions' own schemas (tests/fixtures/db/build.py)."""
     import shutil, json as _json, sqlite3
@@ -848,6 +849,9 @@ def test_migrates_old_databases_without_losing_rows(version, tmp_path, monkeypat
         assert set(db.REQUIRED_TABLES) <= have
         for t, n in expected.items():
             got = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+            if t == "project_source_analysis":                        # 0.16.0 rows are split into one artifact per task
+                assert got >= n and "analysis_kind" in {r[1] for r in conn.execute("PRAGMA table_info(project_source_analysis)")}
+                continue
             assert got >= n if t == "kv" else got == n, t          # kv gains migration markers; nothing else may change
         for table, col, _sql in db.MIGRATIONS:
             assert col in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}, (table, col)
@@ -1125,3 +1129,123 @@ def test_delete_source_marks_evidence_removed(client, monkeypatch):
     # the project still answers; the deleted source is simply gone from scope
     assert sid not in db.project_source_ids(pid)
     assert "current" == __import__("neurosearch.staleness", fromlist=["assess"]).assess(pid)["plan"]["status"] or True
+
+
+# ---------------------------------------------------------------- 0.16.1 closeout
+
+def test_provenance_is_per_analysis_task(client, monkeypatch):
+    """Ranking and findings are different AI tasks: each artifact keeps its own model/prompt/input hash."""
+    from neurosearch import ingest, media, relevance, findings
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UCp", "title": "Chan", "url": url},
+        [{"id": f"pv{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=pv{i}00000000", "title": f"Video {i}", "description": "about money", "view_count": 5, "duration": 300} for i in range(2)]))
+    p = client.post("/api/projects", headers=H, json={"name": "Prov", "brief": "getting out of debt"}).json()
+    ingest.ingest_url("https://www.youtube.com/@provchan", project_id=p["id"], max_videos=2)
+    rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
+    relevance.rank_collection(rv["id"], p["id"], want=2)
+    sid = rv["proposed"][0]["id"]
+    rel = db.get_analysis(p["id"], sid, "relevance")
+    assert rel["prompt_version"].startswith("rank-") and rel["input_hash"] and rel["relevance"] is not None and rel["summary"] is None
+    # now findings run for the same (project, source) with a different task: the relevance row is untouched
+    db.upsert_source(platform="youtube", external_id=db.get_source(sid)["external_id"], status="ready")
+    db.replace_transcript(sid, [{"start": 0, "end": 5, "text": "pay off the highest interest debt first before investing anything"}], [{"start": 0, "end": 5, "text": "pay off the highest interest debt first before investing anything"}])
+    db.add_project_sources(p["id"], [sid])
+    findings.suggest_for_source(p["id"], sid)
+    sm = db.get_analysis(p["id"], sid, "summary")
+    assert sm["prompt_version"].startswith("findings-") and sm["input_hash"] != rel["input_hash"] and sm["relevance"] is None
+    assert db.get_analysis(p["id"], sid, "relevance") == rel                      # not a byte changed by the other task
+    # input hashes follow meaningful task inputs: a title change moves the ranking hash, not the findings hash;
+    # a view-count change moves neither
+    s = db.get_source(sid)
+    assert relevance.input_hash(p, {**s, "title": "renamed"}) != rel["input_hash"] and relevance.input_hash(p, {**s, "view_count": 999999}) == rel["input_hash"]
+    assert findings.input_hash(p, sid) == sm["input_hash"]
+
+
+def test_legacy_analysis_is_never_current(tmp_path, monkeypatch):
+    """A 0.15-style global summary is preserved on migration but reported LEGACY_UNVERIFIED, eligible for rebuild."""
+    import shutil, sqlite3
+    from neurosearch.config import settings
+    from neurosearch import staleness
+    src = pathlib.Path("tests/fixtures/db/neurosearch-0.14.0.db")
+    data = tmp_path / "d"; data.mkdir(); shutil.copy(src, data / "neurosearch.db")
+    c = sqlite3.connect(str(data / "neurosearch.db"))
+    c.execute("UPDATE sources SET summary='written for some other project', substance=55, relevance=77 WHERE id='SRC1'")
+    c.execute("UPDATE projects SET brief='legacy brief' WHERE id='PRJ1'"); c.commit(); c.close()
+    monkeypatch.setattr(settings, "data_dir", data); db._local.conn = None
+    try:
+        db.init_db()
+        sm, rel = db.get_analysis("PRJ1", "SRC1", "summary"), db.get_analysis("PRJ1", "SRC1", "relevance")
+        assert sm["status"] == "legacy_unverified" and sm["provider"] == "migrated" and sm["summary"].startswith("written")
+        assert rel["status"] == "legacy_unverified" and rel["relevance"] == 77
+        a = staleness.assess("PRJ1")
+        me = [x for x in a["sources"] if x["source_id"] == "SRC1"][0]
+        assert me["status"] == "legacy_unverified" and "cannot be verified" in me["reasons"][0]
+        assert a["legacy_sources"] == 1 and a["stale_sources"] == 1 and a["estimate"]["findings"] > 0     # counted as rebuildable, never current
+        r = staleness.rebuild("PRJ1", ["findings"])
+        assert r["queued"] == 1
+    finally:
+        db.connect().close(); db._local.conn = None
+
+
+def test_plan_rebuild_waits_for_research(client, monkeypatch):
+    """Dependency barrier: the plan job cannot be claimed until every findings rebuild it depends on is done, and it
+    fails (rather than planning over stale evidence) if one of them fails or is cancelled."""
+    from neurosearch import evals, findings, planner, staleness
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    real_claim = db.claim_job
+    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)      # keep the workers off; drive claims by hand below
+    g = evals.load_golden(); pid = g["project_id"]
+    for gid in ("yt01", "yt02"):
+        findings.suggest_for_source(pid, g["sources"][gid])
+    planner.build_plan(pid)
+    db.update_project(pid, brief="changed brief for the barrier test")
+    r = staleness.rebuild(pid, ["findings", "plan"])
+    plan_job = db.get_job(r["job_ids"][-1]); dep_ids = r["job_ids"][:-1]
+    assert plan_job["kind"] == "build_plan" and set(plan_job["blocked_by"]) == set(dep_ids) and plan_job["message"].startswith("waiting for")
+    assert staleness.assess(pid)["plan"]["note"] == "waiting for research to finish re-analysing"
+    # nothing claimable of kind build_plan while upstream is queued
+    assert real_claim(("build_plan",)) is None
+    # finish one dependency, fail the other → the plan job is failed at claim time, never run
+    db.update_job(dep_ids[0], status="done"); db.update_job(dep_ids[1], status="failed", message="error: boom")
+    assert real_claim(("build_plan",)) is None
+    pj = db.get_job(plan_job["id"])
+    assert pj["status"] == "failed" and "upstream job" in pj["message"]
+    a = staleness.assess(pid)
+    assert a["plan"]["status"] == "stale" and any("last rebuild failed" in x for x in a["plan"]["reasons"])
+    # happy path: all deps done → claimable
+    r2 = staleness.rebuild(pid, ["plan"])
+    assert not db.get_job(r2["job_ids"][0])["blocked_by"]                # no live findings jobs → no barrier needed
+    r3 = staleness.rebuild(pid, ["findings", "plan"])
+    for d in r3["job_ids"][:-1]:
+        db.update_job(d, status="done")
+    claimed = real_claim(("build_plan",))
+    assert claimed and claimed["id"] in (r2["job_ids"][0], r3["job_ids"][-1])
+
+
+def test_rebuilding_derives_from_job_state(client, monkeypatch):
+    """STALE → REBUILDING (queued/running, with 'waiting for budget' when parked) → CURRENT on success, back to STALE
+    with the failure noted on permanent failure, back to STALE on cancel. Never stuck REBUILDING."""
+    from neurosearch import evals, findings, staleness
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)
+    g = evals.load_golden(); pid = g["project_id"]; sid = g["sources"]["yt01"]
+    findings.suggest_for_source(pid, sid)
+    db.update_project(pid, brief="another brief")
+    st = lambda: [x for x in staleness.assess(pid)["sources"] if x["source_id"] == sid][0]  # noqa: E731
+    assert st()["status"] == "stale"
+    r = staleness.rebuild(pid, ["findings"], source_ids=[sid]); jid = r["job_ids"][0]
+    assert st()["status"] == "rebuilding" and st()["note"] == "queued"
+    db.requeue_job(jid, delay=600, message="paused: daily budget reached")
+    assert st()["status"] == "rebuilding" and st()["note"] == "waiting for budget"
+    db.update_job(jid, status="failed", message="error: model exploded")
+    s = st(); assert s["status"] == "stale" and any("last rebuild failed" in x for x in s["reasons"])
+    r = staleness.rebuild(pid, ["findings"], source_ids=[sid]); jid = r["job_ids"][0]
+    assert st()["status"] == "rebuilding"
+    assert db.cancel_queued_jobs(job_ids=[jid]) == 1
+    assert st()["status"] == "stale"
+    r = staleness.rebuild(pid, ["findings"], source_ids=[sid]); jid = r["job_ids"][0]
+    jobs.run_job(db.get_job(jid)); db.update_job(jid, status="done")
+    assert st()["status"] == "current"
