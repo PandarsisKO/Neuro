@@ -9,7 +9,7 @@ import logging
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlparse
 
 import yt_dlp
 
@@ -125,6 +125,41 @@ def enumerate_instagram(url: str, cookies_file: str, limit: int = IG_MAX) -> tup
 
 
 YT_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"}
+
+
+TRACKING_PARAMS = {"si", "feature", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid",
+                   "igsh", "igshid", "ref_src", "mc_cid", "mc_eid", "pp"}
+
+
+def canonical_url(url: str) -> str:
+    """One identity per thing (Mission A8): youtu.be/X, watch?v=X&t=30 and watch?v=X&list=… are the same video; tracking
+    parameters, fragments, default ports, trailing slashes and host case never make a new source."""
+    from urllib.parse import urlencode, urlunparse
+    url = url.strip()
+    if not re.match(r"^[a-z]+://", url, re.I):
+        url = "https://" + url
+    u = urlparse(url)
+    host = u.netloc.lower().removeprefix("www.").removeprefix("m.")
+    host = host.removesuffix(":443").removesuffix(":80")
+    path = u.path or "/"
+    qs = [(k, v) for k, v in parse_qsl(u.query, keep_blank_values=False) if k not in TRACKING_PARAMS]
+    if host in ("youtube.com", "youtu.be", "youtube-nocookie.com"):
+        m = re.search(r"(?:v=|youtu\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})", url)
+        q = dict(qs)
+        if m and not (path.startswith("/playlist") or path.startswith("/results")):
+            return f"https://www.youtube.com/watch?v={m.group(1)}"
+        if path.startswith("/playlist") and q.get("list"):
+            return f"https://www.youtube.com/playlist?list={q['list']}"
+        host = "youtube.com"
+    if host == "instagram.com":
+        m = re.search(r"/(reel|reels|p|tv)/([A-Za-z0-9_-]+)", path)
+        if m:
+            return f"https://www.instagram.com/{'reel' if m.group(1) in ('reel', 'reels') else m.group(1)}/{m.group(2)}/"
+        qs = []
+    path = re.sub(r"/index\.html?$", "/", path)
+    if len(path) > 1:
+        path = path.rstrip("/")
+    return urlunparse(("https", host, path, "", urlencode(sorted(qs)), ""))
 
 
 def classify_url(url: str) -> str:

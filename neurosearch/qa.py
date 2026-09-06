@@ -117,7 +117,8 @@ def queue_urls(urls: list[str], project_id: str | None) -> list[dict[str, Any]]:
 
     out = []
     for u in urls:
-        u = u.rstrip(".,;:!?")
+        from .media import canonical_url
+        u = canonical_url(u.rstrip(".,;:!?)"))
         j = jobs.enqueue("ingest_url", {"url": u, "tags": [], "project_id": project_id})
         out.append({"job_id": j["id"], "url": u})
     return out
@@ -156,10 +157,9 @@ def ask(
                     "actions": actions}
         question = question_wo
 
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    import anthropic
+    from . import providers
 
+    providers.require_anthropic()
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
@@ -208,7 +208,7 @@ def ask(
         if calcs:
             tools.append(_calc_tool(calcs))
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = providers.anthropic_client()
     answer_parts: list[str] = []
     web_sources: list[dict[str, str]] = []
     web_used = False
@@ -216,7 +216,8 @@ def ask(
 
     for _round in range(6):
         usage.mark_last(messages)
-        kwargs: dict[str, Any] = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages)
+        kwargs: dict[str, Any] = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages,
+                                      extra_headers={"x-neurosearch-task": "answer.chat"})
         if tools:
             kwargs["tools"] = tools
         resp = client.messages.create(**kwargs)
@@ -246,6 +247,16 @@ def ask(
 
     answer = "\n".join(p for p in answer_parts if p.strip()).strip()
 
+    # citations must point at excerpts we actually supplied; anything else is stripped and counted
+    from .evidence import check_citations, strip_citations
+    _valid, invalid = check_citations(answer + " " + " ".join(pending_findings), len(hits))
+    if invalid:
+        log.warning("answer cited excerpts that do not exist: %s", invalid)
+        answer = strip_citations(answer, invalid)
+        pending_findings = [strip_citations(f, invalid) for f in pending_findings]
+        db.kv_bump("evidence:citations_invalid", len(invalid))
+    db.kv_bump("evidence:citations_checked", len(_valid) + len(invalid))
+
     cited_nums = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", answer + " " + " ".join(pending_findings))})
     citations = []
     for n in cited_nums:
@@ -274,6 +285,7 @@ def ask(
         "conversation_id": conversation_id,
         "ingest_jobs": ingest_jobs,
         "actions": actions,
+        "invalid_citations": invalid,
     }
 
 

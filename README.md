@@ -36,6 +36,10 @@ neurosearch export --segments   # master sheet CSV with one row per timestamped 
 ./start   # or: neurosearch start (auto-restarts on updates) · neurosearch serve (plain)               # web app at http://localhost:8000
 ```
 
+Prove it works before you trust it: `neurosearch eval` runs the frozen Golden Project through the whole pipeline
+(no keys, no network — `NEUROSEARCH_FAKE_AI=1` fakes the models) and reports retrieval recall, citation and quote
+validity, tokens and cost; `neurosearch eval --live --baseline` does the same against the real models. See HARDENING.md.
+
 Ingestion runs in the background: playlists and channels fan out into one job per video, two at a time.
 Already-ingested videos are skipped, so re-running a channel just picks up the new uploads.
 

@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any
 
-from . import db, ingest
+from . import db, logctx, ingest
 from .config import settings
 from .embeddings import embed_pending
 
@@ -35,6 +35,8 @@ def enqueue(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
 def run_job(job: dict[str, Any]) -> dict[str, Any]:
     jid = job["id"]
     payload = job["payload"] or {}
+    logctx.set_fields(job_id=jid, run_id=int(payload.get("_attempts") or 0) + 1, project_id=payload.get("project_id"),
+                      source_id=payload.get("source_id"), task=job["kind"])
 
     def progress(p: float | None, m: str) -> None:
         db.update_job(jid, progress=p, message=m)
@@ -93,9 +95,12 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None) -> None:
         if not job:
             _stop.wait(1.5)
             continue
+        logctx.clear()
+        t0 = time.time()
         try:
             result = run_job(job)
             db.update_job(job["id"], status="done", progress=1.0, message="done", result=result)
+            log.info("job done in %.1fs", time.time() - t0)
         except Exception as e:  # noqa: BLE001
             from .media import RateLimited, rate_limit_status
             from .usage import BudgetPaused
@@ -154,8 +159,11 @@ def _backup_loop(every: float = 3600.0) -> None:
     hour from recoverable. Snapshots: <data>/backups/."""
     while not _stop.is_set():
         try:
+            chk = db.integrity_check()
+            if not chk["ok"]:
+                log.error("DATABASE INTEGRITY CHECK FAILED: %s", chk)
             p = db.backup()
-            log.info("database snapshot: %s", p.name)
+            log.info("database snapshot verified: %s", p.name)
         except Exception as e:  # noqa: BLE001
             log.warning("backup failed: %s", e)
         _stop.wait(every)
@@ -179,7 +187,8 @@ def wait_for_idle(poll: float = 1.0) -> None:
 
 def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
     """After a source becomes ready: queue finding suggestions for each project it belongs to (if enabled)."""
-    if not settings.auto_suggest or not settings.anthropic_api_key:
+    from . import providers
+    if not settings.auto_suggest or not providers.anthropic_available():
         return
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:

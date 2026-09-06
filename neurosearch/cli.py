@@ -18,6 +18,8 @@ app.add_typer(project_app, name="project")
 
 
 def _init() -> None:
+    from .logctx import configure
+    configure()
     db.init_db()
 
 
@@ -177,6 +179,47 @@ def cancel(kind: Optional[str] = typer.Option(None, help="only this job kind, e.
     typer.echo(f"cancelled {n} queued job(s)")
 
 
+@app.command("eval")
+def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models (costs money) instead of the deterministic fakes"),
+             baseline: bool = typer.Option(False, help="Freeze this run's numbers as evals/baseline-<model>.json"),
+             compare: Optional[Path] = typer.Option(None, help="Baseline JSON to diff against"),
+             out: Optional[Path] = typer.Option(None, help="Write the full report JSON here"),
+             keep: bool = typer.Option(False, help="Keep the temporary database (path is printed)")) -> None:
+    """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates)."""
+    import shutil
+    import tempfile
+
+    from . import evals
+    from .config import settings
+
+    tmp = Path(tempfile.mkdtemp(prefix="ns_eval_"))
+    settings.data_dir = tmp                      # never touch the real database
+    settings.fake_ai = not live
+    if live and not settings.anthropic_api_key:
+        raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
+    db.init_db()
+    rep = evals.run(live=live, progress=lambda m: typer.echo("  · " + m))
+    typer.echo("")
+    typer.echo(evals.format_report(rep))
+    if compare:
+        base = json.loads(compare.read_text())
+        typer.echo("\nVS BASELINE " + str(compare))
+        for line in evals.compare(rep, base) or ["  no differences"]:
+            typer.echo("  " + line)
+    if baseline:
+        d = Path("evals"); d.mkdir(exist_ok=True)
+        f = d / f"baseline-{rep['model'].replace('/', '_')}.json"
+        f.write_text(json.dumps(rep, indent=1))
+        typer.echo(f"\nbaseline written → {f}")
+    if out:
+        out.write_text(json.dumps(rep, indent=1))
+    if keep:
+        typer.echo(f"database kept at {tmp}")
+    else:
+        shutil.rmtree(tmp, ignore_errors=True)
+    raise typer.Exit(code=0 if rep["pass"] else 1)
+
+
 @app.command()
 def backup() -> None:
     """Snapshot the database now (also happens automatically on start and hourly) → data/backups/."""
@@ -189,6 +232,7 @@ def status() -> None:
     """Knowledge base stats and recent jobs."""
     _init()
     typer.echo(json.dumps(db.source_stats(), indent=1))
+    typer.echo(json.dumps(db.health(), indent=1, default=str))
     for j in db.list_jobs(10):
         typer.echo(f"{j['id'][:8]} {j['kind']:14s} {j['status']:8s} {int(j['progress']*100):3d}% {j.get('message') or ''}")
 

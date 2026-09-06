@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable
 
-from . import db, media, relevance
+from . import db, media, providers, relevance
 from .chunking import build_chunks, normalize_segments
 from .config import settings
 from .embeddings import embed_pending
@@ -43,7 +43,7 @@ def ingest_url(
 
     `since_years` / `max_videos` limit bulk pulls (default from settings; 0 = no limit).
     """
-    url = url.strip()
+    url = media.canonical_url(url)
     kind = media.classify_url(url)
     tags = tags or []
 
@@ -233,7 +233,7 @@ def extract_transcript(url: str, platform: str, progress: Progress = _noop,
     if caps:
         segments, lang = caps
         kind = "captions"
-    elif settings.allow_transcription and settings.openai_api_key:
+    elif settings.allow_transcription and providers.openai_available():
         dur = (info.get("duration") or 0) / 60
         if dur > settings.max_transcribe_minutes:
             raise RuntimeError(f"no captions and duration {dur:.0f} min exceeds transcription limit")
@@ -419,7 +419,8 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
     from .chunking import build_doc_chunks
     from .webpage import read_page
 
-    ext_id = re.sub(r"^https?://(www\.)?", "", url.strip()).rstrip("/")
+    url = media.canonical_url(url)
+    ext_id = re.sub(r"^https?://(www\.)?", "", url).rstrip("/")
     src = db.upsert_source(platform="web", external_id=ext_id, url=url, title=title, status="pending", tags=tags or [])
     if project_id:
         db.add_project_sources(project_id, [src["id"]])
@@ -540,4 +541,4 @@ def _external_id_from_url(url: str, platform: str) -> str | None:
     if platform == "instagram":
         m = re.search(r"instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)", url)
         return m.group(1) if m else url
-    return url.split("#")[0]
+    return media.canonical_url(url)

@@ -728,6 +728,15 @@ def pending_reviews(project_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def kv_bump(key: str, n: int = 1) -> None:
+    """Atomic integer counter in kv (evidence/validator stats)."""
+    if not n:
+        return
+    with tx() as conn:
+        conn.execute("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + ? AS TEXT)",
+                     (key, str(n), n))
+
+
 def kv_get(key: str) -> str | None:
     row = connect().execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
     return row["value"] if row else None
@@ -797,8 +806,32 @@ def live_job_by_source() -> dict[str, dict[str, Any]]:
     return out
 
 
+REQUIRED_TABLES = ("sources", "segments", "chunks", "projects", "project_sources", "project_notes", "project_facts",
+                   "plans", "conversations", "messages", "jobs", "usage", "kv")
+
+
+def verify_database(path: Path) -> dict[str, Any]:
+    """Open a database file read-only and prove it is a usable Neuro Search database: quick_check passes, every
+    required table exists, and the main tables can be counted. Raises RuntimeError otherwise."""
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        qc = conn.execute("PRAGMA quick_check").fetchone()[0]
+        if qc != "ok":
+            raise RuntimeError(f"quick_check: {qc}")
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        missing = [t for t in REQUIRED_TABLES if t not in have]
+        if missing:
+            raise RuntimeError(f"missing tables: {', '.join(missing)}")
+        counts = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("sources", "segments", "chunks", "projects", "project_notes", "conversations", "messages", "plans")}
+        return {"ok": True, "counts": counts, "bytes": path.stat().st_size}
+    finally:
+        conn.close()
+
+
 def backup(keep: int = 48) -> Path:
-    """Consistent online snapshot of the database (SQLite backup API — safe while the app is running).
+    """Consistent online snapshot of the database (SQLite backup API — safe while the app is running), then
+    VERIFIED: the copy is reopened and checked (see verify_database) before it counts. A copy that fails is deleted
+    and the failure raised, so "last verified backup" in the health view is never a lie.
     Files land in <data>/backups/neurosearch-YYYYmmdd-HHMM.db; the newest `keep` are retained."""
     import datetime as _dt
     d = settings.data_dir / "backups"
@@ -810,10 +843,57 @@ def backup(keep: int = 48) -> Path:
         src.backup(out)
     finally:
         out.close()
+    try:
+        info = verify_database(dest)
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        kv_set("backup:last_error", json.dumps({"ts": time.time(), "error": str(e)[:300]}))
+        raise RuntimeError(f"backup verification failed: {e}") from e
+    kv_set("backup:last_verified", json.dumps({"ts": time.time(), "path": str(dest), **info}))
     olds = sorted(d.glob("neurosearch-*.db"))
     for f in olds[:-keep]:
         f.unlink(missing_ok=True)
     return dest
+
+
+def integrity_check() -> dict[str, Any]:
+    """quick_check on the live database; result and timestamp are kept in kv for the health view."""
+    t = time.time()
+    res = connect().execute("PRAGMA quick_check").fetchone()[0]
+    fk = connect().execute("PRAGMA foreign_key_check").fetchall()
+    info = {"ts": t, "ok": res == "ok" and not fk, "result": res, "foreign_key_violations": len(fk), "seconds": round(time.time() - t, 2)}
+    kv_set("db:last_integrity", json.dumps(info))
+    return info
+
+
+def health() -> dict[str, Any]:
+    """What the health view needs: database, backups, queue, evidence validators, disk."""
+    import shutil as _sh
+
+    def _j(key: str) -> Any:
+        v = kv_get(key)
+        try:
+            return json.loads(v) if v else None
+        except ValueError:
+            return None
+
+    conn = connect()
+    q = conn.execute("SELECT status, COUNT(*) n FROM jobs GROUP BY status").fetchall()
+    jobs_by = {r["status"]: r["n"] for r in q}
+    stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND COALESCE(updated_at, created_at) < ?", (time.time() - 1800,)).fetchone()[0]
+    ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling")}
+    try:
+        du = _sh.disk_usage(str(settings.data_dir))
+        disk = {"free_gb": round(du.free / 1e9, 1), "db_mb": round(settings.db_path.stat().st_size / 1e6, 1)}
+    except OSError:
+        disk = {}
+    return {"db": {"integrity": _j("db:last_integrity"), "path": str(settings.db_path)},
+            "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
+            "jobs": {**jobs_by, "stale_running": stale},
+            "evidence": {**ev,
+                         "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
+                         "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
+            "disk": disk, "fake_ai": settings.fake_ai}
 
 
 def set_job_payload(job_id: str, payload: dict[str, Any]) -> None:

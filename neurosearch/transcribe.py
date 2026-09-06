@@ -63,13 +63,12 @@ def transcribe_file(
     progress: Callable[[float, str], None] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Transcribe an audio/video file. Returns (segments, detected_language)."""
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set; cannot transcribe audio")
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg is not installed")
-    from openai import OpenAI
+    from . import providers
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    providers.require_openai("OPENAI_API_KEY is not set; cannot transcribe audio")
+    if not shutil.which("ffmpeg") and not providers.fake():
+        raise RuntimeError("ffmpeg is not installed")
+    client = providers.openai_client()
     segments: list[dict[str, Any]] = []
     detected: str | None = None
     with tempfile.TemporaryDirectory(prefix="ns_tx_") as td:

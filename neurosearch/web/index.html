@@ -359,6 +359,11 @@
         <div class="row" style="margin-top:8px"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
         <div class="muted" id="bBreak" style="margin-top:6px"></div>
       </div>
+      <div class="card"><b>Health</b>
+        <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
+        <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><span class="muted" id="healthMsg"></span></div>
+      </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
     </div>
@@ -453,7 +458,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.14.1';
+const UI_VERSION = '0.15.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const v = r.ok ? (await r.json()).version : 'old';
@@ -580,7 +585,7 @@ function showView(v, push = true) {
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
   if (v === 'plan') loadPlan();
-  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadFun('projFun'); }
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadFun('projFun'); loadHealth(); }
   $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
@@ -891,6 +896,25 @@ async function loadBudget() {
   const kinds = Object.entries(u.month_by_kind || {}).map(([k, v]) => `${k} $${v.toFixed(2)}`).join(' · ');
   $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.month_saved >= 0.01 ? ` · prompt caching saved $${u.month_saved.toFixed(2)}` : '') + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
 }
+async function loadHealth() {
+  try {
+    const h = await api('/api/health');
+    const ago = ts => { if (!ts) return 'never'; const m = Math.round((Date.now() / 1000 - ts) / 60); return m < 1 ? 'just now' : m < 90 ? `${m} min ago` : `${(m / 60).toFixed(1)} h ago`; };
+    const ok = b => b ? '✅' : '⚠️';
+    const it = h.db.integrity, bk = h.backup.last_verified, ev = h.evidence;
+    const rows = [
+      [`${ok(it && it.ok)} Database integrity`, it ? `${it.result} · checked ${ago(it.ts)}` : 'not checked yet'],
+      [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
+      [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
+      [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
+      [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
+      [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
+      [`${h.fake_ai ? '🧪' : '✅'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
+    ];
+    $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
+  } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
+}
+async function backupNow() { $('#healthMsg').textContent = 'snapshotting…'; try { await post('/api/backup', {}); $('#healthMsg').textContent = 'verified ✓'; } catch (e) { $('#healthMsg').textContent = 'failed: ' + e.message; } loadHealth(); setTimeout(() => $('#healthMsg').textContent = '', 3000); }
 async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
 async function cancelQueued() {
   if (!confirm('Cancel everything that has not started yet? Finished videos are kept; the rest go back to the Review card so you can approve a smaller set later.')) return;

@@ -12,3 +12,7 @@ dist/
 .DS_Store
 cookies.txt
 data/backups/
+_fixture_src/
+_update.tgz
+_to_delete/
+!tests/fixtures/db/*.db

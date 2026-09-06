@@ -13,11 +13,9 @@ BATCH = 96
 
 
 def embed_texts(texts: list[str]) -> list[np.ndarray]:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set")
-    from openai import OpenAI
+    from . import providers
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = providers.openai_client()
     out: list[np.ndarray] = []
     for i in range(0, len(texts), BATCH):
         batch = [t[:8000] for t in texts[i:i + BATCH]]

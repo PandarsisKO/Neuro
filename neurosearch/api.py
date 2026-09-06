@@ -91,8 +91,11 @@ class TokenPathMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from .logctx import configure
+    configure(logging.INFO)
     db.init_db()
+    if settings.fake_ai:
+        logging.getLogger(__name__).warning("NEUROSEARCH_FAKE_AI=1 — every model call is served by the deterministic fakes")
     jobs.start_workers()
     async with mcp.session_manager.run():
         yield
@@ -440,6 +443,23 @@ def api_version() -> dict[str, str]:
 @app.get("/api/stats/fun", dependencies=[Depends(require_auth)])
 def api_fun_stats(project_id: str | None = None) -> dict[str, Any]:
     return db.fun_stats(project_id)
+
+
+@app.get("/api/health", dependencies=[Depends(require_auth)])
+def api_health() -> dict[str, Any]:
+    """Can I trust Neuro Search right now? Database integrity, verified backups, queue, validators, disk."""
+    from .media import rate_limit_status
+    h = db.health()
+    h["sites"] = rate_limit_status()
+    h["version"] = __import__("neurosearch").__version__
+    return h
+
+
+@app.post("/api/backup", dependencies=[Depends(require_auth)])
+def api_backup() -> dict[str, Any]:
+    chk = db.integrity_check()
+    p = db.backup()
+    return {"path": str(p), "integrity": chk, "verified": db.verify_database(p)}
 
 
 @app.get("/api/stats", dependencies=[Depends(require_auth)])

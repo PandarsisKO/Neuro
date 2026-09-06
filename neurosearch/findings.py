@@ -18,6 +18,7 @@ from .search import deep_link
 log = logging.getLogger(__name__)
 
 WINDOW_CHARS = 60000  # ~15k tokens of transcript per call
+TASK = {"x-neurosearch-task": "findings.extract"}
 
 SYSTEM = """You are a research analyst reading a transcript on behalf of a project. Extract the findings that matter for
 the project brief — concrete claims, numbers, techniques, recommendations, warnings, disagreements, or notable
@@ -79,18 +80,15 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     """`head` (project + source framing) is sent as a second system block ending a cached prefix, so the second and
     later windows of a long transcript, and every source analysed for the same project within a few minutes, only
     pay a tenth for those instructions."""
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    import anthropic
-    from . import usage
+    from . import providers, usage
 
     usage.guard(usage.estimate_findings(len(user)))
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = providers.anthropic_client()
     sys_blocks = [{"type": "text", "text": system}] + ([usage.cached_block(head, min_chars=len(system))] if head else [])
     if not head:
         sys_blocks = [usage.cached_block(system)]
     resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=sys_blocks,
-                                  messages=[{"role": "user", "content": user}])
+                                  messages=[{"role": "user", "content": user}], extra_headers=TASK)
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
@@ -115,6 +113,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     all_findings: list[dict[str, Any]] = []
     summaries: list[str] = []
     substances: list[int] = []
+    rejected = 0
+    from .evidence import check_finding
     for i, w in enumerate(windows):
         part = f" (part {i + 1}/{len(windows)})" if len(windows) > 1 else ""
         res = _call(SYSTEM, f"TRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id, head=head)
@@ -123,8 +123,17 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
         if isinstance(res.get("substance"), (int, float)):
             substances.append(int(res["substance"]))
         for f in res.get("findings") or []:
-            if isinstance(f, dict) and f.get("finding"):
-                all_findings.append(f)
+            if not (isinstance(f, dict) and f.get("finding")):
+                continue
+            why = check_finding(f, w)          # the quote must be in the transcript — no quote, no finding
+            if why:
+                rejected += 1
+                log.info("finding rejected (%s): %s", why, str(f.get("title") or f.get("finding"))[:80])
+                continue
+            all_findings.append(f)
+    if rejected:
+        db.kv_bump("evidence:findings_rejected", rejected)
+    db.kv_bump("evidence:findings_checked", rejected + len(all_findings))
     all_findings.sort(key=lambda f: -int(f.get("importance") or 0))
     notes = []
     for f in all_findings[:max_findings]:
@@ -144,7 +153,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     db.set_source_summary(source_id, summary, substance)
-    return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary}
+    return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
+            "rejected_quotes": rejected}
 
 
 def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None) -> dict[str, Any]:

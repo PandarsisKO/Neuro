@@ -227,21 +227,19 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     """Streamed so long plans are never cut off by request timeouts; reports progress as the text grows.
     `shared` (the research material) goes first as a cached system block: the analysis pass writes it to the
     prompt cache, the plan pass and any rebuild within a few minutes read it back at a tenth of the price."""
-    if not settings.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    import anthropic
-    from . import usage
+    from . import providers, usage
 
     usage.guard(0.5)
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=600.0, max_retries=2)
+    client = providers.anthropic_client(timeout=600.0, max_retries=2)
     sys_blocks: Any = system
     if shared:
         sys_blocks = [usage.cached_block("RESEARCH MATERIAL for the project (your instructions follow it):\n\n" + shared),
                       {"type": "text", "text": system}]
     parts: list[str] = []
     n = 0
+    task = "planner.analysis" if system is ANALYSIS_SYSTEM else "planner.update" if system is UPDATE_SYSTEM else "planner.build"
     with client.messages.stream(model=settings.answer_model, max_tokens=max_tokens, system=sys_blocks,
-                                messages=[{"role": "user", "content": user}]) as stream:
+                                messages=[{"role": "user", "content": user}], extra_headers={"x-neurosearch-task": task}) as stream:
         for text in stream.text_stream:
             parts.append(text)
             n += len(text)
@@ -297,6 +295,13 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
         progress(0.95, "saving…")
     plan["_evidence"] = emap
     plan["_generated"] = date.today().isoformat()
+    from .evidence import check_plan_evidence
+    n_refs, dangling = check_plan_evidence(plan, set(emap))
+    if dangling:
+        log.warning("plan references evidence ids that do not exist: %s", dangling[:10])
+    plan["_evidence_check"] = {"references": n_refs, "dangling": dangling}
+    db.kv_bump("evidence:plan_refs_checked", n_refs)
+    db.kv_bump("evidence:plan_refs_dangling", len(dangling))
     snapshot = db.project_snapshot(project_id)
     row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None)
     db.update_project(project_id, mode="plan")

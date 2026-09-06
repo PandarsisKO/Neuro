@@ -141,6 +141,8 @@ def _model(path: Path) -> Any:
     with _lock:
         m = _models.get(key)
         if m is None:
+            import os
+            os.environ.setdefault("TQDM_DISABLE", "1")     # the formulas package prints progress bars otherwise
             import formulas
             m = formulas.ExcelModel().loads(str(path)).finish()
             _models.clear()

@@ -4,6 +4,7 @@ Run: pytest -q
 from __future__ import annotations
 
 import os
+import pathlib
 import tempfile
 
 os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_test_")
@@ -232,7 +233,7 @@ def test_suggested_findings(client, monkeypatch):
     monkeypatch.setattr(findings.settings, "anthropic_api_key", "fake")
     monkeypatch.setattr(jobs.settings, "anthropic_api_key", "fake")
     p = client.post("/api/projects", headers=H, json={"name": "Suggest", "brief": "hosting"}).json()
-    r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free for static sites\n3:40 never touch MX records", project_id=p["id"])
+    r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks", project_id=p["id"])
     # auto-queued suggestion job runs in the background worker
     for _ in range(60):
         pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
@@ -241,16 +242,20 @@ def test_suggested_findings(client, monkeypatch):
         time.sleep(0.2)
     assert len(pj["suggested"]) == 2 and pj["notes"] == []
     top = pj["suggested"][0]
-    assert top["importance"] == 5 and top["citations"][0]["timestamp"] == "0:05" and top["status"] == "suggested"
+    assert 1 <= top["importance"] <= 5 and top["citations"][0]["timestamp"] in ("0:05", "3:40") and top["status"] == "suggested"
+    # the fake quotes real transcript text, so the evidence validator passes on it
+    from neurosearch.evidence import quote_in_text
+    assert all(quote_in_text(n["citations"][0]["snippet"], " ".join(x["text"] for x in db.get_segments(r["source_id"]))) for n in pj["suggested"])
     src = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
-    assert src["substance"] == 72 and "DNS" in src["summary"]
+    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers")
     # approve one, dismiss one -> only approved counts for exports/planner
     client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})
+    pj_dismissed_title = pj["suggested"][1]["title"]
     client.post(f"/api/notes/{pj['suggested'][1]['id']}/status", headers=H, json={"status": "dismissed"})
     pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
     assert len(pj["notes"]) == 1 and pj["suggested"] == []
     md = client.get(f"/api/projects/{p['id']}/findings.md", headers=H).text
-    assert "Cloudflare Pages: free static hosting" in md and "MX records" not in md
+    assert top["title"] in md and pj_dismissed_title not in md
     # nothing left to analyse; force re-analyses
     assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={}).json()["job"] is None
     assert client.post(f"/api/projects/{p['id']}/suggest", headers=H, json={"force": True}).json()["sources"] == 1
@@ -607,6 +612,7 @@ def test_transient_failures_retry_then_fail(client, monkeypatch):
         calls["n"] += 1
         raise RuntimeError("Instagram wants a login for this (or rate-limited the session)")
     monkeypatch.setattr(ingest, "ingest_url", boom)
+    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)      # keep the background workers' hands off this job
     j = db.create_job("ingest_url", {"url": "https://www.instagram.com/reel/x/", "project_id": None})
     jobs.run_job  # noqa
     # drive the worker loop by hand: run + handle like _worker does
@@ -750,3 +756,102 @@ def test_usage_prices_cache_tokens_and_helpers(tmp_path, monkeypatch):
     usage.mark_last(msgs)
     assert "cache_control" not in msgs[0]["content"][0]
     assert msgs[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_golden_eval_tier1_passes(client, monkeypatch):
+    """The proving ground: the whole pipeline over the frozen Golden Project with the deterministic fakes."""
+    from neurosearch import evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    rep = evals.run(progress=lambda m: None)
+    assert rep["pass"], evals.format_report(rep)
+    assert rep["quality"]["retrieval_recall_at_10"] >= 0.9 and rep["quality"]["citation_validity"] == 1.0
+    assert rep["quality"]["calculator_ok"] and rep["volume"]["input_tokens"] > 0
+    assert "answer" in rep["volume"]["by_task"] and "findings" in rep["volume"]["by_task"]
+    txt = evals.format_report(rep)
+    assert "Tier 1: PASS" in txt
+
+
+def test_quote_validator_catches_hallucinated_findings(client, monkeypatch):
+    from neurosearch import findings, evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_QUOTES", "1")
+    g = evals.load_golden()
+    res = findings.suggest_for_source(g["project_id"], g["sources"]["yt01"])
+    assert res["suggested"] == 0 and res["rejected_quotes"] > 0
+    assert int(db.kv_get("evidence:findings_rejected") or 0) >= res["rejected_quotes"]
+
+
+def test_evidence_helpers():
+    from neurosearch.evidence import quote_in_text, check_citations, strip_citations, check_plan_evidence
+    t = "So the SBA requires a minimum ten percent equity injection, and that's non-negotiable."
+    assert quote_in_text("SBA requires a minimum ten percent equity injection", t)
+    assert quote_in_text("the sba requires a minimum 10 percent equity injection".replace("10", "ten"), t)
+    assert quote_in_text("requires a minimum, um, ten percent equity injection", t)       # a filler word slips
+    assert not quote_in_text("requires a maximum of five percent equity", t)
+    assert not quote_in_text("", t)
+    assert check_citations("yes [1] and [3] but [9]", 3) == ([1, 3], [9])
+    assert strip_citations("yes [1] and [9].", [9]) == "yes [1] and."
+    n, dangling = check_plan_evidence({"goal": {"evidence": ["S1", "X9"]}, "phases": [{"evidence": ["S1"]}], "_evidence": {"S1": {}}}, {"S1"})
+    assert n == 3 and dangling == ["X9"]
+
+
+def test_canonical_url_dedupes_variants():
+    c = media.canonical_url
+    same = {c("youtu.be/ABCDEFGHIJK"), c("https://www.youtube.com/watch?v=ABCDEFGHIJK&t=32s"),
+            c("https://m.youtube.com/watch?v=ABCDEFGHIJK&list=PLxyz&si=track"), c("https://youtube.com/shorts/ABCDEFGHIJK")}
+    assert same == {"https://www.youtube.com/watch?v=ABCDEFGHIJK"}
+    assert c("https://www.youtube.com/playlist?list=PLxyz&si=a") == "https://www.youtube.com/playlist?list=PLxyz"
+    assert c("https://www.Example.com/blog/post/?utm_source=x&b=2&a=1#frag") == "https://example.com/blog/post?a=1&b=2"
+    assert c("https://www.instagram.com/reels/Cabc123/?igsh=zzz") == c("https://instagram.com/reel/Cabc123")
+    # the same page twice is one source
+    a = ingest.ingest_webpage("https://example.com/a/?utm_source=x", html="<html><title>A</title><body><p>" + "words " * 80 + "</p></body></html>")
+    b = ingest.ingest_webpage("https://www.example.com/a", html="<html><title>A</title><body><p>" + "words " * 80 + "</p></body></html>")
+    assert a["source_id"] == b["source_id"]
+
+
+def test_backup_is_verified_and_health_reports_it(client):
+    p = db.backup()
+    assert p.exists() and db.verify_database(p)["ok"]
+    h = client.get("/api/health", headers=H).json()
+    assert h["backup"]["last_verified"]["path"] == str(p) and h["backup"]["last_verified"]["counts"]["sources"] >= 1
+    chk = db.integrity_check()
+    assert chk["ok"] and client.get("/api/health", headers=H).json()["db"]["integrity"]["result"] == "ok"
+    # a corrupt copy is refused
+    bad = p.with_name("corrupt.db"); bad.write_bytes(b"not a database at all")
+    with pytest.raises(Exception):
+        db.verify_database(bad)
+
+
+@pytest.mark.parametrize("version", ["0.1.0", "0.12.0", "0.13.0", "0.14.0"])
+def test_migrates_old_databases_without_losing_rows(version, tmp_path, monkeypatch):
+    """Fixture databases were created by those versions' own schemas (tests/fixtures/db/build.py)."""
+    import shutil, json as _json, sqlite3
+    from neurosearch.config import settings
+    fx = pathlib.Path("tests/fixtures/db") / f"neurosearch-{version}.db"
+    expected = _json.loads(fx.with_suffix(".json").read_text())["tables"]
+    data = tmp_path / "data"; data.mkdir()
+    shutil.copy(fx, data / "neurosearch.db")
+    monkeypatch.setattr(settings, "data_dir", data)
+    monkeypatch.setattr(db._local, "conn", None, raising=False)
+    try:
+        db.init_db()
+        conn = db.connect()
+        assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert set(db.REQUIRED_TABLES) <= have
+        for t, n in expected.items():
+            assert conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] == n, t
+        for table, col, _sql in db.MIGRATIONS:
+            assert col in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}, (table, col)
+        # the old rows are usable through the current code paths
+        assert db.get_source("SRC1")["title"].startswith("Old video") and db.get_project("PRJ1")["name"] == "Legacy project"
+        assert db.fts_search("retention") and db.get_messages("CONV1")
+        assert db.verify_database(data / "neurosearch.db")["ok"]
+    finally:
+        try:
+            db.connect().close()
+        except Exception:
+            pass
+        db._local.conn = None

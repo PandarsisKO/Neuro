@@ -25,6 +25,7 @@ class Settings:
 
     # Models
     anthropic_api_key: str | None = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
+    fake_ai: bool = field(default_factory=lambda: (_env("NEUROSEARCH_FAKE_AI", "") or "").lower() in ("1", "true", "yes"))
     openai_api_key: str | None = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     answer_model: str = field(default_factory=lambda: _env("NEUROSEARCH_ANSWER_MODEL", "claude-sonnet-4-6"))
     embedding_model: str = field(default_factory=lambda: _env("NEUROSEARCH_EMBEDDING_MODEL", "text-embedding-3-small"))
@@ -64,7 +65,7 @@ class Settings:
 
     @property
     def embeddings_enabled(self) -> bool:
-        return bool(self.openai_api_key)
+        return self.fake_ai or bool(self.openai_api_key)
 
 
 settings = Settings()

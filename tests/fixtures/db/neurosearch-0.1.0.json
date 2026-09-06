@@ -1,0 +1,17 @@
+{
+ "version": "0.1.0",
+ "tables": {
+  "sources": 1,
+  "segments": 1,
+  "chunks": 1,
+  "collections": 1,
+  "source_collections": 1,
+  "jobs": 1,
+  "projects": 1,
+  "project_sources": 1,
+  "project_collections": 1,
+  "project_notes": 1,
+  "conversations": 1,
+  "messages": 1
+ }
+}

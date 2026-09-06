@@ -127,9 +127,10 @@ def synthesize_masterplan(project_id: str) -> str:
     p = db.get_project(project_id)
     if not p:
         raise RuntimeError("project not found")
-    if not settings.anthropic_api_key:
+    from . import providers
+
+    if not providers.anthropic_available():
         return _fallback_masterplan(p)
-    import anthropic
 
     material = ["<brief>", p.get("brief") or "(none)", "</brief>", "<findings>"]
     for n in reversed(db.list_project_notes(project_id)):
@@ -149,9 +150,9 @@ def synthesize_masterplan(project_id: str) -> str:
     material.append("</qa_history>\n<sources>")
     material += [f"- {s['title']} — {s.get('channel') or ''} ({s.get('published_at') or ''}) {s['url']}" for s in _sources(project_id)]
     material.append("</sources>")
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = providers.anthropic_client()
     resp = client.messages.create(
-        model=settings.answer_model, max_tokens=6000, system=MASTERPLAN_SYSTEM,
+        model=settings.answer_model, max_tokens=6000, system=MASTERPLAN_SYSTEM, extra_headers={"x-neurosearch-task": "export.synthesis"},
         messages=[{"role": "user", "content": f"Project name: {p['name']}\n\n" + "\n".join(material) + "\n\nWrite the masterplan now."}],
     )
     try:
