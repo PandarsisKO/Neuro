@@ -136,6 +136,8 @@ def canonical_url(url: str) -> str:
     parameters, fragments, default ports, trailing slashes and host case never make a new source."""
     from urllib.parse import urlencode, urlunparse
     url = url.strip()
+    if is_fixture(url):
+        return url
     if not re.match(r"^[a-z]+://", url, re.I):
         url = "https://" + url
     u = urlparse(url)
@@ -162,8 +164,35 @@ def canonical_url(url: str) -> str:
     return urlunparse(("https", host, path, "", urlencode(sorted(qs)), ""))
 
 
+# ---- fixture platform: fixture:///abs/path/to/item.json — deterministic "videos" for crash/recovery tests and evals.
+# The JSON holds {title, duration, channel, published_at, captions: bool, segments: [...]}. Metadata is read from the
+# file, "downloading audio" copies the file into the media dir, "transcribing" reads its segments through the fake
+# provider — every expensive step of a real ingest exists here so a crash at any stage behaves like the real thing.
+
+def is_fixture(url: str) -> bool:
+    return url.startswith("fixture://")
+
+
+def _fixture_load(url: str) -> dict[str, Any]:
+    import json
+    from pathlib import Path as _P
+    p = _P(url[len("fixture://"):])
+    return json.loads(p.read_text())
+
+
+def _fixture_info(url: str) -> dict[str, Any]:
+    d = _fixture_load(url)
+    from pathlib import Path as _P
+    fid = "fx-" + _P(url[len("fixture://"):]).stem
+    return {"id": fid, "title": d.get("title") or fid, "webpage_url": url, "duration": d.get("duration"), "channel": d.get("channel"),
+            "upload_date": (d.get("published_at") or "").replace("-", "") or None, "description": d.get("description", ""),
+            "_fixture": d}
+
+
 def classify_url(url: str) -> str:
-    """video | playlist | channel | instagram | media  (media = anything else yt-dlp/ffmpeg can handle)."""
+    """video | playlist | channel | instagram | media | fixture  (media = anything else yt-dlp/ffmpeg can handle)."""
+    if is_fixture(url):
+        return "fixture"
     u = urlparse(url.strip())
     host = u.netloc.lower()
     if host in YT_HOSTS:
@@ -376,6 +405,8 @@ def _with_timeout(fn: Any, seconds: float, what: str) -> Any:
 
 def fetch_info(url: str, cookies_file: str | None = None, referer: str | None = None) -> dict[str, Any] | None:
     """Full metadata for one item (no download). Raises RuntimeError carrying yt-dlp's real reason on failure."""
+    if is_fixture(url):
+        return _fixture_info(url)
     lg = _Collect()
     # noplaylist: a watch?v=…&list=… link means THAT video, not the whole playlist (which made single-video
     # fetches crawl every entry and sit in "fetching metadata" for many minutes)
@@ -417,6 +448,9 @@ def info_to_source_fields(info: dict[str, Any], platform: str) -> dict[str, Any]
 
 def fetch_captions(info: dict[str, Any], cookies_file: str | None = None) -> tuple[list[dict[str, Any]], str] | None:
     """Return (segments, lang) using uploaded subtitles if present, else auto captions. None if neither."""
+    if info.get("_fixture") is not None:
+        fx = info["_fixture"]
+        return (fx["segments"], "en") if fx.get("captions") else None
     langs = settings.caption_langs
     for pool_name in ("subtitles", "automatic_captions"):
         pool = info.get(pool_name) or {}
@@ -512,6 +546,14 @@ def download_audio(url: str, dest_dir: Path | None = None, cookies_file: str | N
     """Download best audio as m4a/mp3 for transcription. Returns the file path."""
     dest_dir = dest_dir or settings.media_dir
     dest_dir.mkdir(parents=True, exist_ok=True)
+    if is_fixture(url):
+        import json
+        d = _fixture_load(url)
+        fid = _fixture_info(url)["id"]
+        path = dest_dir / f"{fid}.mp3"
+        path.write_bytes(b"FAKEAUDIO " + json.dumps({"duration": d.get("duration")}).encode())
+        path.with_suffix(".segments.json").write_text(json.dumps(d["segments"]))     # what the fake transcriber "hears"
+        return path
     opts = _base_opts(
         cookies_file, referer,
         noplaylist=True,

@@ -329,7 +329,10 @@ async def api_import(body: ImportIn) -> dict[str, Any]:
 
 @app.get("/api/jobs", dependencies=[Depends(require_auth)])
 def api_jobs(limit: int = 50) -> list[dict[str, Any]]:
-    return db.list_jobs(limit)
+    out = db.list_jobs(limit)
+    for j in out:
+        _decorate_job(j)
+    return out
 
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])
@@ -337,6 +340,7 @@ def api_job(job_id: str) -> dict[str, Any]:
     j = db.get_job(job_id)
     if not j:
         raise HTTPException(404)
+    _decorate_job(j)
     return j
 
 
@@ -737,7 +741,24 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
         sids = pl.get("source_ids") or ([pl["source_id"]] if pl.get("source_id") else [])
         if sids:
             j["label"] = titles.get(sids[0], sids[0]) + (f" +{len(sids) - 1} more" if len(sids) > 1 else "")
+        _decorate_job(j, titles)
     return out
+
+
+def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:
+    j["state"] = db.derived_status(j)
+    if j.get("blocked_by"):
+        rep = db.dependency_report(j)
+        for x in rep["failed"] + rep["cancelled"]:
+            if titles and x.get("label") in titles:
+                x["label"] = titles[x["label"]]
+        j["dependencies"] = rep
+
+
+@app.get("/api/jobs/{job_id}/events", dependencies=[Depends(require_auth)])
+def api_job_events(job_id: str) -> list[dict[str, Any]]:
+    """The job's history: queued, claimed (worker, run), stages, waits, lease expiry/recovery, external handles, outcome."""
+    return db.job_events(job_id)
 
 
 @app.post("/api/jobs/{job_id}/retry", dependencies=[Depends(require_auth)])
@@ -788,9 +809,11 @@ def api_cancel_job(job_id: str) -> dict[str, Any]:
     j = db.get_job(job_id)
     if not j:
         raise HTTPException(404, "job not found")
-    if j["status"] != "queued":
-        raise HTTPException(409, f"job is {j['status']}, only queued jobs can be cancelled")
-    return {"cancelled": db.cancel_queued_jobs(job_ids=[job_id])}
+    if j["status"] in db.JOB_TERMINAL:
+        raise HTTPException(409, f"job is already {j['status']}")
+    st = db.request_cancel(job_id)
+    return {"cancelled": 1 if st == "cancelled" else 0, "status": st,
+            "note": "will stop at its next safe point; nothing is written after that" if st == "running" else None}
 
 
 class ConvIn(BaseModel):

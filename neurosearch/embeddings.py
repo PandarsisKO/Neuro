@@ -35,16 +35,22 @@ def embed_query(text: str) -> np.ndarray:
     return embed_texts([text])[0]
 
 
-def embed_pending(limit: int = 5000) -> int:
-    """Embed every chunk that doesn't have a vector yet. Returns count embedded."""
+def embed_pending(limit: int = 5000, source_id: str | None = None) -> int:
+    """Embed every chunk that doesn't have a vector yet (optionally one source). Granular and idempotent: each
+    batch is committed as it lands, so a crash mid-way resumes with only the missing chunks. Returns count embedded."""
     if not settings.embeddings_enabled:
         return 0
+    from .jobs import crash_point
     done = 0
+    first = True
     while done < limit:
-        rows = db.chunks_missing_embeddings(limit=min(BATCH * 4, limit - done))
+        rows = db.chunks_missing_embeddings(limit=min(BATCH, limit - done), source_id=source_id)
         if not rows:
             break
         vecs = embed_texts([r["text"] for r in rows])
         db.set_embeddings(list(zip([r["id"] for r in rows], vecs)))
         done += len(rows)
+        if first:
+            first = False
+            crash_point("embeddings_half")          # after the first committed batch: the rest must resume, not redo
     return done

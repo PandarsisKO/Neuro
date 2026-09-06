@@ -111,8 +111,10 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     return json.loads(text[s:e + 1]) if s >= 0 else {}
 
 
-def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) -> dict[str, Any]:
-    """Extract candidate findings for one source in the context of one project. Stores them as 'suggested'."""
+def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
+    """Extract candidate findings for one source in the context of one project. Stores them as 'suggested'.
+    Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a retried
+    or duplicated job never pays twice; force=True re-analyses regardless."""
     project = db.get_project(project_id)
     src = db.get_source(source_id)
     if not project or not src:
@@ -120,6 +122,12 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     segs = db.get_segments(source_id)
     if not segs:
         raise RuntimeError("source has no transcript")
+    ih = input_hash(project, source_id)
+    prev = db.get_analysis(project_id, source_id, "summary")
+    if prev and prev.get("input_hash") == ih and prev.get("status") == "current" and not force:
+        n = len([x for x in db.list_project_notes(project_id, status="suggested") if x.get("source_id") == source_id])
+        return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": prev.get("substance"),
+                "summary": prev.get("summary"), "rejected_quotes": 0, "skipped": "already current for these inputs"}
     platform = src["platform"]
     brief = project.get("brief") or "(no brief — extract the most substantive, reusable findings)"
     head = (f"PROJECT: {project['name']}\nBRIEF: {brief}\n{db.project_steering(project)}\n\n"
@@ -130,8 +138,11 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     substances: list[int] = []
     rejected = 0
     from .evidence import check_finding
+    from .jobs import check_cancel, crash_point
     for i, w in enumerate(windows):
+        check_cancel()                                   # safe boundary: nothing of this source is written yet
         part = f" (part {i + 1}/{len(windows)})" if len(windows) > 1 else ""
+        crash_point("findings_before_response")
         res = _call(SYSTEM, f"TRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id, head=head)
         if res.get("summary"):
             summaries.append(str(res["summary"]))
@@ -171,22 +182,24 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
     prov = {"model": _last_model.get("model"), "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id)}
-    n = db.replace_suggestions(project_id, source_id, notes, provenance=prov)
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
-    db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
+    with db.batch():                                     # notes + analysis land together or not at all
+        n = db.replace_suggestions(project_id, source_id, notes, provenance=prov)
+        db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
+    crash_point("findings_persisted_before_done")
     return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
             "rejected_quotes": rejected}
 
 
-def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None) -> dict[str, Any]:
+def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False) -> dict[str, Any]:
     ids = source_ids or db.sources_needing_suggestions(project_id)
     done, failed = 0, []
     for i, sid in enumerate(ids):
         if progress:
             progress(i / max(len(ids), 1), f"reading {i + 1}/{len(ids)}")
         try:
-            suggest_for_source(project_id, sid)
+            suggest_for_source(project_id, sid, force=force)
             done += 1
         except Exception as e:  # noqa: BLE001
             from .usage import BudgetPaused

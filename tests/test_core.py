@@ -367,13 +367,11 @@ def test_age_cutoff(client, monkeypatch):
     monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UC1", "title": "Chan", "url": url},
         [{"id": f"vid{i}0000000", "url": f"https://www.youtube.com/watch?v=vid{i}0000000", "title": f"V{i}"} for i in range(3)]))
     dates = {"vid00000000": "2026-06-01", "vid10000000": "2019-01-01", "vid20000000": "2018-01-01"}
-    def fake_extract(url, platform, progress=None, cookies_file=None, referer=None, min_date=None):
+    def fake_info(url, cookies_file=None, referer=None):
         vid = url.split("v=")[1]
-        if min_date and dates[vid] < min_date:
-            raise ingest.TooOld(f"published {dates[vid]}, before cutoff {min_date}")
-        return {"platform": "youtube", "external_id": vid, "url": url, "title": vid, "published_at": dates[vid], "duration": 60,
-                "transcript_kind": "captions", "segments": [{"start": 0, "end": 5, "text": "hello content"}], "chapters": []}
-    monkeypatch.setattr(ingest, "extract_transcript", fake_extract)
+        return {"id": vid, "title": vid, "webpage_url": url, "upload_date": dates[vid].replace("-", ""), "duration": 60}
+    monkeypatch.setattr(media, "fetch_info", fake_info)
+    monkeypatch.setattr(media, "fetch_captions", lambda info, cookies_file=None: ([{"start": 0, "end": 5, "text": "hello content"}], "en"))
     p = client.post("/api/projects", headers=H, json={"name": "Cutoff", "brief": "x"}).json()
     # default: channel is listed and waits for approval
     r = ingest.ingest_url("https://www.youtube.com/@chan", project_id=p["id"], since_years=2, max_videos=10)
@@ -388,10 +386,7 @@ def test_age_cutoff(client, monkeypatch):
     # run the queued jobs synchronously
     from neurosearch import jobs
     while (j := db.claim_job()):
-        try:
-            res = jobs.run_job(j); db.update_job(j["id"], status="done", result=res)
-        except Exception as e:  # noqa: BLE001
-            db.update_job(j["id"], status="failed", message=str(e))
+        jobs.execute(j)
     statuses = {s["external_id"]: s["status"] for s in db.list_sources(limit=1000) if s["external_id"] in dates}
     assert statuses["vid00000000"] == "ready" and statuses["vid10000000"] == "skipped" and statuses["vid20000000"] == "skipped"
 
@@ -447,7 +442,7 @@ def test_cancel_queued(client):
     coll = db.upsert_collection("channel", "UCc", "u", "Chan"); db.link_source_collection(src["id"], coll["id"]); db.add_project_collections(p["id"], [coll["id"]])
     j = db.create_job("ingest_source", {"source_id": src["id"], "collection_id": coll["id"], "min_date": "2024-01-01"})
     r = client.post("/api/jobs/cancel-queued", headers=H, json={}).json()
-    assert r["cancelled"] >= 1 and db.get_job(j["id"])["status"] == "done" and db.get_job(j["id"])["message"] == "cancelled"
+    assert r["cancelled"] >= 1 and db.get_job(j["id"])["status"] == "cancelled" and db.get_job(j["id"])["message"] == "cancelled"
     assert db.get_source(src["id"])["status"] == "proposed"
     assert client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]["proposed"][0]["id"] == src["id"]
 

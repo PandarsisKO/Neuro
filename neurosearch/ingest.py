@@ -150,9 +150,12 @@ def ingest_url(
         db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
         return {"kind": "instagram_profile", "collection_id": coll["id"], "title": coll.get("title"), "found": len(entries),
                 "proposed": proposed, "already_ingested": skipped, "review": proposed > 0}
-    platform = "youtube" if kind == "video" else ("instagram" if kind == "instagram" else "media")
+    platform = {"video": "youtube", "instagram": "instagram", "fixture": "fixture"}.get(kind, "media")
     ext_id = _external_id_from_url(url, platform)
     existing = db.find_source(platform, ext_id) if ext_id else None
+    if existing and force:
+        with db.tx() as conn:                                        # a forced re-ingest starts the stages over
+            conn.execute("UPDATE sources SET stage=NULL, audio_path=NULL WHERE id=?", (existing["id"],))
     if existing and existing["status"] == "ready" and not force:
         if project_id:
             db.add_project_sources(project_id, [existing["id"]])
@@ -301,30 +304,133 @@ def _after_ready(source_id: str, project_id: str | None = None) -> None:
 def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str | None = None,
                   referer: str | None = None, keep_title: str | None = None, min_date: str | None = None,
                   collection_id: str | None = None, newest_first: bool = False) -> dict[str, Any]:
+    """Staged, resumable ingestion of one linked source (Mission D3/D4):
+
+        listed → metadata → transcript → chunks → embeddings → ready
+
+    Each stage's durable data is committed together with the stage marker, so after a crash the job resumes at the
+    first incomplete stage: a fetched transcript is never re-fetched, paid transcription is never paid twice,
+    embeddings resume with only the missing chunks. Cancellation is honoured between stages."""
+    from .jobs import check_cancel, crash_point, stage_event
+    from .transcribe import transcribe_file
+
     src = db.get_source(source_id)
     if not src:
         raise RuntimeError(f"source {source_id} not found")
     if src["platform"] in ("spreadsheet", "document", "file", "manual"):
         db.set_source_status(source_id, "failed", "this is an uploaded file, not a link — use Retry on its row in Sources, or upload it again")
         raise RuntimeError("uploaded files can't be fetched like a link — use Retry on the source row, or upload the file again")
+    platform, url = src["platform"], src["url"]
+    stage = db.stage_index(src.get("stage"))
     try:
-        try:
-            payload = extract_transcript(src["url"], src["platform"], progress=progress, cookies_file=cookies_file,
-                                         referer=referer, min_date=min_date)
-        except TooOld as e:
-            db.set_source_status(source_id, "skipped", str(e))
-            # NB: we no longer skip the rest of the collection when one video is too old — approved lists are
-            # relevance-ranked (not chronological) and channel listings mix the Videos and Shorts tabs, so
-            # "everything after this is older" was wrong and threw away most of a selection.
-            return {"source_id": source_id, "skipped": True, "reason": str(e)}
-        payload["external_id"] = payload.get("external_id") or src["external_id"]
-        if keep_title:
-            payload["title"] = keep_title
-        return store_transcript(payload, progress=progress)
+        crash_point("before_metadata")
+        # ---- metadata (atomic)
+        if stage < db.stage_index("metadata"):
+            check_cancel()
+            progress(0.05, "fetching metadata…")
+            info = media.fetch_info(url, cookies_file=cookies_file, referer=referer)
+            if not info:
+                if platform == "instagram" and not cookies_file:
+                    raise RuntimeError("Instagram wants a login for this reel. Open it in Chrome and use the Neuro Search extension → "
+                                       "'Send this page' (it lends your Instagram session for this one video), or paste the reel's "
+                                       "text into Sources → Paste text.")
+                raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
+            fields = media.info_to_source_fields(info, platform)
+            if min_date and fields.get("published_at") and fields["published_at"] < min_date:
+                db.set_source_status(source_id, "skipped", f"published {fields['published_at']}, before cutoff {min_date}")
+                return {"source_id": source_id, "skipped": True, "reason": f"published {fields['published_at']}, before cutoff {min_date}"}
+            fields["external_id"] = fields.get("external_id") or src["external_id"]
+            if keep_title:
+                fields["title"] = keep_title
+            fields.pop("url", None)                                   # keep the url the user gave us
+            with db.batch():
+                db.upsert_source(**{**fields, "platform": platform, "external_id": src["external_id"]})
+                db.set_stage(source_id, "metadata")
+            db.kv_set(f"ingest_info:{source_id}", json.dumps({"chapters": info.get("chapters") or [], "language": info.get("language")}))
+            stage_event("metadata")
+            crash_point("metadata_complete")
+            src = db.get_source(source_id) or src
+        else:
+            info = None
+        # ---- transcript (atomic; the expensive step — captions or download + transcription)
+        if stage < db.stage_index("transcript"):
+            check_cancel()
+            info = info or media.fetch_info(url, cookies_file=cookies_file, referer=referer) or {}
+            progress(0.15, "looking for captions…")
+            caps = media.fetch_captions(info, cookies_file=cookies_file)
+            kind, lang = None, None
+            audio = None
+            if caps:
+                segments, lang = caps
+                kind = "captions"
+            elif settings.allow_transcription and providers.openai_available():
+                dur = (src.get("duration") or info.get("duration") or 0) / 60
+                if dur > settings.max_transcribe_minutes:
+                    raise RuntimeError(f"no captions and duration {dur:.0f} min exceeds transcription limit")
+                from . import usage
+                usage.guard(usage.estimate_transcription(src.get("duration") or info.get("duration")))
+                audio = Path(src["audio_path"]) if src.get("audio_path") else None
+                if not (audio and audio.exists()):
+                    progress(0.2, "no captions; downloading audio…")
+                    audio = media.download_audio(url, cookies_file=cookies_file, referer=referer)
+                    db.set_audio_path(source_id, str(audio))            # durable: a retry reuses the download
+                    stage_event("audio", "downloaded", path=str(audio))
+                    crash_point("audio_downloaded")
+                else:
+                    progress(0.2, "reusing downloaded audio…")
+                check_cancel()
+                crash_point("transcription_before_response")
+                segments, lang = transcribe_file(audio, progress=lambda p, m: progress(0.3 + 0.5 * p, m))
+                kind = "transcribed"
+            else:
+                raise RuntimeError("no captions available and audio transcription is disabled (set OPENAI_API_KEY)")
+            segments = normalize_segments(segments)
+            if not segments:
+                raise RuntimeError("transcript came back empty")
+            with db.batch():
+                db.replace_transcript(source_id, segments, [])                 # segments only; chunks are the next stage
+                db.upsert_source(platform=platform, external_id=src["external_id"], transcript_kind=kind, language=lang or src.get("language"))
+                db.set_stage(source_id, "transcript")
+            stage_event("transcript", segments=len(segments), kind=kind)
+            if audio is not None:                                          # the download served its purpose
+                for p in (audio, audio.with_suffix(".segments.json")):
+                    try:
+                        p.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                db.set_audio_path(source_id, None)
+            crash_point("transcript_complete")
+        # ---- chunks (atomic, derived deterministically from the stored segments)
+        if stage < db.stage_index("chunks") or db.stage_index((db.get_source(source_id) or {}).get("stage")) < db.stage_index("chunks"):
+            check_cancel()
+            progress(0.85, "chunking…")
+            segments = db.get_segments(source_id)
+            meta = json.loads(db.kv_get(f"ingest_info:{source_id}") or "{}")
+            chunks = build_chunks(segments, duration=(db.get_source(source_id) or {}).get("duration"), chapters=meta.get("chapters"))
+            with db.batch():
+                db.replace_chunks(source_id, chunks)
+                db.set_stage(source_id, "chunks")
+            stage_event("chunks", chunks=len(chunks))
+            crash_point("chunks_complete")
+        # ---- embeddings (granular: one chunk at a time is the checkpoint)
+        progress(0.9, "embedding…")
+        n_emb = embed_pending(source_id=source_id)
+        with db.batch():
+            db.set_stage(source_id, "embeddings")
+            db.upsert_source(platform=platform, external_id=src["external_id"], status="ready", error=None)
+            db.set_stage(source_id, "ready")
+        db.kv_set(f"ingest_info:{source_id}", None)
+        stage_event("ready", embedded=n_emb)
+        progress(1.0, "done")
+        _after_ready(source_id)
+        final = db.get_source(source_id) or {}
+        return {"source_id": source_id, "title": final.get("title"), "segments": len(db.get_segments(source_id)),
+                "chunks": len(db.get_chunks(source_id)), "transcript": final.get("transcript_kind"), "embedded": n_emb}
     except Exception as e:  # noqa: BLE001
+        from .jobs import Cancelled
         from .media import RateLimited
         from .usage import BudgetPaused
-        if isinstance(e, (RateLimited, BudgetPaused)):
+        if isinstance(e, (RateLimited, BudgetPaused, Cancelled)):
             raise
         log.exception("ingest failed for %s", source_id)
         db.set_source_status(source_id, "failed", str(e)[:1000])
@@ -541,4 +647,6 @@ def _external_id_from_url(url: str, platform: str) -> str | None:
     if platform == "instagram":
         m = re.search(r"instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)", url)
         return m.group(1) if m else url
+    if platform == "fixture":
+        return url
     return media.canonical_url(url)

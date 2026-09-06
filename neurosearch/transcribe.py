@@ -73,8 +73,11 @@ def transcribe_file(
     detected: str | None = None
     with tempfile.TemporaryDirectory(prefix="ns_tx_") as td:
         workdir = Path(td)
-        src = path if path.suffix.lower() == ".mp3" and path.stat().st_size < 24 * 1024 * 1024 else to_mp3(path, workdir / "src.mp3")
-        pieces = split_audio(src, workdir)
+        if providers.fake():
+            pieces = [(0.0, path)]
+        else:
+            src = path if path.suffix.lower() == ".mp3" and path.stat().st_size < 24 * 1024 * 1024 else to_mp3(path, workdir / "src.mp3")
+            pieces = split_audio(src, workdir)
         for n, (offset, piece) in enumerate(pieces):
             if progress:
                 progress(n / max(len(pieces), 1), f"transcribing part {n + 1}/{len(pieces)}")

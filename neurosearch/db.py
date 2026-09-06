@@ -207,6 +207,18 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
 
+CREATE TABLE IF NOT EXISTS job_events (
+    id         INTEGER PRIMARY KEY,
+    ts         REAL NOT NULL,
+    job_id     TEXT NOT NULL,
+    run_id     TEXT,
+    event_type TEXT NOT NULL,     -- queued | claimed | stage | heartbeat | retry_wait | budget_wait | rate_limit_wait | lease_expired | recovered
+                                  -- | external_submitting | external_submitted | external_reattached | external_result | cancel_requested | cancelled | done | failed | deduplicated
+    stage      TEXT,
+    payload    TEXT               -- JSON
+);
+CREATE INDEX IF NOT EXISTS ix_job_events_job ON job_events(job_id, id);
+
 CREATE TABLE IF NOT EXISTS project_source_analysis (
     project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
@@ -319,6 +331,24 @@ MIGRATIONS = [
     ("discoveries", "brief_revision", "ALTER TABLE discoveries ADD COLUMN brief_revision TEXT"),
     ("project_notes", "input_hash", "ALTER TABLE project_notes ADD COLUMN input_hash TEXT"),
     ("jobs", "blocked_by", "ALTER TABLE jobs ADD COLUMN blocked_by TEXT"),
+    ("jobs", "run_id", "ALTER TABLE jobs ADD COLUMN run_id TEXT"),
+    ("jobs", "worker_id", "ALTER TABLE jobs ADD COLUMN worker_id TEXT"),
+    ("jobs", "claimed_at", "ALTER TABLE jobs ADD COLUMN claimed_at REAL"),
+    ("jobs", "heartbeat_at", "ALTER TABLE jobs ADD COLUMN heartbeat_at REAL"),
+    ("jobs", "lease_until", "ALTER TABLE jobs ADD COLUMN lease_until REAL"),
+    ("jobs", "cancel_requested_at", "ALTER TABLE jobs ADD COLUMN cancel_requested_at REAL"),
+    ("jobs", "wait_reason", "ALTER TABLE jobs ADD COLUMN wait_reason TEXT"),
+    ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
+    ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
+    ("jobs", "dependency_policy", "ALTER TABLE jobs ADD COLUMN dependency_policy TEXT"),
+    ("jobs", "external_provider", "ALTER TABLE jobs ADD COLUMN external_provider TEXT"),
+    ("jobs", "external_kind", "ALTER TABLE jobs ADD COLUMN external_kind TEXT"),
+    ("jobs", "external_handle", "ALTER TABLE jobs ADD COLUMN external_handle TEXT"),
+    ("jobs", "external_submitted_at", "ALTER TABLE jobs ADD COLUMN external_submitted_at REAL"),
+    ("jobs", "external_last_checked_at", "ALTER TABLE jobs ADD COLUMN external_last_checked_at REAL"),
+    ("jobs", "external_deadline", "ALTER TABLE jobs ADD COLUMN external_deadline REAL"),
+    ("sources", "stage", "ALTER TABLE sources ADD COLUMN stage TEXT"),
+    ("sources", "audio_path", "ALTER TABLE sources ADD COLUMN audio_path TEXT"),
 ]
 
 
@@ -500,6 +530,37 @@ def list_sources(
     return [row_to_dict(r) for r in connect().execute(sql, args).fetchall()]  # type: ignore[misc]
 
 
+STAGES = ("listed", "metadata", "transcript", "chunks", "embeddings", "ready")
+
+
+def set_stage(source_id: str, stage: str, conn: sqlite3.Connection | None = None) -> None:
+    """A stage is set only AFTER all of its durable data is committed (callers do the writes and this call inside
+    one batch()/tx so the two are atomic)."""
+    assert stage in STAGES, stage
+    if conn is not None:
+        conn.execute("UPDATE sources SET stage=?, updated_at=? WHERE id=?", (stage, now(), source_id))
+        return
+    with tx() as c:
+        c.execute("UPDATE sources SET stage=?, updated_at=? WHERE id=?", (stage, now(), source_id))
+
+
+def stage_index(stage: str | None) -> int:
+    return STAGES.index(stage) if stage in STAGES else 0
+
+
+def set_audio_path(source_id: str, path: str | None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE sources SET audio_path=?, updated_at=? WHERE id=?", (path, now(), source_id))
+
+
+def replace_chunks(source_id: str, chunks: list[dict]) -> None:
+    with tx() as conn:
+        conn.execute("DELETE FROM chunks WHERE source_id=?", (source_id,))
+        conn.executemany(
+            "INSERT INTO chunks (source_id, idx, start, end, text, embedding) VALUES (?,?,?,?,?,?)",
+            [(source_id, i, c["start"], c["end"], c["text"], _pack(c.get("embedding"))) for i, c in enumerate(chunks)])
+
+
 def set_source_status(source_id: str, status: str, error: str | None = None) -> None:
     with tx() as conn:
         conn.execute("UPDATE sources SET status=?, error=?, updated_at=? WHERE id=?", (status, error, now(), source_id))
@@ -608,7 +669,8 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
                 for i, c in enumerate(chunks)
             ],
         )
-        conn.execute("UPDATE sources SET revision=? WHERE id=?", (segments_revision(segments), source_id))
+        conn.execute("UPDATE sources SET revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END WHERE id=?",
+                     (segments_revision(segments), bool(chunks), source_id))
 
 
 def segments_revision(segments: list[dict[str, Any]]) -> str:
@@ -646,7 +708,10 @@ def get_chunks(source_id: str) -> list[dict[str, Any]]:
     ).fetchall()]
 
 
-def chunks_missing_embeddings(limit: int = 500) -> list[dict[str, Any]]:
+def chunks_missing_embeddings(limit: int = 500, source_id: str | None = None) -> list[dict[str, Any]]:
+    """Granular embedding checkpoint: a chunk either has its vector or it doesn't — resuming means embedding the rest."""
+    if source_id:
+        return [dict(r) for r in connect().execute("SELECT id, text FROM chunks WHERE embedding IS NULL AND source_id=? LIMIT ?", (source_id, limit)).fetchall()]
     return [dict(r) for r in connect().execute(
         "SELECT id, text FROM chunks WHERE embedding IS NULL LIMIT ?", (limit,)
     ).fetchall()]
@@ -764,36 +829,124 @@ def list_collections() -> list[dict[str, Any]]:
 
 # ------------------------------------------------------------------ jobs
 
-def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None) -> dict[str, Any]:
-    """blocked_by: job ids that must finish (status done) before this one can be claimed. If any of them fails or is
-    cancelled, this job fails too ("upstream failed") rather than running against stale inputs."""
-    jid = new_id()
+JOB_ACTIVE = ("queued", "running", "external_pending")
+JOB_TERMINAL = ("done", "failed", "cancelled")
+DEP_POLICIES = ("ALL_SUCCESS", "ALL_TERMINAL", "ANY_SUCCESS")
+LEASE_SECONDS = 120.0
+
+
+def job_event(job_id: str, event_type: str, *, run_id: str | None = None, stage: str | None = None, conn: sqlite3.Connection | None = None, **payload: Any) -> None:
+    """Append to the job's history (jobs = current state, job_events = what happened)."""
+    row = (time.time(), job_id, run_id, event_type, stage, json.dumps(payload, default=str) if payload else None)
+    if conn is not None:
+        conn.execute("INSERT INTO job_events (ts, job_id, run_id, event_type, stage, payload) VALUES (?,?,?,?,?,?)", row)
+        return
+    with tx() as c:
+        c.execute("INSERT INTO job_events (ts, job_id, run_id, event_type, stage, payload) VALUES (?,?,?,?,?,?)", row)
+
+
+def job_events(job_id: str, limit: int = 500) -> list[dict[str, Any]]:
+    out = []
+    for r in connect().execute("SELECT * FROM job_events WHERE job_id=? ORDER BY id LIMIT ?", (job_id, limit)).fetchall():
+        d = dict(r)
+        try:
+            d["payload"] = json.loads(d["payload"]) if d["payload"] else {}
+        except ValueError:
+            pass
+        out.append(d)
+    return out
+
+
+def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
+    """Natural identity of a unit of work, so the same request twice is one job while it is active."""
+    if kind == "ingest_url":
+        return f"ingest:{payload.get('url')}"
+    if kind == "ingest_source":
+        return f"ingest_source:{payload.get('source_id')}"
+    if kind == "suggest_findings" and len(payload.get("source_ids") or []) == 1:
+        return f"findings:{payload.get('project_id')}:{payload['source_ids'][0]}"
+    if kind == "rank_proposed":
+        return f"rank:{payload.get('collection_id')}"
+    if kind == "build_plan":
+        return f"plan:{payload.get('project_id')}"
+    if kind == "discover":
+        return f"discover:{payload.get('project_id')}:{payload.get('refine') or ''}"
+    return None
+
+
+def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
+               dedupe_key: str | None = None) -> dict[str, Any]:
+    """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
+    identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
+    active return the existing job instead of a duplicate."""
+    assert dependency_policy in DEP_POLICIES, dependency_policy
+    key = dedupe_key or dedupe_key_for(kind, payload)
     with tx() as conn:
+        if key:
+            marks = ",".join("?" for _ in JOB_ACTIVE)
+            ex = conn.execute(f"SELECT id FROM jobs WHERE dedupe_key=? AND status IN ({marks}) ORDER BY created_at LIMIT 1", (key, *JOB_ACTIVE)).fetchone()
+            if ex:
+                job_event(ex["id"], "deduplicated", conn=conn, kind=kind)
+                return get_job(ex["id"])  # type: ignore[return-value]
+        jid = new_id()
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key) VALUES (?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
-             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None),
+             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key),
         )
+        job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
     return get_job(jid)  # type: ignore[return-value]
 
 
-def _deps_state(conn: sqlite3.Connection, blocked_by: str | None) -> str:
-    """'ready' | 'waiting' | 'failed:<job id>' for a job's dependency list."""
-    try:
-        deps = json.loads(blocked_by) if blocked_by else []
-    except ValueError:
-        deps = []
+def dependency_report(job: dict[str, Any], conn: sqlite3.Connection | None = None) -> dict[str, Any]:
+    """{policy, total, done, failed: [..], cancelled: [..], pending, state} — what a blocked job is waiting for."""
+    deps = job.get("blocked_by") or []
+    if isinstance(deps, str):
+        try:
+            deps = json.loads(deps)
+        except ValueError:
+            deps = []
+    policy = job.get("dependency_policy") or "ALL_SUCCESS"
+    rep: dict[str, Any] = {"policy": policy, "total": len(deps), "done": 0, "failed": [], "cancelled": [], "pending": 0, "state": "ready"}
     if not deps:
-        return "ready"
+        return rep
+    c = conn or connect()
     marks = ",".join("?" for _ in deps)
-    rows = {r["id"]: r["status"] for r in conn.execute(f"SELECT id, status FROM jobs WHERE id IN ({marks})", deps).fetchall()}
+    rows = {r["id"]: r for r in c.execute(f"SELECT id, kind, status, payload FROM jobs WHERE id IN ({marks})", deps).fetchall()}
     for d in deps:
-        st = rows.get(d, "missing")
-        if st in ("failed", "cancelled", "missing"):
-            return f"failed:{d}"
-        if st != "done":
-            return "waiting"
-    return "ready"
+        r = rows.get(d)
+        st = r["status"] if r else "missing"
+        label = None
+        if r:
+            try:
+                pl = json.loads(r["payload"] or "{}")
+                label = pl.get("title") or (pl.get("source_ids") or [None])[0] or pl.get("source_id") or r["kind"]
+            except ValueError:
+                label = r["kind"]
+        if st == "done":
+            rep["done"] += 1
+        elif st in ("failed", "missing"):
+            rep["failed"].append({"id": d, "label": label, "status": st})
+        elif st == "cancelled":
+            rep["cancelled"].append({"id": d, "label": label})
+        else:
+            rep["pending"] += 1
+    bad = len(rep["failed"]) + len(rep["cancelled"])
+    if policy == "ALL_SUCCESS":
+        rep["state"] = "failed" if bad else ("waiting" if rep["pending"] else "ready")
+    elif policy == "ALL_TERMINAL":
+        rep["state"] = "waiting" if rep["pending"] else "ready"
+    else:   # ANY_SUCCESS
+        rep["state"] = "ready" if rep["done"] else ("waiting" if rep["pending"] else "failed")
+    return rep
+
+
+def _deps_state(conn: sqlite3.Connection, job_row: Any) -> str:
+    rep = dependency_report({"blocked_by": job_row["blocked_by"], "dependency_policy": job_row["dependency_policy"]}, conn)
+    if rep["state"] == "failed":
+        who = rep["failed"] + rep["cancelled"]
+        return "failed:" + (who[0]["id"] if who else "?")
+    return rep["state"]
 
 
 def get_job(job_id: str) -> dict[str, Any] | None:
@@ -813,31 +966,187 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     ).fetchall()]
 
 
-def claim_job(kinds: tuple[str, ...] | None = None) -> dict[str, Any] | None:
-    """Atomically claim the oldest queued job (optionally only of some kinds)."""
+def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS) -> dict[str, Any] | None:
+    """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
+    Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE."""
     with tx() as conn:
-        q = "SELECT id, blocked_by FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
+        q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
         args: list[Any] = [now()]
         if kinds:
             q += f" AND kind IN ({','.join('?' for _ in kinds)})"
             args += list(kinds)
         row = None
         for cand in conn.execute(q + " ORDER BY created_at LIMIT 50", args).fetchall():
-            st = _deps_state(conn, cand["blocked_by"] if "blocked_by" in cand.keys() else None)
+            if cand["cancel_requested_at"]:
+                conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled' WHERE id=? AND status='queued'", (now(), cand["id"]))
+                job_event(cand["id"], "cancelled", conn=conn)
+                continue
+            st = _deps_state(conn, cand)
             if st == "ready":
                 row = cand
                 break
             if st.startswith("failed:"):
+                rep = dependency_report({"blocked_by": cand["blocked_by"], "dependency_policy": cand["dependency_policy"]}, conn)
+                who = ", ".join(str(x.get("label") or x["id"][:8]) for x in rep["failed"] + rep["cancelled"])[:200]
                 conn.execute("UPDATE jobs SET status='failed', finished_at=?, message=? WHERE id=? AND status='queued'",
-                             (now(), f"error: not run — upstream job {st[7:15]} failed or was cancelled, so its inputs are not current", cand["id"]))
+                             (now(), f"error: not run — {rep['done']}/{rep['total']} upstream jobs succeeded; failed or cancelled: {who}. Retry those, then this runs.", cand["id"]))
+                job_event(cand["id"], "failed", conn=conn, reason="upstream", report=rep)
         if not row:
             return None
+        run_id = new_id()
+        t = now()
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=? WHERE id=? AND status='queued'", (now(), row["id"])
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL "
+            "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, row["id"])
         )
         if cur.rowcount != 1:
             return None
+        job_event(row["id"], "claimed", run_id=run_id, conn=conn, worker_id=worker_id, lease_seconds=lease_seconds)
         return row_to_dict(conn.execute("SELECT * FROM jobs WHERE id=?", (row["id"],)).fetchone())
+
+
+def heartbeat(job_id: str, run_id: str | None = None, lease_seconds: float = LEASE_SECONDS) -> bool:
+    """Extend the lease of a running job this worker owns. False when the job is no longer ours (lease lost)."""
+    with tx() as conn:
+        t = now()
+        cur = conn.execute("UPDATE jobs SET heartbeat_at=?, lease_until=? WHERE id=? AND status='running'" + (" AND run_id=?" if run_id else ""),
+                           (t, t + lease_seconds, job_id, *( [run_id] if run_id else [] )))
+        return cur.rowcount == 1
+
+
+def recover_expired_leases(all_running: bool = False) -> list[str]:
+    """Jobs whose worker stopped heartbeating (or every running job, at process start — no worker of this process can
+    own one yet) go back to queued with their partial durable state intact; the stage machinery resumes them.
+    External-pending jobs hold no lease and are untouched: another system owns that work."""
+    t = now()
+    out: list[str] = []
+    with tx() as conn:
+        q = "SELECT id, run_id, worker_id, kind FROM jobs WHERE status='running'" + ("" if all_running else " AND (lease_until IS NULL OR lease_until < ?)")
+        for r in conn.execute(q, () if all_running else (t,)).fetchall():
+            job_event(r["id"], "lease_expired", run_id=r["run_id"], conn=conn, worker_id=r["worker_id"], at_startup=all_running)
+            conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, "
+                         "message=?, updated_at=? WHERE id=?", ("recovered: worker lease expired — resuming from the last completed stage", t, r["id"]))
+            job_event(r["id"], "recovered", conn=conn)
+            out.append(r["id"])
+    return out
+
+
+def derived_status(j: dict[str, Any]) -> str:
+    """The user-facing state: queued jobs can be blocked / retry_wait / budget_wait / rate_limit_wait; running jobs
+    can be cancelling; external_pending is its own state. Stored status stays one of queued|running|external_pending|done|failed|cancelled."""
+    st = j.get("status")
+    if st == "queued":
+        if j.get("cancel_requested_at"):
+            return "cancelling"
+        if j.get("blocked_by"):
+            rep = dependency_report(j)
+            if rep["state"] == "waiting":
+                return "blocked"
+        if j.get("not_before") and j["not_before"] > now():
+            return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait"}.get(j.get("wait_reason") or "", "retry_wait")
+        return "queued"
+    if st == "running" and j.get("cancel_requested_at"):
+        return "cancelling"
+    return st or "unknown"
+
+
+def park_external(job_id: str, run_id: str | None, provider: str, kind: str, handle: str, deadline: float | None = None) -> None:
+    """The work now belongs to another system: release the worker lease, remember the handle durably."""
+    with tx() as conn:
+        t = now()
+        conn.execute("UPDATE jobs SET status='external_pending', external_provider=?, external_kind=?, external_handle=?, external_submitted_at=?, "
+                     "external_last_checked_at=?, external_deadline=?, run_id=NULL, worker_id=NULL, lease_until=NULL, message=?, updated_at=? WHERE id=?",
+                     (provider, kind, handle, t, t, deadline, f"waiting for {provider} ({kind}) — handle {handle[:24]}", t, job_id))
+        job_event(job_id, "external_submitted", run_id=run_id, conn=conn, provider=provider, kind=kind, handle=handle, deadline=deadline)
+
+
+def note_external_intent(job_id: str, run_id: str | None, provider: str, kind: str) -> None:
+    """Before submitting to an external system: record that we are about to, so a crash between the provider
+    accepting and us persisting the handle can be recovered by asking the provider for our reference."""
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET external_provider=?, external_kind=?, updated_at=? WHERE id=?", (provider, kind, now(), job_id))
+        job_event(job_id, "external_submitting", run_id=run_id, conn=conn, provider=provider, kind=kind)
+
+
+def external_pending_jobs() -> list[dict[str, Any]]:
+    return [row_to_dict(r) for r in connect().execute("SELECT * FROM jobs WHERE status='external_pending' ORDER BY external_last_checked_at").fetchall()]  # type: ignore[misc]
+
+
+def external_checked(job_id: str) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET external_last_checked_at=? WHERE id=?", (now(), job_id))
+
+
+def resume_external(job_id: str, result: Any) -> None:
+    """The external system finished: hand the job back to the queue with the result in its payload."""
+    with tx() as conn:
+        r = conn.execute("SELECT payload FROM jobs WHERE id=? AND status='external_pending'", (job_id,)).fetchone()
+        if not r:
+            return
+        pl = json.loads(r["payload"] or "{}")
+        pl["_external_result"] = result
+        conn.execute("UPDATE jobs SET status='queued', payload=?, message='external work finished — completing', updated_at=? WHERE id=?",
+                     (json.dumps(pl, default=str), now(), job_id))
+        job_event(job_id, "external_result", conn=conn)
+
+
+def request_cancel(job_id: str) -> str:
+    """Cancellation semantics by state: queued → cancelled now; running → cancel_requested (the worker stops at its
+    next safe boundary, writes nothing after); external_pending → cancelled locally (the result is discarded if it
+    ever arrives). Returns the resulting stored status."""
+    with tx() as conn:
+        r = conn.execute("SELECT status, payload, kind FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        t = now()
+        if r["status"] == "queued":
+            conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled', updated_at=? WHERE id=?", (t, t, job_id))
+            job_event(job_id, "cancelled", conn=conn, was="queued")
+            _release_source_after_cancel(conn, r)
+            return "cancelled"
+        if r["status"] == "running":
+            conn.execute("UPDATE jobs SET cancel_requested_at=?, message='cancelling… (stops at the next safe point)', updated_at=? WHERE id=?", (t, t, job_id))
+            job_event(job_id, "cancel_requested", conn=conn)
+            return "running"
+        if r["status"] == "external_pending":
+            conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, cancel_requested_at=?, message='cancelled locally — the external result will be discarded', updated_at=? WHERE id=?", (t, t, t, job_id))
+            job_event(job_id, "cancelled", conn=conn, was="external_pending")
+            return "cancelled"
+        return r["status"]
+
+
+def cancel_requested(job_id: str) -> bool:
+    r = connect().execute("SELECT cancel_requested_at FROM jobs WHERE id=?", (job_id,)).fetchone()
+    return bool(r and r["cancel_requested_at"])
+
+
+def _release_source_after_cancel(conn: sqlite3.Connection, r: Any) -> None:
+    try:
+        pl = json.loads(r["payload"] or "{}")
+    except ValueError:
+        return
+    sid = pl.get("source_id")
+    if sid and r["kind"] == "ingest_source":
+        conn.execute("UPDATE sources SET status='proposed', updated_at=? WHERE id=? AND status='pending'", (now(), sid))
+        cid = pl.get("collection_id")
+        if cid:
+            conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO NOTHING",
+                         (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first"),
+                                                    "ranked": True, "rank_note": "returned from the queue — sorted by their earlier relevance scores"})))
+
+
+def finish_job(job_id: str, run_id: str | None, status: str, *, message: str | None = None, result: dict | None = None) -> bool:
+    """Terminal transition guarded by run_id: a worker whose lease was taken over cannot finish someone else's run."""
+    assert status in JOB_TERMINAL
+    with tx() as conn:
+        t = now()
+        cur = conn.execute("UPDATE jobs SET status=?, finished_at=?, message=COALESCE(?, message), result=COALESCE(?, result), progress=CASE WHEN ?='done' THEN 1.0 ELSE progress END, "
+                           "run_id=NULL, worker_id=NULL, lease_until=NULL, updated_at=? WHERE id=? AND status='running'" + (" AND run_id=?" if run_id else ""),
+                           (status, t, message[:2000] if message else None, json.dumps(result) if result is not None else None, status, t, job_id, *([run_id] if run_id else [])))
+        ok = cur.rowcount == 1
+        if ok:
+            job_event(job_id, status, run_id=run_id, conn=conn, message=(message or "")[:300])
+        return ok
 
 
 def update_job(job_id: str, *, progress: float | None = None, message: str | None = None,
@@ -849,8 +1158,12 @@ def update_job(job_id: str, *, progress: float | None = None, message: str | Non
         sets.append("message=?"); args.append(message[:2000])
     if status is not None:
         sets.append("status=?"); args.append(status)
-        if status in ("done", "failed"):
+        if status in JOB_TERMINAL:
             sets.append("finished_at=?"); args.append(now())
+            sets.append("run_id=NULL, worker_id=NULL, lease_until=NULL")
+    else:
+        sets.append("heartbeat_at=?"); args.append(now())          # any progress report is a heartbeat
+        sets.append("lease_until=?"); args.append(now() + LEASE_SECONDS)
     if result is not None:
         sets.append("result=?"); args.append(json.dumps(result))
     if not sets:
@@ -1052,18 +1365,10 @@ def cancel_queued_jobs(kinds: tuple[str, ...] | None = None, project_id: str | N
                 pl = {}
             if project_id and pl.get("project_id") not in (None, project_id):
                 continue
-            conn.execute("UPDATE jobs SET status='done', finished_at=?, message='cancelled', result=? WHERE id=?",
-                         (now(), json.dumps({"cancelled": True}), r["id"]))
-            sid = pl.get("source_id")
-            if sid and r["kind"] == "ingest_source":
-                conn.execute("UPDATE sources SET status='proposed', updated_at=? WHERE id=? AND status='pending'", (now(), sid))
-                # remember the review context so approval later still applies the cutoff
-                cid = pl.get("collection_id")
-                if cid:
-                    conn.execute("INSERT INTO kv (key, value) VALUES (?,?) ON CONFLICT(key) DO NOTHING",
-                                 (f"review:{cid}", json.dumps({"min_date": pl.get("min_date"), "newest_first": pl.get("newest_first"),
-                                                            "ranked": True, "rank_note": "returned from the queue — sorted by their earlier relevance scores"})))
-            elif r["kind"] == "ingest_url" and pl.get("url"):
+            conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled', updated_at=? WHERE id=?", (now(), now(), r["id"]))
+            job_event(r["id"], "cancelled", conn=conn, was="queued")
+            _release_source_after_cancel(conn, r)
+            if r["kind"] == "ingest_url" and pl.get("url"):
                 # a single link that never started: mark its placeholder source so it is visible and retryable
                 conn.execute("UPDATE sources SET status='failed', error='cancelled before it started — use Retry', updated_at=? WHERE url=? AND status='pending'",
                              (now(), pl["url"]))
@@ -1164,7 +1469,8 @@ def health() -> dict[str, Any]:
     conn = connect()
     q = conn.execute("SELECT status, COUNT(*) n FROM jobs GROUP BY status").fetchall()
     jobs_by = {r["status"]: r["n"] for r in q}
-    stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND COALESCE(updated_at, created_at) < ?", (time.time() - 1800,)).fetchone()[0]
+    stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND (lease_until IS NULL OR lease_until < ?)", (time.time(),)).fetchone()[0]
+    leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
@@ -1174,7 +1480,8 @@ def health() -> dict[str, Any]:
         disk = {}
     return {"db": {"integrity": _j("db:last_integrity"), "path": str(settings.db_path)},
             "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
-            "jobs": {**jobs_by, "stale_running": stale},
+            "jobs": {**jobs_by, "stale_running": stale, "expired_leases": stale, "leased": leased,
+                     "external_pending": jobs_by.get("external_pending", 0)},
             "evidence": {**ev,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
@@ -1191,12 +1498,29 @@ def retry_job(job_id: str) -> dict[str, Any] | None:
     j = get_job(job_id)
     if not j or j["status"] != "failed":
         return None
-    payload = {k: v for k, v in (j.get("payload") or {}).items() if k != "_attempts"}
-    new = create_job(j["kind"], payload)
+    payload = {k: v for k, v in (j.get("payload") or {}).items() if k not in ("_attempts", "_external_result")}
+    new = create_job(j["kind"], payload, blocked_by=j.get("blocked_by") or None, dependency_policy=j.get("dependency_policy") or "ALL_SUCCESS")
     update_job(job_id, status="done", message=f"retried → {new['id'][:8]} — {j.get('message') or ''}"[:500])
+    job_event(job_id, "retried", new_job=new["id"])
     sid = payload.get("source_id")
     if sid:
         set_source_status(sid, "pending")
+    # dependents that were blocked on (or failed because of) the old job now depend on the new one and get to run
+    with tx() as conn:
+        for d in conn.execute("SELECT id, status, blocked_by, message FROM jobs WHERE blocked_by LIKE ?", (f'%{job_id}%',)).fetchall():
+            try:
+                deps = json.loads(d["blocked_by"] or "[]")
+            except ValueError:
+                continue
+            if job_id not in deps:
+                continue
+            deps = [new["id"] if x == job_id else x for x in deps]
+            if d["status"] == "failed" and (d["message"] or "").startswith("error: not run — "):
+                conn.execute("UPDATE jobs SET blocked_by=?, status='queued', finished_at=NULL, message='waiting for upstream jobs (retried)', updated_at=? WHERE id=?",
+                             (json.dumps(deps), now(), d["id"]))
+                job_event(d["id"], "unblocked", conn=conn, retried_upstream=job_id, now_waiting_on=new["id"])
+            else:
+                conn.execute("UPDATE jobs SET blocked_by=?, updated_at=? WHERE id=?", (json.dumps(deps), now(), d["id"]))
     return new
 
 
@@ -1211,17 +1535,20 @@ def failed_jobs(project_id: str | None = None, since_hours: float = 48) -> list[
     return out
 
 
-def requeue_job(job_id: str, delay: float = 0, message: str | None = None) -> None:
+def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False) -> None:
+    """Back to the queue after `delay` seconds. wait_reason: retry | budget | rate_limit (budget/rate-limit waits are not
+    failures and never count as attempts)."""
     with tx() as conn:
-        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, not_before=?, message=? WHERE id=?",
-                     (now() + delay, message, job_id))
+        r = conn.execute("SELECT run_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
+                     "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?",
+                     (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id))
+        job_event(job_id, f"{wait_reason}_wait" if wait_reason else "requeued", run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])
 
 
 def requeue_stale_running_jobs() -> int:
-    """On startup: jobs left 'running' by a crashed process go back to queued."""
-    with tx() as conn:
-        cur = conn.execute("UPDATE jobs SET status='queued', started_at=NULL WHERE status='running'")
-        return cur.rowcount
+    """On startup: jobs left 'running' by a crashed process go back to queued (lease-based recovery)."""
+    return len(recover_expired_leases(all_running=True))
 
 
 # -------------------------------------------------------------- projects

@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.16.1';
+const UI_VERSION = '0.17.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -1015,16 +1015,19 @@ async function loadJobs() {
     jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, Math.min(3000 * pollFails, 15000));
     return;
   }
-  const active = js.filter(j => j.status === 'queued' || j.status === 'running');
+  const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
+  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', external_pending: 'external', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', external_pending: 'queued', cancelling: 'running' })[st] || st;
+  const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span style="color:var(--bad)">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
   const st = await api('/api/stats'); const u = await loadSpend();
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
-  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job"><span class="st ${j.status}">${j.status}</span>
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${j.status === 'queued' && j.id ? `<button class="small ghost" title="Remove from the queue" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
@@ -1033,6 +1036,14 @@ async function loadJobs() {
   if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
 }
 
+async function jobHistory(id, btn) {
+  const ev = await api(`/api/jobs/${id}/events`);
+  const row = btn.closest('.job'); let box = row.querySelector('.jobhist');
+  if (box) { box.remove(); return; }
+  box = document.createElement('div'); box.className = 'jobhist muted'; box.style.cssText = 'width:100%;font-size:11.5px;font-family:ui-monospace,monospace;white-space:pre;overflow:auto;max-height:180px;padding:4px 8px';
+  box.textContent = ev.map(e => { const t = new Date(e.ts * 1000).toLocaleTimeString(); const p = e.payload || {}; const extra = e.stage ? e.stage : (p.worker_id ? 'worker ' + p.worker_id.split(':').pop() : p.message || p.handle || p.delay ? (p.message || p.handle || `wait ${Math.round(p.delay / 60)} min`) : ''); return `${t}  ${e.event_type.padEnd(20)} ${e.run_id ? 'run ' + e.run_id.slice(0, 6) + '  ' : ''}${extra}`; }).join('\n') || 'no events';
+  row.appendChild(box);
+}
 // ---- findings ----
 const STALE = { data: null };
 async function loadStaleness() {
