@@ -54,7 +54,15 @@ D CLOSEOUT (0.17.1)
 [x] Cancel ≠ delete                             cancel stops further processing and keeps completed stages (Retry resumes, never re-transcribes); delete_source removes the durable artifacts. Test: cancel right after transcription → retry → ready with one transcription paid.
 [x] Dependency cycle guard                      self / direct / transitive cycles rejected at creation and rewiring (db.DependencyCycle); duplicates collapse; retry rewiring records previous → now in job_events (dependency_rewired).
 
-MISSION E — MODEL PLATFORM + SONNET 5          NEXT
+E0 PREFLIGHT (0.17.2)
+[x] SDK retries owned by Neuro Search           clients are built with max_retries=0; providers._Ledgered retries typed transient errors (RATE_LIMIT/TIMEOUT/OVERLOADED/CONNECTION) per task policy, one `invocations` row per transport attempt sharing logical_id (task → logical invocation → attempt); exhausted/permanent failures surface as providers.ProviderError(error_type)
+[x] Typed provider errors                       providers.classify_error by exception class/status, never message text; job-level retry branches on the type (legacy regex kept only for yt-dlp text)
+[x] Flaky test isolated                         the two barrier tests run on a private database (isolated_db fixture) away from the API client's worker threads
+[x] pytest × 20 clean, neurosearch eval × 10 clean
+[ ] Live Sonnet 4.6 baseline                     ← Kyle, on the Mac at 0.17.2: neurosearch eval --live --baseline ; commit evals/. Then FREEZE prompts, retrieval, chunking, cache layout and worker count until the Sonnet 5 comparison is done.
+
+MISSION E — MODEL PLATFORM + SONNET 5          NEXT (0.18.0)  — keep it narrow: contracts, explicit retries, typed errors, Sonnet 5 support, thinking policies, immutable 4.6/5 per-task comparison, migrate what passes
+  0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```

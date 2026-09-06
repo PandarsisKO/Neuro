@@ -365,6 +365,9 @@ MIGRATIONS = [
     ("jobs", "external_deadline", "ALTER TABLE jobs ADD COLUMN external_deadline REAL"),
     ("sources", "stage", "ALTER TABLE sources ADD COLUMN stage TEXT"),
     ("sources", "audio_path", "ALTER TABLE sources ADD COLUMN audio_path TEXT"),
+    ("invocations", "logical_id", "ALTER TABLE invocations ADD COLUMN logical_id TEXT"),
+    ("invocations", "attempt_no", "ALTER TABLE invocations ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 1"),
+    ("invocations", "error_type", "ALTER TABLE invocations ADD COLUMN error_type TEXT"),
 ]
 
 
@@ -856,20 +859,27 @@ LEASE_SECONDS = 120.0
 # request and mark in-flight calls of a dead run OUTCOME_UNKNOWN on recovery, so no preventable duplicate is made and
 # every ambiguous one is visible and accounted for.
 
-def invocation_start(provider: str, task: str | None, model: str | None, input_hash: str | None, job_id: str | None, run_id: str | None) -> str:
+def invocation_start(provider: str, task: str | None, model: str | None, input_hash: str | None, job_id: str | None, run_id: str | None,
+                     logical_id: str | None = None, attempt_no: int = 1) -> str:
+    """One row per TRANSPORT ATTEMPT; attempts of the same logical invocation (task → one request the caller wanted
+    made) share logical_id. SDK-level retries are disabled so every network execution is a row here."""
     iid = new_id()
     t = now()
     with tx() as conn:
-        conn.execute("INSERT INTO invocations (id, job_id, run_id, task, provider, model, input_hash, state, requested_at) VALUES (?,?,?,?,?,?,?,'intent',?)",
-                     (iid, job_id, run_id, task, provider, model, input_hash, t))
+        conn.execute("INSERT INTO invocations (id, job_id, run_id, task, provider, model, input_hash, state, requested_at, logical_id, attempt_no) VALUES (?,?,?,?,?,?,?,'intent',?,?,?)",
+                     (iid, job_id, run_id, task, provider, model, input_hash, t, logical_id or iid, attempt_no))
         conn.execute("UPDATE invocations SET state='in_flight' WHERE id=?", (iid,))
     return iid
 
 
-def invocation_finish(iid: str, state: str, provider_request_id: str | None = None, error: str | None = None) -> None:
+def invocation_finish(iid: str, state: str, provider_request_id: str | None = None, error: str | None = None, error_type: str | None = None) -> None:
     with tx() as conn:
-        conn.execute("UPDATE invocations SET state=?, completed_at=?, provider_request_id=?, error=? WHERE id=?",
-                     (state, now(), provider_request_id, (error or None) and error[:500], iid))
+        conn.execute("UPDATE invocations SET state=?, completed_at=?, provider_request_id=?, error=?, error_type=? WHERE id=?",
+                     (state, now(), provider_request_id, (error or None) and error[:500], error_type, iid))
+
+
+def invocation_attempts(logical_id: str) -> list[dict[str, Any]]:
+    return [dict(r) for r in connect().execute("SELECT * FROM invocations WHERE logical_id=? ORDER BY attempt_no", (logical_id,)).fetchall()]
 
 
 def mark_ambiguous_invocations(job_id: str, run_id: str | None, conn: sqlite3.Connection | None = None) -> int:

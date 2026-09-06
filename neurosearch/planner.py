@@ -231,7 +231,7 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     from . import providers, usage
 
     usage.guard(0.5)
-    client = providers.anthropic_client(timeout=600.0, max_retries=2)
+    client = providers.anthropic_client(timeout=600.0)
     sys_blocks: Any = system
     if shared:
         sys_blocks = [usage.cached_block("RESEARCH MATERIAL for the project (your instructions follow it):\n\n" + shared),

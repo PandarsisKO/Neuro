@@ -34,6 +34,56 @@ def require_openai(what: str = "OPENAI_API_KEY is not set") -> None:
         raise RuntimeError(what)
 
 
+# ------------------------------------------------------------------ typed provider errors + retry policy (E0/E1)
+
+RATE_LIMIT, TIMEOUT, OVERLOADED, AUTH, INVALID_REQUEST, CONNECTION, REFUSAL, UNKNOWN = (
+    "RATE_LIMIT", "TIMEOUT", "OVERLOADED", "AUTH", "INVALID_REQUEST", "CONNECTION", "REFUSAL", "UNKNOWN")
+TRANSIENT_TYPES = {RATE_LIMIT, TIMEOUT, OVERLOADED, CONNECTION}
+
+
+def classify_error(e: BaseException) -> str:
+    """Map an SDK exception to a Neuro Search error type by its class (never by message text)."""
+    name = type(e).__name__
+    status = getattr(e, "status_code", None)
+    if name in ("RateLimitError",) or status == 429:
+        return RATE_LIMIT
+    if name in ("APITimeoutError", "DeadlineExceededError") or status == 408:
+        return TIMEOUT
+    if name in ("OverloadedError", "ServiceUnavailableError", "InternalServerError") or (status is not None and status >= 500) or status == 529:
+        return OVERLOADED
+    if name in ("AuthenticationError", "PermissionDeniedError") or status in (401, 403):
+        return AUTH
+    if name in ("BadRequestError", "UnprocessableEntityError", "NotFoundError", "RequestTooLargeError", "ConflictError") or status in (400, 404, 413, 422, 409):
+        return INVALID_REQUEST
+    if name in ("APIConnectionError",):
+        return CONNECTION
+    if name in ("ContentFilterFinishReasonError",) or "refus" in str(e).lower():
+        return REFUSAL
+    return UNKNOWN
+
+
+# transport attempts per logical invocation (E1 moves these into the per-task inference contract)
+RETRY_POLICY: dict[str, dict[str, Any]] = {
+    "default": {"max_attempts": 3, "backoff": [1.0, 4.0]},
+    "answer.chat": {"max_attempts": 2, "backoff": [1.0]},
+    "answer.repair": {"max_attempts": 2, "backoff": [1.0]},
+    "transcribe": {"max_attempts": 2, "backoff": [2.0]},
+    "embed": {"max_attempts": 3, "backoff": [1.0, 3.0]},
+}
+
+
+def retry_policy(task: str | None) -> dict[str, Any]:
+    return RETRY_POLICY.get(task or "", RETRY_POLICY["default"])
+
+
+class ProviderError(RuntimeError):
+    """A provider call failed after Neuro Search's own attempts. `error_type` is one of the typed categories."""
+
+    def __init__(self, error_type: str, cause: BaseException, attempts: int) -> None:
+        super().__init__(f"{error_type} after {attempts} attempt{'s' if attempts != 1 else ''}: {cause}")
+        self.error_type, self.cause, self.attempts = error_type, cause, attempts
+
+
 # ------------------------------------------------------------------ invocation ledger (every paid call is accounted for)
 
 def _request_hash(kw: dict[str, Any]) -> str:
@@ -54,19 +104,32 @@ class _Ledgered:
         self._fn, self._provider, self._task = fn, provider, default_task
 
     def __call__(self, **kw: Any) -> Any:
+        import time as _time
+
         from . import db, jobs
         task = (kw.get("extra_headers") or {}).get("x-neurosearch-task") or self._task
         jid, run_id = jobs.current_job()
-        iid = db.invocation_start(self._provider, task, str(kw.get("model") or ""), _request_hash(kw), jid, run_id)
-        try:
-            res = self._fn(**kw)
-        except Exception as e:
-            db.invocation_finish(iid, "failed", error=str(e))
-            raise
-        jobs.crash_point("provider_response_lost")          # the provider has done (and charged) the work; we die before recording it
-        rid = getattr(res, "_request_id", None) or getattr(res, "id", None)
-        db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None)
-        return res
+        policy = retry_policy(task)
+        logical = None
+        ihash = _request_hash(kw)
+        attempt = 0
+        while True:
+            attempt += 1
+            iid = db.invocation_start(self._provider, task, str(kw.get("model") or ""), ihash, jid, run_id, logical_id=logical, attempt_no=attempt)
+            logical = logical or iid
+            try:
+                res = self._fn(**kw)
+            except Exception as e:
+                et = classify_error(e)
+                db.invocation_finish(iid, "failed", error=str(e), error_type=et, provider_request_id=str(getattr(e, "request_id", "") or "") or None)
+                if et in TRANSIENT_TYPES and attempt < policy["max_attempts"]:
+                    _time.sleep(policy["backoff"][min(attempt - 1, len(policy["backoff"]) - 1)])
+                    continue
+                raise ProviderError(et, e, attempt) from e
+            jobs.crash_point("provider_response_lost")          # the provider has done (and charged) the work; we die before recording it
+            rid = getattr(res, "_request_id", None) or getattr(res, "id", None)
+            db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None)
+            return res
 
 
 class _LedgeredStream:
@@ -98,7 +161,7 @@ class _LedgeredStream:
                         rid = None
                     db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None)
                 else:
-                    db.invocation_finish(iid, "failed", error=str(ev))
+                    db.invocation_finish(iid, "failed", error=str(ev), error_type=classify_error(ev) if isinstance(ev, BaseException) else None)
                 return r
         return _Wrap()
 
@@ -130,6 +193,7 @@ def anthropic_client(**kw: Any) -> Any:
         return _wrap_anthropic(Anthropic(**kw))
     require_anthropic()
     import anthropic
+    kw["max_retries"] = 0                      # Neuro Search owns retries: every network execution is a ledger row
     return _wrap_anthropic(anthropic.Anthropic(api_key=settings.anthropic_api_key, **kw))
 
 
@@ -139,4 +203,5 @@ def openai_client(**kw: Any) -> Any:
         return _wrap_openai(OpenAI(**kw))
     require_openai()
     from openai import OpenAI
+    kw["max_retries"] = 0
     return _wrap_openai(OpenAI(api_key=settings.openai_api_key, **kw))

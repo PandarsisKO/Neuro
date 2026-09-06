@@ -28,6 +28,23 @@ def client():
         yield c
 
 
+@pytest.fixture
+def isolated_db(tmp_path, monkeypatch):
+    """A private database for tests that claim/inspect jobs by hand: the API client's worker threads keep their own
+    connections to the shared test database, so nothing they do can race with the test's queue."""
+    from neurosearch.config import settings
+    data = tmp_path / "data"; data.mkdir(); (data / "media").mkdir()
+    monkeypatch.setattr(settings, "data_dir", data)
+    db._local.conn = None
+    db.init_db()
+    yield data
+    try:
+        db.connect().close()
+    except Exception:  # noqa: BLE001
+        pass
+    db._local.conn = None
+
+
 def test_parse_json3_skips_append_events():
     raw = '{"events":[{"tStartMs":0,"dDurationMs":2000,"segs":[{"utf8":"hello "},{"utf8":"world"}]},' \
           '{"tStartMs":1000,"aAppend":1,"segs":[{"utf8":"\\n"}]},{"tStartMs":2000,"dDurationMs":3000,"segs":[{"utf8":"second"}]}]}'
@@ -1183,14 +1200,13 @@ def test_legacy_analysis_is_never_current(tmp_path, monkeypatch):
         db.connect().close(); db._local.conn = None
 
 
-def test_plan_rebuild_waits_for_research(client, monkeypatch):
+def test_plan_rebuild_waits_for_research(isolated_db, monkeypatch):
     """Dependency barrier: the plan job cannot be claimed until every findings rebuild it depends on is done, and it
     fails (rather than planning over stale evidence) if one of them fails or is cancelled."""
     from neurosearch import evals, findings, planner, staleness
     from neurosearch.config import settings
     monkeypatch.setattr(settings, "fake_ai", True)
     real_claim = db.claim_job
-    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)      # keep the workers off; drive claims by hand below
     g = evals.load_golden(); pid = g["project_id"]
     for gid in ("yt01", "yt02"):
         findings.suggest_for_source(pid, g["sources"][gid])
@@ -1219,13 +1235,12 @@ def test_plan_rebuild_waits_for_research(client, monkeypatch):
     assert claimed and claimed["id"] in (r2["job_ids"][0], r3["job_ids"][-1])
 
 
-def test_rebuilding_derives_from_job_state(client, monkeypatch):
+def test_rebuilding_derives_from_job_state(isolated_db, monkeypatch):
     """STALE → REBUILDING (queued/running, with 'waiting for budget' when parked) → CURRENT on success, back to STALE
     with the failure noted on permanent failure, back to STALE on cancel. Never stuck REBUILDING."""
     from neurosearch import evals, findings, staleness
     from neurosearch.config import settings
     monkeypatch.setattr(settings, "fake_ai", True)
-    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)
     g = evals.load_golden(); pid = g["project_id"]; sid = g["sources"]["yt01"]
     findings.suggest_for_source(pid, sid)
     db.update_project(pid, brief="another brief")
@@ -1244,3 +1259,56 @@ def test_rebuilding_derives_from_job_state(client, monkeypatch):
     r = staleness.rebuild(pid, ["findings"], source_ids=[sid]); jid = r["job_ids"][0]
     jobs.run_job(db.get_job(jid)); db.update_job(jid, status="done")
     assert st()["status"] == "current"
+
+
+def test_transport_retries_are_owned_and_ledgered(isolated_db, monkeypatch):
+    """SDK retries are off; Neuro Search retries typed transient errors itself and records every network attempt
+    as its own invocation row under one logical invocation."""
+    from neurosearch import providers
+    calls = {"n": 0}
+    class RateLimitError(Exception):
+        status_code = 429
+        request_id = "req_rl"
+    class AuthenticationError(Exception):
+        status_code = 401
+    def flaky(**kw):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("slow down")
+        return type("R", (), {"_request_id": "req_ok", "usage": None})()
+    monkeypatch.setattr(providers, "RETRY_POLICY", {"default": {"max_attempts": 3, "backoff": [0.0, 0.0]}})
+    fn = providers._Ledgered(flaky, "anthropic", "findings.extract")
+    res = fn(model="m", messages=[])
+    assert res._request_id == "req_ok" and calls["n"] == 3
+    rows = db.connect().execute("SELECT logical_id, attempt_no, state, error_type, provider_request_id FROM invocations ORDER BY attempt_no").fetchall()
+    assert [tuple(r) for r in rows] == [(rows[0]["logical_id"], 1, "failed", "RATE_LIMIT", "req_rl"), (rows[0]["logical_id"], 2, "failed", "RATE_LIMIT", "req_rl"),
+                                        (rows[0]["logical_id"], 3, "completed", None, "req_ok")]
+    assert len(db.invocation_attempts(rows[0]["logical_id"])) == 3
+    # non-transient errors are not retried and come out typed
+    def denied(**kw):
+        raise AuthenticationError("bad key")
+    with pytest.raises(providers.ProviderError) as ei:
+        providers._Ledgered(denied, "anthropic", "findings.extract")(model="m", messages=[])
+    assert ei.value.error_type == "AUTH" and ei.value.attempts == 1
+    # transient errors that exhaust the policy surface as typed ProviderError too
+    def always(**kw):
+        raise RateLimitError("still")
+    with pytest.raises(providers.ProviderError) as ei:
+        providers._Ledgered(always, "anthropic", "findings.extract")(model="m", messages=[])
+    assert ei.value.error_type == "RATE_LIMIT" and ei.value.attempts == 3
+    # real clients are constructed with SDK retries disabled
+    captured = {}
+    import anthropic, openai
+    def fake_anthropic(**kw):
+        captured["a"] = kw
+        return type("C", (), {"messages": type("M", (), {"create": None})()})()
+    def fake_openai(**kw):
+        captured["o"] = kw
+        return type("C", (), {"embeddings": type("E", (), {"create": None})(), "audio": type("A", (), {"transcriptions": type("T", (), {"create": None})()})()})()
+    monkeypatch.setattr(anthropic, "Anthropic", fake_anthropic)
+    monkeypatch.setattr(openai, "OpenAI", fake_openai)
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", False); monkeypatch.setattr(settings, "anthropic_api_key", "k"); monkeypatch.setattr(settings, "openai_api_key", "k")
+    providers.anthropic_client(timeout=5); providers.openai_client()
+    assert captured["a"]["max_retries"] == 0 and captured["o"]["max_retries"] == 0
+    assert providers.classify_error(RateLimitError()) == "RATE_LIMIT" and providers.classify_error(ValueError("x")) == "UNKNOWN"

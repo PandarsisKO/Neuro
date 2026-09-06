@@ -325,7 +325,9 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
                 db.set_source_status(sid, "pending")
             return "queued"
         attempts = int(job.get("attempts") or 0) + 1
-        if TRANSIENT.search(str(e)) and attempts < MAX_ATTEMPTS and job["kind"] in RETRYABLE:
+        from .providers import TRANSIENT_TYPES, ProviderError
+        typed_transient = isinstance(e, ProviderError) and e.error_type in TRANSIENT_TYPES
+        if (typed_transient or TRANSIENT.search(str(e))) and attempts < MAX_ATTEMPTS and job["kind"] in RETRYABLE:
             delay = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
             db.requeue_job(jid, delay=delay, message=f"retry {attempts + 1}/{MAX_ATTEMPTS} in {delay // 60} min — {str(e)[:200]}",
                            wait_reason="retry", count_attempt=True)

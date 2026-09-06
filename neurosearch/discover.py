@@ -100,7 +100,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     brief = "\n".join(user)
 
     usage.guard(0.15)
-    client = providers.anthropic_client(timeout=180.0, max_retries=2)
+    client = providers.anthropic_client(timeout=180.0)
 
     # ---- pass 1: instant shortlist (no tools) ----
     if progress:
