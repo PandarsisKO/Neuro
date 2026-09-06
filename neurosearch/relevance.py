@@ -86,7 +86,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     """Score every proposed source in the collection and store relevance/relevance_why on each.
     Sources beyond POOL (oldest) get score 0 so they stay unticked."""
     project = db.get_project(project_id) if project_id else None
-    rows = db.proposed_sources(collection_id)
+    rows = db.proposed_sources(collection_id, project_id)
     if not rows:
         return {"ranked": 0}
     if not project or not (project.get("brief") or project.get("goal") or project.get("questions")):
@@ -124,17 +124,20 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                 continue
             if 0 <= i < len(batch):
                 scored[batch[i]["id"]] = (sc, str(it.get("why") or "")[:80])
+    import hashlib
+    prov = {"model": settings.answer_model, "provider": "anthropic", "prompt_version": "rank-" + hashlib.sha1(SYSTEM.encode()).hexdigest()[:8],
+            "schema_version": "rank-v1", "brief_revision": db.brief_revision(project)}
     with db.batch():
         for s in pool:
             if s["id"] in scored:
                 sc, why = scored[s["id"]]
-                db.set_relevance(s["id"], sc, why)
+                db.set_relevance(s["id"], sc, why, project_id=project_id, **prov)
             elif failed_batches:
-                db.set_relevance(s["id"], None, None)      # leave unscored rather than pretend it's a 0
+                db.set_relevance(s["id"], None, None, project_id=project_id)      # leave unscored rather than pretend it's a 0
             else:
-                db.set_relevance(s["id"], 0, "not scored")
+                db.set_relevance(s["id"], 0, "not scored", project_id=project_id, **prov)
         for s in rest:
-            db.set_relevance(s["id"], 0, "beyond ranking pool (older)")
+            db.set_relevance(s["id"], 0, "beyond ranking pool (older)", project_id=project_id, **prov)
     note = None
     if failed_batches or len(scored) < len(pool):
         note = f"{len(pool) - len(scored)} of {len(pool)} videos could not be scored — press re-rank to try those again."

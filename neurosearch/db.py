@@ -207,6 +207,25 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS ix_usage_ts ON usage(ts);
 
+CREATE TABLE IF NOT EXISTS project_source_analysis (
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    summary         TEXT,
+    substance       INTEGER,
+    relevance       INTEGER,
+    relevance_why   TEXT,
+    model           TEXT,
+    provider        TEXT,
+    prompt_version  TEXT,
+    schema_version  TEXT,
+    source_revision TEXT,
+    brief_revision  TEXT,
+    facts_revision  TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL,
+    PRIMARY KEY (project_id, source_id)
+);
+
 CREATE TABLE IF NOT EXISTS validation_events (
     id          INTEGER PRIMARY KEY,
     ts          REAL NOT NULL,
@@ -282,6 +301,19 @@ MIGRATIONS = [
     ("usage", "cache_write", "ALTER TABLE usage ADD COLUMN cache_write INTEGER DEFAULT 0"),
     ("usage", "saved", "ALTER TABLE usage ADD COLUMN saved REAL DEFAULT 0"),
     ("messages", "meta", "ALTER TABLE messages ADD COLUMN meta TEXT"),
+    ("sources", "revision", "ALTER TABLE sources ADD COLUMN revision TEXT"),
+    ("project_notes", "model", "ALTER TABLE project_notes ADD COLUMN model TEXT"),
+    ("project_notes", "prompt_version", "ALTER TABLE project_notes ADD COLUMN prompt_version TEXT"),
+    ("project_notes", "source_revision", "ALTER TABLE project_notes ADD COLUMN source_revision TEXT"),
+    ("project_notes", "brief_revision", "ALTER TABLE project_notes ADD COLUMN brief_revision TEXT"),
+    ("plans", "model", "ALTER TABLE plans ADD COLUMN model TEXT"),
+    ("plans", "prompt_version", "ALTER TABLE plans ADD COLUMN prompt_version TEXT"),
+    ("plans", "brief_revision", "ALTER TABLE plans ADD COLUMN brief_revision TEXT"),
+    ("plans", "facts_revision", "ALTER TABLE plans ADD COLUMN facts_revision TEXT"),
+    ("plans", "source_set_revision", "ALTER TABLE plans ADD COLUMN source_set_revision TEXT"),
+    ("discoveries", "model", "ALTER TABLE discoveries ADD COLUMN model TEXT"),
+    ("discoveries", "prompt_version", "ALTER TABLE discoveries ADD COLUMN prompt_version TEXT"),
+    ("discoveries", "brief_revision", "ALTER TABLE discoveries ADD COLUMN brief_revision TEXT"),
 ]
 
 
@@ -293,6 +325,31 @@ def init_db() -> None:
         if col not in cols:
             conn.execute(sql)
     conn.commit()
+    _migrate_source_analysis(conn)
+
+
+def _migrate_source_analysis(conn: sqlite3.Connection) -> None:
+    """0.16: summary/substance/relevance used to live on the global source row although they were generated against
+    one project's brief. Copy what is there into project_source_analysis for every project the source belongs to
+    (marked provider='migrated' so nothing pretends to know which model wrote it), once."""
+    if kv_get("migrated:project_source_analysis") == "1":
+        return
+    t = now()
+    rows = conn.execute("SELECT id, summary, substance, relevance, relevance_why FROM sources WHERE summary IS NOT NULL OR substance IS NOT NULL OR relevance IS NOT NULL").fetchall()
+    n = 0
+    for s in rows:
+        pids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=?", (s["id"],)).fetchall()}
+        pids |= {r["project_id"] for r in conn.execute(
+            "SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id WHERE sc.source_id=?", (s["id"],)).fetchall()}
+        for pid in pids:
+            conn.execute("""INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, summary, substance, relevance, relevance_why, provider, created_at, updated_at)
+                            VALUES (?,?,?,?,?,?,'migrated',?,?)""", (pid, s["id"], s["summary"], s["substance"], s["relevance"], s["relevance_why"], t, t))
+            n += 1
+    conn.execute("INSERT INTO kv (key, value) VALUES ('migrated:project_source_analysis','1') ON CONFLICT(key) DO UPDATE SET value='1'")
+    conn.commit()
+    if n:
+        import logging
+        logging.getLogger(__name__).info("migrated %d source analyses into project_source_analysis", n)
 
 
 @contextmanager
@@ -412,9 +469,46 @@ def set_source_status(source_id: str, status: str, error: str | None = None) -> 
         conn.execute("UPDATE sources SET status=?, error=?, updated_at=? WHERE id=?", (status, error, now(), source_id))
 
 
-def delete_source(source_id: str) -> None:
+def delete_source(source_id: str) -> dict[str, int]:
+    """Delete a source and make everything that cited it say so. Findings, plan evidence and chat citations that
+    pointed at it are marked removed (title kept, link dropped) — visible, never dangling. Segments, chunks,
+    project analyses and collection links cascade."""
+    touched = {"notes": 0, "plans": 0, "messages": 0}
+    t = now()
     with tx() as conn:
+        for r in conn.execute("SELECT id, citations FROM project_notes WHERE citations LIKE ?", (f'%{source_id}%',)).fetchall():
+            cites = json.loads(r["citations"] or "[]")
+            hit = False
+            for c in cites:
+                if c.get("source_id") == source_id and not c.get("removed"):
+                    c.update({"removed": True, "removed_at": t, "link": None})
+                    hit = True
+            if hit:
+                conn.execute("UPDATE project_notes SET citations=? WHERE id=?", (json.dumps(cites), r["id"]))
+                touched["notes"] += 1
+        for r in conn.execute("SELECT id, plan FROM plans WHERE plan LIKE ?", (f'%{source_id}%',)).fetchall():
+            plan = json.loads(r["plan"] or "{}")
+            emap = plan.get("_evidence") or {}
+            hit = False
+            for eid, e in emap.items():
+                if e.get("source_id") == source_id and not e.get("removed"):
+                    e.update({"removed": True, "removed_at": t, "link": None})
+                    hit = True
+            if hit:
+                conn.execute("UPDATE plans SET plan=? WHERE id=?", (json.dumps(plan), r["id"]))
+                touched["plans"] += 1
+        for r in conn.execute("SELECT id, citations FROM messages WHERE citations LIKE ?", (f'%{source_id}%',)).fetchall():
+            cites = json.loads(r["citations"] or "[]")
+            hit = False
+            for c in cites:
+                if c.get("source_id") == source_id and not c.get("removed"):
+                    c.update({"removed": True, "removed_at": t, "link": None})
+                    hit = True
+            if hit:
+                conn.execute("UPDATE messages SET citations=? WHERE id=?", (json.dumps(cites), r["id"]))
+                touched["messages"] += 1
         conn.execute("DELETE FROM sources WHERE id=?", (source_id,))
+    return touched
 
 
 def fun_stats(project_id: str | None = None) -> dict[str, Any]:
@@ -478,6 +572,30 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
                 for i, c in enumerate(chunks)
             ],
         )
+        conn.execute("UPDATE sources SET revision=? WHERE id=?", (segments_revision(segments), source_id))
+
+
+def segments_revision(segments: list[dict[str, Any]]) -> str:
+    """SHA-256 of the normalised transcript text: the source's revision. Same words → same revision."""
+    import hashlib
+    h = hashlib.sha256()
+    for s in segments:
+        h.update(" ".join(str(s.get("text") or "").split()).lower().encode())
+        h.update(b"\n")
+    return h.hexdigest()[:16]
+
+
+def source_revision(source_id: str) -> str | None:
+    row = connect().execute("SELECT revision FROM sources WHERE id=?", (source_id,)).fetchone()
+    if row and row["revision"]:
+        return row["revision"]
+    segs = get_segments(source_id)
+    if not segs:
+        return None
+    rev = segments_revision(segs)
+    with tx() as conn:
+        conn.execute("UPDATE sources SET revision=? WHERE id=?", (rev, source_id))
+    return rev
 
 
 def get_segments(source_id: str) -> list[dict[str, Any]]:
@@ -696,17 +814,57 @@ def skip_queued_siblings(collection_id: str, reason: str) -> int:
     return n
 
 
-def proposed_sources(collection_id: str) -> list[dict[str, Any]]:
-    return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
-        """SELECT s.* FROM sources s JOIN source_collections sc ON sc.source_id=s.id
-           WHERE sc.collection_id=? AND s.status='proposed'
-           ORDER BY (s.relevance IS NULL), s.relevance DESC, s.created_at""", (collection_id,)).fetchall()]
+def proposed_sources(collection_id: str, project_id: str | None = None) -> list[dict[str, Any]]:
+    """Proposed (unapproved) sources of a listing. Relevance is project-relative, so it comes from
+    project_source_analysis for the given project (None → unranked order)."""
+    if project_id is None:
+        project_id = collection_project(collection_id)
+    out = []
+    for r in connect().execute(
+            """SELECT s.*, a.relevance AS a_relevance, a.relevance_why AS a_relevance_why
+               FROM sources s JOIN source_collections sc ON sc.source_id=s.id
+               LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=?
+               WHERE sc.collection_id=? AND s.status='proposed'
+               ORDER BY (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
+        d = row_to_dict(r)
+        d["relevance"], d["relevance_why"] = d.pop("a_relevance"), d.pop("a_relevance_why")     # the legacy global columns are ignored
+        out.append(d)
+    return out
 
 
-def set_relevance(source_id: str, score: int | None, why: str | None) -> None:
+def collection_project(collection_id: str) -> str | None:
+    row = connect().execute("SELECT project_id FROM project_collections WHERE collection_id=? ORDER BY rowid LIMIT 1", (collection_id,)).fetchone()
+    return row["project_id"] if row else None
+
+
+def set_relevance(source_id: str, score: int | None, why: str | None, project_id: str | None = None, **prov: Any) -> None:
+    """Relevance of a source TO A PROJECT (there is no such thing as relevance in general)."""
+    if project_id is None:
+        return
+    upsert_analysis(project_id, source_id, relevance=score, relevance_why=why, **prov)
+
+
+def upsert_analysis(project_id: str, source_id: str, **fields: Any) -> None:
+    """Write project-relative analysis (summary/substance/relevance) with its provenance. Only given fields change."""
+    allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
+               "source_revision", "brief_revision", "facts_revision"}
+    f = {k: v for k, v in fields.items() if k in allowed}
+    t = now()
     with tx() as conn:
-        conn.execute("UPDATE sources SET relevance=?, relevance_why=?, updated_at=? WHERE id=?",
-                     (score, why, now(), source_id))
+        conn.execute("INSERT OR IGNORE INTO project_source_analysis (project_id, source_id, created_at, updated_at) VALUES (?,?,?,?)", (project_id, source_id, t, t))
+        if f:
+            sets = ", ".join(f"{k}=?" for k in f) + ", updated_at=?"
+            conn.execute(f"UPDATE project_source_analysis SET {sets} WHERE project_id=? AND source_id=?", (*f.values(), t, project_id, source_id))
+
+
+def project_analysis(project_id: str) -> dict[str, dict[str, Any]]:
+    """source_id → analysis row for a project."""
+    return {r["source_id"]: dict(r) for r in connect().execute("SELECT * FROM project_source_analysis WHERE project_id=?", (project_id,)).fetchall()}
+
+
+def get_analysis(project_id: str, source_id: str) -> dict[str, Any] | None:
+    row = connect().execute("SELECT * FROM project_source_analysis WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone()
+    return dict(row) if row else None
 
 
 def review_meta(collection_id: str) -> dict[str, Any]:
@@ -1153,14 +1311,19 @@ def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (note_id,)).fetchone())
 
 
-def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, Any]]) -> int:
-    """Replace pending suggestions for (project, source); dismissed/approved ones are kept."""
+def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, Any]], provenance: dict[str, Any] | None = None) -> int:
+    """Replace pending suggestions for (project, source); dismissed/approved ones are kept. Every note records the
+    model/prompt that wrote it and the brief + source revisions it was written against."""
+    prov = provenance or {}
+    srev = prov.get("source_revision") or source_revision(source_id)
+    brev = prov.get("brief_revision") or brief_revision(project_id)
     with tx() as conn:
         conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
         t = now()
         conn.executemany(
-            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title) VALUES (?,?,?,?,?,?,?,?)",
-            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title")) for n in notes])
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title"),
+              prov.get("model"), prov.get("prompt_version"), srev, brev) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
@@ -1203,18 +1366,22 @@ def sources_being_analysed(project_id: str) -> set[str]:
     return out
 
 
-def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = "", refine: str | None = None) -> list[dict[str, Any]]:
+def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = "", refine: str | None = None,
+                    provenance: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     existing = {d["name"].lower() for d in list_discoveries(project_id)}
+    prov = provenance or {}
+    brev = brief_revision(project_id)
     out = []
     with tx() as conn:
         for it in items:
             if it["name"].lower() in existing:
                 continue
             cur = conn.execute(
-                """INSERT INTO discoveries (project_id, name, kind, url, known_for, why, angle, start_with, fit, depth, note, refine, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO discoveries (project_id, name, kind, url, known_for, why, angle, start_with, fit, depth, note, refine, created_at, model, prompt_version, brief_revision)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (project_id, it["name"], it.get("kind"), it.get("url"), it.get("known_for"), it.get("why"), it.get("angle"),
-                 json.dumps(it.get("start_with") or []), it.get("fit"), it.get("depth"), note, refine, now()))
+                 json.dumps(it.get("start_with") or []), it.get("fit"), it.get("depth"), note, refine, now(),
+                 prov.get("model"), prov.get("prompt_version"), brev))
             out.append(cur.lastrowid)
     rows = [d for d in list_discoveries(project_id) if d["id"] in set(out)]
     return rows
@@ -1265,9 +1432,11 @@ def projects_for_source(source_id: str) -> list[str]:
     return sorted(ids)
 
 
-def set_source_summary(source_id: str, summary: str | None, substance: int | None) -> None:
-    with tx() as conn:
-        conn.execute("UPDATE sources SET summary=?, substance=?, updated_at=? WHERE id=?", (summary, substance, now(), source_id))
+def set_source_summary(source_id: str, summary: str | None, substance: int | None, project_id: str | None = None, **prov: Any) -> None:
+    """A summary/substance score is written against a project's brief, so it belongs to (project, source)."""
+    if project_id is None:
+        return
+    upsert_analysis(project_id, source_id, summary=summary, substance=substance, **prov)
 
 
 def delete_project_note(note_id: int) -> None:
@@ -1294,6 +1463,38 @@ def delete_fact(fact_id: int) -> None:
         conn.execute("DELETE FROM project_facts WHERE id=?", (fact_id,))
 
 
+def _sha(*parts: Any) -> str:
+    import hashlib
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def brief_revision(project: dict[str, Any] | str) -> str:
+    """Revision of everything the user told us that steers analysis (brief, goal, audience, output, source prefs,
+    questions, context). Changes when any of it changes."""
+    p = get_project(project) if isinstance(project, str) else project
+    if not p:
+        return "none"
+    return _sha(*(p.get(k) for k in ("brief", "goal", "audience", "output_pref", "source_prefs", "questions", "context")))
+
+
+def facts_revision(project_id: str) -> str:
+    return _sha([(f["kind"], f["content"]) for f in list_facts(project_id)])
+
+
+def source_set_revision(project_id: str) -> str:
+    """Which ready sources are in scope, at which revisions."""
+    ids = sorted(project_source_ids(project_id))
+    revs: dict[str, Any] = {}
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        revs = {r["id"]: r["revision"] for r in connect().execute(f"SELECT id, revision FROM sources WHERE id IN ({marks})", ids).fetchall()}
+    return _sha([(i, revs.get(i)) for i in ids])
+
+
+def project_revisions(project_id: str) -> dict[str, str]:
+    return {"brief_revision": brief_revision(project_id), "facts_revision": facts_revision(project_id), "source_set_revision": source_set_revision(project_id)}
+
+
 def project_snapshot(project_id: str) -> dict[str, int]:
     """Counts used to detect 'research changed since the plan was built'."""
     conn = connect()
@@ -1307,13 +1508,17 @@ def project_snapshot(project_id: str) -> dict[str, int]:
     }
 
 
-def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], carry_statuses_from: str | None = None) -> dict[str, Any]:
+def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], carry_statuses_from: str | None = None,
+              provenance: dict[str, Any] | None = None) -> dict[str, Any]:
     pid = new_id()
+    prov = {**project_revisions(project_id), **(provenance or {})}
     with tx() as conn:
         v = conn.execute("SELECT COALESCE(MAX(version),0)+1 v FROM plans WHERE project_id=?", (project_id,)).fetchone()["v"]
         t = now()
-        conn.execute("INSERT INTO plans (id, project_id, version, plan, snapshot, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
-                     (pid, project_id, v, json.dumps(plan), json.dumps(snapshot), t, t))
+        conn.execute("""INSERT INTO plans (id, project_id, version, plan, snapshot, created_at, updated_at, model, prompt_version,
+                        brief_revision, facts_revision, source_set_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     (pid, project_id, v, json.dumps(plan), json.dumps(snapshot), t, t, prov.get("model"), prov.get("prompt_version"),
+                      prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"]))
         if carry_statuses_from:
             rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
             conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)",

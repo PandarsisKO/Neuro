@@ -10,7 +10,7 @@ import logging
 import re
 from typing import Any
 
-from . import db
+from . import db, providers
 from .chunking import fmt_locator
 from .config import settings
 from .search import deep_link
@@ -81,6 +81,9 @@ def _windows(segs: list[dict[str, Any]], platform: str) -> list[str]:
     return out
 
 
+_last_model: dict[str, str] = {}
+
+
 def _call(system: str, user: str, project_id: str | None = None, source_id: str | None = None, head: str = "") -> dict[str, Any]:
     """`head` (project + source framing) is sent as a second system block ending a cached prefix, so the second and
     later windows of a long transcript, and every source analysed for the same project within a few minutes, only
@@ -95,6 +98,7 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=sys_blocks,
                                   messages=[{"role": "user", "content": user}], extra_headers=TASK)
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
+    _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
@@ -158,10 +162,13 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12) 
             content += " [1]"
         notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
                       "importance": int(f.get("importance") or 0)})
-    n = db.replace_suggestions(project_id, source_id, notes)
+    prov = {"model": _last_model.get("model"), "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
+            "schema_version": "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
+            "facts_revision": db.facts_revision(project_id)}
+    n = db.replace_suggestions(project_id, source_id, notes, provenance=prov)
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
-    db.set_source_summary(source_id, summary, substance)
+    db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
     return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
             "rejected_quotes": rejected}
 

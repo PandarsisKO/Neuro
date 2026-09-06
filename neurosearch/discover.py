@@ -111,7 +111,9 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     usage.record_anthropic(resp, "discover", project_id=project_id)
     data = _parse("".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"))
     items = _items(data.get("sources") or [])
-    saved = db.add_discoveries(project_id, items, note=str(data.get("note") or ""), refine=refine)
+    import hashlib
+    saved = db.add_discoveries(project_id, items, note=str(data.get("note") or ""), refine=refine,
+                               provenance={"model": settings.answer_model, "prompt_version": "discover-" + hashlib.sha1(QUICK_SYSTEM.encode()).hexdigest()[:8]})
     if progress:
         progress(0.45, f"{len(saved)} suggestions ready — verifying links on the web…")
 

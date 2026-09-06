@@ -487,7 +487,12 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         analysing = db.sources_being_analysed(project_id)
         live = db.live_job_by_source()
         analysed_ids = db.analysed_sources(project_id)
+        analysis = db.project_analysis(project_id)
         for r in rows:
+            a = analysis.get(r["id"]) or {}
+            for k in ("summary", "substance", "relevance", "relevance_why"):
+                r[k] = a.get(k)                       # project-relative: what THIS project's brief made of the source
+            r["analysis"] = {k: a.get(k) for k in ("model", "provider", "prompt_version", "source_revision", "brief_revision", "updated_at")} if a else None
             c = counts.get(r["id"], {})
             r["suggested"] = c.get("suggested", 0)
             r["approved"] = c.get("approved", 0)
@@ -508,13 +513,15 @@ def api_source(source_id: str) -> dict[str, Any]:
     if not s:
         raise HTTPException(404)
     s["segments"] = db.get_segments(source_id)
+    s["analyses"] = [dict(r) for r in db.connect().execute("SELECT * FROM project_source_analysis WHERE source_id=?", (source_id,)).fetchall()]
+    s["revision"] = s.get("revision") or db.source_revision(source_id)
     return s
 
 
 @app.delete("/api/sources/{source_id}", dependencies=[Depends(require_auth)])
 def api_delete_source(source_id: str) -> dict[str, Any]:
-    db.delete_source(source_id)
-    return {"ok": True}
+    touched = db.delete_source(source_id)
+    return {"ok": True, "marked_removed": touched}
 
 
 class TagsIn(BaseModel):
@@ -831,8 +838,30 @@ class BuildIn(BaseModel):
 def api_plan(project_id: str) -> dict[str, Any]:
     from . import planner
     plan = db.latest_plan(project_id)
-    return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False,
-            "versions": db.list_plans(project_id)}
+    versions = db.list_plans(project_id)
+    for v in versions:                                  # older versions are superseded, never "current"
+        v["label"] = "current" if plan and v["id"] == plan["id"] else "superseded"
+    return {"plan": plan, "research_changed": planner.research_changed(project_id) if plan else False, "versions": versions}
+
+
+@app.get("/api/projects/{project_id}/staleness", dependencies=[Depends(require_auth)])
+def api_staleness(project_id: str) -> dict[str, Any]:
+    """Which artifacts no longer reflect the project (brief/facts/sources changed) and what a rebuild would cost.
+    Pure computation — never launches analysis."""
+    from . import staleness
+    return staleness.assess(project_id)
+
+
+class RebuildIn(BaseModel):
+    what: list[str] | None = None          # findings | plan
+    source_ids: list[str] | None = None
+
+
+@app.post("/api/projects/{project_id}/rebuild-stale", dependencies=[Depends(require_auth)])
+def api_rebuild_stale(project_id: str, body: RebuildIn) -> dict[str, Any]:
+    """Queue stale artifacts for regeneration as ordinary jobs (each passes the budget valve on its own)."""
+    from . import staleness
+    return staleness.rebuild(project_id, body.what, body.source_ids)
 
 
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])

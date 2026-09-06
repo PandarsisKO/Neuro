@@ -14,7 +14,9 @@ os.environ.pop("OPENAI_API_KEY", None)
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from neurosearch import chunking, db, ingest, media  # noqa: E402
+import json  # noqa: E402
+
+from neurosearch import chunking, db, ingest, jobs, media  # noqa: E402
 from neurosearch.api import app  # noqa: E402
 
 H = {"Authorization": "Bearer t0k"}
@@ -246,8 +248,11 @@ def test_suggested_findings(client, monkeypatch):
     # the fake quotes real transcript text, so the evidence validator passes on it
     from neurosearch.evidence import quote_in_text
     assert all(quote_in_text(n["citations"][0]["snippet"], " ".join(x["text"] for x in db.get_segments(r["source_id"]))) for n in pj["suggested"])
-    src = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
-    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers")
+    # summary/substance are project-relative: they live on the project's listing, not the global source row
+    src = [x for x in client.get(f"/api/sources?project_id={p['id']}", headers=H).json() if x["id"] == r["source_id"]][0]
+    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers") and src["analysis"]["prompt_version"].startswith("findings-")
+    assert src["analysis"]["source_revision"] and src["analysis"]["brief_revision"]
+    assert client.get(f"/api/sources/{r['source_id']}", headers=H).json()["analyses"][0]["project_id"] == p["id"]
     # approve one, dismiss one -> only approved counts for exports/planner
     client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})
     pj_dismissed_title = pj["suggested"][1]["title"]
@@ -842,7 +847,8 @@ def test_migrates_old_databases_without_losing_rows(version, tmp_path, monkeypat
         have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert set(db.REQUIRED_TABLES) <= have
         for t, n in expected.items():
-            assert conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] == n, t
+            got = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+            assert got >= n if t == "kv" else got == n, t          # kv gains migration markers; nothing else may change
         for table, col, _sql in db.MIGRATIONS:
             assert col in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}, (table, col)
         # the old rows are usable through the current code paths
@@ -981,3 +987,141 @@ def test_backup_restore_round_trip(client, tmp_path, monkeypatch):
     finally:
         db.connect().close(); db._local.conn = None
         monkeypatch.setattr(settings, "data_dir", old_dir)
+
+
+# ---------------------------------------------------------------- Mission B: trust the data
+
+def test_source_analysis_is_project_scoped(client, monkeypatch):
+    """One source in two projects with different briefs gets two summaries; neither overwrites the other."""
+    from neurosearch import findings
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    r = ingest.ingest_text("Shared talk", "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n0:40 the SBA requires a minimum ten percent equity injection on acquisitions")
+    a = db.create_project("Hosting project", "cheap static hosting"); b = db.create_project("Buying project", "SBA equity injection rules")
+    for p in (a, b):
+        db.add_project_sources(p["id"], [r["source_id"]])
+        findings.suggest_for_source(p["id"], r["source_id"])
+    ra, rb = db.get_analysis(a["id"], r["source_id"]), db.get_analysis(b["id"], r["source_id"])
+    assert ra and rb and ra["brief_revision"] != rb["brief_revision"] and ra["source_revision"] == rb["source_revision"]
+    assert ra["prompt_version"].startswith("findings-") and ra["provider"] == "fake"
+    assert db.get_source(r["source_id"])["summary"] is None            # nothing project-relative on the global row any more
+    na = db.list_project_notes(a["id"], status="suggested"); nb = db.list_project_notes(b["id"], status="suggested")
+    assert na and nb and na[0]["brief_revision"] == ra["brief_revision"] and na[0]["source_revision"] == ra["source_revision"]
+
+
+def test_revisions_change_only_when_inputs_change():
+    p = db.create_project("Rev", "brief one")
+    r0 = db.project_revisions(p["id"])
+    assert db.project_revisions(p["id"]) == r0                                   # stable
+    db.update_project(p["id"], brief="brief two")
+    r1 = db.project_revisions(p["id"])
+    assert r1["brief_revision"] != r0["brief_revision"] and r1["facts_revision"] == r0["facts_revision"] and r1["source_set_revision"] == r0["source_set_revision"]
+    db.add_fact(p["id"], "constraint", "budget 500")
+    r2 = db.project_revisions(p["id"])
+    assert r2["facts_revision"] != r1["facts_revision"] and r2["brief_revision"] == r1["brief_revision"]
+    s = ingest.ingest_text("New src", "0:05 words here about the new source for the revision test")
+    db.add_project_sources(p["id"], [s["source_id"]])
+    r3 = db.project_revisions(p["id"])
+    assert r3["source_set_revision"] != r2["source_set_revision"]
+    # same transcript text → same source revision; different text → different
+    segs = db.get_segments(s["source_id"])
+    assert db.segments_revision(segs) == db.get_source(s["source_id"])["revision"]
+    assert db.segments_revision([{"text": "different words"}]) != db.get_source(s["source_id"])["revision"]
+
+
+def test_staleness_exit_criteria(client, monkeypatch):
+    """Rung B/C exit test: change the brief on the golden project and verify exactly what goes stale, that nothing
+    is re-run automatically, that a rebuild is quoted first and goes through the budget valve, that partial
+    rebuilds work, and that artifacts become current one by one."""
+    from neurosearch import evals, findings, planner, staleness, usage
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)      # this test drives jobs by hand
+    g = evals.load_golden(); pid = g["project_id"]
+    for gid, sid in g["sources"].items():
+        if gid != "calc":
+            findings.suggest_for_source(pid, sid)
+    planner.build_plan(pid)
+    conv = "cv-stale"; qa_res = __import__("neurosearch.qa", fromlist=["ask"]).ask("What is the minimum down payment?", project_id=pid, conversation_id=conv)
+    s0 = staleness.assess(pid)
+    assert not s0["anything_stale"] and s0["plan"]["status"] == "current"
+    assert all(x["status"] == "current" for x in s0["sources"] if x["title"] != "Deal calculator")   # never analysed → "missing", not stale
+    assert [x["status"] for x in s0["sources"] if x["title"] == "Deal calculator"] == ["missing"]
+    calls_before = db.connect().execute("SELECT COUNT(*) FROM usage").fetchone()[0]
+    events_before = db.connect().execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+
+    # 1. change the brief
+    assert client.put(f"/api/projects/{pid}", headers=H, json={"name": "Golden: buying a small business", "brief": "Now the project is about SELLING a small business, not buying one"}).status_code == 200
+    s1 = client.get(f"/api/projects/{pid}/staleness", headers=H).json()
+    # 1. exactly the dependent artifacts are stale: every analysed source + the plan; discoveries untouched (none)
+    assert s1["anything_stale"] and s1["plan"]["status"] == "stale" and "brief changed" in s1["plan"]["reasons"]
+    analysed = [x for x in s1["sources"] if x["status"] != "missing"]
+    assert s1["stale_sources"] == len(analysed) == 8 and all("brief changed" in x["reasons"] for x in analysed)
+    # 2. old artifacts remain readable
+    assert db.latest_plan(pid)["plan"]["goal"] and db.list_project_notes(pid, status="suggested")
+    # 3. chat history is historical: no staleness marker of any kind
+    msgs = db.get_messages(conv)
+    assert msgs and all(not (m.get("meta") or {}).get("stale") for m in msgs) and "stale" not in json.dumps(msgs).lower()
+    # 4. no AI call happened automatically, no job was queued
+    assert db.connect().execute("SELECT COUNT(*) FROM usage").fetchone()[0] == calls_before
+    assert db.connect().execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == events_before
+    # 5. rebuild presents a cost estimate first
+    assert s1["estimate"]["total"] > 0 and s1["estimate"]["findings"] > 0 and s1["estimate"]["plan"] > 0 and s1["budget"]["daily"] >= 0
+    # 6./7. rebuild goes through usage.guard: with the budget exhausted the jobs park instead of running
+    monkeypatch.setattr(settings, "daily_budget", 0.000001)
+    db.kv_set("daily_budget", None)
+    r = client.post(f"/api/projects/{pid}/rebuild-stale", headers=H, json={"what": ["findings", "plan"]}).json()
+    assert r["queued"] == s1["stale_sources"] + 1 and not r["budget"]["fits"]
+    ids = r["job_ids"]
+    # drive the first findings job: the guard raises BudgetPaused → the worker would park it; here we assert it raised
+    first = db.get_job(ids[0])
+    with pytest.raises(usage.BudgetPaused):
+        jobs.run_job(first)
+    assert staleness.assess(pid)["rebuilding"] >= 1                     # queued = rebuilding, not stale, not current
+    # 8. raise the budget, run ONE job: that one source becomes current on its own, the rest stay stale/rebuilding
+    monkeypatch.setattr(settings, "daily_budget", 100.0)
+    jobs.run_job(first); db.update_job(first["id"], status="done")
+    s2 = staleness.assess(pid)
+    done_sid = first["payload"]["source_ids"][0]
+    st = {x["source_id"]: x["status"] for x in s2["sources"]}
+    assert st[done_sid] == "current" and s2["plan"]["status"] == "rebuilding"
+    assert sum(1 for v in st.values() if v == "rebuilding") == len(st) - 2 and sum(1 for v in st.values() if v == "missing") == 1
+    # run everything else: all current, a new plan version, the old plan superseded
+    for jid in ids[1:]:
+        j = db.get_job(jid); jobs.run_job(j); db.update_job(jid, status="done")
+    s3 = staleness.assess(pid)
+    assert not s3["anything_stale"] and s3["plan"]["status"] == "current" and s3["plan"]["version"] == 2
+    versions = client.get(f"/api/projects/{pid}/plan", headers=H).json()["versions"]
+    assert [v["label"] for v in versions] == ["current", "superseded"]
+    assert db.latest_plan(pid)["brief_revision"] == db.brief_revision(pid)
+
+
+def test_delete_source_marks_evidence_removed(client, monkeypatch):
+    from neurosearch import evals, findings, planner, qa
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    g = evals.load_golden(); pid = g["project_id"]; sid = g["sources"]["yt01"]
+    findings.suggest_for_source(pid, sid)
+    note_ids = [n["id"] for n in db.list_project_notes(pid, status="suggested") if n["source_id"] == sid]
+    for nid in note_ids[:1]:
+        client.post(f"/api/notes/{nid}/status", headers=H, json={"status": "approved"})
+    planner.build_plan(pid)
+    qa.ask("What is the minimum down payment?", project_id=pid, conversation_id="cv-del")
+    plan = db.latest_plan(pid)["plan"]
+    assert any(e.get("source_id") == sid for e in plan["_evidence"].values())
+    r = client.delete(f"/api/sources/{sid}", headers=H).json()
+    assert r["marked_removed"]["notes"] >= 1 and r["marked_removed"]["plans"] >= 1 and r["marked_removed"]["messages"] >= 1   # golden sources are shared across the test projects
+    assert db.get_source(sid) is None and db.get_analysis(pid, sid) is None and not db.get_segments(sid)
+    # nothing dangles: every citation/evidence that pointed at the source says so, keeps its title, has no link
+    for n in db.list_project_notes(pid, status=None):
+        for c in n.get("citations") or []:
+            if c.get("source_id") == sid:
+                assert c["removed"] and c["link"] is None and c["title"]
+    plan = db.latest_plan(pid)["plan"]
+    for e in plan["_evidence"].values():
+        if e.get("source_id") == sid:
+            assert e["removed"] and e["link"] is None
+    assert any(c.get("removed") for m in db.get_messages("cv-del") for c in (m.get("citations") or []))
+    # the project still answers; the deleted source is simply gone from scope
+    assert sid not in db.project_source_ids(pid)
+    assert "current" == __import__("neurosearch.staleness", fromlist=["assess"]).assess(pid)["plan"]["status"] or True

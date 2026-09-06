@@ -134,6 +134,7 @@
   .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
   .fun{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:var(--shadow)}
   .funh{font-weight:700;margin-bottom:8px}
+  aside nav .n.stale{background:var(--warn);color:#fff}
   .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
   .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
@@ -321,12 +322,14 @@
         <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
         <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
         <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
+      <div id="staleFindings"></div>
       <div id="suggestedWrap"></div>
       <div id="notes"></div>
     </div>
 
     <!-- plan -->
     <div class="view" id="view-plan">
+      <div id="stalePlan"></div>
       <div id="planWrap"></div>
     </div>
 
@@ -458,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.15.1';
+const UI_VERSION = '0.16.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -561,7 +564,7 @@ async function openProject(id, view, conv) {
   $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
   $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
-  loadFun(null);
+  loadFun(null); loadStaleness();
   await loadChats();
   if (fresh || view !== state.view || conv !== state.conv) {
     if (view === 'chats') await selectChat(conv || (state.chats[0] && state.chats[0].id) || null, false);
@@ -640,7 +643,7 @@ async function deleteChat() {
 }
 function renderAnswer(text, cites) {
   const byN = Object.fromEntries(cites.map(c => [c.n, c]));
-  return esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>` : m);
+  return esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? (byN[n].removed ? `<sup title="${esc(byN[n].title)} — this source was removed">[${n}⚠]</sup>` : `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>`) : m);
 }
 function addMsg(role, text, cites = [], extra = {}) {
   const empty = $('#chat .empty'); if (empty) empty.remove();
@@ -648,7 +651,7 @@ function addMsg(role, text, cites = [], extra = {}) {
   if (role === 'user') d.textContent = text;
   else {
     let h = renderAnswer(text, cites);
-    if (cites.length) h += `<div class="cites">` + cites.map(c => `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
+    if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
     const val = extra.validation || extra.meta || {};
     if (val.warning) h += `<div class="web" style="color:var(--warn)">⚠ ${esc(val.warning)}</div>`;
     else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
@@ -1031,7 +1034,47 @@ async function loadJobs() {
 }
 
 // ---- findings ----
+const STALE = { data: null };
+async function loadStaleness() {
+  try { STALE.data = await api(`/api/projects/${state.project.id}/staleness`); } catch (e) { STALE.data = null; return; }
+  const s = STALE.data;
+  const nf = $('#nFindings'), np = $('#nPlan');
+  if (nf) nf.classList.toggle('stale', s.stale_sources > 0);
+  if (np) np.classList.toggle('stale', s.plan.status === 'stale');
+  renderStaleCard('staleFindings', 'findings');
+  renderStaleCard('stalePlan', 'plan');
+}
+function renderStaleCard(elId, what) {
+  const el = $('#' + elId); if (!el) return;
+  const s = STALE.data; if (!s) { el.innerHTML = ''; return; }
+  const money = v => '$' + (+v).toFixed(2);
+  let h = '';
+  if (what === 'findings') {
+    const stale = s.sources.filter(x => x.status === 'stale'), reb = s.sources.filter(x => x.status === 'rebuilding');
+    if (!stale.length && !reb.length) { el.innerHTML = ''; return; }
+    const why = [...new Set(stale.flatMap(x => x.reasons))].join(', ');
+    h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${stale.length ? `${stale.length} source${stale.length === 1 ? '' : 's'} analysed against an older brief` : ''}${reb.length ? `${stale.length ? ' · ' : ''}${reb.length} re-analysing…` : ''}</b>
+      <div class="muted">${why ? `Why: ${esc(why)}. ` : ''}Their findings are still readable and usable — they just may not reflect what the project is about now. Nothing is re-run unless you ask.</div>
+      ${stale.length ? `<div class="row" style="margin-top:8px"><span class="muted">Re-analyse: est. <b>${money(s.estimate.findings)}</b> (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
+        <button class="small primary" onclick="rebuildStale(['findings'])">Re-analyse ${stale.length} stale</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
+  } else {
+    const p = s.plan;
+    if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
+    if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt…</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
+    else h = `<div class="card" style="border-color:var(--warn)"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
+      <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
+      <div class="row" style="margin-top:8px"><span class="muted">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
+        <button class="small primary" onclick="rebuildStale(['plan'])">Rebuild plan</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'])">Re-analyse + rebuild</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
+  }
+  el.innerHTML = STALE.left && what === 'findings' ? '' : h;
+}
+async function rebuildStale(what) {
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what });
+  toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued · est. $${(+r.estimate.total).toFixed(2)}${r.budget.fits ? '' : ' · will pause when the daily budget is reached and resume tomorrow'}`);
+  loadStaleness(); loadJobs();
+}
 async function loadNotes() {
+  loadStaleness();
   const p = await api('/api/projects/' + state.project.id);
   const notes = p.notes || [], sug = p.suggested || []; $('#nFindings').textContent = notes.length + (sug.length ? ` +${sug.length}` : '');
   const bySrc = {}; sug.forEach(n => { const k = (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
@@ -1090,7 +1133,7 @@ function findingCard(n, actions) {
   return `<div class="f">${imp}<div class="main">
       <div class="ttl">${esc(title)}</div>
       ${body ? `<div class="txt">${esc(body)}</div>` : ''}
-      <div class="meta">${(n.citations || []).map(x => `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
+      <div class="meta">${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
     </div><div class="act">${actions}</div></div>`;
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
@@ -1107,6 +1150,8 @@ async function suggestNow(force) {
 async function saveProject() {
   const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, context: $('#epContext').value, goal: $('#epGoal').value, audience: $('#epAudience').value, output_pref: $('#epOutput').value, source_prefs: $('#epSourcePrefs').value, questions: $('#epQuestions').value.split('\n').map(t => t.trim()).filter(Boolean), tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
   state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
+  STALE.left = 0; await loadStaleness();
+  if (STALE.data && STALE.data.anything_stale) toast(`Saved. ${STALE.data.stale_sources ? STALE.data.stale_sources + ' source analyses' : ''}${STALE.data.stale_sources && STALE.data.plan.status === 'stale' ? ' and ' : ''}${STALE.data.plan.status === 'stale' ? 'the Master Plan' : ''} now reflect an older brief — nothing is re-run until you ask (see Findings / Plan).`);
 }
 async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }
 
@@ -1125,6 +1170,7 @@ const STATUSES = ['not_started', 'ready', 'blocked', 'in_progress', 'complete', 
 const stLabel = s => (s || 'not_started').replace(/_/g, ' ');
 let planState = null;
 async function loadPlan() {
+  loadStaleness();
   const r = await api(`/api/projects/${state.project.id}/plan`);
   planState = r;
   $('#nPlan').textContent = r.plan ? `v${r.plan.version}` : '';
@@ -1163,7 +1209,7 @@ async function buildPlan(instructions) {
 }
 function ev(ids, emap) {
   if (!ids?.length) return '';
-  const parts = ids.map(i => emap[i]).filter(Boolean).map(e => e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label));
+  const parts = ids.map(i => emap[i]).filter(Boolean).map(e => e.removed ? `<span title="Evidence source removed">⚠ ${esc(e.label)} (source removed)</span>` : e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label));
   return parts.length ? `<div class="ev muted">based on: ${parts.join(' · ')}</div>` : '';
 }
 function statusSel(key) {

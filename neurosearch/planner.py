@@ -114,10 +114,10 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
     ev: list[dict[str, Any]] = []
     emap: dict[str, dict[str, Any]] = {}
 
-    def add(prefix: str, label: str, text: str, link: str | None = None, kind: str = "research") -> str:
+    def add(prefix: str, label: str, text: str, link: str | None = None, kind: str = "research", source_id: str | None = None) -> str:
         eid = f"{prefix}{sum(1 for e in ev if e['id'].startswith(prefix)) + 1}"
         ev.append({"id": eid, "text": text})
-        emap[eid] = {"label": label, "link": link, "kind": kind}
+        emap[eid] = {"label": label, "link": link, "kind": kind, **({"source_id": source_id} if source_id else {})}
         return eid
 
     for f in db.list_facts(project_id):
@@ -126,16 +126,17 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
         cites = n.get("citations") or []
         first = cites[0] if cites else None
         label = (first["title"] + " @ " + first["timestamp"]) if first else "pinned finding"
-        add("F", label, n["content"][:1200], first["link"] if first else None)
+        add("F", label, n["content"][:1200], first["link"] if first else None, source_id=(first or {}).get("source_id") or n.get("source_id"))
     sids = db.project_source_ids(project_id)
+    analysis = db.project_analysis(project_id)                    # summaries/substance are project-relative
     srcs = [s for s in db.list_sources(limit=100000) if s["id"] in set(sids)]
-    srcs.sort(key=lambda s: -(s.get("substance") or 0))          # most substantive first; big projects get capped
+    srcs.sort(key=lambda s: -((analysis.get(s["id"]) or {}).get("substance") or 0))   # most substantive first; big projects get capped
     for s in srcs[:80]:
-        text = s.get("summary")
+        text = (analysis.get(s["id"]) or {}).get("summary")
         if not text:
             segs = db.get_segments(s["id"])
             text = " ".join(x["text"] for x in segs[:40])[:400]
-        add("S", s["title"] or s["url"], f"{s['title']} ({s.get('channel') or s['platform']}): {text}", s["url"])
+        add("S", s["title"] or s["url"], f"{s['title']} ({s.get('channel') or s['platform']}): {text}", s["url"], source_id=s["id"])
     # retrieval: chunks most relevant to the brief/context and to open questions in chats
     queries = [q for q in [project.get("brief"), project.get("goal"), project.get("context")] if q] + list(project.get("questions") or [])
     for c in db.list_conversations(project_id, limit=20):
@@ -148,7 +149,7 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
             if h["chunk_id"] in seen:
                 continue
             seen.add(h["chunk_id"])
-            add("C", f"{h['title']} @ {h['timestamp']}", f"{h['title']} @ {h['timestamp']}: {h['text'][:900]}", h["link"])
+            add("C", f"{h['title']} @ {h['timestamp']}", f"{h['title']} @ {h['timestamp']}: {h['text'][:900]}", h["link"], source_id=h.get("source_id"))
             if len(seen) >= 60:
                 break
         if len(seen) >= 60:
@@ -307,7 +308,9 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
     db.kv_bump("evidence:plan_refs_checked", n_refs)
     db.kv_bump("evidence:plan_refs_dangling", len(dangling))
     snapshot = db.project_snapshot(project_id)
-    row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None)
+    import hashlib
+    row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None,
+                       provenance={"model": settings.answer_model, "prompt_version": "plan-" + hashlib.sha1((ANALYSIS_SYSTEM + SYSTEM).encode()).hexdigest()[:8]})
     db.update_project(project_id, mode="plan")
     return row
 
