@@ -442,7 +442,7 @@ def test_batch_findings_equivalent_to_interactive(monkeypatch):
     real_min = usage.CACHE_MIN_CHARS
     monkeypatch.setattr(usage, "CACHE_MIN_CHARS", 0)
     long_items = findings.batch_requests(pid, work[0])
-    assert [b.get("cache_control") for b in long_items[0]["params"]["system"]] == [None, {"type": "ephemeral", "ttl": "1h"}]
+    assert [b.get("cache_control") for b in long_items[0]["params"]["system"]] == [None, {"type": "ephemeral", "ttl": "1h"}, {"type": "ephemeral", "ttl": "1h"}]
     assert [b.get("cache_control") for b in findings._system_blocks(findings.SYSTEM, "head")] == [None, {"type": "ephemeral"}]
     monkeypatch.setattr(usage, "CACHE_MIN_CHARS", real_min)
     sim.run_until_idle()
@@ -848,3 +848,99 @@ def test_batch_smoke_fake_passes_and_leaves_nothing_behind(monkeypatch, tmp_path
     assert rep["structured_outputs"]["mismatches"] == 0 and rep["notes"] >= 1 and rep["analysis"]["transport"] == "batch"
     assert Path(rep["artifact"]).exists() and Path(rep["artifact"]).with_suffix(".txt").read_text().endswith("Batch smoke PASS")
     assert settings.data_dir == was_dir and settings.fake_ai == was_fake and not Path(rep["database"]).exists()
+
+
+# ---------------------------------------------------------------- Rung G (second portion): prompt-cache layout
+
+LEGACY_PROJECT_BLOCK = """
+Project: {name}
+Project brief (what the user is trying to find out — let this shape what you emphasise):
+{brief}
+
+You can shape the project as you talk:
+- update_brief: when the user asks to change, widen, narrow or refocus what the project is about. Rewrite the
+  whole brief (keep what still applies, fold in the change) and confirm the change in one sentence.
+- save_finding: when the user says to pin, save, remember or note something, or asks you to record a
+  conclusion. Save a self-contained finding in plain prose with the same [n] citations you used.
+- note_gap: record a coverage gap you identified (see Gap detection).
+- record_fact: when the user states a decision ("we're going with X"), a constraint (budget, deadline, must/must-not),
+  a requirement, or rejects an option, record it so the Master Planner can use it. Kinds: decision | constraint |
+  requirement | rejected. Do not record things you merely inferred.
+Pinned findings so far (do not repeat them unless asked; build on them):
+{findings}
+Known project facts (decisions, constraints, requirements):
+{facts}
+What the user told us when setting up the project (treat as requirements, not suggestions):
+{steering}
+"""
+
+
+def _legacy_chat_system(project, use_web, full_context):
+    """The 0.20.0+g3 chat system prompt, verbatim (one block; findings/facts inside the project block)."""
+    from neurosearch import qa, usage
+    notes = db.list_project_notes(project["id"])[:15]
+    findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
+    facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
+    block = LEGACY_PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings, facts=facts, steering=db.project_steering(project))
+    system = qa.SYSTEM.format(web_rule=qa.WEB_RULE_ON if use_web else qa.WEB_RULE_OFF, project_block=block)
+    blocks = [usage.cached_block(system)]
+    if full_context is not None:
+        blocks.append(usage.cached_block(f"The user's material (cite it as [n]):\n<excerpts>\n{full_context}\n</excerpts>", min_chars=len(system)))
+    return blocks
+
+
+def test_cache_layout_preserves_request_content_exactly(monkeypatch):
+    """Deterministic equivalence gate: the reordered chat and findings prompts carry exactly the same lines as the
+    previous layout (multiset of non-empty lines over tools + system + messages) — nothing added, nothing lost —
+    and the volatile project state sits AFTER the cached prefix."""
+    from neurosearch import cache_layout, findings, qa
+    pid, ids = _golden(monkeypatch)
+    project = db.get_project(pid)
+    db.add_project_note(pid, "Pinned: ten percent down is typical.", citations=[], status="approved")
+    db.add_fact(pid, "constraint", "Budget under one million.")
+    project = db.get_project(pid)
+    tools = qa._project_tools()
+    for use_web in (False, True):
+        for full in (None, "[1] Excerpt one\nsome text\n[2] Excerpt two\nmore text"):
+            new, _ = qa.chat_system_blocks(project, use_web, tools, full)
+            old = _legacy_chat_system(project, use_web, full)
+            a, b = cache_layout.request_content(tools, old, []), cache_layout.request_content(tools, new, [])
+            assert a == b, cache_layout.content_diff(a, b)
+            assert "Pinned: ten percent down" in new[-1]["text"] and "Budget under one million" in new[-1]["text"] and "cache_control" not in new[-1]
+            assert "Pinned findings" not in new[0]["text"] and "Known project facts" not in new[0]["text"]
+            assert "Project brief" in new[0]["text"] and "What the user told us" in new[0]["text"]
+    # findings: [rules][project][source] carries the same lines as [rules][project+source]
+    for sid in ids.values():
+        src = db.get_source(sid)
+        head = findings._head(project, src)
+        new_blocks = findings._system_blocks(findings.SYSTEM, head)
+        old_blocks = [{"type": "text", "text": findings.SYSTEM}, {"type": "text", "text": head}]
+        a, b = cache_layout.request_content(None, old_blocks, []), cache_layout.request_content(None, new_blocks, [])
+        assert a == b and len(new_blocks) == 3 and new_blocks[1]["text"].startswith("PROJECT:") and new_blocks[2]["text"].startswith("SOURCE:")
+    # the project block is byte-identical across sources (that is what makes the shared prefix cacheable)
+    heads = {findings._system_blocks(findings.SYSTEM, findings._head(project, db.get_source(s)))[1]["text"] for s in ids.values()}
+    assert len(heads) == 1
+
+
+def test_cache_layout_measurement_and_savings(monkeypatch):
+    """The fake cache simulation follows the provider's rules (read + write + plain == total per request; ≥1024-token
+    prefixes only; exact-prefix hits) and the layout delivers: the stable chat prefix is read on every later turn —
+    including after a finding is pinned and a fact recorded mid-conversation — and in a new conversation."""
+    from neurosearch import cache_layout, fake_ai
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    rep = cache_layout.run(progress=lambda m: None)
+    for sc in rep["scenarios"].values():
+        for e in sc["requests_detail"]:
+            assert e["read"] + e["write"] + e["plain"] == e["total"] and e["read"] >= 0 and e["write"] >= 0
+    chat = rep["chat_layout"]
+    assert chat[0]["read"] == 0 and all(t["read"] > 0 and t["read"] == chat[1]["read"] for t in chat[1:])          # stable prefix read on turns 2-4
+    assert chat[2]["system_blocks"][-1][0] > chat[1]["system_blocks"][-1][0]                                      # the state block grew after the pin/fact…
+    assert chat[2]["read"] == chat[1]["read"]                                                                     # …and the prefix hit survived it
+    assert chat[1]["read"] >= fake_ai.CACHE_MIN_TOKENS
+    new_conv = rep["scenarios"]["project chat (new conversation, 3 turns)"]
+    assert new_conv["cache_read"] == 3 * chat[1]["read"]                                                          # every turn of a later conversation reads the prefix
+    assert rep["scenarios"]["planner (analysis + build)"]["cache_read"] > 0
+    assert rep["input_cost_index"] < 1.0
+    no_tail = rep["scenarios"]["project chat (new conv, no tail breakpoint)"]
+    assert no_tail["cache_write"] == 0 and no_tail["cache_read"] == new_conv["cache_read"] and no_tail["input_cost_index"] < new_conv["input_cost_index"]
+    assert no_tail["total_input_tokens"] == new_conv["total_input_tokens"]                                          # content identical either way

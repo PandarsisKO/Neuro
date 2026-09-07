@@ -97,17 +97,29 @@ _last_call: dict[str, Any] = {}          # diagnostics of the most recent window
 OBSERVER: Any = None                     # evals hook: called with one dict per transcript window (see suggest_for_source)
 
 
+HEAD_SEP = "\n\n"
+
+
 def _system_blocks(system: str, head: str, ttl: str | None = None) -> list[dict[str, Any]]:
-    """Identical block layout on both transports; only the cache duration differs (batches ask for the 1h cache)."""
+    """Cache order (Rung G layout): [rules] [project framing → breakpoint] [source framing → breakpoint]. The project
+    framing is identical for every source of a project, so bulk analysis shares one cached prefix (when rules +
+    project reach the provider's minimum); the source framing is shared by the windows of a multi-window source.
+    Identical block layout on both transports; only the cache duration differs (batches ask for the 1h cache)."""
     from . import usage
     if not head:
         return [usage.cached_block(system, ttl=ttl)]
-    return [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system), ttl=ttl)]
+    project_part, sep, source_part = head.partition(HEAD_SEP)
+    if not sep:
+        return [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system), ttl=ttl)]
+    return [{"type": "text", "text": system},
+            usage.cached_block(project_part + "\n", min_chars=len(system), ttl=ttl),
+            usage.cached_block(source_part, min_chars=len(system) + len(project_part) + 1, ttl=ttl)]
 
 
 def _head(project: dict[str, Any], src: dict[str, Any]) -> str:
+    """Project framing, HEAD_SEP, source framing — split into two cached blocks by _system_blocks."""
     brief = project.get("brief") or "(no brief — extract the most substantive, reusable findings)"
-    return (f"PROJECT: {project['name']}\nBRIEF: {brief}\n{db.project_steering(project)}\n\n"
+    return (f"PROJECT: {project['name']}\nBRIEF: {brief}\n{db.project_steering(project)}{HEAD_SEP}"
             f"SOURCE: {src['title']} ({src.get('channel') or src['platform']})\n")
 
 

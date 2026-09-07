@@ -21,6 +21,7 @@ from neurosearch import chunking, db, ingest, jobs, media  # noqa: E402
 from neurosearch.api import app  # noqa: E402
 
 H = {"Authorization": "Bearer t0k"}
+CHAT_ARM_INPUT_TOTAL = 154288   # frozen: plain + cache read + cache write of the 34-question chat arm (layout-invariant since 0.20.0+g4)
 
 
 @pytest.fixture(scope="module")
@@ -175,7 +176,9 @@ def test_ask_tool_loop(monkeypatch):
     assert db.get_project(p["id"])["brief"] == "new brief about retention"
     notes = db.list_project_notes(p["id"])
     assert notes and notes[0]["citations"][0]["link"].endswith("t=0s")
-    assert "Pinned findings so far" in calls[0]["system"][0]["text"] and "update_brief" in [t["name"] for t in calls[0]["tools"]]
+    sysb = calls[0]["system"]
+    assert "Pinned findings so far" in sysb[-1]["text"] and "Pinned findings" not in sysb[0]["text"] and "cache_control" not in sysb[-1]   # project state after the cached prefix
+    assert "update_brief" in [t["name"] for t in calls[0]["tools"]]
 
 
 def test_document_upload_job(client):
@@ -1389,9 +1392,15 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     rep = evals.run(progress=lambda m: None)
     assert rep["pass"], evals.format_report(rep)
     v = rep["volume"]["by_task"]
-    # the 0.17.3 fake figures (tests/fixtures/golden is frozen, the fakes are deterministic): any drift here is a router bug
-    assert v["answer"]["calls"] == 34 and v["answer"]["input_tokens"] == 126605 and v["findings"]["calls"] == 9 and v["findings"]["input_tokens"] == 30297
-    assert v["plan"]["calls"] == 2 and v["plan"]["cache_read"] == 5701 and rep["volume"]["input_tokens"] == 182214
+    # frozen fake figures (tests/fixtures/golden is frozen, the fakes are deterministic): any drift here is a router bug.
+    # Since 0.20.0+g4 the fake bills tools by size and simulates the provider's cache exactly, so the frozen quantity is
+    # the TOTAL input (plain + cache read + cache write) — invariant under cache layout; the cache split is measured
+    # separately by `neurosearch eval --cache-layout` and asserted in test_cache_layout_measurement_and_savings.
+    tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
+    assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 141225 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
+    assert v["plan"]["calls"] == 2 and tot(v["plan"]) == 11026 and v["plan"]["cache_read"] == 4412
+    assert sum(tot(t) for t in v.values()) == 207444
+    assert v["answer"]["cache_read"] > 0                                     # the stable chat prefix is reused across questions
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
     assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["answer.chat"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
 
@@ -2094,7 +2103,8 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
         assert len({v["tasks"][t]["rubric"]["score"] for v in p.values()}) == 1
         assert not rep["verdicts"][t]["adaptive"]["recommended"] and rep["verdicts"][t]["recommended_setting"]["thinking"] == "disabled"
     c = rep["arms"]["answer.chat"]
-    assert c["4.6"]["usage"]["input_tokens"] == c["5-disabled"]["usage"]["input_tokens"] == 97746 and c["4.6"]["answers"] == 34
+    tot = lambda u: u["input_tokens"] + u["cache_read_tokens"] + u["cache_write_tokens"]  # noqa: E731
+    assert tot(c["4.6"]["usage"]) == tot(c["5-disabled"]["usage"]) == CHAT_ARM_INPUT_TOTAL and c["4.6"]["answers"] == 34
     assert c["4.6"]["citation_validity"] == 1.0 and c["4.6"]["truncated_answers"] == 0
     e = rep["arms"]["export.synthesis"]
     assert e["4.6"]["sections_present"] == 6 and e["4.6"]["n_invented_links"] == 0 and e["4.6"]["link_coverage"] == 1.0 and e["4.6"]["usage"]["input_tokens"] == e["5-disabled"]["usage"]["input_tokens"]

@@ -226,8 +226,47 @@ the returned model: actual cost == 50% of (in + 1.25·cache write + 0.1·cache r
 2× of actual, job history without re-attach/retry/cancel → `evals/batch-smoke/<stamp>-<sha>-<tier>.{json,txt}` and PASS | FAIL.
 The fake tier (`neurosearch batch-smoke`) runs the identical flow and is a pytest test. Not exercised live, by decision: crash
 timing and forced ambiguity (the fake/crash coverage owns that window).
-Not done (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change. After the single live PASS the
-Message Batch implementation portion of Rung G is closed.
+LIVE RESULT (2026-09-07, `evals/batch-smoke/20260907-091438-70f55c9-live.txt`, Batch smoke PASS): a real Sonnet 5 Message Batch
+completed; the one expected custom_id returned exactly; external_pending lifecycle held; the raw provider result was persisted
+before materialisation; the normal findings.materialize path completed; 10 findings written and quote-validated; provenance
+transport=batch + provider batch id; zero schema mismatch/fallback/truncation/refusal events; standard model-rate cost $0.016218,
+actual batch cost $0.008109 — an exact 50% provider model-cost reduction; no retry, re-attach or cancel occurred.
+**Message Batch implementation portion of Rung G: COMPLETE (0.20.0+g3).** No further batch live testing is required. Ranking is
+not batched (by decision). The prompt/cache-order optimisation is the separate second portion of Rung G (below).
+
+### Rung G, second portion — prompt-cache layout (0.20.0+g4; fakes/Tier 1 only, no live run yet)
+Measured first (`neurosearch eval --cache-layout`; the fake now simulates the provider's cache exactly — `fake_ai._simulate_cache`:
+prefix = tools → system blocks → message blocks, exact-prefix hits, longest hit read, the rest up to the last breakpoint written,
+≥1024-token minimum, read + write + plain == total; tools billed by size like text). Baseline (0.20.0+g3 layout), golden project:
+  findings 10 windows: 0 read / 0 write — rules + project + source framing ≈ 750 tokens, under the provider minimum, uncacheable.
+  chat, 4 turns with a finding pinned + a fact recorded after turn 2: 0 read, 17,070 of 17,073 tokens WRITTEN — every turn re-wrote the
+  whole prompt at 1.25× and never read anything: (a) the system block was not marked (its chars were under CACHE_MIN_CHARS, and the
+  tool definitions, which precede it in the cache order, were not counted), (b) findings/facts lived INSIDE the one system block, so
+  any pin/fact invalidated the whole prefix, (c) the conversation-tail breakpoint never hits across turns because history is stored
+  without the excerpts that were sent. Input cost index 1.25 for chat (worse than no caching). New conversation, 3 turns: same.
+  planner: 44% read (research material shared by both passes) — already right.
+Changed layout (content preserved exactly — `tests/test_indestructible.py::test_cache_layout_preserves_request_content_exactly`
+compares the multiset of non-empty lines over tools + system + messages against a verbatim copy of the previous builder, for chat
+with/without web rule and with/without full-context material, and for every golden source's findings prompt):
+  chat `qa.chat_system_blocks`: [1] rules + web rule + project identity/brief/tool guidance/steering → breakpoint (tools counted
+  toward the minimum) · [2] full-context material when it fits → breakpoint · [3] `PROJECT_STATE_BLOCK` = pinned findings + facts,
+  AFTER the prefix, unmarked. Same lines, same meaning; retrieval, tools, models, schemas, provenance untouched.
+  findings `_system_blocks`: [rules] [project framing → breakpoint] [source framing → breakpoint] (`HEAD_SEP` split of the same head
+  text; batch requests get the same layout with the 1h ttl; custom_ids/input hashes unchanged) — the project block is byte-identical
+  across a project's sources so bulk analysis can share one prefix once rules + project framing reach the minimum (not the case for
+  the small golden project; long steering makes it so).
+After (same eval): chat 4 turns 4,020 read (24%; the 1,340-token stable prefix read on turns 2–4, INCLUDING after the pin/fact),
+cost index 0.979; new conversation 35% read, 0.843; overall 21% read, input cost index 0.905 (baseline 1.026). Tier 1: cache read
+rate 23.4% (baseline 2.1%), answer task 44,220 cached tokens (baseline 0). Totals invariant: Tier 1 answer 141,225 / findings 30,297 /
+plan 11,026 / grand 207,444 identical under the old and new layout; the router-equivalence and migration-compare gates now freeze
+these transport-invariant totals (the cache split is asserted separately).
+Measured, NOT changed (decision for Kyle): the conversation-tail breakpoint (`usage.mark_last`, now `qa._tail_breakpoint`) writes the
+whole volatile remainder at 1.25× every turn and only pays back within a turn (tool rounds, citation repair). With it off
+(`NEUROSEARCH_CHAT_TAIL_BREAKPOINT=0`, measured in the same eval) the new-conversation cost index drops from 0.843 to 0.682 with
+identical content; break-even is roughly one tool/repair round in every four turns. Default unchanged.
+Expected live effect: the real tokenizer counts the tool schemas and rules larger than the fake, so the stable chat prefix clears
+1024 tokens more easily; the savings scale with turns per project, not with the golden fixture. One live check of cache_read /
+cache_creation on a 3-turn project chat is the only outstanding measurement; not requested yet.
 
 ## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
 

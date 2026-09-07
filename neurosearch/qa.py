@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -46,6 +47,10 @@ WEB_RULE_ON = """- You may also use the web_search tool for facts that are recen
   separate from what the transcripts say. Prefer the transcripts for what the speakers think or said."""
 WEB_RULE_OFF = "- Answer ONLY from the excerpts. Do not use outside knowledge for factual claims."
 
+# The project block is split by volatility (Rung G cache layout): everything that stays the same for the life of a
+# project — identity, brief, tool guidance, steering — ends the cached prefix; the project STATE (pinned findings,
+# recorded facts) changes as the user works and is sent after the breakpoint, as its own system block, so a pinned
+# finding or a recorded fact never invalidates the cached rules + project prefix. Same lines, same meaning.
 PROJECT_BLOCK = """
 Project: {name}
 Project brief (what the user is trying to find out — let this shape what you emphasise):
@@ -60,13 +65,14 @@ You can shape the project as you talk:
 - record_fact: when the user states a decision ("we're going with X"), a constraint (budget, deadline, must/must-not),
   a requirement, or rejects an option, record it so the Master Planner can use it. Kinds: decision | constraint |
   requirement | rejected. Do not record things you merely inferred.
-Pinned findings so far (do not repeat them unless asked; build on them):
-{findings}
-Known project facts (decisions, constraints, requirements):
-{facts}
 What the user told us when setting up the project (treat as requirements, not suggestions):
 {steering}
 """
+
+PROJECT_STATE_BLOCK = """Pinned findings so far (do not repeat them unless asked; build on them):
+{findings}
+Known project facts (decisions, constraints, requirements):
+{facts}"""
 
 
 def build_context(hits: list[dict[str, Any]]) -> str:
@@ -124,6 +130,42 @@ def queue_urls(urls: list[str], project_id: str | None) -> list[dict[str, Any]]:
     return out
 
 
+def chat_system_blocks(project: dict[str, Any] | None, use_web: bool, tools: list[dict[str, Any]], full_context: str | None) -> tuple[list[dict[str, Any]], bool]:
+    """The chat system prompt in cache order (Rung G layout):
+         [1] rules + web rule + project identity/brief/tool guidance/steering   — stable for the life of the project  → breakpoint
+         [2] the whole scoped material when it fits (≤ MAX_FULL_CONTEXT_SOURCES) — stable per source set             → breakpoint
+         [3] project state: pinned findings + recorded facts                       — changes as the user works       (after the prefix)
+       Tools precede the system prompt in the provider's cache order, so their size counts toward the ≥1024-token
+       minimum a cached prefix needs. Returns (system_blocks, excerpts_in_system)."""
+    from . import usage
+    if project:
+        notes = db.list_project_notes(project["id"])[:15]
+        findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
+        facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
+        project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", steering=db.project_steering(project))
+        state_block: str | None = PROJECT_STATE_BLOCK.format(findings=findings, facts=facts)
+    else:
+        project_block, state_block = "", None
+    system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
+    tool_chars = len(json.dumps(tools, default=str)) if tools else 0
+    blocks: list[dict[str, Any]] = [usage.cached_block(system, min_chars=tool_chars)]
+    if full_context is not None:
+        blocks.append(usage.cached_block(f"The user's material (cite it as [n]):\n<excerpts>\n{full_context}\n</excerpts>", min_chars=tool_chars + len(system)))
+    if state_block:
+        blocks.append({"type": "text", "text": state_block})
+    return blocks, full_context is not None
+
+
+def _tail_breakpoint(messages: list[dict[str, Any]]) -> None:
+    """The conversation-tail breakpoint (usage.mark_last): everything up to the latest message is written to the cache
+    (1.25×) so a tool round or a repair round re-reads it at 0.1×. Across turns it never hits (history is stored
+    without the excerpts that were sent), so it only pays back within a turn. NEUROSEARCH_CHAT_TAIL_BREAKPOINT=0
+    turns it off — measured by `neurosearch eval --cache-layout`; the default is unchanged."""
+    from . import usage
+    if os.environ.get("NEUROSEARCH_CHAT_TAIL_BREAKPOINT", "1") != "0":
+        usage.mark_last(messages)
+
+
 OBSERVER: Any = None      # evals hook: one dict per provider call (task, round, stop_reason, tools, model); never changes behaviour
 
 
@@ -169,38 +211,6 @@ def ask(
     hits, full_context = _hits_for(question, limit, source_ids)
     history = db.get_messages(conversation_id, limit=12) if conversation_id else []
 
-    if project:
-        notes = db.list_project_notes(project["id"])[:15]
-        findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
-        facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
-        project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings,
-                                             facts=facts, steering=db.project_steering(project))
-    else:
-        project_block = ""
-    system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
-
-    from . import usage
-
-    context = build_context(hits) if hits else "(no relevant excerpts were found in the knowledge base)"
-    # Prompt caching: the rules + project block (+ tools before them) are the same every turn of a chat, so they end
-    # a cached prefix. When the whole scoped material fits in the prompt it is identical every turn too, so it goes
-    # into the system prompt (cached) instead of the message; retrieval excerpts differ per question and stay in
-    # the message, where the breakpoint still saves the re-sends during tool rounds.
-    system_blocks: list[dict[str, Any]] = [usage.cached_block(system)]
-    if full_context and hits:
-        system_blocks.append(usage.cached_block(f"The user's material (cite it as [n]):\n<excerpts>\n{context}\n</excerpts>", min_chars=len(system)))
-        excerpt_part = "(The excerpts are in your instructions above.)"
-    else:
-        excerpt_part = f"<excerpts>\n{context}\n</excerpts>"
-    messages: list[dict[str, Any]] = []
-    for m in history:
-        if m["role"] in ("user", "assistant") and m["content"]:
-            messages.append({"role": m["role"], "content": m["content"]})
-    note = ""
-    if ingest_jobs:
-        note = f"\n(Note: the user also pasted {len(ingest_jobs)} link(s) which are now being ingested; mention they'll be available shortly.)"
-    messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
-
     tools: list[dict[str, Any]] = []
     if use_web:
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": 4})
@@ -211,13 +221,26 @@ def ask(
         if calcs:
             tools.append(_calc_tool(calcs))
 
+    context = build_context(hits) if hits else "(no relevant excerpts were found in the knowledge base)"
+    system_blocks, in_system = chat_system_blocks(project, use_web, tools, context if (full_context and hits) else None)
+    excerpt_part = "(The excerpts are in your instructions above.)" if in_system else f"<excerpts>\n{context}\n</excerpts>"
+    messages: list[dict[str, Any]] = []
+    for m in history:
+        if m["role"] in ("user", "assistant") and m["content"]:
+            messages.append({"role": m["role"], "content": m["content"]})
+    note = ""
+    if ingest_jobs:
+        note = f"\n(Note: the user also pasted {len(ingest_jobs)} link(s) which are now being ingested; mention they'll be available shortly.)"
+    messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
+    from . import usage
+
     answer_parts: list[str] = []
     web_sources: list[dict[str, str]] = []
     web_used = False
     pending_findings: list[str] = []
 
     for _round in range(6):
-        usage.mark_last(messages)
+        _tail_breakpoint(messages)
         resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=tools or None)
         try:
             usage.record_anthropic(resp, "answer", project_id=project_id)
@@ -262,7 +285,7 @@ def ask(
             messages.append({"role": "user", "content": f"Your answer cites {', '.join(f'[{n}]' for n in invalid)} but only excerpts [1]–[{len(hits)}] were provided"
                              + (" (no excerpts were provided)" if not hits else "") + ". Rewrite the whole answer using only citations that exist; "
                              "if a claim is not supported by any excerpt, say so plainly instead of citing. Keep everything else the same."})
-            usage.mark_last(messages)
+            _tail_breakpoint(messages)
             resp2 = providers.invoke("answer.repair", system=system_blocks, messages=messages)
             usage.record_anthropic(resp2, "answer", project_id=project_id)
             repaired = providers.text_of(resp2).strip()

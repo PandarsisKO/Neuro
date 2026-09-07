@@ -85,6 +85,59 @@ class _Blk:
 
 
 _cache_seen: set[str] = set()      # simulated prompt cache: prefixes we have "written"
+CACHE_MIN_TOKENS = 1024             # the provider ignores breakpoints on shorter prefixes (Sonnet/Opus minimum)
+CACHE_LOG: list[dict[str, Any]] = []   # evals hook: one entry per request {task, total, read, write, breakpoints}; cleared by the cache-layout eval
+
+
+def _tool_tokens(tools: Any) -> int:
+    """Tool definitions are billed by their size like any other prompt text (the provider serialises the schemas)."""
+    return _tokens(json.dumps(tools, default=str)) if tools else 0
+
+
+def _simulate_cache(tools: Any, system: Any, messages: list[dict[str, Any]]) -> tuple[int, int]:
+    """Prompt-cache simulation with the provider's rules: the prefix is tools → system blocks → message blocks in
+    order; a `cache_control` block ends a cacheable prefix; the longest previously written prefix that matches
+    exactly is READ; everything from there to the last breakpoint is WRITTEN; prefixes under CACHE_MIN_TOKENS are
+    ignored. Prefix positions are measured on the same flattened text the fake bills, so read+write+plain == total."""
+    seed = json.dumps(tools, sort_keys=True, default=str) if tools else ""   # tools are part of the prefix identity…
+    base = _tool_tokens(tools)                        # …and of its length (tool schemas are billed like text)
+    acc = ""
+    marks: list[tuple[str, int]] = []                 # (prefix hash, tokens up to and including the block)
+
+    def mark() -> None:
+        marks.append((hashlib.sha1((seed + "\x00" + acc).encode()).hexdigest(), base + _tokens(acc)))
+
+    sys_blocks = system if isinstance(system, list) else ([{"type": "text", "text": system}] if system else [])
+    for b in sys_blocks:
+        if isinstance(b, dict):
+            acc += b.get("text", "")
+            if b.get("cache_control"):
+                mark()
+    for m in messages:
+        c = m.get("content")
+        blocks = [{"type": "text", "text": c}] if isinstance(c, str) else (c or [])
+        for b in blocks:
+            if isinstance(b, dict):
+                acc += json.dumps(b.get("content")) if b.get("type") == "tool_result" else (b.get("text") or "")
+                if b.get("cache_control"):
+                    mark()
+            else:
+                acc += getattr(b, "text", "") or ""
+    marks = [(h, n) for h, n in marks if n >= CACHE_MIN_TOKENS]
+    read = 0
+    for h, n in reversed(marks):                      # longest cached prefix wins
+        if h in _cache_seen:
+            read = n
+            break
+    write = 0
+    if marks:
+        last_h, last_n = marks[-1]
+        if last_n > read:
+            write = last_n - read
+        for h, n in marks:
+            if n > read:
+                _cache_seen.add(h)
+    return read, write
 
 
 def _flatten(system: Any) -> tuple[str, list[str]]:
@@ -359,18 +412,13 @@ class _Msgs:
                     jsonschema.Draft202012Validator(fmt["schema"]).validate(json.loads(text))
                 except (ValueError, jsonschema.ValidationError) as e:
                     raise AssertionError(f"fake {task} output does not conform to the requested schema: {e}") from e
-        # token accounting, including a simulated prompt cache
+        # token accounting, including a simulated prompt cache with the provider's semantics (see _simulate_cache)
         all_in = system + "\n".join(_content_text(m.get("content")) for m in messages)
-        total = _tokens(all_in) + 20 * len(kw.get("tools") or [])
-        cache_read = cache_write = 0
-        for h in cache_hashes:
-            n = _tokens(system) // max(1, len(cache_hashes))
-            if h in _cache_seen:
-                cache_read += n
-            else:
-                _cache_seen.add(h)
-                cache_write += n
+        total = _tokens(all_in) + _tool_tokens(kw.get("tools"))
+        cache_read, cache_write = _simulate_cache(kw.get("tools"), kw.get("system", ""), messages)
         plain = max(0, total - cache_read - cache_write)
+        CACHE_LOG.append({"task": task, "total": total, "read": cache_read, "write": cache_write, "plain": plain,
+                          "system_blocks": [(_tokens(b.get("text", "")), bool(b.get("cache_control"))) for b in (kw.get("system") if isinstance(kw.get("system"), list) else []) if isinstance(b, dict)]})
         content = [_Blk(type="text", text=text, citations=None)]
         if os.environ.get("NEUROSEARCH_FAKE_AI_THINKING") == "1" or (kw.get("thinking") or {}).get("type") == "adaptive":
             content.insert(0, _Blk(type="thinking", thinking="(private reasoning) " + text[:40], signature="sig_" + hashlib.sha1(text.encode()).hexdigest()[:12]))

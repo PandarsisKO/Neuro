@@ -194,6 +194,7 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              ranking: bool = typer.Option(False, "--ranking", help="Run only the frozen rank.relevance fixture (tests/fixtures/golden/ranking.json) and report ranking quality, tokens, cost and latency"),
              ranking_compare: bool = typer.Option(False, "--ranking-compare", help="E2: rank the frozen fixture with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
              findings_compare: bool = typer.Option(False, "--findings-compare", help="E2.2: run the Golden Project findings workload with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
+             cache_layout: bool = typer.Option(False, "--cache-layout", help="Rung G: measure the prompt-cache layout under the fake's provider-faithful cache simulation (findings, multi-turn project chat with state changes, new conversation, planner); free, changes nothing"),
              migration_compare: bool = typer.Option(False, "--migration-compare", help="E2.3: every remaining task (chat+repair, export, planner.update; planner.analysis/build with a 5-adaptive arm) 4.6 vs Sonnet 5 on identical frozen inputs, one verdict per task; changes nothing"),
              baseline_model: str = typer.Option(None, "--baseline-model", help="Baseline model for --ranking-compare (default claude-sonnet-4-6)"),
              candidate_model: str = typer.Option(None, "--candidate-model", help="Candidate model for --ranking-compare (default claude-sonnet-5)")) -> None:
@@ -224,6 +225,17 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     if live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
+    if cache_layout:
+        from . import cache_layout as CL
+        if live:
+            raise typer.BadParameter("--cache-layout is a fake-tier measurement (the provider's cache is simulated exactly); there is no live mode")
+        rep = CL.run(progress=lambda m: typer.echo("  · " + m))
+        typer.echo("")
+        typer.echo(rep["text"])
+        if out:
+            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise typer.Exit(code=0)
     if migration_compare:
         from . import migration
         cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m))
