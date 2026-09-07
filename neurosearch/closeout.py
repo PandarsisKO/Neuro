@@ -196,6 +196,9 @@ def _import_previous(prev: Path, d: Path, state: dict[str, Any], progress: Any) 
             state.setdefault("_candidate_arms", {})[name] = json.loads(src.read_text())
             continue
         obj = json.loads(src.read_text())
+        if obj.get("error") or obj.get("pass") is False or (obj.get("fails") and isinstance(obj["fails"], list) and obj["fails"]):
+            entry["invalidated"][name] = str(obj.get("error") or obj.get("fails"))[:300]      # the stage ran but did not complete usably
+            continue
         if "events" not in obj:
             # legacy run (before stage files carried their events): take them from that run's closeout.json surfaces
             surf_name = {"findings": "findings.extract", "ranking": "rank.relevance", "update": "planner.update", "discover": "discover.quick"}[name]

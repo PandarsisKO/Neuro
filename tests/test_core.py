@@ -2439,3 +2439,23 @@ def test_closeout_resume_from_legacy_run(tmp_path, monkeypatch):
     assert "reused_from" not in st["shared_inputs"] and "reused_from" not in st["planner_v1"] and "reused_from" not in st["planner_v3"] and st["findings"].get("legacy")
     assert r2["live"]["surfaces"]["findings.extract"]["reused"] and r2["live"]["surfaces"]["findings.extract"]["events"] == {k: 0 for k in closeout.EVENT_KINDS}
     assert r2["mission"]["verdict"] in ("PASS", "PASS_WITH_CAVEAT") and r2["planner_v3"]["v1"]["usage"]["calls"] == 2 and r2["planner_v3"]["v3"]["usage"]["calls"] == 5
+
+
+def test_enum_casing_is_normalised_before_validation(isolated_db, monkeypatch):
+    """Provider docs: enum/const capitalisation is not guaranteed under structured outputs. 'Medium' for a 'medium' enum
+    must not be a schema mismatch; a value outside the enum still is."""
+    from neurosearch import providers, schemas
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    obj = {"sources": [{"name": "X", "kind": "Podcast", "url": "", "gist": "g", "why": "w", "angle": "a", "start_with": [], "fit": 3, "depth": "BEGINNER"}], "note": "n"}
+    assert not schemas.is_valid("discovery-v2", json.loads(json.dumps(obj)))
+    fixed = schemas.normalize_enums("discovery-v2", json.loads(json.dumps(obj)))
+    assert fixed["sources"][0]["kind"] == "podcast" and fixed["sources"][0]["depth"] == "beginner" and schemas.is_valid("discovery-v2", fixed)
+    assert not schemas.is_valid("discovery-v2", schemas.normalize_enums("discovery-v2", {"sources": [{**obj["sources"][0], "kind": "blog"}], "note": "n"}))
+    class R:
+        content = [type("B", (), {"type": "text", "text": json.dumps({"updates": [{"section": "s", "previous": "p", "proposed": "x", "reason": "r"}]})})()]
+        stop_reason, model, usage = "end_turn", "m", None
+    assert providers.structured("planner.update", R())["updates"][0]["proposed"] == "x"
+    risk = {"costs": {"upfront": [], "recurring": [], "optional": [], "services": [], "contingency": "", "minimum": "", "recommended": "", "premium": "", "note": "", "evidence": []},
+            "tools": [], "risks": [{"id": "risk:x", "risk": "r", "mitigation": "m", "priority": "High", "related": [], "evidence": []}], "gotchas": []}
+    assert schemas.normalize_enums("plan-economics-v3", risk)["risks"][0]["priority"] == "high" and schemas.is_valid("plan-economics-v3", risk)

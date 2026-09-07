@@ -328,3 +328,32 @@ REGISTRY.update({
     "plan-economics-v3": PLAN_ECONOMICS_V3,
     "plan-actions-v3": PLAN_ACTIONS_V3,
 })
+
+
+def normalize_enums(name: str, obj: Any) -> Any:
+    """Structured outputs do not guarantee the capitalisation of enum/const values (provider docs: compare
+    case-insensitively). Before local validation, map any string whose lowercase form matches an enum member to that
+    member, in place. Anything else is left alone and will fail validation as it should."""
+    def walk(node: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
+        if "$ref" in schema:
+            ref = schema["$ref"].split("/")
+            target: Any = root
+            for seg in ref[1:]:
+                target = target.get(seg, {})
+            return walk(node, target, root)
+        if "enum" in schema and isinstance(node, str):
+            for member in schema["enum"]:
+                if isinstance(member, str) and member.lower() == node.lower():
+                    return member
+            return node
+        if isinstance(node, dict) and schema.get("type") == "object":
+            props = schema.get("properties", {})
+            for k in list(node):
+                if k in props:
+                    node[k] = walk(node[k], props[k], root)
+            return node
+        if isinstance(node, list) and schema.get("type") == "array" and isinstance(schema.get("items"), dict):
+            return [walk(x, schema["items"], root) for x in node]
+        return node
+    sch = get(name)
+    return walk(obj, sch, sch)

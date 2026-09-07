@@ -263,6 +263,11 @@ F5 CLOSEOUT TOOLING                          COMPLETE (0.19.0-f5) — `neurosear
         with events recovered from their closeout.json and rebuild shared inputs + both planner arms
     [x] a dependency failure (transient provider error, RetrievalUnavailable) makes the stage INCOMPLETE, dependants are skipped, the verdict
         is INCOMPLETE and the V3 decision NOT DECIDED — never a promotion decision on a degraded fallback
+    [x] enum casing: the original V3 attempt also logged one schema_mismatch before the connection died; the provider documents that
+        enum/const capitalisation is not guaranteed under structured outputs, so providers.structured now normalises enum values
+        case-insensitively (schemas.normalize_enums) before the full local validation — a value outside the enum is still a mismatch
+    [x] legacy resume rejects artifacts that ran but failed (error / pass false): the first run's update and discover results, which died
+        on the same connection failure, are rebuilt, not reused
 [ ] F5 live (resume): `neurosearch closeout --live --resume` (Kyle, once) → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
     release with V1 as the rollback for one cycle; if DO NOT PROMOTE, the default stays V1 and V3 is recorded as not promoted — no tuning loop.
     Then Mission F closes and the ladder continues (Rung G); testing stays the guardrail, not the project.
