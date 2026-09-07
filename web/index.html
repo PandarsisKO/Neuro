@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f7f9">
+<title>Neuro Search</title>
+<style>
+  :root{--bg:#f6f7f9;--panel:#ffffff;--panel2:#eef1f5;--line:#e1e5eb;--text:#1b1f27;--muted:#5f6878;--accent:#2f5bea;--accent-text:#fff;--link:#2f5bea;--ok:#1a9d63;--warn:#b7791f;--bad:#d2413a;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
+  [data-theme=dark]{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--accent-text:#fff;--link:#8fb0ff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
+  a{color:var(--link)}
+  select,input,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  input,textarea,select{width:100%}
+  textarea{min-height:80px;resize:vertical}
+  button{cursor:pointer;white-space:nowrap}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+  button.ghost{background:transparent}
+  button.small{padding:5px 9px;font-size:13px;border-radius:7px}
+  button.danger{color:var(--bad)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row>*{flex:1;min-width:0}
+  .row>input{min-width:140px}
+  .row>button,.row>label,.row>.fixed{flex:0 0 auto}
+  .muted{color:var(--muted);font-size:13px}
+  h2{font-size:18px;margin:0 0 10px}
+  h3{font-size:14px;margin:16px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .chip{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;margin:2px 4px 2px 0;color:var(--text);text-decoration:none}
+  .chip:hover{border-color:var(--accent)}
+  .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
+  .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued{color:var(--muted)}.st.running,.st.active{color:var(--accent);background:var(--user)}.st.done{color:var(--ok)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+  @keyframes s{to{transform:rotate(360deg)}}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+
+  .themeBtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 9px;font-size:12px;border-radius:999px}
+  #home .top{display:flex;align-items:flex-start;gap:12px} #home .top h1{flex:1}
+  /* ---- home ---- */
+  #home{max-width:1000px;margin:0 auto;padding:28px 18px}
+  #home h1{font-size:24px;margin:0 0 4px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:18px}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;min-height:130px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow)}
+  .pcard:hover{border-color:var(--accent)}
+  .pcard .name{font-weight:650;font-size:16px}
+  .pcard .brief{color:var(--muted);font-size:13px;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+  .pcard .meta{font-size:12px;color:var(--muted)}
+  .pcard.new{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);box-shadow:none;background:transparent}
+
+  /* ---- workspace ---- */
+  #ws{display:none;height:100vh;height:100dvh}
+  #ws.active{display:flex}
+  aside{width:var(--side);flex:0 0 var(--side);background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  aside .top{padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+  aside .top .back{font-size:12px;color:var(--muted);cursor:pointer}
+  aside .top .pname{font-weight:650;font-size:15px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  aside nav{padding:8px}
+  aside nav .item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
+  aside nav .item.active,aside nav .item:hover{background:var(--panel2);color:var(--text)}
+  aside nav .item .n{margin-left:auto;font-size:12px;color:var(--muted)}
+  aside .chats{flex:1;overflow:auto;padding:4px 8px 8px;border-top:1px solid var(--line)}
+  aside .chats .c{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:6px;align-items:center}
+  aside .chats .c span{flex:1;overflow:hidden;text-overflow:ellipsis}
+  aside .chats .c.active{background:var(--panel2);color:var(--text)}
+  aside .chats .c .x{opacity:0;font-size:12px}
+  aside .chats .c:hover .x{opacity:.8}
+  aside .chats .newc{margin:6px 0 6px}
+  aside .foot{padding:10px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  #main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .view{display:none;flex:1;overflow:auto;padding:18px 22px}
+  .view.active{display:block}
+  .view.chatview{display:none;flex-direction:column;padding:0}
+  .view.chatview.active{display:flex}
+
+  /* ---- chat ---- */
+  #chatHead{padding:12px 22px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  #chatHead .title{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #chat{flex:1;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:min(820px,92%);padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.5}
+  .msg.user{align-self:flex-end;background:var(--user);color:var(--user-text)}
+  .msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+  .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
+  .msg sup{color:var(--link);font-weight:600}
+  .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
+  #askbar{border-top:1px solid var(--line);padding:10px 22px 12px;background:var(--bg)}
+  #askbar .inner{display:flex;gap:8px;align-items:flex-end;max-width:980px}
+  #askbar textarea{min-height:46px;max-height:180px}
+  #askbar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .empty{color:var(--muted);max-width:560px;line-height:1.5}
+
+  /* ---- sources ---- */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .tabs button{border:0;border-radius:0;background:transparent;color:var(--muted);padding:8px 12px;border-bottom:2px solid transparent}
+  .tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+  .pane{display:none}.pane.active{display:block}
+  .src{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .src.live{background:linear-gradient(90deg,var(--user) 0,transparent 55%);border-radius:8px;padding-left:6px}
+  .chipf{flex:none;white-space:nowrap;font-size:12px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);cursor:pointer;color:var(--muted)}
+  .chipf.on{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+  .chipf b{font-weight:600}
+  .src img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:var(--chip);flex:0 0 auto}
+  .src .ico{width:96px;height:54px;border-radius:6px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto}
+  .src .t{font-weight:600;overflow-wrap:anywhere}
+  .src .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .job{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .bar{flex:1;height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}.bar i{display:block;height:100%;background:var(--accent)}
+  .transcript{max-height:60vh;overflow:auto;font-size:13px;line-height:1.5;white-space:pre-wrap}
+  .transcript b{color:var(--link);font-weight:500}
+  .note{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+  .note .body{white-space:pre-wrap}
+  .d{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:6px;background:var(--panel);box-shadow:var(--shadow)}
+  .d .h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap} .d .h .nm{font-weight:650;font-size:15px}
+  .d .why{margin-top:4px;font-size:13.5px} .d .angle{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .d .sw{margin-top:6px;font-size:13px} .d .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .d.added{opacity:.7}
+  .d .dh{display:flex;gap:12px;align-items:flex-start} .d .dmain{flex:1;min-width:0} .d .dacts{flex:0 0 auto;display:flex;gap:4px}
+  .d .dt{font-size:15px;line-height:1.3} .d .gist{font-weight:600;color:var(--text)}
+  .d .dwhy{font-size:13px;margin-top:2px;color:var(--text)}
+  .d .dmeta{font-size:12px;color:var(--muted);margin-top:3px}
+  .d .dlinks{font-size:12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+  .f{display:flex;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);align-items:flex-start}
+  .f:last-child{border-bottom:0}
+  .f .fi{flex:0 0 44px;font-size:9px;letter-spacing:1px;color:var(--warn);padding-top:5px;white-space:nowrap} .f .fi .dim{color:var(--line)}
+  .f .main{flex:1;min-width:0}
+  .f .ttl{font-weight:650;font-size:14.5px;line-height:1.3}
+  .f .txt{font-size:13px;color:var(--muted);margin-top:1px;line-height:1.4}
+  .f .meta{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;font-size:12px}
+  .f .meta .chip{margin:0;padding:1px 7px;font-size:11.5px}
+  .f .qtoggle{font-size:11.5px;color:var(--muted)} .f .quote{font-size:12px;color:var(--muted);font-style:italic;flex-basis:100%}
+  .f .act{flex:0 0 auto;display:flex;gap:4px}
+  .f .act button{padding:3px 8px;font-size:12px}
+  .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
+  .rv .li input{width:auto}
+  .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+  .fun{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:var(--shadow)}
+  .funh{font-weight:700;margin-bottom:8px}
+  aside nav .n.stale{background:var(--warn);color:#fff}
+  .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
+  .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
+  .calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .ci{display:flex;gap:8px;align-items:center;padding:3px 0}.ci span{flex:1;font-size:13px}.ci input{width:140px;text-align:right}
+  .co{display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .swot{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel)}
+  .swot .swh{font-weight:700;font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:4px}
+  .swot.s .swh{color:var(--ok)}.swot.w .swh{color:var(--bad)}.swot.o .swh{color:var(--accent)}.swot.t .swh{color:var(--warn)}
+  .swot .swi{padding:4px 0;border-top:1px solid var(--line);font-size:13px}.swot .swi:first-of-type{border-top:0}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13.5px;opacity:0;pointer-events:none;transition:.2s;z-index:100;max-width:80vw;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.err{background:#b91c1c;color:#fff}
+  .rv .li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rv .li .why{color:var(--muted);font-size:12px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rv .sc{display:inline-block;min-width:30px;text-align:center;font-size:11px;font-weight:600;padding:1px 5px;border-radius:999px;background:var(--line);color:var(--muted)}
+  .rv .sc.hi{background:#dcfce7;color:#166534}.rv .sc.mid{background:#fef3c7;color:#92400e}
+  [data-theme="dark"] .rv .sc.hi{background:#14532d;color:#bbf7d0}[data-theme="dark"] .rv .sc.mid{background:#78350f;color:#fde68a}
+  .rv .list{max-height:320px;overflow:auto;margin-top:6px}
+  .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
+  .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .fgroup .gh b{color:var(--text);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .note.gap{border-color:var(--banner-line);background:var(--banner)}
+  /* ---- plan ---- */
+  .modes{display:flex;margin:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .modes div{flex:1;text-align:center;padding:7px;font-size:13px;cursor:pointer;color:var(--muted)}
+  .modes div.active{background:var(--accent);color:var(--accent-text)}
+  .plan h2{margin-top:26px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  .start{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0 12px}
+  .startcol{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
+  .starth{font-weight:700;font-size:14px;margin-bottom:6px}
+  .verdict{font-size:14.5px;line-height:1.5;margin:4px 0 8px}
+  .wk{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+  .wk input{width:auto;margin-top:3px}.wk.done{opacity:.55;text-decoration:line-through}
+  .refine{background:var(--banner);border:1px solid var(--banner-line);border-radius:12px;padding:12px 14px;margin:0 0 14px}
+  .rq{padding:8px 0;border-top:1px solid var(--banner-line)}.rq.answered{opacity:.85}.rq .ans{color:var(--ok);margin-top:3px}
+  .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:6px 0 10px;flex-wrap:wrap}
+  .ptabs button{border:0;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font:inherit}
+  .ptabs button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+  .plan details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:8px 0}.plan summary{cursor:pointer}
+  @media(max-width:900px){.start{grid-template-columns:1fr}}
+  .plan h2:first-child{margin-top:0}
+  .plan .item{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+  .plan .item .body{flex:1;min-width:0}
+  .plan .item select{width:auto;font-size:12px;padding:4px 6px}
+  .plan .k{font-weight:600}
+  .plan .basis{font-size:11px;color:var(--muted)}
+  .plan .ev a{font-size:11px}
+  .plan .tag{font-size:11px;padding:1px 6px;border-radius:999px;background:var(--chip);color:var(--muted);margin-left:4px}
+  .plan .tag.high,.plan .tag.blocking{color:var(--bad)} .plan .tag.medium,.plan .tag.soon{color:var(--warn)} .plan .tag.now{color:var(--warn)}
+  .plan table{border-collapse:collapse;width:100%;font-size:13px} .plan th,.plan td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top} .plan th{background:var(--panel2)}
+  .plan .ready{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
+  .banner{background:var(--banner);border:1px solid var(--banner-line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+  .upd{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px}
+  .upd .prev{color:var(--muted);text-decoration:line-through}
+  .conf.high{color:var(--ok)} .conf.medium{color:var(--warn)} .conf.needs_research{color:var(--bad)}
+  @media(max-width:760px){
+    #ws.active{flex-direction:column}
+    aside{width:100%;flex:0 0 auto;max-height:42vh}
+    .view{padding:14px}
+    .src img,.src .ico{width:72px;height:40px}
+    .msg{max-width:100%}
+  }
+</style></head>
+<body>
+
+<!-- ============ HOME ============ -->
+<div id="home">
+  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
+  <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
+  <div class="grid" id="projGrid"></div>
+  <div id="homeFun"></div>
+</div>
+
+<!-- ============ WORKSPACE ============ -->
+<div id="ws">
+  <aside>
+    <div class="top">
+      <div class="back" onclick="goHome()">← All projects</div>
+      <div class="pname" id="wsName"></div>
+    </div>
+    <div class="modes"><div id="modeResearch" class="active" onclick="showView('chats')">Research</div><div id="modePlan" onclick="showView('plan')">Plan</div></div>
+    <nav>
+      <div class="item" data-view="chats" onclick="showView('chats')">💬 Chats <span class="n" id="nChats"></span></div>
+      <div class="item" data-view="sources" onclick="showView('sources')">📚 Sources <span class="n" id="nSources"></span></div>
+      <div class="item" data-view="findings" onclick="showView('findings')">📌 Findings <span class="n" id="nFindings"></span></div>
+      <div class="item" data-view="plan" onclick="showView('plan')">🧭 Master Plan <span class="n" id="nPlan"></span></div>
+      <div class="item" data-view="settings" onclick="showView('settings')">⚙︎ Settings</div>
+    </nav>
+    <div class="chats" id="chatList"></div>
+    <div class="foot" id="wsNums" style="cursor:pointer" title="This project in numbers — click for the full card" onclick="showView('sources')"></div>
+    <div class="foot" id="wsFoot"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted" id="sideSpend" style="font-size:11.5px" title="estimated API spend"></span></div>
+  </aside>
+
+  <div id="main">
+    <!-- chats -->
+    <div class="view chatview" id="view-chats">
+      <div id="chatHead">
+        <div class="title" id="chatTitle">New chat</div>
+        <button class="small ghost" onclick="renameChat()">Rename</button>
+        <button class="small ghost danger" onclick="deleteChat()">Delete</button>
+      </div>
+      <div id="chat"></div>
+      <div id="askbar"><div class="inner">
+        <div style="flex:1">
+          <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source)" rows="1"></textarea>
+          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label><span class="muted" id="askStatus"></span></div>
+        </div>
+        <button class="primary" id="askBtn" onclick="ask()">Ask</button>
+      </div></div>
+    </div>
+
+    <!-- sources -->
+    <div class="view" id="view-sources">
+      <h2>Sources</h2>
+      <div id="srcFun"></div>
+      <div class="card">
+        <div class="tabs">
+          <button class="active" data-pane="link" onclick="showPane('link')">Link</button>
+          <button data-pane="upload" onclick="showPane('upload')">Upload file</button>
+          <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
+          <button data-pane="library" onclick="showPane('library')">From library</button>
+          <button data-pane="discover" onclick="showPane('discover')">✨ Discover</button>
+          <button data-pane="course" onclick="showPane('course')">🧩 Browser extension</button>
+        </div>
+        <div class="pane active" id="pane-link">
+          <div class="muted">YouTube video, playlist, channel or <b>search link</b> (results are listed for review) · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
+          <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
+          <div class="row" style="margin-top:8px">
+            <label class="muted" title="For channels and playlists">Channels/playlists: only the last
+              <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
+            <label class="muted">best <input id="inMax" type="number" min="0" value="20" style="width:70px;padding:4px 6px"> videos</label>
+            <span style="flex:1"></span>
+            <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
+        </div>
+        <div class="pane" id="pane-upload">
+          <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is. <b>Spreadsheets (xlsx, csv)</b> become searchable <i>and</i> usable as calculators: the chat can change the inputs and read what the workbook's own formulas compute.</div>
+          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
+        </div>
+        <div class="pane" id="pane-paste">
+          <div class="row"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
+          <textarea id="inText" style="margin-top:8px" placeholder="Paste a transcript or notes… lines like `12:34 text` keep their timestamps"></textarea>
+          <div class="row" style="margin-top:8px"><button class="primary" onclick="ingestText()">Save</button></div>
+        </div>
+        <div class="pane" id="pane-library">
+          <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
+          <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
+          <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+        </div>
+        <div class="pane" id="pane-course">
+          <div class="muted">A small browser extension that runs <i>inside your own logged-in browser</i>. Two jobs: <b>Send this page</b> — any article or guide, including sites that block automated readers (you'll see "blocks automated readers (HTTP 403)" in the queue) or need a login; and <b>Course importer</b> — for courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia…): it finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session. No password is ever shared with the app.</div>
+          <ol style="margin:10px 0 0;padding-left:18px;line-height:1.7">
+            <li><a id="extDl" href="/extension.zip">Download the extension</a> and unzip it.</li>
+            <li>In Chrome / Edge / Brave / Arc open <code>chrome://extensions</code>, turn on <b>Developer mode</b> (top right), click <b>Load unpacked</b>, pick the unzipped <code>neurosearch-course-importer</code> folder. Pin it to the toolbar.</li>
+            <li>Click the extension once to set it up: app address <code id="appAddr">…</code>, and the app password.</li>
+            <li>For an article: open it, click the extension → <b>Send this page</b>. For a course: log in, open the page listing all lessons, click the extension → <b>Scan this course</b> → check the list → <b>Send to Neuro Search</b>.</li>
+          </ol>
+          <div class="muted" style="margin-top:8px">Videos land below as “Module › Lesson” and are transcribed and analysed like any other source. Session cookies are stored only on this server, in <code>data/cookies/</code>, and are used solely to download those videos.</div>
+          <div id="courseList" style="margin-top:10px"></div>
+        </div>
+        <div class="pane" id="pane-discover">
+          <div class="muted">Who should this project learn from? Searches the web for the best creators, channels and podcasts for your brief.</div>
+          <div class="row" style="margin-top:8px"><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
+          <div class="muted" id="discMsg" style="margin-top:6px"></div>
+          <div id="discList" style="margin-top:10px"></div>
+        </div>
+      </div>
+      <div id="reviewWrap"></div>
+      <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
+      <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
+        <div id="srcChips" class="row" style="gap:4px"></div>
+        <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
+        <span class="muted fixed" id="srcCount"></span>
+        <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
+        <button class="small" onclick="exportCsv(true)">Segments CSV</button>
+      </div>
+      <div id="srcList"></div>
+    </div>
+
+    <!-- findings -->
+    <div class="view" id="view-findings">
+      <h2>Findings</h2>
+      <div class="row" style="margin-bottom:10px"><span class="muted" style="flex:1">What's worth keeping. Approved findings feed the exports and the Master Plan.</span>
+        <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
+        <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
+        <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
+      <div id="staleFindings"></div>
+      <div id="suggestedWrap"></div>
+      <div id="notes"></div>
+    </div>
+
+    <!-- plan -->
+    <div class="view" id="view-plan">
+      <div id="stalePlan"></div>
+      <div id="planWrap"></div>
+    </div>
+
+    <!-- settings -->
+    <div class="view" id="view-settings">
+      <h2>Project settings</h2>
+      <div class="card">
+        <label class="muted">Name</label><input id="epName">
+        <label class="muted" style="display:block;margin-top:10px">Goal — what does "done" look like?</label><input id="epGoal">
+        <label class="muted" style="display:block;margin-top:10px">Brief — what are you trying to find out? Every answer in this project is guided by it. You can also change it from a chat (“refocus on…”).</label>
+        <textarea id="epBrief" style="min-height:120px"></textarea>
+        <label class="muted" style="display:block;margin-top:10px">Who is this for?</label><input id="epAudience">
+        <label class="muted" style="display:block;margin-top:10px">What do you want at the end?</label><input id="epOutput">
+        <label class="muted" style="display:block;margin-top:10px">Source preferences</label><input id="epSourcePrefs">
+        <label class="muted" style="display:block;margin-top:10px">Starting / standing questions (one per line)</label><textarea id="epQuestions" style="min-height:70px"></textarea>
+        <label class="muted" style="display:block;margin-top:10px">Auto-include tags — any source carrying one of these tags joins this project automatically (optional)</label>
+        <input id="epTags">
+        <label class="muted" style="display:block;margin-top:10px">Project context for the Master Planner — goals, budget, deadline, your experience level, tools/accounts you already have, anything already decided.</label>
+        <textarea id="epContext" style="min-height:110px" placeholder="e.g. Budget ~$500. Need it live by end of October. I've never set up DNS before. We already pay for Google Workspace and Squarespace."></textarea>
+        <div class="row" style="margin-top:12px"><button class="primary" onclick="saveProject()">Save</button><span class="muted" id="saveMsg"></span></div>
+      </div>
+      <div class="card"><b>Decisions, constraints & requirements</b>
+        <div class="muted">Recorded automatically when you state them in a chat ("we're going with X", "budget is Y"). Add or remove here.</div>
+        <div id="facts" style="margin-top:8px"></div>
+        <div class="row" style="margin-top:8px"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
+      </div>
+      <div id="projFun"></div>
+      <div class="card"><b>Spending valve</b>
+        <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>
+        <div class="row" style="margin-top:8px"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
+        <div class="muted" id="bBreak" style="margin-top:6px"></div>
+      </div>
+      <div class="card"><b>Health</b>
+        <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
+        <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><span class="muted" id="healthMsg"></span></div>
+      </div>
+      <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
+        <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
+    </div>
+  </div>
+</div>
+
+<dialog id="dlg"><div id="dlgBody"></div><div class="row" style="margin-top:12px;justify-content:flex-end"><button onclick="dlg.close()">Close</button></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (r.status === 401) { location.reload(); return; }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+  return j;
+}
+const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b) });
+// ---- fun stats: how much did we not have to watch? ----
+const YARDSTICKS = [   // [label, hours] — things people know the length of
+  // binge-watching
+  ['all eight seasons of Game of Thrones', 70.5], ['every episode of The Office (US)', 74], ['all of Breaking Bad', 62], ['all of The Sopranos', 86],
+  ['every episode of Friends', 85], ['all five seasons of The Wire', 60], ['all of Seinfeld', 66], ['every episode of Succession', 39],
+  ['every Simpsons episode ever made', 290], ['all of Stranger Things', 42], ['every Marvel movie back to back', 60], ['every James Bond film', 52],
+  ['the entire Harry Potter film series', 19.7], ['the extended Lord of the Rings trilogy', 11.4], ['the Star Wars saga (all nine)', 21.5],
+  ['every Fast & Furious movie', 21], ['all the Pixar films', 42], ['the whole Rocky and Creed series', 18], ['every Best Picture winner since 2000', 52],
+  // audiobooks & talks
+  ['the Lord of the Rings audiobook', 52], ['all seven Harry Potter audiobooks', 117], ['the War and Peace audiobook', 61], ['the Bible as an audiobook', 75],
+  ['every TED talk ever posted on YouTube', 1300], ['Joe Rogan\'s longest 100 episodes', 300], ['a semester of a college course', 45],
+  // travel
+  ['a New York → Los Angeles drive, non-stop', 41], ['a transatlantic flight', 7.5], ['the longest flight in the world (New York → Singapore)', 18.5],
+  ['driving Route 66 end to end', 38], ['the Trans-Siberian Railway, Moscow → Vladivostok', 144], ['a full lap of the Indy 500 (all 200)', 3],
+  ['driving around the equator at highway speed', 415], ['the Apollo 11 mission, launch to splashdown', 195], ['one orbit of the ISS', 1.5],
+  // life
+  ['a full night\'s sleep', 8], ['a standard work week', 40], ['a working month', 160], ['a whole year of weekends (Saturdays only)', 832],
+  ['the Beatles\' entire studio catalogue', 10.5], ['the Eras Tour, start to finish', 3.5], ['a full NFL season for one team', 51], ['every match of a World Cup', 128],
+  ['a marathon at a brisk walking pace', 6], ['climbing Everest from base camp (round trip)', 60]];
+const BOOKS = [['the whole Lord of the Rings trilogy plus The Hobbit', 576000], ['War and Peace', 587000], ['the Bible, cover to cover', 783000],
+  ['all seven Harry Potter books', 1084000], ['Moby-Dick', 209000], ['the complete works of Shakespeare', 884000], ['Infinite Jest', 543000],
+  ['Les Misérables', 655000], ['Don Quixote', 345000], ['Ulysses', 265000], ['A Song of Ice and Fire (all five books)', 1770000],
+  ['Atlas Shrugged', 561000], ['the Wheel of Time series', 4400000], ['Dune', 188000], ['every Sherlock Holmes story', 660000],
+  ['The Great Gatsby', 47000], ['1984', 89000], ['The Hobbit', 95000], ['the Encyclopaedia Britannica (one volume)', 1500000]];
+const FUN = { seed: 0, data: {} };
+function funReroll(el) { FUN.seed++; const id = el.dataset.el; const d = FUN.data[id]; if (d) $('#' + id).innerHTML = funCard(d.f, d.title, id); }
+function funCard(f, title, elId) {
+  if (elId) FUN.data[elId] = { f, title };
+  if (!f || !f.sources) return '';
+  const h = f.hours, secs = f.seconds;
+  const d = Math.floor(secs / 86400), hh = Math.floor(secs % 86400 / 3600), mm = Math.floor(secs % 3600 / 60);
+  const straight = d ? `${d} day${d === 1 ? '' : 's'}, ${hh} h ${mm} min` : `${hh} h ${mm} min`;
+  const weeks = h / 40;
+  // pick a yardstick that gives a satisfying multiple (between 1.2× and 12×; else the closest); which one rotates with
+  // the size of the library and every press of the dice, so the comparison changes as the project grows
+  const pick = (list, val) => { let ok = list.filter(([, n]) => val / n >= 1.2 && val / n <= 12); if (!ok.length) ok = [list.reduce((a, b) => Math.abs(Math.log(val / b[1])) < Math.abs(Math.log(val / a[1])) ? b : a)]; const [l, n] = ok[(f.sources + FUN.seed) % ok.length]; return { label: l, times: val / n }; };
+  const x = v => v >= 10 ? Math.round(v) + '×' : v >= 2 ? v.toFixed(1).replace(/\.0$/, '') + '×' : v >= 1.2 ? v.toFixed(1) + '×' : (v * 100).toFixed(0) + '% of';
+  const y = h >= 0.5 ? pick(YARDSTICKS, h) : null, b = f.words >= 20000 ? pick(BOOKS, f.words) : null;
+  const plat = Object.entries(f.by_platform || {}).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${n} ${({ youtube: 'YouTube video', media: 'podcast/audio', web: 'web page', document: 'document', instagram: 'reel', spreadsheet: 'spreadsheet', file: 'file', manual: 'pasted text' })[k] || k}${n === 1 ? '' : 's'}`).join(' · ');
+  const per = f.hours && f.spend ? `$${(f.spend / f.hours).toFixed(2)} per hour of material` : '';
+  return `<div class="fun"><div class="funh row" style="gap:8px">📊 ${title}<span style="flex:1"></span>${elId ? `<button class="small" data-el="${elId}" onclick="funReroll(this)" title="another comparison">🎲 another comparison</button>` : ''}</div>
+    <div class="funrow">
+      <div class="funstat"><b>${h.toLocaleString()}</b><span>hours of audio &amp; video, read for you</span></div>
+      <div class="funstat"><b>${straight}</b><span>if you watched it all back to back${weeks >= 1 ? ` — ${weeks.toFixed(1)} working weeks` : ''}${h >= 2 ? `; still ${(h / 2).toFixed(0)} h at 2× speed` : ''}</span></div>
+      <div class="funstat"><b>${(f.words / 1000).toFixed(0)}k</b><span>words of transcript${b ? ` — ${x(b.times)} ${esc(b.label)}` : ''}</span></div>
+      ${y ? `<div class="funstat"><b>${x(y.times)}</b><span>${esc(y.label)}</span></div>` : ''}
+      ${f.findings ? `<div class="funstat"><b>${f.findings}</b><span>approved findings pulled out of it</span></div>` : ''}
+      ${f.spend ? `<div class="funstat"><b>$${f.spend.toFixed(2)}</b><span>spent${per ? ` — ${per}` : ''}</span></div>` : ''}
+      ${f.saved >= 0.01 ? `<div class="funstat"><b>$${f.saved.toFixed(2)}</b><span>saved by prompt caching</span></div>` : ''}
+    </div>
+    <div class="muted" style="margin-top:6px">${f.sources} sources: ${plat}${f.longest ? ` · longest: “${esc(f.longest.title)}” (${f.longest.hours} h)` : ''}</div></div>`;
+}
+function toast(msg, kind = '') {
+  let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.className = 'show ' + kind; clearTimeout(t._h); t._h = setTimeout(() => t.className = '', 4500);
+}
+const put = (p, b) => api(p, { method: 'PUT', body: JSON.stringify(b) });
+const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : undefined });
+let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
+const ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
+const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
+const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐', spreadsheet: '🧮' };
+
+const state = { project: null, conv: null, chats: [], view: 'chats' };
+
+// ---- theme (light by default; remembered per browser) ----
+function applyTheme(t) {
+  if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); else document.documentElement.removeAttribute('data-theme');
+  document.querySelectorAll('.themeBtn').forEach(b => b.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark');
+  try { localStorage.setItem('ns_theme', t); } catch (e) {}
+}
+function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
+try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
+
+// ================= routing =================
+const UI_VERSION = '0.19.0-f1';
+async function checkVersion() {
+  try {
+    const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
+    if (j.fake_ai && !$('#fakeBanner')) {
+      const f = document.createElement('div'); f.id = 'fakeBanner';
+      f.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:98;background:#b45309;color:#fff;text-align:center;padding:6px;font-weight:700;letter-spacing:.02em';
+      f.textContent = '⚠ FAKE AI MODE — no real model calls are being made (NEUROSEARCH_FAKE_AI=1). Answers, findings and plans are stand-ins.';
+      document.body.appendChild(f);
+    }
+    if (v !== UI_VERSION) {
+      const d = document.createElement('div'); d.className = 'banner'; d.id = 'verBanner';
+      d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:99;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+      d.innerHTML = `⚠️ The page is version ${UI_VERSION} but the server is running ${v === 'old' ? 'an older version' : 'version ' + esc(v)}. Restart it to pick up the new code: in the terminal press <b>Ctrl+C</b>, then run <b>./start</b> (it will auto-restart on future updates), then reload this page.`;
+      document.body.appendChild(d);
+    }
+  } catch (e) { /* offline */ }
+}
+checkVersion();
+function route() {
+  const h = location.hash.slice(1).split('/');
+  if (h[0] === 'p' && h[1]) openProject(h[1], h[2] || 'chats', h[3] || null);
+  else goHome();
+}
+window.addEventListener('hashchange', route);
+function setHash(view, conv) { const h = `#p/${state.project.id}/${view}` + (conv ? '/' + conv : ''); if (location.hash !== h) history.replaceState(null, '', h); }
+
+// ================= home =================
+async function loadSpend() {
+  try { const u = await api('/api/usage'); const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '');
+    const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } return u; } catch (e) { return null; }
+}
+async function goHome() {
+  loadSpend();
+  state.project = null; state.conv = null;
+  $('#ws').classList.remove('active'); $('#home').style.display = '';
+  if (location.hash) history.replaceState(null, '', location.pathname);
+  const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
+  $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
+  api('/api/stats/fun').then(f => { $('#homeFun').innerHTML = funCard(f, 'Your research in numbers', 'homeFun'); }).catch(() => {});
+  $('#projGrid').innerHTML = ps.map(p => `<div class="pcard" onclick="location.hash='#p/${p.id}/chats'">
+      <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.goal || p.brief || 'No brief yet')}</div>
+      <div class="meta">${p.n_sources} sources · updated ${new Date(p.updated_at * 1000).toLocaleDateString()}</div></div>`).join('')
+    + `<div class="pcard new" onclick="newProjectDialog()">＋ New project</div>`;
+}
+const WIZ = { step: 0, data: {} };
+function newProjectDialog() { WIZ.step = 0; WIZ.data = {}; WIZ.open = {}; renderWizard(); dlg.showModal(); }
+function wizField(id, label, ph, rows) {
+  const v = esc(WIZ.data[id] || '');
+  return `<label class="muted" style="display:block;margin-top:10px">${label}</label>` + (rows ? `<textarea id="w_${id}" rows="${rows}" placeholder="${esc(ph)}">${v}</textarea>` : `<input id="w_${id}" placeholder="${esc(ph)}" value="${v}">`);
+}
+function wizCollect() { document.querySelectorAll('#dlgBody [id^=w_]').forEach(el => WIZ.data[el.id.slice(2)] = el.value); }
+function renderWizard() {
+  const open = WIZ.open || {};
+  const sec = (key, title, inner) => `<details ${open[key] ? 'open' : ''} ontoggle="WIZ.open=WIZ.open||{};WIZ.open['${key}']=this.open" style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;color:var(--muted)">${title}</summary>${inner}</details>`;
+  let body = `<h2 style="margin-bottom:2px">New project</h2><div class="muted">Three things get you going. Everything else is optional and can be added now or later in Settings.</div>` +
+    wizField('name', 'Project name', 'e.g. Grow the roofing business to $2M') +
+    wizField('brief', 'What are you trying to find out or accomplish?', 'e.g. How top service-business operators price, sell and scale — so I can raise our average ticket and systematise sales.', 3) +
+    wizField('urls', 'Links to start with (optional — videos, playlists, whole channels, podcasts; one per line)', 'https://www.youtube.com/watch?v=…\nhttps://www.youtube.com/@somechannel', 3) +
+    sec('q', 'Starting questions — each becomes a ready-made chat', wizField('questions', 'One per line', 'What do they say about raising average ticket?\nHow do they structure the sales process?', 3)) +
+    sec('s', 'Your situation — budget, deadline, experience, what you already have or decided', wizField('goal', 'What does "done" look like?', 'e.g. A written playbook and a 90-day plan we can act on') +
+      wizField('budget', 'Budget', 'e.g. under $500') + wizField('deadline', 'Deadline / timing', 'e.g. by end of October') +
+      wizField('experience', 'Your experience with this', 'e.g. 5 years running the business, never built a sales system') +
+      wizField('tools', 'Tools and accounts you already have', 'e.g. HubSpot, Google Workspace') +
+      wizField('constraints', 'Hard constraints (must / must not)', 'e.g. no new hires this year', 2) +
+      wizField('decided', 'Already decided or rejected', 'e.g. decided: keep HubSpot · rejected: outsourcing sales', 2)) +
+    sec('o', 'Output — who it\'s for and what you want at the end', wizField('audience', 'Who is this for?', 'e.g. just me · my partner · a client') +
+      wizField('output_pref', 'What do you want at the end?', 'e.g. a recommendation and a step-by-step plan · a comparison · a content brief', 2) +
+      wizField('source_prefs', 'Source preferences', 'e.g. practitioners over marketers; nothing older than 2024'));
+  body += `<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="primary" id="wizCreate" onclick="createProject()">Create project</button></div>`;
+  $('#dlgBody').innerHTML = body; $('#w_name')?.focus();
+}
+async function createProject() {
+  wizCollect();
+  const d = WIZ.data; if (!(d.name || '').trim()) { $('#w_name')?.focus(); return; }
+  const lines = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean);
+  const ctx = [['Budget', d.budget], ['Deadline', d.deadline], ['Experience', d.experience], ['Tools/accounts available', d.tools], ['Constraints', d.constraints], ['Already decided/rejected', d.decided]]
+    .filter(([, v]) => v && v.trim()).map(([k, v]) => `${k}: ${v.trim()}`).join('\n');
+  const facts = [];
+  if (d.budget) facts.push({ kind: 'constraint', content: 'Budget: ' + d.budget.trim() });
+  if (d.deadline) facts.push({ kind: 'constraint', content: 'Deadline: ' + d.deadline.trim() });
+  lines(d.constraints).forEach(c => facts.push({ kind: 'constraint', content: c }));
+  lines(d.decided).forEach(c => facts.push({ kind: /reject/i.test(c) ? 'rejected' : 'decision', content: c.replace(/^(decided|rejected)\s*:\s*/i, '') }));
+  const btn = $('#wizCreate'); if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  const p = await post('/api/projects', { name: d.name.trim(), goal: d.goal || null, brief: d.brief || null, context: ctx || null, questions: lines(d.questions),
+    facts, urls: lines(d.urls), source_prefs: d.source_prefs || null, audience: d.audience || null, output_pref: d.output_pref || null, tags: [] });
+  dlg.close(); location.hash = `#p/${p.id}/${lines(d.urls).length ? 'sources' : 'chats'}`;
+}
+
+// ================= workspace =================
+async function openProject(id, view, conv) {
+  const p = await api('/api/projects/' + id).catch(() => null);
+  if (!p) return goHome();
+  const fresh = !state.project || state.project.id !== id;
+  state.project = p;
+  $('#home').style.display = 'none'; $('#ws').classList.add('active');
+  $('#wsName').textContent = p.name; loadSpend();
+  $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
+  $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
+  $('#epGoal').value = p.goal || ''; $('#epAudience').value = p.audience || ''; $('#epOutput').value = p.output_pref || ''; $('#epSourcePrefs').value = p.source_prefs || ''; $('#epQuestions').value = (p.questions || []).join('\n');
+  $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
+  $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
+  $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
+  loadFun(null); loadStaleness();
+  await loadChats();
+  if (fresh || view !== state.view || conv !== state.conv) {
+    if (view === 'chats') await selectChat(conv || (state.chats[0] && state.chats[0].id) || null, false);
+    showView(view, false);
+  }
+}
+async function loadFun(elId) {
+  if (!state.project) return;
+  try {
+    const f = await api('/api/stats/fun?project_id=' + state.project.id);
+    FUN.n = f.sources;
+    if (elId && $('#' + elId)) $('#' + elId).innerHTML = funCard(f, 'This project in numbers', elId);
+    const el = $('#wsNums');
+    if (el) {
+      if (!f.sources) { el.textContent = ''; return; }
+      const ok = YARDSTICKS.filter(([, n]) => f.hours / n >= 1.2 && f.hours / n <= 12);
+      const y = ok.length ? ok[(f.sources + FUN.seed) % ok.length] : null;
+      el.innerHTML = `📊 <b>${f.hours} h</b> read for you` + (y ? ` — ${(f.hours / y[1]).toFixed(1)}× ${esc(y[0])}` : '') + (f.spend ? ` · $${f.spend.toFixed(2)}` : '');
+    }
+  } catch (e) { /* stats are decoration */ }
+}
+function showView(v, push = true) {
+  state.view = v;
+  document.querySelectorAll('aside nav .item').forEach(i => i.classList.toggle('active', i.dataset.view === v));
+  document.querySelectorAll('#main .view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
+  if (v === 'sources') { loadSources(); loadJobs(); loadFun('srcFun'); }
+  if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
+  if (v === 'findings') loadNotes();
+  if (v === 'plan') loadPlan();
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadFun('projFun'); loadHealth(); }
+  $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
+  if (push) setHash(v, v === 'chats' ? state.conv : null);
+}
+
+// ---- chats ----
+async function loadChats() {
+  state.chats = await api('/api/conversations?project_id=' + state.project.id);
+  $('#nChats').textContent = state.chats.length;
+  $('#chatList').innerHTML = `<div class="newc"><button class="small" style="width:100%" onclick="newChat()">＋ New chat</button></div>` +
+    state.chats.map(c => `<div class="c ${c.id === state.conv ? 'active' : ''}" onclick="selectChat('${c.id}')"><span>${esc(c.title || 'Untitled chat')}</span></div>`).join('');
+}
+async function newChat() {
+  const c = await post('/api/conversations', { project_id: state.project.id, title: null });
+  await loadChats(); await selectChat(c.id); showView('chats');
+}
+async function selectChat(id, push = true) {
+  state.conv = id;
+  document.querySelectorAll('#chatList .c').forEach((el, i) => el.classList.toggle('active', state.chats[i]?.id === id));
+  const c = state.chats.find(x => x.id === id);
+  $('#chatTitle').textContent = c ? (c.title || 'Untitled chat') : 'New chat';
+  $('#chat').innerHTML = '';
+  if (id) {
+    const ms = await api('/api/conversations/' + id);
+    if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
+    else ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false }));
+  } else emptyChat();
+  if (push) { showView('chats'); }
+  $('#q').focus();
+}
+function emptyChat() {
+  const p = state.project, n = +($('#nSources').textContent || p.n_sources || 0);
+  $('#chat').innerHTML = `<div class="empty"><b>${esc(p.name)}</b> · ${n} source${n === 1 ? '' : 's'} in scope.<br><br>
+    Every chat here only sees this project's sources, so you can run several independent lines of inquiry on the same material.
+    Answers cite the source and the exact timestamp or page.<br><br>
+    Things you can say: <i>paste a YouTube/playlist link</i> to add it · <i>“refocus the brief on …”</i> · <i>“pin that as a finding”</i>.
+    ${(p.questions || []).length ? `<br><br>Starting questions:<br>${p.questions.map(q => `<a href="#" class="chip" onclick="$('#q').value=${JSON.stringify(q).replace(/"/g, '&quot;')};$('#q').focus();return false">${esc(q)}</a>`).join(' ')}` : ''}</div>`;
+}
+async function renameChat() {
+  if (!state.conv) return; const c = state.chats.find(x => x.id === state.conv);
+  const t = prompt('Chat title', c?.title || ''); if (t === null) return;
+  await put('/api/conversations/' + state.conv, { title: t }); await loadChats(); $('#chatTitle').textContent = t || 'Untitled chat';
+}
+async function deleteChat() {
+  if (!state.conv || !confirm('Delete this chat?')) return;
+  await del('/api/conversations/' + state.conv); state.conv = null; await loadChats(); await selectChat(state.chats[0]?.id || null);
+}
+function renderAnswer(text, cites) {
+  const byN = Object.fromEntries(cites.map(c => [c.n, c]));
+  return esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] ? (byN[n].removed ? `<sup title="${esc(byN[n].title)} — this source was removed">[${n}⚠]</sup>` : `<a href="${esc(byN[n].link)}" target="_blank" title="${esc(byN[n].title)} @ ${byN[n].timestamp}"><sup>[${n}]</sup></a>`) : m);
+}
+function addMsg(role, text, cites = [], extra = {}) {
+  const empty = $('#chat .empty'); if (empty) empty.remove();
+  const d = document.createElement('div'); d.className = 'msg ' + role;
+  if (role === 'user') d.textContent = text;
+  else {
+    let h = renderAnswer(text, cites);
+    if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
+    const val = extra.validation || extra.meta || {};
+    if (val.warning) h += `<div class="web" style="color:var(--warn)">⚠ ${esc(val.warning)}</div>`;
+    else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
+    if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
+    for (const a of extra.actions || []) {
+      if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;
+      if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
+      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
+      if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
+      if (a.type === 'calculated') h += `<div class="web">🧮 Ran the spreadsheet with ${Object.entries(a.inputs || {}).map(([k, v]) => `${esc(k)} = ${esc(String(v))}`).join(', ') || 'current inputs'} → ${Object.entries(a.outputs || {}).slice(0, 6).map(([k, v]) => `<b>${esc(k)}</b>: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : esc(String(v))}`).join(' · ')}</div>`;
+    }
+    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
+    if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
+    d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
+  }
+  $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
+  return d;
+}
+async function pinMsg(btn) {
+  const d = btn.closest('.msg');
+  await post(`/api/projects/${state.project.id}/notes`, { content: d.dataset.text, citations: JSON.parse(d.dataset.cites) });
+  btn.textContent = 'Pinned ✓'; btn.disabled = true; $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
+}
+async function ask() {
+  const q = $('#q').value.trim(); if (!q) return;
+  if (!state.conv) { const c = await post('/api/conversations', { project_id: state.project.id }); state.conv = c.id; await loadChats(); }
+  $('#q').value = ''; addMsg('user', q);
+  const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching this project\'s sources…</span>';
+  $('#askBtn').disabled = true;
+  try {
+    const r = await post('/api/ask', { question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked });
+    thinking.remove();
+    const m = addMsg('assistant', r.answer, r.citations, r);
+    const c = state.chats.find(x => x.id === state.conv);
+    if (c && !c.title) { await put('/api/conversations/' + state.conv, { title: q.slice(0, 60) }); await loadChats(); $('#chatTitle').textContent = q.slice(0, 60); }
+    if (r.ingest_jobs?.length) watchIngest(m, r.ingest_jobs.map(j => j.job_id));
+    if ((r.actions || []).some(a => a.type === 'brief_updated')) { state.project.brief = r.project.brief; $('#epBrief').value = r.project.brief; $('#wsFoot').textContent = r.project.brief.slice(0, 140); }
+    if ((r.actions || []).some(a => a.type !== 'brief_updated')) $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
+  } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  $('#askBtn').disabled = false;
+}
+async function watchIngest(msgEl, jobIds) {
+  const tick = async () => {
+    let pending = 0;
+    for (const id of jobIds) {
+      const j = await api('/api/jobs/' + id).catch(() => null); if (!j) continue;
+      const chip = msgEl.querySelector(`[data-job="${id}"]`); if (!chip) continue;
+      const label = chip.dataset.label;
+      if (j.status === 'done') { const r = j.result || {}; chip.textContent = r.review ? `📋 ${r.title || label}: ${r.proposed} videos waiting for your approval in Sources` : `✓ ${r.title || label}` + (r.found ? ` (${r.found} videos, ${r.queued} queued)` : ''); if (r.review) { chip.style.cursor = 'pointer'; chip.onclick = () => showView('sources'); } }
+      else if (j.status === 'failed') { chip.textContent = `✗ ${label}`; chip.title = j.message || ''; }
+      else { chip.textContent = `⏳ ${label} ${j.message ? '· ' + j.message : ''}`; pending++; }
+    }
+    if (pending) setTimeout(tick, 3000); else { const p = await api('/api/projects/' + state.project.id); state.project = p; $('#nSources').textContent = p.n_sources; }
+  };
+  setTimeout(tick, 1500);
+}
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
+
+// ---- sources ----
+function showPane(p) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
+  document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
+  if (p === 'library') loadLibrary();
+  if (p === 'discover') loadDiscoveries();
+  if (p === 'course') loadCoursePane();
+}
+let rvSig = null;
+const rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
+const rvFilterText = {};
+const rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
+function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
+async function loadReviews() {
+  const rvs = await api(`/api/projects/${state.project.id}/reviews`).catch(() => []);
+  // Only rebuild the card when the list (or its ranking) changed; the poller calls this every few seconds
+  const sig = rvs.map(c => c.id + ':' + (c.meta && c.meta.ranked ? 'R' : 'r') + ':' + c.proposed.map(s => s.id + (s.relevance == null ? '' : '=' + s.relevance)).join(',')).join('|');
+  if (sig === rvSig) return;
+  rvSig = sig;
+  $('#reviewWrap').innerHTML = rvs.map(c => {
+    const meta = c.meta || {}, want = meta.max_videos || 0, ranked = !!meta.ranked;
+    rvData[c.id] = c.proposed;
+    const scored = ranked && c.proposed.some(s => s.relevance != null);
+    const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
+    if (scored && !rvAutoApplied[c.id]) {   // first time we see scores: tick the best `want`, untick the rest
+      rvAutoApplied[c.id] = true; off.clear();
+      c.proposed.forEach((s, i) => { if ((want && i >= want) || !s.relevance) off.add(s.id); });
+    }
+    const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
+    const nSel = c.proposed.filter(s => !off.has(s.id)).length;
+    const est = rvEstimate(c.proposed.filter(s => !off.has(s.id)));
+    const rankLine = !ranked
+      ? `<span class="muted">⏳ Ranking these by relevance to your brief… (titles &amp; descriptions only, nothing downloaded)</span>`
+      : scored
+        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.${meta.rank_note ? ` <span style="color:var(--warn)">${esc(meta.rank_note)}</span>` : ''}</span>
+           <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
+        : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
+    return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
+      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
+      <div style="margin-top:3px;font-size:13px">💵 <span id="rvest-${c.id}">${est}</span></div>
+      <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
+      <div class="row" style="margin-top:4px">${rankLine}</div>
+      <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
+      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
+      <div class="row" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
+    </div>`; }).join('');
+}
+const rvData = {};   // collection id -> proposed rows (for live cost estimates)
+function estFallback(s) {   // same formula as usage.estimate_video, for servers that don't send `est`
+  const mins = Math.max((s.duration || 0) / 60, 1), chars = mins * 1000, windows = Math.max(1, Math.ceil(chars / 60000));
+  return { analyse: (chars / 4 + windows * 1500) / 1e6 * 3 + windows * 800 / 1e6 * 15, whisper: mins * 0.006 };
+}
+function rvEstimate(rows) {
+  rows = rows.map(s => s.est ? s : { ...s, est: estFallback(s) });
+  const a = rows.reduce((t, s) => t + (s.est?.analyse || 0), 0), w = rows.reduce((t, s) => t + (s.est?.whisper || 0), 0);
+  const hrs = rows.reduce((t, s) => t + (s.duration || 0), 0) / 3600;
+  return `<span title="Findings analysis + embeddings, assuming YouTube captions exist (free). Videos without captions are transcribed with Whisper at $0.006/min — worst case +$${w.toFixed(2)} if none of them have captions.">≈ <b>$${a.toFixed(2)}</b> to analyse ${hrs.toFixed(1)} h of selected video <span class="muted">· up to +$${w.toFixed(2)} more if captions are missing (Whisper)</span></span>`;
+}
+function rvCount(id) {
+  const all = [...document.querySelectorAll(`#rv-${id} input[type=checkbox]`)], on = new Set(all.filter(i => i.checked).map(i => i.dataset.id));
+  const a = $(`#rvsel-${id}`), b = $(`#rvest-${id}`); if (a) a.textContent = on.size;
+  if (b) b.innerHTML = rvEstimate((rvData[id] || []).filter(s => on.has(s.id)));
+}
+function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); rvCount(id); }
+function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
+function rvTop(id, n) { document.querySelectorAll(`#rv-${id} .li`).forEach((l, i) => { const inp = l.querySelector('input'); inp.checked = i < n; rvRemember(id, inp); }); }
+function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
+async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); rvSig = null; loadReviews(); setTimeout(loadReviews, 4000); }
+async function rvStart(id, btn) {
+  const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
+  if (!ids.length) return alert('Nothing selected.');
+  if (btn) { btn.disabled = true; btn.textContent = `Starting ${ids.length}…`; }
+  try {
+    const r = await post(`/api/collections/${id}/approve`, { source_ids: ids });
+    toast(`▶ ${r.started} video${r.started === 1 ? '' : 's'} queued for transcript + findings${r.dropped ? ` · ${r.dropped} unticked ones dropped` : ''}`);
+    delete rvUnchecked[id]; delete rvFilterText[id]; delete rvAutoApplied[id]; rvSig = null;
+    loadReviews(); loadJobs(); loadSources();
+  } catch (e) {
+    toast('Could not start: ' + (e.message || e), 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Start ingesting selected'; }
+  }
+}
+async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; rvSig = null; loadReviews(); }
+async function loadSources() {
+  loadReviews();
+  const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  const all = await api('/api/sources?' + p);
+  const nReady = all.filter(r => r.status === 'ready').length;
+  $('#nSources').textContent = nReady;
+  if (FUN.n !== undefined && FUN.n !== nReady) loadFun(state.view === 'sources' ? 'srcFun' : null);   // a new source landed: fresh numbers, fresh comparison
+  // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
+  const bucket = s => (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
+  const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length,
+                   ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length };
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['skipped', 'Skipped', counts.skipped]];
+  $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
+  const f = state.srcFilter || 'all';
+  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : s.status === f)).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
+    (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
+    (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '');
+  const liveLine = s => {
+    if (s.status === 'pending' && s.job) {
+      const j = s.job;
+      if (j.status === 'running') return `<span class="spin"></span> ${esc(j.message || 'working…')} <span class="muted">· ${ago(j.updated_at || Date.now() / 1000)} ago</span>`;
+      if (j.waiting_until && j.waiting_until > Date.now() / 1000) return `⏸ ${esc(j.message || 'waiting')} <span class="muted">· resumes in ${ago(2 * Date.now() / 1000 - j.waiting_until)}</span>`;
+      return `⏳ waiting in line · #${j.position}${j.message ? ' · ' + esc(j.message) : ''}`;
+    }
+    if (s.status === 'pending') return '⏳ pending (no job — use Retry)';
+    return '';
+  };
+  $('#srcList').innerHTML = rows.map(s => `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
+    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
+    <div style="flex:1;min-width:0">
+      <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
+      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
+      <div class="actions">
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
+        ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
+        <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
+        <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
+      </div>
+    </div></div>`).join('') || '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
+}
+async function viewTranscript(id) {
+  const s = await api('/api/sources/' + id);
+  const isDoc = s.platform === 'document', isWeb = s.platform === 'web', isSheet = s.platform === 'spreadsheet';
+  const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : (isWeb ? s.url : null);
+  const lab = t => isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
+  $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
+    <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
+  dlg.showModal();
+}
+async function openCalc(id) {
+  const m = await api(`/api/sources/${id}/calculator`);
+  const fmtv = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : +v.toFixed(4)) : esc(String(v ?? ''));
+  $('#dlgBody').innerHTML = `<b>🧮 ${esc(m.file)}</b> <span class="muted">— change any input, then Recalculate. The workbook's own formulas do the maths. In chat you can just ask: "run the calculator with price 800k".</span>
+    <div class="calcgrid" style="margin-top:10px"><div><div class="starth">Inputs</div>${m.inputs.map((i, n) => `<label class="ci"><span title="${esc(i.cell)}">${esc(i.label)}</span><input data-cell="${esc(i.cell)}" value="${esc(String(i.value))}"></label>`).join('') || '<div class="muted">No labelled inputs found.</div>'}
+      <button class="primary" style="margin-top:8px" onclick="runCalc('${id}')">Recalculate</button> <span class="muted" id="calcMsg"></span></div>
+    <div><div class="starth">Outputs</div><div id="calcOut">${m.outputs.map(o => `<div class="co"><span title="${esc(o.cell)} ${esc(o.formula || '')}">${esc(o.label)}</span><b>${fmtv(o.value)}</b></div>`).join('') || '<div class="muted">No formula outputs found.</div>'}</div></div></div>`;
+  dlg.showModal();
+}
+async function runCalc(id) {
+  const inputs = {}; document.querySelectorAll('#dlgBody .ci input').forEach(i => { if (i.value !== '') inputs[i.dataset.cell] = i.value; });
+  $('#calcMsg').innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await post(`/api/sources/${id}/calculate`, { inputs });
+    const fmtv = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : +v.toFixed(4)) : esc(String(v ?? ''));
+    $('#calcOut').innerHTML = Object.entries(r.outputs).map(([k, v]) => `<div class="co"><span>${esc(k)}</span><b>${fmtv(v)}</b></div>`).join('');
+    $('#calcMsg').textContent = r.unknown_inputs?.length ? 'ignored: ' + r.unknown_inputs.join(', ') : '✓';
+  } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
+}
+async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
+async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
+async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
+async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
+function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
+async function ingestUrls() {
+  const url = $('#inUrls').value.trim(); if (!url) return;
+  const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  await post('/api/ingest', { url, tags, project_id: state.project.id, force: $('#inForce').checked, since_years: +$('#inSince').value, max_videos: +$('#inMax').value });
+  $('#inUrls').value = ''; loadJobs();
+}
+async function ingestFiles() {
+  const files = [...$('#inFile').files]; if (!files.length) return;
+  for (const f of files) {
+    const fd = new FormData(); fd.append('file', f); if (files.length === 1) fd.append('title', $('#inFileTitle').value); fd.append('project_id', state.project.id); fd.append('tags', $('#inTags').value);
+    const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) alert(j.error || j.detail);
+  }
+  $('#inFile').value = ''; $('#inFileTitle').value = ''; loadJobs();
+}
+async function ingestText() {
+  const title = $('#inTextTitle').value.trim(), text = $('#inText').value.trim(); if (!title || !text) return;
+  await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: state.project.id, tags: [] });
+  $('#inText').value = ''; $('#inTextTitle').value = ''; loadSources();
+}
+async function loadLibrary() {
+  const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);
+  const rows = await api('/api/sources?' + p);
+  $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
+}
+async function loadCoursePane() {
+  try { const w = await api('/api/whoami'); const addr = w.lan_url && location.hostname === 'localhost' ? `${w.lan_url} (from another computer on your network) or ${location.origin} (this computer)` : location.origin; $('#appAddr').textContent = addr; } catch (e) { $('#appAddr').textContent = location.origin; }
+  const cs = (await api('/api/collections')).filter(c => c.kind === 'course');
+  $('#courseList').innerHTML = cs.length ? '<b>Imported courses</b>' + cs.map(c => `<div class="muted" style="padding:4px 0">🎓 ${esc(c.title)} — ${c.n_sources} videos</div>`).join('') : '';
+}
+async function loadBudget() {
+  const u = await api('/api/usage'); $('#bDaily').value = u.daily_budget; $('#bMonthly').value = u.monthly_budget;
+  const kinds = Object.entries(u.month_by_kind || {}).map(([k, v]) => `${k} $${v.toFixed(2)}`).join(' · ');
+  $('#bBreak').textContent = `This month: $${u.month.toFixed(2)}` + (kinds ? ` (${kinds})` : '') + ` · today $${u.today.toFixed(2)}` + (u.month_saved >= 0.01 ? ` · prompt caching saved $${u.month_saved.toFixed(2)}` : '') + (u.blocked ? ` · ⏸ ${u.blocked}` : '');
+}
+async function loadHealth() {
+  try {
+    const h = await api('/api/health');
+    const ago = ts => { if (!ts) return 'never'; const m = Math.round((Date.now() / 1000 - ts) / 60); return m < 1 ? 'just now' : m < 90 ? `${m} min ago` : `${(m / 60).toFixed(1)} h ago`; };
+    const ok = b => b ? '✅' : '⚠️';
+    const it = h.db.integrity, bk = h.backup.last_verified, ev = h.evidence;
+    const rows = [
+      [`${ok(it && it.ok)} Database integrity`, it ? `${it.result} · checked ${ago(it.ts)}` : 'not checked yet'],
+      [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
+      [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
+      [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
+      [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
+      [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
+      [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
+      [`${h.fake_ai ? '🧪' : '✅'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
+    ];
+    $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
+  } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
+}
+async function backupNow() { $('#healthMsg').textContent = 'snapshotting…'; try { await post('/api/backup', {}); $('#healthMsg').textContent = 'verified ✓'; } catch (e) { $('#healthMsg').textContent = 'failed: ' + e.message; } loadHealth(); setTimeout(() => $('#healthMsg').textContent = '', 3000); }
+async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }
+async function cancelQueued() {
+  if (!confirm('Cancel everything that has not started yet? Finished videos are kept; the rest go back to the Review card so you can approve a smaller set later.')) return;
+  const r = await post('/api/jobs/cancel-queued', { project_id: state.project.id }); alert(`Cancelled ${r.cancelled} queued job(s).`); loadJobs(); loadSources();
+}
+async function togglePause(p) { await post('/api/usage/budget', { paused: p }); loadJobs(); }
+async function loadDiscoveries(keepMsg = false) {
+  const ds = await api(`/api/projects/${state.project.id}/discoveries`);
+  const show = ds.filter(d => d.status !== 'dismissed');
+  const KIND = { youtube_channel: '▶ YouTube channel', podcast: '🎙 Podcast', newsletter: '✉ Newsletter', website: '🌐 Website', person: '👤 Person' };
+  const q = v => JSON.stringify(v).replace(/"/g, '&quot;');
+  $('#discList').innerHTML = show.map(d => {
+    const isSearch = u => /youtube\.com\/results\?/.test(u || '');
+    const vids = (d.start_with || []).filter(v => v.url && !isSearch(v.url) && /youtu|\.mp3|podcast|loom|vimeo/i.test(v.url));
+    const searches = [...(d.start_with || []).map(v => v.url), d.url].filter(isSearch);
+    const isChan = d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url);
+    return `<div class="d ${d.status}">
+    <div class="dh">
+      <div class="dmain">
+        <div class="dt"><b>${esc(d.name)}</b>${d.known_for ? ` <span class="gist">— ${esc(d.known_for)}</span>` : ''}</div>
+        <div class="dwhy">${esc(d.why || '')}</div>
+        <div class="dmeta">${KIND[d.kind] || esc(d.kind || '')}${d.fit ? ` · fit <span style="color:var(--warn)">${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? ` · ${esc(d.depth)}` : ''}${d.angle ? ` · <span title="angle / bias">${esc(d.angle)}</span>` : ''}${d.status === 'added' ? ' · <span style="color:var(--ok)">added ✓</span>' : ''}</div>
+      </div>
+      <div class="dacts">
+        ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false)">＋ Start video</button>` : ''}
+        ${isChan ? `<button class="small" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true)">＋ Channel</button>` : ''}
+        ${searches.length ? `<button class="small" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true)">🔍 Search YouTube</button>` : ''}
+        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small ${d.kind === 'website' || d.kind === 'newsletter' ? 'primary' : ''}" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false)">＋ Add page</button>` : ''}
+        ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
+      </div>
+    </div>
+    ${(d.start_with || []).length || d.url ? `<div class="dlinks">${(d.start_with || []).map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">▶ ${esc(v.title)}</a>` : `<span>▶ ${esc(v.title)}</span>`).join(' · ')}${d.url ? `${(d.start_with || []).length ? ' · ' : ''}<a href="${esc(d.url)}" target="_blank">open ${KIND[d.kind] ? KIND[d.kind].replace(/^\S+ /, '') : 'page'} ↗</a>` : ''}</div>` : ''}
+    </div>`; }).join('') || '<div class="muted">No suggestions yet — click <b>Find sources</b>.</div>';
+  if (!keepMsg && show.length && show[0].note) $('#discMsg').textContent = show[0].note;
+}
+async function runDiscover() {
+  const btn = $('#discBtn'); btn.disabled = true;
+  const t0 = Date.now(), tick = m => { $('#discMsg').innerHTML = `<span class="spin"></span> ${esc(m || 'searching the web for the people worth learning from')} · ${Math.round((Date.now() - t0) / 1000)}s (first results in ~10 s, links verified after)`; };
+  tick();
+  try {
+    const r = await post(`/api/projects/${state.project.id}/discover`, { refine: $('#discRefine').value || null, background: true });
+    if (r.job_id) {
+      for (;;) {
+        await new Promise(res => setTimeout(res, 2500));
+        const j = await api(`/api/jobs/${r.job_id}`);
+        if (j.status === 'done') { const res = j.result || {}; $('#discMsg').textContent = (res.note || '') + (res.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); break; }
+        if (j.status === 'failed') { $('#discMsg').textContent = 'error: ' + (j.message || 'discover failed'); break; }
+        tick(j.message);
+        if ((j.progress || 0) >= 0.45) loadDiscoveries(true);   // first take is in — show it while links are verified
+      }
+    } else { $('#discMsg').textContent = (r.note || '') + (r.added === 0 ? ' (nothing new beyond what was already suggested)' : ''); }
+    await loadDiscoveries();
+  } catch (e) { $('#discMsg').textContent = 'error: ' + e.message; }
+  btn.disabled = false;
+}
+async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
+async function discAdd(id, url, whole) {
+  if (whole && !confirm('List these videos for review? Nothing is downloaded until you approve the list in Sources.')) return;
+  await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
+  await post(`/api/discoveries/${id}/status`, { status: 'added' });
+  loadDiscoveries(); loadJobs(); loadSources();
+}
+
+async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
+let jobsTimer;
+function jobLabel(j) {
+  const what = j.label || j.payload.url || j.payload.name || j.payload.source_id || '';
+  if (j.kind === 'suggest_findings') return 'finding suggestions · ' + what;
+  if (j.kind === 'rank_proposed') return 'ranking videos by relevance';
+  if (j.kind === 'ingest_source') return 'transcript · ' + what;
+  return what || j.kind;
+}
+async function retryJob(id) { await post(`/api/jobs/${id}/retry`, {}).catch(e => toast(e.message || e, 'err')); toast('Queued again'); loadJobs(); }
+async function retryFailed() { const r = await post('/api/jobs/retry-failed', { project_id: state.project.id }); toast(`↻ ${r.retried} job${r.retried === 1 ? '' : 's'} queued again`); loadJobs(); }
+async function dismissJob(id) { await post(`/api/jobs/${id}/dismiss`, {}).catch(e => toast(e.message || e, 'err')); loadJobs(); }
+async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); rvSig = null; loadJobs(); loadReviews(); }
+let pollFails = 0;
+async function loadJobs() {
+  clearTimeout(jobsTimer);
+  let js;
+  try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`); pollFails = 0; $('#offline')?.remove(); }
+  catch (e) {
+    // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet
+    pollFails++;
+    if (!$('#offline')) { const d = document.createElement('div'); d.id = 'offline'; d.className = 'banner'; d.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99'; d.textContent = '⟳ reconnecting to the server…'; document.body.appendChild(d); }
+    jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, Math.min(3000 * pollFails, 15000));
+    return;
+  }
+  const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
+  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', external_pending: 'external', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', external_pending: 'queued', cancelling: 'running' })[st] || st;
+  const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span style="color:var(--bad)">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
+  const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
+  const show = [...active, ...recentFailed];
+  const st = await api('/api/stats'); const u = await loadSpend();
+  $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
+  if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
+  if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${STATE_LABEL[j.state || j.status] || j.status}</span>
+    <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
+    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+  clearTimeout(jobsTimer);
+  const analysing = !!document.querySelector('#srcList .spin');
+  // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
+  const every = (active.length || analysing) ? 3000 : 15000;
+  jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, every);
+  if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
+}
+
+async function jobHistory(id, btn) {
+  const ev = await api(`/api/jobs/${id}/events`);
+  const row = btn.closest('.job'); let box = row.querySelector('.jobhist');
+  if (box) { box.remove(); return; }
+  box = document.createElement('div'); box.className = 'jobhist muted'; box.style.cssText = 'width:100%;font-size:11.5px;font-family:ui-monospace,monospace;white-space:pre;overflow:auto;max-height:180px;padding:4px 8px';
+  box.textContent = ev.map(e => { const t = new Date(e.ts * 1000).toLocaleTimeString(); const p = e.payload || {}; const extra = e.stage ? e.stage : (p.worker_id ? 'worker ' + p.worker_id.split(':').pop() : p.message || p.handle || p.delay ? (p.message || p.handle || `wait ${Math.round(p.delay / 60)} min`) : ''); return `${t}  ${e.event_type.padEnd(20)} ${e.run_id ? 'run ' + e.run_id.slice(0, 6) + '  ' : ''}${extra}`; }).join('\n') || 'no events';
+  row.appendChild(box);
+}
+// ---- findings ----
+const STALE = { data: null };
+async function loadStaleness() {
+  try { STALE.data = await api(`/api/projects/${state.project.id}/staleness`); } catch (e) { STALE.data = null; return; }
+  const s = STALE.data;
+  const nf = $('#nFindings'), np = $('#nPlan');
+  if (nf) nf.classList.toggle('stale', s.stale_sources > 0);
+  if (np) np.classList.toggle('stale', s.plan.status === 'stale');
+  renderStaleCard('staleFindings', 'findings');
+  renderStaleCard('stalePlan', 'plan');
+}
+function renderStaleCard(elId, what) {
+  const el = $('#' + elId); if (!el) return;
+  const s = STALE.data; if (!s) { el.innerHTML = ''; return; }
+  const money = v => '$' + (+v).toFixed(2);
+  let h = '';
+  if (what === 'findings') {
+    const stale = s.sources.filter(x => x.status === 'stale'), legacy = s.sources.filter(x => x.status === 'legacy_unverified'), reb = s.sources.filter(x => x.status === 'rebuilding');
+    if (!stale.length && !legacy.length && !reb.length) { el.innerHTML = ''; return; }
+    const why = [...new Set(stale.flatMap(x => x.reasons))].join(', ');
+    const rebNote = [...new Set(reb.map(x => x.note).filter(Boolean))].join(', ');
+    const parts = [];
+    if (stale.length) parts.push(`${stale.length} source${stale.length === 1 ? '' : 's'} analysed against older inputs`);
+    if (legacy.length) parts.push(`${legacy.length} legacy analys${legacy.length === 1 ? 'is' : 'es'} (preserved from 0.15 — original project context cannot be verified)`);
+    if (reb.length) parts.push(`${reb.length} re-analysing${rebNote ? ' · ' + esc(rebNote) : '…'}`);
+    stale.push(...legacy);
+    h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${parts.join(' · ')}</b>
+      <div class="muted">${why ? `Why: ${esc(why)}. ` : ''}Their findings are still readable and usable — they just may not reflect what the project is about now. Nothing is re-run unless you ask.</div>
+      ${stale.length ? `<div class="row" style="margin-top:8px"><span class="muted">Re-analyse: est. <b>${money(s.estimate.findings)}</b> (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
+        <button class="small primary" onclick="rebuildStale(['findings'])">Re-analyse ${stale.length} stale</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
+  } else {
+    const p = s.plan;
+    if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
+    if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
+    else h = `<div class="card" style="border-color:var(--warn)"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
+      <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
+      <div class="row" style="margin-top:8px"><span class="muted">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
+        <button class="small primary" onclick="rebuildStale(['plan'])">Rebuild plan</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'])">Re-analyse + rebuild</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
+  }
+  el.innerHTML = STALE.left && what === 'findings' ? '' : h;
+}
+async function rebuildStale(what) {
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what });
+  toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued · est. $${(+r.estimate.total).toFixed(2)}${r.budget.fits ? '' : ' · will pause when the daily budget is reached and resume tomorrow'}`);
+  loadStaleness(); loadJobs();
+}
+async function loadNotes() {
+  loadStaleness();
+  const p = await api('/api/projects/' + state.project.id);
+  const notes = p.notes || [], sug = p.suggested || []; $('#nFindings').textContent = notes.length + (sug.length ? ` +${sug.length}` : '');
+  const bySrc = {}; sug.forEach(n => { const k = (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
+  const srcs = await api('/api/sources?project_id=' + state.project.id + '&limit=2000');
+  const analysing = srcs.filter(x => x.analysing).length;
+  if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
+  const legacy = sug.filter(n => !n.title).length;
+  $('#suggestedWrap').innerHTML = (legacy ? `<div class="banner">${legacy} suggestion${legacy === 1 ? ' was' : 's were'} generated by an older version and read as run-on sentences. <a href="#" onclick="suggestNow(true);return false"><b>Re-analyse all</b></a> to regenerate them as clean headlines (takes about a minute).</div>` : '') + (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') +
+    `<div class="row" style="margin-bottom:8px"><h3 style="margin:0;flex:1">Suggested ${sug.length ? `(${sug.length})` : ''}</h3>
+      ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
+      <button class="small ghost" onclick="suggestNow(false)" title="Analyse sources that haven't been read yet">Analyse new</button><button class="small ghost" onclick="suggestNow(true)" title="Read every source again">Re-analyse all</button></div>
+    <div class="muted" id="sugMsg"></div>` +
+    (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
+      list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
+      || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
+  const gaps = notes.filter(n => n.content.startsWith('Gap:')), ok = notes.filter(n => !n.content.startsWith('Gap:'));
+  const byS = {}; ok.forEach(n => { const k = (n.citations?.[0]?.title) || 'Pinned from chat'; (byS[k] = byS[k] || []).push(n); });
+  $('#notes').innerHTML = (ok.length ? `<h3 style="margin-top:18px">Approved (${ok.length})</h3>` : '') +
+    Object.entries(byS).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span></div>` +
+      list.map(n => findingCard(n, `<button class="small ghost" title="remove" onclick="del('/api/notes/${n.id}').then(loadNotes)">✕</button>`)).join('') + `</div>`).join('') +
+    (gaps.length ? `<h3>Gaps (${gaps.length})</h3>` + gaps.map(n => `<div class="note gap">⚠ <span class="body">${renderAnswer(n.content.slice(4), n.citations || [])}</span> <a href="#" class="muted" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div>`).join('') : '')
+    || '<div class="empty">Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.</div>';
+}
+const ATTRIB = /^(?:(?:the\s+)?(?:speaker|host|he|she|they|[A-Z][\w'.-]+(?:\s[A-Z][\w'.-]+)?)\s+(?:says|said|states|stated|recommends|recommended|advises|advised|suggests|suggested|argues|argued|notes|noted|explains|explained|emphasi[sz]es|claims|believes|thinks)\s+(?:that\s+)?)/i;
+function splitFinding(n) {
+  let raw = n.content.replace(/\s*\[\d+\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  // legacy rows embedded the quote in the text: drop it (the chip's "quote" link still has it)
+  raw = raw.replace(/\s*[—–-]\s*[“"][^”"]{5,}[”"]\s*$/, '').trim();
+  if (n.title) {
+    let body = raw;
+    if (body.toLowerCase().startsWith(n.title.toLowerCase().replace(/[.!?]$/, ''))) body = body.slice(n.title.length).replace(/^[\s:.—–-]+/, '');
+    return { title: n.title.replace(ATTRIB, m => m.charAt(0) === m.charAt(0).toUpperCase() ? '' : ''), body };
+  }
+  const stripped = raw.replace(ATTRIB, '');
+  let m = stripped.match(/^(.{12,90}?[.!?])(\s|$)/);
+  let t, rest;
+  if (m) { t = m[1]; rest = stripped.slice(m[1].length).trim(); }
+  else {
+    // cut at the first clause boundary (: — , ;) that is outside parentheses, between 25 and 80 chars
+    let depth = 0, cut = -1;
+    for (let i = 0; i < Math.min(stripped.length, 80); i++) {
+      const ch = stripped[i]; if (ch === '(') depth++; else if (ch === ')') depth--;
+      if (depth === 0 && i >= 25 && (ch === ':' || ch === ';' || ch === '—' || ch === '–' || (ch === ',' && stripped[i + 1] === ' '))) { cut = i; break; }
+    }
+    if (cut < 0) { const sp = stripped.lastIndexOf(' ', 70); cut = sp > 25 ? sp : 70; t = stripped.slice(0, cut) + '…'; }
+    else t = stripped.slice(0, cut);
+    rest = stripped.slice(cut).replace(/^[\s,;:—–-]+/, '').trim();
+  }
+  t = t.replace(/[.!?]$/, ''); t = t.charAt(0).toUpperCase() + t.slice(1);
+  return { title: t, body: rest };
+}
+function findingCard(n, actions) {
+  const c = (n.citations || [])[0];
+  const { title, body } = splitFinding(n);
+  const imp = n.importance ? `<span class="fi" title="importance ${n.importance}/5">${'●'.repeat(n.importance)}<span class="dim">${'●'.repeat(5 - n.importance)}</span></span>` : '<span class="fi"></span>';
+  return `<div class="f">${imp}<div class="main">
+      <div class="ttl">${esc(title)}</div>
+      ${body ? `<div class="txt">${esc(body)}</div>` : ''}
+      <div class="meta">${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
+    </div><div class="act">${actions}</div></div>`;
+}
+async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
+async function bulkNotes(ids, status) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadNotes(); }
+async function suggestNow(force) {
+  const r = await post(`/api/projects/${state.project.id}/suggest`, { force });
+  if (!r.job) { $('#sugMsg').textContent = 'Every source has already been analysed for this project.'; return; }
+  $('#sugMsg').innerHTML = `<span class="spin"></span> reading ${r.sources} source${r.sources === 1 ? '' : 's'}…`;
+  const tick = async () => { const j = await api('/api/jobs/' + r.job); if (j.status === 'done' || j.status === 'failed') { await loadNotes(); } else { $('#sugMsg').innerHTML = `<span class="spin"></span> ${esc(j.message || 'working…')}`; setTimeout(tick, 2500); } };
+  setTimeout(tick, 2000);
+}
+
+// ---- settings ----
+async function saveProject() {
+  const p = await put('/api/projects/' + state.project.id, { name: $('#epName').value, brief: $('#epBrief').value, context: $('#epContext').value, goal: $('#epGoal').value, audience: $('#epAudience').value, output_pref: $('#epOutput').value, source_prefs: $('#epSourcePrefs').value, questions: $('#epQuestions').value.split('\n').map(t => t.trim()).filter(Boolean), tags: $('#epTags').value.split(',').map(t => t.trim()).filter(Boolean) });
+  state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
+  STALE.left = 0; await loadStaleness();
+  if (STALE.data && STALE.data.anything_stale) toast(`Saved. ${STALE.data.stale_sources ? STALE.data.stale_sources + ' source analyses' : ''}${STALE.data.stale_sources && STALE.data.plan.status === 'stale' ? ' and ' : ''}${STALE.data.plan.status === 'stale' ? 'the Master Plan' : ''} now reflect an older brief — nothing is re-run until you ask (see Findings / Plan).`);
+}
+async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }
+
+// ---- facts ----
+function renderFacts(facts) {
+  $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span style="flex:1">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
+}
+async function addFact() {
+  const t = $('#factText').value.trim(); if (!t) return;
+  await post(`/api/projects/${state.project.id}/facts`, { kind: $('#factKind').value, content: t }); $('#factText').value = '';
+  const p = await api('/api/projects/' + state.project.id); renderFacts(p.facts);
+}
+
+// ---- master plan ----
+const STATUSES = ['not_started', 'ready', 'blocked', 'in_progress', 'complete', 'needs_research', 'needs_decision'];
+const stLabel = s => (s || 'not_started').replace(/_/g, ' ');
+let planState = null;
+async function loadPlan() {
+  loadStaleness();
+  const r = await api(`/api/projects/${state.project.id}/plan`);
+  planState = r;
+  $('#nPlan').textContent = r.plan ? `v${r.plan.version}` : '';
+  if (!r.plan) return renderNoPlan();
+  renderPlan(r);
+}
+function renderNoPlan() {
+  const p = state.project;
+  $('#planWrap').innerHTML = `<h2>Master Plan</h2>
+    <div class="empty" style="margin-bottom:14px">Research answers <i>what do we need to know?</i> The Master Plan answers <i>given everything we know, how do we accomplish this?</i> — goal, recommended approach and alternatives, first steps you can start today, phases, dependencies, decisions (now vs later), tools, costs, risks with mitigations, beginner gotchas, what to ignore for now, open questions, and a ready-to-start checklist. Every recommendation is tied to its evidence and rated for confidence.</div>
+    <div class="card"><b>Before building: tell the planner about the project</b>
+      <div class="muted">Budget, deadline, your experience level, tools and accounts you already have, anything already decided. The more it knows, the more practical the plan.</div>
+      <textarea id="planCtx" style="margin-top:8px;min-height:100px" placeholder="e.g. Budget ~$500. Need it live by end of October. I've never set up DNS before. We already pay for Google Workspace.">${esc(p.context || '')}</textarea>
+      <div class="muted" style="margin-top:6px">${p.n_sources} sources · ${$('#nFindings').textContent || 0} findings · ${$('#nChats').textContent || 0} chats will be used.</div>
+      <div class="row" style="margin-top:10px"><button class="primary" id="buildBtn" onclick="buildPlan()">Build Master Plan</button><span class="muted" id="buildMsg"></span></div>
+    </div>`;
+}
+async function buildPlan(instructions) {
+  const btn = $('#buildBtn'); if (btn) btn.disabled = true;
+  const ctx = $('#planCtx'); if (ctx) { await put('/api/projects/' + state.project.id, { name: state.project.name, context: ctx.value }); state.project.context = ctx.value; $('#epContext').value = ctx.value; }
+  const msg = $('#buildMsg');
+  const t0 = Date.now(), tick = m => { if (msg) msg.innerHTML = `<span class="spin"></span> ${esc(m || 'reading the research…')} · ${Math.round((Date.now() - t0) / 1000)}s <span class="muted">(analysis first, then the plan — usually 1–3 min)</span>`; };
+  tick();
+  try {
+    const r = await post(`/api/projects/${state.project.id}/plan/build`, { instructions: instructions || null, background: true });
+    for (;;) {
+      await new Promise(res => setTimeout(res, 2500));
+      const j = await api(`/api/jobs/${r.job_id}`).catch(() => null);
+      if (!j) { tick('reconnecting…'); continue; }
+      if (j.status === 'done') break;
+      if (j.status === 'failed') throw new Error(j.message || 'plan build failed');
+      tick(j.message);
+    }
+    await loadPlan();
+  } catch (e) { if (msg) msg.textContent = 'error: ' + e.message; if (btn) btn.disabled = false; else toast(e.message, 'err'); }
+}
+function ev(ids, emap) {
+  if (!ids?.length) return '';
+  const parts = ids.map(i => emap[i]).filter(Boolean).map(e => e.removed ? `<span title="Evidence source removed">⚠ ${esc(e.label)} (source removed)</span>` : e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label));
+  return parts.length ? `<div class="ev muted">based on: ${parts.join(' · ')}</div>` : '';
+}
+function statusSel(key) {
+  const cur = planState.plan.items[key]?.status || 'not_started';
+  return `<select onchange="setItem('${key}', this.value)">${STATUSES.map(s => `<option value="${s}" ${s === cur ? 'selected' : ''}>${stLabel(s)}</option>`).join('')}</select>`;
+}
+async function setItem(key, status) { await put(`/api/plans/${planState.plan.id}/items/${encodeURIComponent(key)}`, { status }); planState.plan.items[key] = { status }; }
+function basis(x) { return x.basis ? `<span class="basis">basis: ${esc(x.basis)}${x.confidence ? ' · confidence: ' + esc(x.confidence.replace('_', ' ')) : ''}</span>` : ''; }
+function renderPlan(r) {
+  const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
+  const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
+  const an = p.analysis || {}, facts = (state.project.facts || []);
+  let h = `<div class="row" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
+    <button class="small" onclick="checkUpdates()">${r.research_changed ? '⚠ Research changed — check for updates' : 'Check for updates'}</button>
+    <button class="small" onclick="rebuildPrompt()">Rebuild…</button>
+    <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
+    <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
+  if (pending.length || accepted.length) {
+    h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
+      pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>
+        <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
+      (accepted.length ? `<div class="row" style="margin-top:8px"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
+  }
+
+  // ---------- START HERE: the short version ----------
+  const rd = p.ready || {};
+  const weekItem = (t, i) => { const done = planState.plan.items['this_week.' + i]?.status === 'complete';
+    return `<label class="wk ${done ? 'done' : ''}"><input type="checkbox" ${done ? 'checked' : ''} onchange="setItem('this_week.${i}', this.checked ? 'complete' : 'not_started'); this.closest('.wk').classList.toggle('done', this.checked)"><div><b>${esc(t.action)}</b>${t.time ? ` <span class="tag">${esc(t.time)}</span>` : ''}<div class="muted">${esc(t.why || '')}</div></div></label>`; };
+  h += `<div class="start">
+    <div class="startcol">
+      <div class="starth">🎯 Start here</div>
+      ${an.verdict ? `<p class="verdict">${esc(an.verdict)}</p>` : ''}
+      ${(p.approach || {}).recommended ? `<p><b>Approach:</b> ${esc(p.approach.recommended)}</p>` : ''}
+      <p><b>Initial cost:</b> ${esc(rd.initial_cost || '?')}${rd.blockers?.length ? ` · <b style="color:var(--bad)">Blocked by:</b> ${rd.blockers.map(esc).join('; ')}` : ''}${rd.need_before?.length ? ` · <b>Need first:</b> ${rd.need_before.map(esc).join('; ')}` : ''}</p>
+      ${started ? '<span class="tag">🚀 project started</span>' : `<button class="primary" onclick="startProject()">Start project</button> <span class="muted">marks the first steps ready and switches to execution</span>`}
+    </div>
+    <div class="startcol">
+      <div class="starth">📅 This week</div>
+      ${(p.this_week || []).length ? p.this_week.map(weekItem).join('') : `<ol>${(rd.first_three || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol>`}
+    </div>
+  </div>`;
+
+  // ---------- REFINE: guided questions ----------
+  const qs = p.refine_questions || [];
+  if (qs.length) {
+    const answered = q => facts.find(f => f.content.startsWith('Q: ' + q.question));
+    const n = qs.filter(answered).length;
+    h += `<div class="refine"><div class="row"><div class="starth" style="flex:1">💬 Make this plan yours <span class="muted" style="font-weight:400">— ${n} of ${qs.length} answered</span></div>
+      ${n ? `<button class="small primary" onclick="rebuildWithAnswers()">↻ Rebuild plan with my answers</button>` : ''}</div>
+      <div class="muted" style="margin-bottom:6px">These are the things only you know. Each answer you save becomes a project fact; rebuild when you've answered a few and the plan will be tighter and more specific.</div>` +
+      qs.map((q, i) => { const a = answered(q); return `<div class="rq ${a ? 'answered' : ''}" id="rq-${i}">
+        <div><b>${esc(q.question)}</b> <span class="muted">— ${esc(q.why || '')}</span></div>
+        ${a ? `<div class="ans">✓ ${esc(a.content.split('\nA: ')[1] || a.content)} <button class="small ghost" onclick="delFactByContent(${JSON.stringify(a.content).replace(/"/g, '&quot;')})">change</button></div>`
+            : `<div class="row" style="margin-top:4px;flex-wrap:wrap">${(q.options || []).map(o => `<button class="small" onclick="answerQ(${i}, ${JSON.stringify(o).replace(/"/g, '&quot;')})">${esc(o)}</button>`).join('')}
+               <input placeholder="${q.options?.length ? 'or type your own…' : 'your answer…'}" style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter'){answerQ(${i}, this.value)}">
+               <button class="small ghost" onclick="researchThis(${JSON.stringify(q.question + ' — help me think this through for my project. What do the sources say, and what should I consider?').replace(/"/g, '&quot;')})">💬 Discuss</button></div>`}
+      </div>`; }).join('') + `</div>`;
+  }
+
+  // ---------- TABS ----------
+  const tab = planState.tab || 'overview';
+  const tabs = [['overview', 'Where you stand'], ['do', 'Do this'], ['decide', 'Decide'], ['money', 'Money & tools'], ['watch', 'Watch out'], ['evidence', 'Evidence']];
+  h += `<div class="ptabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" onclick="planState.tab='${k}';renderPlan(planState)">${l}</button>`).join('')}</div><div class="plan">`;
+
+  if (tab === 'overview') {
+    const cell = x => `<b>${esc(x.point || '')}</b>${x.so_what ? `<div class="muted">${esc(x.so_what)}</div>` : ''}${ev(x.evidence, E)}`;
+    const col = (title, arr, cls) => `<div class="swot ${cls}"><div class="swh">${title}</div>${(arr || []).map(x => `<div class="swi">${cell(x)}</div>`).join('') || '<div class="muted">—</div>'}</div>`;
+    const g = p.goal || {}, a = p.approach || {};
+    h += `<h2>Goal</h2><p>${esc(g.outcome || '')}</p>${g.constraints?.length ? `<p><b>Constraints:</b> ${g.constraints.map(esc).join('; ')}</p>` : ''}${g.success?.length ? `<p><b>Success looks like:</b> ${g.success.map(esc).join('; ')}</p>` : ''}${ev(g.evidence, E)}`;
+    if (an.situation) h += `<h2>Where you stand</h2><p>${esc(an.situation)}</p>`;
+    if (an.swot) h += `<div class="swotgrid">${col('Strengths', an.swot.strengths, 's')}${col('Weaknesses', an.swot.weaknesses, 'w')}${col('Opportunities', an.swot.opportunities, 'o')}${col('Threats', an.swot.threats, 't')}</div>`;
+    if (an.readiness?.length) h += `<p><b>Readiness</b></p><div class="row" style="flex-wrap:wrap;gap:6px">${an.readiness.map(r => `<span class="chip" title="${esc(r.note || '')}"><span class="conf ${r.level === 'ready' ? 'high' : r.level === 'partly' ? 'medium' : 'needs_research'}">●</span> ${esc(r.area)} <span class="muted">· ${esc(r.level)}${r.note ? ' — ' + esc(r.note) : ''}</span></span>`).join('')}</div>`;
+    if (an.options?.length) h += `<h2>Paths compared</h2><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td style="color:var(--warn)">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table>`;
+    h += `<h2>Recommended approach</h2><p class="k">${esc(a.recommended || '')}</p><p>${esc(a.why || '')}</p>` +
+      (a.alternatives?.length ? `<p class="muted">Alternatives considered:</p><ul>${a.alternatives.map(x => `<li><b>${esc(x.option)}</b> — ${esc(x.why_not)}</li>`).join('')}</ul>` : '') + basis(a) + ev(a.evidence, E);
+    if (p.confidence?.length) h += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
+  }
+  if (tab === 'do') {
+    h += `<h2>First steps</h2>` + (p.first_steps || []).map((s, i) => `<div class="item"><div style="flex:0 0 22px;color:var(--muted)">${i + 1}.</div><div class="body"><span class="k">${esc(s.action)}</span>${s.today ? '<span class="tag">today</span>' : ''}<div class="muted">${esc(s.detail || '')}</div>${ev(s.evidence, E)}</div>${statusSel('first_steps.' + i)}</div>`).join('');
+    if (p.phases?.length) { h += `<h2>Phases</h2>`; p.phases.forEach((ph, i) => { h += `<details ${i === 0 ? 'open' : ''}><summary><b>Phase ${i + 1} — ${esc(ph.name)}</b> <span class="muted">${esc(ph.objective || '')}</span></summary>` +
+        (ph.tasks || []).map((t, j) => `<div class="item"><div class="body">${esc(t.task)}${t.detail ? `<div class="muted">${esc(t.detail)}</div>` : ''}</div>${statusSel(`phases.${i}.tasks.${j}`)}</div>`).join('') +
+        (ph.dependencies?.length ? `<div class="muted" style="margin-top:6px">Depends on: ${ph.dependencies.map(esc).join('; ')}</div>` : '') + (ph.decisions?.length ? `<div class="muted">Decisions needed: ${ph.decisions.map(esc).join('; ')}</div>` : '') + (ph.outcome ? `<div class="muted">Outcome: ${esc(ph.outcome)}</div>` : '') + `</details>`; }); }
+    if (p.dependencies?.length) h += `<h2>Dependencies</h2>` + p.dependencies.map((d, i) => `<div class="item"><div class="body">${d.blocking ? '<span class="tag blocking">blocking</span> ' : '<span class="tag">non-blocking</span> '}${esc(d.item)}${d.note ? `<div class="muted">${esc(d.note)}</div>` : ''}</div>${statusSel('dependencies.' + i)}</div>`).join('');
+    if (p.defer?.length) h += `<h2>Not yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
+  }
+  if (tab === 'decide') {
+    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div style="margin-top:4px"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">💬 Discuss</button></div></div>${statusSel('decisions.' + i)}</div>`).join('');
+    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div style="margin-top:4px"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">🔍 Research this</button></div></div>${statusSel('open_questions.' + i)}</div>`).join('');
+    if (an.assumptions?.length) h += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
+    if (!p.decisions?.length && !p.open_questions?.length) h += '<p class="muted">Nothing to decide right now.</p>';
+  }
+  if (tab === 'money') {
+    if (p.tools?.length) h += `<h2>Tools & services</h2><table><tr><th>Need</th><th>Tool</th><th>Free</th><th>Premium</th><th>Cost</th><th>Tier</th><th>Why</th></tr>` + p.tools.map(t => `<tr><td>${esc(t.need)}</td><td>${esc(t.tool)}</td><td>${esc(t.free_option || '—')}</td><td>${esc(t.premium_option || '—')}</td><td>${esc(t.cost || '—')}</td><td>${esc(t.tier || '')}</td><td>${esc(t.why || '')}${ev(t.evidence, E)}</td></tr>`).join('') + `</table>`;
+    const c = p.costs; if (c) { h += `<h2>Costs</h2><p>Minimum viable budget: <b>${esc(c.minimum || '?')}</b> · Recommended: <b>${esc(c.recommended || '?')}</b> · Premium: <b>${esc(c.premium || '?')}</b></p>`; for (const [k, l] of [['upfront', 'Upfront'], ['recurring', 'Recurring'], ['optional', 'Optional upgrades'], ['services', 'Professional services']]) if (c[k]?.length) h += `<p><b>${l}:</b> ${c[k].map(x => `${esc(x.item)} (${esc(x.amount)})`).join('; ')}</p>`;
+      if (c.contingency) h += `<p><b>Contingency:</b> ${esc(c.contingency)}</p>`; h += `${c.note ? `<p class="muted">${esc(c.note)}</p>` : ''}${ev(c.evidence, E)}`; }
+    if (!p.tools?.length && !p.costs) h += '<p class="muted">No cost or tooling detail in this plan.</p>';
+  }
+  if (tab === 'watch') {
+    if (p.risks?.length) h += `<h2>Risks</h2>` + [...p.risks].sort((x, y) => ({ high: 0, medium: 1, low: 2 }[x.priority] ?? 1) - ({ high: 0, medium: 1, low: 2 }[y.priority] ?? 1)).map(r => `<div class="item"><div class="body"><span class="k">${esc(r.risk)}</span><span class="tag ${r.priority}">${esc(r.priority || 'medium')}</span><div class="muted">Mitigation: ${esc(r.mitigation || '')}</div></div></div>`).join('');
+    if (an.failure_patterns?.length) h += `<h2>Why people fail at this <span class="muted" style="font-weight:400;font-size:13px">— per the sources</span></h2>` + an.failure_patterns.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.pattern)}</span>${x.seen_in ? ` <span class="muted">(${esc(x.seen_in)})</span>` : ''}<div class="muted">Avoid: ${esc(x.avoid || '')}</div>${ev(x.evidence, E)}</div></div>`).join('');
+    if (p.gotchas?.length) h += `<h2>Beginner gotchas</h2>` + p.gotchas.map(g => `<div class="item"><div class="body"><span class="k">${esc(g.gotcha)}</span><div class="muted">${esc(g.avoid || '')}</div></div></div>`).join('');
+  }
+  if (tab === 'evidence') {
+    const evs = Object.entries(E); h += evs.length ? `<h2>Evidence used by this plan</h2><div class="muted">${evs.map(([id, e]) => `<span class="chip">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)} <span class="basis">${esc(e.kind)}</span></span>`).join(' ')}</div>` : '<p class="muted">No evidence map.</p>';
+  }
+  h += `</div>`;
+  $('#planWrap').innerHTML = h;
+}
+async function answerQ(i, text) {
+  text = (text || '').trim(); if (!text) return;
+  const q = planState.plan.plan.refine_questions[i];
+  const kind = q.kind === 'decision' ? 'decision' : q.kind === 'preference' ? 'requirement' : 'context';
+  await post(`/api/projects/${state.project.id}/facts`, { kind, content: `Q: ${q.question}\nA: ${text}` });
+  state.project = await api('/api/projects/' + state.project.id); renderPlan(planState);
+}
+async function delFactByContent(content) {
+  const f = (state.project.facts || []).find(x => x.content === content); if (!f) return;
+  await del('/api/facts/' + f.id); state.project = await api('/api/projects/' + state.project.id); renderPlan(planState);
+}
+async function rebuildWithAnswers() {
+  const qs = planState.plan.plan.refine_questions || [], facts = state.project.facts || [];
+  const answers = qs.map(q => facts.find(f => f.content.startsWith('Q: ' + q.question))).filter(Boolean).map(f => f.content.replace('\n', ' → '));
+  $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="buildMsg"><span class="spin"></span> rebuilding with your answers…</div>');
+  await buildPlan('The user answered these questions — fold them in, drop the questions that are now answered, and ask the next most useful ones:\n' + answers.join('\n'));
+}
+
+async function checkUpdates() {
+  $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="chk"><span class="spin"></span> comparing new research against the plan…</div>');
+  try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" style="margin-bottom:8px">No material changes — the plan still holds.</div>'); }
+  catch (e) { alert(e.message); $('#chk')?.remove(); }
+}
+async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
+async function applyUpdates() { $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding the plan with the accepted changes…</div>'); try { await post(`/api/projects/${state.project.id}/plan/apply`); } catch (e) { alert(e.message); } await loadPlan(); }
+async function rebuildPrompt() { const i = prompt('Any instructions for the rebuild? (optional — e.g. "assume a $300 budget", "we decided against Webflow")'); if (i === null) return; $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding…</div>'); await buildPlan(i || null); }
+async function startProject() { await post(`/api/plans/${planState.plan.id}/start`); await loadPlan(); }
+async function researchThis(q) {
+  const c = await post('/api/conversations', { project_id: state.project.id, title: q.slice(0, 60) });
+  await loadChats(); await selectChat(c.id); $('#q').value = q; $('#q').focus();
+}
+
+route();
+</script>
+</body></html>
