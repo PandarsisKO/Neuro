@@ -812,9 +812,14 @@ def api_cancel_job(job_id: str) -> dict[str, Any]:
         raise HTTPException(404, "job not found")
     if j["status"] in db.JOB_TERMINAL:
         raise HTTPException(409, f"job is already {j['status']}")
+    was = j["status"]
     st = db.request_cancel(job_id)
-    return {"cancelled": 1 if st == "cancelled" else 0, "status": st,
-            "note": "will stop at its next safe point; nothing is written after that" if st == "running" else None}
+    note = "will stop at its next safe point; nothing is written after that" if st == "running" else None
+    if j["kind"] == "suggest_findings_batch" and was == "external_pending":
+        from . import batches
+        h = batches.cancel_job(j)                       # tell the provider, keep what already completed
+        note = f"batch cancelled at the provider; {h.get('materialized', 0)} source(s) with complete results were kept"
+    return {"cancelled": 1 if st == "cancelled" else 0, "status": st, "note": note}
 
 
 class ConvIn(BaseModel):

@@ -37,10 +37,10 @@ _running_lock = threading.Lock()
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
-RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "rank_proposed", "discover", "build_plan", "external_demo")
+RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
-ANALYSIS_KINDS = ("suggest_findings", "rank_proposed", "discover", "reembed", "build_plan")
+ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan")
 
 
 class Cancelled(RuntimeError):
@@ -168,23 +168,27 @@ class FakeExternal:
         return len(cls._load()["submissions"])
 
 
-EXTERNAL = {"fake": FakeExternal}
+from .batches import AnthropicBatch  # noqa: E402
+
+EXTERNAL = {"fake": FakeExternal, AnthropicBatch.name: AnthropicBatch}
 
 
-def submit_external(provider: str, kind: str, request: dict[str, Any], deadline: float | None = None, **submit_kw: Any) -> None:
+def submit_external(provider: str, kind: str, request: dict[str, Any], deadline: float | None = None, client_ref: str | None = None, **submit_kw: Any) -> None:
     """Park the current job on an external system. Order matters: record the intent, submit, then raise
     ExternalPending so the worker persists the handle. If we die between submit and persist, recovery asks the
-    provider for our reference and re-attaches instead of submitting again."""
+    provider for our reference and re-attaches instead of submitting again. `client_ref` defaults to the job id; a
+    job that submits several rounds (batch cohorts) passes a per-round reference."""
     jid, run_id = current_job()
     if not jid:
         raise RuntimeError("submit_external needs a job context")
     handler = EXTERNAL[provider]
+    ref = client_ref or jid
     db.note_external_intent(jid, run_id, provider, kind)
-    existing = handler.find_by_ref(jid)
+    existing = handler.find_by_ref(ref)
     if existing:                                                       # a previous run already submitted this job's work
         db.job_event(jid, "external_reattached", run_id=run_id, provider=provider, handle=existing, where="before_submit")
         raise ExternalPending(provider, kind, existing, deadline)
-    handle = handler.submit(kind, jid, request, **submit_kw)
+    handle = handler.submit(kind, ref, request, **submit_kw)
     crash_point("external_before_ack")
     raise ExternalPending(provider, kind, handle, deadline)
 
@@ -262,6 +266,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "suggest_findings":
         from .findings import suggest_for_project
         return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress, force=bool(payload.get("force")))
+    if kind == "suggest_findings_batch":
+        from .batches import run as run_batch
+        return run_batch(jid, payload, progress=progress)
     if kind == "build_plan":
         from .planner import build_plan
         row = build_plan(payload["project_id"], payload.get("instructions"), progress=progress)

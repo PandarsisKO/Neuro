@@ -27,18 +27,20 @@ WEB_SEARCH_PER_CALL = 0.01
 CACHE_WRITE_MULT = 1.25      # 5-minute cache writes cost 1.25x the normal input price
 CACHE_READ_MULT = 0.10       # cache reads cost 0.1x
 CACHE_MIN_CHARS = 4500       # ~1024 tokens: prefixes shorter than this are never cached by the API, so don't mark them
+BATCH_MULT = 0.5             # Message Batches: 50% off MODEL tokens (input, cache, output) — not off web search, transcription or embeddings
 
 
 def cache_control() -> dict[str, str]:
     return {"type": "ephemeral"}
 
 
-def cached_block(text: str, min_chars: int = 0) -> dict[str, Any]:
+def cached_block(text: str, min_chars: int = 0, ttl: str | None = None) -> dict[str, Any]:
     """A system/content text block that ends a cacheable prefix. The API ignores breakpoints on prefixes under
-    ~1024 tokens, so callers pass the size of everything before the block in min_chars to skip pointless marks."""
+    ~1024 tokens, so callers pass the size of everything before the block in min_chars to skip pointless marks.
+    ttl="1h": the longer cache duration (batched requests execute asynchronously; cache hits are best-effort)."""
     b: dict[str, Any] = {"type": "text", "text": text}
     if len(text) + min_chars >= CACHE_MIN_CHARS:
-        b["cache_control"] = cache_control()
+        b["cache_control"] = {**cache_control(), **({"ttl": ttl} if ttl else {})}
     return b
 
 
@@ -76,22 +78,25 @@ def _price(model: str) -> tuple[float, float]:
 
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
            searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
-           cache_read: int = 0, cache_write: int = 0) -> float:
-    """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately."""
+           cache_read: int = 0, cache_write: int = 0, transport: str = "interactive") -> float:
+    """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately.
+    transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing)."""
     saved = 0.0
     if cost is None:
         if kind == "whisper":
             cost = seconds / 60 * WHISPER_PER_MINUTE
         else:
             pin, pout = _price(model)
-            cost = ((input_tokens + cache_write * CACHE_WRITE_MULT + cache_read * CACHE_READ_MULT) / 1e6 * pin
-                    + output_tokens / 1e6 * pout + searches * WEB_SEARCH_PER_CALL)
-            # what the same call would have cost with every token at full price, minus what it did cost
-            saved = (cache_read * (1 - CACHE_READ_MULT) - cache_write * (CACHE_WRITE_MULT - 1)) / 1e6 * pin
+            mult = BATCH_MULT if transport == "batch" else 1.0
+            model_cost = ((input_tokens + cache_write * CACHE_WRITE_MULT + cache_read * CACHE_READ_MULT) / 1e6 * pin + output_tokens / 1e6 * pout)
+            cost = model_cost * mult + searches * WEB_SEARCH_PER_CALL
+            # what the same call would have cost with every token at full, interactive price, minus what it did cost
+            full = (input_tokens + cache_write + cache_read) / 1e6 * pin + output_tokens / 1e6 * pout
+            saved = full - model_cost * mult
     try:
         with db.tx() as conn:
-            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved))
+            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
     return cost
@@ -106,7 +111,7 @@ def cost_of(resp: Any) -> float:
     return round((i + cw * CACHE_WRITE_MULT + cr * CACHE_READ_MULT) / 1e6 * pin + o / 1e6 * pout, 6)
 
 
-def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source_id: str | None = None) -> float:
+def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source_id: str | None = None, transport: str = "interactive") -> float:
     u = getattr(resp, "usage", None)
     searches = 0
     try:
@@ -116,7 +121,7 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
-                  cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0))
+                  cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0), transport=transport)
 
 
 def _sum_since(ts: float) -> float:
@@ -210,7 +215,9 @@ def observed_rate_per_minute(min_sources: int = 5) -> float | None:
     return None
 
 
-def estimate_findings(n_chars: int) -> float:
-    # ~4 chars per token in, ~600 tokens out per window
-    pin, pout = _price(settings.answer_model)
-    return n_chars / 4 / 1e6 * pin + 0.0006 * pout
+def estimate_findings(n_chars: int, batch: bool = False) -> float:
+    """~4 chars per token in, ~600 tokens out per window; batch=True applies the Message Batches discount to the MODEL
+    cost only (this is not a claim that all of Neuro Search's processing is halved)."""
+    from .contracts import contract
+    pin, pout = _price(contract("findings.extract").model)
+    return (n_chars / 4 / 1e6 * pin + 0.0006 * pout) * (BATCH_MULT if batch else 1.0)

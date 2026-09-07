@@ -182,7 +182,8 @@ def _wrap_anthropic(client: Any) -> Any:
     stream = getattr(msgs, "stream", None)
     return _Attr(messages=_Attr(create=_Ledgered(msgs.create, "anthropic", "answer.chat"),
                                 stream=_LedgeredStream(stream, "anthropic", "planner.build") if stream else None,
-                                count_tokens=getattr(msgs, "count_tokens", None)), _raw=client)
+                                count_tokens=getattr(msgs, "count_tokens", None),
+                                batches=getattr(msgs, "batches", None)), _raw=client)     # Message Batches (Rung G): ledgered per item by batches.py
 
 
 def _wrap_openai(client: Any) -> Any:
@@ -406,3 +407,20 @@ def openai_client(**kw: Any) -> Any:
     from openai import OpenAI
     kw["max_retries"] = 0
     return _wrap_openai(OpenAI(api_key=settings.openai_api_key, **kw))
+
+
+def batch_params(task: str, *, system: Any, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """The `params` of one Message Batches request for `task`: exactly the interactive request under the contract
+    (model, output budget, thinking, enforced schema) minus the per-request header the batch API does not carry."""
+    from . import contracts as C
+    c = C.contract(task)
+    if c.provider != "anthropic":
+        raise C.ContractError(f"{task}: batches serve anthropic message tasks")
+    if not c.batch_allowed:
+        raise C.ContractError(f"{task}: the contract does not allow batch execution")
+    return {"model": c.model, **C.request_params(c), "system": system, "messages": messages}
+
+
+def message_from_batch_result(msg: Any) -> Any:
+    """A batch result's message is the same shape as an interactive response (content blocks, usage, stop_reason, model)."""
+    return msg

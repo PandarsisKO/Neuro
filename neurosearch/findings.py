@@ -97,11 +97,12 @@ _last_call: dict[str, Any] = {}          # diagnostics of the most recent window
 OBSERVER: Any = None                     # evals hook: called with one dict per transcript window (see suggest_for_source)
 
 
-def _system_blocks(system: str, head: str) -> list[dict[str, Any]]:
+def _system_blocks(system: str, head: str, ttl: str | None = None) -> list[dict[str, Any]]:
+    """Identical block layout on both transports; only the cache duration differs (batches ask for the 1h cache)."""
     from . import usage
     if not head:
-        return [usage.cached_block(system)]
-    return [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system))]
+        return [usage.cached_block(system, ttl=ttl)]
+    return [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system), ttl=ttl)]
 
 
 def _head(project: dict[str, Any], src: dict[str, Any]) -> str:
@@ -179,42 +180,38 @@ def _legacy_parse(raw: str) -> dict[str, Any]:
         raise
 
 
-def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
-    """Extract candidate findings for one source in the context of one project. Stores them as 'suggested'.
-    Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a retried
-    or duplicated job never pays twice; force=True re-analyses regardless."""
+def is_current(project: dict[str, Any], source_id: str) -> bool:
+    ih = input_hash(project, source_id)
+    prev = db.get_analysis(project["id"], source_id, "summary")
+    return bool(prev and prev.get("input_hash") == ih and prev.get("status") == "current")
+
+
+def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, Any]:
+    prev = db.get_analysis(project_id, source_id, "summary") or {}
+    n = len([x for x in db.list_project_notes(project_id, status="suggested") if x.get("source_id") == source_id])
+    return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": prev.get("substance"),
+            "summary": prev.get("summary"), "rejected_quotes": 0, "skipped": "already current for these inputs"}
+
+
+def materialize(project_id: str, source_id: str, window_results: list[tuple[str, dict[str, Any]]], *, model: str | None,
+                transport: str = "interactive", batch_id: str | None = None, max_findings: int = 12) -> dict[str, Any]:
+    """Turn validated per-window outputs into the stored research artifact — the ONE place findings become notes and an
+    analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
+    window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
+    transport-specific provenance (transport, batch_id, model id as returned) differs, explicitly."""
+    from .evidence import check_finding
+    from .jobs import crash_point
     project = db.get_project(project_id)
     src = db.get_source(source_id)
     if not project or not src:
         raise RuntimeError("project or source not found")
-    segs = db.get_segments(source_id)
-    if not segs:
-        raise RuntimeError("source has no transcript")
-    ih = input_hash(project, source_id)
-    prev = db.get_analysis(project_id, source_id, "summary")
-    if prev and prev.get("input_hash") == ih and prev.get("status") == "current" and not force:
-        n = len([x for x in db.list_project_notes(project_id, status="suggested") if x.get("source_id") == source_id])
-        return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": prev.get("substance"),
-                "summary": prev.get("summary"), "rejected_quotes": 0, "skipped": "already current for these inputs"}
     platform = src["platform"]
-    head = _head(project, src)
-    windows = _windows(segs, platform)
     all_findings: list[dict[str, Any]] = []
     summaries: list[str] = []
     substances: list[int] = []
     rejected = 0
-    from .evidence import check_finding
-    from .jobs import check_cancel, crash_point
-    for i, w in enumerate(windows):
-        check_cancel()                                   # safe boundary: nothing of this source is written yet
-        crash_point("findings_before_response")
-        try:
-            res = _call(SYSTEM, _user(i, len(windows), w), project_id, source_id, head=head)
-        except Exception:
-            if OBSERVER:
-                OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
-                          "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
-            raise
+    n_windows = len(window_results)
+    for i, (w, res) in enumerate(window_results):
         if res.get("summary"):
             summaries.append(str(res["summary"]))
         if isinstance(res.get("substance"), (int, float)):
@@ -229,15 +226,15 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
                 log.info("finding rejected (%s): %s", why, str(f.get("title") or f.get("finding"))[:80])
                 db.validation_event("finding_validation_failed", {"candidate_title": f.get("title"), "candidate_quote": f.get("quote"),
                                                                   "candidate_finding": f.get("finding"), "claimed_locator": f.get("ts"),
-                                                                  "reason": why, "window": i + 1, "windows": len(windows)},
+                                                                  "reason": why, "window": i + 1, "windows": n_windows, "transport": transport},
                                     project_id=project_id, source_id=source_id, prompt_version=prompt_version())
                 continue
             all_findings.append(f)
         if OBSERVER:
-            OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": len(res.get("findings") or []),
+            OBSERVER({"source_id": source_id, "window": i + 1, "windows": n_windows, "raw_findings": len(res.get("findings") or []),
                       "kept": len(all_findings) - kept_before, "rejected": rejected - rejected_before,
                       "summary_ok": bool(str(res.get("summary") or "").strip()), "substance_ok": isinstance(res.get("substance"), (int, float)) and 0 <= res["substance"] <= 100,
-                      **_last_call})
+                      **_last_call, "transport": transport})
     if rejected:
         db.kv_bump("evidence:findings_rejected", rejected)
     db.kv_bump("evidence:findings_checked", rejected + len(all_findings))
@@ -256,9 +253,9 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
             content += " [1]"
         notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
                       "importance": int(f.get("importance") or 0)})
-    prov = {"model": _last_model.get("model"), "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
+    prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
-            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id)}
+            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id), "transport": transport, "batch_id": batch_id}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     with db.batch():                                     # notes + analysis land together or not at all
@@ -266,7 +263,60 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
         db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
     crash_point("findings_persisted_before_done")
     return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
-            "rejected_quotes": rejected}
+            "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id}
+
+
+def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
+    """Extract candidate findings for one source in the context of one project (interactive transport). Stores them as
+    'suggested'. Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a
+    retried or duplicated job never pays twice; force=True re-analyses regardless."""
+    project = db.get_project(project_id)
+    src = db.get_source(source_id)
+    if not project or not src:
+        raise RuntimeError("project or source not found")
+    segs = db.get_segments(source_id)
+    if not segs:
+        raise RuntimeError("source has no transcript")
+    if is_current(project, source_id) and not force:
+        return _skipped(project_id, source_id, src)
+    head = _head(project, src)
+    windows = _windows(segs, src["platform"])
+    from .jobs import check_cancel, crash_point
+    results: list[tuple[str, dict[str, Any]]] = []
+    for i, w in enumerate(windows):
+        check_cancel()                                   # safe boundary: nothing of this source is written yet
+        crash_point("findings_before_response")
+        try:
+            res = _call(SYSTEM, _user(i, len(windows), w), project_id, source_id, head=head)
+        except Exception:
+            if OBSERVER:
+                OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
+                          "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
+            raise
+        results.append((w, res))
+    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings)
+
+
+def batch_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
+    """The logical work items of one source for a batch cohort: one per transcript window, each with a stable custom_id
+    (source + window + input hash — the same inputs always map to the same id) and the exact params the interactive
+    path would send, except the cached head block asks for the 1-hour cache so items of a cohort can share it."""
+    from . import usage
+    from .contracts import contract
+    project, src = db.get_project(project_id), db.get_source(source_id)
+    if not project or not src:
+        return []
+    segs = db.get_segments(source_id)
+    windows = _windows(segs, src["platform"])
+    head = _head(project, src)
+    ih = input_hash(project, source_id)
+    c = contract("findings.extract")
+    out = []
+    for i, w in enumerate(windows):
+        params = providers.batch_params("findings.extract", system=_system_blocks(SYSTEM, head, ttl="1h"), messages=[{"role": "user", "content": _user(i, len(windows), w)}])
+        out.append({"custom_id": f"fw-{source_id[:12]}-{i}-{ih[:12]}", "task": "findings.extract", "project_id": project_id, "source_id": source_id,
+                    "window_index": i, "windows": len(windows), "window_text": w, "params": params, "schema": c.schema})
+    return out
 
 
 def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False) -> dict[str, Any]:

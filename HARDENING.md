@@ -150,6 +150,40 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
 
+## Rung G — asynchronous / batched AI (started 0.20.0; G1 batch findings shipped, fake-proven; live check pending)
+Abstraction: a logical work item = one findings window (`findings.batch_requests` → stable `custom_id`
+`fw-<source12>-<window>-<inputhash12>`, frozen request params) → a **cohort** (the set of items submitted together, `batch_items`
+table, cohort_no) → one provider batch per cohort. Cohort sizing is a transport choice; cohort 2+ carries only the items that
+failed in cohort 1 with the SAME custom_ids and params (`batch_retry_planned`), up to `batches.MAX_COHORTS` (3) — after that the
+job fails visibly naming the source/window; every source whose windows all succeeded stays materialised.
+Equivalence: both transports end in `findings.materialize()` (validation, quote check, notes, analysis, provenance, atomic write).
+The equivalence test runs all 9 golden sources (10 windows) interactively, then the same items through the real queue
+(park → poll → materialise) and requires identical semantic artifacts (notes text/evidence/quote validation, analyses, schema
+version, prompt/input hashes); only `transport`/`batch_id` differ and they are asserted EXPLICITLY ('batch', msgbatch_…).
+Durability invariants (measured with fakes, tests/test_indestructible.py::test_batch_*): intent persisted (kv `batch:intent:<job#cohort>`
++ planned ledger rows) before submission; handle persisted → `external_pending`; crash after the provider accepted the batch but
+before we stored its id → recovery re-attaches (one provider batch, never two; fake: exact client_ref; real API: `AnthropicBatch._attach`
+heuristic = unknown batch created after our intent with our item count, confirmed by custom_id match at result time, event
+`external_reattached` where=recovery_heuristic); every result mapped by custom_id (unknown ids counted, missing ids errored);
+succeeded/errored/expired/canceled handled per item; raw provider results persisted locally in `batch_items.raw` the moment the batch
+ends (before any materialisation; crash after persist → second run uses the local copy, no provider re-read); cancellation harvests
+what completed (`batches.cancel_job`: provider cancel → persist_results → materialize_ready → `batch_cancelled`) and never destroys
+completed valid results. Structured output + quote validation are the same code path as sync (`providers.structured`,
+`findings.materialize`); the raw message is rehydrated (`batches._Msg`) so `usage.record_anthropic` sees real token counts.
+Economics: `usage.record(transport="batch")` prices model tokens at `BATCH_MULT` 0.5 and records `saved` = full interactive price −
+actual; `batches.estimate()` reports now / background / discount and the note "model cost only … batches may take up to 24 hours";
+UI wording rule: "Analyze now — faster, standard API price" / "Analyze in background — up to 24 hours, ~50% lower model cost" (never
+"within hours"). Cache: batch requests carry the same breakpoint placement as interactive (`findings._system_blocks`) with
+`ttl="1h"`; cache_read/cache_write are surfaced per batch in the job result and treated as an optimisation, never assumed.
+Fake measurements (0.20.0+g1, golden project, 9 sources / 10 windows): interactive 10 calls 31188 in / 2803 out = $0.135609;
+batch 10 items 1 cohort = $0.067805 (ratio 0.5000, saved $0.067805), 37 notes identical, provenance transport='batch';
+partial failure: cohort 2 = 1 item (the failed window only), 8 sources materialised before the retry was submitted; max-cohorts
+give-up: job failed, 8/9 sources kept; crash-before-persist: 1 provider batch, re-attached; crash-after-persist: results read
+from the local copy; cancel: prefix of completed items materialised, rest explicitly `canceled`. Full suite 143 tests, 6/6 green
+runs; Tier 1 frozen numbers unchanged.
+Not done in G1 (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change; the now-vs-background UX
+and stale-rebuild batching come next; one small live batch run at the end checks price/completion semantics against the real API.
+
 ## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
 
 Decisions (Kyle): `jsonschema` approved (registry/fake/test validation; provider-enforced structured output is the production
@@ -295,8 +329,8 @@ MISSION F OUTCOME (0.19.0): COMPLETE — WITH PLANNER V3 NOT PROMOTED
  → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
     release with V1 as the rollback for one cycle; if DO NOT PROMOTE, the default stays V1 and V3 is recorded as not promoted — no tuning loop.
     Then Mission F closes and the ladder continues (Rung G); testing stays the guardrail, not the project.
-[ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
-[ ] F5  automated deterministic closeout + ONE live paid run (AI-affecting request/output change) against the existing baselines/rubric
+[x] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
+[x] F5  automated deterministic closeout + ONE live paid run (AI-affecting request/output change) against the existing baselines/rubric
 ```
 
 ## Mission D in 0.17.0 — what shipped

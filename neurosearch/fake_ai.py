@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import pathlib
 import re
 from typing import Any
@@ -408,7 +409,9 @@ class _Stream:
 
 class Anthropic:
     def __init__(self, **kw: Any) -> None:
+        from .fake_batches import FakeBatches
         self.messages = _Msgs()
+        self.messages.batches = FakeBatches(_Msgs())
 
 
 # ------------------------------------------------------------------ OpenAI

@@ -257,6 +257,29 @@ CREATE TABLE IF NOT EXISTS project_source_analysis (
     PRIMARY KEY (project_id, source_id, analysis_kind)
 );
 
+CREATE TABLE IF NOT EXISTS batch_items (
+    id            INTEGER PRIMARY KEY,
+    job_id        TEXT NOT NULL,             -- the suggest_findings_batch job that owns the cohort
+    cohort_no     INTEGER NOT NULL DEFAULT 1,-- resubmission round (failed items only move to the next cohort)
+    custom_id     TEXT NOT NULL,             -- stable per logical work item (source window + input hash)
+    task          TEXT NOT NULL,
+    project_id    TEXT,
+    source_id     TEXT,
+    window_index  INTEGER,
+    windows       INTEGER,
+    params        TEXT NOT NULL,             -- the exact request params submitted (frozen at plan time)
+    batch_id      TEXT,                      -- provider handle once submitted
+    invocation_id TEXT,                      -- ledger row
+    status        TEXT NOT NULL,             -- planned | submitted | succeeded | errored | expired | canceled | materialized
+    raw           TEXT,                      -- the provider result, persisted locally the moment the batch ends (no reliance on provider retention)
+    error         TEXT,
+    created_at    REAL NOT NULL,
+    updated_at    REAL NOT NULL,
+    UNIQUE(job_id, cohort_no, custom_id)
+);
+CREATE INDEX IF NOT EXISTS ix_batch_items_job ON batch_items(job_id, cohort_no);
+CREATE INDEX IF NOT EXISTS ix_batch_items_batch ON batch_items(batch_id);
+
 CREATE TABLE IF NOT EXISTS validation_events (
     id          INTEGER PRIMARY KEY,
     ts          REAL NOT NULL,
@@ -369,6 +392,12 @@ MIGRATIONS = [
     ("invocations", "attempt_no", "ALTER TABLE invocations ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 1"),
     ("invocations", "error_type", "ALTER TABLE invocations ADD COLUMN error_type TEXT"),
     ("invocations", "returned_model", "ALTER TABLE invocations ADD COLUMN returned_model TEXT"),
+    # Rung G: transport-specific provenance (interactive | batch) — explicit, never hidden
+    ("project_notes", "transport", "ALTER TABLE project_notes ADD COLUMN transport TEXT"),
+    ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
+    ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
+    ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
+    ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),
 ]
 
 
@@ -1341,7 +1370,7 @@ def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **field
     """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
     assert analysis_kind in ANALYSIS_KINDS, analysis_kind
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "input_hash", "source_revision", "brief_revision", "facts_revision", "status"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id"}
     f = {k: v for k, v in fields.items() if k in allowed}
     f.setdefault("status", "current")
     t = now()
@@ -1849,9 +1878,9 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
         conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
         t = now()
         conn.executemany(
-            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title"),
-              prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash")) for n in notes])
+              prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash"), prov.get("transport", "interactive"), prov.get("batch_id")) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
@@ -2165,3 +2194,58 @@ def rename_conversation(conversation_id: str, title: str) -> None:
 def delete_conversation(conversation_id: str) -> None:
     with tx() as conn:
         conn.execute("DELETE FROM conversations WHERE id=?", (conversation_id,))
+
+
+# ------------------------------------------------------------------ Rung G: batch cohorts (logical work items → provider batch, mapped by custom_id)
+
+def batch_items_add(job_id: str, cohort_no: int, items: list[dict[str, Any]]) -> None:
+    with tx() as conn:
+        t = now()
+        conn.executemany("INSERT OR IGNORE INTO batch_items (job_id, cohort_no, custom_id, task, project_id, source_id, window_index, windows, params, status, created_at, updated_at) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         [(job_id, cohort_no, it["custom_id"], it["task"], it.get("project_id"), it.get("source_id"), it.get("window_index"), it.get("windows"),
+                           json.dumps(it["params"]), "planned", t, t) for it in items])
+
+
+def batch_items(job_id: str, cohort_no: int | None = None, status: str | None = None) -> list[dict[str, Any]]:
+    q, args = "SELECT * FROM batch_items WHERE job_id=?", [job_id]
+    if cohort_no is not None:
+        q += " AND cohort_no=?"; args.append(cohort_no)
+    if status:
+        q += " AND status=?"; args.append(status)
+    q += " ORDER BY cohort_no, source_id, window_index"
+    out = []
+    for r in connect().execute(q, args).fetchall():
+        d = row_to_dict(r)
+        d["params"] = json.loads(d["params"] or "{}")
+        d["raw"] = json.loads(d["raw"]) if d.get("raw") else None
+        out.append(d)
+    return out
+
+
+def batch_items_submitted(job_id: str, cohort_no: int, batch_id: str, invocation_ids: dict[str, str]) -> None:
+    with tx() as conn:
+        t = now()
+        for cid, iid in invocation_ids.items():
+            conn.execute("UPDATE batch_items SET batch_id=?, invocation_id=?, status='submitted', updated_at=? WHERE job_id=? AND cohort_no=? AND custom_id=?",
+                         (batch_id, iid, t, job_id, cohort_no, cid))
+
+
+def batch_item_result(batch_id: str, custom_id: str, status: str, raw: Any = None, error: str | None = None) -> None:
+    """Persist one provider result the moment it is read: Neuro Search's database is authoritative from here on."""
+    with tx() as conn:
+        conn.execute("UPDATE batch_items SET status=?, raw=?, error=?, updated_at=? WHERE batch_id=? AND custom_id=?",
+                     (status, json.dumps(raw, default=str) if raw is not None else None, error, now(), batch_id, custom_id))
+
+
+def batch_items_materialized(job_id: str, source_id: str) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE batch_items SET status='materialized', updated_at=? WHERE job_id=? AND source_id=? AND status='succeeded'", (now(), job_id, source_id))
+
+
+def batch_items_for_batch(batch_id: str) -> list[dict[str, Any]]:
+    out = []
+    for r in connect().execute("SELECT * FROM batch_items WHERE batch_id=? ORDER BY source_id, window_index", (batch_id,)).fetchall():
+        d = row_to_dict(r); d["params"] = json.loads(d["params"] or "{}"); d["raw"] = json.loads(d["raw"]) if d.get("raw") else None
+        out.append(d)
+    return out
