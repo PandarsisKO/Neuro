@@ -1,0 +1,501 @@
+{
+ "tier": "live",
+ "model": "claude-sonnet-4-6",
+ "app_version": "0.17.3",
+ "git_sha": "849bd0d",
+ "provider": "anthropic",
+ "requested_model": "claude-sonnet-4-6",
+ "embedding_model": "text-embedding-3-small",
+ "prompt_versions": {
+  "findings.extract": "18b5db69",
+  "answer.chat": "82aae556",
+  "rank.relevance": "f38f9a9c",
+  "planner.analysis": "bae16c5b",
+  "planner.build": "5badff43",
+  "planner.update": "f65d4b3a",
+  "discover.quick": "7752a57c",
+  "discover.verify": "69878b96"
+ },
+ "request_params": {
+  "answer.chat": {
+   "max_tokens": 2000
+  },
+  "answer.repair": {
+   "max_tokens": 2000
+  },
+  "findings.extract": {
+   "max_tokens": 4000
+  },
+  "rank.relevance": {
+   "max_tokens": 6000
+  },
+  "discover.quick": {
+   "max_tokens": 3500
+  },
+  "discover.verify": {
+   "max_tokens": 2500
+  },
+  "planner.analysis": {
+   "max_tokens": 7000
+  },
+  "planner.build": {
+   "max_tokens": 16000
+  },
+  "planner.update": {
+   "max_tokens": 4000
+  }
+ },
+ "thinking_policy": "n/a (model has no adaptive thinking; nothing requested)",
+ "started": "2026-09-06T16:46:04",
+ "gates": {
+  "retrieval_recall_at_10": {
+   "value": 1.0,
+   "floor": 0.9,
+   "pass": true
+  },
+  "citation_validity": {
+   "value": 1.0,
+   "floor": 1.0,
+   "pass": true
+  },
+  "finding_quote_validity": {
+   "value": 1.0,
+   "floor": 0.98,
+   "pass": true
+  },
+  "plan_evidence_validity": {
+   "value": 1.0,
+   "floor": 1.0,
+   "pass": true
+  },
+  "calculator_ok": {
+   "value": true,
+   "floor": true,
+   "pass": true
+  },
+  "fixture_evidence_present": {
+   "value": 1.0,
+   "floor": 1.0,
+   "pass": true
+  }
+ },
+ "quality": {
+  "fixture_evidence_present": 1.0,
+  "retrieval_recall_at_5": 0.9688,
+  "retrieval_recall_at_10": 1.0,
+  "retrieval_mrr": 0.9219,
+  "locator_accuracy": 0.8,
+  "questions": 32,
+  "finding_quote_validity": 1.0,
+  "stored_findings_verified": 1.0,
+  "golden_evidence_recall": 0.9,
+  "findings_suggested": 48,
+  "findings_rejected": 0,
+  "transcript_windows": 9,
+  "citation_validity": 1.0,
+  "answers_cite_expected_source": 1.0,
+  "gap_detection": 0.5,
+  "contradiction_surfaced": 1.0,
+  "answers": 34,
+  "calculator_dscr": 1.776,
+  "calculator_ok": true,
+  "plan_evidence_validity": 1.0,
+  "plan_evidence_refs": 126
+ },
+ "volume": {
+  "by_task": {
+   "answer": {
+    "calls": 43,
+    "input_tokens": 111,
+    "output_tokens": 11636,
+    "cache_read": 58962,
+    "cache_write": 171825,
+    "cost": 0.8369,
+    "model": "claude-sonnet-4-6"
+   },
+   "embed": {
+    "calls": 81,
+    "input_tokens": 21605,
+    "output_tokens": 0,
+    "cache_read": 0,
+    "cache_write": 0,
+    "cost": 0.0004,
+    "model": "text-embedding-3-small"
+   },
+   "findings": {
+    "calls": 9,
+    "input_tokens": 32899,
+    "output_tokens": 6496,
+    "cache_read": 0,
+    "cache_write": 0,
+    "cost": 0.1961,
+    "model": "claude-sonnet-4-6"
+   },
+   "plan": {
+    "calls": 2,
+    "input_tokens": 7139,
+    "output_tokens": 14661,
+    "cache_read": 5210,
+    "cache_write": 5210,
+    "cost": 0.2624,
+    "model": "claude-sonnet-4-6"
+   }
+  },
+  "input_tokens": 61754,
+  "output_tokens": 32793,
+  "cache_read_tokens": 64172,
+  "cache_write_tokens": 177035,
+  "cache_read_rate": 0.2118
+ },
+ "economics": {
+  "cost": 1.2958,
+  "cost_per_source_hour": 0.7863,
+  "media_hours": 1.65
+ },
+ "performance": {
+  "ingest_s": 9.77,
+  "retrieval_s_per_q": 0.4113,
+  "findings_s": 125.11,
+  "answer_s_per_q": 10.855,
+  "plan_s": 312.76,
+  "total_s": 831.22
+ },
+ "retrieval_detail": [
+  {
+   "q": "What is the minimum down payment for an SBA 7(a) business acquisition?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "yt01",
+    "report"
+   ]
+  },
+  {
+   "q": "Can a seller note count toward the equity injection?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "yt03",
+    "report"
+   ]
+  },
+  {
+   "q": "What does full standby mean for a seller note?",
+   "first_rank": 0,
+   "top": [
+    "yt01",
+    "yt03",
+    "calc"
+   ]
+  },
+  {
+   "q": "How long is the term on an SBA acquisition loan?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "yt01",
+    "report"
+   ]
+  },
+  {
+   "q": "Who has to sign a personal guarantee?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "yt01",
+    "yt02"
+   ]
+  },
+  {
+   "q": "What is the maximum SBA 7(a) loan amount?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "report",
+    "yt01"
+   ]
+  },
+  {
+   "q": "What debt service coverage ratio do lenders want?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "article",
+    "calc"
+   ]
+  },
+  {
+   "q": "How much is the SBA guarantee fee?",
+   "first_rank": 0,
+   "top": [
+    "yt01",
+    "report",
+    "report"
+   ]
+  },
+  {
+   "q": "How long does closing take on an SBA deal?",
+   "first_rank": 0,
+   "top": [
+    "yt01",
+    "article",
+    "report"
+   ]
+  },
+  {
+   "q": "What is a quality of earnings report and what does it cost?",
+   "first_rank": 0,
+   "top": [
+    "yt02",
+    "article",
+    "pod"
+   ]
+  },
+  {
+   "q": "What counts as a legitimate add-back?",
+   "first_rank": 0,
+   "top": [
+    "yt02",
+    "yt03",
+    "pod"
+   ]
+  },
+  {
+   "q": "When is customer concentration a deal breaker?",
+   "first_rank": 0,
+   "top": [
+    "yt02",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "How do you set a working capital peg?",
+   "first_rank": 0,
+   "top": [
+    "article",
+    "yt03",
+    "yt02"
+   ]
+  },
+  {
+   "q": "Should the seller stay on after closing?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "yt03",
+    "yt02"
+   ]
+  },
+  {
+   "q": "Are leases and contracts assignable to a new owner?",
+   "first_rank": 5,
+   "top": [
+    "yt03",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "What kinds of businesses actually sell?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "yt03",
+    "article"
+   ]
+  },
+  {
+   "q": "How long should LOI exclusivity be?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "What is a typical SDE multiple for a small business?",
+   "first_rank": 0,
+   "top": [
+    "article",
+    "yt03",
+    "yt02"
+   ]
+  },
+  {
+   "q": "What EBITDA multiple do lower middle market businesses trade at?",
+   "first_rank": 0,
+   "top": [
+    "article",
+    "article",
+    "yt03"
+   ]
+  },
+  {
+   "q": "What moves a valuation multiple up or down?",
+   "first_rank": 0,
+   "top": [
+    "article",
+    "article",
+    "pod"
+   ]
+  },
+  {
+   "q": "What financing structure does the deal walkthrough recommend?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "Can real estate be financed on a longer term?",
+   "first_rank": 0,
+   "top": [
+    "report",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "What should I change in the first 90 days after buying?",
+   "first_rank": 1,
+   "top": [
+    "yt02",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "Which bank and payroll changes happen on closing day?",
+   "first_rank": 1,
+   "top": [
+    "yt02",
+    "yt03",
+    "yt03"
+   ]
+  },
+  {
+   "q": "Is it possible to buy a business with zero down?",
+   "first_rank": 0,
+   "top": [
+    "pod",
+    "yt01",
+    "yt02"
+   ]
+  },
+  {
+   "q": "Do home services businesses trade above 4x SDE?",
+   "first_rank": 2,
+   "top": [
+    "article",
+    "yt03",
+    "pod"
+   ]
+  },
+  {
+   "q": "Do I really need to pay for a quality of earnings report?",
+   "first_rank": 0,
+   "top": [
+    "yt02",
+    "pod",
+    "yt03"
+   ]
+  },
+  {
+   "q": "What is SDE?",
+   "first_rank": 0,
+   "top": [
+    "article",
+    "yt03",
+    "calc"
+   ]
+  },
+  {
+   "q": "How do I find businesses that are not listed with a broker?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "pod",
+    "yt02"
+   ]
+  },
+  {
+   "q": "What documents will the lender ask me for?",
+   "first_rank": 0,
+   "top": [
+    "yt03",
+    "report",
+    "yt02"
+   ]
+  },
+  {
+   "q": "How do I feed a sourdough starter?",
+   "first_rank": 0,
+   "top": [
+    "sourdough"
+   ]
+  },
+  {
+   "q": "What solar setup does the van have?",
+   "first_rank": 0,
+   "top": [
+    "vlog",
+    "yt03",
+    "yt03"
+   ]
+  }
+ ],
+ "returned_models": [
+  "claude-sonnet-4-6",
+  "text-embedding-3-small"
+ ],
+ "validators": {
+  "finding_quote_validity": 1.0,
+  "stored_findings_verified": 1.0,
+  "citation_validity": 1.0,
+  "plan_evidence_validity": 1.0
+ },
+ "validation_events": {},
+ "invocations": {
+  "logical": 135,
+  "attempts": 136,
+  "by_state": {
+   "completed": 135,
+   "failed": 1
+  },
+  "by_task": {
+   "answer.chat": {
+    "attempts": 44,
+    "logical": 43,
+    "failed_attempts": 1
+   },
+   "embed": {
+    "attempts": 81,
+    "logical": 81,
+    "failed_attempts": 0
+   },
+   "findings.extract": {
+    "attempts": 9,
+    "logical": 9,
+    "failed_attempts": 0
+   },
+   "planner.analysis": {
+    "attempts": 1,
+    "logical": 1,
+    "failed_attempts": 0
+   },
+   "planner.build": {
+    "attempts": 1,
+    "logical": 1,
+    "failed_attempts": 0
+   }
+  },
+  "outcome_unknown": 0,
+  "sdk_retries": "disabled (max_retries=0); every attempt is a ledger row"
+ },
+ "pass": true,
+ "project_id": "e84a40a4104b4adbba4ed679c636d5f5"
+}
