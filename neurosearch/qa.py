@@ -259,7 +259,7 @@ def ask(
             usage.mark_last(messages)
             resp2 = providers.invoke("answer.repair", system=system_blocks, messages=messages)
             usage.record_anthropic(resp2, "answer", project_id=project_id)
-            repaired = "\n".join(getattr(b, "text", "") for b in resp2.content if getattr(b, "type", None) == "text").strip()
+            repaired = providers.text_of(resp2).strip()
             v2, inv2 = check_citations(repaired + " " + " ".join(pending_findings), len(hits))
             if repaired and not inv2:
                 validation = {"repaired": True, "originally_invalid": invalid}

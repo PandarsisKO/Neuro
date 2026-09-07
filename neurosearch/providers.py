@@ -187,6 +187,12 @@ def _wrap_openai(client: Any) -> Any:
                  audio=_Attr(transcriptions=_Attr(create=_Ledgered(client.audio.transcriptions.create, "openai", "transcribe"))), _raw=client)
 
 
+def text_of(resp: Any) -> str:
+    """The text of a response, selected by block TYPE. Claude 5 with adaptive thinking returns thinking blocks before
+    the text; never assume content[0] is text and never read a thinking block as output."""
+    return "".join(getattr(b, "text", "") or "" for b in (getattr(resp, "content", None) or []) if getattr(b, "type", None) == "text")
+
+
 # ------------------------------------------------------------------ the router: product code calls invoke(task, ...)
 
 def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,

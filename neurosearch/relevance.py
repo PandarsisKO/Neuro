@@ -40,7 +40,7 @@ def _call(system: str, user: str, project_id: str | None, collection_id: str, he
     sys_blocks = [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system))] if head else system
     resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "rank", project_id=project_id)
-    text = "".join(getattr(b, "text", "") for b in resp.content).strip()
+    text = providers.text_of(resp).strip()
     return parse_scores(text)
 
 

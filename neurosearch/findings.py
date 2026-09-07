@@ -103,7 +103,7 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
-    text = "".join(getattr(b, "text", "") for b in resp.content).strip()
+    text = providers.text_of(resp).strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
     return json.loads(text[s:e + 1]) if s >= 0 else {}

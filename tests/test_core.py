@@ -1385,3 +1385,75 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     assert v["plan"]["calls"] == 2 and v["plan"]["cache_read"] == 5701 and rep["volume"]["input_tokens"] == 182214
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
     assert rep["contracts"]["findings.extract"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
+
+
+# ---------------------------------------------------------------- Sonnet 5 adapter compatibility (thinking blocks)
+
+def test_thinking_first_responses_are_parsed_by_block_type(isolated_db, monkeypatch):
+    """Claude 5 with adaptive thinking returns thinking blocks BEFORE the text. Every text-extracting path must select
+    by block type: findings, ranking, chat, both Discover passes, the planner stream, export synthesis."""
+    from neurosearch import evals, findings, planner, qa, relevance, providers, ingest, media
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000.0)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_THINKING", "1")            # every fake response now starts with a thinking block
+    g = evals.load_golden(); pid = g["project_id"]
+    r = findings.suggest_for_source(pid, g["sources"]["yt01"])
+    assert r["suggested"] > 0 and r["rejected_quotes"] == 0            # thinking text was not mistaken for the JSON
+    a = qa.ask("What is the minimum down payment?", project_id=pid)
+    assert a["answer"].startswith("On ") and "(private reasoning)" not in a["answer"] and a["citations"]
+    row = planner.build_plan(pid)
+    assert row["plan"]["goal"] and "(private reasoning)" not in json.dumps(row["plan"])
+    from neurosearch import discover
+    d = discover.discover(pid)
+    assert d and "(private reasoning)" not in json.dumps(d)
+    # ranking
+    monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UCt", "title": "Chan", "url": url},
+        [{"id": f"th{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=th{i}00000000", "title": f"V{i}", "description": "money", "view_count": 1, "duration": 300} for i in range(3)]))
+    ingest.ingest_url("https://www.youtube.com/@thinkchan", project_id=pid, max_videos=2)
+    rv = db.pending_reviews(pid)[0]
+    res = relevance.rank_collection(rv["id"], pid, want=2)
+    assert res["ranked"] == 3 and res["failed_batches"] == 0
+    # and text_of itself never reads a thinking block
+    fake = type("R", (), {"content": [type("T", (), {"type": "thinking", "thinking": "secret"})(), type("X", (), {"type": "text", "text": "answer"})()]})()
+    assert providers.text_of(fake) == "answer"
+
+
+def test_tool_loop_preserves_thinking_blocks_unchanged(isolated_db, monkeypatch):
+    """Claude 5 thinks, then calls a tool: the thinking block must go back to the model complete and unchanged
+    alongside the tool result, or the next request fails."""
+    from neurosearch import evals, qa, providers
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    g = evals.load_golden(); pid = g["project_id"]
+    calls = []
+    class Think:
+        type = "thinking"
+        def __init__(self): self.thinking, self.signature = "let me pin this", "sig_abc123"
+    class ToolUse:
+        type = "tool_use"
+        id, name, input = "tu_1", "save_finding", {"content": "SBA needs ten percent down [1]."}
+    class Text:
+        type = "text"; citations = None
+        def __init__(self, t): self.text = t
+    think = Think()
+    class FakeMsgs:
+        def create(self, **kw):
+            calls.append(kw)
+            u = type("U", (), {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "server_tool_use": None})()
+            if len(calls) == 1:
+                return type("R", (), {"stop_reason": "tool_use", "model": "claude-sonnet-5-2026", "content": [think, ToolUse()], "usage": u, "_request_id": "r1"})()
+            return type("R", (), {"stop_reason": "end_turn", "model": "claude-sonnet-5-2026", "content": [Think(), Text("Pinned. Ten percent down [1].")], "usage": u, "_request_id": "r2"})()
+    from neurosearch import fake_ai
+    monkeypatch.setattr(fake_ai, "Anthropic", lambda **kw: type("C", (), {"messages": FakeMsgs()})())
+    res = qa.ask("What is the minimum down payment?", project_id=pid, conversation_id="cv-think")
+    assert len(calls) == 2 and res["answer"].startswith("Pinned") and any(a["type"] == "finding_saved" for a in res["actions"])
+    # the second request carries the first response's content verbatim: the very same thinking object, unmodified
+    second = calls[1]["messages"]
+    assistant_turn = second[-2]
+    assert assistant_turn["role"] == "assistant" and assistant_turn["content"][0] is think
+    assert think.thinking == "let me pin this" and think.signature == "sig_abc123" and not hasattr(think, "cache_control")
+    assert second[-1]["role"] == "user" and second[-1]["content"][0]["type"] == "tool_result" and second[-1]["content"][0]["tool_use_id"] == "tu_1"
+    # and the returned model was recorded against the configured one
+    row = db.connect().execute("SELECT model, returned_model FROM invocations WHERE task='answer.chat' ORDER BY requested_at DESC LIMIT 1").fetchone()
+    assert row["model"] == settings.answer_model and row["returned_model"] == "claude-sonnet-5-2026"

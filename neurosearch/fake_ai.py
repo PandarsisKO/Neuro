@@ -241,7 +241,10 @@ class _Msgs:
                 _cache_seen.add(h)
                 cache_write += n
         plain = max(0, total - cache_read - cache_write)
-        return _Blk(stop_reason="end_turn", model="fake-claude", content=[_Blk(type="text", text=text, citations=None)],
+        content = [_Blk(type="text", text=text, citations=None)]
+        if os.environ.get("NEUROSEARCH_FAKE_AI_THINKING") == "1" or (kw.get("thinking") or {}).get("type") == "adaptive":
+            content.insert(0, _Blk(type="thinking", thinking="(private reasoning) " + text[:40], signature="sig_" + hashlib.sha1(text.encode()).hexdigest()[:12]))
+        return _Blk(stop_reason="end_turn", model="fake-claude", content=content,
                     usage=_Blk(input_tokens=plain, output_tokens=_tokens(text), cache_read_input_tokens=cache_read,
                                cache_creation_input_tokens=cache_write, server_tool_use=None))
 
