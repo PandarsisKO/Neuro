@@ -54,8 +54,9 @@ def git_sha() -> str:
 
 # ------------------------------------------------------------------ loading the corpus
 
-def load_golden(root: Path = GOLDEN) -> dict[str, Any]:
-    """Ingest the golden project into the current database. Returns {project_id, sources: {golden id: source id}}."""
+def load_golden(root: Path = GOLDEN, only: set[str] | None = None) -> dict[str, Any]:
+    """Ingest the golden project into the current database. Returns {project_id, sources: {golden id: source id}}.
+    `only` restricts ingestion to those golden source ids (the batch smoke test loads a single fixture)."""
     from . import ingest
     man = json.loads((root / "manifest.json").read_text())
     pj = man["project"]
@@ -66,6 +67,8 @@ def load_golden(root: Path = GOLDEN) -> dict[str, Any]:
     ids: dict[str, str] = {}
     try:
         for s in man["sources"]:
+            if only is not None and s["id"] not in only:
+                continue
             path = root / s["file"]
             if s["kind"] == "transcript":
                 payload = json.loads(path.read_text())

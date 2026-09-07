@@ -215,8 +215,19 @@ job per stale source (unchanged); batch = ONE `suggest_findings_batch` job for a
 (tests: plan not claimable while the batch is out; blocked → done after the batch job completes; plan v2 current). Stale cards:
 "Rebuild now · $X" / "Rebuild in background · $Y model cost"; plan card: "Re-analyse now + rebuild · $total" / "Re-analyse in
 background + rebuild · $total_background". Completed sources are current + usable while another item retries in a later round.
-Not done (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change; one deliberately small live batch
-run (pennies) closes the batch portion of Rung G by checking real submission/completion/pricing/recovery semantics.
+Live smoke (0.20.0+g3): `neurosearch batch-smoke --live` → `batch_smoke.run`: eval-only database (temp dir, deleted afterwards,
+$1 eval budget in its own kv), golden `yt01` only (one findings window), preflight of the production findings model, token-counted
+standard vs batch quote printed before submission, ONE real Message Batch item through the normal queue (`external_pending`, handle
+persisted, intent cleared), polling through `AnthropicBatch.check` (15 s, `--timeout-min` 60; a timeout is a FAIL that never cancels
+the batch), raw result persisted in `batch_items.raw` before materialisation, custom_id verified (counts.succeeded 1, unknown 0),
+ledger row completed with the batch id, `findings.materialize` via the job (findings-v2 validation + quote validator inside),
+provenance transport=batch + batch id on the analysis and every note, evidence counters, zero schema events, usage row priced by
+the returned model: actual cost == 50% of (in + 1.25·cache write + 0.1·cache read)·pin + out·pout, saved recorded, estimate within
+2× of actual, job history without re-attach/retry/cancel → `evals/batch-smoke/<stamp>-<sha>-<tier>.{json,txt}` and PASS | FAIL.
+The fake tier (`neurosearch batch-smoke`) runs the identical flow and is a pytest test. Not exercised live, by decision: crash
+timing and forced ambiguity (the fake/crash coverage owns that window).
+Not done (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change. After the single live PASS the
+Message Batch implementation portion of Rung G is closed.
 
 ## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
 

@@ -831,3 +831,20 @@ def test_batch_ui_state_names_failure_and_cancel(monkeypatch):
     db.request_cancel(j2["id"]); batches.cancel_job(db.get_job(j2["id"]))
     ui = batches.ui_state(db.get_job(j2["id"]))
     assert ui["phase"] == "canceled" and "kept" in ui["label"] and ui["done"] >= 1
+
+
+def test_batch_smoke_fake_passes_and_leaves_nothing_behind(monkeypatch, tmp_path):
+    """`neurosearch batch-smoke` (fake tier): the exact flow the single live run takes — eval-only database, one frozen
+    single-window item, real adapter code path, every check — ends PASS, writes its report, restores settings and
+    deletes its database."""
+    from pathlib import Path
+    from neurosearch import batch_smoke
+    was_dir, was_fake = settings.data_dir, settings.fake_ai
+    rep = batch_smoke.run(live=False, progress=lambda m: None, out_dir=tmp_path)
+    assert rep["verdict"] == "PASS" and not rep["fails"] and len(rep["checks"]) >= 18 and all(c["pass"] for c in rep["checks"])
+    assert rep["tier"] == "fake" and rep["batch_id"].startswith("msgbatch_") and rep["expected_custom_id"].startswith("fw-")
+    p = rep["pricing"]
+    assert abs(p["actual_batch_cost"] - p["standard_model_cost"] * 0.5) < 1e-6 and p["input_tokens"] > 0 and p["output_tokens"] > 0
+    assert rep["structured_outputs"]["mismatches"] == 0 and rep["notes"] >= 1 and rep["analysis"]["transport"] == "batch"
+    assert Path(rep["artifact"]).exists() and Path(rep["artifact"]).with_suffix(".txt").read_text().endswith("Batch smoke PASS")
+    assert settings.data_dir == was_dir and settings.fake_ai == was_fake and not Path(rep["database"]).exists()

@@ -484,3 +484,20 @@ def project_delete(project: str) -> None:
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("batch-smoke")
+def batch_smoke(live: bool = typer.Option(False, help="Submit ONE real Anthropic Message Batch item (pennies); without it the same flow runs against the fakes"),
+                timeout_min: float = typer.Option(60.0, "--timeout-min", help="How long to poll for the batch to end before reporting FAIL (the batch is never cancelled)")) -> None:
+    """Rung G real-provider smoke test of the Message Batches adapter: one frozen single-window findings item through the
+    normal queue (external_pending → poll → raw result persisted → custom_id verified → findings-v2 validation + quote
+    validator → findings.materialize transport=batch) in an eval-only database, with token-counted expected vs actual
+    batch pricing and zero-schema-event checks. Ends with PASS or FAIL and writes evals/batch-smoke/<stamp>-<sha>-<tier>.{json,txt}."""
+    from . import batch_smoke as B
+    from .config import settings
+    if live and not settings.anthropic_api_key:
+        raise typer.BadParameter("--live needs ANTHROPIC_API_KEY in .env")
+    rep = B.run(live=live, progress=lambda m: typer.echo("  · " + m), timeout_min=timeout_min)
+    typer.echo("")
+    typer.echo(rep["text"])
+    raise typer.Exit(code=0 if rep["verdict"] == "PASS" else 1)
