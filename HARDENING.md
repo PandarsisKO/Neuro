@@ -106,7 +106,11 @@ E2 SHADOW MIGRATION                            IN PROGRESS — one task at a tim
     Verdict (evals.findings_verdict): hard gates = quote validity ≥ 0.98, stored re-check 1.0, incomplete outputs 0, every source analysed,
     outcome_unknown 0, returned model = configured, evidence recall not below baseline − 0.10, fewer than 2 nuggets lost; findings count is
     NEVER a gate (caveat under 70% of baseline); cost/latency caveat only. findings.OBSERVER + findings._last_call are read-only diagnostics.
-[ ] E2.2 live: `neurosearch eval --findings-compare --live` → verdict decides whether findings.extract moves to Sonnet 5 (manual step)
+[x] E2.2 findings.extract MIGRATED (0.18.0-e2.3): live `--findings-compare` was a clear PASS → contracts.FINDINGS_MODEL = claude-sonnet-5,
+    thinking explicitly disabled, prompt findings-18b5db69 and max_out 4000 unchanged. Baseline evals/baseline-findings-*-sonnet-4-6.json and
+    evals/findings-compare/* kept as the record. Regression test: test_migrated_contracts_are_sonnet_5_thinking_disabled (both migrated tasks
+    send thinking={"type":"disabled"}, no effort; every other task still sends the plain 4.6 request shape).
+[ ] E2.3 remaining tasks — one command, per-task PASS / CAVEAT / FAIL (plan agreed with Kyle first; no default changes until each passes)
 [ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable

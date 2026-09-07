@@ -1,0 +1,87 @@
+Neuro Search findings.extract model comparison · live · app 0.18.0-e2.2 @ 5753ad6 · Golden Project (8 sources, 9 windows, 1.65 h)
+  baseline  claude-sonnet-4-6 (returned claude-sonnet-4-6, thinking disabled)
+  candidate claude-sonnet-5 (returned claude-sonnet-5, thinking disabled)
+  same sources, windows (60000 chars), brief, prompt 18b5db69, validators, contract except the model
+
+  metric                                                     baseline      candidate      delta
+  -- EVIDENCE (DECISION GATE)
+  golden_evidence_recall                                          0.9              1       +0.1
+  finding_quote_validity                                            1              1         +0
+  stored_findings_verified                                          1              1         +0
+  findings_rejected                                                 0              0         +0
+  nugget[yt01: the SBA requires a minimum ten percent           found          found           
+  nugget[yt01: half of that ten percent can come from           found          found           
+  nugget[yt01: debt service coverage ratio of at least          found          found           
+  nugget[yt02: quality of earnings report costs somewh          found          found           
+  nugget[yt02: more than twenty percent of revenue, pr          found          found           
+  nugget[yt03: sixty day exclusivity period in the LOI          found          found           
+  nugget[yt03: two to three and a half times SDE]               found          found           
+  nugget[yt03: Do not raise prices in the first ninety         missed          found           
+  nugget[pod: zero percent down using seller financing          found          found           
+  nugget[article: SDE multiples cluster between 2.0x a          found          found           
+  -- FINDINGS (NOT A GATE)
+  findings_suggested                                               49             55         +6
+  raw_findings                                                     54             63         +9
+  findings_per_source                                            6.12           6.88      +0.76
+  findings_per_window                                            5.44           6.11      +0.67
+  transcript_windows                                                9              9         +0
+  window_calls                                                      9              9         +0
+  empty_windows                                                     2              2         +0
+  findings[yt01]                                                    9             10         +1
+  findings[yt02]                                                    7              9         +2
+  findings[yt03]                                                   12             12         +0
+  findings[pod]                                                     6              7         +1
+  findings[vlog]                                                    0              0         +0
+  findings[article]                                                 7              9         +2
+  findings[report]                                                  8              8         +0
+  findings[sourdough]                                               0              0         +0
+  -- SUMMARY/SUBSTANCE
+  summary_validity                                                  1              1         +0
+  substance_validity                                                1              1         +0
+  windows_missing_summary                                           0              0         +0
+  windows_missing_substance                                         0              0         +0
+  substance[yt01]                                                  62             78        +16
+  substance[yt02]                                                  72             70         -2
+  substance[yt03]                                                   3             11         +8
+  substance[pod]                                                   28             55        +27
+  substance[vlog]                                                   0              3         +3
+  substance[article]                                               78             78         +0
+  substance[report]                                                82             85         +3
+  substance[sourdough]                                              0              0         +0
+  -- OUTPUT INTEGRITY (DECISION GATE)
+  truncated_windows                                                 0              0         +0
+  parse_failed_windows                                              0              0         +0
+  no_json_windows                                                   0              0         +0
+  repaired_windows                                                  9              1         -8
+  incomplete_outputs                                                0              0         +0
+  failed_sources                                                    0              0         +0
+  outcome_unknown                                                   0              0         +0
+  transport_attempts                                                9              9         +0
+  configured_model                                     claude-sonnet-4-6 claude-sonnet-5           
+  returned_model                                       claude-sonnet-4-6 claude-sonnet-5           
+  thinking                                                   disabled       disabled           
+  -- TOKENS (SUPPORTING)
+  canonical_input_tokens                                       32,899         41,672      +8773
+  billed_input_tokens                                          32,899         41,672      +8773
+  billed_output_tokens                                          6,600          8,542      +1942
+  billed_cache_read_tokens                                          0              0         +0
+  billed_cache_write_tokens                                         0              0         +0
+  output_tokens_per_window                                      733.3          949.1     +215.8
+  -- ECONOMICS / LATENCY (SUPPORTING)
+  cost                                                         0.1977         0.1688    -0.0289
+  cost_per_source_hour                                           0.12         0.1024    -0.0176
+  cost_per_source                                              0.0247         0.0211    -0.0036
+  latency_findings_s                                           129.77          82.37      -47.4
+  latency_s_per_window                                          14.42           9.15      -5.27
+
+  tokenizer delta (canonical requests, provider token count): 32,899 → 41,672 = +26.7%
+
+VERDICT: PASS — migrate findings.extract to claude-sonnet-5
+  note    gained 1 nugget(s) the baseline missed: yt03: Do not raise prices in the first ninety days
+  note    findings kept: 49 → 55 (not a gate)
+  note    tokenizer delta on the canonical requests: 32,899 → 41,672 (+26.7%)
+  note    single run per model (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+
+  Production default unchanged. set NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-sonnet-5 (and THINKING=disabled) or change the findings.extract contract; nothing was changed by this run
+
+  files: evals/findings-compare/20260906-184147-5753ad6/baseline-sonnet-4-6.json, evals/findings-compare/20260906-184147-5753ad6/candidate-sonnet-5.json, evals/baseline-findings-0.18.0-e2.2-5753ad6-sonnet-4-6.json, evals/findings-compare/20260906-184147-5753ad6/comparison.json, evals/findings-compare/20260906-184147-5753ad6/comparison.txt

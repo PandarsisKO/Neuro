@@ -1334,12 +1334,18 @@ def test_contract_reproduces_0_17_3_request_shape(isolated_db, monkeypatch):
             return type("R", (), {"model": "claude-sonnet-4-6-20260210", "_request_id": "req_1", "content": [], "usage": None})()
     from neurosearch import fake_ai
     monkeypatch.setattr(fake_ai, "Anthropic", lambda **kw: Capture())
-    res = providers.invoke("findings.extract", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
+    # export.synthesis is still a Claude 4.6 contract (findings.extract moved to Sonnet 5 in E2.2 and now carries thinking=disabled)
+    res = providers.invoke("export.synthesis", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
     assert set(seen) == {"model", "max_tokens", "system", "messages", "extra_headers"}
-    assert seen["model"] == "claude-sonnet-4-6" and seen["max_tokens"] == 4000 and seen["extra_headers"] == {"x-neurosearch-task": "findings.extract"}
+    assert seen["model"] == "claude-sonnet-4-6" and seen["max_tokens"] == 6000 and seen["extra_headers"] == {"x-neurosearch-task": "export.synthesis"}
     # configured vs returned model both on the ledger row
     row = db.connect().execute("SELECT model, returned_model, task FROM invocations ORDER BY requested_at DESC LIMIT 1").fetchone()
-    assert (row["model"], row["returned_model"], row["task"]) == ("claude-sonnet-4-6", "claude-sonnet-4-6-20260210", "findings.extract")
+    assert (row["model"], row["returned_model"], row["task"]) == ("claude-sonnet-4-6", "claude-sonnet-4-6-20260210", "export.synthesis")
+    # and the migrated task sends the Claude 5 adapter fields, nothing else
+    seen.clear()
+    providers.invoke("findings.extract", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
+    assert set(seen) == {"model", "max_tokens", "system", "messages", "extra_headers", "thinking"}
+    assert seen["model"] == "claude-sonnet-5" and seen["thinking"] == {"type": "disabled"} and seen["max_tokens"] == 4000
     # sampling knobs are rejected loudly, never silently dropped
     with pytest.raises(Exception) as ei:
         providers.invoke("findings.extract", system="S", messages=[], temperature=0.2)
@@ -1385,7 +1391,7 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     assert v["answer"]["calls"] == 34 and v["answer"]["input_tokens"] == 126605 and v["findings"]["calls"] == 9 and v["findings"]["input_tokens"] == 30297
     assert v["plan"]["calls"] == 2 and v["plan"]["cache_read"] == 5701 and rep["volume"]["input_tokens"] == 182214
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
-    assert rep["contracts"]["findings.extract"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
+    assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["answer.chat"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
 
 
 # ---------------------------------------------------------------- Sonnet 5 adapter compatibility (thinking blocks)
@@ -1607,22 +1613,26 @@ def test_ranking_verdict_rules():
     assert "tokenizer delta" in txt and "+30.0%" in txt and "(decision gate)" in txt and "(supporting)" in txt
 
 
-def test_rank_relevance_production_contract_is_sonnet_5_thinking_disabled(monkeypatch):
-    """E2.1 outcome: rank.relevance runs on claude-sonnet-5 with thinking explicitly disabled; the request carries
-    thinking={"type":"disabled"} and no effort; every other task still follows settings.answer_model (a mixed release)."""
-    from neurosearch import contracts as C
+def test_migrated_contracts_are_sonnet_5_thinking_disabled(monkeypatch):
+    """E2.1 + E2.2 outcomes: rank.relevance and findings.extract run on claude-sonnet-5 with thinking explicitly disabled;
+    each request carries thinking={"type":"disabled"} and no effort; every other task still follows settings.answer_model
+    (a mixed release); neither prompt changed."""
+    from neurosearch import contracts as C, findings, relevance
     from neurosearch.config import settings
-    monkeypatch.delenv("NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE", raising=False)
-    monkeypatch.delenv("NEUROSEARCH_TASK_THINKING_RANK_RELEVANCE", raising=False)
-    c = C.contract("rank.relevance")
-    assert c.model == "claude-sonnet-5" and c.thinking == "disabled" and c.effort is None and c.max_output_tokens == 6000 and c.max_attempts == 3
-    assert C.model_family(c.model) == "claude-5"
-    assert C.request_params(c) == {"max_tokens": 6000, "thinking": {"type": "disabled"}}
+    for t in ("RANK_RELEVANCE", "FINDINGS_EXTRACT"):
+        monkeypatch.delenv(f"NEUROSEARCH_TASK_MODEL_{t}", raising=False)
+        monkeypatch.delenv(f"NEUROSEARCH_TASK_THINKING_{t}", raising=False)
+    r = C.contract("rank.relevance")
+    assert r.model == "claude-sonnet-5" and r.thinking == "disabled" and r.effort is None and r.max_output_tokens == 6000 and r.max_attempts == 3
+    assert C.request_params(r) == {"max_tokens": 6000, "thinking": {"type": "disabled"}}
+    f = C.contract("findings.extract")
+    assert f.model == "claude-sonnet-5" and f.thinking == "disabled" and f.effort is None and f.max_output_tokens == 4000 and f.max_attempts == 3 and f.batch_allowed
+    assert C.request_params(f) == {"max_tokens": 4000, "thinking": {"type": "disabled"}}
+    assert C.model_family(r.model) == C.model_family(f.model) == "claude-5"
     assert settings.answer_model == "claude-sonnet-4-6"
-    for t in ("answer.chat", "answer.repair", "findings.extract", "discover.quick", "discover.verify", "planner.analysis", "planner.build", "planner.update", "export.synthesis"):
-        assert C.contract(t).model == settings.answer_model, t
-    from neurosearch import relevance
-    assert relevance.prompt_version() == "rank-f38f9a9c"       # the migration did not touch the prompt
+    for t in ("answer.chat", "answer.repair", "discover.quick", "discover.verify", "planner.analysis", "planner.build", "planner.update", "export.synthesis"):
+        assert C.contract(t).model == settings.answer_model and C.request_params(C.contract(t)) == {"max_tokens": C.contract(t).max_output_tokens}, t
+    assert relevance.prompt_version() == "rank-f38f9a9c" and findings.prompt_version() == "findings-18b5db69"
 
 
 def test_findings_compare_one_command(isolated_db, monkeypatch, tmp_path):
@@ -1650,7 +1660,7 @@ def test_findings_compare_one_command(isolated_db, monkeypatch, tmp_path):
     assert b["economics"]["cost_per_source_hour"] > 0 and b["performance"]["findings_s"] >= 0
     assert abs(c["canonical_input_tokens"] - b["canonical_input_tokens"] * 1.3) < 20 and b["canonical_requests"] == 9   # per-request rounding
     assert cmp["verdict"]["verdict"] == "PASS" and cmp["verdict"]["production_default_changed"] is False and cmp["verdict"]["lost_nuggets"] == []
-    assert contracts.contract("findings.extract").model == settings.answer_model and "NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT" not in os.environ
+    assert contracts.contract("findings.extract").model == "claude-sonnet-5" and "NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT" not in os.environ
     names = {p.name for p in out.rglob("*")}
     assert {"baseline-sonnet-4-6.json", "candidate-sonnet-5.json", "comparison.json", "comparison.txt"} <= names
     assert cmp["findings_baseline_written"] and pathlib.Path(cmp["findings_baseline_file"]).exists()
