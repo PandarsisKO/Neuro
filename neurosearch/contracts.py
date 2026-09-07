@@ -51,6 +51,9 @@ class InferenceContract:
         return d
 
 
+RANK_MODEL = "claude-sonnet-5"       # rank.relevance production model (E2.1); every other task still follows settings.answer_model
+
+
 def _m() -> str:
     return settings.answer_model
 
@@ -64,7 +67,10 @@ def _base() -> dict[str, InferenceContract]:
                           notes="one repair round after a citation validation failure"),
         InferenceContract("findings.extract", "anthropic", m, max_output_tokens=4000, batch_allowed=True, schema="findings-v1",
                           notes="per transcript window; quote validator gates the output"),
-        InferenceContract("rank.relevance", "anthropic", m, max_output_tokens=6000, batch_allowed=True, schema="rank-v1"),
+        # migrated E2.1 (0.18.0-e2.2): 4.6-vs-5 comparison on the frozen ranking fixture passed — thinking explicitly off,
+        # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
+        InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, batch_allowed=True, schema="rank-v1",
+                          notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),
         InferenceContract("discover.quick", "anthropic", m, max_output_tokens=3500, timeout=180.0, interactive=True),
         InferenceContract("discover.verify", "anthropic", m, max_output_tokens=2500, timeout=180.0, interactive=True,
                           notes="uses the Anthropic web_search server tool; no fallback provider can serve it"),

@@ -88,6 +88,38 @@ def _windows(segs: list[dict[str, Any]], platform: str) -> list[str]:
 
 
 _last_model: dict[str, str] = {}
+_last_call: dict[str, Any] = {}          # diagnostics of the most recent window call (for OBSERVER; never changes behaviour)
+OBSERVER: Any = None                     # evals hook: called with one dict per transcript window (see suggest_for_source)
+
+
+def _system_blocks(system: str, head: str) -> list[dict[str, Any]]:
+    from . import usage
+    if not head:
+        return [usage.cached_block(system)]
+    return [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system))]
+
+
+def _head(project: dict[str, Any], src: dict[str, Any]) -> str:
+    brief = project.get("brief") or "(no brief — extract the most substantive, reusable findings)"
+    return (f"PROJECT: {project['name']}\nBRIEF: {brief}\n{db.project_steering(project)}\n\n"
+            f"SOURCE: {src['title']} ({src.get('channel') or src['platform']})\n")
+
+
+def _user(i: int, n: int, window: str) -> str:
+    part = f" (part {i + 1}/{n})" if n > 1 else ""
+    return f"TRANSCRIPT{part}:\n{window}\n\nExtract the findings now."
+
+
+def canonical_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
+    """The exact request content suggest_for_source sends for this source right now — one {system, messages} per
+    transcript window, built from the same helpers — so a provider token count over these is the count of the real
+    requests (E2 tokenizer deltas)."""
+    project, src = db.get_project(project_id), db.get_source(source_id)
+    if not project or not src:
+        return []
+    windows = _windows(db.get_segments(source_id), src["platform"])
+    head = _head(project, src)
+    return [{"system": _system_blocks(SYSTEM, head), "messages": [{"role": "user", "content": _user(i, len(windows), w)}]} for i, w in enumerate(windows)]
 
 
 def _call(system: str, user: str, project_id: str | None = None, source_id: str | None = None, head: str = "") -> dict[str, Any]:
@@ -97,16 +129,27 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     from . import providers, usage
 
     usage.guard(usage.estimate_findings(len(user)))
-    sys_blocks = [{"type": "text", "text": system}] + ([usage.cached_block(head, min_chars=len(system))] if head else [])
-    if not head:
-        sys_blocks = [usage.cached_block(system)]
+    sys_blocks = _system_blocks(system, head)
     resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
-    text = providers.text_of(resp).strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
+    raw = providers.text_of(resp).strip()
+    u = getattr(resp, "usage", None)
+    _last_call.clear()
+    _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
+                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "parse": "strict", "empty": not raw})
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
-    return json.loads(text[s:e + 1]) if s >= 0 else {}
+    if s < 0:
+        _last_call["parse"] = "no_json"
+        return {}
+    if text[s:e + 1] != raw:
+        _last_call["parse"] = "repaired"             # fences or surrounding prose had to be stripped
+    try:
+        return json.loads(text[s:e + 1])
+    except ValueError:
+        _last_call["parse"] = "failed"
+        raise
 
 
 def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
@@ -127,9 +170,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
         return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": prev.get("substance"),
                 "summary": prev.get("summary"), "rejected_quotes": 0, "skipped": "already current for these inputs"}
     platform = src["platform"]
-    brief = project.get("brief") or "(no brief — extract the most substantive, reusable findings)"
-    head = (f"PROJECT: {project['name']}\nBRIEF: {brief}\n{db.project_steering(project)}\n\n"
-            f"SOURCE: {src['title']} ({src.get('channel') or platform})\n")
+    head = _head(project, src)
     windows = _windows(segs, platform)
     all_findings: list[dict[str, Any]] = []
     summaries: list[str] = []
@@ -139,13 +180,19 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
     from .jobs import check_cancel, crash_point
     for i, w in enumerate(windows):
         check_cancel()                                   # safe boundary: nothing of this source is written yet
-        part = f" (part {i + 1}/{len(windows)})" if len(windows) > 1 else ""
         crash_point("findings_before_response")
-        res = _call(SYSTEM, f"TRANSCRIPT{part}:\n{w}\n\nExtract the findings now.", project_id, source_id, head=head)
+        try:
+            res = _call(SYSTEM, _user(i, len(windows), w), project_id, source_id, head=head)
+        except Exception:
+            if OBSERVER:
+                OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
+                          "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
+            raise
         if res.get("summary"):
             summaries.append(str(res["summary"]))
         if isinstance(res.get("substance"), (int, float)):
             substances.append(int(res["substance"]))
+        kept_before, rejected_before = len(all_findings), rejected
         for f in res.get("findings") or []:
             if not (isinstance(f, dict) and f.get("finding")):
                 continue
@@ -159,6 +206,11 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
                                     project_id=project_id, source_id=source_id, prompt_version=prompt_version())
                 continue
             all_findings.append(f)
+        if OBSERVER:
+            OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": len(res.get("findings") or []),
+                      "kept": len(all_findings) - kept_before, "rejected": rejected - rejected_before,
+                      "summary_ok": bool(str(res.get("summary") or "").strip()), "substance_ok": isinstance(res.get("substance"), (int, float)) and 0 <= res["substance"] <= 100,
+                      **_last_call})
     if rejected:
         db.kv_bump("evidence:findings_rejected", rejected)
     db.kv_bump("evidence:findings_checked", rejected + len(all_findings))

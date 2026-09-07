@@ -610,7 +610,7 @@ def ranking_verdict(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, Any
         b, c = bq.get(k), cq.get(k)
         if b is None or c is None:
             continue
-        if c < b - tol:
+        if c < b - tol - 1e-9:
             fails.append(f"{k} fell beyond tolerance: {b} → {c} (tolerance −{tol})")
         elif c < b:
             caveats.append(f"{k} slightly lower: {b} → {c} (within tolerance −{tol})")
@@ -762,6 +762,366 @@ def run_ranking_compare(root: Path = GOLDEN, live: bool = False, baseline_model:
                            "baseline": base, "candidate": cand, "rows": _side_by_side(base, cand), "verdict": ranking_verdict(base, cand),
                            "ranking_baseline_file": str(baseline_file), "ranking_baseline_written": baseline_written, "files": files}
     text = format_comparison(cmp)
+    (d / "comparison.json").write_text(json.dumps(cmp, indent=1))
+    (d / "comparison.txt").write_text(text)
+    cmp["text"] = text
+    return cmp
+
+
+# ------------------------------------------------------------------ findings.extract workload (E2.2 in one command)
+
+FINDINGS_GATES = {"finding_quote_validity": 0.98, "stored_findings_verified": 1.0}
+EVIDENCE_TOLERANCE = 0.10          # one nugget of ten: the 4.6 live runs vary by about that much
+LOST_NUGGETS_FAIL = 2              # losing two nuggets the baseline found is a real regression, not noise
+
+
+def _nugget_key(e: dict[str, Any]) -> str:
+    return f"{e['source']}: {e['quote'][:60]}"
+
+
+def run_findings(pid: str, ids: dict[str, str], man: dict[str, Any], live: bool = False, progress: Any = print, force: bool = False) -> dict[str, Any]:
+    """Run the Golden Project findings workload (every ingested source, every transcript window) through the real
+    findings.extract task under its contract and measure it. Sources must already be ingested (load_golden)."""
+    from . import __version__, contracts, findings, providers
+    from .evidence import quote_in_text
+    c = contracts.contract("findings.extract")
+    t_all = time.time()
+    usage_from = time.time()
+    rep: dict[str, Any] = {"eval": "findings", "tier": "live" if live else "fake", "model": "fake" if not live else c.model, "configured_model": c.model,
+                           "app_version": __version__, "git_sha": git_sha(), "provider": "fake" if not live else c.provider,
+                           "prompt_version": prompt_versions()["findings.extract"], "contract": c.describe(), "validators": "evidence.check_finding (quote must be in the window) + stored re-check",
+                           "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "gates": {}, "quality": {}, "volume": {}, "economics": {}, "performance": {}}
+    work = {gid: sid for gid, sid in ids.items() if gid != "calc"}
+    # canonical input tokens over the exact requests (free; also the preflight for the model id)
+    reqs = [(gid, r) for gid, sid in work.items() for r in findings.canonical_requests(pid, sid)]
+    try:
+        client = providers.anthropic_client()
+        strip = lambda sysb: [{k: v for k, v in b.items() if k != "cache_control"} for b in sysb] if isinstance(sysb, list) else sysb  # noqa: E731
+        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"]).input_tokens) for _, r in reqs)
+    except Exception as e:  # noqa: BLE001
+        if live:
+            raise RuntimeError(f"token counting failed for model {c.model!r} (preflight, nothing was spent): {e}") from e
+        rep["canonical_input_tokens"] = None
+    rep["canonical_requests"] = len(reqs)
+
+    events: list[dict[str, Any]] = []
+    findings.OBSERVER = events.append
+    t0 = time.time()
+    per_source: dict[str, dict[str, Any]] = {}
+    failed_sources: list[str] = []
+    try:
+        for gid, sid in work.items():
+            try:
+                res = findings.suggest_for_source(pid, sid, force=force)
+            except Exception as e:  # noqa: BLE001
+                progress(f"findings failed for {gid}: {e}")
+                failed_sources.append(gid)
+                per_source[gid] = {"suggested": 0, "rejected": 0, "windows": len(findings._windows(db.get_segments(sid), db.get_source(sid)["platform"])), "error": str(e)[:200]}
+                continue
+            per_source[gid] = {"suggested": res["suggested"], "rejected": res.get("rejected_quotes", 0), "substance": res.get("substance"),
+                               "summary_chars": len(res.get("summary") or ""), "windows": len(findings._windows(db.get_segments(sid), db.get_source(sid)["platform"]))}
+    finally:
+        findings.OBSERVER = None
+    rep["performance"]["findings_s"] = round(time.time() - t0, 2)
+    suggested = sum(p["suggested"] for p in per_source.values())
+    rejected = sum(p["rejected"] for p in per_source.values())
+    windows = sum(p["windows"] for p in per_source.values())
+    checked = suggested + rejected
+
+    # independent re-check of what was stored
+    notes = db.list_project_notes(pid, status="suggested")
+    stored = stored_bad = 0
+    for note in notes:
+        cit = (note.get("citations") or [{}])[0]
+        if not cit.get("source_id"):
+            continue
+        stored += 1
+        full = " ".join(x["text"] for x in db.get_segments(cit["source_id"]))
+        if cit.get("snippet") and not quote_in_text(cit["snippet"], full):
+            stored_bad += 1
+    # planted nuggets, individually
+    nuggets: dict[str, bool] = {}
+    for e in man["evidence"]:
+        sid = ids[e["source"]]
+        segs = db.get_segments(sid)
+        where = next((s["start"] for s in segs if quote_in_text(e["quote"], s["text"])), None)
+        hit = False
+        if where is not None:
+            for nnote in notes:
+                cit = (nnote.get("citations") or [{}])[0]
+                if cit.get("source_id") == sid and abs(float(cit.get("start") or 0) - where) <= 120:
+                    hit = True
+                    break
+        nuggets[_nugget_key(e)] = hit
+    q = rep["quality"]
+    q["golden_evidence_recall"] = round(sum(nuggets.values()) / max(1, len(nuggets)), 4)
+    q["nuggets"] = nuggets
+    q["finding_quote_validity"] = round(1 - rejected / checked, 4) if checked else 1.0
+    q["stored_findings_verified"] = round(1 - stored_bad / stored, 4) if stored else 1.0
+    q["findings_suggested"] = suggested
+    q["findings_rejected"] = rejected
+    q["findings_candidates"] = checked
+    q["sources"] = len(work)
+    q["failed_sources"] = failed_sources
+    q["transcript_windows"] = windows
+    q["findings_per_source"] = round(suggested / max(1, len(work)), 2)
+    q["findings_per_window"] = round(suggested / max(1, windows), 2)
+    q["per_source"] = per_source
+    ok_sum = sum(1 for p in per_source.values() if p.get("summary_chars"))
+    ok_sub = sum(1 for p in per_source.values() if isinstance(p.get("substance"), int) and 0 <= p["substance"] <= 100)
+    q["summary_validity"] = round(ok_sum / max(1, len(work)), 4)
+    q["substance_validity"] = round(ok_sub / max(1, len(work)), 4)
+    q["window_calls"] = len(events)
+    q["truncated_windows"] = sum(1 for ev in events if ev.get("truncated"))
+    q["parse_failed_windows"] = sum(1 for ev in events if ev.get("parse") == "failed" or ev.get("error"))
+    q["no_json_windows"] = sum(1 for ev in events if ev.get("parse") == "no_json")
+    q["repaired_windows"] = sum(1 for ev in events if ev.get("parse") == "repaired")
+    q["empty_windows"] = sum(1 for ev in events if ev.get("raw_findings", 0) == 0 and not ev.get("error"))
+    q["windows_missing_summary"] = sum(1 for ev in events if not ev.get("summary_ok"))
+    q["windows_missing_substance"] = sum(1 for ev in events if not ev.get("substance_ok"))
+    q["incomplete_outputs"] = q["truncated_windows"] + q["parse_failed_windows"] + q["no_json_windows"]
+    q["raw_findings"] = sum(ev.get("raw_findings", 0) for ev in events)
+
+    rows_u = db.connect().execute("SELECT model, SUM(input_tokens) i, SUM(output_tokens) o, SUM(cache_read) cr, SUM(cache_write) cw, SUM(cost) c, COUNT(*) n "
+                                  "FROM usage WHERE ts>=? AND kind='findings' GROUP BY model", (usage_from,)).fetchall()
+    tot = {k: 0 for k in ("i", "o", "cr", "cw", "c", "n")}
+    for r in rows_u:
+        for k in tot:
+            tot[k] += (r[k] or 0)
+    hours = sum((db.get_source(s) or {}).get("duration") or 0 for s in work.values()) / 3600
+    rep["volume"] = {"calls": int(tot["n"]), "input_tokens": int(tot["i"]), "output_tokens": int(tot["o"]), "cache_read_tokens": int(tot["cr"]),
+                     "cache_write_tokens": int(tot["cw"]), "canonical_input_tokens": rep.get("canonical_input_tokens"),
+                     "output_tokens_per_window": round(tot["o"] / max(1, len(events)), 1)}
+    rep["economics"] = {"cost": round(float(tot["c"]), 4), "cost_per_source_hour": round(float(tot["c"]) / hours, 4) if hours else None, "media_hours": round(hours, 2),
+                        "cost_per_source": round(float(tot["c"]) / max(1, len(work)), 4)}
+    rep["performance"].update({"s_per_window": round(rep["performance"]["findings_s"] / max(1, len(events)), 2), "s_per_source": round(rep["performance"]["findings_s"] / max(1, len(work)), 2),
+                               "total_s": round(time.time() - t_all, 2)})
+    inv_rows = db.connect().execute("SELECT state, COUNT(*) n, COUNT(DISTINCT logical_id) logical, GROUP_CONCAT(DISTINCT returned_model) rm "
+                                    "FROM invocations WHERE requested_at>=? AND task='findings.extract' GROUP BY state", (usage_from,)).fetchall()
+    inv: dict[str, Any] = {"logical": 0, "attempts": 0, "by_state": {}}
+    returned: set[str] = set()
+    for r in inv_rows:
+        inv["attempts"] += r["n"]; inv["by_state"][r["state"]] = r["n"]
+        if r["state"] == "completed":
+            inv["logical"] += r["logical"]
+        returned |= {m for m in (r["rm"] or "").split(",") if m}
+    inv["outcome_unknown"] = inv["by_state"].get("outcome_unknown", 0)
+    rep["invocations"] = inv
+    rep["returned_models"] = sorted(returned)
+    rep["returned_model"] = ", ".join(sorted(returned)) or None
+    for k, floor in FINDINGS_GATES.items():
+        rep["gates"][k] = {"value": q[k], "floor": floor, "pass": q[k] >= floor}
+    rep["gates"]["incomplete_outputs"] = {"value": q["incomplete_outputs"], "floor": 0, "pass": q["incomplete_outputs"] == 0}
+    rep["gates"]["all_invocations_resolved"] = {"value": inv["outcome_unknown"], "floor": 0, "pass": inv["outcome_unknown"] == 0}
+    rep["gates"]["all_sources_analysed"] = {"value": len(failed_sources), "floor": 0, "pass": not failed_sources}
+    rep["pass"] = all(g["pass"] for g in rep["gates"].values())
+    return rep
+
+
+def findings_verdict(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, Any]:
+    """Evidence recall and quote/validation integrity are the hard gates; the raw number of findings is not."""
+    bq, cq = base["quality"], cand["quality"]
+    fails: list[str] = []
+    caveats: list[str] = []
+    notes: list[str] = []
+    # validity gates on the candidate itself
+    for k, floor in FINDINGS_GATES.items():
+        if cq[k] < floor:
+            fails.append(f"{k} {cq[k]} is under the floor {floor}")
+        elif cq[k] < bq[k]:
+            caveats.append(f"{k} lower than baseline: {bq[k]} → {cq[k]} (above the floor {floor})")
+    if cq["findings_rejected"] > bq["findings_rejected"]:
+        caveats.append(f"more findings rejected by the quote validator: {bq['findings_rejected']} → {cq['findings_rejected']}")
+    if cq["incomplete_outputs"]:
+        fails.append(f"{cq['incomplete_outputs']} incomplete output(s): {cq['truncated_windows']} truncated, {cq['parse_failed_windows']} unparsable, {cq['no_json_windows']} without JSON")
+    if cq["failed_sources"]:
+        fails.append(f"sources not analysed: {', '.join(cq['failed_sources'])}")
+    if cand["invocations"].get("outcome_unknown"):
+        fails.append(f"{cand['invocations']['outcome_unknown']} invocation(s) with unknown outcome")
+    if not model_matches(cand["configured_model"], cand.get("returned_model")):
+        fails.append(f"returned model {cand.get('returned_model')!r} is not the configured {cand['configured_model']!r}")
+    if not model_matches(base["configured_model"], base.get("returned_model")):
+        fails.append(f"BASELINE returned model {base.get('returned_model')!r} is not the configured {base['configured_model']!r} — comparison is not like-for-like")
+    # evidence recall, individually
+    lost = [k for k, hit in bq["nuggets"].items() if hit and not cq["nuggets"].get(k)]
+    gained = [k for k, hit in cq["nuggets"].items() if hit and not bq["nuggets"].get(k)]
+    if cq["golden_evidence_recall"] < bq["golden_evidence_recall"] - EVIDENCE_TOLERANCE - 1e-9:
+        fails.append(f"golden evidence recall fell beyond tolerance: {bq['golden_evidence_recall']} → {cq['golden_evidence_recall']} (tolerance −{EVIDENCE_TOLERANCE})")
+    if len(lost) >= LOST_NUGGETS_FAIL:
+        fails.append(f"{len(lost)} planted nuggets the baseline found were lost: " + "; ".join(lost))
+    elif lost:
+        caveats.append(f"{len(lost)} planted nugget the baseline found was lost: " + "; ".join(lost) + (f" (gained {len(gained)})" if gained else ""))
+    elif cq["golden_evidence_recall"] < bq["golden_evidence_recall"]:
+        caveats.append(f"golden evidence recall lower: {bq['golden_evidence_recall']} → {cq['golden_evidence_recall']}")
+    if gained and not lost:
+        notes.append(f"gained {len(gained)} nugget(s) the baseline missed: " + "; ".join(gained))
+    # output shape (not gates)
+    if cq["repaired_windows"] > bq["repaired_windows"]:
+        caveats.append(f"more windows needed fence/prose stripping before JSON parsed: {bq['repaired_windows']} → {cq['repaired_windows']}")
+    for k in ("summary_validity", "substance_validity"):
+        if cq[k] < bq[k]:
+            caveats.append(f"{k} lower: {bq[k]} → {cq[k]}")
+    if cq["windows_missing_summary"] > bq["windows_missing_summary"] or cq["windows_missing_substance"] > bq["windows_missing_substance"]:
+        caveats.append(f"windows missing summary/substance: {bq['windows_missing_summary']}/{bq['windows_missing_substance']} → {cq['windows_missing_summary']}/{cq['windows_missing_substance']}")
+    if bq["findings_suggested"] and cq["findings_suggested"] < 0.7 * bq["findings_suggested"]:
+        caveats.append(f"far fewer findings kept: {bq['findings_suggested']} → {cq['findings_suggested']} (count is not a gate; 4.6 runs vary too)")
+    elif cq["findings_suggested"] != bq["findings_suggested"]:
+        notes.append(f"findings kept: {bq['findings_suggested']} → {cq['findings_suggested']} (not a gate)")
+    if cq["empty_windows"] > bq["empty_windows"]:
+        caveats.append(f"windows with no findings at all: {bq['empty_windows']} → {cq['empty_windows']}")
+    # supporting
+    bc, cc = base["economics"]["cost"], cand["economics"]["cost"]
+    if bc and cc > bc * (1 + COST_TOLERANCE):
+        caveats.append(f"cost up {(cc / bc - 1):+.0%}: ${bc:.4f} → ${cc:.4f} (per source-hour ${base['economics']['cost_per_source_hour']} → ${cand['economics']['cost_per_source_hour']})")
+    bl, cl = base["performance"]["findings_s"], cand["performance"]["findings_s"]
+    if bl and cl > bl * (1 + LATENCY_TOLERANCE):
+        caveats.append(f"latency up {(cl / bl - 1):+.0%}: {bl}s → {cl}s")
+    bt, ct = base.get("canonical_input_tokens"), cand.get("canonical_input_tokens")
+    if bt and ct:
+        notes.append(f"tokenizer delta on the canonical requests: {bt:,} → {ct:,} ({(ct / bt - 1):+.1%})")
+    notes.append("single run per model (n=1): differences inside the tolerances are not distinguishable from run-to-run noise")
+    if fails:
+        verdict, headline = "FAIL", f"FAIL — keep {base['configured_model']} for findings.extract"
+    elif caveats:
+        verdict, headline = "PASS_WITH_CAVEAT", f"PASS WITH CAVEAT — {cand['configured_model']} holds evidence recall and quote integrity on findings.extract; review the caveats before migrating"
+    else:
+        verdict, headline = "PASS", f"PASS — migrate findings.extract to {cand['configured_model']}"
+    return {"verdict": verdict, "headline": headline, "fails": fails, "caveats": caveats, "notes": notes, "lost_nuggets": lost, "gained_nuggets": gained,
+            "production_default_changed": False,
+            "how_to_migrate": "set NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=" + cand["configured_model"] + " (and THINKING=disabled) or change the findings.extract contract; nothing was changed by this run"}
+
+
+def _findings_rows(base: dict[str, Any], cand: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+
+    def add(label: str, b: Any, c: Any, kind: str = "num") -> None:
+        rows.append({"metric": label, "baseline": b, "candidate": c, "delta": (round(c - b, 4) if isinstance(b, (int, float)) and isinstance(c, (int, float)) and not isinstance(b, bool) else None), "kind": kind})
+    bq, cq = base["quality"], cand["quality"]
+    for k in ("golden_evidence_recall", "finding_quote_validity", "stored_findings_verified", "findings_rejected"):
+        add(k, bq[k], cq[k])
+    for key in bq["nuggets"]:
+        add(f"nugget[{key}]", "found" if bq["nuggets"][key] else "missed", "found" if cq["nuggets"].get(key) else "missed", "text")
+    for k in ("findings_suggested", "raw_findings", "findings_per_source", "findings_per_window", "transcript_windows", "window_calls", "empty_windows"):
+        add(k, bq[k], cq[k])
+    for gid in bq["per_source"]:
+        add(f"findings[{gid}]", bq["per_source"][gid]["suggested"], cq["per_source"].get(gid, {}).get("suggested"))
+    for k in ("summary_validity", "substance_validity", "windows_missing_summary", "windows_missing_substance"):
+        add(k, bq[k], cq[k])
+    for gid in bq["per_source"]:
+        add(f"substance[{gid}]", bq["per_source"][gid].get("substance"), cq["per_source"].get(gid, {}).get("substance"))
+    for k in ("truncated_windows", "parse_failed_windows", "no_json_windows", "repaired_windows", "incomplete_outputs"):
+        add(k, bq[k], cq[k])
+    add("failed_sources", len(bq["failed_sources"]), len(cq["failed_sources"]))
+    add("outcome_unknown", base["invocations"].get("outcome_unknown", 0), cand["invocations"].get("outcome_unknown", 0))
+    add("transport_attempts", base["invocations"].get("attempts", 0), cand["invocations"].get("attempts", 0))
+    add("configured_model", base["configured_model"], cand["configured_model"], "text")
+    add("returned_model", base.get("returned_model"), cand.get("returned_model"), "text")
+    add("thinking", base["contract"]["thinking"], cand["contract"]["thinking"], "text")
+    add("canonical_input_tokens", base.get("canonical_input_tokens"), cand.get("canonical_input_tokens"))
+    for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens_per_window"):
+        add("billed_" + k if "per" not in k else k, base["volume"][k], cand["volume"][k])
+    add("cost", base["economics"]["cost"], cand["economics"]["cost"])
+    add("cost_per_source_hour", base["economics"]["cost_per_source_hour"], cand["economics"]["cost_per_source_hour"])
+    add("cost_per_source", base["economics"]["cost_per_source"], cand["economics"]["cost_per_source"])
+    add("latency_findings_s", base["performance"]["findings_s"], cand["performance"]["findings_s"])
+    add("latency_s_per_window", base["performance"]["s_per_window"], cand["performance"]["s_per_window"])
+    return rows
+
+
+_FINDINGS_SECTIONS = {"evidence": ("golden_evidence_recall", "finding_quote_validity", "stored_findings_verified", "findings_rejected", "nugget"),
+                      "findings (not a gate)": ("findings_suggested", "raw_findings", "findings_per_source", "findings_per_window", "transcript_windows", "window_calls", "empty_windows", "findings"),
+                      "summary/substance": ("summary_validity", "substance_validity", "windows_missing_summary", "windows_missing_substance", "substance"),
+                      "output integrity (decision gate)": ("truncated_windows", "parse_failed_windows", "no_json_windows", "repaired_windows", "incomplete_outputs", "failed_sources", "outcome_unknown", "transport_attempts", "configured_model", "returned_model", "thinking"),
+                      "tokens (supporting)": ("canonical_input_tokens", "billed_input_tokens", "billed_output_tokens", "billed_cache_read_tokens", "billed_cache_write_tokens", "output_tokens_per_window"),
+                      "economics / latency (supporting)": ("cost", "cost_per_source_hour", "cost_per_source", "latency_findings_s", "latency_s_per_window")}
+
+
+def format_findings_comparison(cmp: dict[str, Any]) -> str:
+    b, c = cmp["baseline"], cmp["candidate"]
+    bt, ct = b.get("canonical_input_tokens"), c.get("canonical_input_tokens")
+    lines = [f"Neuro Search findings.extract model comparison · {cmp['tier']} · app {cmp['app_version']} @ {cmp['git_sha']} · Golden Project ({b['quality']['sources']} sources, {b['quality']['transcript_windows']} windows, {b['economics']['media_hours']} h)",
+             f"  baseline  {b['configured_model']} (returned {b.get('returned_model') or '—'}, thinking {b['contract']['thinking']})",
+             f"  candidate {c['configured_model']} (returned {c.get('returned_model') or '—'}, thinking {c['contract']['thinking']})",
+             f"  same sources, windows ({__import__('neurosearch.findings', fromlist=['WINDOW_CHARS']).WINDOW_CHARS} chars), brief, prompt {b['prompt_version']}, validators, contract except the model",
+             "", f"  {'metric':52s} {'baseline':>14s} {'candidate':>14s} {'delta':>10s}"]
+    section = None
+    for r in cmp["rows"]:
+        stem = r["metric"].split("[")[0]
+        sec = next((name for name, keys in _FINDINGS_SECTIONS.items() if stem in keys), "other")
+        if sec == "evidence":
+            sec = "evidence (decision gate)"
+        if sec != section:
+            lines.append(f"  -- {sec.upper()}")
+            section = sec
+        f = lambda v: "—" if v is None else (v if isinstance(v, str) else f"{v:,}" if isinstance(v, int) else f"{v:.4f}".rstrip("0").rstrip("."))  # noqa: E731
+        d = "" if r["delta"] is None else f"{r['delta']:+.4f}".rstrip("0").rstrip(".")
+        lines.append(f"  {r['metric'][:52]:52s} {f(r['baseline']):>14s} {f(r['candidate']):>14s} {d:>10s}")
+    if bt and ct:
+        lines.append(f"\n  tokenizer delta (canonical requests, provider token count): {bt:,} → {ct:,} = {(ct / bt - 1):+.1%}")
+    v = cmp["verdict"]
+    lines += ["", "VERDICT: " + v["headline"]]
+    for x in v["fails"]:
+        lines.append("  FAIL    " + x)
+    for x in v["caveats"]:
+        lines.append("  caveat  " + x)
+    for x in v["notes"]:
+        lines.append("  note    " + x)
+    lines += ["", "  Production default unchanged. " + v["how_to_migrate"], "", "  files: " + ", ".join(cmp.get("files", []))]
+    return "\n".join(lines)
+
+
+def run_findings_compare(root: Path = GOLDEN, live: bool = False, baseline_model: str = BASELINE_MODEL, candidate_model: str = CANDIDATE_MODEL,
+                         out_dir: Path = Path("evals"), progress: Any = print) -> dict[str, Any]:
+    """One command for E2.2: ingest the Golden Project once, run the findings workload with the baseline model and then
+    with the candidate (both thinking=disabled, nothing else different; the second pass is forced past the input_hash
+    idempotency so the same inputs are analysed again), save both raw results, freeze the baseline model's result as
+    the findings baseline if none exists, save the side-by-side and the verdict. Never changes a default."""
+    import os
+    from . import __version__
+    keys = ("NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT", "NEUROSEARCH_TASK_THINKING_FINDINGS_EXTRACT", "NEUROSEARCH_TASK_EFFORT_FINDINGS_EXTRACT")
+    saved = {k: os.environ.get(k) for k in keys}
+    t0 = time.time()
+    g = load_golden(root)
+    pid, ids, man = g["project_id"], g["sources"], g["manifest"]
+    progress(f"ingested {len(ids)} golden sources in {time.time() - t0:.1f}s (embeddings are not part of the findings accounting)")
+    reps: dict[str, dict[str, Any]] = {}
+    try:
+        for label, model in (("baseline", baseline_model), ("candidate", candidate_model)):
+            os.environ["NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT"] = model
+            os.environ["NEUROSEARCH_TASK_THINKING_FINDINGS_EXTRACT"] = "disabled"
+            os.environ.pop("NEUROSEARCH_TASK_EFFORT_FINDINGS_EXTRACT", None)
+            progress(f"[{label}] {model} · thinking disabled")
+            reps[label] = run_findings(pid, ids, man, live=live, progress=lambda m: progress("   " + m), force=True)
+            q = reps[label]["quality"]
+            progress(f"[{label}] evidence recall {q['golden_evidence_recall']} · quote validity {q['finding_quote_validity']} · {q['findings_suggested']} findings ({q['findings_rejected']} rejected) · "
+                     f"incomplete {q['incomplete_outputs']} · ${reps[label]['economics']['cost']:.4f} · {reps[label]['performance']['findings_s']}s · returned {reps[label].get('returned_model')}")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    base, cand = reps["baseline"], reps["candidate"]
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    sha = git_sha()
+    d = out_dir / "findings-compare" / f"{stamp}-{sha}"
+    d.mkdir(parents=True, exist_ok=True)
+    files = []
+    for label, rep in reps.items():
+        f = d / f"{label}-{_model_slug(rep['configured_model'])}.json"
+        f.write_text(json.dumps(rep, indent=1)); files.append(str(f))
+    existing = sorted(out_dir.glob(f"baseline-findings-*-{_model_slug(base['model'])}.json"))
+    if existing:
+        baseline_file, baseline_written = existing[-1], False
+    else:
+        baseline_file = out_dir / f"baseline-findings-{__version__}-{sha}-{_model_slug(base['model'])}.json"
+        baseline_file.write_text(json.dumps(base, indent=1)); baseline_written = True
+        files.append(str(baseline_file))
+    files += [str(d / "comparison.json"), str(d / "comparison.txt")]
+    cmp: dict[str, Any] = {"eval": "findings-compare", "tier": "live" if live else "fake", "app_version": __version__, "git_sha": sha, "started": stamp,
+                           "baseline": base, "candidate": cand, "rows": _findings_rows(base, cand), "verdict": findings_verdict(base, cand),
+                           "findings_baseline_file": str(baseline_file), "findings_baseline_written": baseline_written, "files": files, "project_id": pid}
+    text = format_findings_comparison(cmp)
     (d / "comparison.json").write_text(json.dumps(cmp, indent=1))
     (d / "comparison.txt").write_text(text)
     cmp["text"] = text

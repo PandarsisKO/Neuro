@@ -92,7 +92,21 @@ E2 SHADOW MIGRATION                            IN PROGRESS — one task at a tim
     absent, prints the side-by-side (quality + category + validity = decision gate; tokens/cost/latency = supporting) and a verdict:
     PASS — migrate / PASS WITH CAVEAT / FAIL — keep 4.6 (evals.ranking_verdict; tolerances in QUALITY_TOLERANCE). Never changes a default.
     rank.relevance provenance now records the contract model (identical unless an override is set). Sonnet 5 priced $2/$10 in usage.PRICES.
-[ ] E2.1+E2.2 live: `neurosearch eval --ranking-compare --live` → verdict decides whether rank.relevance moves to Sonnet 5
+[x] E2.1 rank.relevance MIGRATED (0.18.0-e2.2): live `--ranking-compare` passed → contracts.RANK_MODEL = claude-sonnet-5, thinking explicitly
+    disabled, prompt rank-f38f9a9c and max_out 6000 unchanged; every other task still follows settings.answer_model (mixed release). Baseline
+    evals/baseline-rank-*-sonnet-4-6.json and evals/ranking-compare/* are kept as the record. Regression test:
+    test_rank_relevance_production_contract_is_sonnet_5_thinking_disabled (request carries thinking={"type":"disabled"}, no effort).
+[x] E2.2 tooling: `neurosearch eval --findings-compare --live` ingests the Golden Project once, runs the findings workload (8 sources,
+    9 windows, same brief/prompt 18b5db69/validators/window size) with claude-sonnet-4-6 then claude-sonnet-5 (thinking disabled; second
+    pass forced past the input_hash idempotency), preflights both model ids via token counting (canonical input tokens → tokenizer delta),
+    saves evals/findings-compare/<stamp>-<sha>/{baseline-*, candidate-*, comparison.json, comparison.txt}, freezes
+    evals/baseline-findings-<version>-<sha>-sonnet-4-6.json if absent. Compares golden evidence recall + every planted nugget individually
+    (lost/gained), quote validity, rejected, findings per source/window, summary/substance validity, truncations/parse failures/no-JSON
+    (= incomplete outputs), fence repairs, outcome_unknown, configured/returned model, billed tokens, cost, cost per source-hour, latency.
+    Verdict (evals.findings_verdict): hard gates = quote validity ≥ 0.98, stored re-check 1.0, incomplete outputs 0, every source analysed,
+    outcome_unknown 0, returned model = configured, evidence recall not below baseline − 0.10, fewer than 2 nuggets lost; findings count is
+    NEVER a gate (caveat under 70% of baseline); cost/latency caveat only. findings.OBSERVER + findings._last_call are read-only diagnostics.
+[ ] E2.2 live: `neurosearch eval --findings-compare --live` → verdict decides whether findings.extract moves to Sonnet 5 (manual step)
 [ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable

@@ -191,6 +191,7 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              task_max_tokens: list[str] = typer.Option([], "--task-max-tokens", help="Override task=N"),
              ranking: bool = typer.Option(False, "--ranking", help="Run only the frozen rank.relevance fixture (tests/fixtures/golden/ranking.json) and report ranking quality, tokens, cost and latency"),
              ranking_compare: bool = typer.Option(False, "--ranking-compare", help="E2: rank the frozen fixture with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
+             findings_compare: bool = typer.Option(False, "--findings-compare", help="E2.2: run the Golden Project findings workload with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
              baseline_model: str = typer.Option(None, "--baseline-model", help="Baseline model for --ranking-compare (default claude-sonnet-4-6)"),
              candidate_model: str = typer.Option(None, "--candidate-model", help="Candidate model for --ranking-compare (default claude-sonnet-5)")) -> None:
     """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates).
@@ -220,9 +221,10 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     if live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
-    if ranking_compare:
-        cmp = evals.run_ranking_compare(live=live, baseline_model=baseline_model or evals.BASELINE_MODEL, candidate_model=candidate_model or evals.CANDIDATE_MODEL,
-                                        progress=lambda m: typer.echo("  · " + m))
+    if ranking_compare or findings_compare:
+        fn = evals.run_findings_compare if findings_compare else evals.run_ranking_compare
+        cmp = fn(live=live, baseline_model=baseline_model or evals.BASELINE_MODEL, candidate_model=candidate_model or evals.CANDIDATE_MODEL,
+                 progress=lambda m: typer.echo("  · " + m))
         typer.echo("")
         typer.echo(cmp["text"])
         if out:

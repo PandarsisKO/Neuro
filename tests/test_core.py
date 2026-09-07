@@ -1513,10 +1513,10 @@ def test_ranking_eval_runs_rank_relevance_under_contract(isolated_db, monkeypatc
     # accounting: tokens/cost/latency/model come from the ledger and usage table, filtered to this task
     assert rep["volume"]["calls"] == 1 and rep["volume"]["input_tokens"] > 0 and rep["volume"]["output_tokens"] > 0
     assert rep["economics"]["cost"] > 0 and rep["economics"]["cost_per_100_candidates"] > rep["economics"]["cost"]
-    assert rep["performance"]["rank_s"] >= 0 and rep["configured_model"] == settings.answer_model and rep["returned_model"] == "fake-claude"
-    assert rep["canonical_requests"] == 1 and rep["canonical_input_tokens"] == rep["volume"]["input_tokens"]   # fake tokenizer = billed, Claude 4 family
+    assert rep["performance"]["rank_s"] >= 0 and rep["configured_model"] == "claude-sonnet-5" and rep["returned_model"] == "fake-claude"
+    assert rep["canonical_requests"] == 1 and rep["canonical_input_tokens"] == int(rep["volume"]["input_tokens"] * 1.3)   # fake tokenizer: Claude 5 family counts ×1.3
     assert rep["invocations"] == {"logical": 1, "attempts": 1, "by_state": {"completed": 1}, "outcome_unknown": 0}
-    assert rep["contract"]["model"] == settings.answer_model and rep["contract"]["thinking"] == "disabled" and rep["contract"]["max_output_tokens"] == 6000
+    assert rep["contract"]["model"] == "claude-sonnet-5" and rep["contract"]["thinking"] == "disabled" and rep["contract"]["max_output_tokens"] == 6000
     assert rep["prompt_version"] == "f38f9a9c"          # the frozen ranking prompt (E2 must not change it)
     assert len(rep["ordering"]) == 79 and rep["ordering"][0]["pos"] == 1
     text = evals.format_ranking_report(rep)
@@ -1553,7 +1553,7 @@ def test_ranking_compare_one_command(isolated_db, monkeypatch, tmp_path):
     assert b["ordering"] == c["ordering"]                     # same fake, same fixture → identical ordering
     assert c["canonical_input_tokens"] == int(b["canonical_input_tokens"] * 1.3)   # tokenizer delta path exercised
     assert cmp["verdict"]["verdict"] == "PASS" and cmp["verdict"]["production_default_changed"] is False
-    assert contracts.contract("rank.relevance").model == settings.answer_model and "NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE" not in os.environ
+    assert contracts.contract("rank.relevance").model == "claude-sonnet-5" and "NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE" not in os.environ
     names = {p.name for p in out.rglob("*")}
     assert "baseline-sonnet-4-6.json" in names and "candidate-sonnet-5.json" in names and "comparison.json" in names and "comparison.txt" in names
     assert cmp["ranking_baseline_written"] and pathlib.Path(cmp["ranking_baseline_file"]).exists()
@@ -1605,3 +1605,128 @@ def test_ranking_verdict_rules():
            "rows": evals._side_by_side(base, cand), "verdict": evals.ranking_verdict(base, cand), "files": []}
     txt = evals.format_comparison(cmp)
     assert "tokenizer delta" in txt and "+30.0%" in txt and "(decision gate)" in txt and "(supporting)" in txt
+
+
+def test_rank_relevance_production_contract_is_sonnet_5_thinking_disabled(monkeypatch):
+    """E2.1 outcome: rank.relevance runs on claude-sonnet-5 with thinking explicitly disabled; the request carries
+    thinking={"type":"disabled"} and no effort; every other task still follows settings.answer_model (a mixed release)."""
+    from neurosearch import contracts as C
+    from neurosearch.config import settings
+    monkeypatch.delenv("NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE", raising=False)
+    monkeypatch.delenv("NEUROSEARCH_TASK_THINKING_RANK_RELEVANCE", raising=False)
+    c = C.contract("rank.relevance")
+    assert c.model == "claude-sonnet-5" and c.thinking == "disabled" and c.effort is None and c.max_output_tokens == 6000 and c.max_attempts == 3
+    assert C.model_family(c.model) == "claude-5"
+    assert C.request_params(c) == {"max_tokens": 6000, "thinking": {"type": "disabled"}}
+    assert settings.answer_model == "claude-sonnet-4-6"
+    for t in ("answer.chat", "answer.repair", "findings.extract", "discover.quick", "discover.verify", "planner.analysis", "planner.build", "planner.update", "export.synthesis"):
+        assert C.contract(t).model == settings.answer_model, t
+    from neurosearch import relevance
+    assert relevance.prompt_version() == "rank-f38f9a9c"       # the migration did not touch the prompt
+
+
+def test_findings_compare_one_command(isolated_db, monkeypatch, tmp_path):
+    """--findings-compare: the Golden findings workload with the baseline model then the candidate, identical inputs
+    (same ingested sources, windows, brief, prompt, validators), raw results saved, baseline frozen once, verdict."""
+    import os
+    from neurosearch import contracts, evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    for k in ("NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT", "NEUROSEARCH_TASK_THINKING_FINDINGS_EXTRACT"):
+        monkeypatch.delenv(k, raising=False)
+    out = tmp_path / "evals"
+    cmp = evals.run_findings_compare(live=False, out_dir=out, progress=lambda m: None)
+    b, c = cmp["baseline"], cmp["candidate"]
+    assert (b["configured_model"], c["configured_model"]) == ("claude-sonnet-4-6", "claude-sonnet-5")
+    assert b["contract"]["thinking"] == c["contract"]["thinking"] == "disabled" and b["prompt_version"] == c["prompt_version"] == "18b5db69"
+    assert {k: v for k, v in b["contract"].items() if k != "model"} == {k: v for k, v in c["contract"].items() if k != "model"}
+    assert b["volume"]["input_tokens"] == c["volume"]["input_tokens"] == 30297      # the frozen Tier-1 findings workload, twice
+    assert b["quality"]["window_calls"] == c["quality"]["window_calls"] == 9 and b["invocations"]["logical"] == 9
+    assert b["quality"]["nuggets"] == c["quality"]["nuggets"] and len(b["quality"]["nuggets"]) == 10
+    assert b["quality"]["golden_evidence_recall"] == c["quality"]["golden_evidence_recall"] > 0.5
+    assert b["quality"]["finding_quote_validity"] == 1.0 and b["quality"]["incomplete_outputs"] == 0 and b["quality"]["repaired_windows"] == 0
+    assert b["quality"]["summary_validity"] == 1.0 and b["quality"]["substance_validity"] == 1.0
+    assert b["economics"]["cost_per_source_hour"] > 0 and b["performance"]["findings_s"] >= 0
+    assert abs(c["canonical_input_tokens"] - b["canonical_input_tokens"] * 1.3) < 20 and b["canonical_requests"] == 9   # per-request rounding
+    assert cmp["verdict"]["verdict"] == "PASS" and cmp["verdict"]["production_default_changed"] is False and cmp["verdict"]["lost_nuggets"] == []
+    assert contracts.contract("findings.extract").model == settings.answer_model and "NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT" not in os.environ
+    names = {p.name for p in out.rglob("*")}
+    assert {"baseline-sonnet-4-6.json", "candidate-sonnet-5.json", "comparison.json", "comparison.txt"} <= names
+    assert cmp["findings_baseline_written"] and pathlib.Path(cmp["findings_baseline_file"]).exists()
+    metrics = {r["metric"].split("[")[0] for r in cmp["rows"]}
+    for k in ("golden_evidence_recall", "finding_quote_validity", "findings_rejected", "nugget", "findings_per_source", "findings_per_window", "summary_validity",
+              "substance_validity", "truncated_windows", "incomplete_outputs", "repaired_windows", "outcome_unknown", "configured_model", "returned_model",
+              "canonical_input_tokens", "billed_input_tokens", "billed_output_tokens", "billed_cache_read_tokens", "cost", "cost_per_source_hour", "latency_findings_s"):
+        assert k in metrics, k
+    assert "VERDICT: PASS — migrate findings.extract to claude-sonnet-5" in cmp["text"] and "Production default unchanged" in cmp["text"]
+    cmp2 = evals.run_findings_compare(live=False, out_dir=out, progress=lambda m: None)
+    assert cmp2["findings_baseline_written"] is False
+
+
+def test_findings_verdict_rules():
+    """Evidence recall + quote integrity are hard gates; the number of findings is not; cost/latency only caveat."""
+    import copy
+    from neurosearch import evals
+    nug = {f"n{i}": True for i in range(8)} | {"n8": False, "n9": False}
+    base = {"configured_model": "claude-sonnet-4-6", "returned_model": "claude-sonnet-4-6-20260210", "contract": {"thinking": "disabled"},
+            "quality": {"golden_evidence_recall": 0.8, "nuggets": nug, "finding_quote_validity": 1.0, "stored_findings_verified": 1.0, "findings_rejected": 0,
+                        "findings_suggested": 48, "raw_findings": 48, "incomplete_outputs": 0, "truncated_windows": 0, "parse_failed_windows": 0, "no_json_windows": 0,
+                        "repaired_windows": 0, "empty_windows": 0, "failed_sources": [], "summary_validity": 1.0, "substance_validity": 1.0,
+                        "windows_missing_summary": 0, "windows_missing_substance": 0},
+            "invocations": {"outcome_unknown": 0, "attempts": 9}, "economics": {"cost": 0.196, "cost_per_source_hour": 0.12}, "performance": {"findings_s": 60.0},
+            "canonical_input_tokens": 32000}
+    cand = copy.deepcopy(base); cand["configured_model"] = "claude-sonnet-5"; cand["returned_model"] = "claude-sonnet-5-20260601"; cand["canonical_input_tokens"] = 41600
+    assert evals.findings_verdict(base, cand)["verdict"] == "PASS"
+    # fewer findings alone is never a FAIL
+    c = copy.deepcopy(cand); c["quality"]["findings_suggested"] = 30
+    v = evals.findings_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and any("not a gate" in x for x in v["caveats"])
+    c = copy.deepcopy(cand); c["quality"]["findings_suggested"] = 44
+    assert evals.findings_verdict(base, c)["verdict"] == "PASS"
+    # one lost nugget → caveat (named); two → FAIL (named); a lost nugget replaced by a gained one still shows as lost
+    c = copy.deepcopy(cand); c["quality"]["nuggets"]["n0"] = False; c["quality"]["golden_evidence_recall"] = 0.7
+    v = evals.findings_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and v["lost_nuggets"] == ["n0"] and "n0" in v["caveats"][0]
+    c = copy.deepcopy(cand); c["quality"]["nuggets"].update(n0=False, n1=False); c["quality"]["golden_evidence_recall"] = 0.6
+    v = evals.findings_verdict(base, c); assert v["verdict"] == "FAIL" and v["lost_nuggets"] == ["n0", "n1"] and v["headline"] == "FAIL — keep claude-sonnet-4-6 for findings.extract"
+    c = copy.deepcopy(cand); c["quality"]["nuggets"].update(n0=False, n8=True); c["quality"]["golden_evidence_recall"] = 0.8
+    v = evals.findings_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and v["lost_nuggets"] == ["n0"] and v["gained_nuggets"] == ["n8"]
+    # quote integrity under the floor, truncation, parse failure, unknown outcome, wrong model → FAIL
+    for patch in ({"quality": {"finding_quote_validity": 0.9}}, {"quality": {"stored_findings_verified": 0.95}}, {"quality": {"incomplete_outputs": 1, "truncated_windows": 1}},
+                  {"quality": {"incomplete_outputs": 1, "parse_failed_windows": 1}}, {"quality": {"failed_sources": ["yt01"]}}, {"invocations": {"outcome_unknown": 1}},
+                  {"returned_model": "claude-sonnet-4-6-20260210"}):
+        c = copy.deepcopy(cand)
+        for k, vv in patch.items():
+            if isinstance(vv, dict):
+                c[k].update(vv)
+            else:
+                c[k] = vv
+        assert evals.findings_verdict(base, c)["verdict"] == "FAIL", patch
+    # cost/latency/repairs → caveats only
+    c = copy.deepcopy(cand); c["economics"]["cost"] = 0.3; c["performance"]["findings_s"] = 120.0; c["quality"]["repaired_windows"] = 2
+    v = evals.findings_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and len(v["caveats"]) == 3
+    assert any("+30.0%" in n for n in v["notes"])
+
+
+def test_findings_call_diagnostics_do_not_change_behaviour(monkeypatch):
+    """Truncation, fence repair and parse failure are observed, not handled differently than before."""
+    from neurosearch import findings, providers
+
+    class R:
+        def __init__(self, text, stop="end_turn"):
+            self.content = [type("B", (), {"type": "text", "text": text})()]
+            self.stop_reason, self.model, self.usage = stop, "claude-x", type("U", (), {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})()
+    monkeypatch.setattr(findings.usage, "guard", lambda *a, **k: None) if hasattr(findings, "usage") else None
+    from neurosearch import usage
+    monkeypatch.setattr(usage, "guard", lambda *a, **k: None)
+    monkeypatch.setattr(usage, "record_anthropic", lambda *a, **k: 0.0)
+    monkeypatch.setattr(providers, "invoke", lambda *a, **k: R('```json\n{"summary":"s","substance":50,"findings":[]}\n```'))
+    assert findings._call(findings.SYSTEM, "u", head="h") == {"summary": "s", "substance": 50, "findings": []}
+    assert findings._last_call["parse"] == "repaired" and not findings._last_call["truncated"]
+    monkeypatch.setattr(providers, "invoke", lambda *a, **k: R('{"summary":"s","substance":50,"findings":[]}'))
+    findings._call(findings.SYSTEM, "u", head="h"); assert findings._last_call["parse"] == "strict"
+    monkeypatch.setattr(providers, "invoke", lambda *a, **k: R('{"summary":"s","substance":50,"findings":[{"title":"cut', "max_tokens"))
+    with pytest.raises(ValueError):
+        findings._call(findings.SYSTEM, "u", head="h")
+    assert findings._last_call["parse"] == "failed" and findings._last_call["truncated"]
+    monkeypatch.setattr(providers, "invoke", lambda *a, **k: R("no json here"))
+    assert findings._call(findings.SYSTEM, "u", head="h") == {} and findings._last_call["parse"] == "no_json"
