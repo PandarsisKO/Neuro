@@ -206,7 +206,7 @@ def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, 
 
 
 def materialize(project_id: str, source_id: str, window_results: list[tuple[str, dict[str, Any]]], *, model: str | None,
-                transport: str = "interactive", batch_id: str | None = None, max_findings: int = 12) -> dict[str, Any]:
+                transport: str = "interactive", batch_id: str | None = None, max_findings: int = 12, prefilter: dict[str, Any] | None = None) -> dict[str, Any]:
     """Turn validated per-window outputs into the stored research artifact — the ONE place findings become notes and an
     analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
     window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
@@ -267,7 +267,8 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
                       "importance": int(f.get("importance") or 0)})
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
-            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id), "transport": transport, "batch_id": batch_id}
+            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id), "transport": transport, "batch_id": batch_id,
+            "prefilter": json.dumps(prefilter) if prefilter else None}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     with db.batch():                                     # notes + analysis land together or not at all
@@ -275,7 +276,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
     crash_point("findings_persisted_before_done")
     return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
-            "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id}
+            "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id, "prefilter": prefilter}
 
 
 def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
@@ -294,8 +295,11 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
     head = _head(project, src)
     windows = _windows(segs, src["platform"])
     from .jobs import check_cancel, crash_point
+    kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
     for i, w in enumerate(windows):
+        if i not in kept:                                # H1: the pre-filter dropped this window (recorded in window_decisions + the analysis row)
+            continue
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         crash_point("findings_before_response")
         try:
@@ -306,7 +310,19 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
                           "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
             raise
         results.append((w, res))
-    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings)
+    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings, prefilter=pf_summary)
+
+
+def window_plan(project: dict[str, Any], src: dict[str, Any], windows: list[str]) -> tuple[set[int], dict[str, Any] | None]:
+    """Which windows findings.extract will read. Without the H1 pre-filter (default): all of them. With it
+    (NEUROSEARCH_FINDINGS_PREFILTER=1): every window the cheap filter did not confidently DROP — keep and uncertain
+    both go to the extractor, and every failure of the filter fails open. Returns (kept indexes, filter summary)."""
+    from . import prefilter
+    if not prefilter.enabled() or not windows:
+        return set(range(len(windows))), None
+    rows = prefilter.decide_windows(project, src, windows)
+    kept = {r["window_index"] for r in rows if r["decision"] != "drop"}
+    return kept, prefilter.summary(rows)
 
 
 def batch_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
@@ -323,11 +339,14 @@ def batch_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
     head = _head(project, src)
     ih = input_hash(project, source_id)
     c = contract("findings.extract")
+    kept, pf_summary = window_plan(project, src, windows)
     out = []
     for i, w in enumerate(windows):
+        if i not in kept:
+            continue
         params = providers.batch_params("findings.extract", system=_system_blocks(SYSTEM, head, ttl="1h"), messages=[{"role": "user", "content": _user(i, len(windows), w)}])
         out.append({"custom_id": f"fw-{source_id[:12]}-{i}-{ih[:12]}", "task": "findings.extract", "project_id": project_id, "source_id": source_id,
-                    "window_index": i, "windows": len(windows), "window_text": w, "params": params, "schema": c.schema})
+                    "window_index": i, "windows": len(kept), "window_text": w, "params": params, "schema": c.schema, "prefilter": pf_summary})
     return out
 
 

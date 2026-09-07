@@ -440,6 +440,16 @@ def _submit_cohort(job_id: str, cohort_no: int) -> None:
     jobs.submit_external(PROVIDER, "findings", {"job_id": job_id, "cohort_no": cohort_no}, deadline=time.time() + DEADLINE_S, client_ref=client_ref)
 
 
+def _prefilter_summary(project_id: str, source_id: str) -> dict[str, Any] | None:
+    """The pre-filter's provenance for a source materialised from a batch: the latest decision per window."""
+    from . import prefilter
+    rows = db.window_decisions(project_id, source_id)
+    latest: dict[int, dict[str, Any]] = {}
+    for r in rows:
+        latest[r["window_index"]] = r
+    return prefilter.summary([latest[i] for i in sorted(latest)]) if latest else None
+
+
 def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
     """For every source whose windows ALL succeeded (across cohorts): validate each persisted result exactly like the
     interactive path (structured → full schema; quote validator inside materialize) and store the artifact once."""
@@ -457,7 +467,7 @@ def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
         results: list[tuple[str, dict[str, Any]]] = []
         model = None
         batch_ids: set[str] = set()
-        for i in range(n):
+        for i in sorted(wins):                            # window indexes are the source's own (a pre-filter may have dropped some)
             it = wins[i]
             msg = _Msg(it["raw"])
             usage.record_anthropic(msg, "findings", project_id=project_id, source_id=sid, transport="batch")
@@ -465,7 +475,8 @@ def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
             results.append((window_text(it["params"]), parsed))
             model = getattr(msg, "model", None) or model
             batch_ids.add(it["batch_id"])
-        r = findings.materialize(project_id, sid, results, model=model, transport="batch", batch_id=",".join(sorted(batch_ids)))
+        pf = _prefilter_summary(project_id, sid)
+        r = findings.materialize(project_id, sid, results, model=model, transport="batch", batch_id=",".join(sorted(batch_ids)), prefilter=pf)
         db.batch_items_materialized(job_id, sid)
         materialized += 1
         details.append({"source_id": sid, "suggested": r["suggested"], "rejected_quotes": r["rejected_quotes"], "windows": n})

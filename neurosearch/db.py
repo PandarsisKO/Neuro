@@ -280,6 +280,30 @@ CREATE TABLE IF NOT EXISTS batch_items (
 CREATE INDEX IF NOT EXISTS ix_batch_items_job ON batch_items(job_id, cohort_no);
 CREATE INDEX IF NOT EXISTS ix_batch_items_batch ON batch_items(batch_id);
 
+CREATE TABLE IF NOT EXISTS window_decisions (
+    id             INTEGER PRIMARY KEY,
+    project_id     TEXT NOT NULL,
+    source_id      TEXT NOT NULL,
+    window_index   INTEGER NOT NULL,
+    windows        INTEGER NOT NULL,
+    input_hash     TEXT NOT NULL,             -- window text + brief revision + prefilter prompt/schema/model: any change re-evaluates
+    decision       TEXT NOT NULL,             -- keep | uncertain | drop
+    reason         TEXT,
+    fail_open      TEXT,                      -- NULL when the model decided; else why the decision fell open to 'uncertain'
+    model          TEXT,                      -- model as returned (provenance)
+    configured_model TEXT,
+    prompt_version TEXT,
+    schema_version TEXT,
+    window_chars   INTEGER,
+    sample_chars   INTEGER,                   -- how much of the window the filter read
+    input_tokens   INTEGER,
+    output_tokens  INTEGER,
+    cost           REAL,
+    created_at     REAL NOT NULL,
+    UNIQUE(project_id, source_id, window_index, input_hash)
+);
+CREATE INDEX IF NOT EXISTS ix_window_decisions_src ON window_decisions(project_id, source_id);
+
 CREATE TABLE IF NOT EXISTS validation_events (
     id          INTEGER PRIMARY KEY,
     ts          REAL NOT NULL,
@@ -398,6 +422,7 @@ MIGRATIONS = [
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
     ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),
+    ("project_source_analysis", "prefilter", "ALTER TABLE project_source_analysis ADD COLUMN prefilter TEXT"),
 ]
 
 
@@ -1384,7 +1409,7 @@ def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **field
     """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
     assert analysis_kind in ANALYSIS_KINDS, analysis_kind
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter"}
     f = {k: v for k, v in fields.items() if k in allowed}
     f.setdefault("status", "current")
     t = now()
@@ -1627,7 +1652,7 @@ def health() -> dict[str, Any]:
     leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
                                                           "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused",
-                                                          "retrieval_degraded")}
+                                                          "retrieval_degraded", "prefilter_keep", "prefilter_uncertain", "prefilter_drop", "prefilter_fail_open", "prefilter_aggressive")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -1643,6 +1668,9 @@ def health() -> dict[str, Any]:
             "structured_outputs": {"mismatches": ev["schema_mismatches"], "mismatches_recovered_by_retry": ev["schema_mismatch_recovered"],
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
+            "prefilter": {"enabled": bool(settings.findings_prefilter), "keep": ev["prefilter_keep"], "uncertain": ev["prefilter_uncertain"], "drop": ev["prefilter_drop"],
+                          "fail_open": ev["prefilter_fail_open"], "aggressive_sources_flagged": ev["prefilter_aggressive"],
+                          "note": "drop is the only outcome that skips analysis; aggressive = a source lost ≥80% of ≥3 windows (flagged, never overridden)"},
             "evidence": {**ev,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
@@ -2218,6 +2246,29 @@ def delete_conversation(conversation_id: str) -> None:
 
 
 # ------------------------------------------------------------------ Rung G: batch cohorts (logical work items → provider batch, mapped by custom_id)
+
+# ------------------------------------------------------------------ findings window pre-filter decisions (H1)
+
+def window_decision_get(project_id: str, source_id: str, window_index: int, input_hash: str) -> dict[str, Any] | None:
+    r = connect().execute("SELECT * FROM window_decisions WHERE project_id=? AND source_id=? AND window_index=? AND input_hash=?",
+                          (project_id, source_id, window_index, input_hash)).fetchone()
+    return row_to_dict(r) if r else None
+
+
+def window_decision_put(d: dict[str, Any]) -> None:
+    cols = ("project_id", "source_id", "window_index", "windows", "input_hash", "decision", "reason", "fail_open", "model", "configured_model",
+            "prompt_version", "schema_version", "window_chars", "sample_chars", "input_tokens", "output_tokens", "cost")
+    with tx() as conn:
+        conn.execute(f"INSERT INTO window_decisions ({', '.join(cols)}, created_at) VALUES ({', '.join('?' * len(cols))}, ?) "
+                     "ON CONFLICT(project_id, source_id, window_index, input_hash) DO UPDATE SET decision=excluded.decision, reason=excluded.reason, "
+                     "fail_open=excluded.fail_open, model=excluded.model, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, cost=excluded.cost",
+                     (*[d.get(c) for c in cols], now()))
+
+
+def window_decisions(project_id: str, source_id: str | None = None) -> list[dict[str, Any]]:
+    q = "SELECT * FROM window_decisions WHERE project_id=?" + (" AND source_id=?" if source_id else "") + " ORDER BY source_id, window_index, created_at"
+    return [row_to_dict(r) for r in connect().execute(q, (project_id, source_id) if source_id else (project_id,)).fetchall()]  # type: ignore[misc]
+
 
 def batch_items_add(job_id: str, cohort_no: int, items: list[dict[str, Any]]) -> None:
     with tx() as conn:

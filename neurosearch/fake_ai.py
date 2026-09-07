@@ -261,6 +261,37 @@ def _rank(user: str, system: str = "") -> str:
     return json.dumps({"scores": out})
 
 
+_PREFILTER_STOP = set("first days goal water know next find using much like done down away life light exact fair cover bring decide whether must looks months "
+                      "questions rules source starting brief what when where which while would could should about after before other things thing every "
+                      "still really little great never always people something going".split())
+
+
+def _prefilter(user: str, system: str = "") -> str:
+    """Lexical stand-in for the H1 window pre-filter: how densely the window uses the project head's content words.
+    Conservative like the real prompt: 'drop' only when the window barely touches the brief's vocabulary; a single
+    passage that does (a buried nugget) makes it 'uncertain'. NEUROSEARCH_FAKE_PREFILTER=drop_all|bad_json|refuse|error
+    exercise the anomaly signal and the fail-open paths."""
+    mode = os.environ.get("NEUROSEARCH_FAKE_PREFILTER", "")
+    if mode == "drop_all":
+        return json.dumps({"decision": "drop", "reason": "simulated overconfident filter"})
+    if mode == "bad_json":
+        return "{not json"
+    head = system[system.find("PROJECT:"):] if "PROJECT:" in system else ""
+    head = head.split("\nSOURCE:", 1)[0]                                     # the brief's vocabulary, not the source's title
+    words = lambda t: {w for w in re.findall(r"[a-z][a-z0-9\-]{3,}", t.lower()) if w not in _RANK_STOP and w not in _PREFILTER_STOP}  # noqa: E731
+    vocab = words(head)
+    body = user.split("\n", 1)[1] if "\n" in user else user
+    lines = [ln for ln in body.split("\n") if ln.strip()]
+    hits_per_line = [len(vocab & words(ln)) for ln in lines]
+    strong = sum(1 for h in hits_per_line if h >= 2)          # lines that clearly speak the brief's language
+    weak = sum(1 for h in hits_per_line if h == 1)
+    if strong == 0 and weak <= max(2, len(lines) // 40):
+        return json.dumps({"decision": "drop", "reason": "different subject throughout; no passage touches the brief"})
+    if strong >= max(3, len(lines) // 10):
+        return json.dumps({"decision": "keep", "reason": "clearly addresses the brief's topics"})
+    return json.dumps({"decision": "uncertain", "reason": "mostly unrelated but at least one passage may matter"})
+
+
 DISCOVER_QUICK = {"sources": [
     {"name": "Dave Ramsey", "kind": "youtube_channel", "url": "https://www.youtube.com/@TheRamseyShow", "gist": "debt-free budgeting basics",
      "why": "The most-cited mainstream voice on getting out of debt.", "angle": "Anti-debt absolutist; dismisses credit strategies.",
@@ -391,6 +422,13 @@ class _Msgs:
         elif task == "planner.analysis":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = json.dumps(_with_evidence(ANALYSIS, ids))
+        elif task == "findings.prefilter":
+            mode = os.environ.get("NEUROSEARCH_FAKE_PREFILTER", "")
+            if mode == "refuse":
+                return _Blk(stop_reason="refusal", model="fake-haiku", content=[], usage=_Blk(input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+            if mode == "error":
+                raise RuntimeError("simulated provider outage")
+            text = _prefilter(user, system)
         elif task == "planner.update":
             text = _updates(user)
         elif task == "planner.build":

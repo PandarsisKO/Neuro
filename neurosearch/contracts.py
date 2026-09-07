@@ -54,6 +54,7 @@ class InferenceContract:
 
 RANK_MODEL = "claude-sonnet-5"       # rank.relevance production model (E2.1)
 FINDINGS_MODEL = "claude-sonnet-5"   # findings.extract production model (E2.2); every other task still follows settings.answer_model
+PREFILTER_MODEL = "claude-haiku-4-5"  # findings.prefilter (H1): the cheap conservative rejection filter — NEVER the extractor; env override NEUROSEARCH_TASK_MODEL_FINDINGS_PREFILTER
 
 
 def _m() -> str:
@@ -71,6 +72,10 @@ def _base() -> dict[str, InferenceContract]:
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",
                           notes="per transcript window; quote validator gates the output; Sonnet 5 since E2.2"),
+        # H1 (0.21.0): window pre-filter — three-way keep/uncertain/drop, fails open; small output, short timeout, no fallback
+        InferenceContract("findings.prefilter", "anthropic", PREFILTER_MODEL, thinking="disabled", max_output_tokens=200, max_output_ceiling=300, timeout=60.0,
+                          max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="prefilter-v1",
+                          notes="conservative rejection filter before findings.extract; any failure → uncertain (fail open); off unless NEUROSEARCH_FINDINGS_PREFILTER=1"),
         # migrated E2.1 (0.18.0-e2.2): 4.6-vs-5 comparison on the frozen ranking fixture passed — thinking explicitly off,
         # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, max_output_ceiling=9000, batch_allowed=True, schema="rank-v2",

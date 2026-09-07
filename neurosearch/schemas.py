@@ -122,8 +122,22 @@ DISCOVERY_V2: dict[str, Any] = {
     },
 }
 
+# Rung H1 — the findings window pre-filter answers ONE question: does this transcript window have ANY plausible value to
+# the project's research brief? Three outcomes; only DROP has a cost (the window is not analysed). It never extracts.
+PREFILTER_V1: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": ["keep", "uncertain", "drop"],
+                     "description": "keep = clearly has plausible value for the brief; uncertain = cannot rule value out (analyse it); drop = confidently no plausible value at all"},
+        "reason": {"type": "string", "maxLength": 200, "description": "one short sentence"},
+    },
+    "required": ["decision", "reason"],
+    "additionalProperties": False,
+}
+
 REGISTRY: dict[str, dict[str, Any]] = {
     "findings-v2": FINDINGS_V2,
+    "prefilter-v1": PREFILTER_V1,
     "rank-v2": RANK_V2,
     "plan-update-v2": PLAN_UPDATE_V2,
     "discovery-v2": DISCOVERY_V2,

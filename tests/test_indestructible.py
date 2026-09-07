@@ -946,3 +946,128 @@ def test_cache_layout_measurement_and_savings(monkeypatch):
     assert new_conv["cache_write"] == 0 and tail_on["cache_write"] > 0 and tail_on["cache_read"] == new_conv["cache_read"]
     assert new_conv["input_cost_index"] < tail_on["input_cost_index"] and new_conv["total_input_tokens"] == tail_on["total_input_tokens"]   # content identical either way
     assert all(t["write"] == 0 for t in chat[1:]) and chat[0]["write"] > 0                                     # only the stable prefix is ever written
+
+
+# ---------------------------------------------------------------- Rung H1: findings window pre-filter
+
+def test_prefilter_off_by_default_changes_nothing(monkeypatch):
+    from neurosearch import findings, prefilter
+    pid, ids = _golden(monkeypatch)
+    assert not prefilter.enabled()
+    project, src = db.get_project(pid), db.get_source(ids["yt03"])
+    windows = findings._windows(db.get_segments(src["id"]), src["platform"])
+    kept, summary = findings.window_plan(project, src, windows)
+    assert kept == {0, 1} and summary is None and db.window_decisions(pid) == []
+    r = findings.suggest_for_source(pid, ids["yt03"])
+    assert r["prefilter"] is None and db.get_analysis(pid, ids["yt03"], "summary").get("prefilter") is None
+
+
+def test_prefilter_eval_gates_and_economics(monkeypatch):
+    """The labeled fixture: whole-window mode must pass every hard gate and actually save money; the sampled mode is
+    reported as an experiment and the gates must CATCH its buried-nugget miss (that is what the gates are for)."""
+    from neurosearch import prefilter_eval
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    rep = prefilter_eval.run(progress=lambda m: None)
+    assert rep["fixture"]["windows"] == 16 and rep["fixture"]["relevant_windows"] == 10 and rep["fixture"]["nuggets"] == 12
+    whole = rep["modes"]["whole window"]
+    assert whole["pass"] and whole["recall"] == 1.0 and not whole["false_negatives"] and not whole["unreachable_nuggets"] and not whole["lost_relevant_sources"]
+    assert whole["decisions"]["drop"] >= 5 and whole["windows_dropped_share"] >= 0.3 and whole["tokens_dropped_share"] >= 0.4
+    assert whole["net_saved"] > 0 and whole["leverage"] > 1.0 and whole["filter_cost"] > 0 and whole["fail_open"] == 0
+    assert whole["filtered_evidence_recall"] >= rep["unfiltered_evidence_recall"]
+    assert whole["per_source"]["tangent"]["decisions"] == ["uncertain"]                        # the buried nugget: not dropped
+    assert whole["per_source"]["mixed"]["decisions"][1] == "keep" and whole["per_source"]["beekeeping"]["decisions"] == ["drop", "drop"]
+    prov = whole["provenance_example"]
+    assert prov and prov["drop"] == 2 and prov["configured_model"] == "claude-haiku-4-5" and prov["prompt_version"].startswith("prefilter-") and prov["schema_version"] == "prefilter-v1"
+    sampled = rep["modes"]["sampled 8,000 chars"]
+    assert not sampled["pass"] and sampled["false_negatives"] == [{"source": "tangent", "window": 0}] and sampled["leverage"] > whole["leverage"]
+    assert rep["pass"] and rep["production_mode"] == "whole window"
+
+
+def test_prefilter_fails_open_on_every_failure_kind(monkeypatch):
+    from neurosearch import findings, prefilter
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setattr(settings, "findings_prefilter", True)
+    project, src = db.get_project(pid), db.get_source(ids["sourdough"])
+    windows = findings._windows(db.get_segments(src["id"]), src["platform"])
+    for mode, expect in (("error", "outage"), ("bad_json", "conform"), ("refuse", "REFUSED")):
+        monkeypatch.setenv("NEUROSEARCH_FAKE_PREFILTER", mode)
+        db.connect().execute("DELETE FROM window_decisions"); db.connect().commit()
+        rows = prefilter.decide_windows(project, src, windows)
+        assert rows[0]["decision"] == "uncertain" and rows[0]["fail_open"] and expect in rows[0]["fail_open"], (mode, rows[0]["fail_open"])
+        kept, summary = findings.window_plan(project, src, windows)
+        assert kept == {0} and summary["fail_open"] == 1 and summary["drop"] == 0
+    monkeypatch.delenv("NEUROSEARCH_FAKE_PREFILTER")
+    h = db.health()["prefilter"]
+    assert h["fail_open"] >= 3 and h["enabled"] is True
+    assert db.connect().execute("SELECT COUNT(*) FROM validation_events WHERE kind='prefilter_fail_open'").fetchone()[0] >= 3
+
+
+def test_prefilter_aggressive_source_is_flagged_not_overridden(monkeypatch):
+    from neurosearch import findings, prefilter
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setattr(settings, "findings_prefilter", True)
+    monkeypatch.setattr(prefilter, "ANOMALY_MIN_WINDOWS", 2)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_PREFILTER", "drop_all")
+    project, src = db.get_project(pid), db.get_source(ids["yt03"])
+    windows = findings._windows(db.get_segments(src["id"]), src["platform"])
+    kept, summary = findings.window_plan(project, src, windows)
+    assert kept == set() and summary["drop"] == 2                                            # the decision stands (no hidden quota)…
+    ev = db.connect().execute("SELECT detail FROM validation_events WHERE kind='prefilter_aggressive'").fetchall()
+    assert len(ev) == 1 and db.health()["prefilter"]["aggressive_sources_flagged"] == 1       # …but it is flagged where a person will see it
+
+
+def test_prefilter_decisions_are_durable_and_invalidated_by_filter_changes(monkeypatch):
+    from neurosearch import fake_ai, findings, prefilter
+    pid, ids = _golden(monkeypatch)
+    project, src = db.get_project(pid), db.get_source(ids["yt01"])
+    windows = findings._windows(db.get_segments(src["id"]), src["platform"])
+    n0 = len(fake_ai.CACHE_LOG)
+    a = prefilter.decide(project, src, 0, 1, windows[0])
+    b = prefilter.decide(project, src, 0, 1, windows[0])
+    assert a["decision"] == "keep" and not a["cached"] and b["cached"] and len(fake_ai.CACHE_LOG) == n0 + 1      # same inputs: stored row, no second call
+    monkeypatch.setattr(prefilter, "SYSTEM", prefilter.SYSTEM + "\n(revised)")
+    c = prefilter.decide(project, src, 0, 1, windows[0])
+    assert not c["cached"] and c["input_hash"] != a["input_hash"] and c["prompt_version"] != a["prompt_version"]        # prompt change → re-evaluated
+    monkeypatch.setenv("NEUROSEARCH_TASK_MODEL_FINDINGS_PREFILTER", "claude-haiku-4-6")
+    d = prefilter.decide(project, src, 0, 1, windows[0])
+    assert not d["cached"] and d["configured_model"] == "claude-haiku-4-6" and d["input_hash"] != c["input_hash"]     # model change → re-evaluated
+    monkeypatch.delenv("NEUROSEARCH_TASK_MODEL_FINDINGS_PREFILTER")
+    db.update_project(pid, brief="A completely different brief about beekeeping")
+    e = prefilter.decide(db.get_project(pid), src, 0, 1, windows[0])
+    assert not e["cached"] and e["input_hash"] not in (a["input_hash"], c["input_hash"])                              # brief change → re-evaluated
+    assert len(db.window_decisions(pid, src["id"])) == 4
+
+
+def test_prefilter_batch_path_skips_dropped_windows_and_keeps_provenance(monkeypatch):
+    """Batch transport with the filter on: dropped windows are never submitted; a source whose windows are
+    non-contiguous after filtering still materialises; provenance carries the filter summary."""
+    from neurosearch import findings, prefilter_eval
+    pid, gids = _golden(monkeypatch)
+    lab = prefilter_eval.load_labeled(pid, gids)
+    ids = lab["ids"]
+    monkeypatch.setattr(settings, "findings_prefilter", True)
+    items = findings.batch_requests(pid, ids["mixed"])
+    assert [it["window_index"] for it in items] == [1] and items[0]["windows"] == 1 and items[0]["prefilter"]["drop"] == 1 and items[0]["prefilter"]["keep"] == 1
+    assert findings.batch_requests(pid, ids["beekeeping"]) == []                            # everything dropped: nothing to submit
+    j = db.create_job("suggest_findings_batch", {"project_id": pid, "source_ids": [ids["mixed"], ids["tangent"], ids["beekeeping"]]})
+    sim = crashkit.Sim(); sim.run_until_idle()
+    jj = db.get_job(j["id"])
+    assert jj["status"] == "done" and jj["result"]["items"] == 2 and jj["result"]["done"] == 2
+    an = db.get_analysis(pid, ids["mixed"], "summary")
+    pf = __import__("json").loads(an["prefilter"])
+    assert an["transport"] == "batch" and pf["windows"] == 2 and pf["drop"] == 1 and pf["keep"] == 1
+    assert db.get_analysis(pid, ids["beekeeping"], "summary") is None                       # never analysed, never claimed current
+    notes = db.list_project_notes(pid, status="suggested")
+    assert any(n["source_id"] == ids["mixed"] for n in notes)
+
+
+def test_prefilter_fixture_is_frozen():
+    """The generated labeled-window fixture still produces exactly the labeled windows (regenerate labels if not)."""
+    import json as _json
+    from pathlib import Path
+    from neurosearch import prefilter_eval
+    labels = _json.loads((prefilter_eval.PREFILTER_DIR / "labels.json").read_text())
+    assert [s["id"] for s in labels["sources"]] == ["beekeeping", "marathon", "mixed", "tangent"] and labels["version"] == 1
+    assert sum(len(s["relevant"]) for s in labels["sources"]) == 6 and sum(len(v) for v in labels["golden"].values()) == 10
+    for s in labels["sources"]:
+        assert (prefilter_eval.PREFILTER_DIR / s["file"]).exists()

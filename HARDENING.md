@@ -16,7 +16,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
-| H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | |
+| H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built under fakes (0.21.0+h1)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) — 100% recall / 12/12 nuggets reachable on the labeled fixture, 38% of windows and 57% of extractor tokens skipped, net +24.5% of extractor cost at 1.93× leverage (whole-window mode); ranking agreement deferred by decision (ranking is cheap and performing) |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
@@ -149,6 +149,45 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
+
+## Rung H — cut cost intelligently (H1 findings pre-filter built under fakes, 0.21.0+h1; not yet enabled, no live run)
+Scope decision (Kyle): the findings window pre-filter first — findings carries large transcript windows into Sonnet 5; ranking is
+cheap and performing, so two-pass ranking agreement is deferred. Design: a conservative REJECTION filter, never a findings
+generator, never a source-quality score. `findings.prefilter` contract (`contracts.PREFILTER_MODEL` claude-haiku-4-5, thinking off,
+200 output tokens, schema `prefilter-v1` = {decision: keep|uncertain|drop, reason}) answers one question per window: does this
+window have ANY plausible value to the brief? keep → findings.extract · uncertain → findings.extract · drop → skipped. Any
+provider error, timeout, refusal, truncation, malformed/invalid output or unexpected exception fails OPEN to `uncertain` (event
+`prefilter_fail_open`, kv counter, Health). Off unless NEUROSEARCH_FINDINGS_PREFILTER=1; the unfiltered path is the rollback;
+findings.extract itself is untouched (Sonnet 5 remains the extractor). Auto-analysis, interactive and batch transports all go
+through `findings.window_plan` → kept window indexes keep their original numbering (custom_ids and prompts of kept windows are
+byte-identical to the unfiltered path; a batch source with non-contiguous kept windows materialises normally).
+Provenance + invalidation: `window_decisions` rows keyed by input hash = window text + brief revision + prompt version + schema +
+configured model + sample size (a change to any re-evaluates; same inputs reuse the stored row, no second call); decision, reason,
+fail-open reason, configured/returned model, tokens, cost; the analysis row's `prefilter` column summarises keep/uncertain/drop/
+fail_open/model/prompt/schema/cost per source. Anomaly signal: a source losing ≥80% of ≥3 windows → `prefilter_aggressive` event +
+counter → Health `prefilter.aggressive_sources_flagged` (flagged, never overridden — no hidden quota).
+Labeled window fixture (`tests/fixtures/golden/prefilter/`, generated by build.py, frozen by test): the golden project's 10 windows
+(vlog + sourdough irrelevant) + beekeeping (2 long irrelevant windows), marathon (1 long irrelevant), mixed (window 0 restaurant
+marketing = irrelevant; window 1 the owner's acquisition story with a planted seller-transition nugget), tangent (one 28k-char window
+that is 95% rambling with ONE buried working-capital-peg nugget — the hard recall case). 16 windows, 10 relevant, 12 planted
+nuggets (10 golden + 2 new), 348k chars. Gates on this small fixture are absolute — 100% relevant-window recall, 0 false negatives,
+every nugget's window kept, no relevant source emptied, evidence recall with the filter ≥ without — and are NOT a statistical
+99% claim; the labeled set grows before that is said.
+`neurosearch eval --prefilter` (fakes; the fake filter is lexical on the brief's vocabulary and blind to the labels — it reads only the
+prompt) measures per mode: keep/uncertain/drop, fail-open, recall, FN, nuggets reachable, sources emptied, windows and extractor
+tokens skipped, filter tokens/cost (Haiku list price), avoided extractor cost (Sonnet 5 list price incl. ~600 output tokens/window),
+NET saved, leverage = avoided / filter cost, evidence recall with the filter, returned model, contract provenance. Verdict = the
+production mode (`prefilter.SAMPLE_CHARS`, default 0 = whole window); other modes are experiments.
+Measured (0.21.0+h1, fakes):
+  whole window (production): keep 7 · uncertain 3 · drop 6 · fail-open 0 · recall 100% · FN 0 · nuggets 12/12 reachable · windows
+    skipped 6/16 (38%) · extractor input tokens avoided 56,952/99,222 (57%) · filter $0.0778 · avoided $0.1499 · NET +$0.0721
+    (+24.5% of the unfiltered $0.2944) · leverage 1.93× · tangent → uncertain (kept), mixed → [drop, keep], beekeeping → [drop, drop]. PASS.
+  sampled 8,000 chars (experiment): drop 7 · recall 90% · the buried tangent nugget is MISSED (FN 1) · net +50.4% · leverage 7.33×. FAIL —
+    the gates catch exactly the failure sampling introduces; sampling is not a production option unless recall holds on a larger fixture.
+Economics to keep in mind before a live comparison: reading the whole window costs 0.4× the extractor's input price (Haiku $0.8 vs
+Sonnet 5 $2.0 per Mtok), so the whole-window filter only pays when roughly ≥30–40% of extractor tokens are irrelevant — bulk
+channel/playlist ingests, not hand-picked sources. Net savings scale with the irrelevant share of the corpus, not with the filter.
+Not done: no live run (by decision until the fake numbers justify one); no UI beyond Health; ranking agreement deferred.
 
 ## Rung G — asynchronous / batched AI + cache layout (0.20.0 → 0.20.0+g5: COMPLETE)
 Abstraction: a logical work item = one findings window (`findings.batch_requests` → stable `custom_id`
