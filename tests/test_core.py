@@ -1740,3 +1740,168 @@ def test_findings_call_diagnostics_do_not_change_behaviour(monkeypatch):
     assert findings._last_call["parse"] == "failed" and findings._last_call["truncated"]
     monkeypatch.setattr(providers, "invoke", lambda *a, **k: R("no json here"))
     assert findings._call(findings.SYSTEM, "u", head="h") == {} and findings._last_call["parse"] == "no_json"
+
+
+# ------------------------------------------------------------------ E2.3 migration comparison (one command)
+
+def test_planner_rubric_is_frozen_and_deterministic():
+    import re as _re
+    from neurosearch import migration
+    rub = migration.load_rubric()
+    assert rub["version"] == 1 and len(rub["plan"]["checks"]) >= 20 and len(rub["analysis"]["checks"]) >= 8
+    for sec in ("plan", "analysis"):
+        ids = [c["id"] for c in rub[sec]["checks"]]
+        assert len(ids) == len(set(ids))
+        for c in rub[sec]["checks"]:
+            assert c["kind"] in ("risk", "assumption", "dependency", "first_step", "contradiction", "open_question", "completeness")
+            for p in c.get("any", []) + c.get("all", []):
+                _re.compile(p, _re.I)
+            assert c.get("any") or c.get("all")
+        kinds = {c["kind"] for c in rub[sec]["checks"]}
+        assert {"risk", "assumption", "contradiction", "completeness"} <= kinds
+    assert {"risk", "assumption", "dependency", "first_step", "contradiction", "open_question", "completeness"} == {c["kind"] for c in rub["plan"]["checks"]}
+    # deterministic scoring on a synthetic plan: the same document always scores the same, and sections are respected
+    plan = {"risks": [{"risk": "Customer concentration above 20% of revenue", "mitigation": "price it in or walk", "priority": "high"}] * 3,
+            "first_steps": [{"action": "Call two SBA lenders about a 10% equity injection"}] * 3,
+            "this_week": [{"action": "Call an SBA lender", "why": "financing gates everything", "time": "1h"}] * 3,
+            "open_questions": [{"question": "How much cash can you bring?", "research_prompt": "x"}] * 2,
+            "refine_questions": [{"question": "HVAC or manufacturing?", "why": "y"}] * 4, "phases": [{"name": "a", "objective": "b"}] * 2,
+            "dependencies": [{"item": "lender pre-qualification"}] * 2, "gotchas": [{"gotcha": "g", "avoid": "a"}] * 2,
+            "approach": {"recommended": "SBA 7(a) with a seller note on standby; the podcast's zero down seller financing path conflicts with the 10% injection rule", "basis": "research", "evidence": ["F1"]},
+            "costs": {"upfront": [{"item": "SBA guarantee fee", "amount": "3%"}], "evidence": []}}
+    r1 = migration.score_rubric(plan, rub["plan"]); r2 = migration.score_rubric(plan, rub["plan"])
+    assert r1 == r2 and 0 < r1["score"] < 1 and "risk.customer_concentration" not in r1["failed"] and "contradiction.zero_down_vs_injection" not in r1["failed"]
+    assert "risk.lease_assignment" in r1["failed"] and r1["structure"]["score"] == 1.0
+    assert migration.score_rubric({}, rub["plan"])["score"] == 0.0
+    # 'sections' matter: a risk mentioned only in the summary text does not satisfy a risks-section check
+    assert "risk.seller_transition" in migration.score_rubric({"goal": {"outcome": "seller transition"}}, rub["plan"])["failed"]
+    g = migration.grounding(plan)
+    assert g == {"research_items": 1, "grounded": 1, "fraction": 1.0, "evidence_refs": 1}
+
+
+def test_migration_verdict_rules():
+    """Planner: adaptive is recommended only when it measurably beats disabled; equal → disabled. Chat/export/update gates."""
+    import copy
+    from neurosearch import migration as M
+    inv = {"logical": 1, "attempts": 1, "by_state": {"completed": 1}, "outcome_unknown": 0, "returned_model": "claude-sonnet-5-20260601"}
+    inv46 = {**inv, "returned_model": "claude-sonnet-4-6-20260210"}
+    def task(rubric, struct=1.0, **kw):
+        base = {"present": True, "rubric": {"score": rubric, "passed": 10, "total": 20, "failed": [], "by_kind": {}, "structure": {"score": struct, "failed": []}},
+                "grounding": {"research_items": 5, "grounded": 5, "fraction": 1.0, "evidence_refs": 30}, "evidence_refs": 30, "dangling_after_removal": 0,
+                "truncated": 0, "parse_failed": 0, "json_repaired": 0, "output_chars": 8000, "output_tokens": 2000, "input_tokens": 100, "cache_read": 30000,
+                "cache_write": 0, "cost": 0.1, "thinking_tokens_est": 0, "thinking_blocks": 0, "seconds": 30.0, "invocations": dict(inv)}
+        base.update(kw); return base
+    def arm(rubric_a, rubric_b, returned=inv, **kw):
+        a = {"error": None, "seconds": 60.0, "tasks": {"planner.analysis": task(rubric_a, invocations=dict(returned)), "planner.build": task(rubric_b, invocations=dict(returned))},
+             "plan_evidence_dangling_raw": 0, "plan_evidence_refs_raw": 60, "usage": {"cost": 0.2}}
+        for k, v in kw.items():
+            a["tasks"]["planner.build"][k] = v
+        return a
+    metas = {"4.6": {"arm": "4.6", "model": "claude-sonnet-4-6"}, "5-disabled": {"arm": "5-disabled", "model": "claude-sonnet-5"}, "5-adaptive-medium": {"arm": "5-adaptive-medium", "model": "claude-sonnet-5"}}
+    arms = {"4.6": arm(0.7, 0.7, inv46), "5-disabled": arm(0.7, 0.7), "5-adaptive-medium": arm(0.7, 0.72)}
+    v = M.planner_verdict("planner.build", arms, metas)
+    assert v["verdict"] == "PASS" and not v["adaptive"]["recommended"] and v["recommended_setting"]["thinking"] == "disabled"
+    arms["5-adaptive-medium"] = arm(0.7, 0.85)
+    v = M.planner_verdict("planner.build", arms, metas)
+    assert v["adaptive"]["recommended"] and v["recommended_setting"] == {"model": "claude-sonnet-5", "thinking": "adaptive", "effort": "medium"} and "ADAPTIVE" in v["headline"]
+    arms["5-adaptive-medium"] = arm(0.7, 0.7, truncated=1)                        # adaptive fails a validity gate → never recommended
+    assert not M.planner_verdict("planner.build", arms, metas)["adaptive"]["recommended"]
+    arms["5-disabled"] = arm(0.7, 0.55)                                          # disabled arm regresses the rubric → FAIL keeps 4.6
+    v = M.planner_verdict("planner.build", arms, metas)
+    assert v["verdict"] == "FAIL" and v["recommended_setting"]["model"] == "claude-sonnet-4-6"
+    arms["5-disabled"] = arm(0.7, 0.65)                                          # within tolerance → caveat
+    assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "PASS_WITH_CAVEAT"
+    arms["5-disabled"] = arm(0.7, 0.7, json_repaired=1)                           # JSON repair the baseline did not need → FAIL
+    assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "FAIL"
+    arms["5-disabled"] = arm(0.7, 0.7, returned=inv46)                            # wrong returned model → FAIL
+    assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "FAIL"
+    # chat
+    chat = {"answers": 34, "failed_answers": 0, "citation_validity": 1.0, "answers_cite_expected_source": 0.9, "contradiction_surfaced": 1.0, "contradiction_questions": 3,
+            "gap_detection": 1.0, "gap_questions": 2, "offtopic_handled": 1.0, "repair_rounds": 1, "repairs_succeeded": 1, "answers_with_unrepaired_invalid_citations": 0,
+            "truncated_answers": 0, "tool_rounds": 2, "tool_calls": 2, "mean_answer_chars": 500, "s_per_answer": 6.0, "seconds": 200.0,
+            "invocations": dict(inv46), "repair_invocations": dict(inv46), "usage": {"cost": 0.8}}
+    c5 = copy.deepcopy(chat); c5["invocations"] = dict(inv); c5["repair_invocations"] = dict(inv)
+    cm = {"4.6": metas["4.6"], "5-disabled": metas["5-disabled"]}
+    ch, rp = M.chat_verdict({"4.6": chat, "5-disabled": c5}, cm)
+    assert ch["verdict"] == "PASS" and rp["verdict"] == "PASS"
+    c = copy.deepcopy(c5); c["contradiction_surfaced"] = 0.6667
+    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "PASS_WITH_CAVEAT"
+    c = copy.deepcopy(c5); c["contradiction_surfaced"] = 0.3333
+    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    c = copy.deepcopy(c5); c["citation_validity"] = 0.98; c["answers_with_unrepaired_invalid_citations"] = 1
+    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    c = copy.deepcopy(c5); c["truncated_answers"] = 1
+    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    c = copy.deepcopy(c5); c["repair_rounds"] = 2; c["repairs_succeeded"] = 1
+    ch, rp = M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)
+    assert ch["verdict"] == "PASS_WITH_CAVEAT" and rp["verdict"] == "FAIL"
+    c = copy.deepcopy(c5); c["mean_answer_chars"] = 900; c["usage"]["cost"] = 0.7            # wording/length differences are not failures
+    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "PASS"
+    # export
+    ex = {"words": 1200, "sections_present": 6, "sections_missing": [], "citation_links": 30, "given_links": 33, "link_coverage": 0.9, "n_invented_links": 0, "invented_links": [],
+          "truncated": 0, "empty": 0, "fallback_used": 0, "seconds": 20.0, "invocations": dict(inv46), "usage": {"cost": 0.05}}
+    e5 = copy.deepcopy(ex); e5["invocations"] = dict(inv)
+    assert M.export_verdict({"4.6": ex, "5-disabled": e5}, cm)["verdict"] == "PASS"
+    e = copy.deepcopy(e5); e["n_invented_links"] = 1; e["invented_links"] = ["https://x"]
+    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "FAIL"
+    e = copy.deepcopy(e5); e["sections_missing"] = ["Open questions"]
+    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "FAIL"
+    e = copy.deepcopy(e5); e["link_coverage"] = 0.8
+    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "PASS_WITH_CAVEAT"
+    # update
+    up = {"n_updates": 2, "addresses_new_finding": 1, "addresses_new_fact": 1, "well_formed": 1, "json_repaired": 0, "truncated": 0, "parse_failed": 0, "seconds": 10.0,
+          "invocations": dict(inv46), "usage": {"cost": 0.03}}
+    u5 = copy.deepcopy(up); u5["invocations"] = dict(inv)
+    assert M.update_verdict({"4.6": up, "5-disabled": u5}, cm)["verdict"] == "PASS"
+    u = copy.deepcopy(u5); u["addresses_new_finding"] = 0
+    assert M.update_verdict({"4.6": up, "5-disabled": u}, cm)["verdict"] == "FAIL"
+    u = copy.deepcopy(u5); u["addresses_new_fact"] = 0
+    assert M.update_verdict({"4.6": up, "5-disabled": u}, cm)["verdict"] == "PASS_WITH_CAVEAT"
+
+
+def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
+    """--migration-compare under the fakes: every arm sees identical inputs, project state is restored between arms,
+    env overrides are restored, all raw arms + the comparison are saved, one verdict per task, nothing migrated."""
+    import os
+    from neurosearch import contracts, migration
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    for t in ("PLANNER_ANALYSIS", "PLANNER_BUILD", "PLANNER_UPDATE", "EXPORT_SYNTHESIS", "ANSWER_CHAT", "ANSWER_REPAIR"):
+        for w in ("MODEL", "THINKING", "EFFORT"):
+            monkeypatch.delenv(f"NEUROSEARCH_TASK_{w}_{t}", raising=False)
+    out = tmp_path / "evals"
+    rep = migration.run_migration_compare(live=False, out_dir=out, progress=lambda m: None)
+    assert set(rep["summary"]) == {"planner.analysis", "planner.build", "planner.update", "export.synthesis", "answer.chat", "answer.repair"}
+    assert all(v != "FAIL" for v in rep["summary"].values()), rep["summary"]
+    assert set(rep["excluded"]) == {"discover.quick", "discover.verify"}
+    p = rep["arms"]["planner"]
+    assert set(p) == {"4.6", "5-disabled", "5-adaptive-medium"}
+    assert p["4.6"]["meta"]["contracts"]["planner.build"]["model"] == "claude-sonnet-4-6" and p["5-disabled"]["meta"]["contracts"]["planner.build"]["thinking"] == "disabled"
+    assert p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"] | {} == p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]
+    assert p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]["thinking"] == "adaptive" and p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]["effort"] == "medium"
+    # identical inputs: the same fake sees the same prompt in every arm (same input tokens, same rubric)
+    for t in ("planner.analysis", "planner.build"):
+        toks = {k: v["tasks"][t]["input_tokens"] + v["tasks"][t]["cache_read"] + v["tasks"][t]["cache_write"] for k, v in p.items()}
+        assert len(set(toks.values())) == 1, toks
+        assert len({v["tasks"][t]["rubric"]["score"] for v in p.values()}) == 1
+        assert not rep["verdicts"][t]["adaptive"]["recommended"] and rep["verdicts"][t]["recommended_setting"]["thinking"] == "disabled"
+    c = rep["arms"]["answer.chat"]
+    assert c["4.6"]["usage"]["input_tokens"] == c["5-disabled"]["usage"]["input_tokens"] == 97746 and c["4.6"]["answers"] == 34
+    assert c["4.6"]["citation_validity"] == 1.0 and c["4.6"]["truncated_answers"] == 0
+    e = rep["arms"]["export.synthesis"]
+    assert e["4.6"]["sections_present"] == 6 and e["4.6"]["n_invented_links"] == 0 and e["4.6"]["link_coverage"] == 1.0 and e["4.6"]["usage"]["input_tokens"] == e["5-disabled"]["usage"]["input_tokens"]
+    u = rep["arms"]["planner.update"]
+    assert u["4.6"]["input_tokens"] == u["5-disabled"]["input_tokens"] and u["4.6"]["well_formed"] == 1
+    # state restored: no plans, no leftover notes/facts beyond the shared approved findings
+    pid = rep["project_id"]
+    assert db.latest_plan(pid) is None and not db.list_facts(pid)
+    assert len(db.list_project_notes(pid)) == rep["shared_inputs"]["approved_findings"]
+    # env + contracts untouched
+    assert not any(k.startswith("NEUROSEARCH_TASK_") and ("PLANNER" in k or "ANSWER" in k or "EXPORT" in k) for k in os.environ)
+    assert contracts.contract("answer.chat").model == settings.answer_model == "claude-sonnet-4-6" and contracts.contract("planner.build").model == settings.answer_model
+    assert rep["spend_estimate"]["maximum"] > rep["spend_estimate"]["estimate"] > 1.0 and db.kv_get("daily_budget") == str(rep["spend_estimate"]["budget"])
+    names = {pathlib.Path(f).name for f in rep["files"]}
+    assert {"planner-4.6.json", "planner-5-disabled.json", "planner-5-adaptive-medium.json", "planner.update-4.6.json", "planner.update-5-disabled.json",
+            "export.synthesis-4.6.json", "export.synthesis-5-disabled.json", "answer.chat-4.6.json", "answer.chat-5-disabled.json", "comparison.json", "comparison.txt"} <= names
+    assert "RECOMMENDATIONS (nothing was changed" in rep["text"] and "== answer.repair" in rep["text"] and "expected spend" in rep["text"]
+    assert all(v.get("production_default_changed") is False for v in rep["verdicts"].values())

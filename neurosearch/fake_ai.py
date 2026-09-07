@@ -167,6 +167,20 @@ _RANK_STOP = {"that", "this", "with", "from", "have", "what", "when", "will", "y
               "need", "needs", "want", "best", "videos", "video", "project", "score", "scores", "relevance", "relevant"}
 
 
+def _synthesis(user: str) -> str:
+    """A masterplan with the required sections, quoting the findings it was given and preserving their citation
+    links verbatim (never inventing one) — content-aware so the export eval can check grounding."""
+    name = (re.search(r"Project name:\s*(.+)", user) or re.search(r"(.+)", user)).group(1).strip()
+    brief = (re.search(r"<brief>\s*(.*?)\s*</brief>", user, re.S) or re.search(r"(.{0,200})", user)).group(1).strip()
+    finds = re.findall(r"^- (.+?)\n\s+(\[[^\]]+\]\([^)]+\)(?:\s*\[[^\]]+\]\([^)]+\))*)", user, re.M)
+    insights = "\n".join(f"- {f[:160]} {links}" for f, links in finds) or "- (no findings yet)"
+    return (f"# {name} — Masterplan\n\n## Purpose\n{brief}\n\n## Executive summary\nThe research covers the brief above. "
+            f"{len(finds)} findings were reviewed. The main themes are financing, valuation and diligence. Each insight below keeps its citation. "
+            f"Nothing here goes beyond the material.\n\n## Key insights\n{insights}\n\n## Recommended actions / how to use these insights\n"
+            f"Start with the financing rules, then valuation, then the diligence checklist.\n\n## Open questions and gaps\n"
+            f"Anything the findings do not cover is still open.\n\n## How to continue\nAdd lender interviews and broker calls as sources.\n")
+
+
 def _rank(user: str, system: str = "") -> str:
     """Lexical stand-in for the ranker: a candidate scores by how many content words of the project head (brief, goal,
     questions) appear in its title/description. Deterministic, content-aware, and blind to the fixture's answer key."""
@@ -240,7 +254,7 @@ class _Msgs:
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = "```json\n" + json.dumps(_with_evidence(PLAN, ids)) + "\n```"
         elif task == "export.synthesis":
-            text = "# Plan\n\nSynthesized."
+            text = _synthesis(user)
         else:
             text = _answer(system, messages, task)
         # token accounting, including a simulated prompt cache

@@ -124,6 +124,9 @@ def queue_urls(urls: list[str], project_id: str | None) -> list[dict[str, Any]]:
     return out
 
 
+OBSERVER: Any = None      # evals hook: one dict per provider call (task, round, stop_reason, tools, model); never changes behaviour
+
+
 def ask(
     question: str,
     project_id: str | None = None,
@@ -220,6 +223,9 @@ def ask(
             usage.record_anthropic(resp, "answer", project_id=project_id)
         except Exception:  # noqa: BLE001
             pass
+        if OBSERVER:
+            OBSERVER({"task": "answer.chat", "round": _round + 1, "stop_reason": getattr(resp, "stop_reason", None),
+                      "tools": [b.name for b in resp.content if getattr(b, "type", None) == "tool_use"], "model": getattr(resp, "model", None)})
         tool_results: list[dict[str, Any]] = []
         for block in resp.content:
             btype = getattr(block, "type", None)
@@ -261,6 +267,9 @@ def ask(
             usage.record_anthropic(resp2, "answer", project_id=project_id)
             repaired = providers.text_of(resp2).strip()
             v2, inv2 = check_citations(repaired + " " + " ".join(pending_findings), len(hits))
+            if OBSERVER:
+                OBSERVER({"task": "answer.repair", "stop_reason": getattr(resp2, "stop_reason", None), "model": getattr(resp2, "model", None),
+                          "originally_invalid": invalid, "still_invalid": inv2, "success": bool(repaired and not inv2)})
             if repaired and not inv2:
                 validation = {"repaired": True, "originally_invalid": invalid}
                 db.validation_event("citation_repaired", {"invalid": invalid}, project_id=project_id)

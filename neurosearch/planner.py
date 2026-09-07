@@ -209,18 +209,36 @@ def _repair_json(text: str) -> str:
     raise RuntimeError("planner returned JSON that could not be repaired")
 
 
+OBSERVER: Any = None                 # evals hook: one dict per model call + one per JSON parse; never changes behaviour
+_last_call: dict[str, Any] = {}
+
+
+def _observe(**ev: Any) -> None:
+    if OBSERVER:
+        OBSERVER(ev)
+
+
 def _parse_json(text: str) -> dict[str, Any]:
     text = text.strip()
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     start, end = text.find("{"), text.rfind("}")
     if start < 0:
+        _observe(event="parse", task=_last_call.get("task"), ok=False, repaired=False)
         raise RuntimeError("planner returned no JSON")
     body = text[start:end + 1] if end > start else text[start:]
     try:
-        return json.loads(body)
+        out = json.loads(body)
+        _observe(event="parse", task=_last_call.get("task"), ok=True, repaired=False)
+        return out
     except ValueError:
         log.warning("planner: repairing malformed/truncated JSON (%d chars)", len(body))
-        return json.loads(_repair_json(text[start:]))
+        try:
+            out = json.loads(_repair_json(text[start:]))
+        except Exception:
+            _observe(event="parse", task=_last_call.get("task"), ok=False, repaired=True)
+            raise
+        _observe(event="parse", task=_last_call.get("task"), ok=True, repaired=True)
+        return out
 
 
 def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any = None, label: str = "writing",
@@ -240,6 +258,9 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     task = "planner.analysis" if system is ANALYSIS_SYSTEM else "planner.update" if system is UPDATE_SYSTEM else "planner.build"
     from .contracts import contract
     max_tokens = contract(task).max_output_tokens                 # the contract owns the output budget
+    _last_call.clear(); _last_call["task"] = task
+    import time as _time
+    t0 = _time.time()
     with providers.invoke(task, system=sys_blocks, messages=[{"role": "user", "content": user}], stream=True) as stream:
         for text in stream.text_stream:
             parts.append(text)
@@ -247,12 +268,19 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
             if progress and n % 2000 < len(text):
                 progress(None, f"{label}… {n // 4:,} tokens so far")
         final = stream.get_final_message()
+    cost = None
     try:
-        usage.record_anthropic(final, "plan")
+        cost = usage.record_anthropic(final, "plan")
     except Exception:  # noqa: BLE001
         pass
     if getattr(final, "stop_reason", None) == "max_tokens":
         log.warning("planner: output hit max_tokens (%d) — will repair", max_tokens)
+    u = getattr(final, "usage", None)
+    _observe(event="call", task=task, stop_reason=getattr(final, "stop_reason", None), truncated=getattr(final, "stop_reason", None) == "max_tokens",
+             model=getattr(final, "model", None), chars=n, seconds=round(_time.time() - t0, 2), cost=cost,
+             input_tokens=int(getattr(u, "input_tokens", 0) or 0), output_tokens=int(getattr(u, "output_tokens", 0) or 0),
+             cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0), cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+             thinking_blocks=sum(1 for b in (getattr(final, "content", None) or []) if getattr(b, "type", None) == "thinking"))
     return "".join(parts)
 
 
@@ -349,8 +377,10 @@ def suggest_updates(project_id: str) -> list[dict[str, Any]]:
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.S)
         s, e = text.find("["), text.rfind("]")
         updates = json.loads(text[s:e + 1]) if s >= 0 else []
+        _observe(event="parse", task="planner.update", ok=True, repaired=text[s:e + 1] != raw.strip() if s >= 0 else False, raw_updates=len(updates) if isinstance(updates, list) else None)
     except Exception as exc:  # noqa: BLE001
         log.warning("suggest_updates failed: %s", exc)
+        _observe(event="parse", task="planner.update", ok=False, repaired=False, error=str(exc)[:200])
         updates = []
     updates = [u for u in updates if isinstance(u, dict) and u.get("proposed")]
     db.add_plan_updates(plan["id"], updates)

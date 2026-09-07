@@ -122,6 +122,9 @@ given verbatim, e.g. [Title @ 12:34](https://...). Never invent facts not presen
 """
 
 
+_last_call: dict[str, Any] = {}      # diagnostics of the most recent synthesis call (evals); never changes behaviour
+
+
 def synthesize_masterplan(project_id: str) -> str:
     """Ask Claude to write the masterplan narrative from the brief, findings and Q&A history."""
     p = db.get_project(project_id)
@@ -158,6 +161,9 @@ def synthesize_masterplan(project_id: str) -> str:
     except Exception:  # noqa: BLE001
         pass
     text = providers.text_of(resp).strip()
+    _last_call.clear()
+    _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "model": getattr(resp, "model", None), "chars": len(text),
+                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "empty": not text})
     return text or _fallback_masterplan(p)
 
 

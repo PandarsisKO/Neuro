@@ -110,7 +110,26 @@ E2 SHADOW MIGRATION                            IN PROGRESS — one task at a tim
     thinking explicitly disabled, prompt findings-18b5db69 and max_out 4000 unchanged. Baseline evals/baseline-findings-*-sonnet-4-6.json and
     evals/findings-compare/* kept as the record. Regression test: test_migrated_contracts_are_sonnet_5_thinking_disabled (both migrated tasks
     send thinking={"type":"disabled"}, no effort; every other task still sends the plain 4.6 request shape).
-[ ] E2.3 remaining tasks — one command, per-task PASS / CAVEAT / FAIL (plan agreed with Kyle first; no default changes until each passes)
+[x] E2.3 tooling (0.18.0-e2.4): `neurosearch eval --migration-compare --live` — one command for every remaining task, identical frozen inputs
+    per arm (Golden ingested once, findings once on the production Sonnet 5 contract, approved; project state restored between arms), preflight
+    of both model ids, expected maximum spend printed first, eval-only budget written into the temporary DB (real budget untouched):
+      planner.analysis + planner.build   4.6 · 5 disabled · 5 adaptive/medium — frozen deterministic rubric tests/fixtures/golden/planner_rubric.json
+                                         (24 plan checks + 11 analysis checks: risks, assumptions, dependencies, first steps, contradictions, open
+                                         questions, completeness; structure minimums; grounding = research-basis items carrying evidence ids).
+                                         Adaptive is recommended ONLY if it beats disabled by ≥0.10 on the rubric, removes a failure mode
+                                         (truncation / JSON repair) or lifts completeness ≥0.25 — equal quality → disabled.
+      planner.update                     4.6 · 5 disabled — frozen current plan = the 4.6 arm's plan + one new lender finding + one user fact;
+                                         gate = the update addresses the new finding, well-formed JSON, no repair/truncation
+      export.synthesis                   4.6 · 5 disabled — gate = every citation link exists in the material, all six sections, no truncation
+      answer.chat (+ answer.repair)      4.6 · 5 disabled — hard gates: citation validity, cites-expected-source (−0.10), contradiction handling
+                                         and gap detection (losing 2 questions fails, 1 caveats), repair rounds (+2 fails), incomplete answers,
+                                         outcome_unknown, returned model; repair judged on repair success and migrates with chat
+      discover.quick / discover.verify   stay on 4.6 (no frozen exit test) — excluded
+    Saves evals/migration-compare/<stamp>-<sha>/{planner-*, planner.update-*, export.synthesis-*(.md), answer.chat-*, comparison.json, comparison.txt};
+    prints one PASS / PASS WITH CAVEAT / FAIL per task plus a recommended setting; changes nothing (contracts stay until migrated by hand).
+    Read-only observer hooks: qa.OBSERVER, planner.OBSERVER (+_parse_json events), export._last_call — Tier 1 byte-equal.
+[ ] E2.3 live: `neurosearch eval --migration-compare --live` → migrate the tasks that pass (one commit), then END the model-migration phase
+    and return to the hardening ladder (Rung F structured outputs onwards)
 [ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
