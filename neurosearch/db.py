@@ -1659,6 +1659,29 @@ def integrity_check() -> dict[str, Any]:
     return info
 
 
+def _flags_health() -> dict[str, Any]:
+    """Every experimental / rollback flag with its current value and whether it sits at the release's safe default."""
+    try:
+        from . import release
+        return release.flags_state()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:100]}
+
+
+def _last_release_check() -> dict[str, Any] | None:
+    """The most recent `neurosearch release-check` artifact (what passed, against which commit)."""
+    try:
+        d = Path(__file__).resolve().parent.parent / "evals" / "release"
+        files = sorted(d.glob("release-check-*.json"))
+        if not files:
+            return None
+        rep = json.loads(files[-1].read_text())
+        return {"verdict": rep.get("verdict"), "app_version": rep.get("app_version"), "git_sha": rep.get("git_sha"), "timestamp": rep.get("timestamp"),
+                "checks": len(rep.get("checks") or []), "artifact": files[-1].name}
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _provider_health() -> list[dict[str, Any]]:
     try:
         from . import breakers
@@ -1703,6 +1726,9 @@ def health() -> dict[str, Any]:
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
             "providers": _provider_health(),
+            "flags": _flags_health(),
+            "release": _last_release_check(),
+            "app_version": __import__("neurosearch").__version__,
             "network": {"fetch_blocked": ev["fetch_blocked"], "note": "J1 boundary: fetches refused (private/internal address, bad scheme, size, redirect or time limit); reasons in validation_events kind=fetch_blocked"},
             "rerank": {"enabled": bool(settings.retrieval_rerank), "applied": ev["rerank_applied"], "fallbacks": ev["rerank_fallback"],
                        "note": "I2 experiment: reorders retrieved candidates only; every failure restores the retrieval ordering"},

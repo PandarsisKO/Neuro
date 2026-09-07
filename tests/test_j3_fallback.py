@@ -171,3 +171,22 @@ def test_every_ai_artifact_and_invocation_carries_the_routing_audit():
     inv = conn.execute("SELECT fallback_used, fallback_policy_version, model, returned_model FROM invocations WHERE state='completed'").fetchall()
     assert inv and all(r["fallback_used"] == 0 and r["fallback_policy_version"] == "fallback-policy-v1" and r["model"] for r in inv)
     assert not any("fallback" in str(k).lower() and "auto" in str(k).lower() for k in dir(providers))    # no automatic fallback code path exists
+
+
+# ---------------------------------------------------------------- closeout commands
+
+def test_doctor_is_fast_and_release_check_writes_an_artifact(tmp_path, monkeypatch):
+    import time as _t
+    from neurosearch import release
+    t0 = _t.time()
+    d = release.doctor(progress=lambda m: None)
+    assert d["verdict"] in ("PASS", "FAIL") and d["kind"] == "doctor" and _t.time() - t0 < 30 and d["flags"]["NEUROSEARCH_PLANNER_V3"]["ok"]
+    assert any(c["check"].startswith("fake smoke") and c["result"] == "PASS" for c in d["checks"])
+    monkeypatch.setattr(settings, "fake_ai", False)                              # release-check requires production defaults, then runs its proofs under fakes itself
+    rc = release.release_check(progress=lambda m: None, out_dir=tmp_path, skip_pytest=True)
+    assert rc["verdict"] == "PASS" and rc["app_version"] and rc["timestamp"] and rc["git_sha"]
+    assert {c["check"] for c in rc["checks"]} >= {"experimental flags off by default", "Tier 1 gates PASS", "Tier 1 frozen totals unchanged (router-equivalence)",
+                                                    "retrieval regression baseline (fake tier) unchanged", "cache layout: input cost index below 1.0", "backup verified and restore round trip equal"}
+    art = json.loads(open(rc["artifact"]).read())
+    assert art["verdict"] == "PASS" and art["baselines"]["tier1"]["frozen_totals"]["answer"] == [34, 141225] and art["flags"]
+    assert open(rc["artifact"][:-5] + ".txt").read().endswith("RELEASE CHECK PASS")

@@ -570,3 +570,26 @@ def batch_smoke(live: bool = typer.Option(False, help="Submit ONE real Anthropic
     typer.echo("")
     typer.echo(rep["text"])
     raise typer.Exit(code=0 if rep["verdict"] == "PASS" else 1)
+
+
+@app.command()
+def doctor(no_smoke: bool = typer.Option(False, "--no-smoke", help="Skip the lightweight fake smoke (ingest → findings → chat in a temp database)")) -> None:
+    """Fast operational diagnostic (seconds): install and runtime integrity, database, backups, schema registry, contracts,
+    experimental defaults, provider/model configuration, steady-state Health counters, and a small fake smoke. Read-only on
+    your data. Run it after installing or whenever Neuro Search feels unhealthy."""
+    from . import release
+    rep = release.doctor(progress=typer.echo, fake_smoke=not no_smoke)
+    raise typer.Exit(code=0 if rep["verdict"] == "PASS" else 1)
+
+
+@app.command("release-check")
+def release_check_cmd(no_pytest: bool = typer.Option(False, "--no-pytest", help="Skip the pytest gates (the other deterministic proofs still run)")) -> None:
+    """The heavyweight deterministic release gate (minutes, no live calls): pytest, Tier 1 with frozen numbers, schemas and
+    contracts, migration fixtures, crash/recovery matrix + equivalence, retrieval and cache-layout regression baselines, the
+    frozen economic gates, a backup → restore round trip, and experimental flags off by default. Writes
+    evals/release/release-check-<version>-<sha>-<stamp>.{json,txt}."""
+    from . import release
+    rep = release.release_check(progress=lambda m: typer.echo("  · " + m if not m.startswith("  ") else m), skip_pytest=no_pytest)
+    typer.echo("")
+    typer.echo(rep["text"])
+    raise typer.Exit(code=0 if rep["verdict"] == "PASS" else 1)

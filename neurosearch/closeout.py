@@ -539,9 +539,10 @@ def planner_decision(arms: dict[str, dict[str, Any]]) -> dict[str, Any]:
     if any(ev3.get(k) for k in EVENT_KINDS):
         hard.append(f"V3 structured-output/assembly events {dict((k, v) for k, v in ev3.items() if v)}")
         mission_fails.append(f"structured-output/assembly events during the V3 build: {dict((k, v) for k, v in ev3.items() if v)}")
-    for t in (a3, b3):
-        if t["truncated"] or t["parse_failed"] or t["json_repaired"]:
-            hard.append("V3 truncation / parse failure / JSON repair")
+    for label, t in (("analysis", a3), ("build", b3)):
+        kinds = [k for k, flag in (("truncation", t["truncated"]), ("schema mismatch / parse failure", t["parse_failed"]), ("JSON repair", t["json_repaired"])) if flag]
+        if kinds:
+            hard.append(f"V3 {label}: {' + '.join(kinds)}")            # names the actual failure kind (closeout cleanup, 0.24.0)
     tb = v3.get("build_telemetry") or {}
     if not tb:
         hard.append("V3 produced no build telemetry (did the flag take effect?)")

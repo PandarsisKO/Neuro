@@ -1,26 +1,76 @@
-# Neuro Search hardening roadmap
+# Neuro Search hardening — final verdict (0.24.0, `hardening-complete`)
 
-*Mission: make Neuro Search boringly reliable.* A research project must survive crashes, model changes, API outages,
-brief changes, re-ingestion, retries and months of work without losing state, duplicating work, silently going stale,
-or producing artifacts whose origin cannot be explained. Then optimise so the best-value model does each task.
-Every optimisation must prove one of: more reliable · higher quality · faster · cheaper.
+*Mission (as set at the start): make Neuro Search boringly reliable.* A research project must survive crashes, model
+changes, API outages, brief changes, re-ingestion, retries and months of work without losing state, duplicating work,
+silently going stale, or producing artifacts whose origin cannot be explained. Then optimise so the best-value model
+does each task; every optimisation must prove one of: more reliable · higher quality · faster · cheaper.
 
-**Rule: do not climb a rung until its exit test passes.**
+**The hardening workstream is closed.** This file is now a record: the verdict table below is the final state of every
+rung, the experimental-feature inventory says what is on, off, deferred or dead, and the mission declaration at the end
+evaluates the original mission clause by clause. Sections after that are the rung-by-rung history, kept as evidence.
+Two commands enforce the state going forward — `neurosearch doctor` (seconds: install, DB, backups, schemas, contracts,
+flags, provider circuits, fake smoke) and `neurosearch release-check` (minutes: every deterministic gate, writes
+`evals/release/release-check-<version>-<sha>-<stamp>.{json,txt}`; the Health console shows the last result).
 
-| Rung | Mission | Deliverable | Status |
+## Final verdict table
+
+| Rung | Mission | Verdict | Evidence |
 |---|---|---|---|
-| A | Make it provable | Frozen Golden Project, `NEUROSEARCH_FAKE_AI=1`, `neurosearch eval`, quote + citation + plan-evidence validators, verified backups, migration fixtures, canonical URLs, correlated logs, baseline | **COMPLETE (0.15.0 + A.1 closeout in 0.15.1), pending the live baseline** |
-| B | Trust the data | `project_source_analysis` (project-relative summary/substance/relevance off the global source row), provenance columns (model, provider, prompt_version, schema_version, source/brief/facts revisions), deletion cascade | **COMPLETE (0.16.0)** |
-| C | Staleness | Artifacts know the revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild shows a cost estimate and goes through the budget valve; chats stay historical | **COMPLETE (0.16.0)** — exit test `test_staleness_exit_criteria` |
-| D | Survive interruption | Ingestion stages (metadata → transcript → chunks → embeddings → ready, each transactional, resume from the last completed), job leases + heartbeats, `job_events`, one findings job per source, `external_pending` for parked work (re-attach, never resubmit), dependency policies + failure propagation, cancellation semantics, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | **COMPLETE (0.17.0)** |
-| E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
-| F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
-| G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
-| H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
-| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3)**: hard retrieval fixture + live production-embedding baseline (MRR 0.9093, R@1 86.7%, exact locator 87.2%) kept as permanent regression coverage; the Haiku candidate-only reranker held every safety gate but failed every frozen meaningful-improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s and $0.0027 per query) → KILL; production retrieval unchanged (FTS + embeddings + RRF); query rewriting / embedding-large / vector index untested by decision — no evidence of need |
-| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **COMPLETE (0.23.0+j3)**: `safe_fetch` boundary (pinned validated connection, per-hop revalidation, size/decoded/time limits; 54 tests), durable circuit breakers per provider:operation with a zero-cost `provider_wait` state (15 tests), and NO_FALLBACK as an explicit invariant on every AI contract with requested/actual/fallback_used/reason/policy-version audit on every invocation and artifact (13 tests) |
-| K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
-| L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
+| A | Make it provable | **DONE** — frozen Golden Project, `NEUROSEARCH_FAKE_AI=1`, Tier 1 eval with frozen totals (answer 34 calls / 141,225 tokens · findings 9 / 30,297 · plan 2 / 11,026), validators (quotes, citations, plan evidence), verified backups, migration fixtures | `neurosearch eval`; `evals/baseline-0.17.3-849bd0d-sonnet-4-6.json` |
+| B | Trust the data | **DONE** — project-relative analysis (`project_source_analysis`), provenance columns on every AI artifact, deletion cascade | `tests/test_indestructible.py` provenance tests; schema registry |
+| C | Staleness | **DONE** — artifacts carry the source/brief/facts revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild through the budget valve with an estimate; chats stay historical | `test_staleness_exit_criteria` |
+| D | Survive interruption | **DONE** — transactional ingestion stages with resume, job leases + heartbeats, `job_events`, one findings job per source, `external_pending` re-attach (never resubmit), dependency/failure propagation, cancellation, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | crash matrix + equivalence tests in `test_indestructible.py`; release-check gate “crash/recovery matrix + 40-source equivalence” |
+| E | Modernise AI | **DONE** — task router (`AIRequest` → contract → provider adapter), adapters reject unsupported knobs; Sonnet 5 on rank.relevance + findings.extract (thinking disabled), 4.6 kept elsewhere by decision | `evals/ranking-compare/20260906-182701-afe6143/`, `evals/findings-compare/20260906-184147-5753ad6/`, `evals/migration-compare/20260906-190947-ff042e9/` |
+| F | Deterministic AI | **DONE, Planner V3 NOT PROMOTED** — structured outputs with versioned schemas on findings.extract, rank.relevance, planner.update, discover.quick (live PASS); `_repair_json` is a fallback only; the decomposed planner failed its promotion gate and stays experimental | `evals/mission-f-closeout/20260906-205402-d2e8b74/`, `…/20260906-212919-e75e78d-resume-of-20260906-205402/` |
+| G | Cut cost safely | **DONE** — Message Batches for background findings with tentative recovery (never claim by count alone), explicit transport, estimates; cache layout: Tier 1 cache-read rate 2.1% → 23.4%; chat tail breakpoint OFF by decision; ranking not batched | `evals/batch-smoke/20260907-091438-70f55c9-live.txt` (real provider, exact 50% model cost); release-check gates “cache layout: …” |
+| H | Cut cost intelligently | **MEASURED, DEFERRED** — findings window pre-filter passes every quality gate (100% window recall, 12/12 nuggets, 57% skippable tokens) but loses money on the background-batch path at current prices (−15% net, 0.77× leverage vs required ≥+10% / ≥1.25×); off, no live run; ranking agreement never started | `tests/fixtures/golden/prefilter/`; `neurosearch eval --prefilter`; release-check gate “H1 prefilter economic gate still FAILS on the batch path” (it must keep failing for the feature to stay off) |
+| I | Retrieval | **MEASURED, RERANKER KILLED** — hard retrieval fixture + live production-embedding baseline kept as permanent regression coverage (MRR 0.9093, R@1 86.7%, exact locator 87.2%); the Haiku candidate-only reranker held every safety gate but failed every frozen improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s, +$0.0027/query); production retrieval unchanged (FTS + embeddings + RRF) | `evals/retrieval/baseline-retrieval-0.22.0+i15-live.json`, `evals/retrieval/rerank-compare-20260907-115218-live.txt`; release-check gate “retrieval regression baseline (fake tier) unchanged” |
+| J | External failure | **DONE** — `safe_fetch()` boundary (pinned validated connection, per-hop revalidation, size/decoded/time limits, 16 typed block reasons; 54 tests); durable circuit breakers per provider:operation with the zero-cost `provider_wait` state (15 tests); NO_FALLBACK as a contract invariant on every AI task with requested/actual/fallback_used/reason/policy-version audit on every invocation and artifact (13 tests) | `tests/test_safe_fetch.py`, `tests/test_j2_breakers.py`, `tests/test_j3_fallback.py` |
+| K | Health | **DONE (as scoped)** — Settings → Health shows database, backups, workers/leases, jobs, structured outputs, evidence, providers (breakers), network boundary, experimental flags, last release check, app version; `neurosearch doctor` is the CLI form | `db.health()`; `neurosearch doctor` |
+| L | Safe change | **DONE (deterministic part), Playwright DEFERRED by decision** — `neurosearch release-check` runs pytest, Tier 1 frozen numbers, schema/contract registry, migration fixtures, crash/recovery matrix + equivalence, retrieval regression, cache-layout regression, frozen economic gates, backup→restore round trip, experimental flags off; writes a machine-readable artifact. No E2E browser suite; UI stays a single file without a build | `evals/release/` |
+
+## Experimental-feature inventory (mirrors `release.EXPERIMENTAL_FLAGS`; `neurosearch doctor` fails if any of these is on)
+
+| Feature | Flag | Default | Status | Evidence | Revisit condition | Deletion candidate? |
+|---|---|---|---|---|---|---|
+| Planner V3 (decomposed schema'd planner) | `NEUROSEARCH_PLANNER_V3` (`settings.planner_v3`) | off | **not promoted** — V1 is the production planner | `evals/mission-f-closeout/…/planner-v3.json` vs `planner-v1.json`: V3 failed its promotion gate (hard failures named in `closeout.planner_decision`) | A planner quality problem V1 cannot solve, then re-run the Mission F closeout comparison unchanged | Yes, if not revisited within two product releases — `planner_v3.py` + its schemas + `closeout.py` V3 branch |
+| Findings window pre-filter (Haiku keep/uncertain/drop) | `NEUROSEARCH_FINDINGS_PREFILTER` (`settings.findings_prefilter`) | off | **deferred (economics)** — quality proven, money lost on the batch path | `neurosearch eval --prefilter`; frozen gates `BACKGROUND_MIN_NET_SHARE=0.10`, `BACKGROUND_MIN_LEVERAGE=1.25`; measured −15% / 0.77× | A Haiku-class price drop or an interactive-only findings mode; re-run `economics()` — if it passes, enable interactively first | No — keep; the module is small and the fixture is permanent regression coverage |
+| Retrieval reranker (Haiku, candidates only, depth 11) | `NEUROSEARCH_RETRIEVAL_RERANK` (`settings.retrieval_rerank`) | off | **killed (measured live)** | `evals/retrieval/rerank-compare-20260907-115218-live.txt`: every frozen improvement gate failed | Only a new retrieval fixture on which the baseline demonstrably fails; never re-tune the existing comparison | Yes — `rerank.py`, the `retrieval.rerank` contract and the `search(rerank=)` path can go once `retrieval_eval.run_rerank_compare` is no longer wanted as a template |
+| Chat tail cache breakpoint | `NEUROSEARCH_CHAT_TAIL_BREAKPOINT` | `0` | **off by decision** — write premium removed; no adaptive/predictive breakpoint logic allowed | Rung G cache-layout measurement (`neurosearch eval --cache-layout`) | Multi-turn chat becomes the dominant cost AND a measured session shows the write premium repaid; measure before flipping | Maybe — the env read and `qa._tail_breakpoint` are a dozen lines; delete if still off after the next cost review |
+| Schema compatibility fallback (structured-output rollback hatch) | `NEUROSEARCH_SCHEMA_COMPAT_FALLBACK` | empty | **rollback-only** — never on in normal operation | Mission F: `schema_fallbacks` floor 0 in Tier 1; `_repair_json` path covered by tests | A provider-side structured-output regression; on for one release, off again | No — this is the escape hatch |
+| Fake AI test mode | `NEUROSEARCH_FAKE_AI` (`settings.fake_ai`) | off | **test mode** — evals, tests, `doctor` smoke and `release-check` proofs run under it; never in production | fake-isolation lint in tests; `doctor` fails if on | n/a | No |
+
+## Mission declaration
+
+| Mission clause | Verdict | How it is enforced |
+|---|---|---|
+| survive crashes | **Met** | transactional stages, leases/heartbeats, crash matrix + 40-source equivalence (Rung D); release-check “crash/recovery matrix + 40-source equivalence” |
+| survive retries | **Met** | per-contract attempt limits, typed non-transient errors never retried, `retry_after` honoured (E, J2) |
+| survive provider outages | **Met** | durable breakers per operation, `provider_wait` at 0 attempts / 0 invocations / $0, automatic wake (J2); batch re-attach (G) |
+| survive model changes | **Met** | contracts pin models; router with loud rejection of unsupported knobs; frozen live comparisons per migration (E); NO_FALLBACK audit (J3) |
+| survive brief / source changes and re-ingestion | **Met** | revision-aware staleness states, budgeted rebuilds, project-relative analysis (B, C) |
+| months of work without losing state | **Met** | verified backups, migration fixtures, backup→restore round trip in release-check (A, L) |
+| without duplicating expensive work | **Met** | one findings job per source, `external_pending`/tentative batch recovery (never resubmit, never claim by count), cache layout (D, G) |
+| without silently going stale | **Met** | CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED on every artifact, shown in the UI (C) |
+| without unexplained provenance | **Met** | model, provider, prompt/schema versions, source/brief/facts revisions, requested/actual model, fallback policy on every invocation and artifact (B, F, J3) |
+| best-value model per task, proven | **Met, with three honest negatives** | Sonnet 5 adopted where it won (E); batches adopted (G); pre-filter deferred, reranker killed, Planner V3 not promoted — each on frozen gates, none re-tuned |
+
+**Declaration:** the original hardening mission is complete. Every clause is met by a mechanism with a deterministic
+test or a frozen live measurement behind it, and `release-check` re-proves the deterministic ones on demand.
+
+**Known limitations (accepted, not hidden):**
+
+- No browser end-to-end suite; the single-file UI is exercised by API tests and a fake-AI smoke, not Playwright.
+- Provider outage handling was proven under fakes only (the live batch smoke is the only paid proof of Rung G/J).
+- `safe_fetch` covers every fetch except yt-dlp, which keeps its own network stack by decision.
+- The Tier 1 frozen totals are token counts from the fake provider; live Tier 2 numbers exist only as the dated
+  artifacts in `evals/` and are not re-run by `release-check` (paid runs are reserved for major model or architecture changes).
+- The Health console is a read-only status page; there is no alerting.
+- `release-check` gates are frozen at their 0.24.0 values; changing a frozen number is itself a decision to record here.
+
+---
+
+# History (rung-by-rung record)
 
 ## Mission A status
 
