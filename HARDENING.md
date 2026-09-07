@@ -179,7 +179,32 @@ F1+F2 SCHEMA REGISTRY + STRICT FINDINGS/RANKING     COMPLETE (0.19.0-f1)
                                         output_truncated|output_refused → /api/health.structured_outputs → Settings → Health "Structured-output fallbacks";
                                         Tier 1 gates schema_fallbacks = output_truncated = output_refused = 0 (steady state zero)
 [x] token counting includes the injected format instructions (count_tokens gets output_config) so E2-style canonical counts stay honest
-[ ] F3  planner.update + discover.quick (discover.verify unchanged)
+
+F1/F2 CORRECTIONS (0.19.0-f3, Kyle)
+[x] jsonschema is REQUIRED               schemas.check_installation() at app startup and CLI init: an incomplete checkout exits with
+                                        "Neuro Search installation is incomplete: jsonschema is required by structured outputs. Run ./start …"
+                                        — no machine validates less than another
+[x] mismatch ≠ parse problem             providers.invoke_structured(): provider structured result → json.loads → FULL local validation → PASS store /
+                                        FAIL SchemaMismatch. A mismatch on a normal completion is a BUG SIGNAL (schema_mismatch event + counter), retried
+                                        once with a fresh completion, then a typed failure that propagates (schema_failure). Legacy parsing is NOT on
+                                        this path. NEUROSEARCH_SCHEMA_COMPAT_FALLBACK=1 is the only, explicitly degraded escape hatch: the legacy parser
+                                        may run but its result must pass the full local schema (schema_fallback event either way)
+[x] bounded escalation                   truncation → one escalation through usage.guard, to min(1.5×, contract.max_output_ceiling); contracts without a
+                                        ceiling never escalate; original/escalated/ceiling budgets recorded in the output_truncated event
+[x] Health                               structured_outputs {mismatches, mismatches_recovered_by_retry, fallbacks, unrecovered, truncated, refused};
+                                        Tier 1 gates mismatches = fallbacks = truncated = refused = 0
+
+F3 PLANNER.UPDATE + DISCOVER.QUICK           COMPLETE (0.19.0-f3)
+[x] planner.update                       schema plan-update-v2 ({"updates":[{section, previous, proposed, reason}]}); UPDATE_SYSTEM's output line now names
+                                        that object (prompt hash changed, recorded in provenance); a misunderstood output is a typed failure that propagates
+                                        (API 502 with the reason) — NEVER an innocent empty update list, not even on the legacy path; ceiling 6000
+[x] discover.quick                       schema discovery-v2 (kind/depth enums, start_with objects); ceiling 5000
+[x] discover.verify                      UNCHANGED, deliberately: citations (web_search) and output_config.format are incompatible (400). Boundary:
+                                        discover.quick = structured · discover.verify = citation-compatible text/tool path. Not debt.
+[ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3: the structured situation analysis is the shared reasoning anchor for every component;
+        semantic decomposition (1 situation/recommendation/decisions · 2 phases/dependencies/milestones · 3 costs/tools/risks/gotchas ·
+        4 this-week/first-steps/open-questions/refinement); stable semantic ids per component; evidence validated per component; deterministic
+        Python assembly into the existing plan format (no merge call); single-call planner kept as rollback for one release
 [ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
 [ ] F5  automated deterministic closeout + ONE live paid run (AI-affecting request/output change) against the existing baselines/rubric
 ```

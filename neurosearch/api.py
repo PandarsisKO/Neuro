@@ -93,6 +93,7 @@ class TokenPathMiddleware:
 async def lifespan(app: FastAPI):
     from .logctx import configure
     configure(logging.INFO)
+    __import__("neurosearch.schemas", fromlist=["check_installation"]).check_installation()
     db.init_db()
     if settings.fake_ai:
         logging.getLogger(__name__).warning("NEUROSEARCH_FAKE_AI=1 — every model call is served by the deterministic fakes")
@@ -900,8 +901,11 @@ async def api_plan_build(project_id: str, body: BuildIn) -> dict[str, Any]:
 
 @app.post("/api/projects/{project_id}/plan/check-updates", dependencies=[Depends(require_auth)])
 async def api_plan_check(project_id: str) -> dict[str, Any]:
-    from . import planner
-    ups = await anyio.to_thread.run_sync(lambda: planner.suggest_updates(project_id))
+    from . import planner, providers
+    try:
+        ups = await anyio.to_thread.run_sync(lambda: planner.suggest_updates(project_id))
+    except providers.OutputError as e:          # typed: the model's output could not be used — say so, never "no updates"
+        raise HTTPException(status_code=502, detail=f"Master Planner could not check for updates: {e}") from e
     return {"updates": ups, "plan": db.latest_plan(project_id)}
 
 

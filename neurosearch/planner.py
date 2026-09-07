@@ -345,9 +345,9 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
 
 UPDATE_SYSTEM = """You are Master Planner reviewing whether NEW research changes an existing plan. Compare the new material
 against the plan and list only changes that matter (a changed recommendation, a resolved open question, a new
-blocking dependency, a materially different cost or risk). Do not rewrite for style. Output ONLY a JSON list:
-[{"section": str, "previous": str, "proposed": str, "reason": str}]
-Return [] if nothing material changed."""
+blocking dependency, a materially different cost or risk). Do not rewrite for style. Output ONLY JSON:
+{"updates": [{"section": str, "previous": str, "proposed": str, "reason": str}]}
+Return {"updates": []} if nothing material changed."""
 
 
 def suggest_updates(project_id: str) -> list[dict[str, Any]]:
@@ -372,19 +372,50 @@ def suggest_updates(project_id: str) -> list[dict[str, Any]]:
     material += ["NEW CONVERSATION:"] + [f"{'Q' if m['role'] == 'user' else 'A'}: {m['content'][:1200]}" for m in new_msgs[-40:]]
     plan_json = {k: v for k, v in plan["plan"].items() if not k.startswith("_")}
     user = "CURRENT PLAN:\n" + json.dumps(plan_json)[:30000] + "\n\n" + "\n".join(material)[:40000] + "\n\nList the suggested updates now."
-    try:
+    from . import providers, usage
+    from .contracts import contract
+    if contract("planner.update").schema:
+        # Mission F (F3): schema-enforced, fully validated. A model output we cannot understand is a typed failure that
+        # propagates to the caller — it is never turned into an innocent "no updates".
+        import time as _time
+        t0 = _time.time()
+        _last_call.clear(); _last_call["task"] = "planner.update"
+        data = providers.invoke_structured("planner.update", system=UPDATE_SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="plan",
+                                           project_id=project_id, guard_estimate=0.1, legacy=_legacy_update_parse)
+        resp = providers.last_response()
+        u = getattr(resp, "usage", None)
+        _observe(event="call", task="planner.update", stop_reason=getattr(resp, "stop_reason", None), truncated=False, model=getattr(resp, "model", None),
+                 chars=len(json.dumps(data)), seconds=round(_time.time() - t0, 2), cost=None, input_tokens=int(getattr(u, "input_tokens", 0) or 0),
+                 output_tokens=int(getattr(u, "output_tokens", 0) or 0), cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
+                 cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0), thinking_blocks=0)
+        updates = data["updates"]
+        _observe(event="parse", task="planner.update", ok=True, repaired=False, raw_updates=len(updates))
+    else:
+        # legacy/unstructured contract (NEUROSEARCH_TASK_SCHEMA_PLANNER_UPDATE=none): a parse failure is STILL an error now
         raw = _call_claude(UPDATE_SYSTEM, user, max_tokens=4000)
-        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.S)
-        s, e = text.find("["), text.rfind("]")
-        updates = json.loads(text[s:e + 1]) if s >= 0 else []
-        _observe(event="parse", task="planner.update", ok=True, repaired=text[s:e + 1] != raw.strip() if s >= 0 else False, raw_updates=len(updates) if isinstance(updates, list) else None)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("suggest_updates failed: %s", exc)
-        _observe(event="parse", task="planner.update", ok=False, repaired=False, error=str(exc)[:200])
-        updates = []
+        try:
+            updates = _legacy_update_parse(raw)["updates"]
+            _observe(event="parse", task="planner.update", ok=True, repaired=True, raw_updates=len(updates))
+        except Exception as exc:
+            _observe(event="parse", task="planner.update", ok=False, repaired=False, error=str(exc)[:200])
+            raise RuntimeError(f"planner.update: could not understand the model's output ({exc}); no updates were recorded") from exc
     updates = [u for u in updates if isinstance(u, dict) and u.get("proposed")]
     db.add_plan_updates(plan["id"], updates)
     return updates
+
+
+def _legacy_update_parse(raw: str) -> dict[str, Any]:
+    """Pre-F tolerant parser (fences, list or {"updates": [...]}) — only for unstructured contracts or the compat hatch."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.S)
+    s_obj, s_list = text.find("{"), text.find("[")
+    if s_obj >= 0 and (s_list < 0 or s_obj < s_list):
+        obj = json.loads(text[s_obj:text.rfind("}") + 1])
+        if isinstance(obj, dict) and isinstance(obj.get("updates"), list):
+            return obj
+        raise ValueError("no updates list")
+    if s_list >= 0:
+        return {"updates": json.loads(text[s_list:text.rfind("]") + 1])}
+    raise ValueError("no JSON in output")
 
 
 def apply_accepted_updates(project_id: str) -> dict[str, Any]:

@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.19.0-f1';
+const UI_VERSION = '0.19.0-f3';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -921,7 +921,7 @@ async function loadHealth() {
       [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
       [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
-      [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
+      [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered && !(h.structured_outputs || {}).mismatches)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} · ${h.structured_outputs.mismatches} schema mismatch${h.structured_outputs.mismatches === 1 ? '' : 'es'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
       [`${h.fake_ai ? '🧪' : '✅'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');

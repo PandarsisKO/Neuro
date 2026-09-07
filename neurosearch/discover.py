@@ -101,12 +101,18 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
 
     usage.guard(0.15)
 
-    # ---- pass 1: instant shortlist (no tools) ----
+    # ---- pass 1: instant shortlist (no tools) — structured (F3); pass 2 stays on the citation-capable text/tool path ----
     if progress:
         progress(0.1, "first take from what the model already knows…")
-    resp = providers.invoke("discover.quick", system=QUICK_SYSTEM, messages=[{"role": "user", "content": brief + f"\n\nPropose about {count} sources now."}])
-    usage.record_anthropic(resp, "discover", project_id=project_id)
-    data = _parse(providers.text_of(resp))
+    from .contracts import contract
+    quick_msgs = [{"role": "user", "content": brief + f"\n\nPropose about {count} sources now."}]
+    if contract("discover.quick").schema:
+        data = providers.invoke_structured("discover.quick", system=QUICK_SYSTEM, messages=quick_msgs, usage_kind="discover", project_id=project_id,
+                                           guard_estimate=0.05, legacy=_parse)
+    else:
+        resp = providers.invoke("discover.quick", system=QUICK_SYSTEM, messages=quick_msgs)
+        usage.record_anthropic(resp, "discover", project_id=project_id)
+        data = _parse(providers.text_of(resp))
     items = _items(data.get("sources") or [])
     import hashlib
     saved = db.add_discoveries(project_id, items, note=str(data.get("note") or ""), refine=refine,

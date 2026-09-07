@@ -1633,7 +1633,12 @@ def test_migrated_contracts_are_sonnet_5_thinking_disabled(monkeypatch):
     assert C.model_family(r.model) == C.model_family(f.model) == "claude-5"
     assert settings.answer_model == "claude-sonnet-4-6"
     for t in ("answer.chat", "answer.repair", "discover.quick", "discover.verify", "planner.analysis", "planner.build", "planner.update", "export.synthesis"):
-        assert C.contract(t).model == settings.answer_model and C.request_params(C.contract(t)) == {"max_tokens": C.contract(t).max_output_tokens}, t
+        assert C.contract(t).model == settings.answer_model, t
+    for t in ("answer.chat", "answer.repair", "discover.verify", "planner.analysis", "planner.build", "export.synthesis"):      # free-text tasks: the plain 4.6 request
+        assert C.request_params(C.contract(t)) == {"max_tokens": C.contract(t).max_output_tokens}, t
+    for t in ("discover.quick", "planner.update"):                                                                            # F3: structured on 4.6
+        assert set(C.request_params(C.contract(t))) == {"max_tokens", "output_config"} and C.contract(t).schema in ("discovery-v2", "plan-update-v2"), t
+    assert C.contract("discover.verify").schema is None                                                                      # citations ⟂ output_config.format
     assert relevance.prompt_version() == "rank-f38f9a9c" and findings.prompt_version() == "findings-18b5db69"
 
 
@@ -1719,55 +1724,69 @@ def test_findings_verdict_rules():
     assert any("+30.0%" in n for n in v["notes"])
 
 
-def test_findings_structured_output_and_observable_fallback(isolated_db, monkeypatch):
-    """Mission F: findings.extract requests a provider-enforced schema; a conformant response is parsed strictly; a
-    non-conformant one falls back to the legacy parser AND is recorded as a degraded event (Health counter);
-    max_tokens gets exactly one budget escalation, then is a typed OutputError; refusal is typed too."""
+def test_findings_structured_output_mismatch_is_a_bug_signal_not_a_parse(isolated_db, monkeypatch):
+    """Mission F path: provider structured result → json.loads → FULL local validation → PASS store / FAIL SchemaMismatch.
+    A mismatch on a normal completion is a bug signal: recorded, retried once with a fresh completion, then a typed error
+    that propagates. The legacy parser is never on this path unless NEUROSEARCH_SCHEMA_COMPAT_FALLBACK=1, and even then
+    its result must pass the full schema. Truncation: one guarded escalation capped by the contract ceiling."""
     from neurosearch import findings, providers, usage
     from neurosearch.config import settings
     monkeypatch.setattr(settings, "fake_ai", True)
     monkeypatch.delenv("NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT", raising=False)
+    monkeypatch.delenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK", raising=False)
 
     class R:
         def __init__(self, text, stop="end_turn"):
             self.content = [type("B", (), {"type": "text", "text": text})()]
             self.stop_reason, self.model, self.usage = stop, "claude-x", type("U", (), {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})()
-    calls = []
+    calls, guards = [], []
     def fake_invoke(resp_seq):
         it = iter(resp_seq)
         def f(task, **kw):
             calls.append(kw); return next(it)
         return f
-    monkeypatch.setattr(usage, "guard", lambda *a, **k: None)
+    monkeypatch.setattr(usage, "guard", lambda est=0.0: guards.append(est))
     monkeypatch.setattr(usage, "record_anthropic", lambda *a, **k: 0.0)
     good = '{"summary":"s","substance":50,"findings":[]}'
-    # strict path
+    so = lambda: db.health()["structured_outputs"]  # noqa: E731
+    # strict path: one call, validated, no events
     monkeypatch.setattr(providers, "invoke", fake_invoke([R(good)]))
     assert findings._call(findings.SYSTEM, "u", head="h") == {"summary": "s", "substance": 50, "findings": []}
-    assert findings._last_call["parse"] == "strict" and findings._last_call["structured"] and db.health()["structured_outputs"]["fallbacks"] == 0
-    # fenced JSON is a schema mismatch → legacy parser recovers it → degraded event + counter
-    monkeypatch.setattr(providers, "invoke", fake_invoke([R("```json\n" + good + "\n```")]))
-    assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and findings._last_call["parse"] == "repaired"
-    h = db.health()["structured_outputs"]
-    assert h["fallbacks"] == 1 and h["unrecovered"] == 0
-    ev = db.validation_events(kind="schema_fallback")
-    assert len(ev) == 1 and ev[0]["detail"]["task"] == "findings.extract" and ev[0]["detail"]["recovered"] is True and "not JSON" in ev[0]["detail"]["reason"]
-    # schema-valid JSON but wrong shape (substance as a string) → mismatch → legacy parser "recovers" a non-conformant dict, still counted
-    monkeypatch.setattr(providers, "invoke", fake_invoke([R('{"summary":"s","substance":"high","findings":[]}')]))
-    findings._call(findings.SYSTEM, "u", head="h")
-    assert db.health()["structured_outputs"]["fallbacks"] == 2 and "substance" in db.validation_events(kind="schema_fallback")[0]["detail"]["reason"]
-    # no JSON at all → fallback cannot recover → counted as unrecovered, returns {} (the window yields nothing)
-    monkeypatch.setattr(providers, "invoke", fake_invoke([R("no json here")]))
-    assert findings._call(findings.SYSTEM, "u", head="h") == {} and findings._last_call["parse"] == "no_json"
-    assert db.health()["structured_outputs"]["unrecovered"] == 1
-    # max_tokens: one escalation (1.5× budget) then typed TRUNCATED
+    assert findings._last_call["parse"] == "strict" and findings._last_call["structured"] and so() == {"mismatches": 0, "mismatches_recovered_by_retry": 0, "fallbacks": 0, "unrecovered": 0, "truncated": 0, "refused": 0, "steady_state": "all zero"}
+    # fenced JSON from a structured request = mismatch → retry → second is fine → recovered, counted as a mismatch (bug signal)
     calls.clear()
+    monkeypatch.setattr(providers, "invoke", fake_invoke([R("```json\n" + good + "\n```"), R(good)]))
+    assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and len(calls) == 2
+    assert so()["mismatches"] == 1 and so()["mismatches_recovered_by_retry"] == 1 and so()["fallbacks"] == 0
+    ev = db.validation_events(kind="schema_mismatch")
+    assert len(ev) == 1 and ev[0]["detail"]["task"] == "findings.extract" and ev[0]["detail"]["schema"] == "findings-v2" and "not JSON" in ev[0]["detail"]["reason"]
+    # mismatch twice → typed SchemaMismatch propagates; nothing is stored; legacy parser NOT used
+    calls.clear()
+    monkeypatch.setattr(providers, "invoke", fake_invoke([R("```json\n" + good + "\n```"), R('{"summary":"s","substance":"high","findings":[]}')]))
+    with pytest.raises(providers.SchemaMismatch) as ei:
+        findings._call(findings.SYSTEM, "u", head="h")
+    assert "substance" in str(ei.value) and len(calls) == 2 and so()["mismatches"] == 2 and so()["unrecovered"] == 1 and so()["fallbacks"] == 0
+    assert findings._last_call["parse"] == "failed"
+    # the explicitly degraded compat hatch: legacy parser may run, but its result must pass the FULL schema
+    monkeypatch.setenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK", "1")
+    monkeypatch.setattr(providers, "invoke", fake_invoke([R("```json\n" + good + "\n```"), R("```json\n" + good + "\n```")]))
+    assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and so()["fallbacks"] == 1
+    assert db.validation_events(kind="schema_fallback")[0]["detail"]["validated_against"] == "findings-v2"
+    monkeypatch.setattr(providers, "invoke", fake_invoke([R('{"summary":"s","substance":"high","findings":[]}'), R('{"summary":"s","substance":"high","findings":[]}')]))
+    with pytest.raises(providers.SchemaMismatch):                       # legacy parser output fails the full schema → still a typed failure
+        findings._call(findings.SYSTEM, "u", head="h")
+    assert so()["fallbacks"] == 2 and so()["unrecovered"] == 2
+    monkeypatch.delenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK")
+    # truncation: one escalation through the guard, capped by the contract ceiling (findings: 4000 → min(6000, 6000)), budgets recorded
+    calls.clear(); guards.clear()
     monkeypatch.setattr(providers, "invoke", fake_invoke([R('{"summary":"s"', "max_tokens"), R('{"summary":"s"', "max_tokens")]))
     with pytest.raises(providers.OutputError) as ei:
         findings._call(findings.SYSTEM, "u", head="h")
     assert ei.value.kind == "TRUNCATED" and len(calls) == 2 and calls[1]["max_output_tokens"] == 6000 and "max_output_tokens" not in calls[0]
-    assert db.health()["structured_outputs"]["truncated"] == 2 and db.validation_events(kind="output_truncated")[0]["detail"]["retried_with_larger_budget"] in (True, False)
-    # escalation that succeeds
+    assert len(guards) == 2 and guards[1] == pytest.approx(guards[0] * 1.5)
+    evs = db.validation_events(kind="output_truncated")
+    assert so()["truncated"] == 2 and {k: evs[-1]["detail"].get(k) for k in ("budget", "escalated_to", "ceiling")} == {"budget": 4000, "escalated_to": 6000, "ceiling": 6000}
+    assert evs[0]["detail"]["final"] is True and evs[0]["detail"]["budget"] == 6000
     calls.clear()
     monkeypatch.setattr(providers, "invoke", fake_invoke([R('{"summary":"s"', "max_tokens"), R(good)]))
     assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and len(calls) == 2
@@ -1775,15 +1794,34 @@ def test_findings_structured_output_and_observable_fallback(isolated_db, monkeyp
     monkeypatch.setattr(providers, "invoke", fake_invoke([R("I can't help with that.", "refusal")]))
     with pytest.raises(providers.OutputError) as ei:
         findings._call(findings.SYSTEM, "u", head="h")
-    assert ei.value.kind == "REFUSED" and db.health()["structured_outputs"]["refused"] == 1
-    # rollback switch: NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT=none restores the pre-F behaviour (no output_config, tolerant parse, no events)
+    assert ei.value.kind == "REFUSED" and so()["refused"] == 1
+    # rollback switch: NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT=none restores the pre-F path (no output_config, tolerant parse, no events)
     monkeypatch.setenv("NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT", "none")
     from neurosearch import contracts as C
     assert C.contract("findings.extract").schema is None and "output_config" not in C.request_params(C.contract("findings.extract"))
-    before = db.health()["structured_outputs"]["fallbacks"]
+    before = dict(so())
     monkeypatch.setattr(providers, "invoke", fake_invoke([R("```json\n" + good + "\n```")]))
-    assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and not findings._last_call["structured"]
-    assert db.health()["structured_outputs"]["fallbacks"] == before
+    assert findings._call(findings.SYSTEM, "u", head="h")["substance"] == 50 and not findings._last_call["structured"] and findings._last_call["parse"] == "repaired"
+    assert so() == before
+
+
+def test_truncation_escalation_needs_a_ceiling(isolated_db, monkeypatch):
+    """No ceiling on the contract → no escalation at all (a typed error straight away): escalation can never be unbounded."""
+    from neurosearch import contracts as C, providers, usage
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(usage, "guard", lambda *a, **k: None)
+    monkeypatch.setattr(usage, "record_anthropic", lambda *a, **k: 0.0)
+    class R:
+        content = [type("B", (), {"type": "text", "text": "{"})()]; stop_reason = "max_tokens"; model = "m"; usage = None
+    calls = []
+    monkeypatch.setattr(providers, "invoke", lambda task, **kw: calls.append(kw) or R())
+    monkeypatch.setattr(C, "_base", lambda: {"rank.relevance": C.InferenceContract("rank.relevance", "anthropic", "claude-sonnet-5", thinking="disabled", max_output_tokens=6000, schema="rank-v2")})
+    with pytest.raises(providers.OutputError) as ei:
+        providers.invoke_structured("rank.relevance", system="s", messages=[{"role": "user", "content": "u"}], usage_kind="rank")
+    assert ei.value.kind == "TRUNCATED" and len(calls) == 1
+    with pytest.raises(C.ContractError, match="ceiling"):
+        C.validate(C.InferenceContract("x", "anthropic", "claude-sonnet-5", thinking="disabled", max_output_tokens=6000, max_output_ceiling=1000, schema="rank-v2"))
 
 
 def test_schema_registry_is_provider_compatible_and_validates():
@@ -1810,27 +1848,70 @@ def test_schema_registry_is_provider_compatible_and_validates():
 
 
 def test_fake_conforms_to_registry_schemas_and_bad_json_knob(isolated_db, monkeypatch):
-    """Tier 1 proves conformance: the fake validates its own structured outputs; the BAD_JSON knob exercises the fallback."""
-    from neurosearch import fake_ai, providers
+    """Tier 1 proves conformance: the fake validates its own structured outputs; the BAD_JSON knob produces the bug-signal path
+    (mismatch → retry → typed failure), which the ranking job surfaces as a failed batch, never a repaired one."""
+    from neurosearch import fake_ai, providers, relevance
     from neurosearch.config import settings
     monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
     monkeypatch.delenv("NEUROSEARCH_FAKE_AI_BAD_JSON", raising=False)
+    monkeypatch.delenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK", raising=False)
     r = providers.invoke("rank.relevance", system="PROJECT: x\nBRIEF: getting out of debt", messages=[{"role": "user", "content": "VIDEOS:\n[0] Debt payoff plan\n[1] Vlog\n\nScore them now."}])
     out = providers.structured("rank.relevance", r)
     assert [x["i"] for x in out["scores"]] == [0, 1] and all(0 <= x["score"] <= 100 for x in out["scores"])
     monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_JSON", "1")
-    r = providers.invoke("rank.relevance", system="PROJECT: x", messages=[{"role": "user", "content": "VIDEOS:\n[0] a\n\nScore them now."}])
     with pytest.raises(providers.SchemaMismatch):
-        providers.structured("rank.relevance", r)
-    # the whole ranking path survives it, degraded and visible
-    from neurosearch import relevance
+        relevance._call(relevance.SYSTEM, "VIDEOS:\n[0] a\n[1] b\n\nScore them now.", None, "c", head="PROJECT: x\n")
+    h = db.health()["structured_outputs"]
+    assert h["mismatches"] == 1 and h["unrecovered"] == 1 and h["fallbacks"] == 0
+    # through rank_collection: a visibly failed batch (unscored, re-rank offered), not a silent repair
+    p = db.create_project("Bad JSON", "getting out of debt")
+    coll = db.upsert_collection("channel", "UCbad", "https://www.youtube.com/@bad", "Bad")
+    db.add_project_collections(p["id"], [coll["id"]])
+    for i in range(3):
+        src = db.upsert_source(platform="youtube", external_id=f"bad{i:08d}", url=f"https://www.youtube.com/watch?v=bad{i:08d}", title=f"V{i}", description="debt", duration=60, status="proposed")
+        db.link_source_collection(src["id"], coll["id"])
+    res = relevance.rank_collection(coll["id"], p["id"], want=2)
+    assert res["failed_batches"] == 1 and res["repaired_batches"] == 0 and res["ranked"] == 0
+    assert all(s["relevance"] is None for s in db.proposed_sources(coll["id"], p["id"]))
+    # with the compat hatch on, the legacy parser recovers it — still counted as a fallback, still fully validated
+    monkeypatch.setenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK", "1")
     res = relevance._call(relevance.SYSTEM, "VIDEOS:\n[0] a\n[1] b\n\nScore them now.", None, "c", head="PROJECT: x\n")
-    assert res.get("repaired") is True and len(res["scores"]) == 2 and db.health()["structured_outputs"]["fallbacks"] == 1
+    assert len(res["scores"]) == 2 and db.health()["structured_outputs"]["fallbacks"] == 1
+    monkeypatch.delenv("NEUROSEARCH_SCHEMA_COMPAT_FALLBACK")
     # the fake refuses to emit non-conformant output for a structured task unless the knob is on
     monkeypatch.delenv("NEUROSEARCH_FAKE_AI_BAD_JSON", raising=False)
     monkeypatch.setattr(fake_ai, "_rank", lambda user, system="": '{"scores": [{"i": "zero", "score": 1, "why": "x"}]}')
     with pytest.raises(providers.ProviderError, match="does not conform"):        # surfaces through the ledger as a failed attempt
         providers.invoke("rank.relevance", system="s", messages=[{"role": "user", "content": "VIDEOS:\n[0] a"}])
+
+
+def test_plan_update_and_discover_quick_are_structured(isolated_db, monkeypatch):
+    """F3: planner.update never collapses a misunderstood output into an innocent []; discover.quick is schema'd;
+    discover.verify keeps its citation-capable free-text path."""
+    from neurosearch import contracts as C, discover, planner, providers
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.delenv("NEUROSEARCH_FAKE_AI_BAD_JSON", raising=False)
+    assert C.contract("planner.update").schema == "plan-update-v2" and C.contract("discover.quick").schema == "discovery-v2" and C.contract("discover.verify").schema is None
+    p = db.create_project("Upd", "moving a website")
+    db.save_plan(p["id"], {"goal": {"outcome": "move the site"}, "approach": {"recommended": "Static export + Cloudflare Pages"}}, db.project_snapshot(p["id"]))
+    import time as _t; _t.sleep(0.02)
+    db.add_project_note(p["id"], "Cloudflare form handling is limited.", [])
+    ups = planner.suggest_updates(p["id"])
+    assert len(ups) == 1 and ups[0]["proposed"] == "Static export + Netlify" and db.latest_plan(p["id"]) and db.health()["structured_outputs"]["mismatches"] == 0
+    # a misunderstood output is a typed failure, and NO update row is written (not even an empty list)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_JSON", "1")
+    db.add_project_note(p["id"], "Another new finding.", [])
+    with pytest.raises(providers.SchemaMismatch):
+        planner.suggest_updates(p["id"])
+    assert db.health()["structured_outputs"]["unrecovered"] == 1
+    monkeypatch.delenv("NEUROSEARCH_FAKE_AI_BAD_JSON")
+    # discover.quick: structured; the fake's canned shortlist conforms to discovery-v2
+    d = discover.discover(p["id"], count=2)
+    assert len(d["items"]) == 3 and d["items"][0]["name"] == "Dave Ramsey" and d["items"][0]["known_for"] == "debt-free budgeting basics"   # 2 quick + 1 added by verify
+    assert db.health()["structured_outputs"]["mismatches"] == 1      # unchanged by discover: no new bug signals
 
 
 def test_schema_version_is_part_of_provenance_and_input_hash(isolated_db, monkeypatch):
@@ -2019,3 +2100,13 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
             "export.synthesis-4.6.json", "export.synthesis-5-disabled.json", "answer.chat-4.6.json", "answer.chat-5-disabled.json", "comparison.json", "comparison.txt"} <= names
     assert "RECOMMENDATIONS (nothing was changed" in rep["text"] and "== answer.repair" in rep["text"] and "expected spend" in rep["text"]
     assert all(v.get("production_default_changed") is False for v in rep["verdicts"].values())
+
+
+def test_installation_check_fails_clearly_without_jsonschema(monkeypatch):
+    import sys
+    from neurosearch import schemas
+    schemas.check_installation()                                  # the real environment is complete
+    monkeypatch.setitem(sys.modules, "jsonschema", None)          # simulate an un-reinstalled checkout
+    with pytest.raises(SystemExit) as ei:
+        schemas.check_installation()
+    assert "installation is incomplete" in str(ei.value) and "./start" in str(ei.value)

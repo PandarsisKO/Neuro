@@ -19,7 +19,9 @@ app.add_typer(project_app, name="project")
 
 def _init() -> None:
     from .logctx import configure
+    from .schemas import check_installation
     configure()
+    check_installation()
     db.init_db()
 
 

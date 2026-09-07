@@ -69,9 +69,64 @@ RANK_V2: dict[str, Any] = {
     },
 }
 
+PLAN_UPDATE_V2: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "PlanUpdateV2",
+    "type": "object",
+    "properties": {"updates": {"type": "array", "items": {"$ref": "#/$defs/update"}, "description": "empty when nothing material changed"}},
+    "required": ["updates"],
+    "additionalProperties": False,
+    "$defs": {
+        "update": {
+            "type": "object",
+            "properties": {
+                "section": {"type": "string", "minLength": 1, "description": "which part of the plan changes"},
+                "previous": {"type": "string", "description": "what the plan says now"},
+                "proposed": {"type": "string", "minLength": 1, "description": "what it should say"},
+                "reason": {"type": "string", "minLength": 1, "description": "the new material that justifies it"},
+            },
+            "required": ["section", "previous", "proposed", "reason"],
+            "additionalProperties": False,
+        }
+    },
+}
+
+DISCOVERY_V2: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "DiscoveryV2",
+    "type": "object",
+    "properties": {
+        "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}},
+        "note": {"type": "string", "description": "one or two sentences on sequencing or caveats"},
+    },
+    "required": ["sources", "note"],
+    "additionalProperties": False,
+    "$defs": {
+        "start": {"type": "object", "properties": {"title": {"type": "string"}, "url": {"type": "string"}}, "required": ["title", "url"], "additionalProperties": False},
+        "source": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "kind": {"type": "string", "enum": ["youtube_channel", "podcast", "newsletter", "website", "person"]},
+                "url": {"type": "string", "description": "canonical page, or empty when unsure"},
+                "gist": {"type": "string", "description": "at most 5 words"},
+                "why": {"type": "string", "description": "one sentence, max 20 words"},
+                "angle": {"type": "string", "description": "bias/lens, max 12 words"},
+                "start_with": {"type": "array", "items": {"$ref": "#/$defs/start"}},
+                "fit": {"type": "integer", "minimum": 1, "maximum": 5},
+                "depth": {"type": "string", "enum": ["beginner", "intermediate", "advanced"]},
+            },
+            "required": ["name", "kind", "url", "gist", "why", "angle", "start_with", "fit", "depth"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 REGISTRY: dict[str, dict[str, Any]] = {
     "findings-v2": FINDINGS_V2,
     "rank-v2": RANK_V2,
+    "plan-update-v2": PLAN_UPDATE_V2,
+    "discovery-v2": DISCOVERY_V2,
 }
 
 # keywords the provider accepts (per the structured-outputs docs) — everything else is stripped or rejected
@@ -146,6 +201,15 @@ def provider_schema(name: str) -> dict[str, Any]:
 
 def output_config(name: str) -> dict[str, Any]:
     return {"format": {"type": "json_schema", "schema": provider_schema(name)}}
+
+
+def check_installation() -> None:
+    """jsonschema is a required dependency (Mission F): the local validator is part of the contract, not an
+    enhancement. An incomplete checkout fails at startup with instructions rather than validating less on one machine."""
+    try:
+        import jsonschema  # noqa: F401
+    except ImportError as e:
+        raise SystemExit("Neuro Search installation is incomplete:\njsonschema is required by structured outputs.\n\nRun ./start to update dependencies (it runs pip install -e .).") from e
 
 
 def validate(name: str, obj: Any) -> list[str]:

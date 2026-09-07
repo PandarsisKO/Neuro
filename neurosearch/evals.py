@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 GOLDEN = Path(__file__).parent.parent / "tests" / "fixtures" / "golden"
 GATES = {"retrieval_recall_at_10": 0.90, "citation_validity": 1.0, "finding_quote_validity": 0.98, "plan_evidence_validity": 1.0}
-ZERO_GATES = ("schema_fallbacks", "output_truncated", "output_refused")          # Mission F: structured output is the guarantee; fallbacks are degraded events
+ZERO_GATES = ("schema_mismatches", "schema_fallbacks", "output_truncated", "output_refused")          # Mission F: structured output is the guarantee; fallbacks are degraded events
 # What Tier 1 can prove (the pipeline handles AI-shaped output correctly) vs what only a real model can show
 PIPELINE_METRICS = ("retrieval_recall_at_5", "retrieval_recall_at_10", "retrieval_mrr", "locator_accuracy", "citation_validity",
                     "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity", "calculator_ok", "fixture_evidence_present")
@@ -269,7 +269,8 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
     rep["validators"] = {k: v for k, v in rep["quality"].items() if k in ("citation_validity", "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity")}
     rep["validation_events"] = {r["kind"]: r["n"] for r in db.connect().execute("SELECT kind, COUNT(*) n FROM validation_events WHERE ts>=? GROUP BY kind", (usage_from,)).fetchall()}
     ve = rep["validation_events"]
-    rep["structured_outputs"] = {"schema_fallbacks": ve.get("schema_fallback", 0), "output_truncated": ve.get("output_truncated", 0), "output_refused": ve.get("output_refused", 0),
+    rep["structured_outputs"] = {"schema_mismatches": ve.get("schema_mismatch", 0), "schema_fallbacks": ve.get("schema_fallback", 0), "schema_failures": ve.get("schema_failure", 0),
+                                 "output_truncated": ve.get("output_truncated", 0), "output_refused": ve.get("output_refused", 0),
                                  "structured_tasks": sorted(t for t, c in rep["contracts"].items() if c.get("schema"))}
     for k in ZERO_GATES:
         rep["quality"][k] = rep["structured_outputs"][k]
@@ -326,7 +327,7 @@ def format_report(rep: dict[str, Any]) -> str:
              f"  Plan evidence integrity    {pct(q.get('plan_evidence_validity'))}   ({q.get('plan_evidence_refs')} references)" + (f"   ERROR {q['plan_error']}" if q.get("plan_error") else ""),
              f"  Calculator                 {'ok' if q.get('calculator_ok') else 'FAILED'}   DSCR {q.get('calculator_dscr')}",
              f"  Validation events          " + (", ".join(f"{k} {n}" for k, n in (rep.get("validation_events") or {}).items()) or "none"),
-             f"  Structured outputs         fallbacks {rep.get('structured_outputs', {}).get('schema_fallbacks', '—')} · truncated {rep.get('structured_outputs', {}).get('output_truncated', '—')} · refused {rep.get('structured_outputs', {}).get('output_refused', '—')}   (schema'd tasks: {', '.join(rep.get('structured_outputs', {}).get('structured_tasks') or []) or 'none'})",
+             f"  Structured outputs         mismatches {rep.get('structured_outputs', {}).get('schema_mismatches', '—')} · fallbacks {rep.get('structured_outputs', {}).get('schema_fallbacks', '—')} · truncated {rep.get('structured_outputs', {}).get('output_truncated', '—')} · refused {rep.get('structured_outputs', {}).get('output_refused', '—')}   (schema'd tasks: {', '.join(rep.get('structured_outputs', {}).get('structured_tasks') or []) or 'none'})",
              f"  Provider calls             {rep.get('invocations', {}).get('logical', 0)} logical · {rep.get('invocations', {}).get('attempts', 0)} transport attempts · outcome unknown {rep.get('invocations', {}).get('outcome_unknown', 0)} · returned models {', '.join(rep.get('returned_models') or []) or '—'}",
              ""]
     if fake:

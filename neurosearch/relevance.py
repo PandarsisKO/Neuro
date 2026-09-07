@@ -42,31 +42,18 @@ def _call(system: str, user: str, project_id: str | None, collection_id: str, he
     from . import providers, usage
 
     from .contracts import contract
-    usage.guard(0.02)
     sys_blocks = _system_blocks(system, head)
     c = contract("rank.relevance")
-    resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}])
+    messages = [{"role": "user", "content": user}]
+    if c.schema:
+        # Mission F path: schema-enforced result, fully validated locally; typed failures propagate (a failed batch is
+        # visible as failed_batches, never a silently "repaired" one)
+        return providers.invoke_structured("rank.relevance", system=sys_blocks, messages=messages, usage_kind="rank", project_id=project_id,
+                                           guard_estimate=0.02, legacy=parse_scores)
+    usage.guard(0.02)
+    resp = providers.invoke("rank.relevance", system=sys_blocks, messages=messages)
     usage.record_anthropic(resp, "rank", project_id=project_id)
-    if c.schema and getattr(resp, "stop_reason", None) == "max_tokens":
-        exc = providers.OutputError(providers.OutputError.TRUNCATED, "rank.relevance", f"max_tokens={c.max_output_tokens}")
-        providers.output_event("rank.relevance", exc, project_id=project_id, retried=True)
-        log.warning("rank: output truncated at %d tokens — retrying once with %d", c.max_output_tokens, int(c.max_output_tokens * 1.5))
-        resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}], max_output_tokens=int(c.max_output_tokens * 1.5))
-        usage.record_anthropic(resp, "rank", project_id=project_id)
-    text = providers.text_of(resp).strip()
-    if not c.schema:
-        return parse_scores(text)
-    try:
-        return providers.structured("rank.relevance", resp)
-    except providers.SchemaMismatch as e:
-        log.warning("rank: structured output mismatch (%s) — falling back to the tolerant parser", e.detail)
-        out = parse_scores(text)                      # emergency path; `repaired` marks the batch as degraded
-        out["repaired"] = True
-        providers.schema_fallback("rank.relevance", e, project_id=project_id, recovered=bool(out.get("scores")))
-        return out
-    except providers.OutputError as e:
-        providers.output_event("rank.relevance", e, project_id=project_id)
-        raise
+    return parse_scores(providers.text_of(resp).strip())
 
 
 ITEM_RE = re.compile(r'\{\s*"i"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"why"\s*:\s*"(.*?)"\s*\}', re.S)

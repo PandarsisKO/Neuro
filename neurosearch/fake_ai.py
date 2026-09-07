@@ -65,8 +65,8 @@ PLAN = {
     "refine_questions": [{"question": "Where is the domain registered?", "why": "changes the DNS procedure", "kind": "fact", "options": ["Squarespace", "GoDaddy", "Other"]},
                          {"question": "Do you need a contact form?", "why": "static hosts need a form service", "kind": "decision", "options": ["Yes", "No"]}],
 }
-UPDATES = [{"section": "Recommended approach", "previous": "Static export + Cloudflare Pages", "proposed": "Static export + Netlify",
-            "reason": "New finding says Cloudflare form handling is limited."}]
+UPDATES = {"updates": [{"section": "Recommended approach", "previous": "Static export + Cloudflare Pages", "proposed": "Static export + Netlify",
+                        "reason": "New finding says Cloudflare form handling is limited."}]}
 ANALYSIS = {"situation": "You have a small budget and a live site to move.", "swot": {
     "strengths": [{"point": "Existing content", "so_what": "Nothing to write, just move"}], "weaknesses": [{"point": "No DNS experience", "so_what": "Get help before touching records"}],
     "opportunities": [{"point": "Static hosting is free", "so_what": "Recurring cost can drop to zero", "evidence": []}], "threats": [{"point": "Email breaks on DNS change", "so_what": "Sequence carefully", "evidence": []}]},
@@ -195,12 +195,13 @@ def _rank(user: str, system: str = "") -> str:
     return json.dumps({"scores": out})
 
 
-DISCOVER_QUICK = {"note": "Start with the practitioner, then the contrarian.", "sources": [
+DISCOVER_QUICK = {"sources": [
     {"name": "Dave Ramsey", "kind": "youtube_channel", "url": "https://www.youtube.com/@TheRamseyShow", "gist": "debt-free budgeting basics",
      "why": "The most-cited mainstream voice on getting out of debt.", "angle": "Anti-debt absolutist; dismisses credit strategies.",
      "start_with": [{"title": "The 7 Baby Steps", "url": "https://www.youtube.com/watch?v=abc123def45"}], "fit": 5, "depth": "beginner"},
     {"name": "The Money Guy Show", "kind": "youtube_channel", "url": "https://www.youtube.com/@MoneyGuyShow", "gist": "index-fund investing, CFP-led",
-     "why": "More nuanced on investing than Ramsey.", "angle": "CFP-driven, pro-index-funds.", "start_with": [], "fit": 4, "depth": "intermediate"}]}
+     "why": "More nuanced on investing than Ramsey.", "angle": "CFP-driven, pro-index-funds.", "start_with": [], "fit": 4, "depth": "intermediate"}],
+    "note": "Start with the practitioner, then the contrarian."}
 DISCOVER_VERIFY = {"fixes": [{"name": "Dave Ramsey", "url": "https://www.youtube.com/@TheRamseyShow", "start_with": [{"title": "Baby Steps", "url": "https://www.youtube.com/watch?v=zzz"}]}],
                    "added": [{"name": "BiggerPockets", "kind": "podcast", "url": "https://www.biggerpockets.com/podcasts", "gist": "real estate investing", "why": "The largest REI community podcast.", "angle": "pro-leverage", "fit": 4, "depth": "beginner"}],
                    "note": "verified"}
@@ -262,7 +263,7 @@ class _Msgs:
             # structured output requested: the fake must conform exactly like the provider would (Tier 1 proves it).
             # NEUROSEARCH_FAKE_AI_BAD_JSON=1 breaks the JSON on purpose to exercise the observable fallback path.
             if os.environ.get("NEUROSEARCH_FAKE_AI_BAD_JSON") == "1":
-                text = "```json\n" + text[:-1] + ', "trailing": true}\n```'
+                text = "```json\n" + text + "\n```"          # fenced: not what a structured request returns; recoverable only via the compat hatch
             else:
                 import jsonschema
                 try:

@@ -7,9 +7,12 @@ Rung 4) will later plug into; for now it only knows two providers and one switch
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from .config import settings
+
+log = logging.getLogger(__name__)
 
 
 def fake() -> bool:
@@ -245,21 +248,110 @@ def structured(task: str, resp: Any) -> dict[str, Any]:
     return obj
 
 
-def schema_fallback(task: str, exc: SchemaMismatch, *, project_id: str | None = None, source_id: str | None = None, recovered: bool = True) -> None:
-    """Record that a call site had to use its legacy tolerant parser (or failed outright). This is a degraded event,
-    never normal success: it counts into kv evidence:schema_fallbacks → /api/health → Settings → Health."""
+def _bump_event(kind: str, detail: dict[str, Any], *, project_id: str | None, source_id: str | None, counter: str) -> None:
     from . import db
-    db.validation_event("schema_fallback", {"task": task, "reason": exc.detail[:300], "recovered": recovered, "sample": exc.text[:400]},
-                        project_id=project_id, source_id=source_id)
-    db.kv_bump("evidence:schema_fallbacks")
-    if not recovered:
-        db.kv_bump("evidence:schema_failures")
+    db.validation_event(kind, detail, project_id=project_id, source_id=source_id)
+    db.kv_bump("evidence:" + counter)
 
 
-def output_event(task: str, exc: OutputError, *, project_id: str | None = None, source_id: str | None = None, retried: bool = False) -> None:
-    from . import db
-    db.validation_event("output_" + exc.kind.lower(), {"task": task, "detail": exc.detail, "retried_with_larger_budget": retried}, project_id=project_id, source_id=source_id)
-    db.kv_bump("evidence:output_" + exc.kind.lower())
+def output_event(task: str, exc: OutputError, *, project_id: str | None = None, source_id: str | None = None, **detail: Any) -> None:
+    _bump_event("output_" + exc.kind.lower(), {"task": task, "detail": exc.detail, **detail}, project_id=project_id, source_id=source_id, counter="output_" + exc.kind.lower())
+
+
+COMPAT_FALLBACK_ENV = "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK"      # =1: the explicitly degraded escape hatch (legacy parser + full local validation)
+
+import threading as _threading  # noqa: E402
+
+_tl = _threading.local()
+
+
+def last_response() -> Any:
+    """The provider response behind the most recent invoke_structured() on this thread (model id, usage) — for provenance."""
+    return getattr(_tl, "resp", None)
+
+
+def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]], usage_kind: str, project_id: str | None = None,
+                      source_id: str | None = None, guard_estimate: float = 0.0, legacy: Any = None) -> dict[str, Any]:
+    """The Mission F execution path for a schema'd task:
+
+        provider structured result → json.loads → FULL local schema validation → PASS: return · FAIL: SchemaMismatch
+
+    Legacy parsing is NOT part of this path. What happens on the two explicit failures and the one bug signal:
+      * stop_reason max_tokens  → OutputError(TRUNCATED) → exactly one escalation, through usage.guard, capped by the
+                                  contract's max_output_ceiling, original/escalated budgets recorded → then a typed error;
+      * stop_reason refusal     → OutputError(REFUSED), never parsed;
+      * SchemaMismatch on a normal completion → a BUG SIGNAL (schema_mismatch event + counter): retried once with a fresh
+                                  completion; if that mismatches too, the typed error propagates and the job fails visibly.
+                                  Only with NEUROSEARCH_SCHEMA_COMPAT_FALLBACK=1 does the `legacy` parser run, and its
+                                  result must still pass the FULL local schema to be returned (schema_fallback event).
+    Health: structured_outputs {mismatches, fallbacks, unrecovered, truncated, refused}; steady state all zero."""
+    import os
+
+    from . import contracts as C
+    from . import usage
+    c = C.contract(task)
+    if not c.schema:
+        raise C.ContractError(f"{task}: invoke_structured() needs a contract with a schema")
+    usage.guard(guard_estimate)
+    resp = invoke(task, system=system, messages=messages)
+    _tl.resp = resp
+    usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
+    if getattr(resp, "stop_reason", None) == "max_tokens":
+        exc = OutputError(OutputError.TRUNCATED, task, f"max_tokens={c.max_output_tokens}")
+        if not c.max_output_ceiling or c.max_output_ceiling <= c.max_output_tokens:
+            output_event(task, exc, project_id=project_id, source_id=source_id, budget=c.max_output_tokens, escalated_to=None, ceiling=c.max_output_ceiling)
+            raise exc
+        bigger = min(int(c.max_output_tokens * 1.5), c.max_output_ceiling)
+        output_event(task, exc, project_id=project_id, source_id=source_id, budget=c.max_output_tokens, escalated_to=bigger, ceiling=c.max_output_ceiling, retried_with_larger_budget=True)
+        log.warning("%s: output truncated at %d tokens — one escalation to %d (ceiling %d)", task, c.max_output_tokens, bigger, c.max_output_ceiling)
+        usage.guard(guard_estimate * 1.5)
+        resp = invoke(task, system=system, messages=messages, max_output_tokens=bigger)
+        _tl.resp = resp
+        usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
+        if getattr(resp, "stop_reason", None) == "max_tokens":
+            exc = OutputError(OutputError.TRUNCATED, task, f"still truncated at the ceiling {bigger}")
+            output_event(task, exc, project_id=project_id, source_id=source_id, budget=bigger, escalated_to=None, ceiling=c.max_output_ceiling, final=True)
+            raise exc
+    try:
+        return structured(task, resp)
+    except SchemaMismatch as first:
+        _bump_event("schema_mismatch", {"task": task, "reason": first.detail[:300], "sample": first.text[:400], "schema": c.schema, "model": str(getattr(resp, "model", "") or ""), "retried": True},
+                    project_id=project_id, source_id=source_id, counter="schema_mismatches")
+        log.error("%s: provider-enforced structured output did not match schema %s (%s) — retrying once; this is a bug signal, not a normal failure",
+                  task, c.schema, first.detail[:200])
+    except OutputError as e:
+        output_event(task, e, project_id=project_id, source_id=source_id)
+        raise
+    usage.guard(guard_estimate)
+    resp = invoke(task, system=system, messages=messages)
+    _tl.resp = resp
+    usage.record_anthropic(resp, usage_kind, project_id=project_id, source_id=source_id)
+    try:
+        out = structured(task, resp)
+        _bump_event("schema_mismatch_recovered", {"task": task, "how": "retry"}, project_id=project_id, source_id=source_id, counter="schema_mismatch_recovered")
+        return out
+    except SchemaMismatch as second:
+        if os.environ.get(COMPAT_FALLBACK_ENV) == "1" and legacy is not None:
+            from . import schemas
+            try:
+                obj = legacy(second.text)
+            except Exception as e:  # noqa: BLE001
+                obj, err = None, str(e)
+            else:
+                err = "; ".join(schemas.validate(c.schema, obj)[:3]) if obj is not None else "legacy parser returned nothing"
+            if obj is not None and not err:
+                _bump_event("schema_fallback", {"task": task, "reason": second.detail[:300], "recovered": True, "validated_against": c.schema},
+                            project_id=project_id, source_id=source_id, counter="schema_fallbacks")
+                log.error("%s: DEGRADED — legacy compatibility parser produced a schema-valid result (%s=1)", task, COMPAT_FALLBACK_ENV)
+                return obj
+            _bump_event("schema_fallback", {"task": task, "reason": second.detail[:300], "recovered": False, "legacy_error": err[:300]},
+                        project_id=project_id, source_id=source_id, counter="schema_fallbacks")
+        _bump_event("schema_failure", {"task": task, "reason": second.detail[:300], "sample": second.text[:400], "schema": c.schema},
+                    project_id=project_id, source_id=source_id, counter="schema_failures")
+        raise
+    except OutputError as e:
+        output_event(task, e, project_id=project_id, source_id=source_id)
+        raise
 
 
 # ------------------------------------------------------------------ the router: product code calls invoke(task, ...)
