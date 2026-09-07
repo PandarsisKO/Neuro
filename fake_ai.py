@@ -167,6 +167,18 @@ _RANK_STOP = {"that", "this", "with", "from", "have", "what", "when", "will", "y
               "need", "needs", "want", "best", "videos", "video", "project", "score", "scores", "relevance", "relevant"}
 
 
+def _updates(user: str) -> str:
+    """Content-aware plan updates: one proposed change per NEW FINDING / NEW USER FACT line in the material (so an eval
+    can check the new evidence was addressed); the canned update when there is nothing new."""
+    def block(name: str) -> list[str]:
+        m = re.search(name + r":\n((?:- .*\n?)*)", user)
+        return [ln[2:].strip() for ln in (m.group(1).splitlines() if m else []) if ln.startswith("- ")]
+    ups = [{"section": "Financing" if re.search(r"inject|lender|loan|seller note|standby|down", f, re.I) else "Research", "previous": "as planned",
+            "proposed": f[:300], "reason": "New finding: " + f[:200]} for f in block("NEW FINDINGS")]
+    ups += [{"section": "Constraints", "previous": "as planned", "proposed": f[:300], "reason": "New user fact: " + f[:200]} for f in block("NEW USER FACTS")]
+    return json.dumps({"updates": ups} if ups else UPDATES)
+
+
 def _synthesis(user: str) -> str:
     """A masterplan with the required sections, quoting the findings it was given and preserving their citation
     links verbatim (never inventing one) — content-aware so the export eval can check grounding."""
@@ -326,7 +338,7 @@ class _Msgs:
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = json.dumps(_with_evidence(ANALYSIS, ids))
         elif task == "planner.update":
-            text = json.dumps(UPDATES)
+            text = _updates(user)
         elif task == "planner.build":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = "```json\n" + json.dumps(_with_evidence(PLAN, ids)) + "\n```"

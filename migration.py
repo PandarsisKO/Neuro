@@ -439,7 +439,7 @@ def _cost_latency(base: dict[str, Any], cand: dict[str, Any], caveats: list[str]
     if bc and cc > bc * (1 + COST_TOLERANCE):
         caveats.append(f"cost up {(cc / bc - 1):+.0%}: ${bc:.4f} → ${cc:.4f}")
     bl, cl = base[secs_key], cand[secs_key]
-    if bl and cl > bl * (1 + LATENCY_TOLERANCE):
+    if bl and bl >= 1.0 and cl > bl * (1 + LATENCY_TOLERANCE):       # sub-second timings are noise, never a caveat
         caveats.append(f"latency up {(cl / bl - 1):+.0%}: {bl}s → {cl}s")
 
 

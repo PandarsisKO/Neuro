@@ -283,6 +283,21 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
 
 
 @app.command()
+def closeout(live: bool = typer.Option(False, help="After the free deterministic phase, run the ONE paid Mission F closeout (findings, ranking, planner.update, discover.quick, Planner V1 vs V3)"),
+             no_pytest: bool = typer.Option(False, "--no-pytest", help="Skip the pytest step of the deterministic phase (tests only)")) -> None:
+    """Mission F closeout: deterministic gates first (pytest, schema compat, Tier 1 with Planner V1 and V3, rubric), then one narrowly scoped
+    live run; ends with Mission F PASS / PASS WITH CAVEAT / FAIL and a separate Planner V3 PROMOTE / DO NOT PROMOTE. Changes nothing."""
+    from . import closeout as C
+    from .config import settings
+    if live and not settings.anthropic_api_key:
+        raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
+    rep = C.run_closeout(live=live, progress=lambda m: typer.echo("  · " + m), run_pytest=not no_pytest)
+    typer.echo("")
+    typer.echo(rep["text"])
+    raise typer.Exit(code=0 if rep["mission"]["verdict"] != "FAIL" else 1)
+
+
+@app.command()
 def contracts() -> None:
     """Show the inference contract of every AI task (with any NEUROSEARCH_TASK_* overrides applied)."""
     from .contracts import all_contracts
