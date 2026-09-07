@@ -16,7 +16,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
-| H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built under fakes (0.21.0+h1)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) — 100% recall / 12/12 nuggets reachable on the labeled fixture, 38% of windows and 57% of extractor tokens skipped, net +24.5% of extractor cost at 1.93× leverage (whole-window mode); ranking agreement deferred by decision (ranking is cheap and performing) |
+| H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
@@ -178,16 +178,30 @@ prompt) measures per mode: keep/uncertain/drop, fail-open, recall, FN, nuggets r
 tokens skipped, filter tokens/cost (Haiku list price), avoided extractor cost (Sonnet 5 list price incl. ~600 output tokens/window),
 NET saved, leverage = avoided / filter cost, evidence recall with the filter, returned model, contract provenance. Verdict = the
 production mode (`prefilter.SAMPLE_CHARS`, default 0 = whole window); other modes are experiments.
-Measured (0.21.0+h1, fakes):
-  whole window (production): keep 7 · uncertain 3 · drop 6 · fail-open 0 · recall 100% · FN 0 · nuggets 12/12 reachable · windows
-    skipped 6/16 (38%) · extractor input tokens avoided 56,952/99,222 (57%) · filter $0.0778 · avoided $0.1499 · NET +$0.0721
-    (+24.5% of the unfiltered $0.2944) · leverage 1.93× · tangent → uncertain (kept), mixed → [drop, keep], beekeeping → [drop, drop]. PASS.
-  sampled 8,000 chars (experiment): drop 7 · recall 90% · the buried tangent nugget is MISSED (FN 1) · net +50.4% · leverage 7.33×. FAIL —
-    the gates catch exactly the failure sampling introduces; sampling is not a production option unless recall holds on a larger fixture.
-Economics to keep in mind before a live comparison: reading the whole window costs 0.4× the extractor's input price (Haiku $0.8 vs
-Sonnet 5 $2.0 per Mtok), so the whole-window filter only pays when roughly ≥30–40% of extractor tokens are irrelevant — bulk
-channel/playlist ingests, not hand-picked sources. Net savings scale with the irrelevant share of the corpus, not with the filter.
-Not done: no live run (by decision until the fake numbers justify one); no UI beyond Health; ranking agreement deferred.
+Measured (0.21.0+h2, fakes, CURRENT list prices — Haiku 4.5 $1/$5, Sonnet 5 $2/$10 per Mtok, Message Batches ×0.5 — against the
+transport the product would actually have used; `usage.PRICES` corrected from Haiku $0.8/$4):
+  quality (whole window, production mode): keep 7 · uncertain 3 · drop 6 · fail-open 0 · recall 100% · FN 0 · nuggets 12/12 reachable ·
+    no relevant source emptied · windows skipped 6/16 (38%) · extractor input tokens avoided 56,952/99,222 (57%) · filter spent
+    95,690 in / 323 out · tangent → uncertain (kept), mixed → [drop, keep], beekeeping → [drop, drop]. All quality gates PASS.
+  interactive bulk (Haiku standard + Sonnet 5 standard on kept  vs  Sonnet 5 standard):  baseline $0.2944 → $0.2418 · NET +$0.0526
+    (+17.9%) · leverage 1.54× · break-even irrelevant token share 33%.
+  background bulk (Haiku standard + Sonnet 5 BATCH on kept  vs  Sonnet 5 batch):  baseline $0.1472 → $0.1696 · NET −$0.0224 (−15.2%) ·
+    leverage 0.77× · break-even irrelevant share 66% — batched Sonnet 5 costs the same per token as standard Haiku, so the filter is
+    a second full read of every window at the extractor's own batch rate. FAILS the ≥10% / ≥1.25× gate.
+  background, filter itself batched (Haiku batch + Sonnet 5 batch on kept  vs  Sonnet 5 batch):  $0.1472 → $0.1209 · NET +$0.0263 (+17.9%) ·
+    leverage 1.54× · break-even 33% — but TWO sequential provider batches (the findings batch can only be formed after the filter
+    batch ends), each up to 24 h. Clears the numbers on this 57%-irrelevant fixture; does not clear "no pathological latency".
+  sampled 8,000 chars (experiment): +38–48% on every path — and misses the buried tangent nugget (FN 1). The quality gates refuse it.
+Recommendation (0.21.0+h2): **DEFER / KILL H1 as a production feature — do not run a live comparison.** Rung G moved the bulk
+workload to batching, where the filter's only single-stage configuration loses money below a 66% irrelevant share; the two-stage
+configuration pays only for corpora ≥33% irrelevant by tokens and doubles the worst-case latency. The interactive path saves ~18%
+on such corpora, but G2 recommends background for anything ≥ BULK_THRESHOLD_ITEMS windows, so "interactive bulk" is the
+override case, not the product's path; and the ranking step already removes most off-topic candidates before ingestion, so real
+corpora are unlikely to reach a 33% irrelevant share. The code stays (off by default, fail-open, fully tested, fixture + eval
+frozen) as the measured record; revisit only if (a) a cheaper filter model or a batch-native filter changes the price ratio, or
+(b) a measured bulk ingest shows ≥40% irrelevant tokens after ranking. `neurosearch eval --prefilter` now reports the economic
+gate beside the quality gates and returns FAIL for the production mode — by design.
+Ranking agreement (the other H item) stays deferred: ranking is cheap and Sonnet 5 ranking is performing.
 
 ## Rung G — asynchronous / batched AI + cache layout (0.20.0 → 0.20.0+g5: COMPLETE)
 Abstraction: a logical work item = one findings window (`findings.batch_requests` → stable `custom_id`

@@ -970,17 +970,25 @@ def test_prefilter_eval_gates_and_economics(monkeypatch):
     rep = prefilter_eval.run(progress=lambda m: None)
     assert rep["fixture"]["windows"] == 16 and rep["fixture"]["relevant_windows"] == 10 and rep["fixture"]["nuggets"] == 12
     whole = rep["modes"]["whole window"]
-    assert whole["pass"] and whole["recall"] == 1.0 and not whole["false_negatives"] and not whole["unreachable_nuggets"] and not whole["lost_relevant_sources"]
+    assert whole["quality_pass"] and whole["recall"] == 1.0 and not whole["false_negatives"] and not whole["unreachable_nuggets"] and not whole["lost_relevant_sources"]
     assert whole["decisions"]["drop"] >= 5 and whole["windows_dropped_share"] >= 0.3 and whole["tokens_dropped_share"] >= 0.4
     assert whole["net_saved"] > 0 and whole["leverage"] > 1.0 and whole["filter_cost"] > 0 and whole["fail_open"] == 0
     assert whole["filtered_evidence_recall"] >= rep["unfiltered_evidence_recall"]
+    # economics at current list prices (Haiku $1/$5, Sonnet 5 $2/$10, batches ×0.5), against the transport the product would use:
+    sc = whole["scenarios"]
+    assert 0.15 < sc["interactive"]["net_saved_share"] < 0.20 and sc["interactive"]["leverage"] >= 1.5                      # interactive bulk: pays
+    assert sc["background"]["net_saved_share"] < 0 and sc["background"]["leverage"] < 1.0                                    # background bulk: the filter costs MORE than plain batching
+    assert sc["background"]["break_even_irrelevant_token_share"] > 0.6                                                      # …unless ~2/3 of the corpus is waste
+    assert sc["background_batched_filter"]["net_saved_share"] > 0.15 and sc["background_batched_filter"]["batch_stages"] == 2   # only a two-stage batch pays, at 2×24 h latency
+    assert not whole["economics_pass"] and not whole["pass"]                                                                # the background gate (≥10% net, ≥1.25×) FAILS
     assert whole["per_source"]["tangent"]["decisions"] == ["uncertain"]                        # the buried nugget: not dropped
     assert whole["per_source"]["mixed"]["decisions"][1] == "keep" and whole["per_source"]["beekeeping"]["decisions"] == ["drop", "drop"]
     prov = whole["provenance_example"]
     assert prov and prov["drop"] == 2 and prov["configured_model"] == "claude-haiku-4-5" and prov["prompt_version"].startswith("prefilter-") and prov["schema_version"] == "prefilter-v1"
     sampled = rep["modes"]["sampled 8,000 chars"]
-    assert not sampled["pass"] and sampled["false_negatives"] == [{"source": "tangent", "window": 0}] and sampled["leverage"] > whole["leverage"]
-    assert rep["pass"] and rep["production_mode"] == "whole window"
+    assert not sampled["quality_pass"] and not sampled["pass"] and sampled["false_negatives"] == [{"source": "tangent", "window": 0}] and sampled["leverage"] > whole["leverage"]
+    assert sampled["economics_pass"]                                                                                        # cheap AND unsafe: exactly the trade the gates refuse
+    assert not rep["pass"] and rep["production_mode"] == "whole window"
 
 
 def test_prefilter_fails_open_on_every_failure_kind(monkeypatch):

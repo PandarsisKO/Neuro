@@ -143,21 +143,27 @@ def run(progress: Any = print, modes: tuple[int, ...] = (0, 8000)) -> dict[str, 
         m["filtered_evidence_recall"] = _evidence_recall(pid, ids, nuggets)
         an = db.get_analysis(pid, ids["beekeeping"], "summary") or {}
         m["provenance_example"] = json.loads(an["prefilter"]) if an.get("prefilter") else None
-        # economics (contract list prices; the fake's tokens are chars/4 on both sides)
-        filter_cost = filter_in / 1e6 * pf_in + filter_out / 1e6 * pf_out
-        avoided_cost = avoided_in / 1e6 * fx_in + avoided_out / 1e6 * fx_out
+        # economics against the transport Neuro Search would actually have used (list prices; the fake's tokens are chars/4 on both
+        # sides): interactive = Sonnet 5 standard; background = Sonnet 5 Message Batch (BATCH_MULT); the filter itself standard or batched
         total_extract_in = sum(extract_tokens.values())
+        total_extract_out = n_windows * EXTRACT_OUT_TOKENS
+        m["scenarios"] = economics(filter_in, filter_out, total_extract_in, total_extract_out, avoided_in, avoided_out, (pf_in, pf_out), (fx_in, fx_out), usage.BATCH_MULT)
+        inter, bg = m["scenarios"]["interactive"], m["scenarios"]["background"]
         m.update({"recall": round(1 - len(m["false_negatives"]) / max(1, n_relevant), 4), "windows_dropped_share": round(m["windows_dropped"] / n_windows, 4),
                   "tokens_dropped_share": round(avoided_in / max(1, total_extract_in), 4),
                   "extract_input_tokens_total": total_extract_in, "extract_input_tokens_avoided": avoided_in, "extract_output_tokens_avoided": avoided_out,
-                  "filter_input_tokens": filter_in, "filter_output_tokens": filter_out, "filter_cost": round(filter_cost, 6), "avoided_cost": round(avoided_cost, 6),
-                  "net_saved": round(avoided_cost - filter_cost, 6), "leverage": round(avoided_cost / filter_cost, 2) if filter_cost else None,
-                  "unfiltered_extract_cost": round(total_extract_in / 1e6 * fx_in + n_windows * EXTRACT_OUT_TOKENS / 1e6 * fx_out, 6),
-                  "returned_models": sorted(returned_models)})
-        m["net_saved_share"] = round(m["net_saved"] / m["unfiltered_extract_cost"], 4) if m["unfiltered_extract_cost"] else 0.0
+                  "filter_input_tokens": filter_in, "filter_output_tokens": filter_out,
+                  # headline figures = the interactive comparison (kept for continuity); the background comparison is the one that gates
+                  "filter_cost": inter["filter_cost"], "avoided_cost": inter["avoided_cost"], "net_saved": inter["net_saved"], "leverage": inter["leverage"],
+                  "unfiltered_extract_cost": inter["baseline_cost"], "net_saved_share": inter["net_saved_share"], "returned_models": sorted(returned_models)})
         m["gates"] = {"recall_100": m["recall"] == 1.0, "zero_false_negatives": not m["false_negatives"], "nuggets_reachable": not m["unreachable_nuggets"],
-                      "no_relevant_source_emptied": not m["lost_relevant_sources"], "evidence_recall_preserved": m["filtered_evidence_recall"] >= base_recall}
-        m["pass"] = all(m["gates"].values())
+                      "no_relevant_source_emptied": not m["lost_relevant_sources"], "evidence_recall_preserved": m["filtered_evidence_recall"] >= base_recall,
+                      # the economic gate (Kyle, H1 pause): on the BACKGROUND bulk path the filter must save ≥10% net against plain Sonnet 5
+                      # batching with leverage ≥1.25× — with the filter run the way the product would run it there (standard, single stage)
+                      "background_net_saving_10pct": bg["net_saved_share"] >= BACKGROUND_MIN_NET_SHARE, "background_leverage_1_25": (bg["leverage"] or 0) >= BACKGROUND_MIN_LEVERAGE}
+        m["quality_pass"] = all(v for k, v in m["gates"].items() if not k.startswith("background_"))
+        m["economics_pass"] = m["gates"]["background_net_saving_10pct"] and m["gates"]["background_leverage_1_25"]
+        m["pass"] = m["quality_pass"] and m["economics_pass"]
         rep["modes"][label] = m
         progress(f"  {label:22s} keep {m['decisions']['keep']:2d} · uncertain {m['decisions']['uncertain']:2d} · drop {m['decisions']['drop']:2d} · fail-open {m['fail_open']} · "
                  f"recall {m['recall']:.0%} · FN {len(m['false_negatives'])} · windows skipped {m['windows_dropped_share']:.0%} · tokens skipped {m['tokens_dropped_share']:.0%} · "
@@ -170,6 +176,39 @@ def run(progress: Any = print, modes: tuple[int, ...] = (0, 8000)) -> dict[str, 
     rep["pass"] = bool(prod and prod["pass"])
     rep["text"] = format_report(rep)
     return rep
+
+
+BACKGROUND_MIN_NET_SHARE = 0.10          # kill threshold (Kyle): ≥10% net model-cost saving vs plain Sonnet 5 Message Batch on the bulk path
+BACKGROUND_MIN_LEVERAGE = 1.25           # and avoided cost ≥ 1.25× the filter's own cost
+
+
+def economics(filter_in: int, filter_out: int, extract_in: int, extract_out: int, avoided_in: int, avoided_out: int,
+              pf_price: tuple[float, float], fx_price: tuple[float, float], batch_mult: float) -> dict[str, dict[str, Any]]:
+    """Net dollars per transport the product would actually use. Each scenario: baseline (no filter, that transport), filter cost,
+    extractor cost on the kept windows, total, net saved, share of the baseline, leverage (avoided / filter cost) and the
+    BREAK-EVEN irrelevant-token share — the fraction of extractor tokens a corpus must waste before this scenario saves anything."""
+    pf_in, pf_out = pf_price
+    fx_in, fx_out = fx_price
+
+    def cost(tin: int, tout: int, price: tuple[float, float], mult: float = 1.0) -> float:
+        return (tin / 1e6 * price[0] + tout / 1e6 * price[1]) * mult
+
+    out: dict[str, dict[str, Any]] = {}
+    for key, label, fmult, xmult, stages, latency in (
+        ("interactive", "interactive: Haiku filter (standard) + Sonnet 5 standard on kept windows  vs  Sonnet 5 standard", 1.0, 1.0, 1, "adds one short model call per window before extraction"),
+        ("background", "background: Haiku filter (standard) + Sonnet 5 BATCH on kept windows  vs  Sonnet 5 batch", 1.0, batch_mult, 1, "filter runs interactively while the batch is planned; no added batch stage"),
+        ("background_batched_filter", "background: Haiku filter BATCHED + Sonnet 5 batch on kept windows  vs  Sonnet 5 batch", batch_mult, batch_mult, 2, "TWO sequential batches: the findings batch can only be formed after the filter batch ends — each stage may take up to 24 h"),
+    ):
+        baseline = cost(extract_in, extract_out, fx_price, xmult)
+        f_cost = cost(filter_in, filter_out, pf_price, fmult)
+        kept = cost(extract_in - avoided_in, extract_out - avoided_out, fx_price, xmult)
+        avoided = cost(avoided_in, avoided_out, fx_price, xmult)
+        total = f_cost + kept
+        out[key] = {"label": label, "baseline_cost": round(baseline, 6), "filter_cost": round(f_cost, 6), "kept_extract_cost": round(kept, 6), "total_cost": round(total, 6),
+                    "avoided_cost": round(avoided, 6), "net_saved": round(baseline - total, 6), "net_saved_share": round((baseline - total) / baseline, 4) if baseline else 0.0,
+                    "leverage": round(avoided / f_cost, 2) if f_cost else None, "break_even_irrelevant_token_share": round(f_cost / baseline, 4) if baseline else None,
+                    "batch_stages": stages, "latency": latency}
+    return out
 
 
 def _evidence_recall(pid: str, ids: dict[str, str], nuggets: list[dict[str, Any]]) -> float:
@@ -203,8 +242,11 @@ def format_report(rep: dict[str, Any]) -> str:
                   f"    keep {d['keep']} · uncertain {d['uncertain']} · drop {d['drop']} · fail-open {m['fail_open']} · returned model {', '.join(m['returned_models']) or '—'}",
                   f"    relevant-window recall {m['recall']:.0%} · false negatives {len(m['false_negatives'])} · nuggets unreachable {len(m['unreachable_nuggets'])} · relevant sources emptied {len(m['lost_relevant_sources'])}",
                   f"    windows skipped {m['windows_dropped']}/{f['windows']} ({m['windows_dropped_share']:.0%}) · extractor input tokens avoided {m['extract_input_tokens_avoided']:,}/{m['extract_input_tokens_total']:,} ({m['tokens_dropped_share']:.0%})",
-                  f"    filter spent {m['filter_input_tokens']:,} in / {m['filter_output_tokens']:,} out = ${m['filter_cost']:.4f} · avoided ${m['avoided_cost']:.4f} · NET ${m['net_saved']:+.4f} ({m['net_saved_share']:+.1%} of the unfiltered ${m['unfiltered_extract_cost']:.4f}) · leverage {m['leverage']}×",
-                  f"    evidence recall with the filter {m['filtered_evidence_recall']:.0%} · gates {', '.join(k for k, v in m['gates'].items() if not v) or 'all pass'} → {'PASS' if m['pass'] else 'FAIL'}"]
+                  f"    filter spent {m['filter_input_tokens']:,} in / {m['filter_output_tokens']:,} out · evidence recall with the filter {m['filtered_evidence_recall']:.0%}"]
+        for sc in m["scenarios"].values():
+            lines.append(f"    {sc['label']}")
+            lines.append(f"      baseline ${sc['baseline_cost']:.4f} · filter ${sc['filter_cost']:.4f} + kept extraction ${sc['kept_extract_cost']:.4f} = ${sc['total_cost']:.4f} · NET ${sc['net_saved']:+.4f} ({sc['net_saved_share']:+.1%}) · leverage {sc['leverage']}× · break-even irrelevant share {sc['break_even_irrelevant_token_share']:.0%} · {sc['latency']}")
+        lines.append(f"    quality gates {', '.join(k for k, v in m['gates'].items() if not v and not k.startswith('background_')) or 'all pass'} · economic gate (background ≥{BACKGROUND_MIN_NET_SHARE:.0%} net, ≥{BACKGROUND_MIN_LEVERAGE}× leverage) {'PASS' if m['economics_pass'] else 'FAIL'} → {'PASS' if m['pass'] else 'FAIL'}")
         if m["false_negatives"] or m["unreachable_nuggets"]:
             lines.append(f"    FN {m['false_negatives']} · unreachable {[(n['source'], n['window']) for n in m['unreachable_nuggets']]}")
     lines.append(f"Pre-filter eval {'PASS' if rep['pass'] else 'FAIL'} (verdict = production mode: {rep.get('production_mode')}; other modes are experiments)")
