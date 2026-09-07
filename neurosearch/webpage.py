@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
 
 log = logging.getLogger(__name__)
 
@@ -125,16 +124,19 @@ class Blocked(RuntimeError):
     """The site refused an automated reader (403/401/429/challenge page)."""
 
 
-def fetch(url: str, timeout: float = 40.0) -> tuple[str, str, bytes]:
-    """GET the URL. Returns (final_url, content_type, body)."""
-    with httpx.Client(follow_redirects=True, timeout=timeout, headers=HEADERS) as c:
-        r = c.get(url)
-        if r.status_code in (401, 403, 429, 503):
-            raise Blocked(f"{urlparse(url).netloc} blocks automated readers (HTTP {r.status_code}). "
-                          "Open the page in Chrome and use the Neuro Search extension → 'Send this page', "
-                          "or copy the text into Sources → Paste text.")
-        r.raise_for_status()
-        return str(r.url), (r.headers.get("content-type") or "").lower(), r.content
+def fetch(url: str, timeout: float = 60.0) -> tuple[str, str, bytes]:
+    """GET the URL through the J1 network boundary (`safe_fetch`: public addresses only, pinned connection, manual
+    revalidated redirects, streamed size/decoded limits, total deadline). Returns (final_url, content_type, body).
+    A refused destination raises safe_fetch.FetchBlocked (typed reason, user-safe message)."""
+    from .safe_fetch import safe_fetch
+    r = safe_fetch(url, deadline_s=timeout)
+    if r.status in (401, 403, 429, 503):
+        raise Blocked(f"{urlparse(url).netloc} blocks automated readers (HTTP {r.status}). "
+                      "Open the page in Chrome and use the Neuro Search extension → 'Send this page', "
+                      "or copy the text into Sources → Paste text.")
+    if r.status >= 400:
+        raise RuntimeError(f"HTTP {r.status} fetching {urlparse(r.url).netloc}")
+    return r.url, r.content_type, r.body
 
 
 def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:

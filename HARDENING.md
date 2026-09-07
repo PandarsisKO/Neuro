@@ -18,7 +18,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3)**: hard retrieval fixture + live production-embedding baseline (MRR 0.9093, R@1 86.7%, exact locator 87.2%) kept as permanent regression coverage; the Haiku candidate-only reranker held every safety gate but failed every frozen meaningful-improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s and $0.0027 per query) → KILL; production retrieval unchanged (FTS + embeddings + RRF); query rewriting / embedding-large / vector index untested by decision — no evidence of need |
-| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
+| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **J1 done (0.23.0+j1)**: `safe_fetch` with a pinned validated connection (no DNS-rebinding gap), per-hop revalidation, manual redirects, streamed wire + decoded ceilings by content class, total deadline, typed blocks → Health; webpage/document fetches routed through it; 54 local deterministic tests incl. rebinding. J2 (breakers per provider:operation, durable in SQLite) and J3 (no automatic fallback for evidence tasks) next |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
 
@@ -149,6 +149,38 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
+
+## Rung J — external failure (J1 safe_fetch done, 0.23.0+j1; J2/J3 pending)
+J1 `safe_fetch.py` is the ONE boundary for ordinary URL fetching (`webpage.fetch` → pages and linked documents/PDFs); yt-dlp
+stays separate by design (its own extractor/cookie/redirect logic; documented exception). Pipeline for the initial URL AND every
+redirect hop: parse → http/https only → no userinfo → normalised host/port (idna, browser shorthand like 127.1 canonicalised) →
+resolve A + AAAA → reject if ANY answer is unsafe → connect to the VALIDATED, PINNED address with the original hostname kept for the
+HTTP Host header and for TLS SNI/certificate verification (`_PinnedHTTP` / `_PinnedHTTPS` over http.client: no second, uncontrolled
+resolution between validation and the socket, so DNS rebinding cannot move the connection) → stream under limits. Blocked:
+loopback, RFC1918/private, link-local, unspecified, multicast, reserved/non-global, IPv6 equivalents (::1, fe80::, fc00::/7),
+IPv4-mapped and 6to4 forms, cloud metadata (169.254.169.254, fd00:ec2::254, 100.100.100.200, metadata.google.internal and friends),
+localhost/.localhost/.local names, file:/ftp:/gopher:/data:/javascript: and schemeless links, embedded credentials, bad ports.
+Redirects are followed manually (MAX_REDIRECTS 5, configurable) and each target revalidated; no automatic retries; no environment
+proxies (the client never reads proxy variables); connect/read timeouts plus a total wall-clock deadline (60 s default, 60 s for
+webpage.fetch). Sizes: an oversized Content-Length is refused before reading, the stream is counted regardless (chunked responses
+too), gzip/deflate are decoded incrementally under a separate DECODED ceiling (a 30 KB → 30 MB gzip bomb stops at the ceiling),
+br/zstd are refused (never requested). Limits live in ONE table by content class — html 5 MB wire / 10 MB decoded, document 60 MB /
+120 MB (env-overridable) — chosen from the response Content-Type or pinned by the caller; callers never carry numbers.
+Diagnostics: `FetchBlocked(reason ∈ scheme|userinfo|host|port|dns|private_address|metadata|redirect_limit|redirect_target|too_large|
+decoded_too_large|encoding|timeout|connect|status|protocol)` → validation event `fetch_blocked` {reason, host, hop} + kv counter →
+Health `network.fetch_blocked`; the user-facing message never names the refused address. A blocked fetch fails the job without
+transport retries (by design: retrying a refused destination is pointless; a user can retry a flaky public site).
+Tests (tests/test_safe_fetch.py, 54, local ThreadingHTTPServer + RESOLVER/CONNECT hooks, no real network): every private/metadata
+literal and name above; mixed public+private answers; bad schemes/userinfo/ports/dns; public HTML + PDF + gzip + deflate success
+through the pinned address with the original Host; redirects to private/metadata/file blocked at hop 1; redirect-chain limit;
+oversized Content-Length; 12.8 MB chunked body cut off; gzip bomb; unsupported encoding; slow body vs deadline; central per-class
+limits; Health recording; webpage.fetch/read_page through the boundary; HTTPS pinned connect + SNI at the unit level; and the
+rebinding proof: a name answering public first and 127.0.0.1 afterwards is resolved exactly once and connected at the validated
+public answer, and a redirect back to that name is revalidated and blocked.
+Implementation constraints found: (1) HTTPS end-to-end is unit-tested (pinned socket + SNI), not served locally — no certificates in
+the harness; (2) no outbound proxy support in this client (trust_env-equivalent off) — if proxies are ever wanted they must be added
+deliberately and validated like a destination; (3) hosts with several answers are all validated and the first IPv4 answer is pinned
+(IPv6-only hosts pin their v6 answer); (4) `.local` and `.localhost` names are refused by name as belt-and-braces.
 
 ## Rung I — retrieval (COMPLETE 0.22.0+i3: hard baseline kept; reranker measured live, NOT adopted; retrieval unchanged)
 Premise (Kyle): retrieval is already strong on the golden questions (R@10 100%, R@5 96.9%, MRR 0.922, locator 80% in Tier 1), so a
