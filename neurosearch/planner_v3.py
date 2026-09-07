@@ -418,7 +418,7 @@ def _usage_of(resp: Any) -> dict[str, int]:
             "cache_read": int(getattr(u, "cache_read_input_tokens", 0) or 0), "cache_write": int(getattr(u, "cache_creation_input_tokens", 0) or 0)}
 
 
-def build_plan_v3(project_id: str, instructions: str | None = None, progress: Any = None) -> dict[str, Any]:
+def build_plan_v3(project_id: str, instructions: str | None = None, progress: Any = None, research: dict[str, Any] | None = None) -> dict[str, Any]:
     from . import planner, providers, usage
     from .contracts import contract
     project = db.get_project(project_id)
@@ -426,12 +426,13 @@ def build_plan_v3(project_id: str, instructions: str | None = None, progress: An
         raise RuntimeError("project not found")
     if progress:
         progress(0.05, "gathering the research…")
-    ev, emap = planner._evidence(project_id, project)
-    material = planner._material(project_id, project, ev)
+    research = research or planner.research_context(project_id)     # a frozen payload, or prepared now — never re-retrieved per component
+    emap, material = research["emap"], research["material"]
     shared = [usage.cached_block("RESEARCH MATERIAL for the project (your instructions follow it):\n\n" + material)]
     prev = db.latest_plan(project_id)
     t_all = time.time()
-    telemetry: dict[str, Any] = {"planner_version": PLANNER_VERSION, "material_chars": len(material), "material_tokens_est": len(material) // 4, "components": []}
+    telemetry: dict[str, Any] = {"planner_version": PLANNER_VERSION, "material_chars": len(material), "material_tokens_est": len(material) // 4,
+                                 "research_hash": research["material_hash"], "components": []}
     instr = ("INSTRUCTIONS FROM THE USER:\n" + instructions + "\n\n") if instructions else ""
 
     def call(task: str, system: str, user: str, label: str) -> dict[str, Any]:
@@ -498,6 +499,7 @@ def build_plan_v3(project_id: str, instructions: str | None = None, progress: An
     plan["_build"] = telemetry
     plan["_components"] = {"situation": analysis, "core": core, "execution": execution, "economics": economics, "actions": actions}   # as generated, before assembly
     plan["_analysis_hash"] = analysis_hash
+    plan["_research_hash"] = research["material_hash"]
     db.kv_bump("evidence:plan_refs_checked", n_refs)
     snapshot = db.project_snapshot(project_id)
     row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None,

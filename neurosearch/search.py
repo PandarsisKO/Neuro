@@ -49,9 +49,15 @@ def hit_from_chunk(c: dict[str, Any], score: float) -> dict[str, Any]:
     }
 
 
+class RetrievalUnavailable(RuntimeError):
+    """Vector search could not run (embedding endpoint down, etc.). Raised only in strict mode; the default path
+    degrades to FTS-only and records evidence:retrieval_degraded so the degradation is visible in Health."""
+
+
 def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
-           per_source_cap: int | None = 4) -> list[dict[str, Any]]:
-    """Return ranked chunk hits with source metadata and deep links."""
+           per_source_cap: int | None = 4, strict: bool = False) -> list[dict[str, Any]]:
+    """Return ranked chunk hits with source metadata and deep links. strict=True: a vector-search failure is an error,
+    never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint)."""
     query = query.strip()
     if not query:
         return []
@@ -76,7 +82,13 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
                     cid = ids[int(i)]
                     ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank) * 1.1
         except Exception as e:  # noqa: BLE001
+            if strict:
+                raise RetrievalUnavailable(f"vector search unavailable: {e}") from e
             log.warning("vector search unavailable: %s", e)
+            try:
+                db.kv_bump("evidence:retrieval_degraded")           # visible: Health counts FTS-only fallbacks
+            except Exception:  # noqa: BLE001
+                pass
 
     if not ranked:
         return []

@@ -1,0 +1,192 @@
+{
+ "eval": "findings",
+ "tier": "live",
+ "model": "claude-sonnet-5",
+ "configured_model": "claude-sonnet-5",
+ "app_version": "0.19.0+f5",
+ "git_sha": "d2e8b74",
+ "provider": "anthropic",
+ "prompt_version": "18b5db69",
+ "contract": {
+  "task": "findings.extract",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "thinking": "disabled",
+  "effort": null,
+  "max_output_tokens": 4000,
+  "timeout": null,
+  "max_attempts": 3,
+  "backoff": [
+   1.0,
+   4.0
+  ],
+  "interactive": false,
+  "batch_allowed": true,
+  "fallback_allowed": false,
+  "schema": "findings-v2",
+  "max_output_ceiling": 6000,
+  "quality_floor": null,
+  "notes": "per transcript window; quote validator gates the output; Sonnet 5 since E2.2"
+ },
+ "validators": "evidence.check_finding (quote must be in the window) + stored re-check",
+ "started": "2026-09-06T20:54:57",
+ "gates": {
+  "finding_quote_validity": {
+   "value": 1.0,
+   "floor": 0.98,
+   "pass": true
+  },
+  "stored_findings_verified": {
+   "value": 1.0,
+   "floor": 1.0,
+   "pass": true
+  },
+  "incomplete_outputs": {
+   "value": 0,
+   "floor": 0,
+   "pass": true
+  },
+  "all_invocations_resolved": {
+   "value": 0,
+   "floor": 0,
+   "pass": true
+  },
+  "all_sources_analysed": {
+   "value": 0,
+   "floor": 0,
+   "pass": true
+  }
+ },
+ "quality": {
+  "golden_evidence_recall": 0.9,
+  "nuggets": {
+   "yt01: the SBA requires a minimum ten percent equity injection": true,
+   "yt01: half of that ten percent can come from a seller note": true,
+   "yt01: debt service coverage ratio of at least one point two five": true,
+   "yt02: quality of earnings report costs somewhere between eight and": true,
+   "yt02: more than twenty percent of revenue, price that risk in or w": true,
+   "yt03: sixty day exclusivity period in the LOI": true,
+   "yt03: two to three and a half times SDE": true,
+   "yt03: Do not raise prices in the first ninety days": false,
+   "pod: zero percent down using seller financing for the whole purch": true,
+   "article: SDE multiples cluster between 2.0x and 3.5x": true
+  },
+  "finding_quote_validity": 1.0,
+  "stored_findings_verified": 1.0,
+  "findings_suggested": 53,
+  "findings_rejected": 0,
+  "findings_candidates": 53,
+  "sources": 8,
+  "failed_sources": [],
+  "transcript_windows": 9,
+  "findings_per_source": 6.62,
+  "findings_per_window": 5.89,
+  "per_source": {
+   "yt01": {
+    "suggested": 9,
+    "rejected": 0,
+    "substance": 80,
+    "summary_chars": 330,
+    "windows": 1
+   },
+   "yt02": {
+    "suggested": 9,
+    "rejected": 0,
+    "substance": 72,
+    "summary_chars": 380,
+    "windows": 1
+   },
+   "yt03": {
+    "suggested": 12,
+    "rejected": 0,
+    "substance": 8,
+    "summary_chars": 735,
+    "windows": 2
+   },
+   "pod": {
+    "suggested": 7,
+    "rejected": 0,
+    "substance": 58,
+    "summary_chars": 416,
+    "windows": 1
+   },
+   "vlog": {
+    "suggested": 0,
+    "rejected": 0,
+    "substance": 0,
+    "summary_chars": 157,
+    "windows": 1
+   },
+   "article": {
+    "suggested": 8,
+    "rejected": 0,
+    "substance": 85,
+    "summary_chars": 378,
+    "windows": 1
+   },
+   "report": {
+    "suggested": 8,
+    "rejected": 0,
+    "substance": 88,
+    "summary_chars": 353,
+    "windows": 1
+   },
+   "sourdough": {
+    "suggested": 0,
+    "rejected": 0,
+    "substance": 0,
+    "summary_chars": 285,
+    "windows": 1
+   }
+  },
+  "summary_validity": 1.0,
+  "substance_validity": 1.0,
+  "window_calls": 9,
+  "truncated_windows": 0,
+  "parse_failed_windows": 0,
+  "no_json_windows": 0,
+  "repaired_windows": 0,
+  "empty_windows": 2,
+  "windows_missing_summary": 0,
+  "windows_missing_substance": 0,
+  "incomplete_outputs": 0,
+  "raw_findings": 65
+ },
+ "volume": {
+  "calls": 9,
+  "input_tokens": 47216,
+  "output_tokens": 7927,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "canonical_input_tokens": 47216,
+  "output_tokens_per_window": 880.8
+ },
+ "economics": {
+  "cost": 0.1737,
+  "cost_per_source_hour": 0.1054,
+  "media_hours": 1.65,
+  "cost_per_source": 0.0217
+ },
+ "performance": {
+  "findings_s": 106.65,
+  "s_per_window": 11.85,
+  "s_per_source": 13.33,
+  "total_s": 108.71
+ },
+ "canonical_input_tokens": 47216,
+ "canonical_requests": 9,
+ "invocations": {
+  "logical": 9,
+  "attempts": 10,
+  "by_state": {
+   "completed": 9,
+   "failed": 1
+  },
+  "outcome_unknown": 0
+ },
+ "returned_models": [
+  "claude-sonnet-5"
+ ],
+ "returned_model": "claude-sonnet-5",
+ "pass": true
+}

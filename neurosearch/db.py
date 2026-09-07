@@ -1583,7 +1583,8 @@ def health() -> dict[str, Any]:
     stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND (lease_until IS NULL OR lease_until < ?)", (time.time(),)).fetchone()[0]
     leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
-                                                          "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused")}
+                                                          "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused",
+                                                          "retrieval_degraded")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))

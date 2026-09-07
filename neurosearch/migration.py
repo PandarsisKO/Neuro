@@ -248,7 +248,7 @@ def _arm_meta(label: str, model: str, thinking: str, effort: str | None, tasks: 
 
 # ------------------------------------------------------------------ planner arms (analysis + build from one build_plan)
 
-def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any]) -> dict[str, Any]:
+def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any], research: dict[str, Any] | None = None) -> dict[str, Any]:
     from . import planner
     from .evidence import check_plan_evidence
     events: list[dict[str, Any]] = []
@@ -256,11 +256,13 @@ def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any]) -> dict[str, A
     t0 = time.time()
     usage_from = time.time()
     err = None
+    err_type = None
     row: dict[str, Any] | None = None
     try:
-        row = planner.build_plan(pid)
+        row = planner.build_plan(pid, research=research)
     except Exception as e:  # noqa: BLE001
         err = str(e)[:300]
+        err_type = type(e).__name__
     finally:
         planner.OBSERVER = None
     seconds = round(time.time() - t0, 2)
@@ -283,7 +285,8 @@ def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any]) -> dict[str, A
             events = [e for e in events if not (e.get("event") == "call" and e.get("task") == "planner.build")] + [merged]
     emap = set((plan or {}).get("_evidence") or {})
     chk = (plan or {}).get("_evidence_check") or {}
-    out: dict[str, Any] = {"error": err, "seconds": seconds, "tasks": {}}
+    out: dict[str, Any] = {"error": err, "error_type": err_type if err else None, "seconds": seconds, "tasks": {},
+                           "research_hash": (row or {}).get("plan", {}).get("_research_hash") if row else (research or {}).get("material_hash")}
     for task, doc, key in (("planner.analysis", analysis, "analysis"), ("planner.build", {k: v for k, v in plan.items() if not k.startswith("_")} if plan else None, "plan")):
         calls = [e for e in events if e.get("event") == "call" and e.get("task") == task]
         parses = [e for e in events if e.get("event") == "parse" and e.get("task") == task]

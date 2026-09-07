@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shutil
 import tempfile
 
 os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_test_")
@@ -2327,3 +2328,114 @@ def test_version_is_pep440_and_consistent():
         pytest.fail(f"pyproject version {v!r} is not PEP 440 — pip install -e . will fail")
     assert v == neurosearch.__version__
     assert f"'{v}'" in (pathlib.Path(neurosearch.__file__).parent / "web" / "index.html").read_text()
+
+
+# ------------------------------------------------------------------ F5 harness fixes: frozen research, INCOMPLETE stages, resume
+
+def test_frozen_research_is_byte_identical_for_both_planners(golden_project, monkeypatch):
+    """The planner's research is prepared once (strict) and handed to both arms; after the freeze, retrieval can fail or
+    disappear without changing either arm's input — both consume the same bytes, and both record the same hash."""
+    from neurosearch import planner, planner_v3, providers, search
+    from neurosearch.config import settings
+    pid = golden_project
+    _real_search = search.search
+    research = planner.research_context(pid, strict=True)
+    assert research["evidence_count"] > 10 and research["material_hash"] and research["material"].startswith("PROJECT:")
+    # after the freeze: vector search is dead
+    def dead(*a, **k):
+        raise search.RetrievalUnavailable("vector search unavailable: CONNECTION after 3 attempts")
+    monkeypatch.setattr(search, "search", dead)
+    monkeypatch.setattr(planner, "search", dead)
+    seen: dict[str, list[str]] = {"v1": [], "v3": []}
+    real_invoke = providers.invoke
+    current = {"arm": "v1"}
+    def spy(task, **kw):
+        sysb = kw.get("system")
+        first = sysb[0]["text"] if isinstance(sysb, list) else str(sysb)
+        if task.startswith("planner."):
+            seen[current["arm"]].append(first)
+        return real_invoke(task, **kw)
+    monkeypatch.setattr(providers, "invoke", spy)
+    monkeypatch.setattr(settings, "planner_v3", False)
+    r1 = planner.build_plan(pid, research=research)
+    current["arm"] = "v3"
+    monkeypatch.setattr(settings, "planner_v3", True)
+    r3 = planner.build_plan(pid, research=research)
+    assert r1["plan"]["_research_hash"] == r3["plan"]["_research_hash"] == research["material_hash"] == r3["plan"]["_build"]["research_hash"]
+    shared_v1 = {t for t in seen["v1"]}; shared_v3 = {t for t in seen["v3"]}
+    assert len(shared_v1) == 1 and shared_v1 == shared_v3                         # every planner call, both arms: the same first system block, byte for byte
+    assert research["material"] in next(iter(shared_v1))
+    # without a frozen payload, strict preparation refuses to run on a dead vector search
+    with pytest.raises(search.RetrievalUnavailable):
+        planner.research_context(pid, strict=True)
+    # the production (non-strict) path degrades visibly instead
+    monkeypatch.setattr(search, "search", search.search.__wrapped__ if hasattr(search.search, "__wrapped__") else _real_search)
+    from neurosearch import embeddings
+    monkeypatch.setattr(embeddings, "embed_query", lambda q: (_ for _ in ()).throw(ConnectionError("embedding endpoint down")))
+    before = db.health()["evidence"]["retrieval_degraded"]
+    hits = search.search("equity injection", limit=3, source_ids=None)
+    assert isinstance(hits, list) and db.health()["evidence"]["retrieval_degraded"] == before + 1
+    with pytest.raises(search.RetrievalUnavailable):
+        search.search("equity injection", limit=3, strict=True)
+
+
+def test_closeout_marks_incomplete_and_resumes_without_repaying(tmp_path, monkeypatch):
+    """A dependency failure during Planner V3 makes that stage INCOMPLETE (no promotion decision on a degraded fallback);
+    the run's database and every completed stage are kept; --resume reuses them and reruns only V3, recording the history."""
+    from neurosearch import closeout, migration, providers
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "planner_v3", False)
+    out = tmp_path / "evals"
+    orig_arm = migration.run_planner_arm
+    def flaky(*a, **k):                                   # the V3 arm hits a dead endpoint during the live phase only
+        if settings.planner_v3:
+            raise providers.ProviderError("CONNECTION", RuntimeError("Connection error."), 3)
+        return orig_arm(*a, **k)
+    monkeypatch.setattr(migration, "run_planner_arm", flaky)
+    r1 = closeout.run_closeout(live=False, out_dir=out, progress=lambda m: None, run_pytest=False)
+    assert r1["mission"]["verdict"] == "INCOMPLETE" and "planner_v3" in r1["mission"]["incomplete"] and "CONNECTION" in r1["mission"]["incomplete"]["planner_v3"]
+    assert r1["planner_v3"]["decision"].startswith("NOT DECIDED") and not r1["planner_v3"]["promote"] and "PLANNER V3: NOT DECIDED" in r1["text"]
+    st = r1["stages"]
+    assert {k for k, v in st.items() if v["status"] == "done"} == {"shared_inputs", "findings", "ranking", "research", "planner_v1", "update", "discover"}
+    d1 = pathlib.Path(r1["dir"])
+    assert (d1 / "data" / "neurosearch.db").exists() and (d1 / "stages.json").exists() and (d1 / "research.json").exists() and (d1 / "planner-v1.json").exists() and not (d1 / "planner-v3.json").exists()
+    # resume: only planner_v3 runs; everything else (incl. the database and the frozen research) is reused
+    calls = []
+    monkeypatch.setattr(migration, "run_planner_arm", lambda *a, **k: calls.append(k.get("research", {}).get("material_hash")) or orig_arm(*a, **k))
+    r2 = closeout.run_closeout(live=False, out_dir=out, progress=lambda m: None, run_pytest=False, resume=True)
+    assert r2["resumed_from"] == str(d1) and len(calls) == 1                          # exactly one planner build (V3) was paid for
+    assert calls[0] == r1["live"]["research_hash"] == r2["live"]["research_hash"]      # on the same frozen research
+    st2 = r2["stages"]
+    assert st2["findings"]["reused_from"] == str(d1) and st2["ranking"]["reused_from"] == str(d1) and st2["planner_v1"]["reused_from"] == str(d1) and st2["research"]["reused_from"] == str(d1)
+    assert st2["update"]["reused_from"] == str(d1) and st2["discover"]["reused_from"] == str(d1) and "reused_from" not in st2["planner_v3"]
+    h = r2["history"][-1]
+    assert "planner_v3" in h["invalidated"] and "CONNECTION" in h["invalidated"]["planner_v3"] and "planner_v1" in h["reused"] and h["database"].startswith("copied")
+    assert r2["mission"]["verdict"] in ("PASS", "PASS_WITH_CAVEAT") and r2["planner_v3"]["promote"] and "HISTORY" in r2["text"] and "invalidated planner_v3" in r2["text"]
+    assert r2["live"]["surfaces"]["findings.extract"]["reused"] and r2["live"]["surfaces"]["rank.relevance"]["reused"]
+    # the previous run directory is untouched (its own closeout.txt still says INCOMPLETE)
+    assert "INCOMPLETE" in (d1 / "closeout.txt").read_text()
+
+
+def test_closeout_resume_from_legacy_run(tmp_path, monkeypatch):
+    """The first live run predates stage files and did not persist its database: findings/ranking/update/discover results are
+    reused (events recovered from its closeout.json), shared inputs are rebuilt, and both planner arms are rebuilt on freshly
+    frozen research — the old V1 is recorded as invalidated, never silently compared against a new V3."""
+    from neurosearch import closeout
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "planner_v3", False)
+    out = tmp_path / "evals"
+    r1 = closeout.run_closeout(live=False, out_dir=out, progress=lambda m: None, run_pytest=False)
+    d1 = pathlib.Path(r1["dir"])
+    # turn it into a legacy run: no stages.json, no database, no research, stage files without events
+    (d1 / "stages.json").unlink(); shutil.rmtree(d1 / "data"); (d1 / "research.json").unlink()
+    for f in ("findings.json", "ranking.json", "update.json", "discover.json"):
+        obj = json.loads((d1 / f).read_text()); obj.pop("events", None); obj.pop("saved_sonnet5", None); (d1 / f).write_text(json.dumps(obj))
+    (d1 / "planner-v3.json").unlink()                                          # the invalid V3 attempt is not a reusable artifact
+    r2 = closeout.run_closeout(live=False, out_dir=out, progress=lambda m: None, run_pytest=False, resume=True)
+    h = r2["history"][-1]
+    assert set(h["reused"]) == {"findings", "ranking", "update", "discover"} and "planner_v1" in h["rebuilt"] and "different research" in h["invalidated"]["planner_v1"]
+    assert h["database"].startswith("the previous run did not persist")
+    st = r2["stages"]
+    assert "reused_from" not in st["shared_inputs"] and "reused_from" not in st["planner_v1"] and "reused_from" not in st["planner_v3"] and st["findings"].get("legacy")
+    assert r2["live"]["surfaces"]["findings.extract"]["reused"] and r2["live"]["surfaces"]["findings.extract"]["events"] == {k: 0 for k in closeout.EVENT_KINDS}
+    assert r2["mission"]["verdict"] in ("PASS", "PASS_WITH_CAVEAT") and r2["planner_v3"]["v1"]["usage"]["calls"] == 2 and r2["planner_v3"]["v3"]["usage"]["calls"] == 5

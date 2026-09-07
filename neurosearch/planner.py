@@ -109,7 +109,21 @@ Output ONLY a JSON object matching this schema:
 MATERIAL_CHARS = 170_000        # keep the prompt comfortably inside the model's window
 
 
-def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+def research_context(project_id: str, strict: bool = False) -> dict[str, Any]:
+    """The planner's complete research input, prepared ONCE: evidence list, id map, material text and a hash of the
+    material. Both planners accept it (`research=`) so a comparison can freeze it before either arm runs; strict=True
+    makes a retrieval failure an error instead of a silently different evidence list."""
+    import hashlib
+    project = db.get_project(project_id)
+    if not project:
+        raise RuntimeError("project not found")
+    ev, emap = _evidence(project_id, project, strict=strict)
+    material = _material(project_id, project, ev)
+    return {"project_id": project_id, "evidence": ev, "emap": emap, "material": material,
+            "material_hash": hashlib.sha256(material.encode()).hexdigest()[:16], "evidence_count": len(ev), "strict": strict}
+
+
+def _evidence(project_id: str, project: dict[str, Any], strict: bool = False) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     """Build the numbered evidence list handed to Claude, and a map id -> display info."""
     ev: list[dict[str, Any]] = []
     emap: dict[str, dict[str, Any]] = {}
@@ -145,7 +159,7 @@ def _evidence(project_id: str, project: dict[str, Any]) -> tuple[list[dict[str, 
                 queries.append(m["content"])
     seen: set[int] = set()
     for q in queries[:25]:
-        for h in search(q, limit=6, source_ids=sids or ["__none__"]):
+        for h in search(q, limit=6, source_ids=sids or ["__none__"], strict=strict):
             if h["chunk_id"] in seen:
                 continue
             seen.add(h["chunk_id"])
@@ -284,21 +298,21 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     return "".join(parts)
 
 
-def build_plan(project_id: str, instructions: str | None = None, progress: Any = None) -> dict[str, Any]:
+def build_plan(project_id: str, instructions: str | None = None, progress: Any = None, research: dict[str, Any] | None = None) -> dict[str, Any]:
     """Generate (or regenerate) the Master Plan for a project in two passes — situation analysis (SWOT,
     readiness, options, assumptions, failure patterns) and then the plan itself. Returns the stored plan row.
     With NEUROSEARCH_PLANNER_V3=1 the decomposed planner (planner_v3) runs instead; this single-call path is the
     rollback for one release."""
     if settings.planner_v3:
         from .planner_v3 import build_plan_v3
-        return build_plan_v3(project_id, instructions, progress)
+        return build_plan_v3(project_id, instructions, progress, research=research)
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
     if progress:
         progress(0.05, "gathering the research…")
-    ev, emap = _evidence(project_id, project)
-    material = _material(project_id, project, ev)
+    research = research or research_context(project_id)            # a frozen payload, or prepared now
+    ev, emap, material = research["evidence"], research["emap"], research["material"]
     prev = db.latest_plan(project_id)
 
     # ---- pass 1: situation analysis ----
@@ -329,6 +343,7 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
         progress(0.95, "saving…")
     plan["_evidence"] = emap
     plan["_generated"] = date.today().isoformat()
+    plan["_research_hash"] = research["material_hash"]
     from .evidence import check_plan_evidence, drop_evidence_ids
     n_refs, dangling = check_plan_evidence(plan, set(emap))
     if dangling:

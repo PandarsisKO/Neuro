@@ -248,7 +248,22 @@ F5 CLOSEOUT TOOLING                          COMPLETE (0.19.0-f5) — `neurosear
     PEP 440 (`0.19.0+f5`; the dashed form made `pip install -e .` fail, which ./start used to hide), ./start now warns instead of
     silencing a failed reinstall and installs the `dev` extra (pytest); `neurosearch closeout` installs pytest itself if missing;
     test_version_is_pep440_and_consistent guards the version.
-[ ] F5 live: `neurosearch closeout --live` (Kyle, once) → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
+    F5 HARNESS FIX (0.19.0+f6) — the first live run exposed it: Planner V3 logged "vector search unavailable: CONNECTION" mid-comparison.
+    Root cause: both planners rebuilt their research per arm (planner._evidence → search → OpenAI embed_query), and search() silently
+    degraded to FTS-only on a vector failure, so the V1 and V3 arms did not receive identical input. Fixed:
+    [x] planner.research_context(pid, strict=True) prepares the research ONCE; build_plan / build_plan_v3 accept research= and never
+        re-retrieve; plans record _research_hash; strict retrieval failure raises search.RetrievalUnavailable; the non-strict production
+        path counts evidence:retrieval_degraded (Health)
+    [x] test_frozen_research_is_byte_identical_for_both_planners: same first system block byte-for-byte in every planner call of both arms,
+        same hash, and a dead vector search after the freeze cannot alter either arm
+    [x] resumable closeout: the run's database lives in its directory (data/), stages.json records every stage; `neurosearch closeout --live
+        --resume` copies the previous database + completed artifacts, reuses findings / ranking / update / discover, reuses a planner arm only
+        if its research_hash equals the frozen research, rebuilds the rest, and writes HISTORY (reused / invalidated + why / rebuilt) into
+        the new run; the previous directory is never modified. Legacy runs (no stages.json / database) reuse their four surface artifacts
+        with events recovered from their closeout.json and rebuild shared inputs + both planner arms
+    [x] a dependency failure (transient provider error, RetrievalUnavailable) makes the stage INCOMPLETE, dependants are skipped, the verdict
+        is INCOMPLETE and the V3 decision NOT DECIDED — never a promotion decision on a degraded fallback
+[ ] F5 live (resume): `neurosearch closeout --live --resume` (Kyle, once) → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
     release with V1 as the rollback for one cycle; if DO NOT PROMOTE, the default stays V1 and V3 is recorded as not promoted — no tuning loop.
     Then Mission F closes and the ladder continues (Rung G); testing stays the guardrail, not the project.
 [ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
