@@ -233,6 +233,8 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         r.check("universal input: containers never fall through to naive page ingestion (G2 feature gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k4_explore.py"])
         r.check("exploration + Candidate Index: bounded listing, skipped candidates retained, never evidence (G3 feature gate)", ok, tail)
+        ok, tail = _pytest(["tests/test_k5_library.py"])
+        r.check("library intelligence: recall works with ZERO enriched profiles; profiles project-neutral; nothing attached (G4 gate)", ok, tail)
     # 2. schemas + contracts
     try:
         for name, sch in schemas.REGISTRY.items():
@@ -252,7 +254,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
             rep1 = evals.run(progress=lambda m: None)
             v = rep1["volume"]["by_task"]
             tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
-            frozen = {"answer": (34, 170091), "findings": (9, 30297), "plan": (2, 11026)}
+            frozen = {"answer": (34, 175395), "findings": (9, 30297), "plan": (2, 11026)}
             drift = {k: (v[k]["calls"], tot(v[k])) for k in frozen if (v[k]["calls"], tot(v[k])) != frozen[k]}
             r.check("Tier 1 gates PASS", rep1["pass"], {k: g for k, g in rep1["gates"].items() if not g["pass"]} or f"cache read rate {rep1['volume']['cache_read_rate']:.1%}")
             r.check("Tier 1 frozen totals unchanged (router-equivalence)", not drift, drift or frozen)

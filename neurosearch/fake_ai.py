@@ -175,6 +175,30 @@ def _with_evidence(obj: Any, ids: list[str]) -> Any:
     return obj
 
 
+def _profile(user: str) -> str:
+    """Content-aware, project-neutral fake profile: topics = frequent content words of the sample, entities = capitalised
+    tokens, evidence class from deterministic signals in the prompt. Never sees a project."""
+    meta = re.search(r"SOURCE METADATA:\s*(\{.*?\})\n", user)
+    sig = re.search(r"DETERMINISTIC SIGNALS:\s*(.*)", user)
+    sample = user.split("TEXT SAMPLE", 1)[1] if "TEXT SAMPLE" in user else user
+    words = [w for w in re.findall(r"[a-z][a-z0-9\-]{3,}", sample.lower()) if w not in _RANK_STOP]
+    from collections import Counter
+    topics = [w for w, _ in Counter(words).most_common(8)]
+    ents = sorted({w for w in re.findall(r"\b[A-Z][A-Za-z]{2,}\b", sample)} - {"The", "This", "That", "Point"})[:8]
+    signals = sig.group(1) if sig else ""
+    ev = "authoritative" if "government" in signals or "official-style" in signals else ("experiential" if "captions" in signals or "transcribed" in signals else "expert")
+    title = ""
+    try:
+        title = json.loads(meta.group(1)).get("title") or "" if meta else ""
+    except ValueError:
+        pass
+    minority = [w for w, n in Counter(words).most_common(40) if n == 1][:3]
+    return json.dumps({"summary": f"A {ev} source{(' titled ' + title) if title else ''} covering " + ", ".join(topics[:3]) + ".",
+                       "topics": topics, "entities": ents, "document_type": "transcript" if "captions" in signals else "document",
+                       "evidence_class": ev, "temporal_character": "slow_changing", "useful_for": [f"questions about {t}" for t in topics[:4]],
+                       "not_useful_for": [], "authority_notes": f"based on signals: {signals[:120]}", "minority_topics": minority})
+
+
 def _findings(system: str, user: str) -> str:
     bad = os.environ.get("NEUROSEARCH_FAKE_AI_BAD_QUOTES") == "1"
     m = re.search(r"BRIEF:\s*(.+)", system)
@@ -423,6 +447,8 @@ def task_of(system: str, kw: dict[str, Any]) -> str:
         return "discover.quick"
     if "research analyst reading a transcript" in s:
         return "findings.extract"
+    if "cataloguing a source for a research library" in s:
+        return "library.profile"
     if "research triage assistant" in s:
         return "rank.relevance"
     if "Master Planner's analyst" in s:
@@ -482,6 +508,8 @@ class _Msgs:
             text = json.dumps(DISCOVER_QUICK)
         elif task == "findings.extract":
             text = _findings(system, user)
+        elif task == "library.profile":
+            text = _profile(user)
         elif task == "rank.relevance":
             text = _rank(user, system)
         elif task in PLANNER_V3:

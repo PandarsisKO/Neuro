@@ -343,6 +343,34 @@ CREATE TABLE IF NOT EXISTS candidate_projects (
 );
 CREATE INDEX IF NOT EXISTS ix_candidate_projects_project ON candidate_projects(project_id, state);
 
+-- G4 (0.28.0): Global Source Profiles — strictly project-NEUTRAL. baseline = $0, from stored metadata/chunks/embeddings;
+-- enriched = one lazy model call (library.profile), cached globally, versioned by source revision + prompt/schema version.
+-- Never built from project findings/summaries/relevance. Never a prerequisite for library recall.
+CREATE TABLE IF NOT EXISTS source_profiles (
+    source_id          TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    source_revision    TEXT,
+    baseline           TEXT,                 -- JSON (see library.baseline)
+    baseline_version   TEXT,
+    baseline_at        REAL,
+    centroid           BLOB,                 -- mean chunk vector: COARSE signal only
+    topic_vectors      BLOB,                 -- k representative chunk vectors (farthest-point) so minority topics survive
+    topic_chunk_ids    TEXT,                 -- JSON: the chunk ids behind topic_vectors (locatable)
+    enriched           TEXT,                 -- JSON (schema source-profile-v1) or NULL
+    enriched_status    TEXT NOT NULL DEFAULT 'none',   -- none | wanted | queued | current | stale | failed
+    enriched_at        REAL,
+    enriched_model     TEXT,
+    enriched_prompt_version TEXT,
+    enriched_schema_version TEXT,
+    enriched_input_hash TEXT,
+    enriched_routing   TEXT,
+    enriched_transport TEXT,
+    enriched_error     TEXT,
+    wanted_at          REAL,
+    wanted_by          TEXT,                 -- JSON: why it became a plausible candidate (query/gap/project) — provenance of the spend
+    updated_at         REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_source_profiles_status ON source_profiles(enriched_status);
+
 CREATE TABLE IF NOT EXISTS circuit_breakers (
     operation       TEXT PRIMARY KEY,         -- provider:operation, e.g. anthropic:messages (never per model)
     state           TEXT NOT NULL DEFAULT 'closed',   -- closed | open | half_open
@@ -1087,6 +1115,8 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
         return f"ingest:{payload.get('url')}"
     if kind == "explore":
         return f"explore:{payload.get('project_id')}:{payload.get('url')}"
+    if kind == "enrich_profiles_batch":
+        return "profiles:batch"
     if kind == "ingest_source":
         return f"ingest_source:{payload.get('source_id')}"
     if kind == "suggest_findings" and len(payload.get("source_ids") or []) == 1:
@@ -1828,7 +1858,12 @@ def _library_health(conn: sqlite3.Connection) -> dict[str, Any]:
                           "GROUP BY platform, content_fingerprint HAVING COUNT(*) > 1)").fetchone()[0]
     cands = conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
     cand_unacq = conn.execute("SELECT COUNT(*) FROM candidates WHERE source_id IS NULL").fetchone()[0]
-    return {"sources": n, "ready": ready, "shared_by_projects": shared, "candidates_seen": cands, "candidates_not_acquired": cand_unacq,
+    try:
+        from . import library
+        profiles = library.stats()
+    except Exception:  # noqa: BLE001
+        profiles = None
+    return {"sources": n, "ready": ready, "shared_by_projects": shared, "candidates_seen": cands, "candidates_not_acquired": cand_unacq, "profiles": profiles,
             "acquisitions_avoided": int(kv_get("library:acquisitions_avoided") or 0),
             "failed_attached": int(kv_get("library:failed_attached") or 0),
             "duplicate_fingerprints": dup_fp,

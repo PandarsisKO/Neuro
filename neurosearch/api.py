@@ -1106,6 +1106,7 @@ def api_plan_html(project_id: str) -> Any:
 class DiscoverIn(BaseModel):
     refine: str | None = None
     background: bool = False   # True → returns {"job_id"}; poll /api/jobs/{id}
+    mode: str = "library_first"   # G4: library_first | library_only | web_first | web_only
 
 
 @app.get("/api/projects/{project_id}/discoveries", dependencies=[Depends(require_auth)])
@@ -1116,10 +1117,51 @@ def api_discoveries(project_id: str) -> list[dict[str, Any]]:
 @app.post("/api/projects/{project_id}/discover", dependencies=[Depends(require_auth)])
 async def api_discover(project_id: str, body: DiscoverIn) -> dict[str, Any]:
     if body.background:
-        job = jobs.enqueue("discover", {"project_id": project_id, "refine": body.refine})
+        job = jobs.enqueue("discover", {"project_id": project_id, "refine": body.refine, "mode": body.mode})
         return {"job_id": job["id"]}
     from .discover import discover
-    return await anyio.to_thread.run_sync(lambda: discover(project_id, body.refine))
+    return await anyio.to_thread.run_sync(lambda: discover(project_id, body.refine, mode=body.mode))
+
+
+@app.get("/api/projects/{project_id}/library/recall", dependencies=[Depends(require_auth)])
+async def api_library_recall(project_id: str, q: str, limit: int = 8) -> dict[str, Any]:
+    """G4: what the user already owns (outside this project) that could answer q — suggestions with provenance, never attached."""
+    from . import library
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return await anyio.to_thread.run_sync(lambda: library.recall(project_id, q, limit=limit))
+
+
+@app.get("/api/sources/{source_id}/profile", dependencies=[Depends(require_auth)])
+def api_source_profile(source_id: str) -> dict[str, Any]:
+    """The project-neutral Source Profile (baseline + enriched if present)."""
+    from . import library
+    p = library.profile(source_id)
+    if p is None:
+        raise HTTPException(404, "no profile (source not ready)")
+    return p
+
+
+class EnrichIn(BaseModel):
+    source_ids: list[str] | None = None     # None = the wanted queue
+    limit: int = 3
+    batch: bool = False                     # queue the wanted profiles as ONE batch job instead (50%)
+
+
+@app.post("/api/library/enrich", dependencies=[Depends(require_auth)])
+async def api_library_enrich(body: EnrichIn) -> dict[str, Any]:
+    """Enrich profiles on request: a few inline, or the whole wanted queue as an opportunistic batch. Never automatic
+    across the library."""
+    from . import library
+    if body.batch:
+        return library.maybe_queue_batch(force=True) or {"job_id": None, "note": "nothing wanted"}
+    return await anyio.to_thread.run_sync(lambda: library.enrich_wanted(limit=min(body.limit, 10), source_ids=body.source_ids))
+
+
+@app.get("/api/library/stats", dependencies=[Depends(require_auth)])
+def api_library_stats() -> dict[str, Any]:
+    from . import library
+    return library.stats()
 
 
 class DiscStatusIn(BaseModel):

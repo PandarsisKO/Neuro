@@ -76,14 +76,52 @@ def _items(raw: list[Any]) -> list[dict[str, Any]]:
     return items
 
 
+MODES = ("library_first", "library_only", "web_first", "web_only")
+# Conservative on purpose (G4 has no Claim/Evidence sufficiency model yet — that is G5): Library-first skips the web
+# pass only when several owned sources match STRONGLY with more than one passage each, and even then it says the library
+# "appears to cover this well" and offers Web first. Strong relevance is not proof that the project's evidence needs are met.
+LIBRARY_ENOUGH = 4            # strong owned sources required before a refine-less Library-first run skips the web pass
+LIBRARY_STRONG = 3.0          # × library.MIN_SCORE, and at least two matching passages, to count as strong
+
+
+def _library_query(project: dict[str, Any], refine: str | None) -> str:
+    if refine:
+        return refine
+    parts = [project.get("goal") or "", " ".join(json.loads(project.get("questions") or "[]") if isinstance(project.get("questions"), str) else (project.get("questions") or [])),
+             (project.get("brief") or "")[:400]]
+    return " ".join(p for p in parts if p).strip()
+
+
 def discover(project_id: str, refine: str | None = None, count: int = 10,
-             progress: Any = None, verify: bool = True) -> dict[str, Any]:
-    """Two passes: a quick one from the model's own knowledge (results appear in ~10 s), then a short web-search
-    pass that verifies URLs and adds what the quick pass missed (verify=False: pass 1 only — evals)."""
+             progress: Any = None, verify: bool = True, mode: str = "library_first") -> dict[str, Any]:
+    """G4 Library-first Discover: what the user ALREADY OWNS comes first ($0, chunk-level recall over the global library),
+    the model/web passes run only when the library does not cover the request (or the mode asks for the web).
+    Modes: library_first (default) · library_only · web_first · web_only. Library suggestions are never attached.
+    Then the two web passes: a quick one from the model's own knowledge, then a short web-search pass that verifies
+    URLs and adds what the quick pass missed (verify=False: pass 1 only — evals)."""
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
-    from . import providers, usage
+    from . import library, providers, usage
+
+    if mode not in MODES:
+        raise ValueError(f"unknown discover mode {mode!r}")
+    lib: dict[str, Any] = {"suggestions": [], "query": None}
+    if mode != "web_only":
+        if progress:
+            progress(0.05, "checking what your library already covers…")
+        lib = library.recall(project_id, _library_query(project, refine), limit=8, reason=f"discover: {refine or project.get('name')}")
+        try:
+            library.maybe_queue_batch()                                   # opportunistic: only if enough wanted profiles piled up
+        except Exception as e:  # noqa: BLE001
+            log.warning("profile batch not queued: %s", e)
+    strong = [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2]
+    if mode == "library_only" or (mode == "library_first" and not refine and len(strong) >= LIBRARY_ENOUGH):
+        note = ("Library only — no web search was run." if mode == "library_only" else
+                f"Your library appears to cover this well ({len(strong)} owned sources match strongly, not yet in this project) — the web search was skipped. "
+                "This is about relevance, not proof that your evidence needs are met: use 'Web first' to search anyway.")
+        return {"added": 0, "verified": 0, "extra": 0, "note": note, "items": [], "library": lib, "mode": mode, "web_skipped": True,
+                "coverage_note": "library relevance only; evidence sufficiency arrives with Claims (G5)"}
 
     providers.require_anthropic()
 
@@ -97,6 +135,8 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         user.append("ALREADY SUGGESTED EARLIER (do not repeat unless refinement asks): " + ", ".join(prior[:40]))
     if refine:
         user.append(f"REFINEMENT FROM THE USER: {refine}")
+    if lib["suggestions"]:
+        user.append("ALREADY OWNED IN THE LIBRARY (do not propose these again): " + ", ".join((s.get("title") or s.get("url") or "")[:80] for s in lib["suggestions"][:12]))
     brief = "\n".join(user)
 
     usage.guard(0.15)
@@ -125,7 +165,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     # ---- pass 2: verify + top up (few searches, short output) ----
     fixed, added = 0, 0
     if not verify:
-        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True}
+        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True, "library": lib, "mode": mode}
     try:
         shortlist = [{"name": d["name"], "kind": d["kind"], "url": d.get("url") or ""} for d in saved]
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]
@@ -155,4 +195,4 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     except Exception as e:  # noqa: BLE001
         log.warning("discover verification pass failed (shortlist kept): %s", e)
     note = str(data.get("note") or "")
-    return {"added": len(saved), "verified": fixed, "extra": added, "note": note, "items": saved}
+    return {"added": len(saved), "verified": fixed, "extra": added, "note": note, "items": saved, "library": lib, "mode": mode}

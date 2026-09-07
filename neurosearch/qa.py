@@ -171,6 +171,8 @@ def _library_tools() -> list[dict[str, Any]]:
          "input_schema": {"type": "object", "properties": {"filter": flt}, "required": []}},
         {"name": "set_source_priority", "description": "Flag (or unflag) sources matching a filter as priority sources for this project: retrieval will favour them. Use when the user says a source/author/channel/document is authoritative or top tier.",
          "input_schema": {"type": "object", "properties": {"filter": {"type": "string"}, "priority": {"type": "boolean", "default": True}}, "required": ["filter"]}},
+        {"name": "search_global_library", "description": "Search the user's GLOBAL library — sources they already own in OTHER projects, not attached here. Use when this project's excerpts lack evidence, BEFORE suggesting new acquisition or the web. Results are suggestions with passages you may quote to explain why they look useful, but they are NOT project evidence: do not cite them with [n]; tell the user which to attach (Sources → Library → Add).",
+         "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 10}}, "required": ["query"]}},
         {"name": "search_seen_sources", "description": "Search the Candidate Index: sources Neuro Search has SEEN (listed from channels, feeds, sites) but NOT acquired. Use when the library lacks evidence for a gap, BEFORE suggesting a web search. Results are metadata only — they cannot be cited; tell the user which ones look worth acquiring (Sources → Library → Seen, not added).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["query"]}},
     ]
@@ -541,6 +543,21 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         new_part = build_context(found, start=start)
         actions.append({"type": "searched", "query": query, "filter": flt, "added": len(found)})
         return f"<excerpts>\n{new_part}\n</excerpts>\n(cite these as [{start + 1}]–[{len(ctx['hits'])}])"
+    if name == "search_global_library":
+        from . import library as _lib
+        query = (inp.get("query") or "").strip()
+        res = _lib.recall(project["id"], query, limit=min(int(inp.get("limit") or 5), 10), reason=f"chat: {query[:120]}") if query else {"suggestions": []}
+        actions.append({"type": "library_searched", "query": query, "found": len(res["suggestions"]), "suggestions": [{"source_id": s["source_id"], "title": s["title"]} for s in res["suggestions"][:8]]})
+        if not res["suggestions"]:
+            return "nothing in the global library (outside this project) matches; the Candidate Index or external discovery would be next"
+        lines = [f"{len(res['suggestions'])} source(s) the user already OWNS but has not attached to this project — NOT project evidence, do not cite as [n]:"]
+        for s in res["suggestions"]:
+            sig = ", ".join(f"{a['value']}" for a in s.get("authority_signals", [])[:3])
+            lines.append(f"- {s['title']} ({s.get('channel') or s.get('platform')}{'; ' + s['published_at'] if s.get('published_at') else ''}; {sig}) — {'; '.join(s['why'])}"
+                         + (f"\n  best passage @ {s['chunks'][0]['timestamp']}: “{s['chunks'][0]['text'][:200]}”" if s.get("chunks") else "")
+                         + (f"\n  profile: {s['profile_summary']}" if s.get("profile_summary") else ""))
+        lines.append("Suggest attaching the useful ones (Sources → Library → Add); once attached, search_library will return them as citable excerpts.")
+        return "\n".join(lines)
     if name == "search_seen_sources":
         from . import candidates as _cand
         query = (inp.get("query") or "").strip()
@@ -647,6 +664,8 @@ def render_markdown(result: dict[str, Any]) -> str:
             out.append(f"\nRecorded {a['kind']}: {a['content']}")
         elif a["type"] == "priority_set":
             out.append(f"\n{'Flagged' if a['priority'] else 'Unflagged'} {a['count']} priority source(s).")
+        elif a["type"] == "library_searched":
+            out.append(f"\nChecked the global library for “{a['query']}”: {a['found']} owned-but-unattached source(s).")
         elif a["type"] == "candidates_searched":
             out.append(f"\nChecked the Candidate Index for “{a['query']}”: {a['found']} seen-but-not-acquired.")
     return "\n".join(out)

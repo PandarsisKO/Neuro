@@ -40,7 +40,7 @@ TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|tem
 RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
-ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan")
+ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan", "enrich_profiles_batch")
 
 
 class Cancelled(RuntimeError):
@@ -257,6 +257,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
                                     collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")),
                                     cookies_file=payload.get("cookies_file"), referer=payload.get("referer"))
+    if kind == "enrich_profiles_batch":
+        from . import library
+        return library.run_batch_job(jid, payload, progress)
     if kind == "explore":
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
@@ -282,7 +285,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return {"plan_id": row["id"], "version": row["version"]}
     if kind == "discover":
         from .discover import discover
-        return discover(payload["project_id"], payload.get("refine"), progress=progress)
+        return discover(payload["project_id"], payload.get("refine"), progress=progress, mode=payload.get("mode") or "library_first")
     if kind == "rank_proposed":
         from .relevance import rank_collection
         return rank_collection(payload["collection_id"], payload.get("project_id"), want=payload.get("want"), progress=progress)

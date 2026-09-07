@@ -94,6 +94,11 @@ def _base() -> dict[str, InferenceContract]:
         # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, max_output_ceiling=9000, batch_allowed=True, schema="rank-v2",
                           notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),
+        # G4 (0.28.0): project-NEUTRAL "what can this source answer?" — lazy (only for plausible candidates), cached globally,
+        # batch-allowed for opportunistic 50% enrichment; never required for library recall
+        InferenceContract("library.profile", "anthropic", m, thinking="disabled", max_output_tokens=1200, max_output_ceiling=1800, timeout=120.0,
+                          max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="source-profile-v1",
+                          notes="global source profile (topics, entities, document type, evidence class, temporal character, useful_for); authority = signals with basis, not a verdict"),
         InferenceContract("discover.quick", "anthropic", m, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
                           notes="structured (F3); discover.verify stays on the citation-capable text/tool path — citations and output_config.format are incompatible"),
         InferenceContract("discover.verify", "anthropic", m, max_output_tokens=2500, timeout=180.0, interactive=True,
