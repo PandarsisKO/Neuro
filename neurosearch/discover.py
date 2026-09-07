@@ -77,9 +77,9 @@ def _items(raw: list[Any]) -> list[dict[str, Any]]:
 
 
 def discover(project_id: str, refine: str | None = None, count: int = 10,
-             progress: Any = None) -> dict[str, Any]:
+             progress: Any = None, verify: bool = True) -> dict[str, Any]:
     """Two passes: a quick one from the model's own knowledge (results appear in ~10 s), then a short web-search
-    pass that verifies URLs and adds what the quick pass missed."""
+    pass that verifies URLs and adds what the quick pass missed (verify=False: pass 1 only — evals)."""
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")
@@ -122,6 +122,8 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
 
     # ---- pass 2: verify + top up (few searches, short output) ----
     fixed, added = 0, 0
+    if not verify:
+        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True}
     try:
         shortlist = [{"name": d["name"], "kind": d["kind"], "url": d.get("url") or ""} for d in saved]
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]

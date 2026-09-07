@@ -1,6 +1,6 @@
 [project]
 name = "neurosearch"
-version = "0.19.0-f3"
+version = "0.19.0+f5"
 description = "Turn videos, podcasts and audio into a queryable, citation-backed knowledge base."
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,9 @@ dependencies = [
     "formulas[excel]>=1.2",
     "python-docx>=1.1",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
 
 [project.scripts]
 neurosearch = "neurosearch.cli:app"

@@ -2048,8 +2048,16 @@ def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], c
                       prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"]))
         if carry_statuses_from:
             rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
-            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)",
-                             [(pid, r["key"], r["status"], r["note"], t) for r in rows])
+            prev_row = conn.execute("SELECT plan FROM plans WHERE id=?", (carry_statuses_from,)).fetchone()
+            prev_ids = (json.loads(prev_row["plan"] or "{}") if prev_row else {}).get("_ids") or {}
+            new_ids = plan.get("_ids") or {}
+            if prev_ids and new_ids:
+                # F4: statuses follow the semantic id, not the array position — a task that moved keeps its DONE
+                by_id = {v: k for k, v in new_ids.items()}
+                carried = [(pid, by_id[prev_ids[r["key"]]], r["status"], r["note"], t) for r in rows if r["key"] in prev_ids and prev_ids[r["key"]] in by_id]
+            else:
+                carried = [(pid, r["key"], r["status"], r["note"], t) for r in rows]
+            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)", carried)
     return get_plan(pid)  # type: ignore[return-value]
 
 

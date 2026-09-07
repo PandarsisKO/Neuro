@@ -3,7 +3,7 @@
 cd "$(dirname "$0")"
 if [ ! -x .venv/bin/neurosearch ]; then
   echo "First-time setup: creating .venv and installing…"
-  python3 -m venv .venv && .venv/bin/pip install -q -e . || exit 1
+  python3 -m venv .venv && .venv/bin/pip install -q -e '.[dev]' || exit 1
 fi
-.venv/bin/pip install -q -e . 2>/dev/null   # picks up new dependencies after an update (fast when nothing changed)
+.venv/bin/pip install -q -e '.[dev]' || echo "WARNING: dependency update failed — run: .venv/bin/pip install -e '.[dev]'"   # picks up new dependencies after an update (fast when nothing changed); never silent
 exec .venv/bin/neurosearch start "$@"

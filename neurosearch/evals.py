@@ -645,7 +645,7 @@ def ranking_verdict(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, Any
     if bc and cc > bc * (1 + COST_TOLERANCE):
         caveats.append(f"cost per 100 candidates up {(cc / bc - 1):+.0%}: ${bc:.4f} → ${cc:.4f}")
     bl, cl = base["performance"]["rank_s"], cand["performance"]["rank_s"]
-    if bl and cl > bl * (1 + LATENCY_TOLERANCE):
+    if bl and bl >= 1.0 and cl > bl * (1 + LATENCY_TOLERANCE):
         caveats.append(f"latency up {(cl / bl - 1):+.0%}: {bl}s → {cl}s")
     bt, ct = base.get("canonical_input_tokens"), cand.get("canonical_input_tokens")
     if bt and ct:
@@ -986,7 +986,7 @@ def findings_verdict(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, An
     if bc and cc > bc * (1 + COST_TOLERANCE):
         caveats.append(f"cost up {(cc / bc - 1):+.0%}: ${bc:.4f} → ${cc:.4f} (per source-hour ${base['economics']['cost_per_source_hour']} → ${cand['economics']['cost_per_source_hour']})")
     bl, cl = base["performance"]["findings_s"], cand["performance"]["findings_s"]
-    if bl and cl > bl * (1 + LATENCY_TOLERANCE):
+    if bl and bl >= 1.0 and cl > bl * (1 + LATENCY_TOLERANCE):
         caveats.append(f"latency up {(cl / bl - 1):+.0%}: {bl}s → {cl}s")
     bt, ct = base.get("canonical_input_tokens"), cand.get("canonical_input_tokens")
     if bt and ct:

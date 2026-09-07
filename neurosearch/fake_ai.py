@@ -167,6 +167,18 @@ _RANK_STOP = {"that", "this", "with", "from", "have", "what", "when", "will", "y
               "need", "needs", "want", "best", "videos", "video", "project", "score", "scores", "relevance", "relevant"}
 
 
+def _updates(user: str) -> str:
+    """Content-aware plan updates: one proposed change per NEW FINDING / NEW USER FACT line in the material (so an eval
+    can check the new evidence was addressed); the canned update when there is nothing new."""
+    def block(name: str) -> list[str]:
+        m = re.search(name + r":\n((?:- .*\n?)*)", user)
+        return [ln[2:].strip() for ln in (m.group(1).splitlines() if m else []) if ln.startswith("- ")]
+    ups = [{"section": "Financing" if re.search(r"inject|lender|loan|seller note|standby|down", f, re.I) else "Research", "previous": "as planned",
+            "proposed": f[:300], "reason": "New finding: " + f[:200]} for f in block("NEW FINDINGS")]
+    ups += [{"section": "Constraints", "previous": "as planned", "proposed": f[:300], "reason": "New user fact: " + f[:200]} for f in block("NEW USER FACTS")]
+    return json.dumps({"updates": ups} if ups else UPDATES)
+
+
 def _synthesis(user: str) -> str:
     """A masterplan with the required sections, quoting the findings it was given and preserving their citation
     links verbatim (never inventing one) — content-aware so the export eval can check grounding."""
@@ -205,6 +217,79 @@ DISCOVER_QUICK = {"sources": [
 DISCOVER_VERIFY = {"fixes": [{"name": "Dave Ramsey", "url": "https://www.youtube.com/@TheRamseyShow", "start_with": [{"title": "Baby Steps", "url": "https://www.youtube.com/watch?v=zzz"}]}],
                    "added": [{"name": "BiggerPockets", "kind": "podcast", "url": "https://www.biggerpockets.com/podcasts", "gist": "real estate investing", "why": "The largest REI community podcast.", "angle": "pro-leverage", "fit": 4, "depth": "beginner"}],
                    "note": "verified"}
+
+
+# ---- Planner V3 canned components (Mission F4). Ids are consistent across components; evidence lists are filled with
+# real ids from the material by _with_evidence, like the V1 plan. Themed on the golden brief so assembly has real refs.
+SITUATION_V3 = {
+    "situation": "You want to buy a main-street business with an SBA 7(a) loan within a year and have researched financing, valuation and diligence.",
+    "swot": {"strengths": [{"point": "Clear brief and a 12-month decision window", "so_what": "You can run a real search, not a hobby", "evidence": []}],
+             "weaknesses": [{"point": "No deal experience yet", "so_what": "Lean on a lender and a QoE provider early", "evidence": []}],
+             "opportunities": [{"point": "SBA 7(a) finances 90% with a seller note on standby", "so_what": "A $1M deal needs ~$50-100k of your cash", "evidence": []},
+                               {"point": "Off-market owners near retirement", "so_what": "Outreach beats brokers for price", "evidence": []}],
+             "threats": [{"point": "Customer concentration above 20% of revenue", "so_what": "Price it in or walk", "evidence": []},
+                         {"point": "Inflated add-backs in the seller's numbers", "so_what": "A quality of earnings report is not optional", "evidence": []}]},
+    "readiness": [{"area": "money", "level": "partly", "note": "cash for a 10% equity injection to confirm"}, {"area": "skills", "level": "partly", "note": "no operating experience"},
+                  {"area": "network", "level": "gap", "note": "no lender or broker relationships yet"}],
+    "options": [{"id": "option:sba-7a-acquisition", "path": "SBA 7(a) acquisition with a standby seller note", "summary": "10% equity injection, 10-year term, DSCR 1.25",
+                 "cost": "$50-100k cash on a $1M deal", "time_to_result": "6-12 months", "risk": "medium", "fit": 5, "why_fit": "matches the brief and the sources", "evidence": []},
+                {"id": "option:seller-financed-zero-down", "path": "Zero down with full seller financing", "summary": "the podcast's path", "cost": "$0 cash",
+                 "time_to_result": "12+ months", "risk": "high", "fit": 2, "why_fit": "contradicts the 10% injection rule; rare in practice", "evidence": []}],
+    "recommended_option": "option:sba-7a-acquisition",
+    "assumptions": [{"id": "assumption:dscr-floor", "assumption": "Lenders want DSCR of at least 1.25", "if_wrong": "less debt, more cash", "how_to_check": "ask two SBA lenders for their DSCR floor"},
+                    {"id": "assumption:sde-multiple-range", "assumption": "Small businesses trade at 2.0x-3.5x SDE", "if_wrong": "budget shifts", "how_to_check": "pull three comparable listings and check the multiple"}],
+    "failure_patterns": [{"id": "failure:overpaying-on-addbacks", "pattern": "Paying a multiple on inflated add-backs", "seen_in": "yt02", "avoid": "quality of earnings before the LOI expires", "evidence": []},
+                         {"id": "failure:customer-concentration", "pattern": "One customer over 20% of revenue walks after closing", "seen_in": "pod", "avoid": "price the risk in or walk", "evidence": []}],
+    "verdict": "Proceed with the SBA path; the first 90 days of diligence decide everything."}
+CORE_V3 = {
+    "goal": {"outcome": "Buy a main-street business with an SBA 7(a) loan within 12 months", "constraints": ["10% equity injection", "DSCR at least 1.25"], "success": ["closed deal", "no surprises in the first 90 days"], "evidence": []},
+    "approach": {"recommended": "SBA 7(a) acquisition with a seller note on full standby", "why": "The sources agree: 10% down, half of it can be a standby seller note, 10-year term.",
+                 "option": "option:sba-7a-acquisition", "alternatives": [{"option": "Zero down with full seller financing", "why_not": "contradicts the 10% equity injection rule; rare"}],
+                 "basis": "research", "confidence": "high", "evidence": []},
+    "decisions": [{"id": "decision:target-industry", "decision": "HVAC, services or light manufacturing?", "options": ["HVAC", "services", "light manufacturing"], "recommended": "HVAC", "why": "most listings, recurring revenue", "when": "now", "basis": "planner", "evidence": []},
+                  {"id": "decision:qoe-provider", "decision": "Which quality of earnings provider?", "options": ["boutique", "regional CPA"], "recommended": "boutique", "why": "$8-20k, faster", "when": "later", "basis": "research", "evidence": []}],
+    "confidence": [{"area": "financing", "level": "high", "note": "rules are well documented"}, {"area": "valuation", "level": "medium", "note": "depends on the industry"}]}
+EXECUTION_V3 = {
+    "phases": [{"id": "phase:financing", "name": "Financing readiness", "objective": "Know exactly what you can borrow",
+                "tasks": [{"id": "task:get-lender-prequalification", "task": "Get pre-qualified by two SBA lenders", "detail": "Ask for their DSCR floor and equity injection rules", "depends_on": [], "evidence": []},
+                          {"id": "task:confirm-cash-for-injection", "task": "Confirm cash available for the 10% equity injection", "detail": "Half may be a standby seller note", "depends_on": [], "evidence": []}],
+                "dependencies": ["personal financial statement"], "decisions": ["decision:target-industry"], "outcome": "a pre-qualification letter"},
+               {"id": "phase:search", "name": "Search and LOI", "objective": "Find a business and lock exclusivity",
+                "tasks": [{"id": "task:build-deal-flow", "task": "Build deal flow from brokers and off-market outreach", "detail": "", "depends_on": ["task:get-lender-prequalification"], "evidence": []},
+                          {"id": "task:sign-loi-with-exclusivity", "task": "Sign an LOI with a sixty-day exclusivity period", "detail": "Working capital peg and seller transition in the LOI", "depends_on": ["task:build-deal-flow"], "evidence": []}],
+                "dependencies": [], "decisions": [], "outcome": "a signed LOI"},
+               {"id": "phase:diligence", "name": "Diligence and closing", "objective": "Verify the numbers and close",
+                "tasks": [{"id": "task:order-quality-of-earnings", "task": "Order a quality of earnings report", "detail": "Check add-backs and customer concentration", "depends_on": ["task:sign-loi-with-exclusivity"], "evidence": []},
+                          {"id": "task:closing-day-checklist", "task": "Run the closing day checklist", "detail": "Bank signers, payroll, merchant accounts, insurance; do not raise prices in the first 90 days", "depends_on": ["task:order-quality-of-earnings"], "evidence": []}],
+                "dependencies": [], "decisions": ["decision:qoe-provider"], "outcome": "keys in hand"}],
+    "dependencies": [{"id": "dependency:equity-injection", "item": "Cash for the 10% equity injection", "blocking": True, "note": "half may be a standby seller note", "phase": "phase:financing"},
+                     {"id": "dependency:personal-guarantee", "item": "Every 20%+ owner signs a personal guarantee", "blocking": True, "note": "", "phase": "phase:diligence"}],
+    "defer": [{"item": "Raising prices", "until": "after the first 90 days"}]}
+ECONOMICS_V3 = {
+    "costs": {"upfront": [{"item": "Equity injection", "amount": "$50-100k", "phase": "phase:financing"}, {"item": "SBA guarantee fee", "amount": "2-3.5% of the guaranteed portion", "phase": "phase:diligence"}],
+              "recurring": [{"item": "Loan payment", "amount": "estimate", "phase": ""}], "optional": [], "services": [{"item": "Quality of earnings report", "amount": "$8-20k", "phase": "phase:diligence"}],
+              "contingency": "10% of upfront", "minimum": "$60k", "recommended": "$100k", "premium": "$150k", "note": "ranges are estimates", "evidence": []},
+    "tools": [{"id": "tool:deal-tracker", "need": "track listings", "tool": "spreadsheet", "free_option": "Google Sheets", "premium_option": "DealRoom", "cost": "$0", "why": "enough", "tier": "required", "basis": "planner", "evidence": [], "phase": "phase:search"}],
+    "risks": [{"id": "risk:customer-concentration", "risk": "One customer over 20% of revenue", "mitigation": "Price it in or walk, checked in the QoE", "priority": "high", "related": ["task:order-quality-of-earnings"], "evidence": []},
+              {"id": "risk:inflated-add-backs", "risk": "Add-backs that are not legitimate", "mitigation": "Quality of earnings before exclusivity ends", "priority": "high", "related": ["task:order-quality-of-earnings"], "evidence": []},
+              {"id": "risk:seller-transition", "risk": "Seller leaves too early", "mitigation": "Transition period in the LOI", "priority": "medium", "related": ["task:sign-loi-with-exclusivity"], "evidence": []}],
+    "gotchas": [{"id": "gotcha:lease-assignment", "gotcha": "The lease may not be assignable", "avoid": "Get landlord consent before closing"},
+                {"id": "gotcha:personal-guarantee", "gotcha": "The personal guarantee covers the whole loan", "avoid": "Know it before you sign the LOI"}]}
+ACTIONS_V3 = {
+    "first_steps": [{"id": "step:call-lenders", "action": "Call two SBA lenders and ask for their DSCR floor", "detail": "", "today": True, "task": "task:get-lender-prequalification", "evidence": []},
+                    {"id": "step:count-cash", "action": "Write down the cash you can bring", "detail": "savings, liquid assets, a possible standby seller note", "today": True, "task": "task:confirm-cash-for-injection", "evidence": []},
+                    {"id": "step:list-brokers", "action": "List five brokers and ten off-market owners to contact", "detail": "", "today": False, "task": "task:build-deal-flow", "evidence": []}],
+    "this_week": [{"id": "week:lenders", "action": "Call two SBA lenders", "why": "financing gates everything", "time": "1h", "task": "task:get-lender-prequalification"},
+                  {"id": "week:cash", "action": "Total your available cash", "why": "sets the deal size", "time": "30 min", "task": "task:confirm-cash-for-injection"},
+                  {"id": "week:brokers", "action": "Email five brokers", "why": "start deal flow", "time": "1h", "task": "task:build-deal-flow"}],
+    "open_questions": [{"id": "question:working-capital-peg", "question": "How is the working capital peg set in this industry?", "category": "soon", "why": "it moves the price", "research_prompt": "How do buyers set a working capital peg for an HVAC acquisition?"},
+                       {"id": "question:multiples-above-4x", "question": "Do home services really trade above 4x SDE?", "category": "soon", "why": "the podcast contradicts the article's 2.0-3.5x", "research_prompt": "What SDE multiples do HVAC businesses sell for?"}],
+    "refine_questions": [{"id": "refine:cash", "question": "How much cash can you bring?", "why": "sets the deal size", "kind": "fact", "options": []},
+                         {"id": "refine:industry", "question": "HVAC, services or light manufacturing?", "why": "changes the search", "kind": "decision", "options": ["HVAC", "services", "light manufacturing"]},
+                         {"id": "refine:hours", "question": "Hours per week you can give the search?", "why": "sets the timeline", "kind": "fact", "options": []},
+                         {"id": "refine:location", "question": "Which metro?", "why": "deal flow differs", "kind": "preference", "options": []}],
+    "ready": {"first_three": ["task:get-lender-prequalification", "task:confirm-cash-for-injection", "task:build-deal-flow"], "initial_cost": "$0 this week", "need_before": ["pre-qualification letter"], "blockers": []}}
+PLANNER_V3 = {"planner.situation": SITUATION_V3, "planner.core": CORE_V3, "planner.execution": EXECUTION_V3, "planner.economics": ECONOMICS_V3, "planner.actions": ACTIONS_V3}
 
 
 def task_of(system: str, kw: dict[str, Any]) -> str:
@@ -246,11 +331,14 @@ class _Msgs:
             text = _findings(system, user)
         elif task == "rank.relevance":
             text = _rank(user, system)
+        elif task in PLANNER_V3:
+            ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
+            text = json.dumps(_with_evidence(PLANNER_V3[task], ids))
         elif task == "planner.analysis":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = json.dumps(_with_evidence(ANALYSIS, ids))
         elif task == "planner.update":
-            text = json.dumps(UPDATES)
+            text = _updates(user)
         elif task == "planner.build":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = "```json\n" + json.dumps(_with_evidence(PLAN, ids)) + "\n```"

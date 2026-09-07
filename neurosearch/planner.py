@@ -286,7 +286,12 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
 
 def build_plan(project_id: str, instructions: str | None = None, progress: Any = None) -> dict[str, Any]:
     """Generate (or regenerate) the Master Plan for a project in two passes — situation analysis (SWOT,
-    readiness, options, assumptions, failure patterns) and then the plan itself. Returns the stored plan row."""
+    readiness, options, assumptions, failure patterns) and then the plan itself. Returns the stored plan row.
+    With NEUROSEARCH_PLANNER_V3=1 the decomposed planner (planner_v3) runs instead; this single-call path is the
+    rollback for one release."""
+    if settings.planner_v3:
+        from .planner_v3 import build_plan_v3
+        return build_plan_v3(project_id, instructions, progress)
     project = db.get_project(project_id)
     if not project:
         raise RuntimeError("project not found")

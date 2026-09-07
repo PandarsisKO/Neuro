@@ -97,6 +97,15 @@ def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int =
     return cost
 
 
+def cost_of(resp: Any) -> float:
+    """What a response cost at list price (input + cache write 1.25x + cache read 0.1x + output) — computed, not recorded."""
+    u = getattr(resp, "usage", None)
+    pin, pout = _price(str(getattr(resp, "model", "") or settings.answer_model))
+    i, o = int(getattr(u, "input_tokens", 0) or 0), int(getattr(u, "output_tokens", 0) or 0)
+    cr, cw = int(getattr(u, "cache_read_input_tokens", 0) or 0), int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+    return round((i + cw * CACHE_WRITE_MULT + cr * CACHE_READ_MULT) / 1e6 * pin + o / 1e6 * pout, 6)
+
+
 def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source_id: str | None = None) -> float:
     u = getattr(resp, "usage", None)
     searches = 0

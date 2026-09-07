@@ -190,9 +190,12 @@ def _resolve_refs(schema: dict[str, Any], name: str) -> None:
 
 def provider_schema(name: str) -> dict[str, Any]:
     """The copy sent in output_config.format: client-only constraints (min/max/length/pattern/format) stripped."""
-    def strip(node: Any) -> Any:
+    def strip(node: Any, is_map: bool = False) -> Any:
+        """is_map: this dict maps NAMES to schemas (properties/$defs/definitions) — its keys are never keywords."""
         if isinstance(node, dict):
-            return {k: strip(v) for k, v in node.items() if k not in _STRIPPED and k != "$schema"}
+            if is_map:
+                return {k: strip(v) for k, v in node.items()}
+            return {k: strip(v, is_map=k in ("properties", "$defs", "definitions")) for k, v in node.items() if k not in _STRIPPED and k != "$schema"}
         if isinstance(node, list):
             return [strip(x) for x in node]
         return node
@@ -225,3 +228,103 @@ def validate(name: str, obj: Any) -> list[str]:
 
 def is_valid(name: str, obj: Any) -> bool:
     return not validate(name, obj)
+
+
+# ------------------------------------------------------------------ Planner V3 (Mission F4): one frozen analysis, four semantic components
+
+_ID = {"type": "string", "minLength": 3, "description": "stable semantic id: <kind>:<kebab-case-slug>, e.g. task:get-lender-prequalification"}
+_EVIDENCE = {"type": "array", "items": {"type": "string"}, "description": "evidence ids from the EVIDENCE list (U1, F3, S2, C1…); empty if none"}
+_BASIS = {"type": "string", "enum": ["research", "user", "planner", "estimate"]}
+_CONF = {"type": "string", "enum": ["high", "medium", "needs_research"]}
+
+
+def _obj(props: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    return {"type": "object", "properties": props, "required": required if required is not None else list(props), "additionalProperties": False}
+
+
+def _arr(item: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "array", "items": item}
+
+
+SITUATION_V3: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "SituationAnalysisV3",
+    **_obj({
+        "situation": {"type": "string", "description": "3-5 sentences: where this person stands today"},
+        "swot": _obj({"strengths": _arr({"$ref": "#/$defs/point"}), "weaknesses": _arr({"$ref": "#/$defs/point"}),
+                      "opportunities": _arr({"$ref": "#/$defs/point"}), "threats": _arr({"$ref": "#/$defs/point"})}),
+        "readiness": _arr(_obj({"area": {"type": "string"}, "level": {"type": "string", "enum": ["ready", "partly", "gap"]}, "note": {"type": "string"}})),
+        "options": _arr(_obj({"id": _ID, "path": {"type": "string"}, "summary": {"type": "string"}, "cost": {"type": "string"}, "time_to_result": {"type": "string"},
+                              "risk": {"type": "string", "enum": ["low", "medium", "high"]}, "fit": {"type": "integer", "minimum": 1, "maximum": 5},
+                              "why_fit": {"type": "string"}, "evidence": _EVIDENCE})),
+        "recommended_option": {"type": "string", "description": "the id of the option to build the plan on"},
+        "assumptions": _arr(_obj({"id": _ID, "assumption": {"type": "string"}, "if_wrong": {"type": "string"}, "how_to_check": {"type": "string"}})),
+        "failure_patterns": _arr(_obj({"id": _ID, "pattern": {"type": "string"}, "seen_in": {"type": "string"}, "avoid": {"type": "string"}, "evidence": _EVIDENCE})),
+        "verdict": {"type": "string", "description": "2-3 sentences: the honest take"},
+    }),
+    "$defs": {"point": _obj({"point": {"type": "string"}, "so_what": {"type": "string"}, "evidence": _EVIDENCE})},
+}
+
+PLAN_CORE_V3: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "PlanCoreV3",
+    **_obj({
+        "goal": _obj({"outcome": {"type": "string"}, "constraints": _arr({"type": "string"}), "success": _arr({"type": "string"}), "evidence": _EVIDENCE}),
+        "approach": _obj({"recommended": {"type": "string"}, "why": {"type": "string"}, "option": {"type": "string", "description": "the analysis option id this follows"},
+                          "alternatives": _arr(_obj({"option": {"type": "string"}, "why_not": {"type": "string"}})), "basis": _BASIS, "confidence": _CONF, "evidence": _EVIDENCE}),
+        "decisions": _arr(_obj({"id": _ID, "decision": {"type": "string"}, "options": _arr({"type": "string"}), "recommended": {"type": "string"}, "why": {"type": "string"},
+                                "when": {"type": "string", "enum": ["now", "later"]}, "basis": _BASIS, "evidence": _EVIDENCE})),
+        "confidence": _arr(_obj({"area": {"type": "string"}, "level": _CONF, "note": {"type": "string"}})),
+    }),
+}
+
+PLAN_EXECUTION_V3: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "PlanExecutionV3",
+    **_obj({
+        "phases": _arr(_obj({"id": _ID, "name": {"type": "string"}, "objective": {"type": "string"},
+                             "tasks": _arr(_obj({"id": _ID, "task": {"type": "string"}, "detail": {"type": "string"},
+                                                 "depends_on": {"type": "array", "items": {"type": "string"}, "description": "task ids that must finish first"}, "evidence": _EVIDENCE})),
+                             "dependencies": _arr({"type": "string"}), "decisions": {"type": "array", "items": {"type": "string"}, "description": "decision ids needed before this phase"},
+                             "outcome": {"type": "string"}})),
+        "dependencies": _arr(_obj({"id": _ID, "item": {"type": "string"}, "blocking": {"type": "boolean"}, "note": {"type": "string"},
+                                   "phase": {"type": "string", "description": "phase id this gates, or empty"}})),
+        "defer": _arr(_obj({"item": {"type": "string"}, "until": {"type": "string"}})),
+    }),
+}
+
+PLAN_ECONOMICS_V3: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "PlanEconomicsV3",
+    **_obj({
+        "costs": _obj({"upfront": _arr({"$ref": "#/$defs/cost"}), "recurring": _arr({"$ref": "#/$defs/cost"}), "optional": _arr({"$ref": "#/$defs/cost"}),
+                       "services": _arr({"$ref": "#/$defs/cost"}), "contingency": {"type": "string"}, "minimum": {"type": "string"}, "recommended": {"type": "string"},
+                       "premium": {"type": "string"}, "note": {"type": "string"}, "evidence": _EVIDENCE}),
+        "tools": _arr(_obj({"id": _ID, "need": {"type": "string"}, "tool": {"type": "string"}, "free_option": {"type": "string"}, "premium_option": {"type": "string"},
+                            "cost": {"type": "string"}, "why": {"type": "string"}, "tier": {"type": "string", "enum": ["required", "recommended", "optional"]},
+                            "basis": _BASIS, "evidence": _EVIDENCE, "phase": {"type": "string", "description": "phase id, or empty"}})),
+        "risks": _arr(_obj({"id": _ID, "risk": {"type": "string"}, "mitigation": {"type": "string"}, "priority": {"type": "string", "enum": ["high", "medium", "low"]},
+                            "related": {"type": "array", "items": {"type": "string"}, "description": "task/phase ids the mitigation lives in, or empty"}, "evidence": _EVIDENCE})),
+        "gotchas": _arr(_obj({"id": _ID, "gotcha": {"type": "string"}, "avoid": {"type": "string"}})),
+    }),
+    "$defs": {"cost": _obj({"item": {"type": "string"}, "amount": {"type": "string"}, "phase": {"type": "string", "description": "phase id, or empty"}})},
+}
+
+PLAN_ACTIONS_V3: dict[str, Any] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "PlanActionsV3",
+    **_obj({
+        "first_steps": _arr(_obj({"id": _ID, "action": {"type": "string"}, "detail": {"type": "string"}, "today": {"type": "boolean"},
+                                  "task": {"type": "string", "description": "the plan task id this starts, or empty"}, "evidence": _EVIDENCE})),
+        "this_week": _arr(_obj({"id": _ID, "action": {"type": "string"}, "why": {"type": "string"}, "time": {"type": "string"},
+                                "task": {"type": "string", "description": "the plan task id this advances, or empty"}})),
+        "open_questions": _arr(_obj({"id": _ID, "question": {"type": "string"}, "category": {"type": "string", "enum": ["blocking", "soon", "nice"]},
+                                     "why": {"type": "string"}, "research_prompt": {"type": "string"}})),
+        "refine_questions": _arr(_obj({"id": _ID, "question": {"type": "string"}, "why": {"type": "string"}, "kind": {"type": "string", "enum": ["fact", "decision", "preference"]},
+                                       "options": _arr({"type": "string"})})),
+        "ready": _obj({"first_three": _arr({"type": "string"}), "initial_cost": {"type": "string"}, "need_before": _arr({"type": "string"}), "blockers": _arr({"type": "string"})}),
+    }),
+}
+
+REGISTRY.update({
+    "situation-v3": SITUATION_V3,
+    "plan-core-v3": PLAN_CORE_V3,
+    "plan-execution-v3": PLAN_EXECUTION_V3,
+    "plan-economics-v3": PLAN_ECONOMICS_V3,
+    "plan-actions-v3": PLAN_ACTIONS_V3,
+})

@@ -1827,10 +1827,22 @@ def test_truncation_escalation_needs_a_ceiling(isolated_db, monkeypatch):
 def test_schema_registry_is_provider_compatible_and_validates():
     import pytest as _pt
     from neurosearch import schemas
+    def keywords(node, is_map=False):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if not is_map:
+                    yield k
+                yield from keywords(v, is_map=(not is_map and k in ("properties", "$defs", "definitions")))
+        elif isinstance(node, list):
+            for x in node:
+                yield from keywords(x)
     for name, sch in schemas.REGISTRY.items():
         schemas.check_provider_compat(sch, name)                 # would raise before any paid request
         ps = schemas.provider_schema(name)
-        assert "minimum" not in json.dumps(ps) and "$schema" not in ps and "$defs" in ps      # internal $ref/$defs kept, client-only constraints stripped
+        kws = set(keywords(ps))
+        assert not (kws & {"minimum", "maximum", "minLength", "pattern", "$schema"}), (name, kws)      # client-only constraints stripped …
+        assert "$ref" in json.dumps(ps) or "$defs" not in sch                                         # … internal $ref/$defs kept
+        assert "minimum" in json.dumps(schemas.provider_schema("plan-economics-v3"))                  # property NAMES are never stripped (costs.minimum)
         assert schemas.output_config(name)["format"]["type"] == "json_schema"
     assert schemas.is_valid("findings-v2", {"summary": "s", "substance": 40, "findings": [{"title": "t", "finding": "", "ts": "1:00", "quote": "q", "importance": 3}]})
     errs = schemas.validate("findings-v2", {"summary": "s", "substance": 400, "findings": [{"title": "t"}]})
@@ -1900,7 +1912,7 @@ def test_plan_update_and_discover_quick_are_structured(isolated_db, monkeypatch)
     import time as _t; _t.sleep(0.02)
     db.add_project_note(p["id"], "Cloudflare form handling is limited.", [])
     ups = planner.suggest_updates(p["id"])
-    assert len(ups) == 1 and ups[0]["proposed"] == "Static export + Netlify" and db.latest_plan(p["id"]) and db.health()["structured_outputs"]["mismatches"] == 0
+    assert len(ups) == 1 and "Cloudflare form handling" in ups[0]["proposed"] and ups[0]["reason"].startswith("New finding") and db.latest_plan(p["id"]) and db.health()["structured_outputs"]["mismatches"] == 0
     # a misunderstood output is a typed failure, and NO update row is written (not even an empty list)
     monkeypatch.setenv("NEUROSEARCH_FAKE_AI_BAD_JSON", "1")
     db.add_project_note(p["id"], "Another new finding.", [])
@@ -2110,3 +2122,208 @@ def test_installation_check_fails_clearly_without_jsonschema(monkeypatch):
     with pytest.raises(SystemExit) as ei:
         schemas.check_installation()
     assert "installation is incomplete" in str(ei.value) and "./start" in str(ei.value)
+
+
+# ------------------------------------------------------------------ F4: Planner V3 exit gate (all under the fakes)
+
+@pytest.fixture
+def golden_project(isolated_db, monkeypatch):
+    from neurosearch import evals, findings
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    g = evals.load_golden()
+    pid = g["project_id"]
+    for gid, sid in g["sources"].items():
+        if gid != "calc":
+            findings.suggest_for_source(pid, sid)
+    for n in db.list_project_notes(pid, status="suggested"):
+        db.set_note_status(n["id"], "approved")
+    return pid
+
+
+def _plan_body(p):
+    return {k: v for k, v in p.items() if not k.startswith("_")}
+
+
+def test_planner_v3_exit_gate(golden_project, monkeypatch):
+    from neurosearch import migration, planner, planner_v3, schemas
+    from neurosearch.config import settings
+    pid = golden_project
+    # [ ] legacy planner is the default and stays selectable
+    monkeypatch.setattr(settings, "planner_v3", False)
+    v1 = planner.build_plan(pid)["plan"]
+    assert "_build" not in v1 and "_ids" not in v1
+    monkeypatch.setattr(settings, "planner_v3", True)
+    before = db.health()["structured_outputs"]
+    __import__("neurosearch.fake_ai", fromlist=["_cache_seen"])._cache_seen.clear()      # a cold prompt cache, as a first build sees it
+    row = planner.build_plan(pid)
+    p = row["plan"]
+    # [ ] situation + four component schemas valid, same analysis_hash everywhere, zero mismatches/fallbacks
+    comps = p["_components"]
+    for name, schema in (("situation", "situation-v3"), ("core", "plan-core-v3"), ("execution", "plan-execution-v3"), ("economics", "plan-economics-v3"), ("actions", "plan-actions-v3")):
+        assert schemas.is_valid(schema, comps[name]), name
+    b = p["_build"]
+    assert b["planner_version"] == "v3" and [c["task"] for c in b["components"]] == ["planner.situation", "planner.core", "planner.execution", "planner.economics", "planner.actions"]
+    assert {c["analysis_hash"] for c in b["components"][1:]} == {b["analysis_hash"]} == {p["_analysis_hash"]} and b["components"][0]["analysis_hash"] is None
+    assert db.health()["structured_outputs"] == before and b["analysis_hash"] == __import__("hashlib").sha256(json.dumps(comps["situation"], sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+    # [ ] zero dangling evidence / dependencies / cycles, unique ids
+    assert p["_evidence_check"]["dangling"] == [] and p["_evidence_check"]["references"] > 0
+    plan, ids, problems = planner_v3.assemble(comps["situation"], comps["core"], comps["execution"], comps["economics"], comps["actions"], set(p["_evidence"]))
+    assert problems == [] and len(set(ids.values())) == len(ids) and all(":" in v for v in ids.values())
+    assert p["_ids"] == ids and all(w["task"] in ids.values() for w in p["this_week"])
+    # [ ] deterministic assembly: same inputs → identical document
+    plan2, ids2, _ = planner_v3.assemble(comps["situation"], comps["core"], comps["execution"], comps["economics"], comps["actions"], set(p["_evidence"]))
+    assert plan2 == plan and ids2 == ids and _plan_body(p) == plan
+    # [ ] existing plan shape unchanged: every V1 key present, UI/export consumers work
+    assert set(_plan_body(v1)) <= set(_plan_body(p)) and set(p["analysis"]) >= {"situation", "swot", "readiness", "options", "assumptions", "failure_patterns", "verdict"}
+    md = planner.plan_markdown(row, db.get_project(pid))
+    assert "First steps" in md or "first" in md.lower()
+    assert planner.plan_html(row, db.get_project(pid))
+    # [ ] frozen rubric: V3 ≥ V1 on the fakes
+    rub = migration.load_rubric()
+    assert migration.score_rubric(_plan_body(p), rub["plan"])["score"] >= migration.score_rubric(_plan_body(v1), rub["plan"])["score"]
+    assert migration.score_rubric(p["analysis"], rub["analysis"])["score"] >= migration.score_rubric(v1.get("analysis"), rub["analysis"])["score"]
+    # [ ] cache telemetry answers F5's question
+    assert b["material_tokens_est"] > 1000 and b["cache_write_total"] > 0 and b["cache_read_total"] > 0 and b["cost_total"] > 0 and b["cache_read_share"] > 0.5
+    assert all(k in b["components"][0] for k in ("input_tokens", "output_tokens", "cache_read", "cache_write", "cost", "seconds", "schema"))
+
+
+def test_planner_v3_status_survives_rebuild(golden_project, monkeypatch):
+    """Statuses follow semantic ids: a task that moves to another position, or whose id the model renamed but whose
+    text is the same, keeps its DONE. Positional-only carry is gone."""
+    import copy
+    from neurosearch import fake_ai, planner
+    from neurosearch.config import settings
+    pid = golden_project
+    monkeypatch.setattr(settings, "planner_v3", True)
+    r1 = planner.build_plan(pid)
+    assert r1["plan"]["_ids"]["phases.0.tasks.0"] == "task:get-lender-prequalification"
+    db.set_item_status(r1["id"], "phases.0.tasks.0", "done", "did it")
+    db.set_item_status(r1["id"], "first_steps.1", "in_progress")
+    # rebuild with the same tasks in a different order and one id renamed consistently everywhere (same text)
+    renamed = json.loads(json.dumps(fake_ai.PLANNER_V3).replace("task:get-lender-prequalification", "task:lender-prequal-letter"))
+    renamed["planner.execution"]["phases"][0]["tasks"].reverse()
+    for k, v in renamed.items():
+        monkeypatch.setitem(fake_ai.PLANNER_V3, k, v)
+    r2 = planner.build_plan(pid)
+    p2 = r2["plan"]
+    assert p2["_ids"]["phases.0.tasks.1"] == "task:get-lender-prequalification"          # reconciled back to the stable id
+    assert p2["_build"]["id_renames_on_rebuild"] == {"task:lender-prequal-letter": "task:get-lender-prequalification"}
+    assert r2["items"]["phases.0.tasks.1"] == {"status": "done", "note": "did it"} and "phases.0.tasks.0" not in r2["items"]
+    assert r2["items"]["first_steps.1"]["status"] == "in_progress"
+    # references were rewritten with the reconciled id
+    assert all("task:lender-prequal-letter" not in json.dumps(v) for v in (p2["phases"], p2["first_steps"], p2["this_week"], p2["risks"]))
+
+
+def test_planner_v3_assembly_refuses_incoherent_components(golden_project, monkeypatch):
+    """Schema-valid pieces that contradict each other never become a plan: dangling refs, cycles, self-dependency,
+    duplicate ids, missing evidence → PlanAssemblyError, previous plan retained, event recorded."""
+    import copy
+    from neurosearch import fake_ai, planner, planner_v3
+    from neurosearch.config import settings
+    pid = golden_project
+    monkeypatch.setattr(settings, "planner_v3", True)
+    good = planner.build_plan(pid)
+    comps = good["plan"]["_components"]
+    ev = set(good["plan"]["_evidence"])
+    def broken(mut):
+        c = copy.deepcopy(comps); mut(c); return planner_v3.assemble(c["situation"], c["core"], c["execution"], c["economics"], c["actions"], ev)[2]
+    assert any("does not exist" in x for x in broken(lambda c: c["actions"]["this_week"][0].__setitem__("task", "task:nope")))
+    assert any("cycle" in x for x in broken(lambda c: c["execution"]["phases"][0]["tasks"][0].__setitem__("depends_on", ["task:build-deal-flow"])))
+    assert any("depends on itself" in x for x in broken(lambda c: c["execution"]["phases"][0]["tasks"][0].__setitem__("depends_on", ["task:get-lender-prequalification"])))
+    assert any("duplicate id" in x for x in broken(lambda c: c["economics"]["risks"][1].__setitem__("id", c["economics"]["risks"][0]["id"])))
+    assert broken(lambda c: c["economics"]["risks"][0].__setitem__("id", "task:build-deal-flow")) == []      # ids are namespaced by kind: risk:build-deal-flow
+    assert any("evidence ids do not exist" in x for x in broken(lambda c: c["core"]["goal"].__setitem__("evidence", ["F999"])))
+    assert any("not one of its options" in x for x in broken(lambda c: c["situation"].__setitem__("recommended_option", "option:nope")))
+    assert any("phase" in x for x in broken(lambda c: c["economics"]["costs"]["upfront"][0].__setitem__("phase", "phase:nope")))
+    # through build_plan: the previous plan stays current, the failure is visible
+    bad = copy.deepcopy(fake_ai.ACTIONS_V3); bad["this_week"][0]["task"] = "task:does-not-exist"
+    monkeypatch.setitem(fake_ai.PLANNER_V3, "planner.actions", bad)
+    with pytest.raises(planner_v3.PlanAssemblyError, match="does not exist"):
+        planner.build_plan(pid)
+    assert db.latest_plan(pid)["id"] == good["id"]
+    assert db.validation_events(kind="plan_assembly_failed")[0]["detail"]["analysis_hash"] == good["plan"]["_analysis_hash"]
+    assert db.health()["evidence"]["events"].get("plan_assembly_failed") == 1
+
+
+def test_planner_v3_id_helpers():
+    from neurosearch import planner_v3 as V
+    assert V.norm_id("task", "Task: Get Lender Pre-Qualification!") == "task:get-lender-pre-qualification"
+    assert V.norm_id("task", "", "Call two lenders") == "task:call-two-lenders" and V.norm_id("risk", None, "") == "risk:item"
+    assert V.similarity("Get pre-qualified by two SBA lenders", "get prequalified by two sba lenders") >= V.ID_SIMILARITY
+    assert V._find_cycle({"a": {"b"}, "b": {"c"}, "c": {"a"}}) and not V._find_cycle({"a": {"b"}, "b": set()})
+
+
+# ------------------------------------------------------------------ F5: closeout command (dry run under the fakes)
+
+def test_mission_f_closeout_dry_run(tmp_path, monkeypatch):
+    """One command: deterministic phase (Tier 1 with V1 and V3, registry, rubric) then the narrowly scoped live phase — here
+    on the fakes — ending in a Mission F verdict and a separate Planner V3 decision; artifacts saved; nothing changed."""
+    import os
+    from neurosearch import closeout, contracts
+    from neurosearch.config import settings
+    monkeypatch.delenv("NEUROSEARCH_PLANNER_V3", raising=False)
+    monkeypatch.setattr(settings, "planner_v3", False)
+    was_dir = settings.data_dir
+    rep = closeout.run_closeout(live=False, out_dir=tmp_path / "evals", progress=lambda m: None, run_pytest=False)
+    assert settings.data_dir == was_dir and settings.planner_v3 is False           # restored; no production change
+    det = rep["deterministic"]
+    assert det["pass"] and {s["step"] for s in det["steps"]} >= {"schema registry provider-compatible", "Tier 1 (Planner V1)", "Tier 1 (Planner V3)", "Tier 1 V3 evidence / assembly", "rubric V3 ≥ V1 (fakes)"}
+    lv = rep["live"]
+    assert set(lv["surfaces"]) == {"findings.extract", "rank.relevance", "planner.update", "discover.quick"} and all(s["pass"] for s in lv["surfaces"].values()), lv["surfaces"]
+    assert lv["surfaces"]["findings.extract"]["schema"] == "findings-v2" and lv["surfaces"]["rank.relevance"]["schema"] == "rank-v2"
+    assert lv["surfaces"]["planner.update"]["n_updates"] >= 1 and lv["surfaces"]["planner.update"]["addresses_new_finding"] == 1
+    assert all(sum(s["events"].values()) == 0 for s in lv["surfaces"].values())
+    p = rep["planner_v3"]
+    assert p["promote"] and p["v3"]["telemetry"]["cache_read_share"] > 0.5 and p["v3"]["usage"]["calls"] == 5 and p["v1"]["usage"]["calls"] == 2
+    assert p["v3"]["rubric_plan"] >= p["v1"]["rubric_plan"] and p["v3"]["dangling_raw"] == 0 and "cost_cold_equivalent" in p["v3"]
+    assert rep["mission"]["verdict"] in ("PASS", "PASS_WITH_CAVEAT") and "PLANNER V3: PROMOTE" in rep["text"] and "Nothing was changed" in rep["text"]
+    names = {q.name for q in pathlib.Path(rep["dir"]).iterdir()}
+    assert {"deterministic.json", "findings.json", "ranking.json", "planner-v1.json", "planner-v3.json", "update.json", "discover.json", "closeout.json", "closeout.txt"} <= names
+    assert lv["spend_estimate"]["maximum"] > lv["spend_estimate"]["estimate"] > 0.5
+    assert contracts.contract("findings.extract").model == "claude-sonnet-5"       # untouched
+
+
+def test_planner_v3_promotion_rules():
+    import copy
+    from neurosearch import closeout as C
+    def task(rubric, struct=1.0, refs=30, **kw):
+        t = {"rubric": {"score": rubric, "failed": [], "structure": {"score": struct, "failed": []}}, "evidence_refs": refs, "dangling_after_removal": 0, "truncated": 0,
+             "parse_failed": 0, "json_repaired": 0, "invocations": {"returned_model": "claude-sonnet-4-6-20260210"}}
+        t.update(kw); return t
+    def arm(rp, ra, calls, cost, secs, tel=None, events=None, dangling=0, error=None):
+        return {"error": error, "seconds": secs, "tasks": {"planner.analysis": task(ra), "planner.build": task(rp)}, "plan_evidence_dangling_raw": dangling,
+                "usage": {"cost": cost, "calls": calls, "input_tokens": 1000, "output_tokens": 3000, "cache_write_tokens": 40000, "cache_read_tokens": 0},
+                "build_telemetry": tel, "events": events or {}}
+    tel = {"cache_read_share": 0.85, "components": []}
+    v1 = arm(0.7, 0.6, 2, 0.30, 90.0)
+    v3 = arm(0.75, 0.65, 5, 0.36, 110.0, tel)
+    d = C.planner_decision({"v1": v1, "v3": v3})
+    assert d["promote"] and d["decision"].startswith("PROMOTE") and d["mission_fails"] == [] and any("+20%" in c for c in d["caveats"])
+    assert not C.planner_decision({"v1": v1, "v3": arm(0.65, 0.65, 5, 0.36, 110.0, tel)})["promote"]                     # rubric below V1
+    assert not C.planner_decision({"v1": v1, "v3": arm(0.7, 0.6, 5, 0.36, 110.0, tel, dangling=1)})["promote"]           # evidence validity < 1
+    bad = C.planner_decision({"v1": v1, "v3": arm(0.9, 0.9, 5, 0.36, 110.0, tel, events={"schema_mismatch": 1})})
+    assert not bad["promote"] and bad["mission_fails"]                                                                    # events fail Mission F too
+    assert not C.planner_decision({"v1": v1, "v3": arm(0.9, 0.9, 5, 1.20, 110.0, tel)})["promote"]                        # pathological cost (4×)
+    ok = C.planner_decision({"v1": v1, "v3": arm(0.9, 0.9, 5, 0.60, 200.0, tel)})                                        # 2× cost, 2.2× latency → caveats only
+    assert ok["promote"] and len(ok["caveats"]) == 2
+    low = C.planner_decision({"v1": v1, "v3": arm(0.7, 0.6, 5, 0.36, 110.0, {"cache_read_share": 0.2, "components": []})})
+    assert low["promote"] and any("cache read share" in c for c in low["caveats"])
+    assert not C.planner_decision({"v1": v1, "v3": arm(0.9, 0.9, 5, 0.3, 100.0, tel, error="boom")})["promote"]
+
+
+def test_version_is_pep440_and_consistent():
+    """`pip install -e .` (what ./start runs) rejects non-PEP-440 versions silently-ish; a bad version means the CLI never
+    picks up new entry points or dependencies. Local labels like 0.19.0+f5 are fine; 0.19.0-f5 is not."""
+    import re
+    from packaging.version import InvalidVersion, Version
+    import neurosearch
+    pj = pathlib.Path(__file__).parent.parent / "pyproject.toml"
+    v = re.search(r'^version = "([^"]+)"', pj.read_text(), re.M).group(1)
+    try:
+        Version(v)
+    except InvalidVersion:
+        pytest.fail(f"pyproject version {v!r} is not PEP 440 — pip install -e . will fail")
+    assert v == neurosearch.__version__
+    assert f"'{v}'" in (pathlib.Path(neurosearch.__file__).parent / "web" / "index.html").read_text()

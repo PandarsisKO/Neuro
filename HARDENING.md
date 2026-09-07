@@ -201,10 +201,56 @@ F3 PLANNER.UPDATE + DISCOVER.QUICK           COMPLETE (0.19.0-f3)
 [x] discover.quick                       schema discovery-v2 (kind/depth enums, start_with objects); ceiling 5000
 [x] discover.verify                      UNCHANGED, deliberately: citations (web_search) and output_config.format are incompatible (400). Boundary:
                                         discover.quick = structured · discover.verify = citation-compatible text/tool path. Not debt.
-[ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3: the structured situation analysis is the shared reasoning anchor for every component;
-        semantic decomposition (1 situation/recommendation/decisions · 2 phases/dependencies/milestones · 3 costs/tools/risks/gotchas ·
-        4 this-week/first-steps/open-questions/refinement); stable semantic ids per component; evidence validated per component; deterministic
-        Python assembly into the existing plan format (no merge call); single-call planner kept as rollback for one release
+F4 DECOMPOSED PLANNER                        COMPLETE (0.19.0-f4) — behind NEUROSEARCH_PLANNER_V3=1; single-call planner is the rollback for one release
+  planner_v3.py: research material (one cached system block shared by all five calls) → planner.situation (situation-v3, validated, then
+  FROZEN: analysis_hash) → planner.core / planner.execution / planner.economics / planner.actions (plan-core/execution/economics/actions-v3),
+  every component receiving the SAME frozen analysis + the id catalogue of the components before it → assemble() in deterministic Python into
+  the EXISTING plan shape (no merge call). Every stateful object carries a stable semantic id (phase:financing, task:get-lender-prequalification,
+  risk:customer-concentration, question:working-capital-peg); plan["_ids"] maps positional keys → ids; db.save_plan carries statuses by id, and
+  planner_v3.reconcile_ids adopts the previous id when the model renamed a substantively identical item (token Jaccard ≥ 0.5), rewriting refs.
+  Assembly checks: referenced phase/task/decision/option ids exist, task dependencies exist, no cycles, no self-dependency, evidence ids exist,
+  risk mitigations point at real tasks/phases, this_week maps to real tasks, costs/tools tied to known phases, ids unique — any problem →
+  PlanAssemblyError, plan_assembly_failed event, previous plan stays current. plan["_build"] telemetry: material tokens, per-component
+  input/output/cache read/write/cost/seconds, totals, cache_read_share, analysis_hash — so F5 can answer "more reliable without multiplying cost?".
+  plan["_components"] keeps the five generated documents. Migration tooling maps situation → planner.analysis and the four components →
+  planner.build so the rubric comparison works on either planner.
+  EXIT GATE (tests/test_core.py::test_planner_v3_*, all under the fakes — nothing for Kyle to run):
+  [x] situation analysis schema-valid   [x] all four component schemas valid   [x] same analysis_hash used by all components
+  [x] zero schema fallbacks/mismatches  [x] zero dangling evidence            [x] zero dangling dependencies   [x] zero dependency cycles
+  [x] unique semantic ids               [x] task status survives an equivalent rebuild (reordered + renamed task keeps DONE)
+  [x] deterministic assembly            [x] existing API/UI/export plan shape unchanged (every V1 key present; plan_markdown/plan_html work)
+  [x] frozen planner rubric ≥ existing path (fakes)   [x] legacy planner selectable (flag off = V1, default)
+  [x] incoherent components refused (dangling ref, cycle, self-dependency, duplicate id, missing evidence, bad option, bad phase) with the previous plan retained
+F5 CLOSEOUT TOOLING                          COMPLETE (0.19.0-f5) — `neurosearch closeout --live` is the ONE command
+  Deterministic phase (free, must pass before any paid call): pytest (whole suite incl. every Mission F test), schema registry
+  provider-compatibility, Tier 1 with Planner V1 and with Planner V3 (zero mismatch/fallback/truncation/refusal gates), frozen planner
+  rubric on both fake paths, V3 evidence/assembly, rubric V3 ≥ V1.
+  Live phase, narrowly scoped to what Mission F changed (chat/repair/export/discover.verify are NOT retested): expected spend printed
+  first (≈ $1.05, max ≈ $1.6), eval-only budget in the temporary DB, preflight of every model id, then
+    findings.extract   production Sonnet 5 structured path — golden evidence recall (within 0.10 of the saved Sonnet 5 result), quote validity ≥ 0.98,
+                       stored re-check 1.0, zero events, returned model
+    rank.relevance     production Sonnet 5 structured path — quality inside the saved Sonnet 5 envelope (evals/ranking-compare candidate), zero
+                       unscored, zero events
+    planner.update     valid structured update on the frozen V1 plan + new finding/fact — addresses the new finding, well-formed, never
+                       silent-empty, zero events
+    discover.quick     schema-valid result, zero events (pass 1 only; no subjective judge)
+    Planner V1 vs V3   identical frozen research — rubric (plan + analysis), evidence validity, completeness, assembly, dangling/cycles, cost
+                       (+ cold-cache equivalent, since V1 builds first and warms the shared prefix), latency, tokens, cache write/read, cache
+                       read share, per-component telemetry, number of calls
+  Planner V3 hard gates (closeout.planner_decision): rubric ≥ V1 (plan and analysis), evidence validity 1.0, no assembly failure, no
+  dangling/cyclic refs, no structured-output/assembly events, no truncation/parse/repair, telemetry present; cost > 3× or latency > 3× is
+  pathological; anything less is a caveat; cache read share < 0.5 is a caveat. Status reconciliation is proven by the pytest step.
+  Output: Mission F PASS / PASS WITH CAVEAT / FAIL + a separate PLANNER V3: PROMOTE / DO NOT PROMOTE; artifacts under
+  evals/mission-f-closeout/<stamp>-<sha>/ (deterministic.json, findings.json, ranking.json, planner-v1.json, planner-v3.json, update.json,
+  discover.json, closeout.json, closeout.txt). Changes nothing.
+    DEPLOYMENT NOTE (0.19.0+f5): the 0.19.0-f4/-f5 update archives were built from the wrong directory, so package files landed at
+    the repo root instead of neurosearch/ — the installed CLI never saw `closeout`. Fixed: stray root copies removed, versions are
+    PEP 440 (`0.19.0+f5`; the dashed form made `pip install -e .` fail, which ./start used to hide), ./start now warns instead of
+    silencing a failed reinstall and installs the `dev` extra (pytest); `neurosearch closeout` installs pytest itself if missing;
+    test_version_is_pep440_and_consistent guards the version.
+[ ] F5 live: `neurosearch closeout --live` (Kyle, once) → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
+    release with V1 as the rollback for one cycle; if DO NOT PROMOTE, the default stays V1 and V3 is recorded as not promoted — no tuning loop.
+    Then Mission F closes and the ladder continues (Rung G); testing stays the guardrail, not the project.
 [ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
 [ ] F5  automated deterministic closeout + ONE live paid run (AI-affecting request/output change) against the existing baselines/rubric
 ```

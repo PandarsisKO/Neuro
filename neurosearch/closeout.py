@@ -90,6 +90,11 @@ def deterministic_phase(progress: Any = print, run_pytest: bool = True) -> dict[
     if run_pytest:
         progress("deterministic: pytest (whole suite, incl. Mission F tests)…")
         env = {k: v for k, v in os.environ.items() if not k.startswith("NEUROSEARCH_")}      # the suite sets its own environment; ours must not leak in
+        try:
+            import pytest  # noqa: F401
+        except ImportError:                                                            # the dev extra was not installed: fix it here, in this venv, once
+            progress("  pytest is not installed in this environment — installing (pip install pytest)…")
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pytest>=8"], capture_output=True, text=True, timeout=600)
         r = subprocess.run([sys.executable, "-m", "pytest", "tests", "-q", "-x", "-p", "no:cacheprovider"], cwd=str(ROOT), capture_output=True, text=True, timeout=1800, env=env)
         tail = (r.stdout.strip().splitlines() or [""])[-1]
         step("pytest", r.returncode == 0, tail if r.returncode == 0 else (r.stdout[-1500:] + r.stderr[-800:]))

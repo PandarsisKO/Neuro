@@ -81,6 +81,12 @@ def _base() -> dict[str, InferenceContract]:
                           notes="uses the Anthropic web_search server tool; no fallback provider can serve it"),
         InferenceContract("planner.analysis", "anthropic", m, max_output_tokens=7000, timeout=600.0, interactive=True),
         InferenceContract("planner.build", "anthropic", m, max_output_tokens=16000, timeout=600.0, interactive=True),
+        # Planner V3 (F4, behind NEUROSEARCH_PLANNER_V3): one frozen analysis + four semantic components, all structured
+        InferenceContract("planner.situation", "anthropic", m, max_output_tokens=6000, max_output_ceiling=9000, timeout=600.0, interactive=True, schema="situation-v3"),
+        InferenceContract("planner.core", "anthropic", m, max_output_tokens=5000, max_output_ceiling=8000, timeout=600.0, interactive=True, schema="plan-core-v3"),
+        InferenceContract("planner.execution", "anthropic", m, max_output_tokens=6000, max_output_ceiling=9000, timeout=600.0, interactive=True, schema="plan-execution-v3"),
+        InferenceContract("planner.economics", "anthropic", m, max_output_tokens=6000, max_output_ceiling=9000, timeout=600.0, interactive=True, schema="plan-economics-v3"),
+        InferenceContract("planner.actions", "anthropic", m, max_output_tokens=5000, max_output_ceiling=8000, timeout=600.0, interactive=True, schema="plan-actions-v3"),
         InferenceContract("planner.update", "anthropic", m, max_output_tokens=4000, max_output_ceiling=6000, timeout=600.0, schema="plan-update-v2",
                           notes="structured (F3): a parse failure is a typed failure, never an empty update list"),
         InferenceContract("export.synthesis", "anthropic", m, max_output_tokens=6000),
