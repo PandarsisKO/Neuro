@@ -487,7 +487,10 @@ def project_add(project: str, source_ids: list[str] = typer.Argument(None),
         if len(row) != 1:
             typer.echo(f"ambiguous or unknown source '{s}'", err=True); continue
         full.append(row[0]["id"])
-    db.add_project_sources(pid, full)
+    from . import identity
+    for sid in full:
+        r = identity.attach_existing(pid, sid)
+        typer.echo(f"  {r.state.lower().replace('_', ' ')}: {r.source.get('title') or sid}")
     db.add_project_collections(pid, collection)
     p = db.get_project(pid)
     typer.echo(f"{p['name']} now has {p['n_sources']} sources")  # type: ignore[index]

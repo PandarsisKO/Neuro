@@ -171,6 +171,8 @@ def _library_tools() -> list[dict[str, Any]]:
          "input_schema": {"type": "object", "properties": {"filter": flt}, "required": []}},
         {"name": "set_source_priority", "description": "Flag (or unflag) sources matching a filter as priority sources for this project: retrieval will favour them. Use when the user says a source/author/channel/document is authoritative or top tier.",
          "input_schema": {"type": "object", "properties": {"filter": {"type": "string"}, "priority": {"type": "boolean", "default": True}}, "required": ["filter"]}},
+        {"name": "search_seen_sources", "description": "Search the Candidate Index: sources Neuro Search has SEEN (listed from channels, feeds, sites) but NOT acquired. Use when the library lacks evidence for a gap, BEFORE suggesting a web search. Results are metadata only — they cannot be cited; tell the user which ones look worth acquiring (Sources → Library → Seen, not added).",
+         "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["query"]}},
     ]
 
 
@@ -199,15 +201,20 @@ def _retrieval_query(question: str, history: list[dict[str, Any]]) -> str:
 
 
 def queue_urls(urls: list[str], project_id: str | None) -> list[dict[str, Any]]:
-    """Queue pasted URLs for ingestion (into the project if any). Returns job summaries."""
-    from . import jobs
+    """Queue pasted URLs for ingestion (into the project if any). Returns job summaries. G2: each link is classified
+    first; items and reviewable collections go to the standard lifecycle, containers (a whole website, repository,
+    community, feed, sitemap) are NOT fetched as a page — they come back as `detected` with the available choices."""
+    from . import resources
 
     out = []
     for u in urls:
-        from .media import canonical_url
-        u = canonical_url(u.rstrip(".,;:!?)"))
-        j = jobs.enqueue("ingest_url", {"url": u, "tags": [], "project_id": project_id})
-        out.append({"job_id": j["id"], "url": u})
+        c = resources.classify(u.rstrip(".,;:!?)"))
+        if c.kind in resources.CONTAINER_KINDS or c.kind in ("feed", "sitemap", "image"):
+            out.append({"job_id": None, "url": c.url or u, "detected": c.as_dict()})
+            continue
+        r = resources.route(c, project_id, tags=[])
+        out.append({"job_id": r.get("job_id"), "url": c.url or u, "kind": c.kind, "review": r.get("review", False)} if r.get("job_id")
+                   else {"job_id": None, "url": c.url or u, "detected": c.as_dict()})
     return out
 
 
@@ -271,14 +278,20 @@ def ask(
     ingest_jobs = queue_urls(urls, project_id) if urls else []
     if urls:
         question_wo = URL_RE.sub("", question).strip(" \n,;:-—")
+        detected = [j["detected"] for j in ingest_jobs if j.get("detected")]
+        queued = [j for j in ingest_jobs if j.get("job_id")]
         if len(question_wo.split()) < 4:  # nothing left to answer: just confirm
             where = f" into project **{project['name']}**" if project else ""
-            from .media import classify_url
-            bulk = [u for u in urls if classify_url(u) in ("playlist", "channel")]
-            answer = (f"Queued {len(urls)} link{'s' if len(urls) > 1 else ''}{where}. "
-                      + ("Channels and playlists are listed first and wait for your approval in **Sources → Review** before anything is transcribed. "
-                         if bulk else "")
-                      + "I'll use new sources as soon as they're ready — ask again in a minute.")
+            bulk = [j for j in queued if j.get("review")]
+            parts = []
+            if queued:
+                parts.append(f"Queued {len(queued)} link{'s' if len(queued) > 1 else ''}{where}. "
+                             + ("Channels, playlists and searches are listed first and wait for your approval in **Sources → Review** before anything is transcribed. " if bulk else "")
+                             + "I'll use new sources as soon as they're ready — ask again in a minute.")
+            for d in detected:
+                choices = ", ".join(a["label"] + ("" if a["available"] else " (not yet)") for a in d["actions"]) or "no action yet"
+                parts.append(f"**{d['label']}** — {d['detail']} Options in **Sources → Add**: {choices}.")
+            answer = "\n\n".join(parts) or "I couldn't tell what to do with that link."
             if conversation_id:
                 db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
                 db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id)
@@ -318,7 +331,12 @@ def ask(
             messages.append({"role": m["role"], "content": m["content"]})
     note = ""
     if ingest_jobs:
-        note = f"\n(Note: the user also pasted {len(ingest_jobs)} link(s) which are now being ingested; mention they'll be available shortly.)"
+        n_q = sum(1 for j in ingest_jobs if j.get("job_id"))
+        note = (f"\n(Note: the user also pasted {n_q} link(s) which are now being ingested; mention they'll be available shortly.)" if n_q else "")
+        for j in ingest_jobs:
+            if j.get("detected"):
+                d = j["detected"]
+                note += f"\n(Note: {d['url'] or d['input']} was recognised as a {d['kind'].replace('_', ' ')} — NOT added: {d['detail']} Tell the user the choices are in Sources → Add.)"
     if attached_source_ids:
         titles = [(db.get_source(sid) or {}).get("title") or sid for sid in attached_source_ids]
         note += f"\n(Note: the user attached {', '.join(titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
@@ -523,6 +541,20 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         new_part = build_context(found, start=start)
         actions.append({"type": "searched", "query": query, "filter": flt, "added": len(found)})
         return f"<excerpts>\n{new_part}\n</excerpts>\n(cite these as [{start + 1}]–[{len(ctx['hits'])}])"
+    if name == "search_seen_sources":
+        from . import candidates as _cand
+        query = (inp.get("query") or "").strip()
+        rows = _cand.search(project["id"], query, limit=min(int(inp.get("limit") or 8), 20)) if query else []
+        actions.append({"type": "candidates_searched", "query": query, "found": len(rows)})
+        if not rows:
+            return "nothing in the Candidate Index matches (nothing seen-but-unacquired covers this); external discovery would be the next step"
+        lines = [f"{len(rows)} seen-but-not-acquired candidate(s) — METADATA ONLY, not evidence, do not cite:"]
+        for r in rows:
+            o = (r.get("project") or {}).get("origin") or {}
+            where = f" · seen in {o.get('title') or o.get('kind') or 'a listing'}" if o else ""
+            lines.append(f"- {r.get('title') or r['url']} ({r.get('content_type')}{', ' + r['creator'] if r.get('creator') else ''}{', ' + r['published_at'] if r.get('published_at') else ''}; state {r['state']}{where}{'; already in the library' if r.get('in_library') else ''})"
+                         + (f" — {r['description'][:160]}" if r.get("description") else ""))
+        return "\n".join(lines)
     if name == "list_sources":
         flt = inp.get("filter")
         rows = [r for r in db.project_source_inventory(project["id"]) if _matches(r, flt)]
@@ -615,4 +647,6 @@ def render_markdown(result: dict[str, Any]) -> str:
             out.append(f"\nRecorded {a['kind']}: {a['content']}")
         elif a["type"] == "priority_set":
             out.append(f"\n{'Flagged' if a['priority'] else 'Unflagged'} {a['count']} priority source(s).")
+        elif a["type"] == "candidates_searched":
+            out.append(f"\nChecked the Candidate Index for “{a['query']}”: {a['found']} seen-but-not-acquired.")
     return "\n".join(out)

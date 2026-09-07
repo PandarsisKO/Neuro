@@ -88,7 +88,9 @@ def add_to_project(project: str, source_ids: list[str] | None = None, collection
     p = _resolve_project(project)
     assert p
     if source_ids:
-        db.add_project_sources(p["id"], source_ids)
+        from . import identity
+        for sid in source_ids:
+            identity.attach_existing(p["id"], sid)          # G1: attach + reuse + project-relative analysis, never a re-acquire
     if collection_ids:
         db.add_project_collections(p["id"], collection_ids)
     p = db.get_project(p["id"])

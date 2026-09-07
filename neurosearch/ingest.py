@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable
 
-from . import db, media, providers, relevance
+from . import db, identity, media, providers, relevance
 from .chunking import build_chunks, normalize_segments
 from .config import settings
 from .embeddings import embed_pending
@@ -80,39 +80,53 @@ def ingest_url(
             # keep a bigger pool so the relevance ranker can pick the best `mx`, not just the newest
             entries = entries[:max(relevance.POOL, mx or 0)]
         queued, skipped, proposed = 0, 0, 0
+        counts = {"already_in_project": 0, "already_in_library": 0, "new": 0}
 
         def _list_one(i: int, e: dict[str, Any]) -> None:
             nonlocal queued, skipped, proposed
-            existing = db.find_source("youtube", e["id"])
-            already = bool(existing and existing["status"] == "ready" and not force)
-            src = db.upsert_source(
-                platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"),
-                duration=e.get("duration"), tags=_merge_tags(existing, tags) if existing else tags,
-                status=("ready" if already else ("proposed" if review else "pending")),
-                **({"description": e["description"]} if e.get("description") else {}),
-                **({"view_count": e["view_count"]} if e.get("view_count") else {}),
-            )
+            # G1: identity first. An existing row is never reset by a listing (a video being ingested for another
+            # project keeps its status); only NEW rows start as proposed/pending.
+            cand = identity.Candidate(platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"), tags=tags,
+                                      fields={"duration": e.get("duration"), "description": e.get("description") or None,
+                                              "view_count": e.get("view_count") or None})
+            res = identity.resolve_or_create_source(cand, None, initial_status="proposed" if review else "pending", resume_skipped=False)
+            src = res.source
             db.link_source_collection(src["id"], coll["id"])
+            in_project = bool(project_id) and src["id"] in project_member_ids
+            if in_project:
+                counts["already_in_project"] += 1
+            elif res.state == identity.NEW:
+                counts["new"] += 1
+            else:
+                counts["already_in_library"] += 1
+            already = (src["status"] == "ready" and not force) or (in_project and src["status"] != "proposed")
             if already:
                 skipped += 1
-            elif review:
+            elif src["status"] == "proposed" or (res.created and review):
                 proposed += 1
-            else:
+            elif res.created:
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
                                                 "collection_id": coll["id"], "newest_first": kind == "channel"})
                 queued += 1
+            else:
+                skipped += 1                                       # pending/failed elsewhere: shared work, not a new job
 
+        project_member_ids = set(db.project_source_ids(project_id, ready_only=False)) if project_id else set()
         for start in range(0, len(entries), 50):
             with db.batch():   # one transaction per 50 videos instead of ~3 per video (keeps the API responsive)
                 for i, e in enumerate(entries[start:start + 50], start=start):
                     _list_one(i, e)
             progress(0.05 + 0.9 * min(start + 50, len(entries)) / len(entries), f"listed {min(start + 50, len(entries))}/{len(entries)}")
+        from . import candidates as _cand      # G3: every listed video is remembered cheaply, selected or not
+        _cand.remember([{"external_id": e["id"], "url": e["url"], "title": e.get("title"), "description": e.get("description"), "duration": e.get("duration"),
+                         "view_count": e.get("view_count"), "creator": info.get("title") if kind == "channel" else e.get("channel"), "published_at": e.get("published_at")}
+                        for e in entries], "youtube", project_id, {"collection_id": coll["id"], "kind": kind, "title": coll.get("title")})
         if review and proposed:
             db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel",
-                                                          "project_id": project_id, "max_videos": mx, "ranked": False}))
+                                                          "project_id": project_id, "max_videos": mx, "ranked": False, "counts": counts}))
             db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
-                "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped,
+                "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped, "counts": counts,
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
 
     if kind == "web":
@@ -133,44 +147,62 @@ def ingest_url(
             db.add_project_collections(project_id, [coll["id"]])
         min_date = _cutoff_date(settings.default_since_years if since_years is None else since_years)
         proposed, skipped = 0, 0
+        counts = {"already_in_project": 0, "already_in_library": 0, "new": 0}
+        member_ids = set(db.project_source_ids(project_id, ready_only=False)) if project_id else set()
         with db.batch():
             for e in entries:
-                existing = db.find_source("instagram", e["id"])
-                already = bool(existing and existing["status"] == "ready" and not force)
-                src = db.upsert_source(platform="instagram", external_id=e["id"], url=e["url"], title=e.get("title"),
-                                       duration=e.get("duration"), description=e.get("description"), view_count=e.get("view_count"),
-                                       tags=_merge_tags(existing, tags) if existing else tags,
-                                       status="ready" if already else "proposed")
+                cand = identity.Candidate(platform="instagram", external_id=e["id"], url=e["url"], title=e.get("title"), tags=tags,
+                                          fields={"duration": e.get("duration"), "description": e.get("description"), "view_count": e.get("view_count")})
+                res = identity.resolve_or_create_source(cand, None, initial_status="proposed", resume_skipped=False)
+                src = res.source
                 db.link_source_collection(src["id"], coll["id"])
+                if src["id"] in member_ids:
+                    counts["already_in_project"] += 1
+                elif res.state == identity.NEW:
+                    counts["new"] += 1
+                else:
+                    counts["already_in_library"] += 1
+                already = src["status"] != "proposed" and not force
                 skipped += already
                 proposed += not already
+        from . import candidates as _cand
+        _cand.remember([{"external_id": e["id"], "url": e["url"], "title": e.get("title"), "description": e.get("description"), "duration": e.get("duration"),
+                         "view_count": e.get("view_count"), "creator": info.get("title")} for e in entries], "instagram", project_id,
+                       {"collection_id": coll["id"], "kind": "instagram", "title": info.get("title")})
         db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": True, "project_id": project_id,
                                                       "max_videos": mx, "ranked": False, "cookies_file": cookies_file,
-                                                      "referer": info["url"]}))
+                                                      "referer": info["url"], "counts": counts}))
         db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
         return {"kind": "instagram_profile", "collection_id": coll["id"], "title": coll.get("title"), "found": len(entries),
-                "proposed": proposed, "already_ingested": skipped, "review": proposed > 0}
+                "proposed": proposed, "already_ingested": skipped, "counts": counts, "review": proposed > 0}
     platform = {"video": "youtube", "instagram": "instagram", "fixture": "fixture"}.get(kind, "media")
     ext_id = _external_id_from_url(url, platform)
-    existing = db.find_source(platform, ext_id) if ext_id else None
-    if existing and force:
-        with db.tx() as conn:                                        # a forced re-ingest starts the stages over
-            conn.execute("UPDATE sources SET stage=NULL, audio_path=NULL WHERE id=?", (existing["id"],))
-    if existing and existing["status"] == "ready" and not force:
-        if project_id:
-            db.add_project_sources(project_id, [existing["id"]])
-            _after_ready(existing["id"], project_id)
-        if tags:
-            db.upsert_source(platform=platform, external_id=ext_id, tags=_merge_tags(existing, tags))
-        return {"kind": kind, "source_id": existing["id"], "already_ingested": True, "title": existing["title"]}
-    src = db.upsert_source(platform=platform, external_id=ext_id, url=url, status="pending",
-                           tags=_merge_tags(existing, tags) if existing else tags, title=title)
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    # G1: one resolution path for every entrance — identity first, then the five states
+    res = identity.resolve_or_create_source(
+        identity.Candidate(platform=platform, external_id=ext_id, url=url, title=title, canonical_url=url, tags=tags),
+        project_id, retry=force)
+    src = res.source
+    identity.claim_job_for(src["id"])
     if collection_id:
         db.link_source_collection(src["id"], collection_id)
+    if not force:
+        if src["status"] == "ready":                                  # EXISTING_READY or ALREADY_IN_PROJECT: nothing to acquire
+            return {"kind": kind, "source_id": src["id"], "title": src["title"], "identity": res.state, "already_ingested": True}
+        if src["status"] == "failed" and res.state != identity.ALREADY_IN_PROJECT:
+            # attached to the new project, acquisition NOT retried (that spends money): the failure is reported instead
+            return {"kind": kind, "source_id": src["id"], "title": src["title"], "identity": res.state, "failed": True,
+                    "error": src.get("error"), "note": "this source failed before; use Retry to try the acquisition again"}
+        if src["status"] == "failed":                                 # re-added by the project that already has it = a retry request
+            with db.tx() as conn:
+                conn.execute("UPDATE sources SET status='pending', error=NULL, updated_at=? WHERE id=?", (db.now(), src["id"]))
+        if identity.has_live_ingest_job(src["id"]):                   # another job owns it: shared work, this project waits
+            return {"kind": kind, "source_id": src["id"], "title": src["title"], "identity": res.state, "already_pending": True,
+                    "note": "already being ingested for another project; this project gets it when it finishes"}
+    if force and not res.created:
+        with db.tx() as conn:                                        # a forced re-ingest starts the stages over
+            conn.execute("UPDATE sources SET stage=NULL, audio_path=NULL, status='pending', error=NULL WHERE id=?", (src["id"],))
     result = ingest_source(src["id"], progress=progress, cookies_file=cookies_file, referer=referer, keep_title=title)
-    return {"kind": kind, **result}
+    return {"kind": kind, "identity": res.state, **result}
 
 
 def approve_proposed(collection_id: str, source_ids: list[str] | None = None) -> dict[str, Any]:
@@ -184,6 +216,16 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
     rows = db.proposed_sources(collection_id)
     chosen = set(source_ids) if source_ids is not None else {r["id"] for r in rows}
     started, dropped = 0, 0
+    pid = meta.get("project_id") or db.collection_project(collection_id)
+    if pid:
+        # G3: skipped ≠ forgotten. The Candidate Index keeps every proposal with WHY it was not selected; chosen ones resolve to their source.
+        from . import candidates as _cand
+        rel = {r["id"]: (r.get("relevance"), r.get("relevance_why")) for r in rows}
+        _cand.mark_by_source(pid, [r["id"] for r in rows if r["id"] in chosen], "acquired", "selected in review", rel)
+        low = [r["id"] for r in rows if r["id"] not in chosen and r.get("relevance") is not None and r["relevance"] < _cand.LOW_RELEVANCE]
+        rest = [r["id"] for r in rows if r["id"] not in chosen and r["id"] not in low]
+        _cand.mark_by_source(pid, low, "skipped_low_relevance", "ranked below the relevance cutoff in review", rel)
+        _cand.mark_by_source(pid, rest, "skipped_limit", "outside the number selected in review", rel)
     for r in rows:
         if r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
@@ -271,9 +313,18 @@ def store_transcript(payload: dict[str, Any], tags: list[str] | None = None, pro
     fields = {k: payload.get(k) for k in (
         "platform", "external_id", "url", "title", "channel", "channel_url", "published_at", "duration",
         "description", "thumbnail_url", "language", "transcript_kind")}
-    existing = db.find_source(fields["platform"], fields["external_id"]) if fields.get("external_id") else None
-    fields["tags"] = _merge_tags(existing, tags or [])
-    src = db.upsert_source(**fields)
+    meta = {k: v for k, v in fields.items() if k not in ("platform", "external_id", "url", "title") and v is not None}
+    cand = identity.Candidate(platform=fields["platform"], external_id=fields.get("external_id"), url=fields.get("url") or "",
+                              title=fields.get("title"), canonical_url=media.canonical_url(fields["url"]) if fields.get("url", "").startswith("http") else None,
+                              fingerprint=payload.get("fingerprint"), legacy_external_id=payload.get("legacy_external_id"),
+                              tags=list(tags or []), fields=meta)
+    res = identity.resolve_or_create_source(cand, project_id, retry=True)     # an explicit import always (re)stores the transcript
+    src = res.source
+    if src["status"] == "ready" and not payload.get("replace"):
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": src.get("transcript_kind"),
+                "embedded": 0, "already_ingested": True, "identity": res.state}
+    if meta:
+        db.upsert_source(platform=src["platform"], external_id=src["external_id"], **meta)
     progress(0.85, "chunking…")
     chunks = build_chunks(segments, duration=fields.get("duration"), chapters=payload.get("chapters"))
     db.replace_transcript(src["id"], segments, chunks)
@@ -283,14 +334,12 @@ def store_transcript(payload: dict[str, Any], tags: list[str] | None = None, pro
         db.link_source_collection(src["id"], coll["id"])
         if project_id:
             db.add_project_collections(project_id, [coll["id"]])
-    elif project_id:
-        db.add_project_sources(project_id, [src["id"]])
     progress(0.9, "embedding…")
-    n_emb = embed_pending()
+    n_emb = embed_pending(source_id=src["id"])
     progress(1.0, "done")
     _after_ready(src["id"], project_id)
     return {"source_id": src["id"], "title": src["title"], "segments": len(segments), "chunks": len(chunks),
-            "transcript": fields.get("transcript_kind"), "embedded": n_emb}
+            "transcript": fields.get("transcript_kind"), "embedded": n_emb, "identity": res.state}
 
 
 def _after_ready(source_id: str, project_id: str | None = None) -> None:
@@ -320,6 +369,10 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
     if src["platform"] in ("spreadsheet", "document", "file", "manual"):
         db.set_source_status(source_id, "failed", "this is an uploaded file, not a link — use Retry on its row in Sources, or upload it again")
         raise RuntimeError("uploaded files can't be fetched like a link — use Retry on the source row, or upload the file again")
+    if src["platform"] == "web":                                      # G3: pages proposed by an exploration are read by the page path
+        if src["status"] == "proposed":
+            db.set_source_status(source_id, "pending")
+        return ingest_webpage(src["url"], tags=None, project_id=None, title=None, progress=progress, html=None)
     platform, url = src["platform"], src["url"]
     stage = db.stage_index(src.get("stage"))
     try:
@@ -485,11 +538,11 @@ def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_i
     from .chunking import build_doc_chunks
     from .sheets import files_dir, read_workbook, save_model, store_file
 
-    ext_id = f"sheet:{name}:{path.stat().st_size}"
-    src = db.upsert_source(platform="spreadsheet", external_id=ext_id, url=f"file://{name}", title=title,
-                           status="pending", tags=tags or [])
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    res = identity.resolve_or_create_source(identity.upload_candidate("spreadsheet", path, name, title, tags, "sheet"), project_id, retry=True)
+    src, ext_id = res.source, res.source["external_id"]
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": "spreadsheet", "embedded": 0,
+                "already_ingested": True, "identity": res.state}
     try:
         if path.parent != files_dir():
             path = store_file(path, src["id"], Path(name).suffix)      # keep the original so Retry works
@@ -515,11 +568,11 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
     from .chunking import build_doc_chunks
     from .documents import extract_pages
 
-    ext_id = f"doc:{name}:{path.stat().st_size}"
-    src = db.upsert_source(platform="document", external_id=ext_id, url=f"file://{name}", title=title,
-                           status="pending", tags=tags or [])
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    res = identity.resolve_or_create_source(identity.upload_candidate("document", path, name, title, tags, "doc"), project_id, retry=True)
+    src, ext_id = res.source, res.source["external_id"]
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": "document", "embedded": 0,
+                "already_ingested": True, "identity": res.state}
     try:
         pages = extract_pages(path)
         segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
@@ -544,9 +597,14 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
 
     url = media.canonical_url(url)
     ext_id = re.sub(r"^https?://(www\.)?", "", url).rstrip("/")
-    src = db.upsert_source(platform="web", external_id=ext_id, url=url, title=title, status="pending", tags=tags or [])
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    res = identity.resolve_or_create_source(identity.Candidate(platform="web", external_id=ext_id, url=url, title=title, canonical_url=url, tags=tags or []),
+                                            project_id, retry=html is not None)      # a page the user SENT is always re-read (new revision)
+    src = res.source
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready" and html is None:
+        return {"kind": "web", "source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": src.get("transcript_kind"),
+                "embedded": 0, "already_ingested": True, "identity": res.state}
+    if res.state == identity.EXISTING_PENDING and not res.resumed and identity.has_live_ingest_job(src["id"]):
+        return {"kind": "web", "source_id": src["id"], "title": src["title"], "already_pending": True, "identity": res.state}
     try:
         progress(0.1, "fetching page…")
         page = read_page(url, html_text=html)
@@ -558,10 +616,10 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
                          transcript_kind=page["kind"], description=f"{len(pages)} sections",
                          channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None)
         progress(0.7, "embedding…")
-        n = embed_pending()
+        n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
         return {"kind": "web", "source_id": src["id"], "title": title or page["title"], "segments": len(segments),
-                "chunks": len(chunks), "transcript": page["kind"], "embedded": n}
+                "chunks": len(chunks), "transcript": page["kind"], "embedded": n, "identity": res.state}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise
@@ -572,7 +630,9 @@ def ingest_subtitle_file(path: Path, title: str, tags: list[str] | None, project
     if not raw.lstrip().startswith("WEBVTT"):  # srt -> vtt-ish: timestamps use commas
         raw = "WEBVTT\n\n" + re.sub(r"(\d\d:\d\d:\d\d),(\d{3})", r"\1.\2", raw)
     segments = media.parse_vtt(raw)
-    payload = {"platform": "file", "external_id": f"sub:{name}:{path.stat().st_size}", "url": f"file://{name}",
+    cand = identity.upload_candidate("file", path, name, title, tags, "sub")
+    payload = {"platform": "file", "external_id": cand.external_id, "url": f"file://{name}", "fingerprint": cand.fingerprint,
+               "legacy_external_id": cand.legacy_external_id,
                "title": title, "duration": segments[-1]["end"] if segments else None, "transcript_kind": "captions",
                "segments": segments, "chapters": []}
     return store_transcript(payload, tags=tags, project_id=project_id)
@@ -581,11 +641,15 @@ def ingest_subtitle_file(path: Path, title: str, tags: list[str] | None, project
 def _ingest_media_file(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str,
                        progress: Progress) -> dict[str, Any]:
     """Transcribe an uploaded audio/video file."""
-    ext_id = f"file:{name}:{path.stat().st_size}"
-    src = db.upsert_source(platform="file", external_id=ext_id, url=f"file://{name}", title=title,
-                           status="pending", tags=tags or [])
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    res = identity.resolve_or_create_source(identity.upload_candidate("file", path, name, title, tags, "file"), project_id, retry=True)
+    src, ext_id = res.source, res.source["external_id"]
+    identity.claim_job_for(src["id"])
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "embedded": 0, "already_ingested": True,
+                "identity": res.state, "note": "this file was transcribed before — nothing was paid for again"}
+    if res.state in (identity.EXISTING_PENDING, identity.ALREADY_IN_PROJECT) and not res.resumed and identity.has_live_ingest_job(src["id"]):
+        return {"source_id": src["id"], "title": src["title"], "already_pending": True, "identity": res.state,
+                "note": "this file is already being transcribed; it joins the project when it finishes"}
     try:
         segments, lang = transcribe_file(path, progress=lambda p, m: progress(0.1 + 0.7 * p, m))
         segments = normalize_segments(segments)
@@ -596,9 +660,9 @@ def _ingest_media_file(path: Path, title: str, tags: list[str] | None, project_i
         db.replace_transcript(src["id"], segments, chunks)
         db.upsert_source(platform="file", external_id=ext_id, duration=duration, transcript_kind="transcribed",
                          language=lang, status="ready", error=None)
-        n = embed_pending()
+        n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
-        return {"source_id": src["id"], "title": src["title"], "segments": len(segments), "chunks": len(chunks), "embedded": n}
+        return {"source_id": src["id"], "title": src["title"], "segments": len(segments), "chunks": len(chunks), "embedded": n, "identity": res.state}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise
@@ -608,18 +672,20 @@ def ingest_text(title: str, text: str, url: str | None = None, tags: list[str] |
                 project_id: str | None = None) -> dict[str, Any]:
     """Store a transcript you already have. Lines starting with a timestamp like `12:34 ` or `[1:02:03]` are honoured."""
     segments = _parse_timestamped_text(text)
-    ext_id = f"text:{abs(hash((title, text[:200], len(text))))}"
-    src = db.upsert_source(platform="manual", external_id=ext_id, url=url or f"manual://{ext_id}", title=title,
-                           status="pending", tags=tags or [])
-    if project_id:
-        db.add_project_sources(project_id, [src["id"]])
+    fp = identity.fingerprint_text(title or "", text)
+    ext_id = f"text:{fp[7:23]}"                                       # stable across restarts (the old key was process-salted)
+    res = identity.resolve_or_create_source(identity.Candidate(platform="manual", external_id=ext_id, url=url or f"manual://{ext_id}", title=title,
+                                                               fingerprint=fp, tags=list(tags or [])), project_id, retry=True)
+    src = res.source
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "embedded": 0, "already_ingested": True, "identity": res.state}
     duration = segments[-1]["end"] if segments and segments[-1]["end"] > 0 else None
     chunks = build_chunks(segments, duration=duration or 10 ** 6)  # force long-form windowing by chars if untimed
     db.replace_transcript(src["id"], segments, chunks)
     db.upsert_source(platform="manual", external_id=ext_id, duration=duration, transcript_kind="manual", status="ready")
-    n = embed_pending()
+    n = _embed_ready(src["id"])
     _after_ready(src["id"], project_id)
-    return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks), "embedded": n}
+    return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks), "embedded": n, "identity": res.state}
 
 
 _TS_LINE = re.compile(r"^\s*\[?((?:\d{1,2}:)?\d{1,2}:\d{2})\]?\s*[-–—:]?\s*(.*)$")

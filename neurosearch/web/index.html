@@ -266,6 +266,7 @@
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist, channel or <b>search link</b> (results are listed for review) · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
           <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
+          <div id="inDetect" class="muted" style="margin-top:6px;font-size:13px"></div>
           <div class="row" style="margin-top:8px">
             <label class="muted" title="For channels and playlists">Channels/playlists: only the last
               <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
@@ -286,6 +287,12 @@
           <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
           <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
           <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+            <b>Seen, not added</b> <span class="muted" id="candCounts"></span>
+            <div class="muted">Everything a channel, playlist, feed or site listing showed you that you didn't pick — kept as cheap metadata (no downloads), so a later gap can find it without searching the web again. Not evidence until added.</div>
+            <div class="row" style="margin-top:8px"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" style="width:auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
+            <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+          </div>
         </div>
         <div class="pane" id="pane-course">
           <div class="muted">A small browser extension that runs <i>inside your own logged-in browser</i>. Two jobs: <b>Send this page</b> — any article or guide, including sites that block automated readers (you'll see "blocks automated readers (HTTP 403)" in the queue) or need a login; and <b>Course importer</b> — for courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia…): it finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session. No password is ever shared with the app.</div>
@@ -463,7 +470,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.24.1';
+const UI_VERSION = '0.27.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -670,11 +677,12 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
       if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
       if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
+      if (a.type === 'candidates_searched') h += `<div class="web muted">🗂 Checked what we've seen but not added for “${esc(a.query)}” · ${a.found} candidate${a.found === 1 ? '' : 's'}${a.found ? ' — see Sources → Library → Seen, not added' : ''}</div>`;
       if (a.type === 'searched') h += `<div class="web muted">🔎 Searched the library for “${esc(a.query)}”${a.filter ? ' in ' + esc(a.filter) : ''} · ${a.added} more excerpt${a.added === 1 ? '' : 's'}</div>`;
       if (a.type === 'priority_set') h += `<div class="web">★ ${a.priority ? 'Priority sources' : 'No longer priority'} (${a.count}): <i>${esc((a.titles || []).slice(0, 5).join('; '))}${a.count > 5 ? ' …' : ''}</i> — retrieval ${a.priority ? 'now favours them' : 'treats them normally'}</div>`;
       if (a.type === 'calculated') h += `<div class="web">🧮 Ran the spreadsheet with ${Object.entries(a.inputs || {}).map(([k, v]) => `${esc(k)} = ${esc(String(v))}`).join(', ') || 'current inputs'} → ${Object.entries(a.outputs || {}).slice(0, 6).map(([k, v]) => `<b>${esc(k)}</b>: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : esc(String(v))}`).join(' · ')}</div>`;
     }
-    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
+    if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc((j.url || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return j.job_id ? `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>` : `<span class="chip" title="${esc(j.detected?.detail || '')}" style="cursor:pointer" onclick="showView('sources');$('#inUrls').value='${esc(j.url || '')}';classifyInput()">🔍 ${l} — ${esc(j.detected?.label || 'detected')} · choose in Sources → Add</span>`; }).join('') + `</div>`;
     if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
   }
@@ -715,7 +723,7 @@ async function ask() {
     const m = addMsg('assistant', r.answer, r.citations, r);
     const c = state.chats.find(x => x.id === state.conv);
     if (c && !c.title) { await put('/api/conversations/' + state.conv, { title: q.slice(0, 60) }); await loadChats(); $('#chatTitle').textContent = q.slice(0, 60); }
-    if (r.ingest_jobs?.length) watchIngest(m, r.ingest_jobs.map(j => j.job_id));
+    if (r.ingest_jobs?.some(j => j.job_id)) watchIngest(m, r.ingest_jobs.filter(j => j.job_id).map(j => j.job_id));
     if ((r.actions || []).some(a => a.type === 'brief_updated')) { state.project.brief = r.project.brief; $('#epBrief').value = r.project.brief; $('#wsFoot').textContent = r.project.brief.slice(0, 140); }
     if ((r.actions || []).some(a => a.type !== 'brief_updated')) $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
   } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
@@ -728,7 +736,14 @@ async function watchIngest(msgEl, jobIds) {
       const j = await api('/api/jobs/' + id).catch(() => null); if (!j) continue;
       const chip = msgEl.querySelector(`[data-job="${id}"]`); if (!chip) continue;
       const label = chip.dataset.label;
-      if (j.status === 'done') { const r = j.result || {}; chip.textContent = r.review ? `📋 ${r.title || label}: ${r.proposed} videos waiting for your approval in Sources` : `✓ ${r.title || label}` + (r.found ? ` (${r.found} videos, ${r.queued} queued)` : ''); if (r.review) { chip.style.cursor = 'pointer'; chip.onclick = () => showView('sources'); } }
+      if (j.status === 'done') { const r = j.result || {};
+        const cnt = r.counts ? ` — ${r.counts.already_in_library || 0} already in your library, ${r.counts.new || 0} new` : '';
+        chip.textContent = r.review ? `📋 ${r.title || label}: ${r.proposed} videos waiting for your approval in Sources${cnt}`
+          : r.already_pending ? `⏳ ${r.title || label} — already being ingested for another project; it joins this one when it finishes`
+          : r.failed ? `⚠ ${r.title || label} — attached, but its last acquisition failed (Retry it in Sources)`
+          : r.already_ingested ? `✓ ${r.title || label} — already in your library, attached (nothing re-downloaded)`
+          : `✓ ${r.title || label}` + (r.found ? ` (${r.found} videos, ${r.queued} queued${cnt})` : '');
+        if (r.review) { chip.style.cursor = 'pointer'; chip.onclick = () => showView('sources'); } }
       else if (j.status === 'failed') { chip.textContent = `✗ ${label}`; chip.title = j.message || ''; }
       else { chip.textContent = `⏳ ${label} ${j.message ? '· ' + j.message : ''}`; pending++; }
     }
@@ -742,7 +757,7 @@ $('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey 
 function showPane(p) {
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.pane === p));
   document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
-  if (p === 'library') loadLibrary();
+  if (p === 'library') { loadLibrary(); loadCandidates(); }
   if (p === 'discover') loadDiscoveries();
   if (p === 'course') loadCoursePane();
 }
@@ -778,6 +793,7 @@ async function loadReviews() {
     return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
       <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
       <div style="margin-top:3px;font-size:13px">💵 <span id="rvest-${c.id}">${est}</span></div>
+      ${meta.counts ? `<div class="muted" style="margin-top:2px">🗂 ${(meta.counts.already_in_project || 0) + (meta.counts.already_in_library || 0) + (meta.counts.new || 0)} found · <b>${meta.counts.already_in_library || 0}</b> already in your library (reused, not re-downloaded) · <b>${meta.counts.already_in_project || 0}</b> already in this project · <b>${meta.counts.new || 0}</b> new — the estimate below covers only new work</div>` : ''}
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row" style="margin-top:4px">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
@@ -907,11 +923,38 @@ async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources()
 async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
 async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
 function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
+// ---- G2: understand what was pasted before deciding what to run
+let classifyTimer = null, lastClassified = null;
+async function classifyInput() {
+  const text = $('#inUrls').value.trim(); const box = $('#inDetect');
+  if (!text) { box.innerHTML = ''; lastClassified = null; return; }
+  try {
+    const r = await post('/api/classify', { input: text }); lastClassified = r.items;
+    box.innerHTML = r.items.map((c, i) => {
+      const acts = c.actions.map(a => `<label style="margin-right:10px;cursor:pointer" title="${esc(a.note || '')}"><input type="radio" name="act${i}" value="${a.action}" ${a.available ? '' : 'disabled'} ${a.action === c.default_action ? 'checked' : ''} style="width:auto"> ${esc(a.label)}${a.available ? '' : ' <span class="muted">(coming)</span>'}</label>`).join('');
+      return `<div style="margin-top:4px"><b>${esc(c.label)}</b>${c.host ? ` <span class="muted">${esc(c.host)}</span>` : ''} — ${esc(c.detail)}<div style="margin-top:2px">${acts || '<span class="muted">nothing to do yet</span>'}</div></div>`;
+    }).join('');
+  } catch (e) { box.textContent = ''; }
+}
+$('#inUrls').addEventListener('input', () => { clearTimeout(classifyTimer); classifyTimer = setTimeout(classifyInput, 350); });
 async function ingestUrls() {
-  const url = $('#inUrls').value.trim(); if (!url) return;
+  const text = $('#inUrls').value.trim(); if (!text) return;
   const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
-  await post('/api/ingest', { url, tags, project_id: state.project.id, force: $('#inForce').checked, since_years: +$('#inSince').value, max_videos: +$('#inMax').value });
-  $('#inUrls').value = ''; loadJobs();
+  if (!lastClassified) await classifyInput();
+  const items = lastClassified || [];
+  let queued = 0, skipped = [];
+  for (let i = 0; i < items.length; i++) {
+    const c = items[i]; const chosen = document.querySelector(`input[name="act${i}"]:checked`);
+    const action = chosen ? chosen.value : c.default_action;
+    if (!action) { skipped.push(c.label); continue; }
+    if (action === 'upload') { skipped.push(`${c.label} — use Upload`); continue; }
+    const r = await post(`/api/projects/${state.project.id}/add`, { input: c.input, action, tags, force: $('#inForce').checked, since_years: +$('#inSince').value, max_videos: +$('#inMax').value });
+    const res = r.items[0]?.result || {};
+    if (res.queued) queued++; else skipped.push(`${c.label}: ${res.note || 'not queued'}`);
+  }
+  if (queued) toast(`▶ ${queued} queued`);
+  if (skipped.length) toast(skipped.join(' · '));
+  $('#inUrls').value = ''; $('#inDetect').innerHTML = ''; lastClassified = null; loadJobs();
 }
 async function ingestFiles() {
   const files = [...$('#inFile').files]; if (!files.length) return;
@@ -930,6 +973,25 @@ async function loadLibrary() {
   const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);
   const rows = await api('/api/sources?' + p);
   $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
+}
+async function loadCandidates() {
+  const p = new URLSearchParams({ limit: 60 }); if ($('#candQ').value) p.set('q', $('#candQ').value); if ($('#candState').value) p.set('state', $('#candState').value);
+  const r = await api(`/api/projects/${state.project.id}/candidates?` + p);
+  const c = r.counts || {};
+  $('#candCounts').textContent = c.total ? `· ${c.total} for this project (${c.available || 0} available, ${(c.skipped_limit || 0) + (c.skipped_low_relevance || 0)} skipped, ${c.user_dismissed || 0} dismissed, ${c.acquired || 0} acquired) · ${c.global} seen overall` : '· nothing yet';
+  const st = x => ({ available: 'available', skipped_limit: 'skipped: outside the number picked', skipped_low_relevance: 'skipped: low relevance', skipped_cost: 'skipped: cost', user_dismissed: 'dismissed', duplicate: 'duplicate', acquired: 'acquired', unseen_by_project: 'seen in another project' })[x] || x;
+  $('#candidates').innerHTML = (r.items || []).map(x => {
+    const o = x.origin || (x.project || {}).origin || {}; const stt = x.state || 'available'; const rel = x.relevance ?? (x.project || {}).relevance;
+    return `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="flex:1">${ICON[x.platform] || '•'} ${x.url && x.url.startsWith('http') ? `<a href="${esc(x.url)}" target="_blank">${esc(x.title || x.url)}</a>` : esc(x.title || x.url)} <span class="muted">${esc(x.creator || '')}${x.published_at ? ' · ' + x.published_at : ''}${x.duration ? ' · ' + fmt(x.duration) : ''}${rel != null ? ` · relevance ${rel}` : ''}</span><div class="muted" style="font-size:12px">${esc(st(stt))}${o.title ? ` · seen in ${esc(o.title)}` : ''}${x.in_library ? ' · <b>already in your library</b>' : ''}${x.description ? `<br>${esc(x.description.slice(0, 160))}` : ''}</div></span>
+      ${stt === 'acquired' || x.in_project ? '' : `<button class="small primary" onclick="candAct('${x.id}','acquire')">${x.in_library ? 'Add from library' : 'Add'}</button>`}
+      ${stt === 'user_dismissed' ? `<button class="small ghost" onclick="candAct('${x.id}','restore')">Restore</button>` : stt === 'acquired' ? '' : `<button class="small ghost" onclick="candAct('${x.id}','dismiss')">Dismiss</button>`}</div>`;
+  }).join('') || '<div class="muted">Nothing matches.</div>';
+}
+async function candAct(id, act) {
+  let reason = null; if (act === 'dismiss') { reason = prompt('Why? (optional — e.g. "not this creator", "wrong jurisdiction", "too old")') || null; }
+  const r = await post(`/api/candidates/${id}/${act}`, { project_id: state.project.id, reason });
+  if (act === 'acquire') toast(r.job_id ? '▶ queued — it goes through the normal ingest' : '✓ attached from your library');
+  loadCandidates(); if (act === 'acquire') loadJobs();
 }
 async function loadCoursePane() {
   try { const w = await api('/api/whoami'); const addr = w.lan_url && location.hostname === 'localhost' ? `${w.lan_url} (from another computer on your network) or ${location.origin} (this computer)` : location.origin; $('#appAddr').textContent = addr; } catch (e) { $('#appAddr').textContent = location.origin; }
@@ -959,6 +1021,7 @@ async function loadHealth() {
       ...((h.providers || []).map(p => [`${p.status === 'Healthy' ? '✅' : p.status === 'Checking' ? '🔎' : '⏸'} ${p.label}`, p.status === 'Healthy' ? 'Healthy' : `${p.status}${p.detail ? ' · ' + p.detail : ''}${p.waiting_jobs ? ` · ${p.waiting_jobs} job${p.waiting_jobs === 1 ? '' : 's'} waiting` : ''}`])),
       [`${ok(Object.values(h.flags || {}).every(f => f.ok))} Experimental flags`, Object.entries(h.flags || {}).filter(([k]) => k !== 'NEUROSEARCH_FAKE_AI').map(([k, f]) => `${k.replace('NEUROSEARCH_', '').toLowerCase()} ${f.ok ? 'off' : 'ON'} (${f.status})`).join(' · ') || '—'],
       [`${h.release ? (h.release.verdict === 'PASS' ? '✅' : '⚠️') : '⚠️'} Last release check`, h.release ? `${h.release.verdict} · ${h.release.app_version} @ ${h.release.git_sha} · ${h.release.timestamp} · ${h.release.checks} gates` : 'none yet — run: neurosearch release-check'],
+      [`${ok(!(h.library || {}).duplicate_fingerprints)} Global Library`, h.library ? `${h.library.sources} sources (${h.library.ready} ready) · ${h.library.shared_by_projects} shared by several projects · ${h.library.acquisitions_avoided} acquisition${h.library.acquisitions_avoided === 1 ? '' : 's'} avoided by reuse · ${h.library.candidates_seen || 0} seen, ${h.library.candidates_not_acquired || 0} not acquired (Candidate Index)${h.library.duplicate_fingerprints ? ` · ⚠ ${h.library.duplicate_fingerprints} duplicate content fingerprints` : ''}` : '—'],
       [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');

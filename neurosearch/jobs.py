@@ -257,6 +257,10 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
                                     collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")),
                                     cookies_file=payload.get("cookies_file"), referer=payload.get("referer"))
+    if kind == "explore":
+        from . import explore
+        return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
+                               max_items=payload.get("max_items"), progress=progress)
     if kind == "ingest_file":
         from pathlib import Path
         path = Path(payload["path"])

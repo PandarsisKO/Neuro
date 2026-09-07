@@ -167,9 +167,93 @@ def api_ingest(body: IngestIn) -> dict[str, Any]:
     urls = [u.strip() for u in body.url.replace(",", "\n").splitlines() if u.strip()]
     if not urls:
         raise HTTPException(400, "no url")
-    created = [jobs.enqueue("ingest_url", {"url": u, "tags": body.tags, "project_id": body.project_id, "force": body.force,
+    from .media import canonical_url
+    # G1: the job's dedupe key is the CANONICAL url, so youtu.be/X and watch?v=X&si=… are one unit of work
+    created = [jobs.enqueue("ingest_url", {"url": canonical_url(u), "tags": body.tags, "project_id": body.project_id, "force": body.force,
                                            "since_years": body.since_years, "max_videos": body.max_videos}) for u in urls]
     return {"jobs": [j["id"] for j in created]}
+
+
+class CandidateActIn(BaseModel):
+    project_id: str
+    reason: str | None = None
+
+
+@app.get("/api/projects/{project_id}/candidates", dependencies=[Depends(require_auth)])
+def api_candidates(project_id: str, q: str | None = None, state: str | None = None, limit: int = 50) -> dict[str, Any]:
+    """G3: the Discovery Candidate Index for a project — seen, not acquired. `q` = gap recall over cheap metadata."""
+    from . import candidates
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    items = candidates.search(project_id, q, limit=limit) if q else candidates.list_for_project(project_id, state=state, limit=limit)
+    return {"items": items, "counts": candidates.counts(project_id)}
+
+
+@app.post("/api/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
+def api_candidate_dismiss(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
+    from . import candidates
+    return {"ok": True, "updated": candidates.dismiss(body.project_id, candidate_id, body.reason)}
+
+
+@app.post("/api/candidates/{candidate_id}/restore", dependencies=[Depends(require_auth)])
+def api_candidate_restore(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
+    from . import candidates
+    return {"ok": True, "updated": candidates.restore(body.project_id, candidate_id)}
+
+
+@app.post("/api/candidates/{candidate_id}/acquire", dependencies=[Depends(require_auth)])
+def api_candidate_acquire(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
+    """Acquire a seen candidate through the NORMAL lifecycle (ingest_url → G1 identity): never a parallel path."""
+    from . import candidates
+    c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone())
+    if not c:
+        raise HTTPException(404)
+    if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
+        from . import identity
+        r = identity.attach_existing(body.project_id, c["source_id"])                    # already owned: attach, no acquisition
+        candidates.mark(body.project_id, [candidate_id], "acquired", "attached from the library")
+        return {"ok": True, "job_id": None, "source_id": c["source_id"], "identity": r.state}
+    job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": body.project_id, "force": False, "review": False})
+    candidates.mark(body.project_id, [candidate_id], "acquired", body.reason or "acquired from the Candidate Index")
+    return {"ok": True, "job_id": job["id"], "url": c["url"]}
+
+
+class ClassifyIn(BaseModel):
+    input: str
+
+
+@app.post("/api/classify", dependencies=[Depends(require_auth)])
+def api_classify(body: ClassifyIn) -> dict[str, Any]:
+    """G2: what did the user paste? One classification per line (kind, label, detail, available actions). No network."""
+    from . import resources
+    return {"items": [c.as_dict() for c in resources.classify_many(body.input)]}
+
+
+class AddIn(BaseModel):
+    input: str
+    action: str | None = None          # per-line override; None = each line's default action
+    tags: list[str] = []
+    force: bool = False
+    since_years: float | None = None
+    max_videos: int | None = None
+
+
+@app.post("/api/projects/{project_id}/add", dependencies=[Depends(require_auth)])
+def api_add(project_id: str, body: AddIn) -> dict[str, Any]:
+    """G2: "Add something to research". Classifies every line and routes it to the standard lifecycle. A container
+    (website, repository, community, feed, sitemap) is never fetched as a page unless action='page' is chosen."""
+    from . import resources
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    out = []
+    for c in resources.classify_many(body.input):
+        try:
+            r = resources.route(c, project_id, body.action if body.action in {a["action"] for a in c.actions} else None,
+                                tags=body.tags, since_years=body.since_years, max_videos=body.max_videos, force=body.force)
+        except ValueError as e:
+            r = {"kind": c.kind, "action": body.action, "queued": False, "note": str(e)}
+        out.append({**c.as_dict(), "result": r})
+    return {"items": out, "jobs": [i["result"]["job_id"] for i in out if i["result"].get("job_id")]}
 
 
 @app.get("/api/usage", dependencies=[Depends(require_auth)])
@@ -709,16 +793,19 @@ def api_set_priority(project_id: str, body: PriorityIn) -> dict[str, Any]:
 
 @app.post("/api/projects/{project_id}/members", dependencies=[Depends(require_auth)])
 def api_add_members(project_id: str, body: MembersIn) -> dict[str, Any]:
-    db.add_project_sources(project_id, body.source_ids)
-    db.add_project_collections(project_id, body.collection_ids)
+    """Library → project. G1: the same resolver as every other entrance (attach, reuse, project-relative analysis)."""
+    from . import identity
+    states: dict[str, str] = {}
     for sid in body.source_ids:
-        src = db.get_source(sid)
-        if src and src["status"] == "ready":
-            jobs.enqueue_suggestions(sid, project_id)
+        try:
+            states[sid] = identity.attach_existing(project_id, sid).state
+        except KeyError:
+            raise HTTPException(404, f"unknown source {sid}") from None
+    db.add_project_collections(project_id, body.collection_ids)
     if body.collection_ids:
         for sid in db.sources_needing_suggestions(project_id):
             jobs.enqueue_suggestions(sid, project_id)
-    return db.get_project(project_id) or {}
+    return {**(db.get_project(project_id) or {}), "identity": states}
 
 
 @app.delete("/api/projects/{project_id}/members", dependencies=[Depends(require_auth)])

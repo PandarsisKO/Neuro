@@ -282,6 +282,67 @@ CREATE TABLE IF NOT EXISTS batch_items (
 CREATE INDEX IF NOT EXISTS ix_batch_items_job ON batch_items(job_id, cohort_no);
 CREATE INDEX IF NOT EXISTS ix_batch_items_batch ON batch_items(batch_id);
 
+-- G1 (0.25.0): source lineage seam. No behaviour yet — populated by later rungs (derived-from / cites / same-work) so
+-- corroboration can tell twenty derivative repeats from one underlying piece of evidence. Additive, empty until then.
+CREATE TABLE IF NOT EXISTS source_relations (
+    from_source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    to_source_id   TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    relation       TEXT NOT NULL,            -- derived_from | cites | same_work | excerpt_of | reprint_of
+    evidence       TEXT,                     -- JSON: how the relation was established
+    created_at     REAL NOT NULL,
+    PRIMARY KEY (from_source_id, to_source_id, relation)
+);
+
+-- G3 (0.27.0): the Discovery Candidate Index — what we have SEEN but not acquired. Cheap metadata only; never evidence.
+-- One global candidate per (platform, external_id); the project relationship (state, relevance, reason, origin) is separate.
+CREATE TABLE IF NOT EXISTS candidates (
+    id               TEXT PRIMARY KEY,
+    platform         TEXT NOT NULL,
+    external_id      TEXT NOT NULL,
+    canonical_url    TEXT,
+    url              TEXT NOT NULL,
+    title            TEXT,
+    description      TEXT,
+    creator          TEXT,
+    published_at     TEXT,
+    duration         REAL,
+    view_count       INTEGER,
+    content_type     TEXT,                 -- video | podcast | page | document | post
+    language         TEXT,
+    first_seen_at    REAL NOT NULL,
+    last_seen_at     REAL NOT NULL,
+    last_verified_at REAL,
+    availability     TEXT NOT NULL DEFAULT 'available',   -- available | unavailable | stale_metadata
+    metadata_revision INTEGER NOT NULL DEFAULT 1,
+    source_id        TEXT REFERENCES sources(id) ON DELETE SET NULL,   -- set once acquired: the candidate RESOLVES to the global source
+    UNIQUE (platform, external_id)
+);
+CREATE INDEX IF NOT EXISTS ix_candidates_source ON candidates(source_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS candidates_fts USING fts5(title, description, creator, content='candidates', content_rowid='rowid');
+CREATE TRIGGER IF NOT EXISTS candidates_ai AFTER INSERT ON candidates BEGIN
+    INSERT INTO candidates_fts(rowid, title, description, creator) VALUES (new.rowid, new.title, new.description, new.creator);
+END;
+CREATE TRIGGER IF NOT EXISTS candidates_ad AFTER DELETE ON candidates BEGIN
+    INSERT INTO candidates_fts(candidates_fts, rowid, title, description, creator) VALUES ('delete', old.rowid, old.title, old.description, old.creator);
+END;
+CREATE TRIGGER IF NOT EXISTS candidates_au AFTER UPDATE ON candidates BEGIN
+    INSERT INTO candidates_fts(candidates_fts, rowid, title, description, creator) VALUES ('delete', old.rowid, old.title, old.description, old.creator);
+    INSERT INTO candidates_fts(rowid, title, description, creator) VALUES (new.rowid, new.title, new.description, new.creator);
+END;
+CREATE TABLE IF NOT EXISTS candidate_projects (
+    candidate_id   TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    state          TEXT NOT NULL DEFAULT 'available',   -- available | skipped_low_relevance | skipped_limit | skipped_cost | user_dismissed | duplicate | acquired
+    relevance      INTEGER,
+    relevance_why  TEXT,
+    reason         TEXT,                                -- skip / dismiss reason in the user's words or the system's
+    origin         TEXT,                                -- JSON: how this project encountered it (collection, kind, mission, discovery)
+    first_seen_at  REAL NOT NULL,
+    updated_at     REAL NOT NULL,
+    PRIMARY KEY (candidate_id, project_id)
+);
+CREATE INDEX IF NOT EXISTS ix_candidate_projects_project ON candidate_projects(project_id, state);
+
 CREATE TABLE IF NOT EXISTS circuit_breakers (
     operation       TEXT PRIMARY KEY,         -- provider:operation, e.g. anthropic:messages (never per model)
     state           TEXT NOT NULL DEFAULT 'closed',   -- closed | open | half_open
@@ -447,6 +508,9 @@ MIGRATIONS = [
     # retrieval reserves excerpt slots for priority sources. Sources that are in the project through a collection or tag
     # rather than a direct row are given a row when flagged (priority is a project relationship).
     ("project_sources", "priority", "ALTER TABLE project_sources ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"),
+    # G1 (0.25.0): stronger identity than (platform, external_id) alone — canonical URL and content fingerprint (see identity.py)
+    ("sources", "canonical_url", "ALTER TABLE sources ADD COLUMN canonical_url TEXT"),
+    ("sources", "content_fingerprint", "ALTER TABLE sources ADD COLUMN content_fingerprint TEXT"),
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
@@ -488,6 +552,9 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         if col not in cols:
             conn.execute(sql)
+    # indexes on migrated columns (must follow the column adds)
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_fingerprint ON sources(platform, content_fingerprint)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_canonical ON sources(platform, canonical_url)")
     conn.commit()
     _migrate_source_analysis(conn)
 
@@ -579,6 +646,9 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
 def upsert_source(**fields: Any) -> dict[str, Any]:
     """Insert or update a source keyed on (platform, external_id). Returns the row."""
     platform, external_id = fields["platform"], fields.get("external_id")
+    if not external_id and not fields.get("id"):
+        # G1: a source without identity would be a new row on every add — identity.resolve_or_create_source derives one first
+        raise ValueError(f"upsert_source needs an external_id (platform {platform!r}, url {fields.get('url')!r})")
     if "tags" in fields and not isinstance(fields["tags"], str):
         fields["tags"] = json.dumps(fields["tags"] or [])
     with tx() as conn:
@@ -1015,6 +1085,8 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     """Natural identity of a unit of work, so the same request twice is one job while it is active."""
     if kind == "ingest_url":
         return f"ingest:{payload.get('url')}"
+    if kind == "explore":
+        return f"explore:{payload.get('project_id')}:{payload.get('url')}"
     if kind == "ingest_source":
         return f"ingest_source:{payload.get('source_id')}"
     if kind == "suggest_findings" and len(payload.get("source_ids") or []) == 1:
@@ -1598,7 +1670,7 @@ def live_job_by_source() -> dict[str, dict[str, Any]]:
             pos += 1
         sid = pl.get("source_id")
         if sid and sid not in out:
-            out[sid] = {"status": r["status"], "message": r["message"], "position": pos if r["status"] == "queued" else 0,
+            out[sid] = {"id": r["id"], "status": r["status"], "message": r["message"], "position": pos if r["status"] == "queued" else 0,
                         "updated_at": r["updated_at"] or r["started_at"], "waiting_until": r["not_before"]}
     return out
 
@@ -1733,6 +1805,7 @@ def health() -> dict[str, Any]:
             "flags": _flags_health(),
             "release": _last_release_check(),
             "app_version": __import__("neurosearch").__version__,
+            "library": _library_health(conn),
             "network": {"fetch_blocked": ev["fetch_blocked"], "note": "J1 boundary: fetches refused (private/internal address, bad scheme, size, redirect or time limit); reasons in validation_events kind=fetch_blocked"},
             "rerank": {"enabled": bool(settings.retrieval_rerank), "applied": ev["rerank_applied"], "fallbacks": ev["rerank_fallback"],
                        "note": "I2 experiment: reorders retrieved candidates only; every failure restores the retrieval ordering"},
@@ -1743,6 +1816,23 @@ def health() -> dict[str, Any]:
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
             "disk": disk, "fake_ai": settings.fake_ai}
+
+
+def _library_health(conn: sqlite3.Connection) -> dict[str, Any]:
+    """G1: the Global Library as a reuse asset — how many sources, how many are shared by several projects, how many
+    acquisitions were avoided because an add resolved to something already owned."""
+    n = conn.execute("SELECT COUNT(*) FROM sources WHERE status != 'proposed'").fetchone()[0]
+    ready = conn.execute("SELECT COUNT(*) FROM sources WHERE status = 'ready'").fetchone()[0]
+    shared = conn.execute("SELECT COUNT(*) FROM (SELECT source_id FROM project_sources GROUP BY source_id HAVING COUNT(*) > 1)").fetchone()[0]
+    dup_fp = conn.execute("SELECT COUNT(*) FROM (SELECT platform, content_fingerprint FROM sources WHERE content_fingerprint IS NOT NULL "
+                          "GROUP BY platform, content_fingerprint HAVING COUNT(*) > 1)").fetchone()[0]
+    cands = conn.execute("SELECT COUNT(*) FROM candidates").fetchone()[0]
+    cand_unacq = conn.execute("SELECT COUNT(*) FROM candidates WHERE source_id IS NULL").fetchone()[0]
+    return {"sources": n, "ready": ready, "shared_by_projects": shared, "candidates_seen": cands, "candidates_not_acquired": cand_unacq,
+            "acquisitions_avoided": int(kv_get("library:acquisitions_avoided") or 0),
+            "failed_attached": int(kv_get("library:failed_attached") or 0),
+            "duplicate_fingerprints": dup_fp,
+            "note": "one global acquisition, N project relationships; acquisitions_avoided counts adds that resolved to an owned source"}
 
 
 def set_job_payload(job_id: str, payload: dict[str, Any]) -> None:
