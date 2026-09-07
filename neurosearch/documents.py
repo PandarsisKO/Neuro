@@ -19,6 +19,31 @@ def is_media(path: Path) -> bool:
     return path.suffix.lower() in MEDIA_EXTS
 
 
+def _reflow(text: str) -> str:
+    """Some PDF exporters (Google Docs among them) emit one word per line, which turns a page into a column of
+    single words: retrieval and findings then see no phrases at all. When a page's lines average fewer than
+    REFLOW_MAX_WORDS_PER_LINE words, join them back into running text (blank lines still separate paragraphs).
+    Ordinary pages — sentences per line — are left exactly as extracted."""
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    words = [len(ln.split()) for ln in lines if ln.strip()]
+    if len(words) < 8 or sum(words) / len(words) >= REFLOW_MAX_WORDS_PER_LINE:
+        return text
+    out: list[str] = []
+    para: list[str] = []
+    for ln in lines:
+        if ln.strip():
+            para.append(ln.strip())
+        elif para:
+            out.append(" ".join(para))
+            para = []
+    if para:
+        out.append(" ".join(para))
+    return "\n\n".join(out)
+
+
+REFLOW_MAX_WORDS_PER_LINE = 2.5
+
+
 def extract_pages(path: Path) -> list[dict[str, Any]]:
     ext = path.suffix.lower()
     if ext == ".pdf":
@@ -32,7 +57,7 @@ def extract_pages(path: Path) -> list[dict[str, Any]]:
             except Exception:  # noqa: BLE001
                 text = ""
             if text.strip():
-                pages.append({"page": i, "text": text})
+                pages.append({"page": i, "text": _reflow(text)})
         if not pages:
             raise RuntimeError("no extractable text in PDF (scanned? run OCR first)")
         return pages

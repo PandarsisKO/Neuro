@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
 
 SYSTEM = """You are Neuro Search, a research assistant answering questions from a personal knowledge base of
-video, podcast and audio transcripts the user has collected.
+video, podcast and audio transcripts, documents, spreadsheets and web pages the user has collected.
 
 Rules:
 - Ground every claim in the provided excerpts. Cite with bracketed numbers like [3] immediately after the
@@ -39,6 +39,11 @@ Rules:
   "Gap:" naming what is missing and the most useful next step (e.g. a kind of source to add, a speaker or
   channel to look for, or that a web search would help). Call note_gap with the same text. Skip this when the
   excerpts cover the question well.
+- The excerpts under the question are only what ONE automatic search found. They are not the whole library. When
+  the question has several parts, asks about a particular source, author, channel or document, or the excerpts
+  do not answer it, call search_library — one focused query per part or per named source — BEFORE answering, and
+  cite what it returns with its [n] numbers. Use list_sources when you need to know what the project actually
+  contains; never describe the library from the excerpts alone.
 {web_rule}
 {project_block}"""
 
@@ -65,6 +70,9 @@ You can shape the project as you talk:
 - record_fact: when the user states a decision ("we're going with X"), a constraint (budget, deadline, must/must-not),
   a requirement, or rejects an option, record it so the Master Planner can use it. Kinds: decision | constraint |
   requirement | rejected. Do not record things you merely inferred.
+- set_source_priority: when the user says a source, author, channel or document is authoritative, top tier, the
+  one to follow, or must be preferred, flag the matching sources so retrieval favours them from now on (tell the
+  user which sources were flagged). Use it to unflag when they change their mind.
 What the user told us when setting up the project (treat as requirements, not suggestions):
 {steering}
 """
@@ -72,17 +80,52 @@ What the user told us when setting up the project (treat as requirements, not su
 PROJECT_STATE_BLOCK = """Pinned findings so far (do not repeat them unless asked; build on them):
 {findings}
 Known project facts (decisions, constraints, requirements):
-{facts}"""
+{facts}
+{inventory}"""
+
+INVENTORY_MAX = 40
 
 
-def build_context(hits: list[dict[str, Any]]) -> str:
+def inventory_block(project_id: str) -> str:
+    """What the project contains, compactly: counts by kind plus the uploaded documents / files / spreadsheets / web
+    pages by title (videos are not listed — there can be hundreds; list_sources covers them). Sits in the volatile
+    state block (after the cached prefix) because it changes whenever something is added."""
+    rows = db.project_source_inventory(project_id)
+    kinds: dict[str, int] = {}
+    for r in rows:
+        kinds[_kind_label(r)] = kinds.get(_kind_label(r), 0) + 1
+    counts = ", ".join(f"{n} {k}{'s' if n != 1 and not k.endswith('s') else ''}" for k, n in sorted(kinds.items(), key=lambda kv: -kv[1])) or "nothing yet"
+    docs = [r for r in rows if r["platform"] not in ("youtube", "instagram", "podcast", "media")]
+    lines = [f"Project library: {counts}. Priority sources are marked ★."]
+    if docs:
+        lines.append("Uploaded documents, files and pages (search them with search_library; they are NOT all in the excerpts):")
+        for r in docs[:INVENTORY_MAX]:
+            extra = f" · {r['description']}" if r.get("description") else ""
+            st = "" if r.get("status") == "ready" else f" ({r.get('status')})"
+            lines.append(f"- {'★ ' if r.get('priority') else ''}{r['title']} [{_kind_label(r)}]{extra}{st}")
+        if len(docs) > INVENTORY_MAX:
+            lines.append(f"- … and {len(docs) - INVENTORY_MAX} more (list_sources)")
+    return "\n".join(lines)
+
+
+def _kind_label(r: dict[str, Any]) -> str:
+    return {"youtube": "video", "instagram": "video", "podcast": "podcast episode", "media": "video", "file": "uploaded media file",
+            "document": "document", "spreadsheet": "spreadsheet", "web": "web page", "manual": "pasted text"}.get(r.get("platform") or "", r.get("platform") or "source")
+
+
+def build_context(hits: list[dict[str, Any]], start: int = 0) -> str:
+    """Numbered excerpts; `start` offsets the numbering (search_library results continue the answer's numbering)."""
     lines = []
-    for n, h in enumerate(hits, 1):
+    for n, h in enumerate(hits, start + 1):
         meta = f"{h['title']}"
         if h.get("channel"):
             meta += f" — {h['channel']}"
         if h.get("published_at"):
             meta += f" ({h['published_at']})"
+        if h.get("attached"):
+            meta += " [attached by the user in this message]"
+        elif h.get("priority"):
+            meta += " [priority source]"
         lines.append(f"[{n}] {meta} @ {h['timestamp']}\n{h['text']}")
     return "\n\n".join(lines)
 
@@ -117,6 +160,44 @@ def _project_tools() -> list[dict[str, Any]]:
     ]
 
 
+def _library_tools() -> list[dict[str, Any]]:
+    """0.24.1: the chat can search and see the library instead of guessing from one automatic retrieval."""
+    flt = {"type": "string", "description": "optional: restrict to sources whose title, author/channel or kind (video, document, spreadsheet, web page, file) contains this text, case-insensitive; or 'priority' for the priority sources"}
+    return [
+        {"name": "search_library", "description": "Search the project's sources for a focused query and get more numbered excerpts to cite. Call it once per sub-question or per named source; results continue the [n] numbering.",
+         "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "source_filter": flt,
+                                                           "limit": {"type": "integer", "minimum": 1, "maximum": 12}}, "required": ["query"]}},
+        {"name": "list_sources", "description": "List what the project contains (title, kind, author/channel, date, status, priority) — the real inventory, optionally filtered.",
+         "input_schema": {"type": "object", "properties": {"filter": flt}, "required": []}},
+        {"name": "set_source_priority", "description": "Flag (or unflag) sources matching a filter as priority sources for this project: retrieval will favour them. Use when the user says a source/author/channel/document is authoritative or top tier.",
+         "input_schema": {"type": "object", "properties": {"filter": {"type": "string"}, "priority": {"type": "boolean", "default": True}}, "required": ["filter"]}},
+    ]
+
+
+def _matches(r: dict[str, Any], flt: str | None) -> bool:
+    if not flt:
+        return True
+    f = flt.strip().lower()
+    if f == "priority":
+        return bool(r.get("priority"))
+    hay = " ".join(str(x) for x in (r.get("title"), r.get("channel"), r.get("platform"), _kind_label(r), r.get("url")) if x).lower()
+    return all(tok in hay for tok in f.split())
+
+
+def _retrieval_query(question: str, history: list[dict[str, Any]]) -> str:
+    """Follow-up grounding without a model call: a short or back-referring message ("what about the PDFs?",
+    "and those two?") retrieves badly on its own words, so the previous substantive user message is prepended to the
+    retrieval query. The question the model answers is unchanged."""
+    words = question.split()
+    prev = next((m["content"] for m in reversed(history) if m.get("role") == "user" and m.get("content")), None)
+    if not prev:
+        return question
+    referential = re.search(r"\b(those|these|that|this|it|them|above|earlier|previous|again|the (pdf|pdfs|document|documents|file|files|source|sources|book|books))\b", question.lower())
+    if len(words) <= 12 or (referential and len(words) < 40):
+        return f"{prev[:600]}\n{question}"
+    return question
+
+
 def queue_urls(urls: list[str], project_id: str | None) -> list[dict[str, Any]]:
     """Queue pasted URLs for ingestion (into the project if any). Returns job summaries."""
     from . import jobs
@@ -143,7 +224,7 @@ def chat_system_blocks(project: dict[str, Any] | None, use_web: bool, tools: lis
         findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
         facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
         project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", steering=db.project_steering(project))
-        state_block: str | None = PROJECT_STATE_BLOCK.format(findings=findings, facts=facts)
+        state_block: str | None = PROJECT_STATE_BLOCK.format(findings=findings, facts=facts, inventory=inventory_block(project["id"]))
     else:
         project_block, state_block = "", None
     system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
@@ -178,8 +259,10 @@ def ask(
     conversation_id: str | None = None,
     use_web: bool = False,
     limit: int = 14,
+    attached_source_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Answer a question. Returns {answer, citations, hits, web_used, project, ingest_jobs, actions}."""
+    """Answer a question. Returns {answer, citations, hits, web_used, project, ingest_jobs, actions}.
+    attached_source_ids: sources the user uploaded with this message (0.24.1) — included in the excerpts on this turn."""
     project = db.get_project(project_id) if project_id else None
     actions: list[dict[str, Any]] = []
 
@@ -210,14 +293,17 @@ def ask(
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
-    hits, full_context = _hits_for(question, limit, source_ids)
     history = db.get_messages(conversation_id, limit=12) if conversation_id else []
+    priority_ids = db.priority_source_ids(project["id"]) if project else set()
+    rq = _retrieval_query(question, history)
+    hits, full_context = _hits_for(rq, limit, source_ids, priority_ids=priority_ids, attached_ids=attached_source_ids)
+    ctx = {"hits": hits, "source_ids": source_ids, "priority_ids": priority_ids, "seen": {h["chunk_id"] for h in hits}}
 
     tools: list[dict[str, Any]] = []
     if use_web:
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": 4})
     if project:
-        tools += _project_tools()
+        tools += _project_tools() + _library_tools()
         from .sheets import calculators_for_project
         calcs = calculators_for_project(project["id"])
         if calcs:
@@ -233,6 +319,9 @@ def ask(
     note = ""
     if ingest_jobs:
         note = f"\n(Note: the user also pasted {len(ingest_jobs)} link(s) which are now being ingested; mention they'll be available shortly.)"
+    if attached_source_ids:
+        titles = [(db.get_source(sid) or {}).get("title") or sid for sid in attached_source_ids]
+        note += f"\n(Note: the user attached {', '.join(titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
     messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
     from . import usage
 
@@ -263,7 +352,7 @@ def ask(
             elif btype in ("server_tool_use", "web_search_tool_result"):
                 web_used = True
             elif btype == "tool_use":
-                result = _run_tool(block.name, block.input, project, pending_findings, actions)
+                result = _run_tool(block.name, block.input, project, pending_findings, actions, ctx)
                 tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
         if resp.stop_reason == "tool_use" and tool_results:
             messages.append({"role": "assistant", "content": resp.content})
@@ -346,11 +435,40 @@ def ask(
 FULL_CONTEXT_CHARS = 90000  # if everything in scope fits in this, skip retrieval and hand Claude the whole thing
 
 
-def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> tuple[list[dict[str, Any]], bool]:
+ATTACHED_FULL_CHARS = 30000   # an attached document up to this size goes into the excerpts whole; larger ones contribute their best chunks
+ATTACHED_TOP = 6
+
+
+def _attached_hits(query: str, attached_ids: list[str]) -> list[dict[str, Any]]:
+    from .search import hit_from_chunk, search as _search
+    out: list[dict[str, Any]] = []
+    for sid in attached_ids:
+        src = db.get_source(sid) or {}
+        if src.get("status") != "ready":
+            continue
+        chunks = db.get_chunks(sid)
+        if chunks and sum(len(c["text"]) for c in chunks) <= ATTACHED_FULL_CHARS:
+            for c in chunks:
+                c.update(title=src.get("title"), url=src.get("url"), platform=src.get("platform"), channel=src.get("channel"), published_at=src.get("published_at"))
+                out.append({**hit_from_chunk(c, 1.0), "attached": True})
+        else:
+            for h in _search(query, limit=ATTACHED_TOP, source_ids=[sid], per_source_cap=ATTACHED_TOP):
+                out.append({**h, "attached": True})
+    return out
+
+
+def _hits_for(question: str, limit: int, source_ids: list[str] | None, priority_ids: set[str] | None = None,
+              attached_ids: list[str] | None = None) -> tuple[list[dict[str, Any]], bool]:
     """Retrieval, except when the scoped material is small enough to include in full (better for
-    'summarise this' / 'main points' questions, which retrieval handles badly). Returns (hits, is_full_context)."""
+    'summarise this' / 'main points' questions, which retrieval handles badly). Returns (hits, is_full_context).
+    Attached sources (uploaded with this message) come first; priority sources get reserved slots (search.PRIORITY_RESERVE)."""
     from .search import hit_from_chunk
 
+    if attached_ids:
+        first = _attached_hits(question, attached_ids)
+        seen = {h["chunk_id"] for h in first}
+        rest = [h for h in search(question, limit=limit, source_ids=source_ids, priority_ids=priority_ids or None) if h["chunk_id"] not in seen]
+        return first + rest[: max(limit - min(len(first), limit // 2), 4)], False
     if source_ids and "__none__" not in source_ids and len(source_ids) <= 6:
         chunks: list[dict[str, Any]] = []
         total = 0
@@ -365,17 +483,76 @@ def _hits_for(question: str, limit: int, source_ids: list[str] | None) -> tuple[
             # de-overlap: chunks overlap by design; keep every other chunk's overlap out by trimming nothing —
             # cheap and fine for the model. Order by source then time.
             return [hit_from_chunk(c, 1.0) for c in chunks], True
-    return search(question, limit=limit, source_ids=source_ids), False
+    return search(question, limit=limit, source_ids=source_ids, priority_ids=priority_ids or None), False
 
 
 def _pj(project: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"id": project["id"], "name": project["name"], "brief": project.get("brief")} if project else None
 
 
+MAX_EXCERPTS = 60   # hard ceiling on excerpts per answer (initial retrieval + search_library calls)
+
+
 def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
-              pending_findings: list[str], actions: list[dict[str, Any]]) -> str:
+              pending_findings: list[str], actions: list[dict[str, Any]], ctx: dict[str, Any] | None = None) -> str:
     if not project:
         return "no project in scope"
+    ctx = ctx if ctx is not None else {"hits": [], "source_ids": None, "priority_ids": set(), "seen": set()}
+    if name == "search_library":
+        query = (inp.get("query") or "").strip()
+        if not query:
+            return "query was empty"
+        flt = inp.get("source_filter")
+        scope = ctx.get("source_ids")
+        if flt:
+            rows = [r for r in db.project_source_inventory(project["id"]) if r.get("status") == "ready" and _matches(r, flt)]
+            if not rows:
+                return f"no sources match '{flt}' — call list_sources to see the inventory"
+            scope = [r["id"] for r in rows]
+        room = MAX_EXCERPTS - len(ctx["hits"])
+        if room <= 0:
+            return "excerpt limit reached for this answer; answer from the excerpts you already have"
+        n = min(int(inp.get("limit") or 8), 12, room)
+        found = [h for h in search(query, limit=n + len(ctx["seen"]), source_ids=scope, priority_ids=ctx.get("priority_ids") or None, reserve=0)
+                 if h["chunk_id"] not in ctx["seen"]][:n]
+        if not found:
+            return "nothing relevant found for that query" + (f" within '{flt}'" if flt else "")
+        start = len(ctx["hits"])
+        ctx["hits"].extend(found)
+        ctx["seen"].update(h["chunk_id"] for h in found)
+        new_part = build_context(found, start=start)
+        actions.append({"type": "searched", "query": query, "filter": flt, "added": len(found)})
+        return f"<excerpts>\n{new_part}\n</excerpts>\n(cite these as [{start + 1}]–[{len(ctx['hits'])}])"
+    if name == "list_sources":
+        flt = inp.get("filter")
+        rows = [r for r in db.project_source_inventory(project["id"]) if _matches(r, flt)]
+        if not rows:
+            return "no sources match" if flt else "the project has no sources"
+        lines = [f"{len(rows)} source(s){' matching ' + repr(flt) if flt else ''}:"]
+        for r in rows[:80]:
+            bits = [_kind_label(r)]
+            if r.get("channel"):
+                bits.append(r["channel"])
+            if r.get("published_at"):
+                bits.append(str(r["published_at"]))
+            if r.get("description") and r.get("platform") in ("document", "spreadsheet"):
+                bits.append(r["description"])
+            if r.get("status") != "ready":
+                bits.append(f"status: {r.get('status')}")
+            lines.append(f"- {'★ ' if r.get('priority') else ''}{r['title']} ({'; '.join(bits)})")
+        if len(rows) > 80:
+            lines.append(f"… and {len(rows) - 80} more — narrow the filter")
+        return "\n".join(lines)
+    if name == "set_source_priority":
+        flt = (inp.get("filter") or "").strip()
+        flag = bool(inp.get("priority", True))
+        rows = [r for r in db.project_source_inventory(project["id"]) if flt and _matches(r, flt)]
+        if not rows:
+            return f"no sources match '{flt}' — call list_sources and try a title, author or channel"
+        db.set_source_priority(project["id"], [r["id"] for r in rows], flag)
+        ctx["priority_ids"] = db.priority_source_ids(project["id"])
+        actions.append({"type": "priority_set", "filter": flt, "priority": flag, "titles": [r["title"] for r in rows][:20], "count": len(rows)})
+        return ("flagged" if flag else "unflagged") + f" {len(rows)} source(s) as priority: " + "; ".join(r["title"] for r in rows[:20])
     if name == "calculate":
         from .sheets import calculate
         import json as _json
@@ -436,4 +613,6 @@ def render_markdown(result: dict[str, Any]) -> str:
             out.append("\nPinned a finding to the project.")
         elif a["type"] == "fact_recorded":
             out.append(f"\nRecorded {a['kind']}: {a['content']}")
+        elif a["type"] == "priority_set":
+            out.append(f"\n{'Flagged' if a['priority'] else 'Unflagged'} {a['count']} priority source(s).")
     return "\n".join(out)

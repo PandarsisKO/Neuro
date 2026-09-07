@@ -464,6 +464,22 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
     return _ingest_media_file(path, title or kind_path.stem, tags, project_id, name, progress)
 
 
+def _embed_ready(source_id: str) -> int:
+    """Embed a document/spreadsheet that is already READY (its text is stored and full-text searchable). An embedding
+    failure — provider down, circuit open, budget paused — must not turn a readable document into a failed source:
+    it is logged as a visible event and the chunks stay pending for the next `embed_pending` pass (0.24.1)."""
+    try:
+        return embed_pending(source_id=source_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("embeddings deferred for %s: %s", source_id, e)
+        try:
+            db.validation_event("embeddings_deferred", {"source_id": source_id, "error": str(e)[:200]})
+            db.kv_bump("evidence:retrieval_degraded")
+        except Exception:  # noqa: BLE001
+            pass
+        return 0
+
+
 def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str) -> dict[str, Any]:
     """A workbook: each sheet becomes a searchable page, and its formulas become a calculator the chat can run."""
     from .chunking import build_doc_chunks
@@ -486,7 +502,7 @@ def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_i
         db.upsert_source(platform="spreadsheet", external_id=ext_id, duration=None, transcript_kind="spreadsheet",
                          description=f"{len(pages)} sheet{'s' if len(pages) != 1 else ''} · {len(model['inputs'])} inputs · {len(model['outputs'])} calculated outputs",
                          status="ready", error=None)
-        n = embed_pending()
+        n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "spreadsheet", "embedded": n, "inputs": len(model["inputs"]), "outputs": len(model["outputs"])}
@@ -511,7 +527,7 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
         db.replace_transcript(src["id"], segments, chunks)
         db.upsert_source(platform="document", external_id=ext_id, duration=None, transcript_kind="document",
                          description=f"{len(pages)} pages", status="ready", error=None)
-        n = embed_pending()
+        n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "document", "embedded": n}

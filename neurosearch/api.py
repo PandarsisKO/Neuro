@@ -287,17 +287,32 @@ def api_defaults() -> dict[str, Any]:
 
 @app.post("/api/ingest/file", dependencies=[Depends(require_auth)])
 async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form(None),
-                          project_id: str | None = Form(None), tags: str = Form("")) -> dict[str, Any]:
-    """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents) or SRT/VTT. Runs as a background job."""
+                          project_id: str | None = Form(None), tags: str = Form(""), immediate: bool = Form(False)) -> dict[str, Any]:
+    """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents) or SRT/VTT. Runs as a background job.
+    immediate=true (0.24.1, the chat's attach button): documents, spreadsheets, text and subtitle files are read,
+    chunked and embedded inside this request through the very same `ingest_local_file` path (same global source
+    row, same dedupe, same provenance) and the response carries the ready source; media still needs transcription
+    and is queued exactly as before (the response says so)."""
     name = Path(file.filename or "upload").name
     dest = settings.media_dir / f"upload_{secrets.token_hex(4)}_{name}"
     with open(dest, "wb") as fh:
         while chunk := await file.read(1 << 20):
             fh.write(chunk)
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    from .documents import is_media
+    if immediate and not is_media(Path(name)):
+        from . import ingest as _ingest
+        try:
+            res = await anyio.to_thread.run_sync(lambda: _ingest.ingest_local_file(dest, title or None, tag_list, project_id or None, original_name=name))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"could not read {name}: {e}") from e
+        src = db.get_source(res["source_id"]) or {}
+        return {"source_id": res["source_id"], "name": name, "title": src.get("title") or name, "ready": src.get("status") == "ready",
+                "chunks": res.get("chunks"), "embedded": res.get("embedded"), "immediate": True}
     job = jobs.enqueue("ingest_file", {"path": str(dest), "name": name, "title": title or None,
                                        "tags": tag_list, "project_id": project_id or None})
-    return {"job": job["id"], "name": name}
+    return {"job": job["id"], "name": name, "immediate": False,
+            "note": "audio/video is transcribed in the background; it joins the project when ready" if immediate else None}
 
 
 class TextIn(BaseModel):
@@ -493,6 +508,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         live = db.live_job_by_source()
         analysed_ids = db.analysed_sources(project_id)
         analyses = db.project_analyses(project_id)
+        prio = db.priority_source_ids(project_id)
         prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at")
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
@@ -506,6 +522,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             r["approved"] = c.get("approved", 0)
             r["analysing"] = r["id"] in analysing
             r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
+            r["priority"] = r["id"] in prio
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}
@@ -674,6 +691,20 @@ def api_delete_project(project_id: str) -> dict[str, Any]:
 class MembersIn(BaseModel):
     source_ids: list[str] = []
     collection_ids: list[str] = []
+
+
+class PriorityIn(BaseModel):
+    source_ids: list[str]
+    priority: bool = True
+
+
+@app.put("/api/projects/{project_id}/priority", dependencies=[Depends(require_auth)])
+def api_set_priority(project_id: str, body: PriorityIn) -> dict[str, Any]:
+    """Flag/unflag priority sources for THIS project (0.24.1): retrieval reserves excerpt slots for them."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    n = db.set_source_priority(project_id, body.source_ids, body.priority)
+    return {"ok": True, "updated": n, "priority_source_ids": sorted(db.priority_source_ids(project_id))}
 
 
 @app.post("/api/projects/{project_id}/members", dependencies=[Depends(require_auth)])
@@ -1151,13 +1182,15 @@ class AskIn(BaseModel):
     project_id: str | None = None
     conversation_id: str | None = None
     use_web: bool = False
+    attached_source_ids: list[str] | None = None      # sources uploaded with this message (0.24.1)
 
 
 @app.post("/api/ask", dependencies=[Depends(require_auth)])
 async def api_ask(body: AskIn) -> dict[str, Any]:
     cid = body.conversation_id or db.new_id()
     return await anyio.to_thread.run_sync(
-        lambda: qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web))
+        lambda: qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web,
+                       attached_source_ids=body.attached_source_ids or None))
 
 
 @app.get("/api/conversations", dependencies=[Depends(require_auth)])

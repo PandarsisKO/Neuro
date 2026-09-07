@@ -465,6 +465,17 @@ class _Msgs:
         messages = kw.get("messages") or []
         user = _content_text(messages[-1]["content"]) if messages else ""
         task = task_of(system, kw)
+        # 0.24.1 test knob: NEUROSEARCH_FAKE_CHAT_TOOL='{"name": "search_library", "input": {...}}' makes the fake chat
+        # call that tool once (first round only, and only when the tool is offered), then answer from the excerpts it got.
+        knob = os.environ.get("NEUROSEARCH_FAKE_CHAT_TOOL")
+        if knob and task == "answer.chat":
+            want = json.loads(knob)
+            offered = {t.get("name") for t in (kw.get("tools") or [])}
+            already = any(isinstance(m.get("content"), list) and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"]) for m in messages)
+            if want.get("name") in offered and not already:
+                blk = _Blk(type="tool_use", id="toolu_fake_1", name=want["name"], input=want.get("input") or {})
+                return _Blk(stop_reason="tool_use", model="fake-claude", content=[blk],
+                            usage=_Blk(input_tokens=_tokens(system + user), output_tokens=20, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
         if task == "discover.verify":
             text = json.dumps(DISCOVER_VERIFY)
         elif task == "discover.quick":

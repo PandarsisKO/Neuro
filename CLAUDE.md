@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.24.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.24.1)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -28,6 +28,10 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 | Surfaces | `api.py`, `web/index.html` (`UI_VERSION`), `mcp_server.py`, `cli.py`, `extension/` | endpoints are plain `def` (threadpool); projects are the unit (chats, sources, findings, plan, settings, Health); extension = course import, "Send this page", Instagram session |
 | Proofs | `evals.py`, `retrieval_eval.py`, `prefilter_eval.py`, `cache_layout.py`, `migration.py`, `closeout.py`, `batch_smoke.py`, `release.py` | `neurosearch eval` (Tier 1 on the frozen Golden Project `tests/fixtures/golden/`, `--ranking`, `--findings-compare`, `--migration-compare`, `--retrieval [--rerank]`, `--prefilter`, `--cache-layout`); `neurosearch closeout` (Mission F); `neurosearch batch-smoke --live` (the one tiny paid adapter check); `neurosearch doctor` (fast diagnostic); `neurosearch release-check` (heavyweight deterministic gate → `evals/release/`) |
 
+## Chat retrieval (0.24.1)
+
+Each turn: `qa._retrieval_query` (a short or back-referring follow-up is grounded on the previous user question) → `_hits_for` (attached uploads first, then `search.search` with `priority_ids` — up to `search.PRIORITY_RESERVE` slots for the project's ★ priority sources, hits labelled) → 14 excerpts. The model then has `search_library` (more numbered excerpts, optional source filter; continues the [n] numbering, `qa.MAX_EXCERPTS` cap), `list_sources` (the real inventory) and `set_source_priority` (the user's "this is top tier" becomes `project_sources.priority`, project-relative; UI toggle `PUT /api/projects/{id}/priority`). The volatile state block carries `qa.inventory_block` (counts by kind + uploaded documents by title — never the video list). In-chat attachments go through `POST /api/ingest/file` with `immediate=true` (documents/spreadsheets/text parsed, chunked and embedded in the request via the normal `ingest_local_file` path; media still queues) and `ask(attached_source_ids=)` pins them into that turn. Embedding failure never fails a readable document (`ingest._embed_ready`, event `embeddings_deferred`). PDF pages that arrive one word per line are reflowed (`documents._reflow`). Fake knob `NEUROSEARCH_FAKE_CHAT_TOOL`. Tier 1 chat totals re-frozen at 34 / 165,365.
+
 ## Model routing (current)
 
 rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); every other Anthropic task → `settings.answer_model` (claude-sonnet-4-6); `findings.prefilter` / `retrieval.rerank` contracts exist on `claude-haiku-4-5` but their features are off. Structured outputs on findings.extract, rank.relevance, planner.update, discover.quick; discover.verify stays free-text. Per-task overrides `NEUROSEARCH_TASK_{MODEL,THINKING,MAX_TOKENS,SCHEMA}_<TASK>`; `neurosearch contracts` lists them.
@@ -38,4 +42,4 @@ rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); e
 
 ## Working here
 
-Run: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest` (250). Before a release: `neurosearch release-check` (writes the artifact; the Health console shows the last result). Version lives in `neurosearch/__init__.py`, `pyproject.toml` and `UI_VERSION` in `web/index.html` (PEP 440). YouTube may block datacenter IPs — ingest from a laptop with the same CLI against the same `NEUROSEARCH_DATA_DIR`, or with `NEUROSEARCH_COOKIES_FILE`.
+Run: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest` (263). Before a release: `neurosearch release-check` (writes the artifact; the Health console shows the last result). Version lives in `neurosearch/__init__.py`, `pyproject.toml` and `UI_VERSION` in `web/index.html` (PEP 440). YouTube may block datacenter IPs — ingest from a laptop with the same CLI against the same `NEUROSEARCH_DATA_DIR`, or with `NEUROSEARCH_COOKIES_FILE`.

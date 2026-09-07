@@ -16,7 +16,7 @@ flags, provider circuits, fake smoke) and `neurosearch release-check` (minutes: 
 
 | Rung | Mission | Verdict | Evidence |
 |---|---|---|---|
-| A | Make it provable | **DONE** — frozen Golden Project, `NEUROSEARCH_FAKE_AI=1`, Tier 1 eval with frozen totals (answer 34 calls / 141,225 tokens · findings 9 / 30,297 · plan 2 / 11,026), validators (quotes, citations, plan evidence), verified backups, migration fixtures | `neurosearch eval`; `evals/baseline-0.17.3-849bd0d-sonnet-4-6.json` |
+| A | Make it provable | **DONE** — frozen Golden Project, `NEUROSEARCH_FAKE_AI=1`, Tier 1 eval with frozen totals (answer 34 calls / 165,365 tokens since 0.24.1, findings 9 / 30,297, plan 2 / 11,026), validators (quotes, citations, plan evidence), verified backups, migration fixtures | `neurosearch eval`; `evals/baseline-0.17.3-849bd0d-sonnet-4-6.json` |
 | B | Trust the data | **DONE** — project-relative analysis (`project_source_analysis`), provenance columns on every AI artifact, deletion cascade | `tests/test_indestructible.py` provenance tests; schema registry |
 | C | Staleness | **DONE** — artifacts carry the source/brief/facts revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild through the budget valve with an estimate; chats stay historical | `test_staleness_exit_criteria` |
 | D | Survive interruption | **DONE** — transactional ingestion stages with resume, job leases + heartbeats, `job_events`, one findings job per source, `external_pending` re-attach (never resubmit), dependency/failure propagation, cancellation, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | crash matrix + equivalence tests in `test_indestructible.py`; release-check gate “crash/recovery matrix + 40-source equivalence” |
@@ -67,6 +67,10 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
   artifacts in `evals/` and are not re-run by `release-check` (paid runs are reserved for major model or architecture changes).
 - The Health console is a read-only status page; there is no alerting.
 - `release-check` gates are frozen at their 0.24.0 values; changing a frozen number is itself a decision to record here.
+
+## Post-closeout fixes
+
+**0.24.1 — chat retrieval grounding (regression found in production use, 2026-09-07).** Symptom: five uploaded PDFs "not surfacing" in a 449-source project. Diagnosis (read-only, via the API): the PDFs were fully ingested, chunked and embedded and ranked first on matching queries; the failure was structural — every chat turn retrieved 14 excerpts from the *latest message text* only, so an 11-question message got one retrieval, meta follow-ups ("list the PDFs you see") retrieved on their own words, and the model had no inventory and no way to search again, so it described the excerpts as the library. Fix, all on the existing paths: `search_library` / `list_sources` / `set_source_priority` chat tools; library inventory in the volatile state block; project-relative priority sources with reserved excerpt slots (`search.PRIORITY_RESERVE`); follow-up query grounding without a model call; in-chat attachments read immediately through `ingest_local_file` and pinned into the same turn; embedding failure no longer fails a readable document; one-word-per-line PDF reflow. 13 new tests (263 total). Tier 1 chat totals re-frozen: answer 34 calls / 141,225 → **165,365** tokens (tool definitions + inventory; cached prefix in production), findings and plan unchanged; `CHAT_ARM_INPUT_TOTAL` 154,288 → 178,428. Recorded decision: frozen numbers changed for a deliberate prompt-content change, verified by the cache-layout equivalence gate (now derived from the live `PROJECT_BLOCK`, so the gate tests the split, not the wording).
 
 ---
 

@@ -443,6 +443,10 @@ MIGRATIONS = [
     ("discoveries", "routing", "ALTER TABLE discoveries ADD COLUMN routing TEXT"),
     # Rung G: transport-specific provenance (interactive | batch) — explicit, never hidden
     ("project_notes", "transport", "ALTER TABLE project_notes ADD COLUMN transport TEXT"),
+    # 0.24.1: a project-relative "priority source" flag (the user's authority statement as structured state, not chat history);
+    # retrieval reserves excerpt slots for priority sources. Sources that are in the project through a collection or tag
+    # rather than a direct row are given a row when flagged (priority is a project relationship).
+    ("project_sources", "priority", "ALTER TABLE project_sources ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"),
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
@@ -1951,6 +1955,45 @@ def add_project_sources(project_id: str, source_ids: list[str]) -> None:
     with tx() as conn:
         conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+
+
+def project_source_inventory(project_id: str) -> list[dict[str, Any]]:
+    """Compact inventory of a project's sources (all statuses except proposed) for the chat's list_sources /
+    inventory block: id, platform, title, channel, published_at, duration, description, status, priority. Newest first."""
+    ids = project_source_ids(project_id, ready_only=False)
+    if not ids:
+        return []
+    conn = connect()
+    prio = priority_source_ids(project_id)
+    out: list[dict[str, Any]] = []
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        rows = conn.execute("SELECT id, platform, title, channel, published_at, duration, description, status, url, created_at FROM sources "
+                            "WHERE id IN (" + ",".join("?" for _ in part) + ") AND status != 'proposed'", part).fetchall()
+        for r in rows:
+            d = row_to_dict(r)
+            if d["platform"] not in ("document", "spreadsheet"):
+                d["description"] = None                       # long video descriptions are not inventory material
+            d["priority"] = d["id"] in prio
+            out.append(d)
+    out.sort(key=lambda d: -(d.get("created_at") or 0))
+    return out
+
+
+def set_source_priority(project_id: str, source_ids: list[str], priority: bool) -> int:
+    """Flag (or unflag) sources as priority for THIS project only. A source reached through a collection or tag gets
+    a direct project_sources row so the flag has somewhere to live. Returns the number of rows touched."""
+    n = 0
+    with tx() as conn:
+        for sid in source_ids:
+            conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", (project_id, sid))
+            n += conn.execute("UPDATE project_sources SET priority=? WHERE project_id=? AND source_id=?", (1 if priority else 0, project_id, sid)).rowcount
+        conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+    return n
+
+
+def priority_source_ids(project_id: str) -> set[str]:
+    return {r["source_id"] for r in connect().execute("SELECT source_id FROM project_sources WHERE project_id=? AND priority=1", (project_id,)).fetchall()}
 
 
 def remove_project_sources(project_id: str, source_ids: list[str]) -> None:

@@ -54,12 +54,20 @@ class RetrievalUnavailable(RuntimeError):
     degrades to FTS-only and records evidence:retrieval_degraded so the degradation is visible in Health."""
 
 
+PRIORITY_RESERVE = 5     # of the excerpt slots, at most this many are reserved for priority sources' best matches (0.24.1)
+
+
 def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
-           per_source_cap: int | None = 4, strict: bool = False, rerank: bool | None = None) -> list[dict[str, Any]]:
+           per_source_cap: int | None = 4, strict: bool = False, rerank: bool | None = None,
+           priority_ids: set[str] | None = None, reserve: int = PRIORITY_RESERVE) -> list[dict[str, Any]]:
     """Return ranked chunk hits with source metadata and deep links. strict=True: a vector-search failure is an error,
     never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint).
     rerank: the I2 candidate-only reranker stage (None = settings.retrieval_rerank, off by default); it reorders the first
-    rerank.RERANK_DEPTH hits and fails closed to this function's own ordering."""
+    rerank.RERANK_DEPTH hits and fails closed to this function's own ordering.
+    priority_ids: the project's priority sources (0.24.1). Up to `reserve` of the `limit` slots go to their best-matching
+    chunks first (only chunks that matched the query at all — a priority source with nothing relevant contributes
+    nothing); the remaining slots are filled in plain score order and the final list is re-sorted by score, so the
+    numbering stays meaningful. Hits from priority sources carry priority=True."""
     query = query.strip()
     if not query:
         return []
@@ -98,16 +106,35 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
     chunks = db.get_chunks_by_ids([cid for cid, _ in order[: k * 2]])
     hits: list[dict[str, Any]] = []
     per_source: dict[str, int] = {}
+    taken: set[int] = set()
+    if priority_ids and reserve > 0:
+        for cid, score in order:
+            c = chunks.get(cid)
+            if not c or c["source_id"] not in priority_ids:
+                continue
+            if per_source_cap and per_source.get(c["source_id"], 0) >= per_source_cap:
+                continue
+            per_source[c["source_id"]] = per_source.get(c["source_id"], 0) + 1
+            hits.append({**hit_from_chunk(c, score), "priority": True})
+            taken.add(cid)
+            if len(hits) >= min(reserve, limit):
+                break
     for cid, score in order:
+        if cid in taken:
+            continue
         c = chunks.get(cid)
         if not c:
             continue
         if per_source_cap and per_source.get(c["source_id"], 0) >= per_source_cap:
             continue
         per_source[c["source_id"]] = per_source.get(c["source_id"], 0) + 1
-        hits.append(hit_from_chunk(c, score))
+        h = hit_from_chunk(c, score)
+        if priority_ids and c["source_id"] in priority_ids:
+            h["priority"] = True
+        hits.append(h)
         if len(hits) >= limit:
             break
+    hits.sort(key=lambda h: -h["score"])
     use_rerank = settings.retrieval_rerank if rerank is None else rerank
     if use_rerank and hits:
         from . import rerank as R

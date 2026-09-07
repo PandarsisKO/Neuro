@@ -241,8 +241,10 @@
       <div id="chat"></div>
       <div id="askbar"><div class="inner">
         <div style="flex:1">
-          <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source)" rows="1"></textarea>
-          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label><span class="muted" id="askStatus"></span></div>
+          <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
+          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label>
+            <label class="muted" style="cursor:pointer" title="PDF, DOCX, TXT, MD, XLSX, CSV are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
+            <span id="qAttach"></span><span class="muted" id="askStatus"></span></div>
         </div>
         <button class="primary" id="askBtn" onclick="ask()">Ask</button>
       </div></div>
@@ -461,7 +463,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.24.0';
+const UI_VERSION = '0.24.1';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -661,6 +663,8 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
       if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
       if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
+      if (a.type === 'searched') h += `<div class="web muted">🔎 Searched the library for “${esc(a.query)}”${a.filter ? ' in ' + esc(a.filter) : ''} · ${a.added} more excerpt${a.added === 1 ? '' : 's'}</div>`;
+      if (a.type === 'priority_set') h += `<div class="web">★ ${a.priority ? 'Priority sources' : 'No longer priority'} (${a.count}): <i>${esc((a.titles || []).slice(0, 5).join('; '))}${a.count > 5 ? ' …' : ''}</i> — retrieval ${a.priority ? 'now favours them' : 'treats them normally'}</div>`;
       if (a.type === 'calculated') h += `<div class="web">🧮 Ran the spreadsheet with ${Object.entries(a.inputs || {}).map(([k, v]) => `${esc(k)} = ${esc(String(v))}`).join(', ') || 'current inputs'} → ${Object.entries(a.outputs || {}).slice(0, 6).map(([k, v]) => `<b>${esc(k)}</b>: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : esc(String(v))}`).join(' · ')}</div>`;
     }
     if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc(j.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>`; }).join('') + `</div>`;
@@ -675,14 +679,31 @@ async function pinMsg(btn) {
   await post(`/api/projects/${state.project.id}/notes`, { content: d.dataset.text, citations: JSON.parse(d.dataset.cites) });
   btn.textContent = 'Pinned ✓'; btn.disabled = true; $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
 }
+// ---- attachments in chat (0.24.1): documents are read right away through the normal upload path and pinned into this turn's excerpts
+state.attached = [];
+async function attachFiles(files) {
+  for (const f of files) {
+    const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = `⏳ ${f.name}`; $('#qAttach').appendChild(chip);
+    const fd = new FormData(); fd.append('file', f); fd.append('project_id', state.project.id); fd.append('immediate', 'true');
+    try {
+      const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || j.error || 'upload failed');
+      if (j.immediate) { state.attached.push({ id: j.source_id, name: j.title || f.name }); chip.textContent = `📎 ${j.title || f.name} ✓`; chip.title = 'read and added to this project — will be used in your next question'; }
+      else { chip.textContent = `⏳ ${f.name} — transcribing in the background`; chip.title = j.note || ''; }
+    } catch (e) { chip.textContent = `✗ ${f.name}: ${e.message}`; chip.style.color = 'var(--bad)'; }
+  }
+  $('#qFile').value = ''; if (state.project) api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; }).catch(() => {});
+}
 async function ask() {
   const q = $('#q').value.trim(); if (!q) return;
   if (!state.conv) { const c = await post('/api/conversations', { project_id: state.project.id }); state.conv = c.id; await loadChats(); }
-  $('#q').value = ''; addMsg('user', q);
+  const attached = state.attached.splice(0); $('#qAttach').innerHTML = '';
+  $('#q').value = ''; addMsg('user', q + (attached.length ? `\n📎 ${attached.map(a => a.name).join(', ')}` : ''));
   const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching this project\'s sources…</span>';
   $('#askBtn').disabled = true;
   try {
-    const r = await post('/api/ask', { question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked });
+    const r = await post('/api/ask', { question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked,
+                                       attached_source_ids: attached.length ? attached.map(a => a.id) : null });
     thinking.remove();
     const m = addMsg('assistant', r.answer, r.citations, r);
     const c = state.chats.find(x => x.id === state.conv);
@@ -824,7 +845,7 @@ async function loadSources() {
   $('#srcList').innerHTML = rows.map(s => `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
-      <div class="t">${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
+      <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
@@ -834,10 +855,15 @@ async function loadSources() {
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
+        <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
         <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
       </div>
     </div></div>`).join('') || '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
+}
+async function setPriority(id, flag) {
+  await put(`/api/projects/${state.project.id}/priority`, { source_ids: [id], priority: flag });
+  loadSources();
 }
 async function viewTranscript(id) {
   const s = await api('/api/sources/' + id);

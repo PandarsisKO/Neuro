@@ -852,27 +852,14 @@ def test_batch_smoke_fake_passes_and_leaves_nothing_behind(monkeypatch, tmp_path
 
 # ---------------------------------------------------------------- Rung G (second portion): prompt-cache layout
 
-LEGACY_PROJECT_BLOCK = """
-Project: {name}
-Project brief (what the user is trying to find out — let this shape what you emphasise):
-{brief}
-
-You can shape the project as you talk:
-- update_brief: when the user asks to change, widen, narrow or refocus what the project is about. Rewrite the
-  whole brief (keep what still applies, fold in the change) and confirm the change in one sentence.
-- save_finding: when the user says to pin, save, remember or note something, or asks you to record a
-  conclusion. Save a self-contained finding in plain prose with the same [n] citations you used.
-- note_gap: record a coverage gap you identified (see Gap detection).
-- record_fact: when the user states a decision ("we're going with X"), a constraint (budget, deadline, must/must-not),
-  a requirement, or rejects an option, record it so the Master Planner can use it. Kinds: decision | constraint |
-  requirement | rejected. Do not record things you merely inferred.
-Pinned findings so far (do not repeat them unless asked; build on them):
-{findings}
-Known project facts (decisions, constraints, requirements):
-{facts}
-What the user told us when setting up the project (treat as requirements, not suggestions):
-{steering}
-"""
+def _legacy_project_block():
+    """The pre-Rung-G layout: ONE project block with the state (findings/facts/inventory) inside it, before the steering
+    lines. Derived from today's PROJECT_BLOCK so wording changes to the tool guidance (0.24.1 added set_source_priority)
+    do not break the layout-equivalence gate — the gate is about the SPLIT, not the words."""
+    from neurosearch import qa
+    marker = "What the user told us"
+    head, tail = qa.PROJECT_BLOCK.split(marker, 1)
+    return head + qa.PROJECT_STATE_BLOCK + "\n" + marker + tail
 
 
 def _legacy_chat_system(project, use_web, full_context):
@@ -881,7 +868,10 @@ def _legacy_chat_system(project, use_web, full_context):
     notes = db.list_project_notes(project["id"])[:15]
     findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
     facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
-    block = LEGACY_PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings, facts=facts, steering=db.project_steering(project))
+    # 0.24.1 added the library inventory to the project state (deliberately, after the cached prefix); the legacy
+    # layout carries the same lines so the equivalence stays line-for-line.
+    block = _legacy_project_block().format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings, facts=facts,
+                                           inventory=qa.inventory_block(project["id"]), steering=db.project_steering(project))
     system = qa.SYSTEM.format(web_rule=qa.WEB_RULE_ON if use_web else qa.WEB_RULE_OFF, project_block=block)
     blocks = [usage.cached_block(system)]
     if full_context is not None:

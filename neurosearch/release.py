@@ -243,7 +243,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
             rep1 = evals.run(progress=lambda m: None)
             v = rep1["volume"]["by_task"]
             tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
-            frozen = {"answer": (34, 141225), "findings": (9, 30297), "plan": (2, 11026)}
+            frozen = {"answer": (34, 165365), "findings": (9, 30297), "plan": (2, 11026)}
             drift = {k: (v[k]["calls"], tot(v[k])) for k in frozen if (v[k]["calls"], tot(v[k])) != frozen[k]}
             r.check("Tier 1 gates PASS", rep1["pass"], {k: g for k, g in rep1["gates"].items() if not g["pass"]} or f"cache read rate {rep1['volume']['cache_read_rate']:.1%}")
             r.check("Tier 1 frozen totals unchanged (router-equivalence)", not drift, drift or frozen)
