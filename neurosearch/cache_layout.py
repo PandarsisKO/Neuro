@@ -94,16 +94,17 @@ def run(progress: Any = print) -> dict[str, Any]:
     chat_res = measure("project chat (4 turns, state changes)", chat)
     # 3. a NEW conversation with different questions (a later session the same day): only the stable prefix can be reused
     measure("project chat (new conversation, 3 turns)", lambda: [qa.ask(q, project_id=pid, conversation_id="cache-layout-chat-2") for q in CHAT_TURNS_2])
-    # 3b. the same new-conversation turns with the conversation-tail breakpoint off (cost policy, measured not decided)
+    # 3b. the same new-conversation turns with the conversation-tail breakpoint ON (the pre-0.20.0+g5 default, kept as an
+    #     override for tool-heavy workloads): shows the write premium the default now avoids
     import os
-    os.environ["NEUROSEARCH_CHAT_TAIL_BREAKPOINT"] = "0"
+    os.environ["NEUROSEARCH_CHAT_TAIL_BREAKPOINT"] = "1"
     try:
-        measure("project chat (new conv, no tail breakpoint)", lambda: [qa.ask(q, project_id=pid, conversation_id="cache-layout-chat-3") for q in CHAT_TURNS_2])
+        measure("project chat (new conv, tail breakpoint ON)", lambda: [qa.ask(q, project_id=pid, conversation_id="cache-layout-chat-3") for q in CHAT_TURNS_2])
     finally:
         os.environ.pop("NEUROSEARCH_CHAT_TAIL_BREAKPOINT", None)
     # 4. planner: two passes over the shared research material
     measure("planner (analysis + build)", lambda: planner.build_plan(pid))
-    core = {k: v for k, v in rep["scenarios"].items() if "no tail" not in k}          # totals = the production layout; the variant is reported beside it
+    core = {k: v for k, v in rep["scenarios"].items() if "tail breakpoint ON" not in k}   # totals = the production layout; the variant is reported beside it
     tot = {k: sum(s[k] for s in core.values()) for k in ("requests", "total_input_tokens", "cache_read", "cache_write", "plain")}
     tot["cache_read_share"] = round(tot["cache_read"] / max(1, tot["total_input_tokens"]), 4)
     rep["totals"] = tot

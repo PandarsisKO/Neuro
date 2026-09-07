@@ -941,6 +941,8 @@ def test_cache_layout_measurement_and_savings(monkeypatch):
     assert new_conv["cache_read"] == 3 * chat[1]["read"]                                                          # every turn of a later conversation reads the prefix
     assert rep["scenarios"]["planner (analysis + build)"]["cache_read"] > 0
     assert rep["input_cost_index"] < 1.0
-    no_tail = rep["scenarios"]["project chat (new conv, no tail breakpoint)"]
-    assert no_tail["cache_write"] == 0 and no_tail["cache_read"] == new_conv["cache_read"] and no_tail["input_cost_index"] < new_conv["input_cost_index"]
-    assert no_tail["total_input_tokens"] == new_conv["total_input_tokens"]                                          # content identical either way
+    # default (tail breakpoint OFF): nothing volatile is written; the override (ON) writes the tail every turn at 1.25×
+    tail_on = rep["scenarios"]["project chat (new conv, tail breakpoint ON)"]
+    assert new_conv["cache_write"] == 0 and tail_on["cache_write"] > 0 and tail_on["cache_read"] == new_conv["cache_read"]
+    assert new_conv["input_cost_index"] < tail_on["input_cost_index"] and new_conv["total_input_tokens"] == tail_on["total_input_tokens"]   # content identical either way
+    assert all(t["write"] == 0 for t in chat[1:]) and chat[0]["write"] > 0                                     # only the stable prefix is ever written

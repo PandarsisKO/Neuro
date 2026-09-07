@@ -15,7 +15,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | D | Survive interruption | Ingestion stages (metadata → transcript → chunks → embeddings → ready, each transactional, resume from the last completed), job leases + heartbeats, `job_events`, one findings job per source, `external_pending` for parked work (re-attach, never resubmit), dependency policies + failure propagation, cancellation semantics, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | **COMPLETE (0.17.0)** |
 | E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
-| G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | |
+| G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
@@ -150,7 +150,7 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
 
-## Rung G — asynchronous / batched AI (started 0.20.0; G1 batch findings shipped, fake-proven; live check pending)
+## Rung G — asynchronous / batched AI + cache layout (0.20.0 → 0.20.0+g5: COMPLETE)
 Abstraction: a logical work item = one findings window (`findings.batch_requests` → stable `custom_id`
 `fw-<source12>-<window>-<inputhash12>`, frozen request params) → a **cohort** (the set of items submitted together, `batch_items`
 table, cohort_no) → one provider batch per cohort. Cohort sizing is a transport choice; cohort 2+ carries only the items that
@@ -260,13 +260,26 @@ cost index 0.979; new conversation 35% read, 0.843; overall 21% read, input cost
 rate 23.4% (baseline 2.1%), answer task 44,220 cached tokens (baseline 0). Totals invariant: Tier 1 answer 141,225 / findings 30,297 /
 plan 11,026 / grand 207,444 identical under the old and new layout; the router-equivalence and migration-compare gates now freeze
 these transport-invariant totals (the cache split is asserted separately).
-Measured, NOT changed (decision for Kyle): the conversation-tail breakpoint (`usage.mark_last`, now `qa._tail_breakpoint`) writes the
-whole volatile remainder at 1.25× every turn and only pays back within a turn (tool rounds, citation repair). With it off
-(`NEUROSEARCH_CHAT_TAIL_BREAKPOINT=0`, measured in the same eval) the new-conversation cost index drops from 0.843 to 0.682 with
-identical content; break-even is roughly one tool/repair round in every four turns. Default unchanged.
-Expected live effect: the real tokenizer counts the tool schemas and rules larger than the fake, so the stable chat prefix clears
-1024 tokens more easily; the savings scale with turns per project, not with the golden fixture. One live check of cache_read /
-cache_creation on a 3-turn project chat is the only outstanding measurement; not requested yet.
+Decision (0.20.0+g5, Kyle): the conversation-tail breakpoint (`usage.mark_last`, wrapped by `qa._tail_breakpoint`) is OFF by default.
+It writes the volatile per-turn remainder at 1.25× and can never produce a cross-turn hit (history is stored without the excerpts
+that were sent), so it only pays back when the same turn makes another call (tool round, citation repair) — break-even ≈ one extra
+round per four turns; the default is optimised for the common single-call turn. `NEUROSEARCH_CHAT_TAIL_BREAKPOINT=1` re-enables it
+for experimentation or tool-heavy workloads; no adaptive/predictive breakpoint logic, by decision. The eval keeps measuring the
+ON variant beside the default.
+Final layout policy: stable project prefix (tools + rules + project identity/brief/guidance/steering) → cache; reusable full-context
+material → cache when it fits; pinned findings/facts → after the prefix, not cached; conversation/request tail → not cached by
+default; findings [rules][project→bp][source→bp]; batch requests 1h ttl.
+Before / after (golden project, `neurosearch eval --cache-layout`, input cost index: 1.000 = every input token at full price):
+  chat 4 turns with mid-chat pin+fact:   old 1.250 (0 read, all written)  →  new 0.808 (24% read; only the 1,340-token prefix ever written, once)
+  new conversation, 3 turns:             old 1.250                          →  new 0.682 (35% read, zero writes; tail ON would be 0.843)
+  planner (2 passes):                    0.714 unchanged                     findings: 1.000 unchanged (under the provider minimum for this fixture)
+  overall:                               old 1.026                          →  new 0.844
+  Tier 1: cache read rate 2.1% → 23.4%; cache writes 141,225 → 5,752 tokens on the answer task; answer-task fake cost $0.4048 → $0.3331
+  (−17.7%); totals invariant (answer 141,225 / findings 30,297 / plan 11,026 / grand 207,444).
+Not measured live, by decision: the simulator models the provider's prefix rules, the content-equivalence gate proves the model
+sees the same information, and Tier 1 is green — this is not a case for a manual eval. The real tokenizer counts tool schemas and
+rules larger than the fake, so the stable chat prefix clears the 1024-token minimum more easily live.
+**Prompt/cache-order portion of Rung G: COMPLETE. Rung G: COMPLETE (0.20.0+g5).**
 
 ## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
 

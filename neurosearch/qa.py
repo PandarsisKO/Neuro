@@ -157,12 +157,14 @@ def chat_system_blocks(project: dict[str, Any] | None, use_web: bool, tools: lis
 
 
 def _tail_breakpoint(messages: list[dict[str, Any]]) -> None:
-    """The conversation-tail breakpoint (usage.mark_last): everything up to the latest message is written to the cache
-    (1.25×) so a tool round or a repair round re-reads it at 0.1×. Across turns it never hits (history is stored
-    without the excerpts that were sent), so it only pays back within a turn. NEUROSEARCH_CHAT_TAIL_BREAKPOINT=0
-    turns it off — measured by `neurosearch eval --cache-layout`; the default is unchanged."""
+    """The conversation-tail breakpoint (usage.mark_last) is OFF by default (0.20.0+g5, Rung G decision): it writes the
+    volatile per-turn material at 1.25× and can never produce a cross-turn hit (history is stored without the excerpts
+    that were sent), so it only pays back when the SAME turn makes another call (tool round, citation repair) — break-even
+    ≈ one extra round per four turns; the default is optimised for the common single-call turn (new-conversation input
+    cost index 0.843 → 0.682, `neurosearch eval --cache-layout`). NEUROSEARCH_CHAT_TAIL_BREAKPOINT=1 enables it for
+    experimentation or tool-heavy workloads. No adaptive/predictive logic by decision."""
     from . import usage
-    if os.environ.get("NEUROSEARCH_CHAT_TAIL_BREAKPOINT", "1") != "0":
+    if os.environ.get("NEUROSEARCH_CHAT_TAIL_BREAKPOINT", "0") == "1":
         usage.mark_last(messages)
 
 
