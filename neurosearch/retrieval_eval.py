@@ -108,6 +108,41 @@ def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return out
 
 
+# I1.5 decision gate (frozen BEFORE the live-embeddings result was seen — Kyle): build the reranker (I2) only if the
+# production-embedding baseline leaves at least one of these opportunities; else close Rung I and keep the fixture as a
+# regression test. Candidate recall must stay 100% regardless.
+GATE = {"mrr_headroom": 0.03, "recall_at_3_headroom_pp": 5.0, "exact_locator_headroom_pp": 10.0, "fixable_mistakes": 2}
+DEPTH_MARGIN = 2
+
+
+def headroom(rep: dict[str, Any]) -> dict[str, Any]:
+    """Ceilings if ordering were perfect within the retrieved candidates, the fixable-mistake count (hard-negative or
+    authority/ordering mistakes a candidate-only reranker could plausibly fix: the target IS in the candidates), the
+    candidate positions of every expected target and the smallest rerank depth that keeps candidate recall at 100%."""
+    m = rep["metrics"]
+    per = rep["per_query"]
+    # ordering / hard-negative mistakes whose target is in the candidates (exact-locator misses are the separate locator headroom)
+    fixable = [q for q in per if q["candidate_rank"] is not None and (q["hard_negative_fp"] or q["first_rank"] not in (None, 0))]
+    positions = [q["candidate_rank"] for q in per if q["candidate_rank"] is not None]
+    deepest = max(positions) + 1 if positions else 0
+    hist: dict[str, int] = {}
+    for p_ in positions:
+        b = "1" if p_ == 0 else "2-3" if p_ < 3 else "4-5" if p_ < 5 else "6-10" if p_ < 10 else "11+"
+        hist[b] = hist.get(b, 0) + 1
+    h = {"mrr_ceiling": round(1.0 - m["mrr"], 4), "recall_at_3_ceiling_pp": round((1.0 - m["recall_at_3"]) * 100, 1),
+         "exact_locator_ceiling_pp": round((1.0 - (m["locator_exact_at_first_hit"] or 1.0)) * 100, 1),
+         "fixable_mistakes": len(fixable), "fixable": [{"q": q["q"], "category": q["category"], "first_rank": q["first_rank"], "candidate_rank": q["candidate_rank"], "exact": q["exact"], "hard_negative_fp": q["hard_negative_fp"]} for q in fixable],
+         "candidate_positions_of_first_target": hist, "deepest_target_position": deepest,
+         "min_rerank_depth_for_100pct_candidate_recall": deepest, "recommended_rerank_depth": deepest + DEPTH_MARGIN if deepest else 0,
+         "candidate_recall_100": m["candidate_recall_at_40"] == 1.0 and m["recall_at_10"] == 1.0}
+    h["gate"] = {"mrr": h["mrr_ceiling"] >= GATE["mrr_headroom"], "recall_at_3": h["recall_at_3_ceiling_pp"] >= GATE["recall_at_3_headroom_pp"],
+                 "exact_locator": h["exact_locator_ceiling_pp"] >= GATE["exact_locator_headroom_pp"], "fixable_mistakes": h["fixable_mistakes"] >= GATE["fixable_mistakes"]}
+    h["build_i2"] = h["candidate_recall_100"] and any(h["gate"].values())
+    h["decision"] = ("BUILD I2 (experiment, off by default; must still beat the baseline by MRR +0.02 / R@3 +5 pp / locator +10 pp)" if h["build_i2"]
+                     else "CLOSE RUNG I — production retrieval leaves no meaningful headroom; keep the hard fixture as the regression test")
+    return h
+
+
 def run(progress: Any = print, search_fn: Any = None, label: str = "hybrid (FTS + vectors, RRF)") -> dict[str, Any]:
     """Run the fixture through `search_fn(query, limit, source_ids) -> hits` (default: production search). Returns the
     report; `rep["per_query"]` carries the top-40 candidates so I2 can rerank exactly these offline."""
@@ -143,6 +178,10 @@ def run(progress: Any = print, search_fn: Any = None, label: str = "hybrid (FTS 
     rep["metrics"]["candidates_min_max"] = [min(cands), max(cands)] if cands else None
     for cat in sorted({r["category"] for r in rows}):
         rep["by_category"][cat] = summarise([r for r in rows if r["category"] == cat])
+    rep["embeddings"] = {"model": settings.embedding_model if not settings.fake_ai else "fake hashed lexical vectors", "fake": bool(settings.fake_ai)}
+    rep["anthropic_calls"] = int(db.connect().execute("SELECT COUNT(*) FROM invocations WHERE provider LIKE 'anthropic%'").fetchone()[0])
+    rep["embedding_usage"] = {k: (v or 0) for k, v in dict(db.connect().execute("SELECT SUM(input_tokens) input_tokens, SUM(cost) cost, COUNT(*) calls FROM usage WHERE kind='embed'").fetchone()).items()}
+    rep["headroom"] = headroom(rep)
     rep["text"] = format_report(rep)
     return rep
 
@@ -186,7 +225,14 @@ def format_report(rep: dict[str, Any]) -> str:
         lines.append(f"    {cat:14s} n={c['queries']:2d}  R@1 {pct(c['recall_at_1']):>6s}  R@3 {pct(c['recall_at_3']):>6s}  MRR {c['mrr']:.3f}  NDCG {c['ndcg_at_10']:.3f}  locator {pct(c['locator_accuracy']):>6s}  exact {pct(c['locator_exact_at_first_hit']):>6s}  HN-FP {c['hard_negative_false_positives']}")
     misses = [q for q in rep["per_query"] if q["first_rank"] != 0 or q["hard_negative_fp"] or q["exact"].split("/")[0] != q["exact"].split("/")[1]]
     if misses:
-        lines.append("  mistakes available to fix:")
+        lines.append("  mistakes available to fix (candidate position = where the first expected target sits in the fused candidate list, 1-based):")
         for q in misses:
-            lines.append(f"    [{q['category']}] {q['q'][:70]:70s} first rank {q['first_rank']}  exact {q['exact']}  HN-FP {q['hard_negative_fp']}  top3 {q['top10'][:3]}")
+            cp = None if q["candidate_rank"] is None else q["candidate_rank"] + 1
+            lines.append(f"    [{q['category']}] {q['q'][:70]:70s} first rank {q['first_rank']}  candidate pos {cp}  exact {q['exact']}  HN-FP {q['hard_negative_fp']}  top3 {q['top10'][:3]}")
+    h = rep.get("headroom")
+    if h:
+        lines += [f"  embeddings: {rep['embeddings']['model']} · anthropic calls {rep['anthropic_calls']} · embedding tokens {rep['embedding_usage'].get('input_tokens', 0):,} (${rep['embedding_usage'].get('cost', 0):.4f})",
+                  f"  candidate positions of the first expected target: {h['candidate_positions_of_first_target']} · deepest {h['deepest_target_position']} → minimum rerank depth for 100% candidate recall {h['min_rerank_depth_for_100pct_candidate_recall']}, recommended {h['recommended_rerank_depth']} (+{DEPTH_MARGIN} margin)",
+                  f"  headroom vs the frozen gate: MRR {h['mrr_ceiling']:+.4f} (gate ≥ {GATE['mrr_headroom']}) {'✓' if h['gate']['mrr'] else '✗'} · R@3 {h['recall_at_3_ceiling_pp']:+.1f} pp (≥ {GATE['recall_at_3_headroom_pp']}) {'✓' if h['gate']['recall_at_3'] else '✗'} · exact locator {h['exact_locator_ceiling_pp']:+.1f} pp (≥ {GATE['exact_locator_headroom_pp']}) {'✓' if h['gate']['exact_locator'] else '✗'} · fixable mistakes {h['fixable_mistakes']} (≥ {GATE['fixable_mistakes']}) {'✓' if h['gate']['fixable_mistakes'] else '✗'} · candidate recall 100% {'✓' if h['candidate_recall_100'] else '✗'}",
+                  f"  decision: {h['decision']}"]
     return "\n".join(lines)

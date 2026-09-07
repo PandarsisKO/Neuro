@@ -183,6 +183,15 @@ can only prove a reranker's mechanics (candidate-only, deterministic fallback, p
 quality; (2) there is no reranker in the current provider set — an LLM listwise rerank on Haiku over ~15 truncated candidates
 per chat turn is ≈ 2–4k input tokens ($0.002–0.004) and ~1–2 s of added latency per question, which the cost/latency gate must
 weigh against a retrieval layer that is already right first time 80% of the time on the hard set and 92%+ on the golden set.
+I1.5 (0.22.0+i15): the real-embeddings baseline — `neurosearch eval --retrieval --live --baseline` runs the SAME frozen fixture through
+production chunking, FTS5 and text-embedding-3-small (OPENAI_API_KEY only; the report asserts `anthropic calls 0`; ≈ 30k embedding
+tokens ≈ $0.001) and saves evals/retrieval/baseline-retrieval-<version>-live.json. Decision gate FROZEN before the result (Kyle,
+`retrieval_eval.GATE`): build I2 only if candidate recall stays 100% AND at least one of MRR headroom ≥ 0.03 · R@3 headroom ≥ 5 pp ·
+exact first-hit locator headroom ≥ 10 pp · ≥ 2 ordering/hard-negative mistakes whose target is in the candidates; else close Rung I
+and keep the fixture as the permanent regression test. The report also gives the candidate position of every first expected
+target and the smallest rerank depth that preserves 100% candidate recall (+2 margin) — I2, if built, reranks that many, not an
+assumed 15. Fake-tier reference: deepest target position 8 → depth 10; gate passes on every criterion (that is the lexical-vector
+headroom the live run will confirm or shrink).
 I2/I3 (not started): rerank ONLY the fused candidates behind a pluggable stage (off = today's ordering byte-for-byte), deterministic
 fallback on any failure, provenance (reranker version), adoption gate = R@10 not down, every golden evidence target reachable,
 zero citation/evidence regressions, locator not down, AND MRR ≥ +0.02 or R@3 ≥ +5 pp or locator ≥ +10 pp — else kill. Downstream

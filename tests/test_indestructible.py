@@ -1119,3 +1119,23 @@ def test_retrieval_baseline_is_frozen(monkeypatch):
     assert cmp == {"improved": 0, "worsened": 0, "same": 30, "top10_source_overlap_mean": 1.0, "changes": []}
     # every query carries its top-40 candidate set: the only thing a reranker may reorder
     assert all(7 <= len(q["candidates"]) <= 40 and q["candidates"][0]["chunk_id"] for q in rep["per_query"])      # this corpus yields 7–18 fused candidates per query
+
+
+def test_retrieval_headroom_gate_is_frozen_and_computed(monkeypatch):
+    """I1.5 gate (frozen before the live result): the fake baseline passes it on every criterion with 100% candidate
+    recall, the fixable-mistake list names ordering/hard-negative mistakes only, and the rerank depth comes from where
+    the targets actually sit in the candidates (deepest 8 → recommended 10)."""
+    from neurosearch import retrieval_eval
+    assert retrieval_eval.GATE == {"mrr_headroom": 0.03, "recall_at_3_headroom_pp": 5.0, "exact_locator_headroom_pp": 10.0, "fixable_mistakes": 2}
+    rep = retrieval_eval.run(progress=lambda m: None)
+    h = rep["headroom"]
+    assert rep["anthropic_calls"] == 0 and rep["embeddings"]["fake"] is True
+    assert h["mrr_ceiling"] == 0.1264 and h["recall_at_3_ceiling_pp"] == 6.7 and h["exact_locator_ceiling_pp"] == 17.9
+    assert h["fixable_mistakes"] == 6 and all(q["first_rank"] != 0 or q["hard_negative_fp"] for q in h["fixable"])
+    assert h["deepest_target_position"] == 8 and h["recommended_rerank_depth"] == 10 and h["candidate_recall_100"]
+    assert h["build_i2"] and all(h["gate"].values()) and h["decision"].startswith("BUILD I2")
+    # a baseline with no headroom closes the rung
+    flat = {**rep, "metrics": {**rep["metrics"], "mrr": 0.99, "recall_at_3": 1.0, "locator_exact_at_first_hit": 0.95},
+            "per_query": [{**q, "first_rank": 0, "hard_negative_fp": 0} for q in rep["per_query"]]}
+    h2 = retrieval_eval.headroom(flat)
+    assert not h2["build_i2"] and h2["decision"].startswith("CLOSE RUNG I") and h2["fixable_mistakes"] == 0

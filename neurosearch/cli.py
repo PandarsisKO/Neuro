@@ -225,7 +225,10 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     tmp = Path(tempfile.mkdtemp(prefix="ns_eval_"))
     settings.data_dir = tmp                      # never touch the real database
     settings.fake_ai = not live
-    if live and not settings.anthropic_api_key:
+    if live and retrieval:
+        if not settings.openai_api_key:
+            raise typer.BadParameter("--retrieval --live needs OPENAI_API_KEY (embeddings only; it makes no Anthropic calls)")
+    elif live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
     if retrieval:
