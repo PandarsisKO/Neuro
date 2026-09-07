@@ -17,7 +17,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
-| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **I1 done (0.22.0+i1)**: hard retrieval fixture (4 distractor sources, 30 queries, 39 chunk locators, 27 hard negatives) + `neurosearch eval --retrieval`; fake baseline frozen — R@1 80%, R@3 93.3%, MRR 0.874, NDCG@10 0.816, exact locator 82%, 2 hard-negative FPs, 6/30 not first: headroom exists; reranker (I2) is an experiment with a kill gate, not built yet |
+| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **I1 + I1.5 done, I2 built (0.22.0+i2)**: hard retrieval fixture + `eval --retrieval`; live production-embedding baseline MRR 0.9093 / R@3 93.3% / exact locator 87.2% / 1 HN-FP / deepest target 9 passed the frozen headroom gate; `retrieval.rerank` (Haiku, depth 11, candidate-only, fail-closed, OFF) + `eval --retrieval --rerank` with the frozen adoption rule — awaiting the one live comparison |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
@@ -192,7 +192,32 @@ and keep the fixture as the permanent regression test. The report also gives the
 target and the smallest rerank depth that preserves 100% candidate recall (+2 margin) — I2, if built, reranks that many, not an
 assumed 15. Fake-tier reference: deepest target position 8 → depth 10; gate passes on every criterion (that is the lexical-vector
 headroom the live run will confirm or shrink).
-I2/I3 (not started): rerank ONLY the fused candidates behind a pluggable stage (off = today's ordering byte-for-byte), deterministic
+I1.5 LIVE RESULT (b5768c0, evals/retrieval/baseline-retrieval-0.22.0+i15-live.json, text-embedding-3-small, anthropic calls 0, 22k
+embedding tokens ≈ $0.0004): R@1 86.7% · R@3 93.3% · R@5 93.3% · R@10 100% · candidates 100% · MRR 0.9093 · NDCG@10 0.8501 · exact
+first-hit locator 87.2% · hard-negative FPs 1 · not-first 4 · deepest expected target at candidate position 9. Gate: MRR headroom
++0.0907 ✓ · R@3 +6.7 pp ✓ · exact locator +12.8 pp ✓ · 4 fixable ordering mistakes ✓ → BUILD I2 at depth 11 (9 + 2 margin).
+Numeric, buried and contradiction queries are solved; the remaining mistakes are authority ("first ninety days" → yt02 first,
+"closing in thirty days" → rank 8 with pop_weak above), same_concept ("assignable" rank 5, "lender documents" rank 1) and
+terminology localisation ("seller stay on" exact 0/2).
+I2 built (0.22.0+i2; OFF by default, NEUROSEARCH_RETRIEVAL_RERANK=1; no live run yet): `rerank.py` — contract `retrieval.rerank`
+(`contracts.RERANK_MODEL` claude-haiku-4-5, thinking off, 120 output tokens, ONE attempt, 20 s timeout, schema `retrieval-rerank-v1`
+= {order: [candidate numbers]}), `RERANK_DEPTH = 11`, `TEXT_CHARS = 700` per candidate (title, channel, locator, text). `search.search(...,
+rerank=)` reorders the first 11 hits and leaves the tail in RRF order; the result is validated as an exact permutation of 1..n
+(duplicates, omissions, unknown or non-integer numbers, refusal, truncation, schema mismatch, provider error, budget pause or any
+exception → the RRF ordering, byte for byte, plus `rerank_fallback` event/counter → Health `rerank`). Reordered hits carry
+`rerank = {from, to, version, model}`; usage kind `rerank`. FTS, embeddings, RRF weights, chunking, candidate generation, answer
+prompts and downstream K are untouched. Fake: `fake_ai._rerank` (question-word overlap; knobs NEUROSEARCH_FAKE_RERANK=identity|
+reverse|dupes|missing|unknown|garbage|refuse|error|truncate) proves containment, permutation validation, every fail-closed path,
+provenance and accounting — never quality. Under the fake the comparison correctly returns KILL.
+`neurosearch eval --retrieval --rerank [--live]` (`retrieval_eval.run_rerank_compare`): baseline and candidate on the SAME database and
+candidates; per-query before/after rank, exact locator and hard-negative FP; improved/worsened/unchanged; top-11 overlap;
+containment and fallback-restores-ordering checks on every query; latency, tokens, cost per query (as billed and at the
+configured model's list price); artifact evals/retrieval/rerank-compare-<stamp>-<tier>.{json,txt}. Adoption rule FROZEN
+(`LIVE_BASELINE`, `HARD_GATES`, `MEANINGFUL`, `FIXABLE_IMPROVED_MIN`): hard — R@10 100%, candidate recall 100%, exact locator ≥ 87.2%,
+hard-negative FPs ≤ 1, candidate set unchanged on every query, every fallback restores the original ordering; meaningful — at
+least one of MRR ≥ 0.9293, R@3 ≥ 98.3%, exact locator ≥ 97.2%; and ≥ 2 of the 4 fixable ordering mistakes improved. Verdict ADOPT
+or KILL. One live comparison, then a decision; no repeated tuning to the fixture.
+ behind a pluggable stage (off = today's ordering byte-for-byte), deterministic
 fallback on any failure, provenance (reranker version), adoption gate = R@10 not down, every golden evidence target reachable,
 zero citation/evidence regressions, locator not down, AND MRR ≥ +0.02 or R@3 ≥ +5 pp or locator ≥ +10 pp — else kill. Downstream
 context reduction (top 10 → top 5) is a separate follow-up experiment, not part of I2.

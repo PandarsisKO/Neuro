@@ -186,6 +186,115 @@ def run(progress: Any = print, search_fn: Any = None, label: str = "hybrid (FTS 
     return rep
 
 
+# I2 adoption rule, FROZEN against the live baseline b5768c0 (0.22.0+i15-live) before the comparison is run (Kyle).
+LIVE_BASELINE = {"recall_at_1": 0.8667, "recall_at_3": 0.9333, "recall_at_5": 0.9333, "recall_at_10": 1.0, "candidate_recall_at_40": 1.0, "mrr": 0.9093,
+                 "ndcg_at_10": 0.8501, "locator_exact_at_first_hit": 0.8718, "hard_negative_false_positives": 1, "deepest_target_position": 9}
+HARD_GATES = {"recall_at_10_min": 1.0, "candidate_recall_min": 1.0, "exact_locator_min": 0.8718, "hard_negative_fp_max": 1}
+MEANINGFUL = {"mrr_min": 0.9293, "recall_at_3_min": 0.983, "exact_locator_min": 0.972}      # +0.02 / +5 pp / +10 pp — at least ONE
+FIXABLE_IMPROVED_MIN = 2                                                                   # of the 4 fixable ordering mistakes in the live baseline
+
+
+def run_rerank_compare(progress: Any = print, depth: int | None = None) -> dict[str, Any]:
+    """I2: the same fixture, the same database, the same candidates — RRF ordering vs RRF + reranker — and the frozen
+    verdict. The baseline is re-run in this database (per-query comparisons need identical candidates); the gate
+    thresholds are the FROZEN live baseline numbers, not the re-run's."""
+    from . import rerank as R
+    from .search import search
+    d = depth or R.RERANK_DEPTH
+    calls: list[dict[str, Any]] = []
+
+    def reranked(q: str, limit: int, sids: list[str]) -> list[dict[str, Any]]:
+        hits = search(q, limit=limit, source_ids=sids, rerank=False)
+        out = R.rerank(q, hits, depth=d)
+        info = dict(R.last() or {})
+        info["q"] = q
+        info["contained"] = sorted(h["chunk_id"] for h in out) == sorted(h["chunk_id"] for h in hits)
+        info["tail_unchanged"] = [h["chunk_id"] for h in out[d:]] == [h["chunk_id"] for h in hits[d:]]
+        info["order_before"] = [h["chunk_id"] for h in hits[:d]]
+        info["order_after"] = [h["chunk_id"] for h in out[:d]]
+        calls.append(info)
+        return out
+
+    progress("baseline: production retrieval (RRF ordering)")
+    base = run(progress=lambda m: None, search_fn=lambda q, limit, sids: search(q, limit=limit, source_ids=sids, rerank=False), label="hybrid (FTS + vectors, RRF)")
+    progress(f"candidate: the same retrieval + retrieval.rerank over the top {d}")
+    cand = run(progress=lambda m: None, search_fn=reranked, label=f"hybrid + retrieval.rerank (depth {d})")
+    cmp = compare(base, cand)
+    m = cand["metrics"]
+    applied = [c for c in calls if c["applied"]]
+    fallbacks = [c for c in calls if not c["applied"]]
+    fixable_base = {q["q"] for q in base["headroom"]["fixable"]}
+    by_q_cand = {q["q"]: q for q in cand["per_query"]}
+    by_q_base = {q["q"]: q for q in base["per_query"]}
+    fixable_improved = [q for q in fixable_base if (999 if by_q_cand[q]["first_rank"] is None else by_q_cand[q]["first_rank"]) < (999 if by_q_base[q]["first_rank"] is None else by_q_base[q]["first_rank"])
+                        or by_q_cand[q]["hard_negative_fp"] < by_q_base[q]["hard_negative_fp"]]
+    exact_pairs = [(by_q_base[q]["exact"], by_q_cand[q]["exact"]) for q in by_q_cand]
+    hard = {"recall_at_10_100": m["recall_at_10"] >= HARD_GATES["recall_at_10_min"], "candidate_recall_100": m["candidate_recall_at_40"] >= HARD_GATES["candidate_recall_min"],
+            "exact_locator_not_below_baseline": (m["locator_exact_at_first_hit"] or 0) >= HARD_GATES["exact_locator_min"],
+            "hard_negative_fp_not_above_1": m["hard_negative_false_positives"] <= HARD_GATES["hard_negative_fp_max"],
+            "candidate_set_unchanged_every_query": all(c["contained"] and c["tail_unchanged"] for c in calls),
+            "fallback_restores_original_ordering": all(c["order_after"] == c["order_before"] for c in fallbacks)}
+    meaningful = {"mrr": m["mrr"] >= MEANINGFUL["mrr_min"], "recall_at_3": m["recall_at_3"] >= MEANINGFUL["recall_at_3_min"], "exact_locator": (m["locator_exact_at_first_hit"] or 0) >= MEANINGFUL["exact_locator_min"]}
+    econ = {"queries": len(calls), "applied": len(applied), "fallbacks": len(fallbacks), "fallback_reasons": [c["fallback"] for c in fallbacks][:10],
+            "latency_s_mean": round(sum(c["latency_s"] for c in calls) / max(1, len(calls)), 3), "latency_s_max": round(max((c["latency_s"] for c in calls), default=0.0), 3),
+            "input_tokens_mean": round(sum(c["input_tokens"] for c in calls) / max(1, len(calls))), "output_tokens_mean": round(sum(c["output_tokens"] for c in calls) / max(1, len(calls))),
+            "cost_per_query": round(sum(c["cost"] for c in calls) / max(1, len(calls)), 6), "cost_total": round(sum(c["cost"] for c in calls), 6),
+            "configured_model": next((c["configured_model"] for c in calls), None), "returned_models": sorted({str(c["model"]) for c in calls if c.get("model")}),
+            "cost_per_query_at_contract_price": _contract_price_per_query(calls),
+            "version": next((c["version"] for c in calls), None), "schema": next((c["schema"] for c in calls), None), "depth": d}
+    verdict = "ADOPT" if all(hard.values()) and any(meaningful.values()) and len(fixable_improved) >= FIXABLE_IMPROVED_MIN else "KILL"
+    if verdict == "KILL" and all(hard.values()) and any(meaningful.values()):
+        verdict_note = f"aggregate improved but only {len(fixable_improved)} of the {len(fixable_base)} fixable ordering mistakes did (need {FIXABLE_IMPROVED_MIN})"
+    elif verdict == "KILL" and all(hard.values()):
+        verdict_note = "no meaningful improvement (MRR +0.02 / R@3 +5 pp / exact locator +10 pp)"
+    elif verdict == "KILL":
+        verdict_note = "hard gate failed: " + ", ".join(k for k, v in hard.items() if not v)
+    else:
+        verdict_note = "every hard gate holds and the improvement is meaningful"
+    rep = {"eval": "retrieval-rerank", "tier": cand["tier"], "depth": d, "baseline": {k: base["metrics"].get(k) for k in LIVE_BASELINE}, "frozen_live_baseline": LIVE_BASELINE,
+           "candidate": {k: m.get(k) for k in LIVE_BASELINE}, "compare": cmp, "fixable_in_baseline": sorted(fixable_base), "fixable_improved": sorted(fixable_improved),
+           "hard_gates": hard, "meaningful": meaningful, "economics": econ, "verdict": verdict, "verdict_note": verdict_note,
+           "per_query": [{"q": b["q"], "category": b["category"], "first_rank": [b["first_rank"], by_q_cand[b["q"]]["first_rank"]], "exact": [b["exact"], by_q_cand[b["q"]]["exact"]],
+                          "hard_negative_fp": [b["hard_negative_fp"], by_q_cand[b["q"]]["hard_negative_fp"]], "top_before": b["top10"][:d], "top_after": by_q_cand[b["q"]]["top10"][:d]} for b in base["per_query"]],
+           "calls": calls, "exact_pairs": exact_pairs, "anthropic_calls": cand["anthropic_calls"] - base["anthropic_calls"], "base_report": base, "cand_report": cand}
+    rep["text"] = format_compare(rep)
+    return rep
+
+
+def _contract_price_per_query(calls: list[dict[str, Any]]) -> float:
+    """What the configured reranker model costs per query at list price (the fake returns 'fake-claude', priced as a default)."""
+    from . import rerank as R, usage
+    from .contracts import contract
+    pin, pout = usage._price(contract(R.TASK).model)
+    n = max(1, len(calls))
+    return round(sum(c["input_tokens"] / 1e6 * pin + c["output_tokens"] / 1e6 * pout for c in calls) / n, 6)
+
+
+def format_compare(rep: dict[str, Any]) -> str:
+    b, c, e, cmp = rep["baseline"], rep["candidate"], rep["economics"], rep["compare"]
+    pct = lambda v: "—" if v is None else f"{v:.1%}"  # noqa: E731
+    lines = [f"Retrieval rerank comparison ({rep['tier']}) · depth {rep['depth']} · {e['configured_model']} ({e['version']}, {e['schema']}) · returned {', '.join(e['returned_models']) or '—'}",
+             f"  {'metric':28s} {'baseline (this run)':>20s} {'frozen live b5768c0':>20s} {'+ reranker':>12s}"]
+    for k, label in (("recall_at_1", "Recall@1"), ("recall_at_3", "Recall@3"), ("recall_at_5", "Recall@5"), ("recall_at_10", "Recall@10"), ("candidate_recall_at_40", "candidate recall"),
+                     ("mrr", "MRR"), ("ndcg_at_10", "NDCG@10"), ("locator_exact_at_first_hit", "exact first-hit locator"), ("hard_negative_false_positives", "hard-negative FPs")):
+        f = (lambda v: f"{v:.4f}") if k in ("mrr", "ndcg_at_10") else (lambda v: str(v)) if k == "hard_negative_false_positives" else pct
+        lines.append(f"  {label:28s} {f(b[k]):>20s} {f(rep['frozen_live_baseline'][k]):>20s} {f(c[k]):>12s}")
+    lines += [f"  per query: improved {cmp['improved']} · worsened {cmp['worsened']} · unchanged {cmp['same']} · top-{rep['depth']} source overlap {cmp['top10_source_overlap_mean']:.2f}",
+              f"  fixable ordering mistakes in the baseline: {len(rep['fixable_in_baseline'])} · improved by the reranker: {len(rep['fixable_improved'])} (need ≥ {FIXABLE_IMPROVED_MIN})",
+              f"  economics: {e['applied']}/{e['queries']} reranked · fallbacks {e['fallbacks']} · latency mean {e['latency_s_mean']:.2f}s max {e['latency_s_max']:.2f}s · tokens in {e['input_tokens_mean']} / out {e['output_tokens_mean']} per query · ${e['cost_per_query']:.5f}/query as billed (${e['cost_total']:.4f} total; ${e['cost_per_query_at_contract_price']:.5f}/query at {e['configured_model']} list price) · anthropic calls {rep['anthropic_calls']}",
+              "  hard gates: " + " · ".join(f"{k} {'✓' if v else '✗'}" for k, v in rep["hard_gates"].items()),
+              "  meaningful: " + " · ".join(f"{k} {'✓' if v else '✗'}" for k, v in rep["meaningful"].items())]
+    changed = [q for q in rep["per_query"] if q["first_rank"][0] != q["first_rank"][1] or q["exact"][0] != q["exact"][1] or q["hard_negative_fp"][0] != q["hard_negative_fp"][1]]
+    if changed:
+        lines.append("  queries whose grade changed (first rank / exact / HN-FP before → after):")
+        for q in changed:
+            lines.append(f"    [{q['category']}] {q['q'][:66]:66s} rank {q['first_rank'][0]}→{q['first_rank'][1]}  exact {q['exact'][0]}→{q['exact'][1]}  HN-FP {q['hard_negative_fp'][0]}→{q['hard_negative_fp'][1]}")
+    if e["fallback_reasons"]:
+        lines.append(f"  fallback reasons: {e['fallback_reasons']}")
+    lines.append(f"VERDICT: {rep['verdict']} — {rep['verdict_note']}")
+    return "\n".join(lines)
+
+
 def compare(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, Any]:
     """Per-query rank changes between two runs of the same fixture (I2's adoption evidence)."""
     bq = {q["q"]: q for q in base["per_query"]}

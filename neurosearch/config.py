@@ -31,6 +31,7 @@ class Settings:
     embedding_model: str = field(default_factory=lambda: _env("NEUROSEARCH_EMBEDDING_MODEL", "text-embedding-3-small"))
     transcribe_model: str = field(default_factory=lambda: _env("NEUROSEARCH_TRANSCRIBE_MODEL", "whisper-1"))
     planner_v3: bool = field(default_factory=lambda: (_env("NEUROSEARCH_PLANNER_V3", "") or "").lower() in ("1", "true", "yes"))   # F4: decomposed planner (temporary flag)
+    retrieval_rerank: bool = field(default_factory=lambda: (_env("NEUROSEARCH_RETRIEVAL_RERANK", "") or "").lower() in ("1", "true", "yes"))   # I2: Haiku listwise rerank of the retrieved candidates (experiment, off)
     findings_prefilter: bool = field(default_factory=lambda: (_env("NEUROSEARCH_FINDINGS_PREFILTER", "") or "").lower() in ("1", "true", "yes"))   # H1: cheap window rejection filter before findings.extract (off until proven)
 
     # Ingest

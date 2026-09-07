@@ -1139,3 +1139,85 @@ def test_retrieval_headroom_gate_is_frozen_and_computed(monkeypatch):
             "per_query": [{**q, "first_rank": 0, "hard_negative_fp": 0} for q in rep["per_query"]]}
     h2 = retrieval_eval.headroom(flat)
     assert not h2["build_i2"] and h2["decision"].startswith("CLOSE RUNG I") and h2["fixable_mistakes"] == 0
+
+
+# ---------------------------------------------------------------- Rung I2: the candidate-only reranker (mechanics under fakes)
+
+def _rerank_setup(monkeypatch):
+    from neurosearch import evals, retrieval_eval
+    pid, gids = _golden(monkeypatch)
+    lab = retrieval_eval.load_fixture(pid, gids)
+    return pid, lab["ids"]
+
+
+def test_rerank_off_by_default_leaves_search_identical(monkeypatch):
+    from neurosearch import rerank, search
+    pid, ids = _rerank_setup(monkeypatch)
+    assert not rerank.enabled()
+    q = "What is the minimum down payment for an SBA 7(a) acquisition?"
+    a = search.search(q, limit=40, source_ids=list(ids.values()))
+    b = search.search(q, limit=40, source_ids=list(ids.values()), rerank=False)
+    assert a == b and all("rerank" not in h for h in a) and rerank.last() is None
+    assert db.connect().execute("SELECT COUNT(*) FROM invocations WHERE task='retrieval.rerank'").fetchone()[0] == 0
+
+
+def test_rerank_reorders_only_the_supplied_candidates(monkeypatch):
+    from neurosearch import rerank, search
+    pid, ids = _rerank_setup(monkeypatch)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_RERANK", "reverse")
+    q = "How do you set a working capital peg in a business purchase?"
+    base = search.search(q, limit=40, source_ids=list(ids.values()), rerank=False)
+    out = search.search(q, limit=40, source_ids=list(ids.values()), rerank=True)
+    d = min(rerank.RERANK_DEPTH, len(base))
+    assert len(out) == len(base) and sorted(h["chunk_id"] for h in out) == sorted(h["chunk_id"] for h in base)        # containment
+    assert [h["chunk_id"] for h in out[:d]] == [h["chunk_id"] for h in reversed(base[:d])]                                # exactly the permutation returned
+    assert [h["chunk_id"] for h in out[d:]] == [h["chunk_id"] for h in base[d:]]                                         # tail untouched
+    info = rerank.last()
+    assert info["applied"] and info["depth"] == d and info["order"] == list(range(d, 0, -1)) and info["schema"] == "retrieval-rerank-v1"
+    assert info["configured_model"] == "claude-haiku-4-5" and info["version"].startswith("rerank-") and info["input_tokens"] > 0
+    assert all(h["rerank"]["from"] == d - 1 - i and h["rerank"]["to"] == i and h["rerank"]["version"] == info["version"] for i, h in enumerate(out[:d]))
+    assert db.connect().execute("SELECT COUNT(*) FROM usage WHERE kind='rerank'").fetchone()[0] == 1
+    assert db.health()["rerank"]["applied"] >= 1
+
+
+def test_rerank_fails_closed_to_the_retrieval_ordering_on_every_failure(monkeypatch):
+    from neurosearch import rerank, search
+    pid, ids = _rerank_setup(monkeypatch)
+    q = "What does full standby mean for a seller note?"
+    base = search.search(q, limit=40, source_ids=list(ids.values()), rerank=False)
+    for mode, expect in (("dupes", "duplicate"), ("missing", "missing"), ("unknown", "unknown"), ("garbage", "not of type 'integer'"), ("refuse", "REFUSED"), ("error", "outage"), ("truncate", "TRUNCATED")):
+        monkeypatch.setenv("NEUROSEARCH_FAKE_RERANK", mode)
+        out = search.search(q, limit=40, source_ids=list(ids.values()), rerank=True)
+        info = rerank.last()
+        assert [h["chunk_id"] for h in out] == [h["chunk_id"] for h in base] and all("rerank" not in h for h in out), mode   # ordering restored exactly
+        assert not info["applied"] and info["fallback"] and expect.lower() in info["fallback"].lower(), (mode, info["fallback"])
+    monkeypatch.delenv("NEUROSEARCH_FAKE_RERANK")
+    assert db.health()["rerank"]["fallbacks"] >= 7
+    assert db.connect().execute("SELECT COUNT(*) FROM validation_events WHERE kind='rerank_fallback'").fetchone()[0] >= 7
+    assert rerank.validate_order([3, 1, 2], 3) is None and rerank.validate_order([1, 1, 2], 3) and rerank.validate_order([1, 2], 3) and rerank.validate_order([0, 1, 2], 3) and rerank.validate_order("x", 3)
+
+
+def test_rerank_compare_accounting_and_frozen_verdict(monkeypatch):
+    """The comparison harness: identical candidates, per-query before/after, containment + fallback gates, frozen live
+    thresholds, and a KILL when nothing meaningful improved — the fake proves accounting, not quality."""
+    from neurosearch import retrieval_eval
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    assert retrieval_eval.LIVE_BASELINE["mrr"] == 0.9093 and retrieval_eval.MEANINGFUL == {"mrr_min": 0.9293, "recall_at_3_min": 0.983, "exact_locator_min": 0.972}
+    assert retrieval_eval.HARD_GATES["exact_locator_min"] == 0.8718 and retrieval_eval.HARD_GATES["hard_negative_fp_max"] == 1 and retrieval_eval.FIXABLE_IMPROVED_MIN == 2
+    monkeypatch.setenv("NEUROSEARCH_FAKE_RERANK", "identity")
+    rep = retrieval_eval.run_rerank_compare(progress=lambda m: None)
+    assert rep["depth"] == 11 and rep["compare"] == {**rep["compare"], "improved": 0, "worsened": 0, "same": 30}
+    assert rep["hard_gates"]["candidate_set_unchanged_every_query"] and rep["hard_gates"]["fallback_restores_original_ordering"]
+    assert rep["economics"]["applied"] == 30 and rep["economics"]["fallbacks"] == 0 and rep["economics"]["input_tokens_mean"] > 1000 and rep["economics"]["cost_per_query_at_contract_price"] < 0.005
+    # the thresholds are the FROZEN LIVE numbers: the fake baseline (exact 82%, 2 HN-FPs) sits below them, so an identity
+    # reranker fails exactly those two hard gates here and nothing meaningful is claimed
+    assert rep["verdict"] == "KILL" and rep["anthropic_calls"] == 30 and not any(rep["meaningful"].values())
+    assert {k for k, v in rep["hard_gates"].items() if not v} == {"exact_locator_not_below_baseline", "hard_negative_fp_not_above_1"}
+    assert all(q["top_before"] == q["top_after"] for q in rep["per_query"])
+    monkeypatch.setenv("NEUROSEARCH_FAKE_RERANK", "reverse")
+    rep2 = retrieval_eval.run_rerank_compare(progress=lambda m: None)
+    assert rep2["compare"]["worsened"] > 0 and rep2["verdict"] == "KILL" and rep2["hard_gates"]["candidate_set_unchanged_every_query"]
+    monkeypatch.setenv("NEUROSEARCH_FAKE_RERANK", "error")
+    rep3 = retrieval_eval.run_rerank_compare(progress=lambda m: None)
+    assert rep3["economics"]["fallbacks"] == 30 and rep3["hard_gates"]["fallback_restores_original_ordering"] and rep3["compare"]["same"] == 30
+    assert rep3["candidate"] == rep3["baseline"]                                                   # 30 fallbacks = the baseline, byte for byte

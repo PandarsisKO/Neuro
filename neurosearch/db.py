@@ -1652,7 +1652,8 @@ def health() -> dict[str, Any]:
     leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
                                                           "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused",
-                                                          "retrieval_degraded", "prefilter_keep", "prefilter_uncertain", "prefilter_drop", "prefilter_fail_open", "prefilter_aggressive")}
+                                                          "retrieval_degraded", "prefilter_keep", "prefilter_uncertain", "prefilter_drop", "prefilter_fail_open", "prefilter_aggressive",
+                                                          "rerank_applied", "rerank_fallback")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -1668,6 +1669,8 @@ def health() -> dict[str, Any]:
             "structured_outputs": {"mismatches": ev["schema_mismatches"], "mismatches_recovered_by_retry": ev["schema_mismatch_recovered"],
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
+            "rerank": {"enabled": bool(settings.retrieval_rerank), "applied": ev["rerank_applied"], "fallbacks": ev["rerank_fallback"],
+                       "note": "I2 experiment: reorders retrieved candidates only; every failure restores the retrieval ordering"},
             "prefilter": {"enabled": bool(settings.findings_prefilter), "keep": ev["prefilter_keep"], "uncertain": ev["prefilter_uncertain"], "drop": ev["prefilter_drop"],
                           "fail_open": ev["prefilter_fail_open"], "aggressive_sources_flagged": ev["prefilter_aggressive"],
                           "note": "drop is the only outcome that skips analysis; aggressive = a source lost ≥80% of ≥3 windows (flagged, never overridden)"},

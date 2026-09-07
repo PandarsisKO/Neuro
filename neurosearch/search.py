@@ -55,9 +55,11 @@ class RetrievalUnavailable(RuntimeError):
 
 
 def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
-           per_source_cap: int | None = 4, strict: bool = False) -> list[dict[str, Any]]:
+           per_source_cap: int | None = 4, strict: bool = False, rerank: bool | None = None) -> list[dict[str, Any]]:
     """Return ranked chunk hits with source metadata and deep links. strict=True: a vector-search failure is an error,
-    never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint)."""
+    never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint).
+    rerank: the I2 candidate-only reranker stage (None = settings.retrieval_rerank, off by default); it reorders the first
+    rerank.RERANK_DEPTH hits and fails closed to this function's own ordering."""
     query = query.strip()
     if not query:
         return []
@@ -106,6 +108,10 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
         hits.append(hit_from_chunk(c, score))
         if len(hits) >= limit:
             break
+    use_rerank = settings.retrieval_rerank if rerank is None else rerank
+    if use_rerank and hits:
+        from . import rerank as R
+        hits = R.rerank(query, hits)
     return hits
 
 

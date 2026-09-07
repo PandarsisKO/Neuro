@@ -195,6 +195,7 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              ranking: bool = typer.Option(False, "--ranking", help="Run only the frozen rank.relevance fixture (tests/fixtures/golden/ranking.json) and report ranking quality, tokens, cost and latency"),
              ranking_compare: bool = typer.Option(False, "--ranking-compare", help="E2: rank the frozen fixture with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
              findings_compare: bool = typer.Option(False, "--findings-compare", help="E2.2: run the Golden Project findings workload with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
+             rerank: bool = typer.Option(False, "--rerank", help="I2 (with --retrieval): compare production ordering vs the retrieval.rerank stage on the same candidates under the frozen adoption rule; --live uses Haiku for the reranker and real embeddings"),
              retrieval: bool = typer.Option(False, "--retrieval", help="I1: run the HARD retrieval fixture (golden + tests/fixtures/golden/retrieval: distractors, hard negatives, chunk locators) through production search and report Recall@1/3/5/10, MRR, NDCG@10, ranks, locator accuracy, hard-negative false positives; changes nothing"),
              prefilter: bool = typer.Option(False, "--prefilter", help="H1: run the findings window pre-filter on the labeled window fixture (golden + tests/fixtures/golden/prefilter) and report recall, false negatives, nugget reachability, drop rate, tokens avoided, filter cost, net savings and leverage; whole-window and sampled modes"),
              cache_layout: bool = typer.Option(False, "--cache-layout", help="Rung G: measure the prompt-cache layout under the fake's provider-faithful cache simulation (findings, multi-turn project chat with state changes, new conversation, planner); free, changes nothing"),
@@ -225,12 +226,31 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     tmp = Path(tempfile.mkdtemp(prefix="ns_eval_"))
     settings.data_dir = tmp                      # never touch the real database
     settings.fake_ai = not live
-    if live and retrieval:
+    if live and retrieval and rerank:
+        if not (settings.openai_api_key and settings.anthropic_api_key):
+            raise typer.BadParameter("--retrieval --rerank --live needs OPENAI_API_KEY (embeddings) and ANTHROPIC_API_KEY (the Haiku reranker)")
+    elif live and retrieval:
         if not settings.openai_api_key:
             raise typer.BadParameter("--retrieval --live needs OPENAI_API_KEY (embeddings only; it makes no Anthropic calls)")
     elif live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
+    if retrieval and rerank:
+        from . import retrieval_eval as RE
+        rep = RE.run_rerank_compare(progress=lambda m: typer.echo("  · " + m))
+        typer.echo("")
+        typer.echo(rep["text"])
+        d = Path("evals") / "retrieval"
+        d.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        art = d / f"rerank-compare-{stamp}-{rep['tier']}.json"
+        art.write_text(json.dumps({k: v for k, v in rep.items() if k not in ("text", "base_report", "cand_report")}, indent=1, default=str))
+        (d / f"rerank-compare-{stamp}-{rep['tier']}.txt").write_text(rep["text"])
+        typer.echo(f"artifact: {art}")
+        if out:
+            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise typer.Exit(code=0 if rep["verdict"] == "ADOPT" else 1)
     if retrieval:
         from . import retrieval_eval as RE
         rep = RE.run(progress=lambda m: typer.echo("  · " + m))

@@ -135,9 +135,20 @@ PREFILTER_V1: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# Rung I2 — listwise rerank of the retrieved candidates: a permutation of the candidate numbers, nothing else.
+RETRIEVAL_RERANK_V1: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "order": {"type": "array", "items": {"type": "integer"}, "description": "every candidate number exactly once, best first"},
+    },
+    "required": ["order"],
+    "additionalProperties": False,
+}
+
 REGISTRY: dict[str, dict[str, Any]] = {
     "findings-v2": FINDINGS_V2,
     "prefilter-v1": PREFILTER_V1,
+    "retrieval-rerank-v1": RETRIEVAL_RERANK_V1,
     "rank-v2": RANK_V2,
     "plan-update-v2": PLAN_UPDATE_V2,
     "discovery-v2": DISCOVERY_V2,

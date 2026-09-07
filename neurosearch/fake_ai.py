@@ -292,6 +292,40 @@ def _prefilter(user: str, system: str = "") -> str:
     return json.dumps({"decision": "uncertain", "reason": "mostly unrelated but at least one passage may matter"})
 
 
+def _rerank(user: str) -> str:
+    """Stand-in for the I2 listwise reranker: orders candidates by how many of the QUESTION's content words each passage
+    contains (ties keep the retrieval order) — a different signal from RRF, deterministic, blind to the fixture. It exists
+    to prove the mechanics (permutation contract, containment, fallback, accounting), not reranking quality.
+    NEUROSEARCH_FAKE_RERANK=identity|reverse|dupes|missing|unknown|garbage|refuse|error|truncate exercise the fail-closed paths."""
+    mode = os.environ.get("NEUROSEARCH_FAKE_RERANK", "")
+    m = re.search(r"CANDIDATES \((\d+)\)", user)
+    n = int(m.group(1)) if m else 0
+    if mode == "identity":
+        return json.dumps({"order": list(range(1, n + 1))})
+    if mode == "reverse":
+        return json.dumps({"order": list(range(n, 0, -1))})
+    if mode == "dupes":
+        return json.dumps({"order": [1] * n})
+    if mode == "missing":
+        return json.dumps({"order": list(range(1, n))})
+    if mode == "unknown":
+        return json.dumps({"order": list(range(2, n + 2))})
+    if mode == "garbage":
+        return json.dumps({"order": ["first", "second"]})
+    q = re.search(r"QUESTION: (.*)", user)
+    words = lambda t: {w for w in re.findall(r"[a-z][a-z0-9\-]{3,}", t.lower()) if w not in _RANK_STOP and w not in _PREFILTER_STOP}  # noqa: E731
+    qw = words(q.group(1) if q else "")
+    scored = []
+    for mm in re.finditer(r"^\[(\d+)\] .*?\n(.*?)(?=\n\n\[\d+\] |\n\nReturn the order|\Z)", user, flags=re.S | re.M):
+        i, text = int(mm.group(1)), mm.group(2)
+        scored.append((-len(qw & words(text)), i))
+    scored.sort()
+    order = [i for _, i in scored]
+    if len(order) != n:                                    # parsing hiccup: keep the retrieval order rather than invent one
+        order = list(range(1, n + 1))
+    return json.dumps({"order": order})
+
+
 DISCOVER_QUICK = {"sources": [
     {"name": "Dave Ramsey", "kind": "youtube_channel", "url": "https://www.youtube.com/@TheRamseyShow", "gist": "debt-free budgeting basics",
      "why": "The most-cited mainstream voice on getting out of debt.", "angle": "Anti-debt absolutist; dismisses credit strategies.",
@@ -422,6 +456,16 @@ class _Msgs:
         elif task == "planner.analysis":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = json.dumps(_with_evidence(ANALYSIS, ids))
+        elif task == "retrieval.rerank":
+            mode = os.environ.get("NEUROSEARCH_FAKE_RERANK", "")
+            if mode == "refuse":
+                return _Blk(stop_reason="refusal", model="fake-haiku", content=[], usage=_Blk(input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+            if mode == "error":
+                raise RuntimeError("simulated provider outage")
+            if mode == "truncate":
+                return _Blk(stop_reason="max_tokens", model="fake-haiku", content=[_Blk(type="text", text='{"order": [1, 2', citations=None)],
+                            usage=_Blk(input_tokens=10, output_tokens=120, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+            text = _rerank(user)
         elif task == "findings.prefilter":
             mode = os.environ.get("NEUROSEARCH_FAKE_PREFILTER", "")
             if mode == "refuse":

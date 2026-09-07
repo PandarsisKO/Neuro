@@ -54,6 +54,7 @@ class InferenceContract:
 
 RANK_MODEL = "claude-sonnet-5"       # rank.relevance production model (E2.1)
 FINDINGS_MODEL = "claude-sonnet-5"   # findings.extract production model (E2.2); every other task still follows settings.answer_model
+RERANK_MODEL = "claude-haiku-4-5"     # retrieval.rerank (I2 experiment): listwise reorder of the retrieved candidates; env NEUROSEARCH_TASK_MODEL_RETRIEVAL_RERANK
 PREFILTER_MODEL = "claude-haiku-4-5"  # findings.prefilter (H1): the cheap conservative rejection filter — NEVER the extractor; env override NEUROSEARCH_TASK_MODEL_FINDINGS_PREFILTER
 
 
@@ -72,6 +73,10 @@ def _base() -> dict[str, InferenceContract]:
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",
                           notes="per transcript window; quote validator gates the output; Sonnet 5 since E2.2"),
+        # I2 (0.22.0): candidate-only listwise reranker — one attempt, short timeout, tiny output; any failure → the RRF ordering
+        InferenceContract("retrieval.rerank", "anthropic", RERANK_MODEL, thinking="disabled", max_output_tokens=120, max_output_ceiling=200, timeout=20.0,
+                          max_attempts=1, backoff=(), interactive=True, schema="retrieval-rerank-v1",
+                          notes="reorders the top RERANK_DEPTH retrieved chunks; never adds or removes candidates; off unless NEUROSEARCH_RETRIEVAL_RERANK=1"),
         # H1 (0.21.0): window pre-filter — three-way keep/uncertain/drop, fails open; small output, short timeout, no fallback
         InferenceContract("findings.prefilter", "anthropic", PREFILTER_MODEL, thinking="disabled", max_output_tokens=200, max_output_ceiling=300, timeout=60.0,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="prefilter-v1",

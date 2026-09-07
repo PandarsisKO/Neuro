@@ -1,3 +1,3 @@
 """Neuro Search."""
 
-__version__ = "0.22.0+i15"
+__version__ = "0.22.0+i2"
