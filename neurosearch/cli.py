@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -194,6 +195,7 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              ranking: bool = typer.Option(False, "--ranking", help="Run only the frozen rank.relevance fixture (tests/fixtures/golden/ranking.json) and report ranking quality, tokens, cost and latency"),
              ranking_compare: bool = typer.Option(False, "--ranking-compare", help="E2: rank the frozen fixture with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
              findings_compare: bool = typer.Option(False, "--findings-compare", help="E2.2: run the Golden Project findings workload with the baseline model and the candidate (both thinking disabled), save both, freeze the baseline if missing, save a side-by-side comparison and print a verdict"),
+             retrieval: bool = typer.Option(False, "--retrieval", help="I1: run the HARD retrieval fixture (golden + tests/fixtures/golden/retrieval: distractors, hard negatives, chunk locators) through production search and report Recall@1/3/5/10, MRR, NDCG@10, ranks, locator accuracy, hard-negative false positives; changes nothing"),
              prefilter: bool = typer.Option(False, "--prefilter", help="H1: run the findings window pre-filter on the labeled window fixture (golden + tests/fixtures/golden/prefilter) and report recall, false negatives, nugget reachability, drop rate, tokens avoided, filter cost, net savings and leverage; whole-window and sampled modes"),
              cache_layout: bool = typer.Option(False, "--cache-layout", help="Rung G: measure the prompt-cache layout under the fake's provider-faithful cache simulation (findings, multi-turn project chat with state changes, new conversation, planner); free, changes nothing"),
              migration_compare: bool = typer.Option(False, "--migration-compare", help="E2.3: every remaining task (chat+repair, export, planner.update; planner.analysis/build with a 5-adaptive arm) 4.6 vs Sonnet 5 on identical frozen inputs, one verdict per task; changes nothing"),
@@ -226,6 +228,25 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     if live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
+    if retrieval:
+        from . import retrieval_eval as RE
+        rep = RE.run(progress=lambda m: typer.echo("  · " + m))
+        typer.echo("")
+        typer.echo(rep["text"])
+        if out:
+            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+        if baseline:
+            from . import __version__
+            d = Path("evals") / "retrieval"
+            d.mkdir(parents=True, exist_ok=True)
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip() or "nogit"
+            bp = d / f"baseline-retrieval-{__version__}-{rep['tier']}.json"
+            if bp.exists() and not force:
+                raise typer.BadParameter(f"{bp} exists (use --force)")
+            bp.write_text(json.dumps({**{k: v for k, v in rep.items() if k != "text"}, "app_version": __version__, "git_sha": sha}, indent=1, default=str))
+            typer.echo(f"baseline frozen: {bp}")
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise typer.Exit(code=0)
     if prefilter:
         from . import prefilter_eval as PE
         rep = PE.run(progress=lambda m: typer.echo("  · " + m))

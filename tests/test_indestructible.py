@@ -1079,3 +1079,43 @@ def test_prefilter_fixture_is_frozen():
     assert sum(len(s["relevant"]) for s in labels["sources"]) == 6 and sum(len(v) for v in labels["golden"].values()) == 10
     for s in labels["sources"]:
         assert (prefilter_eval.PREFILTER_DIR / s["file"]).exists()
+
+
+# ---------------------------------------------------------------- Rung I1: the hard retrieval baseline
+
+def test_retrieval_fixture_is_frozen_and_graded_locators_exist(monkeypatch):
+    import json as _json
+    from neurosearch import retrieval_eval
+    fx = _json.loads((retrieval_eval.RETRIEVAL_DIR / "retrieval.json").read_text())
+    assert fx["version"] == 1 and len(fx["sources"]) == 4 and len(fx["queries"]) == 30
+    assert sum(1 for q in fx["queries"] for e in q["expected"] if "at" in e) == 39 and sum(len(q["hard_negatives"]) for q in fx["queries"]) == 27
+    assert {q["category"] for q in fx["queries"]} == {"authority", "numeric", "contradiction", "terminology", "buried", "same_concept"}
+    pid, gids = _golden(monkeypatch)
+    lab = retrieval_eval.load_fixture(pid, gids)
+    ids = lab["ids"]
+    for q in fx["queries"]:                                            # every graded media locator is a real segment start; every page exists
+        for e in q["expected"]:
+            if "at" not in e:
+                continue
+            segs = db.get_segments(ids[e["source"]])
+            starts = {s["start"] for s in segs}
+            assert e["at"] in starts or db.get_source(ids[e["source"]])["platform"] in ("document", "web", "spreadsheet"), (q["q"], e)
+        assert all(s in ids for s in q["hard_negatives"]) and all(e["source"] in ids for e in q["expected"])
+
+
+def test_retrieval_baseline_is_frozen(monkeypatch):
+    """The fake-tier baseline of the hard fixture (FTS + hashed lexical vectors, production search): frozen so any
+    retrieval change — including a future reranker — is measured against it. The mistakes it exposes are the headroom."""
+    from neurosearch import retrieval_eval
+    rep = retrieval_eval.run(progress=lambda m: None)
+    m = rep["metrics"]
+    assert m["queries"] == 30 and m["recall_at_10"] == 1.0 and m["candidate_recall_at_40"] == 1.0
+    assert m["recall_at_1"] == 0.8 and m["recall_at_3"] == 0.9333 and m["recall_at_5"] == 0.9667
+    assert m["mrr"] == 0.8736 and m["ndcg_at_10"] == 0.8155 and m["mean_first_rank"] == 1.5 and m["median_first_rank"] == 1
+    assert m["locator_accuracy"] == 0.9487 and m["locator_exact_at_first_hit"] == 0.8205 and m["locators"] == 39
+    assert m["hard_negative_false_positives"] == 2 and m["not_first"] == 6
+    # self-comparison: the rank-change tracker reports no change
+    cmp = retrieval_eval.compare(rep, rep)
+    assert cmp == {"improved": 0, "worsened": 0, "same": 30, "top10_source_overlap_mean": 1.0, "changes": []}
+    # every query carries its top-40 candidate set: the only thing a reranker may reorder
+    assert all(7 <= len(q["candidates"]) <= 40 and q["candidates"][0]["chunk_id"] for q in rep["per_query"])      # this corpus yields 7–18 fused candidates per query

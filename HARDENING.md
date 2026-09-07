@@ -17,7 +17,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
-| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
+| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **I1 done (0.22.0+i1)**: hard retrieval fixture (4 distractor sources, 30 queries, 39 chunk locators, 27 hard negatives) + `neurosearch eval --retrieval`; fake baseline frozen — R@1 80%, R@3 93.3%, MRR 0.874, NDCG@10 0.816, exact locator 82%, 2 hard-negative FPs, 6/30 not first: headroom exists; reranker (I2) is an experiment with a kill gate, not built yet |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
@@ -149,6 +149,44 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
+
+## Rung I — retrieval (I1 hard baseline done, 0.22.0+i1; reranker NOT built; no retrieval behaviour changed)
+Premise (Kyle): retrieval is already strong on the golden questions (R@10 100%, R@5 96.9%, MRR 0.922, locator 80% in Tier 1), so a
+reranker is an EXPERIMENT with a hard kill gate — first prove there is headroom. I1 = a harder frozen fixture that exposes ordering
+and localisation mistakes Recall@10 hides. `tests/fixtures/golden/retrieval/` (build.py, committed): four distractor sources added
+to the golden project — pop_weak (popular, vague, partly wrong: "five percent down", "personal guarantee is a myth", "closing in
+thirty days", "rebrand and raise prices"), dscr_numbers (1.20 / 1.15 / 1.25 / 1.35 / 1.10 / 1.5 for different loan products in
+neighbouring chunks), startup_wc ("working capital" as runway, "peg your valuation"), hvac_ops ("standby" generators, service
+"notes", parts "seller", "first ninety days" for new hires) — and 30 queries in six categories (authority, numeric, contradiction,
+terminology, buried, same_concept) graded per source AND per chunk locator (±120 s media / exact page), with hard negatives
+(a hard-negative source ranking above the first expected hit = a false positive). Two "reverse" queries make the distractors the
+answer so the grading cannot be gamed by down-weighting them.
+`neurosearch eval --retrieval [--baseline]` (`retrieval_eval.py`) runs PRODUCTION `search.search` (FTS5 + vectors, RRF, per-source
+cap — untouched) and reports Recall@1/3/5/10, candidate Recall@40, MRR, NDCG@10, expected-source mean/median first rank, locator
+accuracy, exact-locator-at-first-hit, hard-negative false positives, per-category breakdown, the mistakes, and per query the
+top-40 candidate set (this corpus fuses 7–18 candidates per query) — the ONLY thing I2 may reorder. `retrieval_eval.compare`
+tracks per-query rank changes, improved/worsened/same and top-10 overlap. Baseline frozen at evals/retrieval/
+baseline-retrieval-0.22.0+i1-fake.json and asserted by `test_retrieval_baseline_is_frozen`.
+Baseline (fake tier = FTS + the fake's hashed lexical vectors; 2 ms/query):
+  R@1 80.0% · R@3 93.3% · R@5 96.7% · R@10 100% · candidates@40 100% · MRR 0.8736 · NDCG@10 0.8155 · first rank mean 1.5 / median 1 ·
+  not-first 6/30 · locator 94.9% (any top-10 hit) · exact locator at the source's first hit 82.0% · hard-negative FPs 2 (2 queries).
+  by category: authority R@1 66.7% MRR 0.743 (2 HN-FPs: pop_weak outranks yt01/yt03 on "first ninety days" and "closing in thirty
+  days" — the distractor literally contains the query's words); buried R@1 60% MRR 0.750 (off-market deals: startup_wc/hvac_ops
+  first; building on a longer term: yt01 first); terminology exact locator 62.5% ("seller stay on": article first); numeric and
+  contradiction 100% R@1; same_concept R@1 87.5%.
+Headroom (ceilings if ordering were perfect within the retrieved candidates — candidate recall is 100%, so a reranker CAN reach
+them): MRR +0.126 (6.3× the +0.02 adoption bar), R@3 +6.7 pp (one miss is all the slack against the +5 pp bar), exact locator
++18 pp (the +10 pp bar is reachable), 2 hard-negative FPs to zero. So there IS headroom — concentrated in six queries.
+Two honest caveats before I2: (1) this baseline is FTS + LEXICAL fake vectors; real text-embedding-3-small already resolves some
+of these lexical failures, so the live baseline (embeddings only — no Anthropic calls, cents) is the real reference and the fake
+can only prove a reranker's mechanics (candidate-only, deterministic fallback, provenance, rank-change tracking), never its
+quality; (2) there is no reranker in the current provider set — an LLM listwise rerank on Haiku over ~15 truncated candidates
+per chat turn is ≈ 2–4k input tokens ($0.002–0.004) and ~1–2 s of added latency per question, which the cost/latency gate must
+weigh against a retrieval layer that is already right first time 80% of the time on the hard set and 92%+ on the golden set.
+I2/I3 (not started): rerank ONLY the fused candidates behind a pluggable stage (off = today's ordering byte-for-byte), deterministic
+fallback on any failure, provenance (reranker version), adoption gate = R@10 not down, every golden evidence target reachable,
+zero citation/evidence regressions, locator not down, AND MRR ≥ +0.02 or R@3 ≥ +5 pp or locator ≥ +10 pp — else kill. Downstream
+context reduction (top 10 → top 5) is a separate follow-up experiment, not part of I2.
 
 ## Rung H — cut cost intelligently (H1 findings pre-filter built under fakes, 0.21.0+h1; not yet enabled, no live run)
 Scope decision (Kyle): the findings window pre-filter first — findings carries large transcript windows into Sonnet 5; ranking is
