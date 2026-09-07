@@ -111,8 +111,9 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     head = (f"PROJECT: {project['name']}\n{db.project_steering(project)}\n"
             + (f"We only need about the best {want} videos.\n" if want else ""))
     scored: dict[str, tuple[int, str]] = {}
-    failed_batches = 0
+    failed_batches = repaired_batches = batches = 0
     for b in range(0, len(pool), BATCH):
+        batches += 1
         batch = pool[b:b + BATCH]
         if progress:
             progress(b / len(pool), f"ranking {b + 1}-{min(b + BATCH, len(pool))} of {len(pool)}")
@@ -126,6 +127,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
             log.warning("rank batch %d failed: %s", b // BATCH, e)
             failed_batches += 1
             continue
+        repaired_batches += 1 if res.get("repaired") else 0
         for it in res.get("scores") or []:
             try:
                 i = int(it.get("i")); sc = max(0, min(100, int(it.get("score", 0))))
@@ -151,4 +153,5 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     if failed_batches or len(scored) < len(pool):
         note = f"{len(pool) - len(scored)} of {len(pool)} videos could not be scored — press re-rank to try those again."
     db.mark_review_ranked(collection_id, note=note)
-    return {"ranked": len(scored), "pool": len(pool), "unranked": len(rest), "failed_batches": failed_batches}
+    return {"ranked": len(scored), "pool": len(pool), "unranked": len(rest), "batches": batches,
+            "failed_batches": failed_batches, "repaired_batches": repaired_batches}

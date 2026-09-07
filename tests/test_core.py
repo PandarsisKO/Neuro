@@ -472,7 +472,7 @@ def test_relevance_ranking(client, monkeypatch):
     monkeypatch.setattr(relevance.settings, "anthropic_api_key", "fake")
     monkeypatch.setattr(media, "enumerate_entries", lambda url: ({"id": "UCr", "title": "Chan", "url": url},
         [{"id": f"rk{i}000000000"[:11], "url": f"https://www.youtube.com/watch?v=rk{i}00000000", "title": f"V{i}",
-          "description": "about money" if i % 2 else "vlog", "view_count": 1000 * i, "duration": 600} for i in range(6)]))
+          "description": "getting out of debt with a budget" if i % 2 else "vlog", "view_count": 1000 * i, "duration": 600} for i in range(6)]))
     p = client.post("/api/projects", headers=H, json={"name": "Rank", "brief": "getting out of debt"}).json()
     r = ingest.ingest_url("https://www.youtube.com/@chan", project_id=p["id"], max_videos=2)
     assert r["proposed"] == 6                      # whole pool is listed, not just the first 2
@@ -484,8 +484,9 @@ def test_relevance_ranking(client, monkeypatch):
     rv = client.get(f"/api/projects/{p['id']}/reviews", headers=H).json()[0]
     assert rv["meta"]["ranked"] is True
     scores = [s["relevance"] for s in rv["proposed"]]
-    assert scores == sorted(scores, reverse=True) and scores[0] == 90 and scores[-1] == 20
-    assert rv["proposed"][0]["relevance_why"] == "on topic" and rv["proposed"][0]["description"] == "about money"
+    assert scores == sorted(scores, reverse=True) and scores[0] > scores[-1] and scores[-1] == 10   # lexical fake: brief-word overlap
+    assert rv["proposed"][0]["relevance_why"] == "on topic" and rv["proposed"][0]["description"].startswith("getting out of debt")
+    assert res["batches"] == 1 and res["failed_batches"] == 0 and res["repaired_batches"] == 0
     # re-rank endpoint queues a job and resets the flag
     assert "job_id" in client.post(f"/api/collections/{rv['id']}/rank", headers=H, json={"want": 3}).json()
     assert db.review_meta(rv["id"])["ranked"] is False and db.review_meta(rv["id"])["max_videos"] == 3
@@ -1457,3 +1458,77 @@ def test_tool_loop_preserves_thinking_blocks_unchanged(isolated_db, monkeypatch)
     # and the returned model was recorded against the configured one
     row = db.connect().execute("SELECT model, returned_model FROM invocations WHERE task='answer.chat' ORDER BY requested_at DESC LIMIT 1").fetchone()
     assert row["model"] == settings.answer_model and row["returned_model"] == "claude-sonnet-5-2026"
+
+
+# ------------------------------------------------------------------ E2 ranking-eval infrastructure
+
+def test_ranking_fixture_is_frozen_and_well_formed():
+    import collections
+    from neurosearch import evals
+    fx = evals.load_ranking()
+    items = fx["items"]
+    assert 60 <= len(items) <= 100 and fx["want"] == 20
+    assert len({i["id"] for i in items}) == len(items) and len({i["external_id"] for i in items}) == len(items)
+    cats = collections.Counter(i["category"] for i in items)
+    for c in ("relevant", "moderate", "weak", "irrelevant", "clickbait", "authoritative_low_view", "popular_irrelevant", "duplicate"):
+        assert cats[c] >= 5, c
+    assert all(i["grade"] in (0, 1, 2, 3) and i["title"] and i["description"] and i["duration"] > 0 for i in items)
+    assert all(i["grade"] == 0 for i in items if i["category"] in ("irrelevant", "popular_irrelevant"))
+    assert all(i["grade"] >= 2 for i in items if i["category"] == "authoritative_low_view")
+    assert all(i["view_count"] < 5000 for i in items if i["category"] == "authoritative_low_view")
+    assert all(i["view_count"] > 500000 for i in items if i["category"] == "popular_irrelevant")
+    # the fixture is data the build script wrote; the build script must reproduce it byte for byte (frozen)
+    import runpy, tempfile, json as _json
+    from pathlib import Path
+    mod = runpy.run_path(str(evals.GOLDEN / "build_ranking.py"), run_name="not_main")
+    assert mod["build"]() == fx
+
+
+def test_ndcg_math():
+    from neurosearch.evals import ndcg
+    assert ndcg([3, 3, 2, 1, 0], 5) == 1.0
+    assert ndcg([0, 1, 2, 3, 3], 5) < 0.75
+    assert ndcg([0, 0, 0], 3) == 0.0
+    assert ndcg([3, 0, 3], 1) == 1.0 and ndcg([0, 3, 3], 1) == 0.0
+
+
+def test_ranking_eval_runs_rank_relevance_under_contract(isolated_db, monkeypatch):
+    """The dedicated fixture invokes the real rank.relevance task (through providers.invoke, under its contract) and
+    reports every number the E2 migration will compare: quality, schema, tokens, cost, latency, configured/returned model."""
+    from neurosearch import evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    rep = evals.run_ranking(live=False, progress=lambda m: None)
+    assert rep["eval"] == "ranking" and rep["candidates"] == 79 and rep["pass"], rep["gates"]
+    q = rep["quality"]
+    for k in ("precision_at_10", "recall_at_10", "recall_at_20", "ndcg_at_20", "schema_validity", "unscored_candidates"):
+        assert k in q
+    assert q["schema_validity"] == 1.0 and q["unscored_candidates"] == 0 and q["batches"] == 1
+    assert 0 < q["precision_at_10"] <= 1 and 0 < q["ndcg_at_20"] <= 1
+    # the lexical fake must at least put the fixture's relevant items above the irrelevant ones
+    bc = rep["by_category"]
+    assert bc["relevant"]["mean_rank"] < bc["weak"]["mean_rank"] < bc["irrelevant"]["mean_rank"]
+    assert bc["popular_irrelevant"]["mean_score"] < bc["relevant"]["mean_score"]
+    # accounting: tokens/cost/latency/model come from the ledger and usage table, filtered to this task
+    assert rep["volume"]["calls"] == 1 and rep["volume"]["input_tokens"] > 0 and rep["volume"]["output_tokens"] > 0
+    assert rep["economics"]["cost"] > 0 and rep["economics"]["cost_per_100_candidates"] > rep["economics"]["cost"]
+    assert rep["performance"]["rank_s"] >= 0 and rep["configured_model"] == "fake" and rep["returned_model"] == "fake-claude"
+    assert rep["invocations"] == {"logical": 1, "attempts": 1, "by_state": {"completed": 1}, "outcome_unknown": 0}
+    assert rep["contract"]["model"] == settings.answer_model and rep["contract"]["thinking"] == "disabled" and rep["contract"]["max_output_tokens"] == 6000
+    assert rep["prompt_version"] == "f38f9a9c"          # the frozen ranking prompt (E2 must not change it)
+    assert len(rep["ordering"]) == 79 and rep["ordering"][0]["pos"] == 1
+    text = evals.format_ranking_report(rep)
+    assert "Precision@10" in text and "per 100 candidates" in text and "returned fake-claude" in text
+    # the report compares against itself with no differences, and a task-model override shows up in the contract snapshot
+    assert evals.compare_ranking(rep, rep) == []
+    monkeypatch.setenv("NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE", "claude-sonnet-5")
+    rep2 = evals.run_ranking(live=False, progress=lambda m: None)
+    assert rep2["contract"]["model"] == "claude-sonnet-5" and rep2["contract"]["thinking"] == "disabled"
+
+
+def test_fake_ranker_cannot_see_fixture_grades():
+    import inspect
+    from neurosearch import fake_ai
+    src = inspect.getsource(fake_ai)
+    assert "ranking.json" not in src and "grade" not in src and "manifest" not in src

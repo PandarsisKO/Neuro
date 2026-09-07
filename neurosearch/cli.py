@@ -188,8 +188,10 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              keep: bool = typer.Option(False, help="Keep the temporary database (path is printed)"),
              task_model: list[str] = typer.Option([], "--task-model", help="Experiment override task=model, e.g. findings.extract=claude-sonnet-5 (repeatable)"),
              task_thinking: list[str] = typer.Option([], "--task-thinking", help="Override task=disabled|adaptive[:effort], e.g. planner.build=adaptive:high"),
-             task_max_tokens: list[str] = typer.Option([], "--task-max-tokens", help="Override task=N")) -> None:
-    """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates)."""
+             task_max_tokens: list[str] = typer.Option([], "--task-max-tokens", help="Override task=N"),
+             ranking: bool = typer.Option(False, "--ranking", help="Run only the frozen rank.relevance fixture (tests/fixtures/golden/ranking.json) and report ranking quality, tokens, cost and latency")) -> None:
+    """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates).
+    With --ranking, run the dedicated rank.relevance fixture instead (independent of ingest/findings)."""
     import os
     import shutil
     import tempfile
@@ -215,17 +217,25 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     if live and not settings.anthropic_api_key:
         raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
     db.init_db()
-    rep = evals.run(live=live, progress=lambda m: typer.echo("  · " + m))
-    typer.echo("")
-    typer.echo(evals.format_report(rep))
+    if ranking:
+        rep = evals.run_ranking(live=live, progress=lambda m: typer.echo("  · " + m))
+        typer.echo("")
+        typer.echo(evals.format_ranking_report(rep))
+    else:
+        rep = evals.run(live=live, progress=lambda m: typer.echo("  · " + m))
+        typer.echo("")
+        typer.echo(evals.format_report(rep))
     if compare:
         base = json.loads(compare.read_text())
+        if (base.get("eval") == "ranking") != ranking:
+            typer.echo(f"\nREFUSING to compare: {compare} is a {'ranking' if base.get('eval') == 'ranking' else 'pipeline'} baseline and this is a {'ranking' if ranking else 'pipeline'} run")
+            raise typer.Exit(code=2)
         typer.echo("\nVS BASELINE " + str(compare))
-        for line in evals.compare(rep, base) or ["  no differences"]:
+        for line in (evals.compare_ranking if ranking else evals.compare)(rep, base) or ["  no differences"]:
             typer.echo("  " + line)
     if baseline:
         d = Path("evals"); d.mkdir(exist_ok=True)
-        f = d / f"baseline-{rep['app_version']}-{rep['git_sha']}-{rep['model'].replace('/', '_').replace('claude-', '')}.json"
+        f = d / f"baseline-{'rank-' if ranking else ''}{rep['app_version']}-{rep['git_sha']}-{rep['model'].replace('/', '_').replace('claude-', '')}.json"
         if f.exists() and not force:
             typer.echo(f"\nREFUSING to overwrite the existing baseline {f} — a baseline is a historical measurement; pass --force if you really mean it")
             raise typer.Exit(code=2)

@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.18.0-e1.1';
+const UI_VERSION = '0.18.0-e2.0';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';

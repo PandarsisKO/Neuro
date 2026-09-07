@@ -162,9 +162,23 @@ def _answer(system: str, messages: list[dict[str, Any]], task: str = "answer.cha
     return f"On \"{question}\": the sources say \"{snippet}\" {cites}." + (" A second excerpt adds detail [2]." if len(nums) > 1 else "")
 
 
-def _rank(user: str) -> str:
-    idx = [int(m) for m in re.findall(r"^\[(\d+)\] ", user, flags=re.M)]
-    return json.dumps({"scores": [{"i": i, "score": (90 if i % 2 else 20), "why": "on topic" if i % 2 else "filler"} for i in idx]})
+_RANK_STOP = {"that", "this", "with", "from", "have", "what", "when", "will", "your", "about", "into", "they", "them", "than", "then",
+              "there", "their", "which", "would", "could", "should", "these", "those", "only", "also", "more", "most", "some", "such",
+              "need", "needs", "want", "best", "videos", "video", "project", "score", "scores", "relevance", "relevant"}
+
+
+def _rank(user: str, system: str = "") -> str:
+    """Lexical stand-in for the ranker: a candidate scores by how many content words of the project head (brief, goal,
+    questions) appear in its title/description. Deterministic, content-aware, and blind to the fixture's answer key."""
+    head = system[system.find("PROJECT:"):] if "PROJECT:" in system else ""
+    words = lambda t: {w for w in re.findall(r"[a-z][a-z0-9\-]{3,}", t.lower()) if w not in _RANK_STOP}  # noqa: E731
+    vocab = words(head)
+    out = []
+    for m in re.finditer(r"^\[(\d+)\] (.*)$", user, flags=re.M):
+        i, line = int(m.group(1)), m.group(2)
+        hits = len(vocab & words(line))
+        out.append({"i": i, "score": min(100, 10 + 20 * hits), "why": "on topic" if hits >= 2 else "filler"})
+    return json.dumps({"scores": out})
 
 
 DISCOVER_QUICK = {"note": "Start with the practitioner, then the contrarian.", "sources": [
@@ -216,7 +230,7 @@ class _Msgs:
         elif task == "findings.extract":
             text = _findings(system, user)
         elif task == "rank.relevance":
-            text = _rank(user)
+            text = _rank(user, system)
         elif task == "planner.analysis":
             ids = re.findall(r"^\[([USFC]\d+)\]", system + "\n" + user, re.M)
             text = json.dumps(_with_evidence(ANALYSIS, ids))

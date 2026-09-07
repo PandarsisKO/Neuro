@@ -357,3 +357,194 @@ def compare(cur: dict[str, Any], base: dict[str, Any], cost_tolerance: float = 0
         flag = "  ⚠ REGRESSION" if d > cost_tolerance else ""
         out.append(f"{'▲' if d > 0 else '▼'} cost: ${bc:.4f} → ${cur['economics']['cost']:.4f} ({d:+.0%}){flag}")
     return out
+
+
+# ------------------------------------------------------------------ rank.relevance fixture (E2 ranking eval)
+
+RANKING = GOLDEN / "ranking.json"
+RANKING_GATES = {"schema_validity": 1.0, "unscored_candidates": 0}      # quality metrics are reported, baselines judge them
+
+
+def load_ranking(root: Path = GOLDEN) -> dict[str, Any]:
+    return json.loads((root / "ranking.json").read_text())
+
+
+def ndcg(gains_in_rank_order: list[float], k: int) -> float:
+    """Normalised DCG@k: gains are the graded relevance of the items as ranked; the ideal ordering is the same gains sorted."""
+    import math
+    dcg = lambda g: sum(x / math.log2(i + 2) for i, x in enumerate(g[:k]))  # noqa: E731
+    ideal = dcg(sorted(gains_in_rank_order, reverse=True))
+    return round(dcg(gains_in_rank_order) / ideal, 4) if ideal else 0.0
+
+
+def run_ranking(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[str, Any]:
+    """Invoke the real `rank.relevance` task (through relevance.rank_collection → providers.invoke, under its contract)
+    on the frozen candidate set and score the ordering against the fixture's predetermined grades.
+    Independent of the ingest/findings eval: nothing is downloaded, embedded or transcribed."""
+    from . import __version__, contracts, providers, relevance
+    man = json.loads((root / "manifest.json").read_text())
+    fx = load_ranking(root)
+    items = fx["items"]
+    want = int(fx.get("want") or 20)
+    c = contracts.contract("rank.relevance")
+    configured_model = "fake" if not live else c.model
+    t_all = time.time()
+    usage_from = time.time()
+    rep: dict[str, Any] = {"eval": "ranking", "tier": "live" if live else "fake", "model": configured_model, "configured_model": configured_model,
+                           "app_version": __version__, "git_sha": git_sha(), "provider": "fake" if not live else c.provider,
+                           "fixture_version": fx.get("version"), "candidates": len(items), "want": want,
+                           "prompt_version": prompt_versions()["rank.relevance"], "contract": c.describe(),
+                           "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "gates": {}, "quality": {}, "volume": {}, "economics": {}, "performance": {}}
+
+    # the same brief the ingest eval uses, so the two evals judge the same project
+    pj = man["project"]
+    project = db.create_project(pj["name"], pj.get("brief"))
+    db.update_project(project["id"], goal=pj.get("goal"), questions=pj.get("questions"))
+    pid = project["id"]
+    coll = db.upsert_collection("channel", "UCgoldenranking", "https://www.youtube.com/@goldenranking", "Golden ranking fixture")
+    db.add_project_collections(pid, [coll["id"]])
+    by_sid: dict[str, dict[str, Any]] = {}
+    with db.batch():
+        for it in items:
+            s = db.upsert_source(platform="youtube", external_id=it["external_id"], url=f"https://www.youtube.com/watch?v={it['external_id']}",
+                                 title=it["title"], description=it.get("description"), duration=it.get("duration"), view_count=it.get("view_count"),
+                                 published_at=it.get("published_at"), status="proposed", channel="Golden ranking fixture")
+            db.link_source_collection(s["id"], coll["id"])
+            by_sid[s["id"]] = it
+    progress(f"{len(items)} candidates staged as proposed sources; ranking with {configured_model}")
+
+    t0 = time.time()
+    res = relevance.rank_collection(coll["id"], pid, want=want)
+    rank_s = time.time() - t0
+    rows = db.proposed_sources(coll["id"], pid)        # ordered by score desc, unscored last
+    ordered = [by_sid[r["id"]] | {"score": r.get("relevance"), "why": r.get("relevance_why")} for r in rows]
+    unscored = [o for o in ordered if o["score"] is None or o["why"] == "not scored"]
+    relevant = {o["id"] for o in ordered if o["grade"] >= 2}
+    top10, top20 = ordered[:10], ordered[:20]
+    q = rep["quality"]
+    q["precision_at_10"] = round(sum(o["id"] in relevant for o in top10) / 10, 4)
+    q["recall_at_10"] = round(sum(o["id"] in relevant for o in top10) / max(1, len(relevant)), 4)
+    q["recall_at_20"] = round(sum(o["id"] in relevant for o in top20) / max(1, len(relevant)), 4)
+    q["ndcg_at_20"] = ndcg([float(o["grade"]) for o in ordered], 20)
+    strict = {o["id"] for o in ordered if o["grade"] >= 3}         # clearly relevant only: what the top-20 selection should be made of
+    q["precision_at_20"] = round(sum(o["id"] in relevant for o in top20) / 20, 4)
+    q["precision_at_10_strict"] = round(sum(o["id"] in strict for o in top10) / 10, 4)
+    q["recall_at_10_strict"] = round(sum(o["id"] in strict for o in top10) / max(1, len(strict)), 4)
+    q["recall_at_20_strict"] = round(sum(o["id"] in strict for o in top20) / max(1, len(strict)), 4)
+    q["strict_candidates"] = len(strict)
+    q["irrelevant_in_top_10"] = sum(o["grade"] == 0 for o in top10)
+    q["clickbait_in_top_10"] = sum(o["category"] == "clickbait" for o in top10)
+    q["authoritative_low_view_in_top_20"] = sum(o["category"] == "authoritative_low_view" for o in top20)
+    q["popular_irrelevant_in_top_20"] = sum(o["category"] == "popular_irrelevant" for o in top20)
+    q["relevant_candidates"] = len(relevant)
+    batches = res.get("batches") or 0
+    q["schema_validity"] = round((batches - res.get("failed_batches", 0) - res.get("repaired_batches", 0)) / batches, 4) if batches else 0.0
+    q["batches"] = batches
+    q["failed_batches"] = res.get("failed_batches", 0)
+    q["repaired_batches"] = res.get("repaired_batches", 0)
+    q["unscored_candidates"] = len(unscored)
+    # per category: where do the items land, and what score do they get
+    cats: dict[str, dict[str, Any]] = {}
+    for pos, o in enumerate(ordered, 1):
+        d = cats.setdefault(o["category"], {"n": 0, "rank_sum": 0, "score_sum": 0, "scored": 0})
+        d["n"] += 1; d["rank_sum"] += pos
+        if o["score"] is not None:
+            d["score_sum"] += o["score"]; d["scored"] += 1
+    rep["by_category"] = {k: {"n": d["n"], "mean_rank": round(d["rank_sum"] / d["n"], 1), "mean_score": round(d["score_sum"] / d["scored"], 1) if d["scored"] else None}
+                          for k, d in sorted(cats.items())}
+    rep["ordering"] = [{"pos": i + 1, "id": o["id"], "category": o["category"], "grade": o["grade"], "score": o["score"], "why": o["why"], "title": o["title"][:70]}
+                       for i, o in enumerate(ordered)]
+
+    # volume + economics: only what this run recorded for the ranking task
+    rows_u = db.connect().execute("SELECT model, SUM(input_tokens) i, SUM(output_tokens) o, SUM(cache_read) cr, SUM(cache_write) cw, SUM(cost) c, COUNT(*) n "
+                                  "FROM usage WHERE ts>=? AND kind='rank' GROUP BY model", (usage_from,)).fetchall()
+    tot = {k: 0 for k in ("i", "o", "cr", "cw", "c", "n")}
+    for r in rows_u:
+        for k in tot:
+            tot[k] += (r[k] or 0)
+    rep["volume"] = {"calls": int(tot["n"]), "input_tokens": int(tot["i"]), "output_tokens": int(tot["o"]), "cache_read_tokens": int(tot["cr"]),
+                     "cache_write_tokens": int(tot["cw"]), "tokens_per_candidate": round((tot["i"] + tot["cr"] + tot["cw"]) / len(items), 1)}
+    rep["economics"] = {"cost": round(float(tot["c"]), 4), "cost_per_100_candidates": round(100 * float(tot["c"]) / len(items), 4)}
+    rep["performance"] = {"rank_s": round(rank_s, 2), "s_per_batch": round(rank_s / batches, 2) if batches else None,
+                          "s_per_100_candidates": round(100 * rank_s / len(items), 2), "total_s": round(time.time() - t_all, 2)}
+    inv_rows = db.connect().execute("SELECT state, COUNT(*) n, COUNT(DISTINCT logical_id) logical, GROUP_CONCAT(DISTINCT returned_model) rm "
+                                    "FROM invocations WHERE requested_at>=? AND task='rank.relevance' GROUP BY state", (usage_from,)).fetchall()
+    inv: dict[str, Any] = {"logical": 0, "attempts": 0, "by_state": {}}
+    returned: set[str] = set()
+    for r in inv_rows:
+        inv["attempts"] += r["n"]; inv["by_state"][r["state"]] = r["n"]
+        if r["state"] == "completed":
+            inv["logical"] += r["logical"]
+        returned |= {m for m in (r["rm"] or "").split(",") if m}
+    inv["outcome_unknown"] = inv["by_state"].get("outcome_unknown", 0)
+    rep["invocations"] = inv
+    rep["returned_models"] = sorted(returned)
+    rep["returned_model"] = ", ".join(sorted(returned)) or None
+    rep["gates"]["schema_validity"] = {"value": q["schema_validity"], "floor": 1.0, "pass": q["schema_validity"] >= 1.0}
+    rep["gates"]["unscored_candidates"] = {"value": q["unscored_candidates"], "floor": 0, "pass": q["unscored_candidates"] == 0}
+    rep["gates"]["all_invocations_resolved"] = {"value": inv["outcome_unknown"], "floor": 0, "pass": inv["outcome_unknown"] == 0}
+    rep["pass"] = all(g["pass"] for g in rep["gates"].values())
+    rep["project_id"] = pid
+    return rep
+
+
+def format_ranking_report(rep: dict[str, Any]) -> str:
+    q, v, e, p, inv = rep["quality"], rep["volume"], rep["economics"], rep["performance"], rep.get("invocations", {})
+    pct = lambda x: "—" if x is None else f"{x * 100:.1f}%"  # noqa: E731
+    c = rep.get("contract") or {}
+    lines = [f"Neuro Search ranking eval · {rep['tier']} · app {rep.get('app_version')} @ {rep.get('git_sha')} · fixture v{rep.get('fixture_version')} ({rep['candidates']} candidates, want {rep['want']})",
+             "",
+             "MODEL",
+             f"  configured {rep.get('configured_model')}   returned {rep.get('returned_model') or '—'}   prompt {rep.get('prompt_version')}",
+             f"  contract   thinking={c.get('thinking')}{'/' + c['effort'] if c.get('effort') else ''}  max_out={c.get('max_output_tokens')}  attempts={c.get('max_attempts')}  timeout={c.get('timeout') or 'default'}",
+             "",
+             "RANKING QUALITY" + ("  (fake provider: lexical stand-in — proves the fixture, not the model)" if rep["tier"] != "live" else ""),
+             f"  relevant = grade ≥ 2 ({q['relevant_candidates']} of {rep['candidates']}):   Precision@10 {pct(q['precision_at_10'])}   Recall@10 {pct(q['recall_at_10'])}   Recall@20 {pct(q['recall_at_20'])}   Precision@20 {pct(q['precision_at_20'])}",
+             f"  strict   = grade 3   ({q['strict_candidates']} of {rep['candidates']}):   Precision@10 {pct(q['precision_at_10_strict'])}   Recall@10 {pct(q['recall_at_10_strict'])}   Recall@20 {pct(q['recall_at_20_strict'])}",
+             f"  NDCG@20 {q['ndcg_at_20']}   (graded gains 0-3, ideal ordering = 1.0)",
+             f"  Top 10 contains {q['irrelevant_in_top_10']} irrelevant · {q['clickbait_in_top_10']} clickbait;  top 20 contains {q['authoritative_low_view_in_top_20']}/{rep['by_category'].get('authoritative_low_view', {}).get('n', 0)} authoritative-low-view · {q['popular_irrelevant_in_top_20']} popular-irrelevant",
+             "  by category            n   mean rank   mean score"]
+    for k, d in rep["by_category"].items():
+        lines.append(f"    {k:22s} {d['n']:2d}   {d['mean_rank']:9}   {d['mean_score']}")
+    lines += ["",
+              "SCHEMA",
+              f"  validity {pct(q['schema_validity'])}   batches {q['batches']} · failed {q['failed_batches']} · repaired {q['repaired_batches']}   unscored candidates {q['unscored_candidates']}",
+              f"  Provider calls  {inv.get('logical', 0)} logical · {inv.get('attempts', 0)} transport attempts · outcome unknown {inv.get('outcome_unknown', 0)}",
+              "",
+              "VOLUME",
+              f"  {v['calls']} calls   input {v['input_tokens']:,}   output {v['output_tokens']:,}   cache read {v['cache_read_tokens']:,}   cache write {v['cache_write_tokens']:,}   ({v['tokens_per_candidate']} input tokens/candidate)",
+              "",
+              "ECONOMICS",
+              f"  cost ${e['cost']:.4f}   per 100 candidates ${e['cost_per_100_candidates']:.4f}" + ("   [fake token estimates at list price]" if rep["tier"] != "live" else ""),
+              "",
+              "PERFORMANCE",
+              f"  ranking {p['rank_s']}s   {p['s_per_batch']}s/batch   {p['s_per_100_candidates']}s per 100 candidates   total {p['total_s']}s",
+              "",
+              "GATES"]
+    for k, g in rep["gates"].items():
+        lines.append(f"  {'PASS' if g['pass'] else 'FAIL'}  {k:28s} {g['value']}  (floor {g['floor']})")
+    lines += ["", f"Ranking eval: {'PASS' if rep['pass'] else 'FAIL'}"]
+    return "\n".join(lines)
+
+
+def compare_ranking(cur: dict[str, Any], base: dict[str, Any], cost_tolerance: float = 0.10) -> list[str]:
+    out = []
+    for k in ("precision_at_10", "recall_at_10", "recall_at_20", "precision_at_20", "precision_at_10_strict", "recall_at_10_strict", "recall_at_20_strict", "ndcg_at_20", "schema_validity", "unscored_candidates", "irrelevant_in_top_10", "clickbait_in_top_10"):
+        v, b = cur["quality"].get(k), base.get("quality", {}).get(k)
+        if isinstance(v, (int, float)) and isinstance(b, (int, float)) and v != b:
+            out.append(f"{'▲' if v > b else '▼'} {k}: {b} → {v}")
+    for k in ("input_tokens", "output_tokens", "cache_read_tokens"):
+        b = base.get("volume", {}).get(k)
+        if b and cur["volume"][k] != b:
+            d = (cur["volume"][k] - b) / b
+            out.append(f"{'▲' if d > 0 else '▼'} {k}: {b:,} → {cur['volume'][k]:,} ({d:+.0%})")
+    bc = base.get("economics", {}).get("cost_per_100_candidates")
+    if bc and cur["economics"]["cost_per_100_candidates"] != bc:
+        d = (cur["economics"]["cost_per_100_candidates"] - bc) / bc
+        out.append(f"{'▲' if d > 0 else '▼'} cost per 100 candidates: ${bc:.4f} → ${cur['economics']['cost_per_100_candidates']:.4f} ({d:+.0%}){'  ⚠ REGRESSION' if d > cost_tolerance else ''}")
+    bl = base.get("performance", {}).get("rank_s")
+    if bl and cur["performance"]["rank_s"] != bl:
+        out.append(f"latency: {bl}s → {cur['performance']['rank_s']}s")
+    if (cur.get("returned_model") or "") != (base.get("returned_model") or ""):
+        out.append(f"returned model: {base.get('returned_model')} → {cur.get('returned_model')}")
+    return out

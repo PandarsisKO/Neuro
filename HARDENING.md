@@ -77,7 +77,17 @@ E1 INFERENCE CONTRACTS (0.18.0-e1)             COMPLETE — router equivalence p
 [x] Claude 5 adapter compatibility: thinking-first responses are parsed by block type everywhere (providers.text_of; findings, ranking, chat, Discover, planner, export); tool loops pass thinking blocks back complete and unchanged (test_tool_loop_preserves_thinking_blocks_unchanged)
 [ ] Live router equivalence: `neurosearch eval --live --compare evals/baseline-0.17.3-849bd0d-sonnet-4-6.json` on 0.18.0-e1. STRUCTURAL equivalence is the bar — same contracts, same configured/returned model, same prompt-version hashes, same retrieval inputs, Tier 1 passes, validators do not regress, no unexplained provider behaviour. Billing categories (input vs cache read vs cache write) and total cost are NOT expected to match: cache state differs between runs. E2 tokenizer deltas will be measured with the provider's token-counting endpoint on canonical requests, not from billing rows.
 
-E2 SHADOW MIGRATION                            NEXT — one task at a time, same prompt + same inputs, different model
+E2 SHADOW MIGRATION                            IN PROGRESS — one task at a time, same prompt + same inputs, different model
+[x] E2.0 ranking-eval infrastructure (0.18.0-e2.0): frozen rank.relevance fixture tests/fixtures/golden/ranking.json (79 graded candidates against the
+    Golden SBA brief: relevant/moderate/weak/irrelevant/clickbait/authoritative-low-view/popular-irrelevant/duplicate; built by build_ranking.py, a test
+    proves it is byte-frozen) · `neurosearch eval --ranking [--live] [--task-model rank.relevance=…] [--baseline] [--compare f]` invokes the real task
+    through relevance.rank_collection → providers.invoke under its contract and reports P@10, R@10, R@20, P@20 (+ strict grade-3 variants), NDCG@20,
+    per-category mean rank/score, schema validity (batches/failed/repaired), unscored candidates, tokens, cost per 100 candidates, latency, configured vs
+    returned model · baselines are evals/baseline-rank-<version>-<sha>-<model>.json and never compare across eval types · fake ranker is a lexical
+    stand-in (brief-word overlap) so Tier 1 proves the fixture, never the model. No prompt, contract or model-default change.
+[ ] E2.1 live rank.relevance baseline on Sonnet 4.6: `neurosearch eval --ranking --live --baseline`
+[ ] E2.2 rank.relevance on Sonnet 5, thinking disabled: `neurosearch eval --ranking --live --task-model rank.relevance=<sonnet-5 id> --task-thinking rank.relevance=disabled --compare evals/baseline-rank-<…>-sonnet-4-6.json`
+[ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
