@@ -387,10 +387,10 @@ def run_ranking(root: Path = GOLDEN, live: bool = False, progress: Any = print) 
     items = fx["items"]
     want = int(fx.get("want") or 20)
     c = contracts.contract("rank.relevance")
-    configured_model = "fake" if not live else c.model
+    configured_model = c.model
     t_all = time.time()
     usage_from = time.time()
-    rep: dict[str, Any] = {"eval": "ranking", "tier": "live" if live else "fake", "model": configured_model, "configured_model": configured_model,
+    rep: dict[str, Any] = {"eval": "ranking", "tier": "live" if live else "fake", "model": "fake" if not live else c.model, "configured_model": configured_model,
                            "app_version": __version__, "git_sha": git_sha(), "provider": "fake" if not live else c.provider,
                            "fixture_version": fx.get("version"), "candidates": len(items), "want": want,
                            "prompt_version": prompt_versions()["rank.relevance"], "contract": c.describe(),
@@ -412,6 +412,19 @@ def run_ranking(root: Path = GOLDEN, live: bool = False, progress: Any = print) 
             db.link_source_collection(s["id"], coll["id"])
             by_sid[s["id"]] = it
     progress(f"{len(items)} candidates staged as proposed sources; ranking with {configured_model}")
+
+    # canonical input tokens: the provider's token-counting endpoint over the exact requests about to be sent (free,
+    # not a ledger row). Doubles as the preflight — an unknown model id fails here, before any paid call.
+    reqs = relevance.canonical_requests(coll["id"], pid, want=want)
+    try:
+        client = providers.anthropic_client()
+        strip = lambda sysb: [{k: v for k, v in b.items() if k != "cache_control"} for b in sysb] if isinstance(sysb, list) else sysb  # noqa: E731
+        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"]).input_tokens) for r in reqs)
+    except Exception as e:  # noqa: BLE001
+        if live:
+            raise RuntimeError(f"token counting failed for model {c.model!r} (preflight, nothing was spent): {e}") from e
+        rep["canonical_input_tokens"] = None
+    rep["canonical_requests"] = len(reqs)
 
     t0 = time.time()
     res = relevance.rank_collection(coll["id"], pid, want=want)
@@ -463,7 +476,8 @@ def run_ranking(root: Path = GOLDEN, live: bool = False, progress: Any = print) 
         for k in tot:
             tot[k] += (r[k] or 0)
     rep["volume"] = {"calls": int(tot["n"]), "input_tokens": int(tot["i"]), "output_tokens": int(tot["o"]), "cache_read_tokens": int(tot["cr"]),
-                     "cache_write_tokens": int(tot["cw"]), "tokens_per_candidate": round((tot["i"] + tot["cr"] + tot["cw"]) / len(items), 1)}
+                     "cache_write_tokens": int(tot["cw"]), "tokens_per_candidate": round((tot["i"] + tot["cr"] + tot["cw"]) / len(items), 1),
+                     "canonical_input_tokens": rep.get("canonical_input_tokens")}
     rep["economics"] = {"cost": round(float(tot["c"]), 4), "cost_per_100_candidates": round(100 * float(tot["c"]) / len(items), 4)}
     rep["performance"] = {"rank_s": round(rank_s, 2), "s_per_batch": round(rank_s / batches, 2) if batches else None,
                           "s_per_100_candidates": round(100 * rank_s / len(items), 2), "total_s": round(time.time() - t_all, 2)}
@@ -495,7 +509,7 @@ def format_ranking_report(rep: dict[str, Any]) -> str:
     lines = [f"Neuro Search ranking eval · {rep['tier']} · app {rep.get('app_version')} @ {rep.get('git_sha')} · fixture v{rep.get('fixture_version')} ({rep['candidates']} candidates, want {rep['want']})",
              "",
              "MODEL",
-             f"  configured {rep.get('configured_model')}   returned {rep.get('returned_model') or '—'}   prompt {rep.get('prompt_version')}",
+             f"  configured {rep.get('configured_model')}   returned {rep.get('returned_model') or '—'}   prompt {rep.get('prompt_version')}   canonical input tokens {rep.get('canonical_input_tokens') if rep.get('canonical_input_tokens') is not None else '—'} ({rep.get('canonical_requests')} request{'s' if rep.get('canonical_requests') != 1 else ''})",
              f"  contract   thinking={c.get('thinking')}{'/' + c['effort'] if c.get('effort') else ''}  max_out={c.get('max_output_tokens')}  attempts={c.get('max_attempts')}  timeout={c.get('timeout') or 'default'}",
              "",
              "RANKING QUALITY" + ("  (fake provider: lexical stand-in — proves the fixture, not the model)" if rep["tier"] != "live" else ""),
@@ -548,3 +562,207 @@ def compare_ranking(cur: dict[str, Any], base: dict[str, Any], cost_tolerance: f
     if (cur.get("returned_model") or "") != (base.get("returned_model") or ""):
         out.append(f"returned model: {base.get('returned_model')} → {cur.get('returned_model')}")
     return out
+
+
+# ------------------------------------------------------------------ ranking model comparison (E2.1/E2.2 in one command)
+
+BASELINE_MODEL = "claude-sonnet-4-6"
+CANDIDATE_MODEL = "claude-sonnet-5"
+# quality tolerances: a candidate may not fall further than this below the baseline on the decision metrics (n=1 runs)
+QUALITY_TOLERANCE = {"ndcg_at_20": 0.03, "precision_at_10": 0.10, "precision_at_20": 0.10, "recall_at_20_strict": 0.08, "recall_at_10_strict": 0.08}
+COST_TOLERANCE, LATENCY_TOLERANCE = 0.10, 0.50
+
+
+def _model_slug(m: str) -> str:
+    return m.replace("/", "_").replace("claude-", "")
+
+
+def model_matches(configured: str, returned: str | None) -> bool:
+    """A returned id is the configured alias or a dated snapshot of it (claude-sonnet-5 → claude-sonnet-5-2026xxxx)."""
+    if not returned:
+        return False
+    if configured == "fake" or returned.startswith("fake"):
+        return True
+    return any(r.strip().startswith(configured) for r in returned.split(","))
+
+
+def ranking_verdict(base: dict[str, Any], cand: dict[str, Any]) -> dict[str, Any]:
+    """Quality and validity decide; cost and latency only add caveats. Never changes a default."""
+    bq, cq = base["quality"], cand["quality"]
+    fails: list[str] = []
+    caveats: list[str] = []
+    notes: list[str] = []
+    # validity gates on the candidate itself
+    if cq["failed_batches"]:
+        fails.append(f"{cq['failed_batches']} batch(es) failed outright")
+    if cq["unscored_candidates"]:
+        fails.append(f"{cq['unscored_candidates']} candidates left unscored")
+    if cand["invocations"].get("outcome_unknown"):
+        fails.append(f"{cand['invocations']['outcome_unknown']} invocation(s) with unknown outcome")
+    if cq["repaired_batches"] > bq["repaired_batches"]:
+        fails.append(f"schema validity regressed: {cq['repaired_batches']} batch(es) needed tolerant parsing vs {bq['repaired_batches']} on the baseline")
+    if not model_matches(cand["configured_model"], cand.get("returned_model")):
+        fails.append(f"returned model {cand.get('returned_model')!r} is not the configured {cand['configured_model']!r}")
+    if not model_matches(base["configured_model"], base.get("returned_model")):
+        fails.append(f"BASELINE returned model {base.get('returned_model')!r} is not the configured {base['configured_model']!r} — comparison is not like-for-like")
+    # quality: decision metrics with tolerance
+    for k, tol in QUALITY_TOLERANCE.items():
+        b, c = bq.get(k), cq.get(k)
+        if b is None or c is None:
+            continue
+        if c < b - tol:
+            fails.append(f"{k} fell beyond tolerance: {b} → {c} (tolerance −{tol})")
+        elif c < b:
+            caveats.append(f"{k} slightly lower: {b} → {c} (within tolerance −{tol})")
+    for k in ("recall_at_10", "recall_at_20"):
+        if cq.get(k, 0) < bq.get(k, 0):
+            caveats.append(f"{k} lower: {bq[k]} → {cq[k]}")
+    if cq["irrelevant_in_top_10"] > bq["irrelevant_in_top_10"] + 1:
+        fails.append(f"irrelevant candidates in top 10 rose {bq['irrelevant_in_top_10']} → {cq['irrelevant_in_top_10']}")
+    elif cq["irrelevant_in_top_10"] > bq["irrelevant_in_top_10"]:
+        caveats.append(f"irrelevant in top 10 rose {bq['irrelevant_in_top_10']} → {cq['irrelevant_in_top_10']}")
+    if cq["clickbait_in_top_10"] > bq["clickbait_in_top_10"]:
+        caveats.append(f"clickbait in top 10 rose {bq['clickbait_in_top_10']} → {cq['clickbait_in_top_10']}")
+    if cq["popular_irrelevant_in_top_20"] > bq["popular_irrelevant_in_top_20"]:
+        caveats.append(f"popular-but-irrelevant in top 20 rose {bq['popular_irrelevant_in_top_20']} → {cq['popular_irrelevant_in_top_20']}")
+    if cq["authoritative_low_view_in_top_20"] < bq["authoritative_low_view_in_top_20"]:
+        caveats.append(f"authoritative-low-view in top 20 fell {bq['authoritative_low_view_in_top_20']} → {cq['authoritative_low_view_in_top_20']}")
+    if cq["repaired_batches"] and cq["repaired_batches"] <= bq["repaired_batches"]:
+        caveats.append(f"{cq['repaired_batches']} batch(es) needed tolerant parsing (no worse than baseline)")
+    # supporting metrics
+    bc, cc = base["economics"]["cost_per_100_candidates"], cand["economics"]["cost_per_100_candidates"]
+    if bc and cc > bc * (1 + COST_TOLERANCE):
+        caveats.append(f"cost per 100 candidates up {(cc / bc - 1):+.0%}: ${bc:.4f} → ${cc:.4f}")
+    bl, cl = base["performance"]["rank_s"], cand["performance"]["rank_s"]
+    if bl and cl > bl * (1 + LATENCY_TOLERANCE):
+        caveats.append(f"latency up {(cl / bl - 1):+.0%}: {bl}s → {cl}s")
+    bt, ct = base.get("canonical_input_tokens"), cand.get("canonical_input_tokens")
+    if bt and ct:
+        notes.append(f"tokenizer delta on the canonical requests: {bt:,} → {ct:,} ({(ct / bt - 1):+.1%})")
+    notes.append("single run per model (n=1): differences inside the tolerances are not distinguishable from run-to-run noise")
+    if fails:
+        verdict, headline = "FAIL", f"FAIL — keep {base['configured_model']} for rank.relevance"
+    elif caveats:
+        verdict, headline = "PASS_WITH_CAVEAT", f"PASS WITH CAVEAT — {cand['configured_model']} holds quality on rank.relevance; review the caveats before migrating"
+    else:
+        verdict, headline = "PASS", f"PASS — migrate rank.relevance to {cand['configured_model']}"
+    return {"verdict": verdict, "headline": headline, "fails": fails, "caveats": caveats, "notes": notes,
+            "production_default_changed": False,
+            "how_to_migrate": "set NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE=" + cand["configured_model"] + " (and THINKING=disabled) or change the rank.relevance contract; nothing was changed by this run"}
+
+
+def _side_by_side(base: dict[str, Any], cand: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+
+    def add(label: str, b: Any, c: Any, kind: str = "num") -> None:
+        rows.append({"metric": label, "baseline": b, "candidate": c, "delta": (round(c - b, 4) if isinstance(b, (int, float)) and isinstance(c, (int, float)) and not isinstance(b, bool) else None), "kind": kind})
+    bq, cq = base["quality"], cand["quality"]
+    for k in ("precision_at_10", "precision_at_20", "recall_at_10", "recall_at_20", "precision_at_10_strict", "recall_at_10_strict", "recall_at_20_strict", "ndcg_at_20"):
+        add(k, bq[k], cq[k])
+    for k in ("irrelevant_in_top_10", "clickbait_in_top_10", "authoritative_low_view_in_top_20", "popular_irrelevant_in_top_20"):
+        add(k, bq[k], cq[k])
+    for cat in sorted(set(base["by_category"]) | set(cand["by_category"])):
+        add(f"mean_rank[{cat}]", base["by_category"].get(cat, {}).get("mean_rank"), cand["by_category"].get(cat, {}).get("mean_rank"))
+    for cat in sorted(set(base["by_category"]) | set(cand["by_category"])):
+        add(f"mean_score[{cat}]", base["by_category"].get(cat, {}).get("mean_score"), cand["by_category"].get(cat, {}).get("mean_score"))
+    for k in ("schema_validity", "batches", "failed_batches", "repaired_batches", "unscored_candidates"):
+        add(k, bq[k], cq[k])
+    add("outcome_unknown", base["invocations"].get("outcome_unknown", 0), cand["invocations"].get("outcome_unknown", 0))
+    add("transport_attempts", base["invocations"].get("attempts", 0), cand["invocations"].get("attempts", 0))
+    add("configured_model", base["configured_model"], cand["configured_model"], "text")
+    add("returned_model", base.get("returned_model"), cand.get("returned_model"), "text")
+    add("thinking", base["contract"]["thinking"], cand["contract"]["thinking"], "text")
+    add("canonical_input_tokens", base.get("canonical_input_tokens"), cand.get("canonical_input_tokens"))
+    for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+        add("billed_" + k, base["volume"][k], cand["volume"][k])
+    add("cost", base["economics"]["cost"], cand["economics"]["cost"])
+    add("cost_per_100_candidates", base["economics"]["cost_per_100_candidates"], cand["economics"]["cost_per_100_candidates"])
+    add("latency_rank_s", base["performance"]["rank_s"], cand["performance"]["rank_s"])
+    add("latency_s_per_100_candidates", base["performance"]["s_per_100_candidates"], cand["performance"]["s_per_100_candidates"])
+    return rows
+
+
+def format_comparison(cmp: dict[str, Any]) -> str:
+    b, c = cmp["baseline"], cmp["candidate"]
+    bt, ct = b.get("canonical_input_tokens"), c.get("canonical_input_tokens")
+    lines = [f"Neuro Search rank.relevance model comparison · {cmp['tier']} · app {cmp['app_version']} @ {cmp['git_sha']} · fixture v{b.get('fixture_version')} ({b['candidates']} candidates)",
+             f"  baseline  {b['configured_model']} (returned {b.get('returned_model') or '—'}, thinking {b['contract']['thinking']})",
+             f"  candidate {c['configured_model']} (returned {c.get('returned_model') or '—'}, thinking {c['contract']['thinking']})",
+             f"  same prompt {b['prompt_version']} · same fixture · same contract except the model", "",
+             f"  {'metric':40s} {'baseline':>14s} {'candidate':>14s} {'delta':>10s}"]
+    section = None
+    for r in cmp["rows"]:
+        sec = ("quality" if r["metric"].split("[")[0] in ("precision_at_10", "precision_at_20", "recall_at_10", "recall_at_20", "precision_at_10_strict", "recall_at_10_strict", "recall_at_20_strict", "ndcg_at_20", "irrelevant_in_top_10", "clickbait_in_top_10", "authoritative_low_view_in_top_20", "popular_irrelevant_in_top_20")
+               else "category" if r["metric"].startswith("mean_")
+               else "validity" if r["metric"] in ("schema_validity", "batches", "failed_batches", "repaired_batches", "unscored_candidates", "outcome_unknown", "transport_attempts", "configured_model", "returned_model", "thinking")
+               else "tokens" if "tokens" in r["metric"] else "economics")
+        if sec != section:
+            lines.append(f"  -- {sec.upper()}" + ("  (decision gate)" if sec in ("quality", "validity") else "  (supporting)" if sec in ("tokens", "economics") else ""))
+            section = sec
+        f = lambda v: "—" if v is None else (v if isinstance(v, str) else f"{v:,}" if isinstance(v, int) else f"{v:.4f}".rstrip("0").rstrip("."))  # noqa: E731
+        d = "" if r["delta"] is None else f"{r['delta']:+.4f}".rstrip("0").rstrip(".")
+        lines.append(f"  {r['metric']:40s} {f(r['baseline']):>14s} {f(r['candidate']):>14s} {d:>10s}")
+    if bt and ct:
+        lines.append(f"\n  tokenizer delta (canonical requests, provider token count): {bt:,} → {ct:,} = {(ct / bt - 1):+.1%}")
+    v = cmp["verdict"]
+    lines += ["", "VERDICT: " + v["headline"]]
+    for x in v["fails"]:
+        lines.append("  FAIL    " + x)
+    for x in v["caveats"]:
+        lines.append("  caveat  " + x)
+    for x in v["notes"]:
+        lines.append("  note    " + x)
+    lines += ["", "  Production default unchanged. " + v["how_to_migrate"], "", "  files: " + ", ".join(cmp.get("files", []))]
+    return "\n".join(lines)
+
+
+def run_ranking_compare(root: Path = GOLDEN, live: bool = False, baseline_model: str = BASELINE_MODEL, candidate_model: str = CANDIDATE_MODEL,
+                        out_dir: Path = Path("evals"), progress: Any = print) -> dict[str, Any]:
+    """One command for E2.1 + E2.2: rank the frozen fixture with the baseline model and with the candidate (both
+    thinking=disabled, nothing else different), save both raw results, freeze the baseline model's result as the ranking
+    baseline if none exists, save the side-by-side comparison and return it with a verdict."""
+    import os
+    from . import __version__
+    keys = {"NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE": None, "NEUROSEARCH_TASK_THINKING_RANK_RELEVANCE": None, "NEUROSEARCH_TASK_EFFORT_RANK_RELEVANCE": None}
+    saved = {k: os.environ.get(k) for k in keys}
+    reps: dict[str, dict[str, Any]] = {}
+    try:
+        for label, model in (("baseline", baseline_model), ("candidate", candidate_model)):
+            os.environ["NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE"] = model
+            os.environ["NEUROSEARCH_TASK_THINKING_RANK_RELEVANCE"] = "disabled"
+            os.environ.pop("NEUROSEARCH_TASK_EFFORT_RANK_RELEVANCE", None)
+            progress(f"[{label}] {model} · thinking disabled")
+            reps[label] = run_ranking(root, live=live, progress=lambda m: progress("   " + m))
+            progress(f"[{label}] NDCG@20 {reps[label]['quality']['ndcg_at_20']} · P@10 {reps[label]['quality']['precision_at_10']} · ${reps[label]['economics']['cost']:.4f} · {reps[label]['performance']['rank_s']}s · returned {reps[label].get('returned_model')}")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    base, cand = reps["baseline"], reps["candidate"]
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    sha = git_sha()
+    d = out_dir / "ranking-compare" / f"{stamp}-{sha}"
+    d.mkdir(parents=True, exist_ok=True)
+    files = []
+    for label, rep in reps.items():
+        f = d / f"{label}-{_model_slug(rep['configured_model'])}.json"
+        f.write_text(json.dumps(rep, indent=1)); files.append(str(f))
+    # the frozen ranking baseline for the baseline model: written once, never overwritten here
+    existing = sorted(out_dir.glob(f"baseline-rank-*-{_model_slug(base['model'])}.json"))
+    if existing:
+        baseline_file, baseline_written = existing[-1], False
+    else:
+        baseline_file = out_dir / f"baseline-rank-{__version__}-{sha}-{_model_slug(base['model'])}.json"
+        baseline_file.write_text(json.dumps(base, indent=1)); baseline_written = True
+        files.append(str(baseline_file))
+    files += [str(d / "comparison.json"), str(d / "comparison.txt")]
+    cmp: dict[str, Any] = {"eval": "ranking-compare", "tier": "live" if live else "fake", "app_version": __version__, "git_sha": sha, "started": stamp,
+                           "baseline": base, "candidate": cand, "rows": _side_by_side(base, cand), "verdict": ranking_verdict(base, cand),
+                           "ranking_baseline_file": str(baseline_file), "ranking_baseline_written": baseline_written, "files": files}
+    text = format_comparison(cmp)
+    (d / "comparison.json").write_text(json.dumps(cmp, indent=1))
+    (d / "comparison.txt").write_text(text)
+    cmp["text"] = text
+    return cmp

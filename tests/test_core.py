@@ -1513,7 +1513,8 @@ def test_ranking_eval_runs_rank_relevance_under_contract(isolated_db, monkeypatc
     # accounting: tokens/cost/latency/model come from the ledger and usage table, filtered to this task
     assert rep["volume"]["calls"] == 1 and rep["volume"]["input_tokens"] > 0 and rep["volume"]["output_tokens"] > 0
     assert rep["economics"]["cost"] > 0 and rep["economics"]["cost_per_100_candidates"] > rep["economics"]["cost"]
-    assert rep["performance"]["rank_s"] >= 0 and rep["configured_model"] == "fake" and rep["returned_model"] == "fake-claude"
+    assert rep["performance"]["rank_s"] >= 0 and rep["configured_model"] == settings.answer_model and rep["returned_model"] == "fake-claude"
+    assert rep["canonical_requests"] == 1 and rep["canonical_input_tokens"] == rep["volume"]["input_tokens"]   # fake tokenizer = billed, Claude 4 family
     assert rep["invocations"] == {"logical": 1, "attempts": 1, "by_state": {"completed": 1}, "outcome_unknown": 0}
     assert rep["contract"]["model"] == settings.answer_model and rep["contract"]["thinking"] == "disabled" and rep["contract"]["max_output_tokens"] == 6000
     assert rep["prompt_version"] == "f38f9a9c"          # the frozen ranking prompt (E2 must not change it)
@@ -1532,3 +1533,75 @@ def test_fake_ranker_cannot_see_fixture_grades():
     from neurosearch import fake_ai
     src = inspect.getsource(fake_ai)
     assert "ranking.json" not in src and "grade" not in src and "manifest" not in src
+
+
+def test_ranking_compare_one_command(isolated_db, monkeypatch, tmp_path):
+    """--ranking-compare: baseline model then candidate on the identical fixture (thinking disabled on both), raw results
+    saved, ranking baseline frozen once, side-by-side + verdict saved; no env or default left changed."""
+    import os
+    from neurosearch import contracts, evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.delenv("NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE", raising=False)
+    out = tmp_path / "evals"
+    cmp = evals.run_ranking_compare(live=False, out_dir=out, progress=lambda m: None)
+    b, c = cmp["baseline"], cmp["candidate"]
+    assert (b["configured_model"], c["configured_model"]) == ("claude-sonnet-4-6", "claude-sonnet-5")
+    assert b["contract"]["thinking"] == c["contract"]["thinking"] == "disabled" and b["prompt_version"] == c["prompt_version"] == "f38f9a9c"
+    assert {k: v for k, v in b["contract"].items() if k != "model"} == {k: v for k, v in c["contract"].items() if k != "model"}   # only the model differs
+    assert b["ordering"] == c["ordering"]                     # same fake, same fixture → identical ordering
+    assert c["canonical_input_tokens"] == int(b["canonical_input_tokens"] * 1.3)   # tokenizer delta path exercised
+    assert cmp["verdict"]["verdict"] == "PASS" and cmp["verdict"]["production_default_changed"] is False
+    assert contracts.contract("rank.relevance").model == settings.answer_model and "NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE" not in os.environ
+    names = {p.name for p in out.rglob("*")}
+    assert "baseline-sonnet-4-6.json" in names and "candidate-sonnet-5.json" in names and "comparison.json" in names and "comparison.txt" in names
+    assert cmp["ranking_baseline_written"] and pathlib.Path(cmp["ranking_baseline_file"]).exists()
+    metrics = {r["metric"] for r in cmp["rows"]}
+    for k in ("precision_at_10", "precision_at_20", "recall_at_10", "recall_at_20", "precision_at_10_strict", "recall_at_20_strict", "ndcg_at_20",
+              "mean_rank[relevant]", "schema_validity", "repaired_batches", "unscored_candidates", "outcome_unknown", "configured_model", "returned_model",
+              "canonical_input_tokens", "billed_input_tokens", "billed_output_tokens", "billed_cache_read_tokens", "cost_per_100_candidates", "latency_rank_s"):
+        assert k in metrics, k
+    assert "VERDICT: PASS — migrate rank.relevance to claude-sonnet-5" in cmp["text"] and "Production default unchanged" in cmp["text"]
+    # second run: the frozen ranking baseline is not rewritten
+    cmp2 = evals.run_ranking_compare(live=False, out_dir=out, progress=lambda m: None)
+    assert cmp2["ranking_baseline_written"] is False and cmp2["ranking_baseline_file"] == cmp["ranking_baseline_file"]
+
+
+def test_ranking_verdict_rules():
+    """Quality/validity decide, cost/latency only caveat, and the wording matches the three outcomes."""
+    import copy
+    from neurosearch import evals
+    base = {"configured_model": "claude-sonnet-4-6", "returned_model": "claude-sonnet-4-6-20260210", "contract": {"thinking": "disabled"},
+            "quality": {"precision_at_10": 0.9, "precision_at_20": 0.85, "recall_at_10": 0.2, "recall_at_20": 0.4, "precision_at_10_strict": 0.8, "recall_at_10_strict": 0.32,
+                        "recall_at_20_strict": 0.6, "ndcg_at_20": 0.9, "irrelevant_in_top_10": 0, "clickbait_in_top_10": 0, "authoritative_low_view_in_top_20": 3,
+                        "popular_irrelevant_in_top_20": 0, "schema_validity": 1.0, "batches": 1, "failed_batches": 0, "repaired_batches": 0, "unscored_candidates": 0},
+            "invocations": {"outcome_unknown": 0, "attempts": 1}, "economics": {"cost": 0.03, "cost_per_100_candidates": 0.04}, "performance": {"rank_s": 20.0, "s_per_100_candidates": 25.0},
+            "volume": {"input_tokens": 3000, "output_tokens": 800, "cache_read_tokens": 0, "cache_write_tokens": 0}, "canonical_input_tokens": 3000, "by_category": {}}
+    cand = copy.deepcopy(base); cand["configured_model"] = "claude-sonnet-5"; cand["returned_model"] = "claude-sonnet-5-20260601"; cand["canonical_input_tokens"] = 3900
+    assert evals.ranking_verdict(base, cand)["verdict"] == "PASS"
+    # cheaper and slower but quality equal → cost/latency never fail, latency caveats
+    c = copy.deepcopy(cand); c["performance"]["rank_s"] = 40.0
+    v = evals.ranking_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and any("latency" in x for x in v["caveats"])
+    c = copy.deepcopy(cand); c["economics"]["cost_per_100_candidates"] = 0.06
+    v = evals.ranking_verdict(base, c); assert v["verdict"] == "PASS_WITH_CAVEAT" and any("cost per 100" in x for x in v["caveats"])
+    # small quality dip → caveat; big dip → FAIL
+    c = copy.deepcopy(cand); c["quality"]["ndcg_at_20"] = 0.88
+    assert evals.ranking_verdict(base, c)["verdict"] == "PASS_WITH_CAVEAT"
+    c = copy.deepcopy(cand); c["quality"]["ndcg_at_20"] = 0.80
+    v = evals.ranking_verdict(base, c); assert v["verdict"] == "FAIL" and v["headline"].startswith("FAIL — keep claude-sonnet-4-6")
+    # validity: a repaired batch the baseline did not need, an unscored candidate, an unknown outcome, a wrong returned model → FAIL
+    for patch in ({"quality": {"repaired_batches": 1}}, {"quality": {"unscored_candidates": 1}}, {"quality": {"failed_batches": 1}},
+                  {"invocations": {"outcome_unknown": 1}}, {"returned_model": "claude-sonnet-4-6-20260210"}):
+        c = copy.deepcopy(cand)
+        for k, vv in patch.items():
+            if isinstance(vv, dict):
+                c[k].update(vv)
+            else:
+                c[k] = vv
+        assert evals.ranking_verdict(base, c)["verdict"] == "FAIL", patch
+    assert evals.model_matches("claude-sonnet-5", "claude-sonnet-5-20260601") and not evals.model_matches("claude-sonnet-5", "claude-sonnet-4-6-20260210")
+    cmp = {"tier": "live", "app_version": "x", "git_sha": "y", "baseline": base | {"candidates": 79, "fixture_version": 1, "prompt_version": "f38f9a9c"}, "candidate": cand,
+           "rows": evals._side_by_side(base, cand), "verdict": evals.ranking_verdict(base, cand), "files": []}
+    txt = evals.format_comparison(cmp)
+    assert "tokenizer delta" in txt and "+30.0%" in txt and "(decision gate)" in txt and "(supporting)" in txt

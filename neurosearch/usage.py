@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 # USD per million tokens (input, output) — override with NEUROSEARCH_PRICES='{"model": [in, out]}'
 PRICES: dict[str, tuple[float, float]] = {
-    "claude-sonnet-4-6": (3.0, 15.0), "claude-sonnet-4-5": (3.0, 15.0), "claude-opus": (15.0, 75.0), "claude-haiku": (0.8, 4.0),
+    "claude-sonnet-5": (2.0, 10.0), "claude-sonnet-4-6": (3.0, 15.0), "claude-sonnet-4-5": (3.0, 15.0), "claude-opus": (15.0, 75.0), "claude-haiku": (0.8, 4.0),
     "text-embedding-3-small": (0.02, 0.0), "text-embedding-3-large": (0.13, 0.0),
 }
 WHISPER_PER_MINUTE = 0.006

@@ -265,6 +265,16 @@ class _Msgs:
     def stream(self, **kw: Any) -> "_Stream":
         return _Stream(self.create(**kw))
 
+    def count_tokens(self, **kw: Any) -> Any:
+        """Stand-in for the token-counting endpoint. Claude 5 family counts 30% more than Claude 4 so the eval's
+        tokenizer-delta path is exercised under Tier 1; the real delta only ever comes from the live endpoint."""
+        from .contracts import model_family
+        system, _ = _flatten(kw.get("system", ""))
+        n = _tokens(system + "\n".join(_content_text(m.get("content")) for m in (kw.get("messages") or [])))
+        if model_family(str(kw.get("model") or "")) == "claude-5":
+            n = int(n * 1.3)
+        return _Blk(input_tokens=n)
+
 
 class _Stream:
     def __init__(self, msg: Any) -> None:

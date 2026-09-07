@@ -85,8 +85,14 @@ E2 SHADOW MIGRATION                            IN PROGRESS — one task at a tim
     per-category mean rank/score, schema validity (batches/failed/repaired), unscored candidates, tokens, cost per 100 candidates, latency, configured vs
     returned model · baselines are evals/baseline-rank-<version>-<sha>-<model>.json and never compare across eval types · fake ranker is a lexical
     stand-in (brief-word overlap) so Tier 1 proves the fixture, never the model. No prompt, contract or model-default change.
-[ ] E2.1 live rank.relevance baseline on Sonnet 4.6: `neurosearch eval --ranking --live --baseline`
-[ ] E2.2 rank.relevance on Sonnet 5, thinking disabled: `neurosearch eval --ranking --live --task-model rank.relevance=<sonnet-5 id> --task-thinking rank.relevance=disabled --compare evals/baseline-rank-<…>-sonnet-4-6.json`
+[x] E2.0b one-command comparison (0.18.0-e2.1): `neurosearch eval --ranking-compare --live` ranks the fixture with claude-sonnet-4-6 then
+    claude-sonnet-5 (both thinking=disabled; only the model override differs), preflights each model with the token-counting endpoint
+    (canonical input tokens → tokenizer delta; an unknown model id aborts before any paid call), saves evals/ranking-compare/<stamp>-<sha>/
+    {baseline-*.json, candidate-*.json, comparison.json, comparison.txt}, freezes evals/baseline-rank-<version>-<sha>-sonnet-4-6.json if
+    absent, prints the side-by-side (quality + category + validity = decision gate; tokens/cost/latency = supporting) and a verdict:
+    PASS — migrate / PASS WITH CAVEAT / FAIL — keep 4.6 (evals.ranking_verdict; tolerances in QUALITY_TOLERANCE). Never changes a default.
+    rank.relevance provenance now records the contract model (identical unless an override is set). Sonnet 5 priced $2/$10 in usage.PRICES.
+[ ] E2.1+E2.2 live: `neurosearch eval --ranking-compare --live` → verdict decides whether rank.relevance moves to Sonnet 5
 [ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
