@@ -13,7 +13,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | B | Trust the data | `project_source_analysis` (project-relative summary/substance/relevance off the global source row), provenance columns (model, provider, prompt_version, schema_version, source/brief/facts revisions), deletion cascade | **COMPLETE (0.16.0)** |
 | C | Staleness | Artifacts know the revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild shows a cost estimate and goes through the budget valve; chats stay historical | **COMPLETE (0.16.0)** — exit test `test_staleness_exit_criteria` |
 | D | Survive interruption | Ingestion stages (metadata → transcript → chunks → embeddings → ready, each transactional, resume from the last completed), job leases + heartbeats, `job_events`, one findings job per source, `external_pending` for parked work (re-attach, never resubmit), dependency policies + failure propagation, cancellation semantics, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | **COMPLETE (0.17.0)** |
-| E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | |
+| E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | |
@@ -77,7 +77,7 @@ E1 INFERENCE CONTRACTS (0.18.0-e1)             COMPLETE — router equivalence p
 [x] Claude 5 adapter compatibility: thinking-first responses are parsed by block type everywhere (providers.text_of; findings, ranking, chat, Discover, planner, export); tool loops pass thinking blocks back complete and unchanged (test_tool_loop_preserves_thinking_blocks_unchanged)
 [ ] Live router equivalence: `neurosearch eval --live --compare evals/baseline-0.17.3-849bd0d-sonnet-4-6.json` on 0.18.0-e1. STRUCTURAL equivalence is the bar — same contracts, same configured/returned model, same prompt-version hashes, same retrieval inputs, Tier 1 passes, validators do not regress, no unexplained provider behaviour. Billing categories (input vs cache read vs cache write) and total cost are NOT expected to match: cache state differs between runs. E2 tokenizer deltas will be measured with the provider's token-counting endpoint on canonical requests, not from billing rows.
 
-E2 SHADOW MIGRATION                            IN PROGRESS — one task at a time, same prompt + same inputs, different model
+E2 SHADOW MIGRATION                            COMPLETE (0.18.0) — migrated what was proven; the rest deferred by decision, not failed
 [x] E2.0 ranking-eval infrastructure (0.18.0-e2.0): frozen rank.relevance fixture tests/fixtures/golden/ranking.json (79 graded candidates against the
     Golden SBA brief: relevant/moderate/weak/irrelevant/clickbait/authoritative-low-view/popular-irrelevant/duplicate; built by build_ranking.py, a test
     proves it is byte-frozen) · `neurosearch eval --ranking [--live] [--task-model rank.relevance=…] [--baseline] [--compare f]` invokes the real task
@@ -128,8 +128,21 @@ E2 SHADOW MIGRATION                            IN PROGRESS — one task at a tim
     Saves evals/migration-compare/<stamp>-<sha>/{planner-*, planner.update-*, export.synthesis-*(.md), answer.chat-*, comparison.json, comparison.txt};
     prints one PASS / PASS WITH CAVEAT / FAIL per task plus a recommended setting; changes nothing (contracts stay until migrated by hand).
     Read-only observer hooks: qa.OBSERVER, planner.OBSERVER (+_parse_json events), export._last_call — Tier 1 byte-equal.
-[ ] E2.3 live: `neurosearch eval --migration-compare --live` → migrate the tasks that pass (one commit), then END the model-migration phase
-    and return to the hardening ladder (Rung F structured outputs onwards)
+[—] E2.3 live comparison NOT RUN — by decision (Kyle, 0.18.0): enough evidence gathered; the consolidated $3–5 live run is not required.
+
+MISSION E OUTCOME (0.18.0)
+  Production model assignments (contracts.py):
+    rank.relevance     claude-sonnet-5, thinking disabled   (E2.1, live ranking comparison PASS)
+    findings.extract   claude-sonnet-5, thinking disabled   (E2.2, live findings comparison clear PASS)
+    answer.chat, answer.repair, export.synthesis, planner.analysis, planner.build, planner.update,
+    discover.quick, discover.verify              claude-sonnet-4-6 — INTENTIONALLY DEFERRED, not failed
+  Tooling kept for later (Sonnet 4.6 retirement, or an intentional revisit): `neurosearch eval --ranking-compare`,
+  `--findings-compare`, `--migration-compare` (+ planner_rubric.json), all `--live`-capable, all changing nothing by themselves.
+
+EVAL POLICY from here on (Kyle, 0.18.0)
+  - Required on every change: automated Tier 1 eval (fakes), unit + integration tests (pytest), crash/recovery suite.
+  - Live paid evals only for: a major model replacement, a major architectural change affecting AI behaviour, or the
+    investigation of a detected regression. Never a routine step; never something Kyle has to operate by hand.
 [ ] E2.3 findings.extract (thinking disabled) — needs its own fixture-level comparison next
   order: rank.relevance → findings.extract (both with thinking=disabled to preserve the 4.6 no-thinking behaviour) → chat → discover → planner (adaptive thinking experiments only there, effort via output_config)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
