@@ -166,8 +166,9 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
         try:
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
         except Exception as e:  # noqa: BLE001
+            from .breakers import ProviderUnavailable
             from .usage import BudgetPaused
-            if isinstance(e, BudgetPaused):
+            if isinstance(e, (BudgetPaused, ProviderUnavailable)):
                 raise
             log.warning("rank batch %d failed: %s", b // BATCH, e)
             failed_batches += 1

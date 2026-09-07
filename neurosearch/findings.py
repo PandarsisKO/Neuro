@@ -360,8 +360,9 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             suggest_for_source(project_id, sid, force=force)
             done += 1
         except Exception as e:  # noqa: BLE001
+            from .breakers import ProviderUnavailable
             from .usage import BudgetPaused
-            if isinstance(e, BudgetPaused):
+            if isinstance(e, (BudgetPaused, ProviderUnavailable)):
                 # hand the remaining sources back to the queue as a fresh job and stop
                 remaining = ids[i:]
                 db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining})

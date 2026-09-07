@@ -280,6 +280,21 @@ CREATE TABLE IF NOT EXISTS batch_items (
 CREATE INDEX IF NOT EXISTS ix_batch_items_job ON batch_items(job_id, cohort_no);
 CREATE INDEX IF NOT EXISTS ix_batch_items_batch ON batch_items(batch_id);
 
+CREATE TABLE IF NOT EXISTS circuit_breakers (
+    operation       TEXT PRIMARY KEY,         -- provider:operation, e.g. anthropic:messages (never per model)
+    state           TEXT NOT NULL DEFAULT 'closed',   -- closed | open | half_open
+    failures        INTEGER NOT NULL DEFAULT 0,       -- consecutive transient failures (reset by any success)
+    opened_at       REAL,
+    next_probe_at   REAL,                     -- honours the provider's retry-after when it gave one
+    last_error_type TEXT,
+    last_error_at   REAL,
+    last_success_at REAL,
+    probe_owner     TEXT,                     -- the ONE worker allowed to probe while half_open
+    probe_expires_at REAL,
+    generation      INTEGER NOT NULL DEFAULT 0,       -- bumped on every open: a stale worker cannot close a newer circuit
+    updated_at      REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS window_decisions (
     id             INTEGER PRIMARY KEY,
     project_id     TEXT NOT NULL,
@@ -401,6 +416,7 @@ MIGRATIONS = [
     ("jobs", "lease_until", "ALTER TABLE jobs ADD COLUMN lease_until REAL"),
     ("jobs", "cancel_requested_at", "ALTER TABLE jobs ADD COLUMN cancel_requested_at REAL"),
     ("jobs", "wait_reason", "ALTER TABLE jobs ADD COLUMN wait_reason TEXT"),
+    ("jobs", "wait_operation", "ALTER TABLE jobs ADD COLUMN wait_operation TEXT"),
     ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
     ("jobs", "dependency_policy", "ALTER TABLE jobs ADD COLUMN dependency_policy TEXT"),
@@ -1208,7 +1224,7 @@ def derived_status(j: dict[str, Any]) -> str:
             if rep["state"] == "waiting":
                 return "blocked"
         if j.get("not_before") and j["not_before"] > now():
-            return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait"}.get(j.get("wait_reason") or "", "retry_wait")
+            return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait"}.get(j.get("wait_reason") or "", "retry_wait")
         return "queued"
     if st == "running" and j.get("cancel_requested_at"):
         return "cancelling"
@@ -1634,6 +1650,14 @@ def integrity_check() -> dict[str, Any]:
     return info
 
 
+def _provider_health() -> list[dict[str, Any]]:
+    try:
+        from . import breakers
+        return breakers.health()
+    except Exception as e:  # noqa: BLE001
+        return [{"operation": "?", "label": "Provider health", "status": "unknown", "detail": str(e)[:100]}]
+
+
 def health() -> dict[str, Any]:
     """What the health view needs: database, backups, queue, evidence validators, disk."""
     import shutil as _sh
@@ -1669,6 +1693,7 @@ def health() -> dict[str, Any]:
             "structured_outputs": {"mismatches": ev["schema_mismatches"], "mismatches_recovered_by_retry": ev["schema_mismatch_recovered"],
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
+            "providers": _provider_health(),
             "network": {"fetch_blocked": ev["fetch_blocked"], "note": "J1 boundary: fetches refused (private/internal address, bad scheme, size, redirect or time limit); reasons in validation_events kind=fetch_blocked"},
             "rerank": {"enabled": bool(settings.retrieval_rerank), "applied": ev["rerank_applied"], "fallbacks": ev["rerank_fallback"],
                        "note": "I2 experiment: reorders retrieved candidates only; every failure restores the retrieval ordering"},
@@ -1729,6 +1754,29 @@ def failed_jobs(project_id: str | None = None, since_hours: float = 48) -> list[
             continue
         out.append(j)
     return out
+
+
+def park_provider_wait(job_id: str, operation: str, until: float, message: str) -> None:
+    """J2: the job asked a provider whose circuit is open. It goes back to the queue in the distinct `provider_wait` state:
+    no attempt counted, nothing spent, woken when the breaker closes (or at the next probe time, to try for the probe)."""
+    with tx() as conn:
+        r = conn.execute("SELECT run_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
+                     "wait_reason='provider', wait_operation=?, updated_at=? WHERE id=?", (until, message, operation, now(), job_id))
+        job_event(job_id, "provider_wait", run_id=r["run_id"] if r else None, conn=conn, operation=operation, until=until)
+
+
+def wake_provider_wait(operation: str) -> int:
+    """The circuit closed: every job parked on that operation becomes runnable now."""
+    with tx() as conn:
+        n = conn.execute("UPDATE jobs SET not_before=NULL, message='provider available again — resuming', updated_at=? "
+                         "WHERE status='queued' AND wait_reason='provider' AND wait_operation=?", (now(), operation)).rowcount
+    return int(n or 0)
+
+
+def provider_wait_jobs(operation: str | None = None) -> list[dict[str, Any]]:
+    q = "SELECT * FROM jobs WHERE status='queued' AND wait_reason='provider'" + (" AND wait_operation=?" if operation else "")
+    return [row_to_dict(r) for r in connect().execute(q, (operation,) if operation else ()).fetchall()]  # type: ignore[misc]
 
 
 def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False) -> None:

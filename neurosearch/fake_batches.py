@@ -50,6 +50,8 @@ class FakeBatches:
         self._path().write_text(json.dumps(d, default=str))
 
     def create(self, requests: list[dict[str, Any]], _client_ref: str | None = None, **kw: Any) -> Any:
+        from .fake_ai import _maybe_outage
+        _maybe_outage("anthropic:batches")
         d = self._load()
         bid = f"msgbatch_fake{len(d['batches']) + 1:05d}"
         ids = [r["custom_id"] for r in requests]

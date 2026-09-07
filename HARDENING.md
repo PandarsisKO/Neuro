@@ -18,7 +18,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3)**: hard retrieval fixture + live production-embedding baseline (MRR 0.9093, R@1 86.7%, exact locator 87.2%) kept as permanent regression coverage; the Haiku candidate-only reranker held every safety gate but failed every frozen meaningful-improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s and $0.0027 per query) → KILL; production retrieval unchanged (FTS + embeddings + RRF); query rewriting / embedding-large / vector index untested by decision — no evidence of need |
-| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **J1 done (0.23.0+j1)**: `safe_fetch` with a pinned validated connection (no DNS-rebinding gap), per-hop revalidation, manual redirects, streamed wire + decoded ceilings by content class, total deadline, typed blocks → Health; webpage/document fetches routed through it; 54 local deterministic tests incl. rebinding. J2 (breakers per provider:operation, durable in SQLite) and J3 (no automatic fallback for evidence tasks) next |
+| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **J1 + J2 done (0.23.0+j2)**: `safe_fetch` boundary (pinned validated connection, per-hop revalidation, size/decoded/time limits, 54 tests) and durable circuit breakers per provider:operation with a distinct zero-cost `provider_wait` job state (15 tests); J3 (explicit no-fallback policy + provenance) next |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
 
@@ -150,7 +150,7 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
 
-## Rung J — external failure (J1 safe_fetch done, 0.23.0+j1; J2/J3 pending)
+## Rung J — external failure (J1 + J2 done, 0.23.0+j2; J3 pending)
 J1 `safe_fetch.py` is the ONE boundary for ordinary URL fetching (`webpage.fetch` → pages and linked documents/PDFs); yt-dlp
 stays separate by design (its own extractor/cookie/redirect logic; documented exception). Pipeline for the initial URL AND every
 redirect hop: parse → http/https only → no userinfo → normalised host/port (idna, browser shorthand like 127.1 canonicalised) →
@@ -181,6 +181,39 @@ Implementation constraints found: (1) HTTPS end-to-end is unit-tested (pinned so
 the harness; (2) no outbound proxy support in this client (trust_env-equivalent off) — if proxies are ever wanted they must be added
 deliberately and validated like a destination; (3) hosts with several answers are all validated and the first IPv4 answer is pinned
 (IPv6-only hosts pin their v6 answer); (4) `.local` and `.localhost` names are refused by name as belt-and-braces.
+
+### J2 — durable circuit breakers per provider:operation (0.23.0+j2)
+`breakers.py` + table `circuit_breakers` (operation PK, state closed|open|half_open, consecutive transient failures, opened_at,
+next_probe_at, last_error_type/at, last_success_at, probe_owner + probe_expires_at, generation, updated_at). Keys: anthropic:messages
+(EVERY Anthropic message task — never per model), anthropic:batches, openai:embeddings, openai:transcription. Policy, deterministic and
+small: 3 consecutive TRANSIENT failures → OPEN (generation +1; next_probe_at = the provider's retry-after when it gave one, else a
+cooldown of 60 s doubling per generation up to 15 min); at next_probe_at exactly ONE worker leases the half-open probe (atomic
+UPDATE guarded by generation; lease 120 s, released if the prober never reports); probe success → CLOSED + every job parked on the
+operation woken; probe transient failure → OPEN again, longer cooldown; a success or failure from a stale generation is ignored;
+a stray success from a non-prober does not close a half-open circuit. Wired in `providers._Ledgered` (gate BEFORE any invocation
+row — a refused call costs 0 attempts, 0 invocations, $0 — every transport attempt's transient failure is counted, every real
+success recorded) and `providers._GatedBatches` (Message Batches create/retrieve/results/cancel/list behind anthropic:batches;
+batches.py keeps its per-item ledger). Classification (`providers.classify_error`): transient = connection, timeout, 5xx/529
+overload, ordinary 429 WITH a retry window; NOT transient and never breaker input = auth, permission, billing (402 / "credit
+balance"), invalid request, refusal, schema mismatch, the user's own budget pause, and SPEND_CAP = a 429 with no retry window
+naming a spend/usage limit (`enforced_spend_limit_reached`) — typed failures that stop, not cycles. `retry_after_of()` honours
+Retry-After (seconds or HTTP-date) as next_probe_at. Jobs: `breakers.ProviderUnavailable` (raised by the gate) or a
+ProviderError whose operation is now open → `db.park_provider_wait`: status queued, wait_reason='provider', wait_operation,
+not_before=next_probe_at, NO attempt counted, event `provider_wait`; derived status `provider_wait` (distinct from retry /
+budget / rate-limit / dependency waits); `db.wake_provider_wait(op)` on close; lease recovery and restarts never touch it
+(it holds no lease). Propagates like BudgetPaused through findings/relevance/ingest loops. Health `providers`: "Anthropic
+Messages · Healthy / Waiting · provider temporarily unavailable · next check after 11:42 AM / Checking", waiting-job count;
+job detail `provider_wait` = "Waiting for Anthropic Messages — provider temporarily unavailable. Next check after 11:42 AM."
+(never "retry 3/3 failed: 529"). SDK retries stay off (max_retries=0) so the breaker sees every attempt.
+Tests (tests/test_j2_breakers.py, 15, injected outages via `fake_ai.OUTAGES[operation]` + `FakeAPIError` shaped like the SDK's):
+threshold opens only the affected operation (messages open ≠ batches, transcription open ≠ embeddings); auth / permission /
+invalid / billing / spend-cap / schema-mismatch never open one; 429 honours retry-after (next probe ≈ 90 s) and spend cap is typed
+SPEND_CAP; exactly one half-open probe lease, a second worker parks; probe success closes and releases two parked jobs; a
+non-prober's success does not close; a failed probe reopens with generation 3 and a longer cooldown; an expired probe lease
+passes to another worker; a stale generation's success is ignored; provider_wait = 0 attempts, 0 invocations, $0, plain-language
+message, survives restart + lease recovery, and the parked job completes as the probe once the circuit may be tested; batch
+submission parks on anthropic:batches while interactive messages still flow; Health and job diagnostics expose operation, state
+and next check without provider internals.
 
 ## Rung I — retrieval (COMPLETE 0.22.0+i3: hard baseline kept; reranker measured live, NOT adopted; retrieval unchanged)
 Premise (Kyle): retrieval is already strong on the golden questions (R@10 100%, R@5 96.9%, MRR 0.922, locator 80% in Tier 1), so a

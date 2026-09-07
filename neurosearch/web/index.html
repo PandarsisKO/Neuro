@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.23.0+j1';
+const UI_VERSION = '0.23.0+j2';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -923,6 +923,8 @@ async function loadHealth() {
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
       [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered && !(h.structured_outputs || {}).mismatches)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} · ${h.structured_outputs.mismatches} schema mismatch${h.structured_outputs.mismatches === 1 ? '' : 'es'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
       [`${h.fake_ai ? '🧪' : '✅'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
+      ...((h.providers || []).map(p => [`${p.status === 'Healthy' ? '✅' : p.status === 'Checking' ? '🔎' : '⏸'} ${p.label}`, p.status === 'Healthy' ? 'Healthy' : `${p.status}${p.detail ? ' · ' + p.detail : ''}${p.waiting_jobs ? ` · ${p.waiting_jobs} job${p.waiting_jobs === 1 ? '' : 's'} waiting` : ''}`])),
+      [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
@@ -1018,9 +1020,9 @@ async function loadJobs() {
     return;
   }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
-  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
-  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
-  const jobMsg = j => j.batch ? j.batch.label : (j.message || '');
+  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
+  const jobMsg = j => j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || '');
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span style="color:var(--bad)">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];

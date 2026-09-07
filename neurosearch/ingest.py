@@ -429,8 +429,9 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
     except Exception as e:  # noqa: BLE001
         from .jobs import Cancelled
         from .media import RateLimited
+        from .breakers import ProviderUnavailable
         from .usage import BudgetPaused
-        if isinstance(e, (RateLimited, BudgetPaused, Cancelled)):
+        if isinstance(e, (RateLimited, BudgetPaused, Cancelled, ProviderUnavailable)):
             raise
         log.exception("ingest failed for %s", source_id)
         db.set_source_status(source_id, "failed", str(e)[:1000])

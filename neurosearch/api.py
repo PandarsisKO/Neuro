@@ -748,6 +748,10 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
 
 def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:
     j["state"] = db.derived_status(j)
+    if j["state"] == "provider_wait":
+        from . import breakers
+        j["provider_wait"] = {"operation": j.get("wait_operation"), "label": breakers.LABELS.get(j.get("wait_operation") or "", j.get("wait_operation")),
+                              "until": j.get("not_before"), "message": breakers.wait_message(j.get("wait_operation") or "", j.get("not_before"))}
     if j.get("kind") == "suggest_findings_batch":
         from . import batches
         j["batch"] = batches.ui_state(j)

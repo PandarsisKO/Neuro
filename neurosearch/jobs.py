@@ -329,6 +329,18 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             if sid:
                 db.set_source_status(sid, "pending")
             return "queued"
+        from .breakers import ProviderUnavailable, get as breaker_get, wait_message
+        from .providers import ProviderError as _PE
+        pu = e if isinstance(e, ProviderUnavailable) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), ProviderUnavailable) else None)
+        if pu is None and isinstance(e, _PE) and e.operation and breaker_get(e.operation)["state"] != "closed":
+            b = breaker_get(e.operation)                      # this job's own attempts tripped the circuit: it waits like everyone else
+            pu = ProviderUnavailable(e.operation, b.get("next_probe_at"), b["state"])
+        if pu is not None:
+            until = pu.next_probe_at or (time.time() + 60)
+            db.park_provider_wait(jid, pu.operation, until, wait_message(pu.operation, until))     # J2: 0 attempts, 0 invocations, $0
+            if sid:
+                db.set_source_status(sid, "pending")
+            return "queued"
         if isinstance(e, RateLimited) or isinstance(getattr(e, "__cause__", None), RateLimited):
             db.requeue_job(jid, delay=rate_limit_status()["seconds_left"] + 5, message=f"paused: {e}", wait_reason="rate_limit")
             if sid:

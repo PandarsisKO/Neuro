@@ -7,7 +7,9 @@ Rung 4) will later plug into; for now it only knows two providers and one switch
 """
 from __future__ import annotations
 
+import json
 import logging
+import time
 from typing import Any
 
 from .config import settings
@@ -39,17 +41,50 @@ def require_openai(what: str = "OPENAI_API_KEY is not set") -> None:
 
 # ------------------------------------------------------------------ typed provider errors + retry policy (E0/E1)
 
-RATE_LIMIT, TIMEOUT, OVERLOADED, AUTH, INVALID_REQUEST, CONNECTION, REFUSAL, UNKNOWN = (
-    "RATE_LIMIT", "TIMEOUT", "OVERLOADED", "AUTH", "INVALID_REQUEST", "CONNECTION", "REFUSAL", "UNKNOWN")
-TRANSIENT_TYPES = {RATE_LIMIT, TIMEOUT, OVERLOADED, CONNECTION}
+RATE_LIMIT, TIMEOUT, OVERLOADED, AUTH, INVALID_REQUEST, CONNECTION, REFUSAL, UNKNOWN, SPEND_CAP, BILLING = (
+    "RATE_LIMIT", "TIMEOUT", "OVERLOADED", "AUTH", "INVALID_REQUEST", "CONNECTION", "REFUSAL", "UNKNOWN", "SPEND_CAP", "BILLING")
+TRANSIENT_TYPES = {RATE_LIMIT, TIMEOUT, OVERLOADED, CONNECTION}          # transport retries AND circuit breakers (J2) act on these only
+# J2: account/request conditions that will NOT recover by retrying — typed failures, never breaker input
+NON_TRANSIENT_TYPES = {AUTH, INVALID_REQUEST, REFUSAL, SPEND_CAP, BILLING}
+
+
+def retry_after_of(e: BaseException) -> float | None:
+    """The provider's own retry window in seconds (Retry-After header, seconds or HTTP-date), when it gave one."""
+    resp = getattr(e, "response", None)
+    headers = getattr(resp, "headers", None)
+    if not headers:
+        return None
+    v = headers.get("retry-after") if hasattr(headers, "get") else None
+    if not v:
+        return None
+    try:
+        return max(1.0, float(v))
+    except ValueError:
+        try:
+            from email.utils import parsedate_to_datetime
+            return max(1.0, parsedate_to_datetime(v).timestamp() - time.time())
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def _error_text(e: BaseException) -> str:
+    body = getattr(e, "body", None)
+    return (json.dumps(body, default=str) if body else "") + " " + str(e)
 
 
 def classify_error(e: BaseException) -> str:
-    """Map an SDK exception to a Neuro Search error type by its class (never by message text)."""
+    """Map an SDK exception to a Neuro Search error type by its class and status. The one place message text is
+    consulted: a 429 with NO retry window that names a spend/usage limit is an account condition (SPEND_CAP), not a
+    rate limit, and a 400 that names billing/credit balance is BILLING — neither will recover by retrying."""
     name = type(e).__name__
     status = getattr(e, "status_code", None)
     if name in ("RateLimitError",) or status == 429:
+        txt = _error_text(e).lower()
+        if retry_after_of(e) is None and ("spend" in txt or "usage limit" in txt or "enforced_spend_limit" in txt or "monthly limit" in txt):
+            return SPEND_CAP
         return RATE_LIMIT
+    if status == 402 or "credit balance" in _error_text(e).lower() or "billing" in _error_text(e).lower():
+        return BILLING
     if name in ("APITimeoutError", "DeadlineExceededError") or status == 408:
         return TIMEOUT
     if name in ("OverloadedError", "ServiceUnavailableError", "InternalServerError") or (status is not None and status >= 500) or status == 529:
@@ -82,9 +117,9 @@ def retry_policy(task: str | None) -> dict[str, Any]:
 class ProviderError(RuntimeError):
     """A provider call failed after Neuro Search's own attempts. `error_type` is one of the typed categories."""
 
-    def __init__(self, error_type: str, cause: BaseException, attempts: int) -> None:
+    def __init__(self, error_type: str, cause: BaseException, attempts: int, operation: str | None = None) -> None:
         super().__init__(f"{error_type} after {attempts} attempt{'s' if attempts != 1 else ''}: {cause}")
-        self.error_type, self.cause, self.attempts = error_type, cause, attempts
+        self.error_type, self.cause, self.attempts, self.operation = error_type, cause, attempts, operation
 
 
 # ------------------------------------------------------------------ invocation ledger (every paid call is accounted for)
@@ -103,16 +138,22 @@ class _Ledgered:
     """Wraps a provider method: INTENT → IN_FLIGHT before the network call, COMPLETED/FAILED after. If the process dies
     in between, recovery marks the row OUTCOME_UNKNOWN (the provider may have done and charged the work)."""
 
-    def __init__(self, fn: Any, provider: str, default_task: str, policy: dict[str, Any] | None = None) -> None:
+    def __init__(self, fn: Any, provider: str, default_task: str, policy: dict[str, Any] | None = None, operation: str | None = None) -> None:
         self._fn, self._provider, self._task, self._policy = fn, provider, default_task, policy
+        # every Anthropic message task shares ONE breaker (anthropic:messages); OpenAI operations are keyed by method
+        self._operation = operation or OPERATION_OF.get((provider, default_task), "anthropic:messages" if provider == "anthropic" else f"{provider}:{default_task}")
 
     def __call__(self, **kw: Any) -> Any:
         import time as _time
 
-        from . import db, jobs
+        from . import breakers, db, jobs
         task = (kw.get("extra_headers") or {}).get("x-neurosearch-task") or self._task
         jid, run_id = jobs.current_job()
         policy = self._policy or retry_policy(task)
+        worker = f"{jid or 'nojob'}:{run_id or ''}"
+        gate = breakers.gate(self._operation, worker)               # J2: an open circuit raises BEFORE any ledger row or attempt
+        generation = int(gate.get("generation") or 0)
+        probing = bool(gate.get("probe"))
         logical = None
         ihash = _request_hash(kw)
         attempt = 0
@@ -125,15 +166,53 @@ class _Ledgered:
             except Exception as e:
                 et = classify_error(e)
                 db.invocation_finish(iid, "failed", error=str(e), error_type=et, provider_request_id=str(getattr(e, "request_id", "") or "") or None)
-                if et in TRANSIENT_TYPES and attempt < policy["max_attempts"]:
-                    _time.sleep(policy["backoff"][min(attempt - 1, len(policy["backoff"]) - 1)])
-                    continue
+                if et in TRANSIENT_TYPES:                            # the breaker sees EVERY transport attempt; non-transient errors never touch it
+                    breakers.record_failure(self._operation, et, worker, retry_after_s=retry_after_of(e), generation=generation)
+                    if probing:                                      # a failed probe reopened the circuit: stop here
+                        raise ProviderError(et, e, attempt) from e
+                    if attempt < policy["max_attempts"] and breakers.get(self._operation)["state"] == breakers.CLOSED:
+                        _time.sleep(policy["backoff"][min(attempt - 1, len(policy["backoff"]) - 1)])
+                        continue
                 raise ProviderError(et, e, attempt) from e
             jobs.crash_point("provider_response_lost")          # the provider has done (and charged) the work; we die before recording it
             rid = getattr(res, "_request_id", None) or getattr(res, "id", None)
             db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None,
                                  returned_model=str(getattr(res, "model", "") or "") or None)   # configured vs returned
+            breakers.record_success(self._operation, worker, generation=generation)
             return res
+
+
+# J2 breaker keys: provider:operation — never per model (fragmented keys hide the outage signal)
+OPERATION_OF = {("anthropic", "answer.chat"): "anthropic:messages", ("anthropic", "planner.build"): "anthropic:messages",
+                ("openai", "embed"): "openai:embeddings", ("openai", "transcribe"): "openai:transcription"}
+
+
+class _GatedBatches:
+    """Message Batches methods behind the anthropic:batches breaker (batches.py keeps its own per-item ledger)."""
+
+    def __init__(self, batches: Any) -> None:
+        self._b = batches
+
+    def __getattr__(self, name: str) -> Any:
+        fn = getattr(self._b, name)
+        if not callable(fn):
+            return fn
+
+        def call(*a: Any, **kw: Any) -> Any:
+            from . import breakers, jobs
+            jid, run_id = jobs.current_job()
+            worker = f"{jid or 'poller'}:{run_id or ''}"
+            gate = breakers.gate("anthropic:batches", worker)
+            try:
+                out = fn(*a, **kw)
+            except Exception as e:
+                et = classify_error(e)
+                if et in TRANSIENT_TYPES:
+                    breakers.record_failure("anthropic:batches", et, worker, retry_after_s=retry_after_of(e), generation=int(gate.get("generation") or 0))
+                raise
+            breakers.record_success("anthropic:batches", worker, generation=int(gate.get("generation") or 0))
+            return out
+        return call
 
 
 class _LedgeredStream:
@@ -183,7 +262,7 @@ def _wrap_anthropic(client: Any) -> Any:
     return _Attr(messages=_Attr(create=_Ledgered(msgs.create, "anthropic", "answer.chat"),
                                 stream=_LedgeredStream(stream, "anthropic", "planner.build") if stream else None,
                                 count_tokens=getattr(msgs, "count_tokens", None),
-                                batches=getattr(msgs, "batches", None)), _raw=client)     # Message Batches (Rung G): ledgered per item by batches.py
+                                batches=_GatedBatches(msgs.batches) if getattr(msgs, "batches", None) is not None else None), _raw=client)     # Message Batches (Rung G): ledgered per item by batches.py; gated by the anthropic:batches breaker (J2)
 
 
 def _wrap_openai(client: Any) -> Any:

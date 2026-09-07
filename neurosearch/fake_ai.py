@@ -436,8 +436,31 @@ def task_of(system: str, kw: dict[str, Any]) -> str:
     return "answer.chat"
 
 
+class FakeAPIError(Exception):
+    """Shaped like an SDK error: status_code, response.headers, body — what classify_error and retry_after_of read."""
+
+    def __init__(self, status: int, message: str = "simulated", retry_after: str | None = None, body: Any = None, name: str | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status
+        self.body = body
+        self.response = _Blk(headers={"retry-after": retry_after} if retry_after else {})
+        if name:
+            self.__class__ = type(name, (FakeAPIError,), {})
+
+
+# J2 outage injection: OUTAGES[operation] = list of FakeAPIError (or Exception) raised by successive calls; empty → normal
+OUTAGES: dict[str, list[Exception]] = {}
+
+
+def _maybe_outage(operation: str) -> None:
+    q = OUTAGES.get(operation)
+    if q:
+        raise q.pop(0)
+
+
 class _Msgs:
     def create(self, **kw: Any) -> Any:
+        _maybe_outage("anthropic:messages")
         system, cache_hashes = _flatten(kw.get("system", ""))
         messages = kw.get("messages") or []
         user = _content_text(messages[-1]["content"]) if messages else ""
@@ -565,6 +588,7 @@ def fake_embedding(text: str) -> np.ndarray:
 
 class _Embeddings:
     def create(self, model: str, input: list[str]) -> Any:  # noqa: A002
+        _maybe_outage("openai:embeddings")
         data = [_Blk(index=i, embedding=fake_embedding(t).tolist()) for i, t in enumerate(input)]
         return _Blk(data=data, usage=_Blk(total_tokens=sum(_tokens(t) for t in input)))
 
@@ -572,6 +596,7 @@ class _Embeddings:
 class _Transcriptions:
     def create(self, **kw: Any) -> Any:
         """A sidecar `<file>.segments.json` next to the audio is used when present; otherwise a stub."""
+        _maybe_outage("openai:transcription")
         fh = kw.get("file")
         name = getattr(fh, "name", "")
         segs = []
