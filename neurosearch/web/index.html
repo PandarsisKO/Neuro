@@ -203,7 +203,7 @@
 
 <!-- ============ HOME ============ -->
 <div id="home">
-  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button></div>
+  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted verTag" title="app version (page / server)" style="align-self:center;font-size:11.5px;margin-left:8px"></span></div>
   <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
   <div class="grid" id="projGrid"></div>
   <div id="homeFun"></div>
@@ -227,7 +227,7 @@
     <div class="chats" id="chatList"></div>
     <div class="foot" id="wsNums" style="cursor:pointer" title="This project in numbers — click for the full card" onclick="showView('sources')"></div>
     <div class="foot" id="wsFoot"></div>
-    <div style="padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted" id="sideSpend" style="font-size:11.5px" title="estimated API spend"></span></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted verTag" title="app version (page / server)" style="font-size:11.5px"></span><span class="muted" id="sideSpend" style="font-size:11.5px;margin-left:auto" title="estimated API spend"></span></div>
   </aside>
 
   <div id="main">
@@ -464,9 +464,16 @@ try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { app
 
 // ================= routing =================
 const UI_VERSION = '0.24.1';
+function showVersion(server) {
+  // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
+  const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
+  document.querySelectorAll('.verTag').forEach(e => { e.textContent = t; e.style.color = server && server !== UI_VERSION ? 'var(--warn)' : ''; });
+}
+showVersion();
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
+    showVersion(v);
     if (j.fake_ai && !$('#fakeBanner')) {
       const f = document.createElement('div'); f.id = 'fakeBanner';
       f.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:98;background:#b45309;color:#fff;text-align:center;padding:6px;font-weight:700;letter-spacing:.02em';
