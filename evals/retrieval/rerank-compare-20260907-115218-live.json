@@ -1,0 +1,5022 @@
+{
+ "eval": "retrieval-rerank",
+ "tier": "live",
+ "depth": 11,
+ "baseline": {
+  "recall_at_1": 0.8667,
+  "recall_at_3": 0.9333,
+  "recall_at_5": 0.9333,
+  "recall_at_10": 1.0,
+  "candidate_recall_at_40": 1.0,
+  "mrr": 0.9093,
+  "ndcg_at_10": 0.8501,
+  "locator_exact_at_first_hit": 0.8718,
+  "hard_negative_false_positives": 1,
+  "deepest_target_position": null
+ },
+ "frozen_live_baseline": {
+  "recall_at_1": 0.8667,
+  "recall_at_3": 0.9333,
+  "recall_at_5": 0.9333,
+  "recall_at_10": 1.0,
+  "candidate_recall_at_40": 1.0,
+  "mrr": 0.9093,
+  "ndcg_at_10": 0.8501,
+  "locator_exact_at_first_hit": 0.8718,
+  "hard_negative_false_positives": 1,
+  "deepest_target_position": 9
+ },
+ "candidate": {
+  "recall_at_1": 0.8333,
+  "recall_at_3": 0.9333,
+  "recall_at_5": 0.9667,
+  "recall_at_10": 1.0,
+  "candidate_recall_at_40": 1.0,
+  "mrr": 0.8903,
+  "ndcg_at_10": 0.8501,
+  "locator_exact_at_first_hit": 0.9231,
+  "hard_negative_false_positives": 0,
+  "deepest_target_position": null
+ },
+ "compare": {
+  "improved": 3,
+  "worsened": 4,
+  "same": 23,
+  "top10_source_overlap_mean": 0.9272,
+  "changes": [
+   {
+    "q": "What should I change in the first ninety days after buying a business?",
+    "first_rank": [
+     1,
+     0
+    ],
+    "exact": [
+     "0/1",
+     "1/1"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "Do home services businesses sell for more than four times SDE?",
+    "first_rank": [
+     0,
+     1
+    ],
+    "exact": [
+     "0/0",
+     "0/0"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "Should the seller stay on after closing, and for how long?",
+    "first_rank": [
+     0,
+     0
+    ],
+    "exact": [
+     "0/2",
+     "1/2"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "When is customer concentration a deal breaker?",
+    "first_rank": [
+     0,
+     1
+    ],
+    "exact": [
+     "1/1",
+     "1/1"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "Which leases and contracts need to be assignable?",
+    "first_rank": [
+     5,
+     7
+    ],
+    "exact": [
+     "1/1",
+     "1/1"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "What documents will the lender ask for?",
+    "first_rank": [
+     1,
+     0
+    ],
+    "exact": [
+     "1/1",
+     "1/1"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "What interest rate spread do acquisition loans carry?",
+    "first_rank": [
+     0,
+     2
+    ],
+    "exact": [
+     "2/2",
+     "2/2"
+    ],
+    "hard_negative_fp": [
+     0,
+     0
+    ]
+   },
+   {
+    "q": "Is closing possible in thirty days?",
+    "first_rank": [
+     8,
+     3
+    ],
+    "exact": [
+     "1/1",
+     "1/1"
+    ],
+    "hard_negative_fp": [
+     1,
+     0
+    ]
+   }
+  ]
+ },
+ "fixable_in_baseline": [
+  "Is closing possible in thirty days?",
+  "What documents will the lender ask for?",
+  "What should I change in the first ninety days after buying a business?",
+  "Which leases and contracts need to be assignable?"
+ ],
+ "fixable_improved": [
+  "Is closing possible in thirty days?",
+  "What documents will the lender ask for?",
+  "What should I change in the first ninety days after buying a business?"
+ ],
+ "hard_gates": {
+  "recall_at_10_100": true,
+  "candidate_recall_100": true,
+  "exact_locator_not_below_baseline": true,
+  "hard_negative_fp_not_above_1": true,
+  "candidate_set_unchanged_every_query": true,
+  "fallback_restores_original_ordering": true
+ },
+ "meaningful": {
+  "mrr": false,
+  "recall_at_3": false,
+  "exact_locator": false
+ },
+ "economics": {
+  "queries": 30,
+  "applied": 30,
+  "fallbacks": 0,
+  "fallback_reasons": [],
+  "latency_s_mean": 1.667,
+  "latency_s_max": 2.726,
+  "input_tokens_mean": 2506,
+  "output_tokens_mean": 39,
+  "cost_per_query": 0.002701,
+  "cost_total": 0.081044,
+  "configured_model": "claude-haiku-4-5",
+  "returned_models": [
+   "claude-haiku-4-5-20251001"
+  ],
+  "cost_per_query_at_contract_price": 0.002701,
+  "version": "rerank-89a9a0f7",
+  "schema": "retrieval-rerank-v1",
+  "depth": 11
+ },
+ "verdict": "KILL",
+ "verdict_note": "no meaningful improvement (MRR +0.02 / R@3 +5 pp / exact locator +10 pp)",
+ "per_query": [
+  {
+   "q": "What is the minimum down payment for an SBA 7(a) acquisition?",
+   "category": "authority",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ]
+  },
+  {
+   "q": "Can the seller note count toward the equity injection?",
+   "category": "authority",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2117.7
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2117.7
+    ]
+   ]
+  },
+  {
+   "q": "Do I really have to sign a personal guarantee?",
+   "category": "authority",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/2",
+    "1/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "yt03",
+     3964.2
+    ]
+   ]
+  },
+  {
+   "q": "Is a quality of earnings report necessary on a small deal?",
+   "category": "authority",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "yt03",
+     3035.8
+    ],
+    [
+     "yt03",
+     3913.1
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     3913.1
+    ],
+    [
+     "yt03",
+     3035.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ]
+  },
+  {
+   "q": "What should I change in the first ninety days after buying a business?",
+   "category": "authority",
+   "first_rank": [
+    1,
+    0
+   ],
+   "exact": [
+    "0/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "yt03",
+     4463.5
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "yt03",
+     4213.1
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     4463.5
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ]
+   ]
+  },
+  {
+   "q": "What debt service coverage ratio do lenders want on a business acquisition loan?",
+   "category": "numeric",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "top_after": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ]
+  },
+  {
+   "q": "What DSCR applies to an owner-occupied 504 real estate deal?",
+   "category": "numeric",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "How much is the SBA guarantee fee?",
+   "category": "numeric",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What loan-to-value do banks allow on owner-occupied real estate?",
+   "category": "numeric",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ],
+   "top_after": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ]
+  },
+  {
+   "q": "Can you buy a business with zero percent down?",
+   "category": "contradiction",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ]
+   ],
+   "top_after": [
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "Do home services businesses sell for more than four times SDE?",
+   "category": "contradiction",
+   "first_rank": [
+    0,
+    1
+   ],
+   "exact": [
+    "0/0",
+    "0/0"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     204.2
+    ],
+    [
+     "yt01",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "How do you set a working capital peg in a business purchase?",
+   "category": "terminology",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What does full standby mean for a seller note?",
+   "category": "terminology",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/2",
+    "1/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "yt03",
+     5069.2
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     905.8
+    ]
+   ]
+  },
+  {
+   "q": "Should the seller stay on after closing, and for how long?",
+   "category": "terminology",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "0/2",
+    "1/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     654.2
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     654.2
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ]
+  },
+  {
+   "q": "How much working capital should a seed startup raise?",
+   "category": "terminology",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ]
+   ],
+   "top_after": [
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "How long should the exclusivity period in the LOI be?",
+   "category": "buried",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     1207.3
+    ],
+    [
+     "yt03",
+     1256.2
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     1256.2
+    ],
+    [
+     "yt03",
+     1207.3
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What multiple of SDE do small businesses under a million in SDE trade at?",
+   "category": "buried",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "report",
+     1.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ]
+   ]
+  },
+  {
+   "q": "Can the building be financed on a longer term than the business?",
+   "category": "buried",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What has to change on closing day \u2014 bank signers, payroll, insurance?",
+   "category": "buried",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     4213.1
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     4213.1
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "Where do the best off-market deals come from?",
+   "category": "buried",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     702.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     204.2
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     3292.7
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     702.3
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3292.7
+    ],
+    [
+     "yt03",
+     204.2
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "How long is the term on an SBA acquisition loan?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What is the maximum 7(a) loan size?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "When is customer concentration a deal breaker?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    1
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     4569.2
+    ],
+    [
+     "yt03",
+     448.5
+    ],
+    [
+     "yt03",
+     3864.2
+    ],
+    [
+     "yt03",
+     2117.7
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ],
+   "top_after": [
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     4569.2
+    ],
+    [
+     "yt03",
+     448.5
+    ],
+    [
+     "yt03",
+     3864.2
+    ],
+    [
+     "yt03",
+     2117.7
+    ]
+   ]
+  },
+  {
+   "q": "What is a legitimate add-back?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2930.8
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     1861.5
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     2930.8
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     1861.5
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "Which leases and contracts need to be assignable?",
+   "category": "same_concept",
+   "first_rank": [
+    5,
+    7
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     1514.6
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     1514.6
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "What documents will the lender ask for?",
+   "category": "same_concept",
+   "first_rank": [
+    1,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "yt03",
+     1159.6
+    ],
+    [
+     "yt03",
+     806.9
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "yt03",
+     1159.6
+    ],
+    [
+     "yt03",
+     806.9
+    ]
+   ]
+  },
+  {
+   "q": "What interest rate spread do acquisition loans carry?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    2
+   ],
+   "exact": [
+    "2/2",
+    "2/2"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ]
+  },
+  {
+   "q": "What is global cash flow and why do buyers fail it?",
+   "category": "same_concept",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     957.7
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "Is closing possible in thirty days?",
+   "category": "authority",
+   "first_rank": [
+    8,
+    3
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    1,
+    0
+   ],
+   "top_before": [
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "yt03",
+     153.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "vlog",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "yt03",
+     153.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ]
+   ]
+  },
+  {
+   "q": "How should service technicians write up their notes?",
+   "category": "terminology",
+   "first_rank": [
+    0,
+    0
+   ],
+   "exact": [
+    "1/1",
+    "1/1"
+   ],
+   "hard_negative_fp": [
+    0,
+    0
+   ],
+   "top_before": [
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt03",
+     957.7
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     5119.6
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ]
+   ],
+   "top_after": [
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt03",
+     957.7
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     5119.6
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ]
+   ]
+  }
+ ],
+ "calls": [
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2573,
+   "output_tokens": 39,
+   "cost": 0.002768,
+   "latency_s": 2.726,
+   "order": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+   ],
+   "q": "What is the minimum down payment for an SBA 7(a) acquisition?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    239,
+    124,
+    240,
+    244,
+    235,
+    238,
+    241,
+    243,
+    175,
+    194,
+    226
+   ],
+   "order_after": [
+    239,
+    124,
+    240,
+    244,
+    235,
+    238,
+    241,
+    243,
+    175,
+    194,
+    226
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2559,
+   "output_tokens": 39,
+   "cost": 0.002754,
+   "latency_s": 1.553,
+   "order": [
+    1,
+    6,
+    4,
+    2,
+    3,
+    5,
+    10,
+    9,
+    11,
+    7,
+    8
+   ],
+   "q": "Can the seller note count toward the equity injection?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    240,
+    180,
+    175,
+    239,
+    241,
+    124,
+    168,
+    144,
+    235,
+    243,
+    238
+   ],
+   "order_after": [
+    240,
+    124,
+    239,
+    180,
+    175,
+    241,
+    243,
+    235,
+    238,
+    168,
+    144
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2456,
+   "output_tokens": 39,
+   "cost": 0.002651,
+   "latency_s": 1.547,
+   "order": [
+    1,
+    4,
+    3,
+    2,
+    10,
+    8,
+    9,
+    5,
+    6,
+    7,
+    11
+   ],
+   "q": "Do I really have to sign a personal guarantee?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    240,
+    124,
+    243,
+    235,
+    190,
+    170,
+    204,
+    239,
+    125,
+    244,
+    182
+   ],
+   "order_after": [
+    240,
+    235,
+    243,
+    124,
+    244,
+    239,
+    125,
+    190,
+    170,
+    204,
+    182
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2513,
+   "output_tokens": 39,
+   "cost": 0.002708,
+   "latency_s": 1.657,
+   "order": [
+    1,
+    2,
+    3,
+    4,
+    11,
+    6,
+    5,
+    7,
+    8,
+    9,
+    10
+   ],
+   "q": "Is a quality of earnings report necessary on a small deal?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    125,
+    160,
+    237,
+    165,
+    186,
+    203,
+    243,
+    235,
+    241,
+    245,
+    238
+   ],
+   "order_after": [
+    125,
+    160,
+    237,
+    165,
+    238,
+    203,
+    186,
+    243,
+    235,
+    241,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2466,
+   "output_tokens": 39,
+   "cost": 0.002661,
+   "latency_s": 1.512,
+   "order": [
+    4,
+    2,
+    11,
+    1,
+    5,
+    3,
+    6,
+    7,
+    8,
+    10,
+    9
+   ],
+   "q": "What should I change in the first ninety days after buying a business?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    125,
+    215,
+    243,
+    225,
+    214,
+    235,
+    240,
+    124,
+    245,
+    239,
+    209
+   ],
+   "order_after": [
+    225,
+    215,
+    209,
+    125,
+    214,
+    243,
+    235,
+    240,
+    124,
+    239,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2521,
+   "output_tokens": 39,
+   "cost": 0.002716,
+   "latency_s": 1.464,
+   "order": [
+    1,
+    5,
+    2,
+    4,
+    3,
+    6,
+    7,
+    9,
+    8,
+    10,
+    11
+   ],
+   "q": "What debt service coverage ratio do lenders want on a business acquisition loan?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    240,
+    124,
+    239,
+    238,
+    241,
+    235,
+    245,
+    243,
+    194,
+    125
+   ],
+   "order_after": [
+    244,
+    238,
+    240,
+    239,
+    124,
+    241,
+    235,
+    243,
+    245,
+    194,
+    125
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2545,
+   "output_tokens": 39,
+   "cost": 0.00274,
+   "latency_s": 1.516,
+   "order": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+   ],
+   "q": "What DSCR applies to an owner-occupied 504 real estate deal?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    239,
+    240,
+    241,
+    124,
+    237,
+    194,
+    125,
+    235,
+    243,
+    198
+   ],
+   "order_after": [
+    244,
+    239,
+    240,
+    241,
+    124,
+    237,
+    194,
+    125,
+    235,
+    243,
+    198
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2525,
+   "output_tokens": 39,
+   "cost": 0.00272,
+   "latency_s": 1.519,
+   "order": [
+    3,
+    1,
+    2,
+    4,
+    7,
+    10,
+    8,
+    9,
+    11,
+    5,
+    6
+   ],
+   "q": "How much is the SBA guarantee fee?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    124,
+    240,
+    239,
+    244,
+    243,
+    235,
+    238,
+    241,
+    237,
+    175,
+    125
+   ],
+   "order_after": [
+    239,
+    124,
+    240,
+    244,
+    238,
+    175,
+    241,
+    237,
+    125,
+    243,
+    235
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2542,
+   "output_tokens": 39,
+   "cost": 0.002737,
+   "latency_s": 1.896,
+   "order": [
+    1,
+    8,
+    2,
+    3,
+    4,
+    7,
+    6,
+    5,
+    9,
+    10,
+    11
+   ],
+   "q": "What loan-to-value do banks allow on owner-occupied real estate?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    240,
+    239,
+    124,
+    194,
+    235,
+    243,
+    238,
+    245,
+    241,
+    237
+   ],
+   "order_after": [
+    244,
+    238,
+    240,
+    239,
+    124,
+    243,
+    235,
+    194,
+    245,
+    241,
+    237
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2532,
+   "output_tokens": 39,
+   "cost": 0.002727,
+   "latency_s": 1.681,
+   "order": [
+    1,
+    2,
+    3,
+    6,
+    8,
+    9,
+    4,
+    5,
+    10,
+    7,
+    11
+   ],
+   "q": "Can you buy a business with zero percent down?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    235,
+    243,
+    124,
+    244,
+    125,
+    175,
+    245,
+    240,
+    239,
+    237,
+    241
+   ],
+   "order_after": [
+    235,
+    243,
+    124,
+    175,
+    240,
+    239,
+    244,
+    125,
+    237,
+    245,
+    241
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2494,
+   "output_tokens": 39,
+   "cost": 0.002689,
+   "latency_s": 1.538,
+   "order": [
+    3,
+    1,
+    2,
+    4,
+    7,
+    11,
+    10,
+    8,
+    6,
+    5,
+    9
+   ],
+   "q": "Do home services businesses sell for more than four times SDE?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    237,
+    235,
+    165,
+    125,
+    246,
+    241,
+    238,
+    240,
+    130,
+    124,
+    244
+   ],
+   "order_after": [
+    165,
+    237,
+    235,
+    125,
+    238,
+    244,
+    124,
+    240,
+    241,
+    246,
+    130
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2516,
+   "output_tokens": 39,
+   "cost": 0.002711,
+   "latency_s": 1.599,
+   "order": [
+    1,
+    4,
+    3,
+    8,
+    2,
+    5,
+    7,
+    6,
+    9,
+    10,
+    11
+   ],
+   "q": "How do you set a working capital peg in a business purchase?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    238,
+    125,
+    245,
+    170,
+    124,
+    241,
+    240,
+    237,
+    235,
+    243,
+    239
+   ],
+   "order_after": [
+    238,
+    170,
+    245,
+    237,
+    125,
+    124,
+    240,
+    241,
+    235,
+    243,
+    239
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2549,
+   "output_tokens": 39,
+   "cost": 0.002744,
+   "latency_s": 1.487,
+   "order": [
+    1,
+    11,
+    2,
+    4,
+    9,
+    10,
+    3,
+    5,
+    6,
+    7,
+    8
+   ],
+   "q": "What does full standby mean for a seller note?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    124,
+    180,
+    246,
+    243,
+    241,
+    143,
+    144,
+    226,
+    238,
+    125,
+    239
+   ],
+   "order_after": [
+    124,
+    239,
+    180,
+    243,
+    238,
+    125,
+    246,
+    241,
+    143,
+    144,
+    226
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2521,
+   "output_tokens": 39,
+   "cost": 0.002716,
+   "latency_s": 2.243,
+   "order": [
+    5,
+    1,
+    3,
+    4,
+    2,
+    9,
+    10,
+    6,
+    7,
+    8,
+    11
+   ],
+   "q": "Should the seller stay on after closing, and for how long?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    199,
+    125,
+    143,
+    139,
+    204,
+    243,
+    245,
+    241,
+    124,
+    238,
+    246
+   ],
+   "order_after": [
+    204,
+    199,
+    143,
+    139,
+    125,
+    124,
+    238,
+    243,
+    245,
+    241,
+    246
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2438,
+   "output_tokens": 39,
+   "cost": 0.002633,
+   "latency_s": 1.537,
+   "order": [
+    1,
+    2,
+    8,
+    4,
+    5,
+    3,
+    6,
+    10,
+    9,
+    11,
+    7
+   ],
+   "q": "How much working capital should a seed startup raise?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    245,
+    238,
+    125,
+    237,
+    244,
+    225,
+    246,
+    170,
+    243,
+    165,
+    126
+   ],
+   "order_after": [
+    245,
+    238,
+    170,
+    237,
+    244,
+    125,
+    225,
+    165,
+    243,
+    126,
+    246
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 14,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2467,
+   "output_tokens": 39,
+   "cost": 0.002662,
+   "latency_s": 1.264,
+   "order": [
+    1,
+    3,
+    2,
+    4,
+    5,
+    10,
+    8,
+    9,
+    6,
+    7,
+    11
+   ],
+   "q": "How long should the exclusivity period in the LOI be?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    155,
+    150,
+    151,
+    160,
+    125,
+    124,
+    245,
+    240,
+    239,
+    238,
+    243
+   ],
+   "order_after": [
+    155,
+    151,
+    150,
+    160,
+    125,
+    238,
+    240,
+    239,
+    124,
+    245,
+    243
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2536,
+   "output_tokens": 39,
+   "cost": 0.002731,
+   "latency_s": 1.495,
+   "order": [
+    2,
+    1,
+    3,
+    6,
+    9,
+    5,
+    8,
+    4,
+    10,
+    11,
+    7
+   ],
+   "q": "What multiple of SDE do small businesses under a million in SDE trade at?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    237,
+    165,
+    235,
+    124,
+    238,
+    125,
+    243,
+    241,
+    160,
+    239,
+    240
+   ],
+   "order_after": [
+    165,
+    237,
+    235,
+    125,
+    160,
+    238,
+    241,
+    124,
+    239,
+    240,
+    243
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2464,
+   "output_tokens": 39,
+   "cost": 0.002659,
+   "latency_s": 2.177,
+   "order": [
+    1,
+    4,
+    2,
+    3,
+    5,
+    8,
+    9,
+    11,
+    6,
+    7,
+    10
+   ],
+   "q": "Can the building be financed on a longer term than the business?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    240,
+    239,
+    194,
+    124,
+    175,
+    125,
+    243,
+    238,
+    244,
+    185,
+    190
+   ],
+   "order_after": [
+    240,
+    124,
+    239,
+    194,
+    175,
+    238,
+    244,
+    190,
+    125,
+    243,
+    185
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2450,
+   "output_tokens": 39,
+   "cost": 0.002645,
+   "latency_s": 1.773,
+   "order": [
+    1,
+    4,
+    3,
+    2,
+    5,
+    7,
+    8,
+    11,
+    6,
+    9,
+    10
+   ],
+   "q": "What has to change on closing day \u2014 bank signers, payroll, insurance?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    209,
+    125,
+    199,
+    204,
+    225,
+    243,
+    238,
+    124,
+    235,
+    245,
+    239
+   ],
+   "order_after": [
+    209,
+    204,
+    199,
+    125,
+    225,
+    238,
+    124,
+    239,
+    243,
+    235,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2434,
+   "output_tokens": 39,
+   "cost": 0.002629,
+   "latency_s": 1.724,
+   "order": [
+    1,
+    6,
+    8,
+    7,
+    11,
+    4,
+    2,
+    5,
+    3,
+    10,
+    9
+   ],
+   "q": "Where do the best off-market deals come from?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    140,
+    243,
+    130,
+    155,
+    191,
+    237,
+    125,
+    124,
+    245,
+    246,
+    238
+   ],
+   "order_after": [
+    140,
+    237,
+    124,
+    125,
+    238,
+    155,
+    243,
+    191,
+    130,
+    246,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2544,
+   "output_tokens": 39,
+   "cost": 0.002739,
+   "latency_s": 1.776,
+   "order": [
+    3,
+    2,
+    1,
+    5,
+    9,
+    4,
+    7,
+    6,
+    8,
+    10,
+    11
+   ],
+   "q": "How long is the term on an SBA acquisition loan?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    239,
+    124,
+    240,
+    238,
+    244,
+    235,
+    175,
+    194,
+    241,
+    243,
+    245
+   ],
+   "order_after": [
+    240,
+    124,
+    239,
+    244,
+    241,
+    238,
+    175,
+    235,
+    194,
+    243,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2538,
+   "output_tokens": 39,
+   "cost": 0.002733,
+   "latency_s": 1.523,
+   "order": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+   ],
+   "q": "What is the maximum 7(a) loan size?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    239,
+    240,
+    124,
+    244,
+    238,
+    241,
+    237,
+    245,
+    194,
+    243,
+    235
+   ],
+   "order_after": [
+    239,
+    240,
+    124,
+    244,
+    238,
+    241,
+    237,
+    245,
+    194,
+    243,
+    235
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2504,
+   "output_tokens": 39,
+   "cost": 0.002699,
+   "latency_s": 1.557,
+   "order": [
+    8,
+    1,
+    11,
+    6,
+    9,
+    10,
+    2,
+    3,
+    4,
+    5,
+    7
+   ],
+   "q": "When is customer concentration a deal breaker?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    125,
+    216,
+    135,
+    202,
+    168,
+    235,
+    246,
+    237,
+    245,
+    241,
+    238
+   ],
+   "order_after": [
+    237,
+    125,
+    238,
+    235,
+    245,
+    241,
+    216,
+    135,
+    202,
+    168,
+    246
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2450,
+   "output_tokens": 39,
+   "cost": 0.002645,
+   "latency_s": 1.621,
+   "order": [
+    1,
+    10,
+    8,
+    3,
+    2,
+    4,
+    5,
+    6,
+    7,
+    9,
+    11
+   ],
+   "q": "What is a legitimate add-back?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    125,
+    184,
+    235,
+    155,
+    163,
+    224,
+    244,
+    124,
+    245,
+    240,
+    246
+   ],
+   "order_after": [
+    125,
+    240,
+    124,
+    235,
+    184,
+    155,
+    163,
+    224,
+    244,
+    245,
+    246
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2515,
+   "output_tokens": 39,
+   "cost": 0.00271,
+   "latency_s": 1.882,
+   "order": [
+    9,
+    10,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    11
+   ],
+   "q": "Which leases and contracts need to be assignable?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    143,
+    190,
+    156,
+    155,
+    238,
+    125,
+    237,
+    245,
+    124,
+    240,
+    241
+   ],
+   "order_after": [
+    124,
+    240,
+    143,
+    190,
+    156,
+    155,
+    238,
+    125,
+    237,
+    245,
+    241
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 18,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2451,
+   "output_tokens": 39,
+   "cost": 0.002646,
+   "latency_s": 1.474,
+   "order": [
+    3,
+    4,
+    2,
+    5,
+    1,
+    9,
+    11,
+    6,
+    7,
+    8,
+    10
+   ],
+   "q": "What documents will the lender ask for?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    240,
+    190,
+    125,
+    124,
+    224,
+    149,
+    142,
+    238,
+    243,
+    237
+   ],
+   "order_after": [
+    190,
+    125,
+    240,
+    124,
+    244,
+    238,
+    237,
+    224,
+    149,
+    142,
+    243
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2542,
+   "output_tokens": 39,
+   "cost": 0.002737,
+   "latency_s": 1.705,
+   "order": [
+    7,
+    5,
+    1,
+    2,
+    3,
+    4,
+    6,
+    8,
+    9,
+    10,
+    11
+   ],
+   "q": "What interest rate spread do acquisition loans carry?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    124,
+    239,
+    240,
+    241,
+    238,
+    185,
+    235,
+    243,
+    194,
+    245
+   ],
+   "order_after": [
+    185,
+    241,
+    244,
+    124,
+    239,
+    240,
+    238,
+    235,
+    243,
+    194,
+    245
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2500,
+   "output_tokens": 39,
+   "cost": 0.002695,
+   "latency_s": 1.587,
+   "order": [
+    1,
+    2,
+    3,
+    6,
+    10,
+    9,
+    5,
+    7,
+    11,
+    4,
+    8
+   ],
+   "q": "What is global cash flow and why do buyers fail it?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    244,
+    238,
+    241,
+    245,
+    125,
+    235,
+    243,
+    145,
+    240,
+    124,
+    237
+   ],
+   "order_after": [
+    244,
+    238,
+    241,
+    235,
+    124,
+    240,
+    125,
+    243,
+    237,
+    245,
+    145
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 16,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2516,
+   "output_tokens": 39,
+   "cost": 0.002711,
+   "latency_s": 1.467,
+   "order": [
+    4,
+    3,
+    1,
+    9,
+    7,
+    2,
+    5,
+    6,
+    11,
+    8,
+    10
+   ],
+   "q": "Is closing possible in thirty days?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    199,
+    215,
+    125,
+    185,
+    129,
+    243,
+    238,
+    246,
+    124,
+    236,
+    241
+   ],
+   "order_after": [
+    185,
+    125,
+    199,
+    124,
+    238,
+    215,
+    129,
+    243,
+    241,
+    246,
+    236
+   ]
+  },
+  {
+   "applied": true,
+   "fallback": null,
+   "depth": 11,
+   "candidates": 17,
+   "version": "rerank-89a9a0f7",
+   "schema": "retrieval-rerank-v1",
+   "configured_model": "claude-haiku-4-5",
+   "model": "claude-haiku-4-5-20251001",
+   "input_tokens": 2533,
+   "output_tokens": 39,
+   "cost": 0.002728,
+   "latency_s": 1.5,
+   "order": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+   ],
+   "q": "How should service technicians write up their notes?",
+   "contained": true,
+   "tail_unchanged": true,
+   "order_before": [
+    246,
+    145,
+    143,
+    227,
+    144,
+    241,
+    125,
+    244,
+    124,
+    235,
+    236
+   ],
+   "order_after": [
+    246,
+    145,
+    143,
+    227,
+    144,
+    241,
+    125,
+    244,
+    124,
+    235,
+    236
+   ]
+  }
+ ],
+ "exact_pairs": [
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/2",
+   "1/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "0/1",
+   "1/1"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "0/0",
+   "0/0"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/2",
+   "1/2"
+  ],
+  [
+   "0/2",
+   "1/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "2/2",
+   "2/2"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ],
+  [
+   "1/1",
+   "1/1"
+  ]
+ ],
+ "anthropic_calls": 30
+}

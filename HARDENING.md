@@ -17,7 +17,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
-| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **I1 + I1.5 done, I2 built (0.22.0+i2)**: hard retrieval fixture + `eval --retrieval`; live production-embedding baseline MRR 0.9093 / R@3 93.3% / exact locator 87.2% / 1 HN-FP / deepest target 9 passed the frozen headroom gate; `retrieval.rerank` (Haiku, depth 11, candidate-only, fail-closed, OFF) + `eval --retrieval --rerank` with the frozen adoption rule — awaiting the one live comparison |
+| I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3)**: hard retrieval fixture + live production-embedding baseline (MRR 0.9093, R@1 86.7%, exact locator 87.2%) kept as permanent regression coverage; the Haiku candidate-only reranker held every safety gate but failed every frozen meaningful-improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s and $0.0027 per query) → KILL; production retrieval unchanged (FTS + embeddings + RRF); query rewriting / embedding-large / vector index untested by decision — no evidence of need |
 | J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
@@ -150,7 +150,7 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
 
-## Rung I — retrieval (I1 hard baseline done, 0.22.0+i1; reranker NOT built; no retrieval behaviour changed)
+## Rung I — retrieval (COMPLETE 0.22.0+i3: hard baseline kept; reranker measured live, NOT adopted; retrieval unchanged)
 Premise (Kyle): retrieval is already strong on the golden questions (R@10 100%, R@5 96.9%, MRR 0.922, locator 80% in Tier 1), so a
 reranker is an EXPERIMENT with a hard kill gate — first prove there is headroom. I1 = a harder frozen fixture that exposes ordering
 and localisation mistakes Recall@10 hides. `tests/fixtures/golden/retrieval/` (build.py, committed): four distractor sources added
@@ -217,6 +217,21 @@ configured model's list price); artifact evals/retrieval/rerank-compare-<stamp>-
 hard-negative FPs ≤ 1, candidate set unchanged on every query, every fallback restores the original ordering; meaningful — at
 least one of MRR ≥ 0.9293, R@3 ≥ 98.3%, exact locator ≥ 97.2%; and ≥ 2 of the 4 fixable ordering mistakes improved. Verdict ADOPT
 or KILL. One live comparison, then a decision; no repeated tuning to the fixture.
+LIVE RESULT (0e3118a, evals/retrieval/rerank-compare-20260907-115218-live.{json,txt}): **KILL.**
+  baseline production retrieval: R@1 86.7% · R@3 93.3% · R@5 93.3% · R@10 100% · candidates 100% · MRR 0.9093 · NDCG@10 0.8501 ·
+    exact first-hit locator 87.2% · hard-negative FPs 1
+  Haiku reranker (depth 11): R@1 83.3% · R@3 93.3% · R@5 96.7% · R@10 100% · candidates 100% · MRR 0.8903 · NDCG@10 0.8501 · exact
+    locator 92.3% · hard-negative FPs 0 · 3 queries improved, 4 worsened, 23 unchanged · 3 of the 4 known fixable mistakes improved ·
+    +1.67 s mean latency per query · $0.00270 per query · 0 fallbacks.
+  It held every hard safety gate and fixed some edge cases (the hard-negative FP, +5.1 pp exact locator) but failed EVERY frozen
+  meaningful-improvement gate (MRR ≥ 0.9293 ✗ · R@3 ≥ 98.3% ✗ · exact locator ≥ 97.2% ✗) and worsened Recall@1 and MRR (−0.019).
+  The added model call, latency and cost are not justified. No tuning, no rerun, no depth or prompt change, no other reranker.
+Decision (Kyle): production retrieval stays FTS5 + text-embedding-3-small → RRF → existing top-K. `retrieval.rerank` stays OFF
+by default; the implementation and its tests remain behind the flag as the measured record. The hard fixture and the live
+production-embedding baseline are permanent regression coverage (`neurosearch eval --retrieval`, `test_retrieval_baseline_is_frozen`).
+Known remaining weaknesses, monitored rather than patched: authority discrimination, a few same-concept ordering cases,
+terminology localisation.
+**Rung I: COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3).** No further live testing is required.
  behind a pluggable stage (off = today's ordering byte-for-byte), deterministic
 fallback on any failure, provenance (reranker version), adoption gate = R@10 not down, every golden evidence target reachable,
 zero citation/evidence regressions, locator not down, AND MRR ≥ +0.02 or R@3 ≥ +5 pp or locator ≥ +10 pp — else kill. Downstream

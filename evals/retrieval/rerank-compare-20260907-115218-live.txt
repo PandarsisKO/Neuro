@@ -1,0 +1,26 @@
+Retrieval rerank comparison (live) · depth 11 · claude-haiku-4-5 (rerank-89a9a0f7, retrieval-rerank-v1) · returned claude-haiku-4-5-20251001
+  metric                        baseline (this run)  frozen live b5768c0   + reranker
+  Recall@1                                    86.7%                86.7%        83.3%
+  Recall@3                                    93.3%                93.3%        93.3%
+  Recall@5                                    93.3%                93.3%        96.7%
+  Recall@10                                  100.0%               100.0%       100.0%
+  candidate recall                           100.0%               100.0%       100.0%
+  MRR                                        0.9093               0.9093       0.8903
+  NDCG@10                                    0.8501               0.8501       0.8501
+  exact first-hit locator                     87.2%                87.2%        92.3%
+  hard-negative FPs                               1                    1            0
+  per query: improved 3 · worsened 4 · unchanged 23 · top-11 source overlap 0.93
+  fixable ordering mistakes in the baseline: 4 · improved by the reranker: 3 (need ≥ 2)
+  economics: 30/30 reranked · fallbacks 0 · latency mean 1.67s max 2.73s · tokens in 2506 / out 39 per query · $0.00270/query as billed ($0.0810 total; $0.00270/query at claude-haiku-4-5 list price) · anthropic calls 30
+  hard gates: recall_at_10_100 ✓ · candidate_recall_100 ✓ · exact_locator_not_below_baseline ✓ · hard_negative_fp_not_above_1 ✓ · candidate_set_unchanged_every_query ✓ · fallback_restores_original_ordering ✓
+  meaningful: mrr ✗ · recall_at_3 ✗ · exact_locator ✗
+  queries whose grade changed (first rank / exact / HN-FP before → after):
+    [authority] What should I change in the first ninety days after buying a busin rank 1→0  exact 0/1→1/1  HN-FP 0→0
+    [contradiction] Do home services businesses sell for more than four times SDE?     rank 0→1  exact 0/0→0/0  HN-FP 0→0
+    [terminology] Should the seller stay on after closing, and for how long?         rank 0→0  exact 0/2→1/2  HN-FP 0→0
+    [same_concept] When is customer concentration a deal breaker?                     rank 0→1  exact 1/1→1/1  HN-FP 0→0
+    [same_concept] Which leases and contracts need to be assignable?                  rank 5→7  exact 1/1→1/1  HN-FP 0→0
+    [same_concept] What documents will the lender ask for?                            rank 1→0  exact 1/1→1/1  HN-FP 0→0
+    [same_concept] What interest rate spread do acquisition loans carry?              rank 0→2  exact 2/2→2/2  HN-FP 0→0
+    [authority] Is closing possible in thirty days?                                rank 8→3  exact 1/1→1/1  HN-FP 1→0
+VERDICT: KILL — no meaningful improvement (MRR +0.02 / R@3 +5 pp / exact locator +10 pp)
