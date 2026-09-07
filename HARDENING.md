@@ -181,8 +181,42 @@ partial failure: cohort 2 = 1 item (the failed window only), 8 sources materiali
 give-up: job failed, 8/9 sources kept; crash-before-persist: 1 provider batch, re-attached; crash-after-persist: results read
 from the local copy; cancel: prefix of completed items materialised, rest explicitly `canceled`. Full suite 143 tests, 6/6 green
 runs; Tier 1 frozen numbers unchanged.
-Not done in G1 (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change; the now-vs-background UX
-and stale-rebuild batching come next; one small live batch run at the end checks price/completion semantics against the real API.
+G1 review refinement (0.20.0+g2) — unknown-handle recovery on the real API never claims by count alone. The intent kv carries an
+`attempted` mark set immediately before `batches.create`; without it recovery does nothing (we never reached the provider). With it:
+known persisted id → normal re-attach; otherwise plausible batches (unknown to `batch_items`, created after the intent, same request
+count, not previously rejected) become tentative CANDIDATES — the job parks on handle `tentative:<job#cohort>` (derived status
+`external_tentative` for one candidate, `external_handle_ambiguous` for several), ledger rows are NOT started, nothing is cancelled
+or mutated (`cancel_job` leaves candidates untouched). `check()` on the tentative handle retrieves each candidate; an ended one has
+its results read (read-only) and the returned custom_id SET compared with ours: exact match → `_attach(where=verified_custom_ids)`
++ persist from the already-read results (one results read); mismatch → `external_candidate_rejected` (expected/returned/overlap)
+and the id is remembered in `batch:rejected:<ref>` so it is never a candidate again; no candidate left → `db.unpark_external`
+(`external_recovery_resubmit`) and the job submits afresh. History: `external_candidates`, `external_observing`,
+`external_candidate_rejected`, `external_reattached`, `external_recovery_no_candidate`, `external_recovery_resubmit` in job_events.
+Fake coverage (`NEUROSEARCH_FAKE_BATCH_NO_CLIENT_REF=1` makes the fake behave like the real API): two same-sized batches created in
+the recovery window → both observed, neither attached while processing, foreign one rejected, ours adopted, 2 provider batches total,
+foreign untouched; foreign-only → rejected, then resubmitted, still untouched; stub test: count+time alone never attaches.
+G2 (0.20.0+g2) — now vs background is an explicit per-request choice. `POST /suggest {transport: interactive|batch}` creates
+`suggest_findings` or `suggest_findings_batch` (default interactive; auto-analysis after ingest stays interactive; nothing converts a
+findings job into a batch job). `POST /suggest/estimate` → `batches.estimate()`: both quotes (model cost only), `basis` 'token count'
+(provider count_tokens over the canonical requests, cached in kv `tokcount:<custom_id>` — the custom_id embeds the input hash, so
+a cached count is exact until inputs change; at most `MAX_COUNT_CALLS`=12 uncached calls per estimate, the rest 'mixed'/'estimate'
+via the character formula; counting failure never blocks the UI), `recommended` = background when items ≥ `BULK_THRESHOLD_ITEMS`
+(one constant, env `NEUROSEARCH_BATCH_BULK_THRESHOLD`, default 6 windows) else now, and the exact UI wording in `batches.CHOICES`
+("Analyze now — Faster · standard model cost" / "Analyze in background — Up to 24 hours · ~50% lower model cost"). The Findings
+view's "Analyse new… / Re-analyse all…" open the chooser with both priced options and the recommendation badge. Job rows carry
+`batch` = `batches.ui_state(job)`: queued / submitting → processing (with "retrying N items (round k)") → verifying (tentative) →
+materializing → complete | partial_failure | failed | canceled ("N sources with complete results kept"); progress bar = sources landed.
+`db.sources_being_analysed` counts a batch job's sources only until each one's findings land.
+G3 (0.20.0+g2) — stale rebuilds through either transport. `staleness.assess` treats `suggest_findings_batch` (queued/running/
+external_pending) as REBUILDING per not-yet-landed source with note "in background · <ui label>", and quotes `findings_background`
+/ `total_background` next to the interactive figures (plan never batched). `staleness.rebuild(..., transport=)`: interactive = one
+job per stale source (unchanged); batch = ONE `suggest_findings_batch` job for all stale sources (force, reason=stale); the plan job is
+`blocked_by` it and `dependency_report` counts `external_pending` as pending, so the plan waits exactly as for synchronous jobs
+(tests: plan not claimable while the batch is out; blocked → done after the batch job completes; plan v2 current). Stale cards:
+"Rebuild now · $X" / "Rebuild in background · $Y model cost"; plan card: "Re-analyse now + rebuild · $total" / "Re-analyse in
+background + rebuild · $total_background". Completed sources are current + usable while another item retries in a later round.
+Not done (deliberately): ranking is not batched; chat prompt/cache reorder is a separate change; one deliberately small live batch
+run (pennies) closes the batch portion of Rung G by checking real submission/completion/pricing/recovery semantics.
 
 ## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
 

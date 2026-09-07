@@ -185,6 +185,9 @@ def submit_external(provider: str, kind: str, request: dict[str, Any], deadline:
     ref = client_ref or jid
     db.note_external_intent(jid, run_id, provider, kind)
     existing = handler.find_by_ref(ref)
+    if existing and existing.startswith("tentative:"):                # provider work that MAY be ours: observe, verify, then adopt — never resubmit meanwhile
+        db.job_event(jid, "external_observing", run_id=run_id, provider=provider, handle=existing, where="before_submit")
+        raise ExternalPending(provider, kind, existing, deadline)
     if existing:                                                       # a previous run already submitted this job's work
         db.job_event(jid, "external_reattached", run_id=run_id, provider=provider, handle=existing, where="before_submit")
         raise ExternalPending(provider, kind, existing, deadline)

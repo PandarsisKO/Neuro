@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -32,6 +33,7 @@ PROVIDER = "anthropic_batch"
 JOB_KIND = "suggest_findings_batch"
 MAX_COHORTS = 3                       # a logical item is submitted at most this many times
 DEADLINE_S = 26 * 3600                # the provider allows up to 24 h; a little slack, then the job is failed visibly
+TENTATIVE = "tentative:"              # external handle prefix while recovery observes candidate batches whose identity is unproven
 
 
 # ------------------------------------------------------------------ the external handler (jobs.EXTERNAL[PROVIDER])
@@ -61,6 +63,8 @@ class AnthropicBatch:
         requests = [{"custom_id": it["custom_id"], "params": it["params"]} for it in items]
         client = cls._client()
         extra = {"_client_ref": client_ref} if settings.fake_ai else {}
+        intent = json.loads(db.kv_get(f"batch:intent:{client_ref}") or "{}")
+        db.kv_set(f"batch:intent:{client_ref}", json.dumps({**intent, "attempted": True, "ts": min(intent.get("ts") or time.time(), time.time())}))
         batch = client.messages.batches.create(requests=requests, **extra)
         jobs.crash_point("batch_after_create_before_persist")
         db.batch_items_submitted(job_id, cohort_no, batch.id, invs)
@@ -70,40 +74,84 @@ class AnthropicBatch:
 
     @classmethod
     def find_by_ref(cls, client_ref: str) -> str | None:
-        """Recovery after a crash between the provider accepting the batch and us persisting its id. The fake keeps our
-        reference exactly; the real API has no client reference, so: any batch our table already knows is not an
-        orphan, and an unknown batch created after our recorded intent with exactly our item count is claimed
-        (confirmed later by custom_id match when its results are read — a mismatch fails the job visibly)."""
+        """Recovery after a crash between the provider accepting the batch and us persisting its id.
+        The fake keeps our reference exactly. The real API has no client reference, so identity can only be PROVEN by
+        the returned custom_id set — which exists once a batch has ended. Until then a plausible batch (unknown to our
+        table, created after our recorded intent, same request count) is a tentative CANDIDATE: observed, never
+        cancelled, mutated or attributed. `check()` on the tentative handle verifies each ended candidate's custom_id
+        set, adopts an exact match, rejects the rest; when none is left the job resubmits."""
         client = cls._client()
         intent = db.kv_get(f"batch:intent:{client_ref}")
         if not intent:
             return None
         meta = json.loads(intent)
-        if settings.fake_ai:
+        if not meta.get("attempted"):                                  # we never reached the provider: nothing to find
+            return None
+        if settings.fake_ai and not os.environ.get("NEUROSEARCH_FAKE_BATCH_NO_CLIENT_REF"):
             found = client.messages.batches.find_by_ref(client_ref)
             if found:
                 cls._attach(meta, found, where="client_ref")
             return found
         known = {r["batch_id"] for r in db.connect().execute("SELECT DISTINCT batch_id FROM batch_items WHERE batch_id IS NOT NULL").fetchall()}
+        rejected = set(json.loads(db.kv_get(f"batch:rejected:{client_ref}") or "[]"))
         try:
             page = client.messages.batches.list(limit=20)
         except Exception as e:  # noqa: BLE001
             log.warning("batch list failed during recovery: %s", e)
             return None
+        candidates = []
         for b in getattr(page, "data", []) or []:
             created = getattr(b, "created_at", None)
             ts = created.timestamp() if hasattr(created, "timestamp") else float(created or 0)
             counts = getattr(b, "request_counts", None)
             total = sum(int(getattr(counts, k, 0) or 0) for k in ("processing", "succeeded", "errored", "canceled", "expired")) if counts else None
-            if b.id not in known and ts >= meta["ts"] - 5 and total == meta["n"]:
-                cls._attach(meta, b.id, where="recovery_heuristic")
-                return b.id
-        return None
+            if b.id not in known and b.id not in rejected and ts >= meta["ts"] - 5 and total == meta["n"]:
+                candidates.append(b.id)
+        job_id = meta["job_id"]
+        if not candidates:
+            db.job_event(job_id, "external_recovery_no_candidate", provider=PROVIDER, client_ref=client_ref, rejected=sorted(rejected))
+            return None
+        db.kv_set(f"batch:candidates:{client_ref}", json.dumps(candidates))
+        db.job_event(job_id, "external_candidates", provider=PROVIDER, client_ref=client_ref, candidates=candidates, n=len(candidates),
+                     detail="created after our intent with our request count — tentative until the returned custom_id set is verified")
+        return TENTATIVE + client_ref
+
+    @classmethod
+    def _check_tentative(cls, client_ref: str) -> tuple[str, Any]:
+        """Observe the candidates; adopt the one whose ended results carry EXACTLY our custom_id set; reject the others."""
+        client = cls._client()
+        meta = json.loads(db.kv_get(f"batch:intent:{client_ref}") or "{}")
+        candidates = json.loads(db.kv_get(f"batch:candidates:{client_ref}") or "[]")
+        rejected = json.loads(db.kv_get(f"batch:rejected:{client_ref}") or "[]")
+        job_id, cohort_no = meta.get("job_id"), int(meta.get("cohort_no") or 0)
+        expected = {it["custom_id"] for it in db.batch_items(job_id, cohort_no, status="planned")}
+        for bid in list(candidates):
+            b = client.messages.batches.retrieve(bid)
+            if getattr(b, "processing_status", None) != "ended":
+                continue
+            got = list(client.messages.batches.results(bid))        # read-only; the provider keeps the results either way
+            ids = {r.custom_id for r in got}
+            if ids == expected and expected:
+                cls._attach(meta, bid, where="verified_custom_ids")
+                counts = cls.persist_results(bid, results=got)
+                db.kv_set(f"batch:candidates:{client_ref}", None)
+                return "done", {"batch_id": bid, "counts": counts, "cancelled": bool(getattr(b, "cancel_initiated_at", None))}
+            rejected.append(bid)
+            candidates.remove(bid)
+            db.kv_set(f"batch:rejected:{client_ref}", json.dumps(rejected))
+            db.kv_set(f"batch:candidates:{client_ref}", json.dumps(candidates))
+            db.job_event(job_id, "external_candidate_rejected", provider=PROVIDER, handle=bid, expected=len(expected), returned=len(ids),
+                         overlap=len(ids & expected), detail="returned custom_id set differs from ours — not our batch")
+        if candidates:
+            return "pending", None
+        db.kv_set(f"batch:candidates:{client_ref}", None)
+        db.unpark_external(job_id, "every tentative candidate was rejected by custom_id verification")
+        return "pending", None
 
     @classmethod
     def _attach(cls, meta: dict[str, Any], batch_id: str, *, where: str) -> None:
-        """Bind a provider batch found during recovery to the cohort whose id was never persisted: ledger rows for the
-        planned items, batch id on every item, intent cleared. Idempotent for items already bound."""
+        """Bind a provider batch to the cohort whose id was never persisted: ledger rows for the planned items, batch id
+        on every item, intent cleared. Only called with a proven identity (fake client_ref, or verified custom_id set)."""
         job_id, cohort_no = meta["job_id"], int(meta["cohort_no"])
         planned = db.batch_items(job_id, cohort_no, status="planned")
         if not planned:
@@ -113,11 +161,13 @@ class AnthropicBatch:
         db.batch_items_submitted(job_id, cohort_no, batch_id, invs)
         db.kv_set(f"batch:intent:{job_id}#{cohort_no}", None)
         db.job_event(job_id, "external_reattached", provider=PROVIDER, handle=batch_id, where=where,
-                     detail="created after intent, same item count; confirmed by custom_ids at result time" if where == "recovery_heuristic" else "provider kept our client reference")
+                     detail="returned custom_id set matched ours exactly" if where == "verified_custom_ids" else "provider kept our client reference")
 
     @classmethod
     def check(cls, handle: str) -> tuple[str, Any]:
         """('pending'|'done'|'failed', result). On 'ended' every item result is persisted locally BEFORE we report done."""
+        if handle.startswith(TENTATIVE):
+            return cls._check_tentative(handle[len(TENTATIVE):])
         client = cls._client()
         b = client.messages.batches.retrieve(handle)
         status = getattr(b, "processing_status", None)
@@ -127,13 +177,14 @@ class AnthropicBatch:
         return "done", {"batch_id": handle, "counts": counts, "cancelled": bool(getattr(b, "cancel_initiated_at", None))}
 
     @classmethod
-    def persist_results(cls, batch_id: str) -> dict[str, int]:
-        """Read the provider's results once and write each item's raw result + outcome to batch_items. Idempotent."""
+    def persist_results(cls, batch_id: str, results: list[Any] | None = None) -> dict[str, int]:
+        """Read the provider's results once (or use `results` already read) and write each item's raw result + outcome
+        to batch_items. Idempotent."""
         client = cls._client()
         items = {it["custom_id"]: it for it in db.batch_items_for_batch(batch_id)}
         counts = {"succeeded": 0, "errored": 0, "expired": 0, "canceled": 0, "unknown_custom_id": 0}
         seen: set[str] = set()
-        for r in client.messages.batches.results(batch_id):
+        for r in (results if results is not None else client.messages.batches.results(batch_id)):
             cid = r.custom_id
             it = items.get(cid)
             if not it:
@@ -223,15 +274,110 @@ def plan_items(project_id: str, source_ids: list[str] | None = None, force: bool
     return items, skipped
 
 
-def estimate(project_id: str, source_ids: list[str] | None = None) -> dict[str, Any]:
-    """Cost quote for the choice 'analyze now' vs 'analyze in background' — model cost only; batch = BATCH_MULT."""
+BULK_THRESHOLD_ITEMS = int(os.environ.get("NEUROSEARCH_BATCH_BULK_THRESHOLD", "6"))   # ≥ this many findings windows: background is recommended
+MAX_COUNT_CALLS = int(os.environ.get("NEUROSEARCH_BATCH_MAX_COUNT_CALLS", "12"))       # token-count calls per estimate before falling back to chars
+OUT_TOKENS_PER_WINDOW = 600                                                             # same assumption as usage.estimate_findings
+
+CHOICES = {
+    "now": {"label": "Analyze now", "detail": "Faster · standard model cost"},
+    "background": {"label": "Analyze in background", "detail": "Up to 24 hours · ~50% lower model cost"},
+}
+
+
+def _count_input_tokens(items: list[dict[str, Any]]) -> tuple[dict[str, int], str]:
+    """Exact input tokens per item from the provider's token-counting endpoint, cached by custom_id (which embeds the
+    input hash, so a cached count is exact until the inputs change). At most MAX_COUNT_CALLS uncached calls per
+    estimate so a modal never waits on dozens of round-trips; the rest fall back to the character estimate.
+    Returns ({custom_id: tokens}, basis) with basis 'token count' | 'mixed' | 'estimate'."""
+    from . import providers
+    counts: dict[str, int] = {}
+    todo = []
+    for it in items:
+        cached = db.kv_get("tokcount:" + it["custom_id"])
+        if cached is not None:
+            counts[it["custom_id"]] = int(cached)
+        else:
+            todo.append(it)
+    calls = 0
+    if todo and providers.anthropic_available():
+        try:
+            client = providers.anthropic_client()
+            for it in todo[:MAX_COUNT_CALLS]:
+                p = it["params"]
+                strip = [{k: v for k, v in b.items() if k != "cache_control"} for b in p["system"]] if isinstance(p["system"], list) else p["system"]
+                fmt = {"output_config": p["output_config"]} if p.get("output_config") else {}
+                n = int(client.messages.count_tokens(model=p["model"], system=strip, messages=p["messages"], **fmt).input_tokens)
+                db.kv_set("tokcount:" + it["custom_id"], str(n))
+                counts[it["custom_id"]] = n
+                calls += 1
+        except Exception as e:  # noqa: BLE001
+            log.info("token counting unavailable for the estimate (%s); using the character estimate", e)
+    basis = "token count" if len(counts) == len(items) and items else ("mixed" if counts else "estimate")
+    return counts, basis
+
+
+def estimate(project_id: str, source_ids: list[str] | None = None, force: bool = False, exact: bool = True) -> dict[str, Any]:
+    """Cost quote for the choice 'analyze now' vs 'analyze in background'. Model cost only; background = BATCH_MULT.
+    Input tokens come from the provider's token counter when practical (exact=True, cached), else ~4 chars/token."""
     from . import usage
-    items, skipped = plan_items(project_id, source_ids)
+    from .contracts import contract
+    items, skipped = plan_items(project_id, source_ids, force=force)
     chars = sum(len(it["params"]["messages"][0]["content"]) for it in items)
-    now_cost = sum(usage.estimate_findings(len(it["params"]["messages"][0]["content"])) for it in items)
+    counts, basis = _count_input_tokens(items) if exact and items else ({}, "estimate")
+    pin, pout = usage._price(contract("findings.extract").model)
+    now_cost = 0.0
+    for it in items:
+        cid = it["custom_id"]
+        if cid in counts:
+            now_cost += counts[cid] / 1e6 * pin + OUT_TOKENS_PER_WINDOW / 1e6 * pout
+        else:
+            now_cost += usage.estimate_findings(len(it["params"]["messages"][0]["content"]))
+    bg = now_cost * usage.BATCH_MULT
+    recommended = "background" if len(items) >= BULK_THRESHOLD_ITEMS else "now"
     return {"items": len(items), "sources": len({it["source_id"] for it in items}), "skipped_current": len(skipped), "chars": chars,
-            "now": round(now_cost, 4), "background": round(now_cost * usage.BATCH_MULT, 4), "discount": usage.BATCH_MULT,
+            "input_tokens": sum(counts.values()) if basis == "token count" else None, "basis": basis,
+            "now": round(now_cost, 4), "background": round(bg, 4), "discount": usage.BATCH_MULT,
+            "recommended": recommended, "bulk_threshold_items": BULK_THRESHOLD_ITEMS, "choices": CHOICES,
             "note": "model cost only (the batch discount applies to model tokens, not to transcription, embeddings or web search); batches may take up to 24 hours"}
+
+
+def ui_state(job: dict[str, Any]) -> dict[str, Any]:
+    """What the user sees for a background analysis job: phase + a plain sentence. queued/submitting → processing →
+    materializing → complete, with partial failure / canceled / expired named explicitly. No provider jargon."""
+    st, handle = job.get("status"), str(job.get("external_handle") or "")
+    items = db.batch_items(job["id"])
+    by = {}
+    for it in items:
+        by[it["status"]] = by.get(it["status"], 0) + 1
+    sources = {it["source_id"] for it in items}
+    done = {it["source_id"] for it in items if it["status"] == "materialized"}
+    cohort = max((it["cohort_no"] for it in items), default=0)
+    retrying = sum(1 for it in items if it["cohort_no"] == cohort and it["status"] in ("planned", "submitted")) if cohort > 1 else 0
+    n_src = len(sources) or len((job.get("payload") or {}).get("source_ids") or [])
+    if st == "queued" and (job.get("payload") or {}).get("_external_result"):
+        phase, label = "materializing", f"results received — writing findings ({len(done)}/{n_src} sources ready)"
+    elif st == "queued":
+        phase, label = "queued", f"queued for background analysis ({n_src} source{'s' if n_src != 1 else ''})"
+    elif st == "running" and not by.get("submitted") and not (job.get("payload") or {}).get("_external_result"):
+        phase, label = "submitting", "submitting to the background queue"
+    elif st == "running":
+        phase, label = "materializing", f"writing findings ({len(done)}/{n_src} sources ready)"
+    elif st == "external_pending" and handle.startswith(TENTATIVE):
+        phase, label = "verifying", "verifying which provider batch is ours before adopting any results"
+    elif st == "external_pending":
+        phase = "processing"
+        label = f"processing in background — up to 24 hours; {len(done)}/{n_src} sources ready" + (f" · retrying {retrying} item{'s' if retrying != 1 else ''} (round {cohort})" if retrying else "")
+    elif st == "done":
+        phase, label = "complete", f"complete — {len(done)}/{n_src} sources analysed"
+    elif st == "failed":
+        phase = "partial_failure" if done else "failed"
+        bad = {k: v for k, v in by.items() if k in ("errored", "expired", "canceled")}
+        label = (f"{len(done)}/{n_src} sources analysed; " if done else "") + (", ".join(f"{v} {k}" for k, v in bad.items()) or "failed")
+    elif st == "cancelled":
+        phase, label = "canceled", f"canceled — {len(done)} source{'s' if len(done) != 1 else ''} with complete results kept"
+    else:
+        phase, label = st or "unknown", st or ""
+    return {"phase": phase, "label": label, "sources": n_src, "done": len(done), "by_status": by, "cohort": cohort, "retrying": retrying}
 
 
 # ------------------------------------------------------------------ the job
@@ -289,7 +435,8 @@ def _submit_cohort(job_id: str, cohort_no: int) -> None:
     chars = sum(len(it["params"]["messages"][0]["content"]) for it in items)
     usage.guard(usage.estimate_findings(chars, batch=True))
     client_ref = f"{job_id}#{cohort_no}"
-    db.kv_set(f"batch:intent:{client_ref}", json.dumps({"job_id": job_id, "cohort_no": cohort_no, "n": len(items), "ts": time.time()}))
+    if not db.kv_get(f"batch:intent:{client_ref}"):                  # a surviving intent (with its 'attempted' mark) is the recovery evidence — keep it
+        db.kv_set(f"batch:intent:{client_ref}", json.dumps({"job_id": job_id, "cohort_no": cohort_no, "n": len(items), "ts": time.time()}))
     jobs.submit_external(PROVIDER, "findings", {"job_id": job_id, "cohort_no": cohort_no}, deadline=time.time() + DEADLINE_S, client_ref=client_ref)
 
 
@@ -353,6 +500,10 @@ def cancel_job(job: dict[str, Any]) -> dict[str, Any]:
     sources whose windows all succeeded) before the job is marked cancelled. Completed valid results are never destroyed."""
     handle = job.get("external_handle")
     harvested: dict[str, Any] = {"materialized": 0}
+    if handle and handle.startswith(TENTATIVE):
+        # identity unproven: the candidates may belong to someone else — observe only, never cancel or mutate them
+        db.job_event(job["id"], "batch_cancelled", handle=handle, materialized_after_cancel=0, detail="tentative candidates left untouched (identity unproven)")
+        return harvested
     if handle:
         AnthropicBatch.cancel(handle)
         try:

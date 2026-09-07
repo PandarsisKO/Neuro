@@ -748,6 +748,9 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
 
 def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:
     j["state"] = db.derived_status(j)
+    if j.get("kind") == "suggest_findings_batch":
+        from . import batches
+        j["batch"] = batches.ui_state(j)
     if j.get("blocked_by"):
         rep = db.dependency_report(j)
         for x in rep["failed"] + rep["cancelled"]:
@@ -887,13 +890,16 @@ def api_staleness(project_id: str) -> dict[str, Any]:
 class RebuildIn(BaseModel):
     what: list[str] | None = None          # findings | plan
     source_ids: list[str] | None = None
+    transport: str = "interactive"         # findings rebuild: interactive (now) | batch (background); the plan is never batched
 
 
 @app.post("/api/projects/{project_id}/rebuild-stale", dependencies=[Depends(require_auth)])
 def api_rebuild_stale(project_id: str, body: RebuildIn) -> dict[str, Any]:
     """Queue stale artifacts for regeneration as ordinary jobs (each passes the budget valve on its own)."""
     from . import staleness
-    return staleness.rebuild(project_id, body.what, body.source_ids)
+    if body.transport not in ("interactive", "batch"):
+        raise HTTPException(400, "transport must be 'interactive' or 'batch'")
+    return staleness.rebuild(project_id, body.what, body.source_ids, transport=body.transport)
 
 
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])
@@ -1053,15 +1059,37 @@ def api_whoami(request: Request) -> dict[str, Any]:
 class SuggestIn(BaseModel):
     source_ids: list[str] | None = None   # default: every ready source not yet analysed for this project
     force: bool = False                    # re-analyse even if already done
+    transport: str = "interactive"         # interactive (analyze now) | batch (analyze in background) — explicit, per request
 
 
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
 def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
     ids = body.source_ids or (db.project_source_ids(project_id) if body.force else db.sources_needing_suggestions(project_id))
     if not ids:
-        return {"job": None, "sources": 0}
-    job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids})
-    return {"job": job["id"], "sources": len(ids)}
+        return {"job": None, "sources": 0, "transport": body.transport}
+    if body.transport not in ("interactive", "batch"):
+        raise HTTPException(400, "transport must be 'interactive' or 'batch'")
+    if body.transport == "batch":
+        job = jobs.enqueue("suggest_findings_batch", {"project_id": project_id, "source_ids": ids, "force": body.force})
+    else:
+        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force})
+    return {"job": job["id"], "sources": len(ids), "transport": body.transport}
+
+
+class EstimateIn(BaseModel):
+    source_ids: list[str] | None = None
+    force: bool = False
+    exact: bool = True                     # count tokens with the provider (cached per input) — falls back to the character estimate
+
+
+@app.post("/api/projects/{project_id}/suggest/estimate", dependencies=[Depends(require_auth)])
+def api_suggest_estimate(project_id: str, body: EstimateIn) -> dict[str, Any]:
+    """Both quotes for the analyze-now / analyze-in-background choice (model cost only), the recommendation and its basis."""
+    from . import batches
+    ids = body.source_ids or (db.project_source_ids(project_id) if body.force else db.sources_needing_suggestions(project_id))
+    if not ids:
+        return {"items": 0, "sources": 0, "now": 0.0, "background": 0.0, "recommended": "now", "basis": "estimate", "choices": batches.CHOICES, "note": ""}
+    return batches.estimate(project_id, ids, force=body.force, exact=body.exact)
 
 
 class NoteStatusIn(BaseModel):

@@ -461,7 +461,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.20.0+g1';
+const UI_VERSION = '0.20.0+g2';
 async function checkVersion() {
   try {
     const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
@@ -996,6 +996,7 @@ let jobsTimer;
 function jobLabel(j) {
   const what = j.label || j.payload.url || j.payload.name || j.payload.source_id || '';
   if (j.kind === 'suggest_findings') return 'finding suggestions · ' + what;
+  if (j.kind === 'suggest_findings_batch') { const n = (j.payload.source_ids || []).length || j.batch?.sources || 0; return `background analysis · ${n} source${n === 1 ? '' : 's'}${j.payload.reason === 'stale' ? ' (stale rebuild)' : ''}`; }
   if (j.kind === 'rank_proposed') return 'ranking videos by relevance';
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
   return what || j.kind;
@@ -1017,8 +1018,9 @@ async function loadJobs() {
     return;
   }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
-  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', external_pending: 'external', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
-  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', external_pending: 'queued', cancelling: 'running' })[st] || st;
+  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
+  const jobMsg = j => j.batch ? j.batch.label : (j.message || '');
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span style="color:var(--bad)">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
@@ -1028,7 +1030,7 @@ async function loadJobs() {
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
-    <div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><span class="muted" style="flex:1">${esc(j.message || '')}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = !!document.querySelector('#srcList .spin');
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
@@ -1073,22 +1075,23 @@ function renderStaleCard(elId, what) {
     stale.push(...legacy);
     h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${parts.join(' · ')}</b>
       <div class="muted">${why ? `Why: ${esc(why)}. ` : ''}Their findings are still readable and usable — they just may not reflect what the project is about now. Nothing is re-run unless you ask.</div>
-      ${stale.length ? `<div class="row" style="margin-top:8px"><span class="muted">Re-analyse: est. <b>${money(s.estimate.findings)}</b> (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
-        <button class="small primary" onclick="rebuildStale(['findings'])">Re-analyse ${stale.length} stale</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
+      ${stale.length ? `<div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Re-analyse ${stale.length} stale (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
+        <button class="small primary" onclick="rebuildStale(['findings'],'interactive')" title="Faster · standard model cost">Rebuild now · ${money(s.estimate.findings)}</button><button class="small" onclick="rebuildStale(['findings'],'batch')" title="Up to 24 hours · ~50% lower model cost (model cost only)">Rebuild in background · ${money(s.estimate.findings_background ?? s.estimate.findings / 2)} model cost</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
   } else {
     const p = s.plan;
     if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
     if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
     else h = `<div class="card" style="border-color:var(--warn)"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
       <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
-      <div class="row" style="margin-top:8px"><span class="muted">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
-        <button class="small primary" onclick="rebuildStale(['plan'])">Rebuild plan</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'])">Re-analyse + rebuild</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
+      <div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} now or ${money(s.estimate.findings_background ?? s.estimate.findings / 2)} in background to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first — the plan waits for them either way)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
+        <button class="small primary" onclick="rebuildStale(['plan'],'interactive')">Rebuild plan</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'],'interactive')" title="Faster · standard model cost">Re-analyse now + rebuild · ${money(s.estimate.total)}</button><button class="small" onclick="rebuildStale(['findings','plan'],'batch')" title="Up to 24 hours · ~50% lower model cost on the re-analysis (model cost only)">Re-analyse in background + rebuild · ${money(s.estimate.total_background ?? s.estimate.total)}</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
   }
   el.innerHTML = STALE.left && what === 'findings' ? '' : h;
 }
-async function rebuildStale(what) {
-  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what });
-  toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued · est. $${(+r.estimate.total).toFixed(2)}${r.budget.fits ? '' : ' · will pause when the daily budget is reached and resume tomorrow'}`);
+async function rebuildStale(what, transport = 'interactive') {
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what, transport });
+  const est = transport === 'batch' ? (r.estimate.total_background ?? r.estimate.total) : r.estimate.total;
+  toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued${transport === 'batch' ? ' in the background (up to 24 hours; each source becomes current as it completes)' : ''} · est. $${(+est).toFixed(2)}${transport === 'batch' ? ' model cost' : ''}${r.budget.fits ? '' : ' · will pause when the daily budget is reached and resume tomorrow'}`);
   loadStaleness(); loadJobs();
 }
 async function loadNotes() {
@@ -1100,10 +1103,10 @@ async function loadNotes() {
   const analysing = srcs.filter(x => x.analysing).length;
   if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
   const legacy = sug.filter(n => !n.title).length;
-  $('#suggestedWrap').innerHTML = (legacy ? `<div class="banner">${legacy} suggestion${legacy === 1 ? ' was' : 's were'} generated by an older version and read as run-on sentences. <a href="#" onclick="suggestNow(true);return false"><b>Re-analyse all</b></a> to regenerate them as clean headlines (takes about a minute).</div>` : '') + (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically.</div>` : '') +
+  $('#suggestedWrap').innerHTML = (legacy ? `<div class="banner">${legacy} suggestion${legacy === 1 ? ' was' : 's were'} generated by an older version and read as run-on sentences. <a href="#" onclick="suggestNow(true);return false"><b>Re-analyse all</b></a> to regenerate them as clean headlines (takes about a minute).</div>` : '') + (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — suggestions will appear here automatically (background analyses may take up to 24 hours; each source appears as it completes).</div>` : '') +
     `<div class="row" style="margin-bottom:8px"><h3 style="margin:0;flex:1">Suggested ${sug.length ? `(${sug.length})` : ''}</h3>
       ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
-      <button class="small ghost" onclick="suggestNow(false)" title="Analyse sources that haven't been read yet">Analyse new</button><button class="small ghost" onclick="suggestNow(true)" title="Read every source again">Re-analyse all</button></div>
+      <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new…</button><button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button></div>
     <div class="muted" id="sugMsg"></div>` +
     (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
       list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
@@ -1156,9 +1159,32 @@ function findingCard(n, actions) {
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
 async function bulkNotes(ids, status) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadNotes(); }
-async function suggestNow(force) {
-  const r = await post(`/api/projects/${state.project.id}/suggest`, { force });
+// Now vs background: the same analysis through two transports. Wording is deliberate — the background option may take
+// up to 24 hours (never "within hours") and the ~50% discount applies to model cost only.
+function transportChoiceHtml(est, onNow, onBg, verb) {
+  const money = v => '~$' + (+v).toFixed(2);
+  const rec = est.recommended || 'now';
+  const badge = k => rec === k ? ' <span class="chip" title="recommended for this amount of work">recommended</span>' : '';
+  const basis = est.basis === 'token count' ? 'exact token count' : est.basis === 'mixed' ? 'partly token-counted' : 'estimate';
+  const n = est.sources || 0;
+  return `<div class="card" style="margin:6px 0 10px">
+    <div class="muted" style="margin-bottom:6px">${verb} ${n} source${n === 1 ? '' : 's'} (${est.items || 0} window${est.items === 1 ? '' : 's'}) · ${basis} · model cost only</div>
+    <div class="row" style="gap:10px;align-items:stretch;flex-wrap:wrap">
+      <button class="small ${rec === 'now' ? 'primary' : ''}" style="flex:1;min-width:220px;text-align:left;padding:8px 10px" onclick="${onNow}"><b>${esc(est.choices?.now?.label || 'Analyze now')}</b> · ${money(est.now)}${badge('now')}<div class="muted" style="font-weight:normal">${esc(est.choices?.now?.detail || 'Faster · standard model cost')}</div></button>
+      <button class="small ${rec === 'background' ? 'primary' : ''}" style="flex:1;min-width:220px;text-align:left;padding:8px 10px" onclick="${onBg}"><b>${esc(est.choices?.background?.label || 'Analyze in background')}</b> · ${money(est.background)}${badge('background')}<div class="muted" style="font-weight:normal">${esc(est.choices?.background?.detail || 'Up to 24 hours · ~50% lower model cost')}</div></button>
+      <button class="small ghost" onclick="$('#sugMsg').innerHTML=''">Cancel</button></div></div>`;
+}
+async function analyzeChooser(force) {
+  $('#sugMsg').innerHTML = '<span class="spin"></span> pricing…';
+  let est;
+  try { est = await post(`/api/projects/${state.project.id}/suggest/estimate`, { force }); } catch (e) { $('#sugMsg').textContent = 'Could not price the analysis: ' + (e.message || e); return; }
+  if (!est.items) { $('#sugMsg').textContent = 'Every source has already been analysed for this project.'; return; }
+  $('#sugMsg').innerHTML = transportChoiceHtml(est, `suggestNow(${force},'interactive')`, `suggestNow(${force},'batch')`, force ? 'Re-analyse' : 'Analyse');
+}
+async function suggestNow(force, transport = 'interactive') {
+  const r = await post(`/api/projects/${state.project.id}/suggest`, { force, transport });
   if (!r.job) { $('#sugMsg').textContent = 'Every source has already been analysed for this project.'; return; }
+  if (transport === 'batch') { $('#sugMsg').innerHTML = `Queued in the background for ${r.sources} source${r.sources === 1 ? '' : 's'} — findings appear here as each source completes (up to 24 hours). Progress is in the Sources view.`; loadJobs(); setTimeout(loadNotes, 4000); return; }
   $('#sugMsg').innerHTML = `<span class="spin"></span> reading ${r.sources} source${r.sources === 1 ? '' : 's'}…`;
   const tick = async () => { const j = await api('/api/jobs/' + r.job); if (j.status === 'done' || j.status === 'failed') { await loadNotes(); } else { $('#sugMsg').innerHTML = `<span class="spin"></span> ${esc(j.message || 'working…')}`; setTimeout(tick, 2500); } };
   setTimeout(tick, 2000);

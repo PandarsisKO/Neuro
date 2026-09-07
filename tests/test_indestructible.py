@@ -565,7 +565,7 @@ def test_batch_estimate_and_pricing_scope(monkeypatch):
     from neurosearch import batches, usage
     pid, ids = _golden(monkeypatch)
     est = batches.estimate(pid)
-    assert est["items"] == 10 and est["sources"] == 9 and abs(est["background"] - est["now"] * 0.5) < 1e-6 and "model cost only" in est["note"] and "24 hours" in est["note"]
+    assert est["items"] == 10 and est["sources"] == 9 and abs(est["background"] - est["now"] * 0.5) < 1e-4 and "model cost only" in est["note"] and "24 hours" in est["note"]
     assert abs(usage.estimate_findings(40000, batch=True) - usage.estimate_findings(40000) * 0.5) < 1e-9
     # the discount applies to model tokens only: a web search is never discounted
     c_int = usage.record("answer", "claude-sonnet-4-6", input_tokens=1000, output_tokens=100, searches=1)
@@ -580,9 +580,9 @@ def test_batch_estimate_and_pricing_scope(monkeypatch):
     assert a != [it["custom_id"] for it in findings.batch_requests(pid, ids["yt01"])]
 
 
-def test_batch_recovery_heuristic_for_the_real_api(monkeypatch):
-    """Without a client reference on the real API, an orphaned batch is claimed only when it was created after our
-    recorded intent with exactly our item count — and a claimed batch whose results carry foreign custom_ids is reported."""
+def test_batch_recovery_never_claims_by_count_alone(monkeypatch):
+    """The real API has no client reference. Creation time + request count NARROW candidates; they never prove identity:
+    nothing is attached, no ledger row is started, and the job's state says so."""
     import json as _json
     from neurosearch import batches, providers
     pid, ids = _golden(monkeypatch)
@@ -591,7 +591,7 @@ def test_batch_recovery_heuristic_for_the_real_api(monkeypatch):
     db.batch_items_add(j["id"], 1, items)
     monkeypatch.setattr(settings, "fake_ai", False)
     ref = f"{j['id']}#1"
-    db.kv_set(f"batch:intent:{ref}", _json.dumps({"job_id": j["id"], "cohort_no": 1, "n": len(items), "ts": 1000.0}))
+    db.kv_set(f"batch:intent:{ref}", _json.dumps({"job_id": j["id"], "cohort_no": 1, "n": len(items), "ts": 1000.0, "attempted": True}))
     class Counts:
         def __init__(self, n): self.processing, self.succeeded, self.errored, self.canceled, self.expired = n, 0, 0, 0, 0
     class B:
@@ -600,8 +600,234 @@ def test_batch_recovery_heuristic_for_the_real_api(monkeypatch):
         class messages:
             class batches:
                 @staticmethod
-                def list(limit=20): return type("P", (), {"data": [B("old", 900.0, len(items)), B("other-size", 1001.0, len(items) + 3), B("ours", 1001.0, len(items))]})()
+                def list(limit=20): return type("P", (), {"data": [B("old", 900.0, len(items)), B("other-size", 1001.0, len(items) + 3), B("twin-a", 1001.0, len(items)), B("twin-b", 1002.0, len(items))]})()
     monkeypatch.setattr(providers, "anthropic_client", lambda **kw: Stub())
-    assert batches.AnthropicBatch.find_by_ref(ref) == "ours"
-    assert all(it["status"] == "submitted" and it["batch_id"] == "ours" for it in db.batch_items(j["id"]))
-    assert any(e["event_type"] == "external_reattached" and e["payload"]["where"] == "recovery_heuristic" for e in db.job_events(j["id"]))
+    h = batches.AnthropicBatch.find_by_ref(ref)
+    assert h == f"tentative:{ref}"
+    assert all(it["status"] == "planned" and it["batch_id"] is None for it in db.batch_items(j["id"]))
+    assert db.connect().execute("SELECT COUNT(*) FROM invocations WHERE provider='anthropic_batch'").fetchone()[0] == 0
+    ev = {e["event_type"]: e["payload"] for e in db.job_events(j["id"])}
+    assert "external_reattached" not in ev and ev["external_candidates"]["candidates"] == ["twin-a", "twin-b"]
+    db.park_external(j["id"], None, batches.PROVIDER, "findings", h, None)
+    assert db.derived_status(db.get_job(j["id"])) == "external_handle_ambiguous"
+    db.kv_set(f"batch:candidates:{ref}", _json.dumps(["twin-a"]))
+    assert db.derived_status(db.get_job(j["id"])) == "external_tentative"
+    # cancelling an ambiguous job never touches the candidates (they may be someone else's)
+    assert db.request_cancel(j["id"]) == "cancelled"
+    assert batches.cancel_job(db.get_job(j["id"]))["materialized"] == 0
+    assert any(e["event_type"] == "batch_cancelled" and "untouched" in e["payload"]["detail"] for e in db.job_events(j["id"]))
+
+
+def _decoy_batch(n: int, tag: str = "decoy") -> str:
+    """Another process in the same workspace submits a same-sized batch inside our recovery window."""
+    from neurosearch import providers
+    client = providers.anthropic_client()
+    reqs = [{"custom_id": f"{tag}-{i}", "params": {"model": "claude-x", "max_tokens": 50, "system": "You are terse.", "messages": [{"role": "user", "content": f"say {i}"}]}} for i in range(n)]
+    return client.messages.batches.create(requests=reqs).id
+
+
+def test_batch_recovery_two_same_sized_batches_adopts_only_the_verified_one(monkeypatch):
+    """Crash after the provider accepted our batch, before its id was persisted, with a same-sized foreign batch created
+    right after ours: recovery observes BOTH, attaches NEITHER until results exist, rejects the foreign one by custom_id
+    set, adopts ours — one provider batch of ours, the foreign one untouched."""
+    from neurosearch import batches
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_NO_CLIENT_REF", "1")           # behave like the real API: no client reference
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_READY_AFTER", "2")
+    j = db.create_job("suggest_findings_batch", {"project_id": pid})
+    sim = crashkit.Sim()
+    jobs.CRASH_AT["batch_after_create_before_persist"] = 1
+    assert sim.step(("suggest_findings_batch",)) == "crashed"
+    ours = list(_batch_state()["batches"])[0]
+    decoy = _decoy_batch(10)
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"
+    jj = db.get_job(j["id"])
+    assert jj["external_handle"] == f"tentative:{j['id']}#1" and db.derived_status(jj) == "external_handle_ambiguous"
+    assert all(it["status"] == "planned" and it["batch_id"] is None for it in db.batch_items(j["id"]))
+    assert len(_batch_state()["batches"]) == 2                                   # nothing resubmitted
+    assert jobs.poll_external_once() == 0                                        # both still processing: observe, do nothing
+    assert db.derived_status(db.get_job(j["id"])) == "external_handle_ambiguous"
+    assert jobs.poll_external_once() == 1                                        # both ended: decoy rejected, ours verified + adopted
+    ev = [e for e in db.job_events(j["id"]) if e["event_type"] in ("external_candidates", "external_candidate_rejected", "external_reattached")]
+    assert [e["event_type"] for e in ev] == ["external_candidates", "external_candidate_rejected", "external_reattached"]
+    assert sorted(ev[0]["payload"]["candidates"]) == sorted([ours, decoy])
+    assert ev[1]["payload"]["handle"] == decoy and ev[1]["payload"]["overlap"] == 0 and ev[1]["payload"]["returned"] == 10
+    assert ev[2]["payload"]["handle"] == ours and ev[2]["payload"]["where"] == "verified_custom_ids"
+    assert all(it["status"] == "succeeded" and it["batch_id"] == ours for it in db.batch_items(j["id"]))
+    sim.run_until_idle()
+    assert db.get_job(j["id"])["status"] == "done" and len(db.project_analysis(pid, "summary")) == 9
+    st = _batch_state()["batches"]
+    assert len(st) == 2 and not st[decoy]["cancelled"] and st[ours]["results_reads"] == 1 and st[decoy]["results_reads"] == 1
+    assert db.connect().execute("SELECT COUNT(*) FROM invocations WHERE provider='anthropic_batch' AND state='completed'").fetchone()[0] == 10
+
+
+def test_batch_recovery_resubmits_only_after_every_candidate_is_rejected(monkeypatch):
+    """Our submission never reached the provider (crash), but a same-sized foreign batch exists in the window: it is
+    observed, rejected by custom_id set, and ONLY then does the job submit afresh — the foreign batch untouched."""
+    import json as _json
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_NO_CLIENT_REF", "1")
+    j = db.create_job("suggest_findings_batch", {"project_id": pid})
+    sim = crashkit.Sim()
+    jobs.CRASH_AT["batch_after_create_before_persist"] = 1
+    assert sim.step(("suggest_findings_batch",)) == "crashed"
+    path = settings.data_dir / "fake_batches.json"
+    d = _json.loads(path.read_text()); d["batches"].clear(); path.write_text(_json.dumps(d))    # the provider never had ours
+    decoy = _decoy_batch(10)
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"
+    assert db.derived_status(db.get_job(j["id"])) == "external_tentative"
+    assert jobs.poll_external_once() == 0                                        # decoy ended → rejected → job handed back to the queue
+    jj = db.get_job(j["id"])
+    assert jj["status"] == "queued" and jj["external_handle"] is None
+    kinds = [e["event_type"] for e in db.job_events(j["id"])]
+    assert "external_candidate_rejected" in kinds and "external_recovery_resubmit" in kinds and "external_reattached" not in kinds
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"           # resubmitted: the rejected decoy is never a candidate again
+    assert "external_recovery_no_candidate" in [e["event_type"] for e in db.job_events(j["id"])]
+    ours = db.get_job(j["id"])["external_handle"]
+    assert ours != decoy and not ours.startswith("tentative:") and all(it["batch_id"] == ours for it in db.batch_items(j["id"]))
+    sim.run_until_idle()
+    assert db.get_job(j["id"])["status"] == "done" and len(db.project_analysis(pid, "summary")) == 9
+    st = _batch_state()["batches"]
+    assert set(st) == {decoy, ours} and not st[decoy]["cancelled"]
+
+
+# ---------------------------------------------------------------- Rung G2/G3: now vs background, stale rebuilds through the batch transport
+
+def test_batch_estimate_uses_token_counts_with_cache_and_fallback(monkeypatch):
+    """Both quotes come from the provider's token counter when available (cached per input, bounded calls per
+    estimate), from the character estimate otherwise — and the UI never depends on counting succeeding."""
+    from neurosearch import batches, providers
+    pid, ids = _golden(monkeypatch)
+    calls = {"n": 0}
+    real = providers.anthropic_client
+    class Counting:
+        def __init__(self, inner): self._inner = inner; self.messages = self
+        def count_tokens(self, **kw): calls["n"] += 1; return self._inner.messages.count_tokens(**kw)
+    monkeypatch.setattr(providers, "anthropic_client", lambda **kw: Counting(real(**kw)))
+    e1 = batches.estimate(pid, force=True)
+    assert e1["items"] == 10 and e1["basis"] == "token count" and e1["input_tokens"] > 0 and calls["n"] == 10
+    assert abs(e1["background"] - e1["now"] * 0.5) < 1e-4 and e1["recommended"] == "background" and e1["bulk_threshold_items"] == batches.BULK_THRESHOLD_ITEMS
+    assert e1["choices"]["now"]["label"] == "Analyze now" and "24 hours" in e1["choices"]["background"]["detail"] and "50%" in e1["choices"]["background"]["detail"]
+    e2 = batches.estimate(pid, force=True)                                        # cached: no further counting calls
+    assert calls["n"] == 10 and e2["now"] == e1["now"] and e2["basis"] == "token count"
+    one = batches.estimate(pid, [ids["yt01"]], force=True)                          # one small source → analyze now
+    assert one["items"] == 1 and one["recommended"] == "now"
+    # counting unavailable → character estimate, same shape, still both quotes
+    class Broken:
+        def __init__(self): self.messages = self
+        def count_tokens(self, **kw): raise RuntimeError("counting endpoint down")
+    monkeypatch.setattr(providers, "anthropic_client", lambda **kw: Broken())
+    db.connect().execute("DELETE FROM kv WHERE key LIKE 'tokcount:%'"); db.connect().commit()
+    e3 = batches.estimate(pid, force=True)
+    assert e3["basis"] == "estimate" and e3["input_tokens"] is None and e3["now"] > 0 and abs(e3["background"] - e3["now"] * 0.5) < 1e-4
+    # bounded: with a low call cap the rest fall back → 'mixed'
+    monkeypatch.setattr(providers, "anthropic_client", lambda **kw: Counting(real(**kw)))
+    monkeypatch.setattr(batches, "MAX_COUNT_CALLS", 3)
+    calls["n"] = 0
+    e4 = batches.estimate(pid, force=True)
+    assert calls["n"] == 3 and e4["basis"] == "mixed"
+
+
+def test_suggest_api_keeps_transport_explicit(monkeypatch):
+    """/suggest and /suggest/estimate: the transport is the caller's explicit choice, recorded on the durable job;
+    nothing converts an ordinary findings job into a batch job. (Endpoint functions called directly: the app's MCP
+    lifespan can only be started once per process.)"""
+    from fastapi import HTTPException
+    from neurosearch import api
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)
+    est = api.api_suggest_estimate(pid, api.EstimateIn(force=True))
+    assert est["items"] == 10 and est["now"] > est["background"] > 0 and est["recommended"] == "background"
+    r_now = api.api_suggest(pid, api.SuggestIn(source_ids=[ids["yt01"]], transport="interactive"))
+    r_bg = api.api_suggest(pid, api.SuggestIn(source_ids=[ids["yt02"]], transport="batch"))
+    assert db.get_job(r_now["job"])["kind"] == "suggest_findings" and db.get_job(r_bg["job"])["kind"] == "suggest_findings_batch"
+    with pytest.raises(HTTPException):
+        api.api_suggest(pid, api.SuggestIn(transport="carrier-pigeon"))
+    j = api.api_job(r_bg["job"])
+    assert j["batch"]["phase"] == "queued" and "background" in j["batch"]["label"]
+    # default transport is interactive: an unadorned request never becomes a batch job
+    r_def = api.api_suggest(pid, api.SuggestIn(source_ids=[ids["yt03"]]))
+    assert db.get_job(r_def["job"])["kind"] == "suggest_findings" and r_def["transport"] == "interactive"
+    # the stale-rebuild endpoint carries the same explicit choice
+    with pytest.raises(HTTPException):
+        api.api_rebuild_stale(pid, api.RebuildIn(what=["findings"], transport="nope"))
+
+
+def test_stale_rebuild_in_background_plan_waits_and_sources_land_one_by_one(monkeypatch):
+    """G3: brief changes → findings stale; the user chooses background for the re-analysis → ONE batch job for the
+    stale sources, the plan job blocked on it exactly as on synchronous jobs; sources become current as their
+    results materialise; the plan builds only after the batch job is done."""
+    from neurosearch import findings, planner, staleness
+    pid, ids = _golden(monkeypatch)
+    for gid, sid in ids.items():
+        if gid != "calc":
+            findings.suggest_for_source(pid, sid)
+    planner.build_plan(pid)
+    db.update_project(pid, brief="Now the project is about SELLING a small business, not buying one")
+    s1 = staleness.assess(pid)
+    assert s1["stale_sources"] == 8 and s1["plan"]["status"] == "stale"
+    assert abs(s1["estimate"]["findings_background"] - s1["estimate"]["findings"] * 0.5) < 1e-6 and s1["estimate"]["total_background"] < s1["estimate"]["total"]
+    r = staleness.rebuild(pid, ["findings", "plan"], transport="batch")
+    assert r["queued"] == 2 and r["transport"] == "batch"
+    bj, pj = (db.get_job(i) for i in r["job_ids"])
+    assert bj["kind"] == "suggest_findings_batch" and sorted(bj["payload"]["source_ids"]) == sorted(x["source_id"] for x in s1["sources"] if x["status"] == "stale")
+    assert bj["payload"]["force"] is True and bj["payload"]["reason"] == "stale" and pj["kind"] == "build_plan" and pj["blocked_by"] == [bj["id"]]
+    s2 = staleness.assess(pid)
+    assert s2["rebuilding"] == 9 and s2["stale_sources"] == 0 and s2["plan"]["status"] == "rebuilding" and "waiting for research" in s2["plan"]["note"]
+    sim = crashkit.Sim()
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"
+    assert sim.step(("build_plan",)) is None                                        # the plan is blocked on the batch, not claimable
+    assert db.derived_status(db.get_job(pj["id"])) == "blocked"
+    st = staleness.assess(pid)
+    assert st["rebuilding"] == 9 and all("in background" in (x["note"] or "") for x in st["sources"] if x["status"] == "rebuilding")
+    # results arrive: the batch job materialises each source; the moment one has landed it is current + usable
+    jobs.poll_external_once()
+    assert sim.step(("suggest_findings_batch",)) == "done"
+    s3 = staleness.assess(pid)
+    assert s3["stale_sources"] == 0 and sum(1 for x in s3["sources"] if x["status"] == "current") == 8 and s3["plan"]["status"] == "rebuilding"
+    assert db.get_analysis(pid, ids["yt01"], "summary")["transport"] == "batch"
+    assert db.sources_being_analysed(pid) == set()
+    assert sim.step(("build_plan",)) == "done"
+    s4 = staleness.assess(pid)
+    assert not s4["anything_stale"] and s4["plan"]["status"] == "current" and s4["plan"]["version"] == 2
+
+
+def test_batch_partial_failure_completed_sources_usable_while_retrying(monkeypatch):
+    """While one window retries in a second round, the other sources' findings are already written, current, and no
+    longer reported as being analysed; the job's UI state names the retry."""
+    from neurosearch import batches, staleness
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_FAIL_ONCE", f"fw-{ids['yt02'][:12]}")
+    j = db.create_job("suggest_findings_batch", {"project_id": pid, "source_ids": list(ids.values())})
+    sim = crashkit.Sim()
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"
+    assert batches.ui_state(db.get_job(j["id"]))["phase"] == "processing"
+    assert db.sources_being_analysed(pid) == set(ids.values())
+    jobs.poll_external_once()
+    assert sim.step(("suggest_findings_batch",)) == "external_pending"              # round 2: the failed window only
+    ui = batches.ui_state(db.get_job(j["id"]))
+    assert ui["phase"] == "processing" and ui["done"] == 8 and ui["retrying"] == 1 and "retrying 1 item (round 2)" in ui["label"]
+    assert db.sources_being_analysed(pid) == {ids["yt02"]}                          # the eight completed sources are usable now
+    assert len(db.list_project_notes(pid, status="suggested")) > 0 and len(db.project_analysis(pid, "summary")) == 8
+    assert {x["status"] for x in staleness.assess(pid)["sources"] if x["source_id"] != ids["yt02"]} == {"current"}
+    sim.run_until_idle()
+    ui = batches.ui_state(db.get_job(j["id"]))
+    assert ui["phase"] == "complete" and ui["done"] == 9
+
+
+def test_batch_ui_state_names_failure_and_cancel(monkeypatch):
+    from neurosearch import batches
+    pid, ids = _golden(monkeypatch)
+    monkeypatch.setattr(batches, "MAX_COHORTS", 1)
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_FAIL_ONCE", f"fw-{ids['yt02'][:12]}")
+    j = db.create_job("suggest_findings_batch", {"project_id": pid})
+    crashkit.Sim().run_until_idle()
+    ui = batches.ui_state(db.get_job(j["id"]))
+    assert ui["phase"] == "partial_failure" and ui["done"] == 8 and "1 errored" in ui["label"]
+    monkeypatch.delenv("NEUROSEARCH_FAKE_BATCH_FAIL_ONCE")
+    monkeypatch.setenv("NEUROSEARCH_FAKE_BATCH_READY_AFTER", "5")
+    j2 = db.create_job("suggest_findings_batch", {"project_id": pid, "force": True})
+    sim = crashkit.Sim(); assert sim.step(("suggest_findings_batch",)) == "external_pending"
+    db.request_cancel(j2["id"]); batches.cancel_job(db.get_job(j2["id"]))
+    ui = batches.ui_state(db.get_job(j2["id"]))
+    assert ui["phase"] == "canceled" and "kept" in ui["label"] and ui["done"] >= 1

@@ -1187,6 +1187,11 @@ def derived_status(j: dict[str, Any]) -> str:
         return "queued"
     if st == "running" and j.get("cancel_requested_at"):
         return "cancelling"
+    if st == "external_pending" and str(j.get("external_handle") or "").startswith("tentative:"):
+        # recovery found provider work that MAY be ours; identity is proven only by the returned custom_id set
+        cands = kv_get("batch:candidates:" + j["external_handle"][len("tentative:"):])
+        n = len(json.loads(cands)) if cands else 0
+        return "external_handle_ambiguous" if n > 1 else "external_tentative"
     return st or "unknown"
 
 
@@ -1215,6 +1220,15 @@ def external_pending_jobs() -> list[dict[str, Any]]:
 def external_checked(job_id: str) -> None:
     with tx() as conn:
         conn.execute("UPDATE jobs SET external_last_checked_at=? WHERE id=?", (now(), job_id))
+
+
+def unpark_external(job_id: str, reason: str) -> None:
+    """Recovery concluded that no external work exists for this job (every tentative candidate was rejected): hand it
+    back to the queue WITHOUT a result so the job submits afresh. Never used for a handle that was actually persisted."""
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET status='queued', external_handle=NULL, external_submitted_at=NULL, external_deadline=NULL, message=?, updated_at=? "
+                     "WHERE id=? AND status='external_pending'", (f"external recovery: {reason} — resubmitting", now(), job_id))
+        job_event(job_id, "external_recovery_resubmit", conn=conn, reason=reason)
 
 
 def resume_external(job_id: str, result: Any) -> None:
@@ -1913,12 +1927,19 @@ def analysed_sources(project_id: str) -> set[str]:
 
 def sources_being_analysed(project_id: str) -> set[str]:
     out: set[str] = set()
-    for r in connect().execute("SELECT payload FROM jobs WHERE kind='suggest_findings' AND status IN ('queued','running')").fetchall():
+    for r in connect().execute("SELECT id, kind, payload FROM jobs WHERE kind IN ('suggest_findings','suggest_findings_batch') AND status IN ('queued','running','external_pending')").fetchall():
         try:
             pl = json.loads(r["payload"])
         except ValueError:
             continue
-        if pl.get("project_id") == project_id:
+        if pl.get("project_id") != project_id:
+            continue
+        if r["kind"] == "suggest_findings_batch":
+            # a background job: only the sources whose findings have not landed yet (completed sources are usable already)
+            planned = {x["source_id"] for x in batch_items(r["id"])}
+            landed = {x["source_id"] for x in batch_items(r["id"], status="materialized")}
+            out.update((planned or set(pl.get("source_ids") or [])) - landed)
+        else:
             out.update(pl.get("source_ids") or [])
     return out
 

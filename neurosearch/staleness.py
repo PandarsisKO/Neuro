@@ -23,10 +23,13 @@ def _project_jobs(project_id: str) -> list[dict[str, Any]]:
 
 
 def _job_note(j: dict[str, Any]) -> str:
-    """Rebuilding · waiting for budget / running / queued — derived from the real job row."""
+    """Rebuilding · waiting for budget / running / queued / in background — derived from the real job row."""
     msg = j.get("message") or ""
     if msg.startswith("paused:"):
         return "waiting for budget" if "budget" in msg else "paused: " + msg[7:60].strip()
+    if j["kind"] == "suggest_findings_batch":
+        from . import batches
+        return "in background · " + batches.ui_state(j)["label"]
     return j["status"]
 
 
@@ -46,10 +49,15 @@ def assess(project_id: str) -> dict[str, Any]:
     live_by_source: dict[str, dict[str, Any]] = {}
     last_failed: dict[str, dict[str, Any]] = {}
     for j in sorted(pjobs, key=lambda j: j["created_at"]):
-        if j["kind"] != "suggest_findings":
+        if j["kind"] not in ("suggest_findings", "suggest_findings_batch"):
             continue
-        for sid in (j.get("payload") or {}).get("source_ids") or []:
-            if j["status"] in ("queued", "running"):
+        sids = (j.get("payload") or {}).get("source_ids") or []
+        if j["kind"] == "suggest_findings_batch":
+            # a background job covers a source until that source's findings have landed (they land one by one)
+            landed = {x["source_id"] for x in db.batch_items(j["id"], status="materialized")}
+            sids = [x for x in (sids or [x["source_id"] for x in db.batch_items(j["id"])]) if x not in landed]
+        for sid in sids:
+            if j["status"] in ("queued", "running", "external_pending"):
                 live_by_source[sid] = j
             elif j["status"] == "failed":
                 last_failed[sid] = j
@@ -154,15 +162,17 @@ def assess(project_id: str) -> dict[str, Any]:
             "stale_sources": len(stale_sources), "legacy_sources": sum(1 for x in sources if x["status"] == LEGACY),
             "missing_sources": sum(1 for x in sources if x["status"] == MISSING),
             "rebuilding": sum(1 for x in sources if x["status"] == REBUILDING) + (plan_info["status"] == REBUILDING),
-            "estimate": {"findings": round(stale_findings_cost, 4), "plan": plan_info["estimate"], "total": total,
-                         "basis": "your usage so far" if rate is not None else "list prices"},
+            "estimate": {"findings": round(stale_findings_cost, 4), "findings_background": round(stale_findings_cost * usage.BATCH_MULT, 4),
+                         "plan": plan_info["estimate"], "total": total, "total_background": round(stale_findings_cost * usage.BATCH_MULT + plan_info["estimate"], 4),
+                         "basis": "your usage so far" if rate is not None else "list prices",
+                         "background_note": "model cost only; background analysis may take up to 24 hours; the plan itself is never batched"},
             "budget": {"daily_remaining": None if daily_left is None else round(daily_left, 2), "daily": t["daily_budget"], "paused": t["paused"],
                        "fits": daily_left is None or total <= daily_left},
             "anything_stale": bool(stale_sources) or plan_info["status"] == STALE}
 
 
 def live_findings_jobs(project_id: str) -> list[dict[str, Any]]:
-    return [j for j in _project_jobs(project_id) if j["kind"] == "suggest_findings" and j["status"] in ("queued", "running")]
+    return [j for j in _project_jobs(project_id) if j["kind"] in ("suggest_findings", "suggest_findings_batch") and j["status"] in ("queued", "running", "external_pending")]
 
 
 def _plan_estimate(project_id: str) -> float:
@@ -175,19 +185,24 @@ def _plan_estimate(project_id: str) -> float:
     return (material_tokens * 2 * pin + 12000 * pout) / 1e6            # two passes over the material, ~12k tokens of plan out
 
 
-def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str] | None = None) -> dict[str, Any]:
+def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str] | None = None, transport: str = "interactive") -> dict[str, Any]:
     """Queue the rebuild of stale artifacts as ordinary background jobs. Every job passes usage.guard on its own,
-    so when the budget runs out the rest wait (nothing is lost) and the ones that finished are current already."""
+    so when the budget runs out the rest wait (nothing is lost) and the ones that finished are current already.
+    transport is explicit per request: 'interactive' = one job per source now; 'batch' = ONE background batch job for
+    all the stale sources (each source becomes current as its results land). The plan waits for whichever was chosen."""
     what = what or ["findings", "plan"]
     a = assess(project_id)
     jobs: list[dict[str, Any]] = []
     if "findings" in what:
         targets = [x["source_id"] for x in a["sources"] if x["status"] in (STALE, LEGACY) and (not source_ids or x["source_id"] in source_ids)]
-        for sid in targets:                                           # one job per source: independent, resumable, individually current
-            jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}))
+        if transport == "batch" and targets:
+            jobs.append(db.create_job("suggest_findings_batch", {"project_id": project_id, "source_ids": targets, "force": True, "reason": "stale"}))
+        else:
+            for sid in targets:                                       # one job per source: independent, resumable, individually current
+                jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}))
     if "plan" in what and a["plan"]["status"] == STALE:
         # dependency barrier: the plan must not be built until the research it depends on is current again. If a
         # findings job fails, the plan job fails with it instead of quietly planning over stale evidence.
         upstream = [j["id"] for j in jobs] + [j["id"] for j in live_findings_jobs(project_id)]
         jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"}, blocked_by=upstream or None))
-    return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"]}
+    return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"], "transport": transport}
