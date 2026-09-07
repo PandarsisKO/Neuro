@@ -100,8 +100,8 @@ class _Ledgered:
     """Wraps a provider method: INTENT → IN_FLIGHT before the network call, COMPLETED/FAILED after. If the process dies
     in between, recovery marks the row OUTCOME_UNKNOWN (the provider may have done and charged the work)."""
 
-    def __init__(self, fn: Any, provider: str, default_task: str) -> None:
-        self._fn, self._provider, self._task = fn, provider, default_task
+    def __init__(self, fn: Any, provider: str, default_task: str, policy: dict[str, Any] | None = None) -> None:
+        self._fn, self._provider, self._task, self._policy = fn, provider, default_task, policy
 
     def __call__(self, **kw: Any) -> Any:
         import time as _time
@@ -109,7 +109,7 @@ class _Ledgered:
         from . import db, jobs
         task = (kw.get("extra_headers") or {}).get("x-neurosearch-task") or self._task
         jid, run_id = jobs.current_job()
-        policy = retry_policy(task)
+        policy = self._policy or retry_policy(task)
         logical = None
         ihash = _request_hash(kw)
         attempt = 0
@@ -128,7 +128,8 @@ class _Ledgered:
                 raise ProviderError(et, e, attempt) from e
             jobs.crash_point("provider_response_lost")          # the provider has done (and charged) the work; we die before recording it
             rid = getattr(res, "_request_id", None) or getattr(res, "id", None)
-            db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None)
+            db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None,
+                                 returned_model=str(getattr(res, "model", "") or "") or None)   # configured vs returned
             return res
 
 
@@ -154,12 +155,14 @@ class _LedgeredStream:
             def __exit__(self_inner, et, ev, tb):
                 r = cm.__exit__(et, ev, tb)
                 if et is None:
+                    rid = rm = None
                     try:
                         final = self_inner._s.get_final_message()
                         rid = getattr(final, "_request_id", None) or getattr(final, "id", None)
+                        rm = getattr(final, "model", None)
                     except Exception:  # noqa: BLE001
-                        rid = None
-                    db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None)
+                        pass
+                    db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None, returned_model=str(rm) if rm else None)
                 else:
                     db.invocation_finish(iid, "failed", error=str(ev), error_type=classify_error(ev) if isinstance(ev, BaseException) else None)
                 return r
@@ -182,6 +185,32 @@ def _wrap_anthropic(client: Any) -> Any:
 def _wrap_openai(client: Any) -> Any:
     return _Attr(embeddings=_Attr(create=_Ledgered(client.embeddings.create, "openai", "embed")),
                  audio=_Attr(transcriptions=_Attr(create=_Ledgered(client.audio.transcriptions.create, "openai", "transcribe"))), _raw=client)
+
+
+# ------------------------------------------------------------------ the router: product code calls invoke(task, ...)
+
+def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,
+           stream: bool = False, **extra: Any) -> Any:
+    """Run one logical inference for `task` under its InferenceContract: the contract chooses provider, model,
+    output budget, thinking policy, timeout and transport retries; the call site supplies only content.
+    Returns the response (or, with stream=True, the stream context manager)."""
+    from . import contracts as C
+    c = C.contract(task)
+    C.forbid_sampling_knobs(extra, c)
+    if c.provider != "anthropic":
+        raise C.ContractError(f"{task}: invoke() serves message tasks; {c.provider} tasks use their own client methods")
+    client = anthropic_client(**({"timeout": c.timeout} if c.timeout else {}))
+    kw: dict[str, Any] = {"model": c.model, **C.request_params(c), "extra_headers": {"x-neurosearch-task": task}, **extra}
+    if system is not None:
+        kw["system"] = system
+    if messages is not None:
+        kw["messages"] = messages
+    if tools:
+        kw["tools"] = tools
+    policy = {"max_attempts": c.max_attempts, "backoff": list(c.backoff)}
+    if stream:
+        return _LedgeredStream(client.messages.stream._fn if isinstance(client.messages.stream, _LedgeredStream) else client.messages.stream, "anthropic", task)(**kw)
+    return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
 
 
 def anthropic_client(**kw: Any) -> Any:

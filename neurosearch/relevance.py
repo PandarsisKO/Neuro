@@ -37,10 +37,8 @@ def _call(system: str, user: str, project_id: str | None, collection_id: str, he
     from . import providers, usage
 
     usage.guard(0.02)
-    client = providers.anthropic_client()
     sys_blocks = [{"type": "text", "text": system}, usage.cached_block(head, min_chars=len(system))] if head else system
-    resp = client.messages.create(model=settings.answer_model, max_tokens=6000, system=sys_blocks,
-                                  messages=[{"role": "user", "content": user}], extra_headers={"x-neurosearch-task": "rank.relevance"})
+    resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "rank", project_id=project_id)
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()
     return parse_scores(text)

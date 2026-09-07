@@ -100,14 +100,11 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     brief = "\n".join(user)
 
     usage.guard(0.15)
-    client = providers.anthropic_client(timeout=180.0)
 
     # ---- pass 1: instant shortlist (no tools) ----
     if progress:
         progress(0.1, "first take from what the model already knows…")
-    resp = client.messages.create(model=settings.answer_model, max_tokens=3500, system=QUICK_SYSTEM,
-                                  messages=[{"role": "user", "content": brief + f"\n\nPropose about {count} sources now."}],
-                                  extra_headers={"x-neurosearch-task": "discover.quick"})
+    resp = providers.invoke("discover.quick", system=QUICK_SYSTEM, messages=[{"role": "user", "content": brief + f"\n\nPropose about {count} sources now."}])
     usage.record_anthropic(resp, "discover", project_id=project_id)
     data = _parse("".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"))
     items = _items(data.get("sources") or [])
@@ -124,10 +121,8 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]
         text = ""
         for turn in range(4):
-            resp = client.messages.create(
-                model=settings.answer_model, max_tokens=2500, system=VERIFY_SYSTEM,
-                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}], messages=msgs,
-                extra_headers={"x-neurosearch-task": "discover.verify"})
+            resp = providers.invoke("discover.verify", system=VERIFY_SYSTEM, messages=msgs,
+                                    tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 5}])
             usage.record_anthropic(resp, "discover", project_id=project_id)
             text = "".join(getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text").strip()
             if getattr(resp, "stop_reason", None) == "pause_turn":

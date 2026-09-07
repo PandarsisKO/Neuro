@@ -1312,3 +1312,76 @@ def test_transport_retries_are_owned_and_ledgered(isolated_db, monkeypatch):
     providers.anthropic_client(timeout=5); providers.openai_client()
     assert captured["a"]["max_retries"] == 0 and captured["o"]["max_retries"] == 0
     assert providers.classify_error(RateLimitError()) == "RATE_LIMIT" and providers.classify_error(ValueError("x")) == "UNKNOWN"
+
+
+# ---------------------------------------------------------------- Mission E1: inference contracts
+
+def test_contract_reproduces_0_17_3_request_shape(isolated_db, monkeypatch):
+    """Router equivalence at the request level: under a Claude 4.6 contract the router sends exactly the 0.17.3
+    fields (model, max_tokens, system, messages, tools, task header) and nothing else — no thinking, no sampling."""
+    from neurosearch import providers
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    seen = {}
+    class Capture:
+        def __init__(self):
+            self.messages = type("M", (), {})()
+            self.messages.create = self._create
+            self.messages.stream = None
+        def _create(self, **kw):
+            seen.update(kw)
+            return type("R", (), {"model": "claude-sonnet-4-6-20260210", "_request_id": "req_1", "content": [], "usage": None})()
+    from neurosearch import fake_ai
+    monkeypatch.setattr(fake_ai, "Anthropic", lambda **kw: Capture())
+    res = providers.invoke("findings.extract", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
+    assert set(seen) == {"model", "max_tokens", "system", "messages", "extra_headers"}
+    assert seen["model"] == "claude-sonnet-4-6" and seen["max_tokens"] == 4000 and seen["extra_headers"] == {"x-neurosearch-task": "findings.extract"}
+    # configured vs returned model both on the ledger row
+    row = db.connect().execute("SELECT model, returned_model, task FROM invocations ORDER BY requested_at DESC LIMIT 1").fetchone()
+    assert (row["model"], row["returned_model"], row["task"]) == ("claude-sonnet-4-6", "claude-sonnet-4-6-20260210", "findings.extract")
+    # sampling knobs are rejected loudly, never silently dropped
+    with pytest.raises(Exception) as ei:
+        providers.invoke("findings.extract", system="S", messages=[], temperature=0.2)
+    assert "temperature" in str(ei.value)
+
+
+def test_claude5_contract_adapter_and_validation(monkeypatch):
+    from neurosearch import contracts as C
+    # the Claude 5 adapter states thinking explicitly (adaptive is ON by default there) and puts effort in output_config
+    c = C.InferenceContract("planner.build", "anthropic", "claude-sonnet-5", thinking="adaptive", effort="high", max_output_tokens=16000)
+    C.validate(c)
+    assert C.request_params(c) == {"max_tokens": 16000, "thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}
+    off = C.InferenceContract("findings.extract", "anthropic", "claude-sonnet-5", thinking="disabled", max_output_tokens=4000)
+    assert C.request_params(off) == {"max_tokens": 4000, "thinking": {"type": "disabled"}}
+    # a Claude 4 contract sends nothing extra — the 0.17.3 shape
+    assert C.request_params(C.InferenceContract("findings.extract", "anthropic", "claude-sonnet-4-6", max_output_tokens=4000)) == {"max_tokens": 4000}
+    # unsupported knobs are rejected at contract time
+    for bad in (dict(thinking="adaptive"), dict(effort="high"), dict(thinking="sometimes")):
+        with pytest.raises(C.ContractError):
+            C.validate(C.InferenceContract("t", "anthropic", "claude-sonnet-4-6", **bad))
+    with pytest.raises(C.ContractError):
+        C.validate(C.InferenceContract("t", "anthropic", "claude-sonnet-5", thinking="adaptive", max_output_tokens=500))
+    # per-task experiment overrides, without touching the table
+    monkeypatch.setenv("NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT", "claude-sonnet-5")
+    monkeypatch.setenv("NEUROSEARCH_TASK_THINKING_FINDINGS_EXTRACT", "disabled")
+    monkeypatch.setenv("NEUROSEARCH_TASK_MODEL_PLANNER_BUILD", "claude-sonnet-5")
+    monkeypatch.setenv("NEUROSEARCH_TASK_THINKING_PLANNER_BUILD", "adaptive:high".split(":")[0])
+    monkeypatch.setenv("NEUROSEARCH_TASK_EFFORT_PLANNER_BUILD", "high")
+    assert C.contract("findings.extract").model == "claude-sonnet-5" and C.contract("findings.extract").thinking == "disabled"
+    assert C.contract("planner.build").effort == "high" and C.contract("answer.chat").model == "claude-sonnet-4-6"   # a mixed release is legitimate
+
+
+def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
+    """E1 gate: the same corpus through the contract system produces the same fake Tier 1 numbers as 0.17.3."""
+    from neurosearch import evals
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000.0)
+    rep = evals.run(progress=lambda m: None)
+    assert rep["pass"], evals.format_report(rep)
+    v = rep["volume"]["by_task"]
+    # the 0.17.3 fake figures (tests/fixtures/golden is frozen, the fakes are deterministic): any drift here is a router bug
+    assert v["answer"]["calls"] == 34 and v["answer"]["input_tokens"] == 126605 and v["findings"]["calls"] == 9 and v["findings"]["input_tokens"] == 30297
+    assert v["plan"]["calls"] == 2 and v["plan"]["cache_read"] == 5701 and rep["volume"]["input_tokens"] == 182214
+    assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
+    assert rep["contracts"]["findings.extract"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000

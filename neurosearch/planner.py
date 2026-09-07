@@ -231,7 +231,6 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     from . import providers, usage
 
     usage.guard(0.5)
-    client = providers.anthropic_client(timeout=600.0)
     sys_blocks: Any = system
     if shared:
         sys_blocks = [usage.cached_block("RESEARCH MATERIAL for the project (your instructions follow it):\n\n" + shared),
@@ -239,8 +238,9 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
     parts: list[str] = []
     n = 0
     task = "planner.analysis" if system is ANALYSIS_SYSTEM else "planner.update" if system is UPDATE_SYSTEM else "planner.build"
-    with client.messages.stream(model=settings.answer_model, max_tokens=max_tokens, system=sys_blocks,
-                                messages=[{"role": "user", "content": user}], extra_headers={"x-neurosearch-task": task}) as stream:
+    from .contracts import contract
+    max_tokens = contract(task).max_output_tokens                 # the contract owns the output budget
+    with providers.invoke(task, system=sys_blocks, messages=[{"role": "user", "content": user}], stream=True) as stream:
         for text in stream.text_stream:
             parts.append(text)
             n += len(text)

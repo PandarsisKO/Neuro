@@ -97,12 +97,10 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     from . import providers, usage
 
     usage.guard(usage.estimate_findings(len(user)))
-    client = providers.anthropic_client()
     sys_blocks = [{"type": "text", "text": system}] + ([usage.cached_block(head, min_chars=len(system))] if head else [])
     if not head:
         sys_blocks = [usage.cached_block(system)]
-    resp = client.messages.create(model=settings.answer_model, max_tokens=4000, system=sys_blocks,
-                                  messages=[{"role": "user", "content": user}], extra_headers=TASK)
+    resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
     text = "".join(getattr(b, "text", "") for b in resp.content).strip()

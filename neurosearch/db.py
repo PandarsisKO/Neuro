@@ -368,6 +368,7 @@ MIGRATIONS = [
     ("invocations", "logical_id", "ALTER TABLE invocations ADD COLUMN logical_id TEXT"),
     ("invocations", "attempt_no", "ALTER TABLE invocations ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 1"),
     ("invocations", "error_type", "ALTER TABLE invocations ADD COLUMN error_type TEXT"),
+    ("invocations", "returned_model", "ALTER TABLE invocations ADD COLUMN returned_model TEXT"),
 ]
 
 
@@ -872,10 +873,11 @@ def invocation_start(provider: str, task: str | None, model: str | None, input_h
     return iid
 
 
-def invocation_finish(iid: str, state: str, provider_request_id: str | None = None, error: str | None = None, error_type: str | None = None) -> None:
+def invocation_finish(iid: str, state: str, provider_request_id: str | None = None, error: str | None = None, error_type: str | None = None,
+                      returned_model: str | None = None) -> None:
     with tx() as conn:
-        conn.execute("UPDATE invocations SET state=?, completed_at=?, provider_request_id=?, error=?, error_type=? WHERE id=?",
-                     (state, now(), provider_request_id, (error or None) and error[:500], error_type, iid))
+        conn.execute("UPDATE invocations SET state=?, completed_at=?, provider_request_id=?, error=?, error_type=?, returned_model=? WHERE id=?",
+                     (state, now(), provider_request_id, (error or None) and error[:500], error_type, returned_model, iid))
 
 
 def invocation_attempts(logical_id: str) -> list[dict[str, Any]]:

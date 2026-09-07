@@ -208,7 +208,6 @@ def ask(
         if calcs:
             tools.append(_calc_tool(calcs))
 
-    client = providers.anthropic_client()
     answer_parts: list[str] = []
     web_sources: list[dict[str, str]] = []
     web_used = False
@@ -216,11 +215,7 @@ def ask(
 
     for _round in range(6):
         usage.mark_last(messages)
-        kwargs: dict[str, Any] = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages,
-                                      extra_headers={"x-neurosearch-task": "answer.chat"})
-        if tools:
-            kwargs["tools"] = tools
-        resp = client.messages.create(**kwargs)
+        resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=tools or None)
         try:
             usage.record_anthropic(resp, "answer", project_id=project_id)
         except Exception:  # noqa: BLE001
@@ -262,9 +257,7 @@ def ask(
                              + (" (no excerpts were provided)" if not hits else "") + ". Rewrite the whole answer using only citations that exist; "
                              "if a claim is not supported by any excerpt, say so plainly instead of citing. Keep everything else the same."})
             usage.mark_last(messages)
-            kwargs = dict(model=settings.answer_model, max_tokens=2000, system=system_blocks, messages=messages,
-                          extra_headers={"x-neurosearch-task": "answer.repair"})
-            resp2 = client.messages.create(**kwargs)
+            resp2 = providers.invoke("answer.repair", system=system_blocks, messages=messages)
             usage.record_anthropic(resp2, "answer", project_id=project_id)
             repaired = "\n".join(getattr(b, "text", "") for b in resp2.content if getattr(b, "type", None) == "text").strip()
             v2, inv2 = check_citations(repaired + " " + " ".join(pending_findings), len(hits))

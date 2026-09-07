@@ -104,7 +104,8 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
                            "app_version": __version__, "git_sha": git_sha(), "provider": "anthropic" if live else "fake",
                            "requested_model": settings.answer_model if live else "fake", "embedding_model": settings.embedding_model if live else "fake",
                            "prompt_versions": prompt_versions(), "request_params": REQUEST_PARAMS,
-                           "thinking_policy": "n/a (model has no adaptive thinking; nothing requested)", "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                           "contracts": {c.task: c.describe() for c in __import__("neurosearch.contracts", fromlist=["all_contracts"]).all_contracts()},
+                           "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
                            "gates": {}, "quality": {}, "volume": {}, "economics": {}, "performance": {}}
 
     t0 = time.time()
@@ -301,7 +302,15 @@ def format_report(rep: dict[str, Any]) -> str:
     q, v, e, p = rep["quality"], rep["volume"], rep["economics"], rep["performance"]
     pct = lambda x: "—" if x is None else f"{x * 100:.1f}%"  # noqa: E731
     fake = rep["tier"] != "live"
-    lines = [f"Neuro Search eval · {rep['tier']} · model {rep['model']} · app {rep.get('app_version')} @ {rep.get('git_sha')}", "",
+    lines = [f"Neuro Search eval · {rep['tier']} · model {rep['model']} · app {rep.get('app_version')} @ {rep.get('git_sha')}", ""]
+    cs = rep.get("contracts") or {}
+    if cs:
+        lines += ["CONTRACTS  (task · model · thinking/effort · max_out · attempts)"]
+        for t, c in cs.items():
+            if c.get("provider") == "anthropic":
+                lines.append(f"  {t:18s} {c['model']:28s} {c['thinking']}{'/' + c['effort'] if c.get('effort') else '':10s} {c['max_output_tokens']:>6}  {c['max_attempts']}")
+        lines.append("")
+    lines += [
              "PIPELINE QUALITY  (does Neuro Search process AI-shaped output correctly?)",
              f"  Retrieval recall@5 / @10   {pct(q.get('retrieval_recall_at_5'))} / {pct(q.get('retrieval_recall_at_10'))}   MRR {q.get('retrieval_mrr')}   locator {pct(q.get('locator_accuracy'))}   ({q.get('questions')} questions)",
              f"  Citation integrity         {pct(q.get('citation_validity'))}   (invalid [n] caught, repaired or flagged)",

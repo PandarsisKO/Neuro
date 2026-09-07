@@ -185,13 +185,29 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              force: bool = typer.Option(False, help="Allow --baseline to overwrite an existing baseline file"),
              compare: Optional[Path] = typer.Option(None, help="Baseline JSON to diff against"),
              out: Optional[Path] = typer.Option(None, help="Write the full report JSON here"),
-             keep: bool = typer.Option(False, help="Keep the temporary database (path is printed)")) -> None:
+             keep: bool = typer.Option(False, help="Keep the temporary database (path is printed)"),
+             task_model: list[str] = typer.Option([], "--task-model", help="Experiment override task=model, e.g. findings.extract=claude-sonnet-5 (repeatable)"),
+             task_thinking: list[str] = typer.Option([], "--task-thinking", help="Override task=disabled|adaptive[:effort], e.g. planner.build=adaptive:high"),
+             task_max_tokens: list[str] = typer.Option([], "--task-max-tokens", help="Override task=N")) -> None:
     """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates)."""
+    import os
     import shutil
     import tempfile
 
     from . import evals
     from .config import settings
+
+    def _key(task: str, what: str) -> str:
+        return f"NEUROSEARCH_TASK_{what}_{task.upper().replace('.', '_')}"
+    for spec in task_model:
+        t, m = spec.split("=", 1); os.environ[_key(t, "MODEL")] = m
+    for spec in task_thinking:
+        t, v = spec.split("=", 1); th, _, eff = v.partition(":")
+        os.environ[_key(t, "THINKING")] = th
+        if eff:
+            os.environ[_key(t, "EFFORT")] = eff
+    for spec in task_max_tokens:
+        t, n = spec.split("=", 1); os.environ[_key(t, "MAX_TOKENS")] = n
 
     tmp = Path(tempfile.mkdtemp(prefix="ns_eval_"))
     settings.data_dir = tmp                      # never touch the real database
@@ -222,6 +238,17 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     else:
         shutil.rmtree(tmp, ignore_errors=True)
     raise typer.Exit(code=0 if rep["pass"] else 1)
+
+
+@app.command()
+def contracts() -> None:
+    """Show the inference contract of every AI task (with any NEUROSEARCH_TASK_* overrides applied)."""
+    from .contracts import all_contracts
+    for c in all_contracts():
+        d = c.describe()
+        typer.echo(f"{c.task:18s} {c.provider:9s} {c.model:30s} thinking={c.thinking}{'/' + c.effort if c.effort else ''}  max_out={c.max_output_tokens}  "
+                   f"attempts={c.max_attempts} timeout={c.timeout or 'default'}  {'interactive' if c.interactive else 'background'}"
+                   f"{'  batch-ok' if c.batch_allowed else ''}{'  fallback-ok' if c.fallback_allowed else ''}  schema={c.schema}")
 
 
 @app.command()

@@ -150,11 +150,8 @@ def synthesize_masterplan(project_id: str) -> str:
     material.append("</qa_history>\n<sources>")
     material += [f"- {s['title']} — {s.get('channel') or ''} ({s.get('published_at') or ''}) {s['url']}" for s in _sources(project_id)]
     material.append("</sources>")
-    client = providers.anthropic_client()
-    resp = client.messages.create(
-        model=settings.answer_model, max_tokens=6000, system=MASTERPLAN_SYSTEM, extra_headers={"x-neurosearch-task": "export.synthesis"},
-        messages=[{"role": "user", "content": f"Project name: {p['name']}\n\n" + "\n".join(material) + "\n\nWrite the masterplan now."}],
-    )
+    resp = providers.invoke("export.synthesis", system=MASTERPLAN_SYSTEM,
+                            messages=[{"role": "user", "content": f"Project name: {p['name']}\n\n" + "\n".join(material) + "\n\nWrite the masterplan now."}])
     try:
         from . import usage
         usage.record_anthropic(resp, "synthesis", project_id=project_id)
