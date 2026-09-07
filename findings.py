@@ -134,41 +134,32 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     from . import providers, usage
 
     from .contracts import contract
-    usage.guard(usage.estimate_findings(len(user)))
     sys_blocks = _system_blocks(system, head)
     c = contract("findings.extract")
-    resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}])
+    messages = [{"role": "user", "content": user}]
+    _last_call.clear()
+    _last_call.update({"structured": bool(c.schema), "parse": "strict", "truncated": False, "empty": False})
+    if c.schema:
+        # Mission F path: provider-enforced schema → json.loads → full local validation. No legacy parsing here.
+        try:
+            out = providers.invoke_structured("findings.extract", system=sys_blocks, messages=messages, usage_kind="findings", project_id=project_id,
+                                              source_id=source_id, guard_estimate=usage.estimate_findings(len(user)), legacy=_legacy_parse)
+        except providers.OutputError as e:
+            _last_call.update({"parse": "failed", "truncated": e.kind == providers.OutputError.TRUNCATED, "stop_reason": "max_tokens" if e.kind == "TRUNCATED" else e.kind.lower()})
+            raise
+        resp = providers.last_response()
+        _last_model["model"] = str(getattr(resp, "model", None) or settings.answer_model)
+        _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(getattr(resp, "usage", None), "output_tokens", 0) or 0)})
+        return out
+    # legacy/unstructured contract (NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT=none): the pre-F tolerant path
+    usage.guard(usage.estimate_findings(len(user)))
+    resp = providers.invoke("findings.extract", system=sys_blocks, messages=messages)
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
-    if c.schema and getattr(resp, "stop_reason", None) == "max_tokens":
-        # a truncated structured output is unusable by construction: one budget escalation, recorded, then it is an error
-        exc = providers.OutputError(providers.OutputError.TRUNCATED, "findings.extract", f"max_tokens={c.max_output_tokens}")
-        providers.output_event("findings.extract", exc, project_id=project_id, source_id=source_id, retried=True)
-        log.warning("findings: output truncated at %d tokens — retrying once with %d", c.max_output_tokens, int(c.max_output_tokens * 1.5))
-        resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}], max_output_tokens=int(c.max_output_tokens * 1.5))
-        usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
     raw = providers.text_of(resp).strip()
     u = getattr(resp, "usage", None)
-    _last_call.clear()
     _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
-                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "parse": "strict", "empty": not raw, "structured": bool(c.schema)})
-    if c.schema:
-        try:
-            return providers.structured("findings.extract", resp)
-        except providers.SchemaMismatch as e:
-            # degraded: the provider-enforced shape did not arrive; the legacy tolerant parser is the emergency path
-            log.warning("findings: structured output mismatch (%s) — falling back to the legacy parser", e.detail)
-            try:
-                out = _legacy_parse(raw)
-            except Exception:
-                providers.schema_fallback("findings.extract", e, project_id=project_id, source_id=source_id, recovered=False)
-                raise
-            providers.schema_fallback("findings.extract", e, project_id=project_id, source_id=source_id, recovered=bool(out))
-            _last_call["parse"] = "repaired" if out else "no_json"
-            return out
-        except providers.OutputError as e:
-            providers.output_event("findings.extract", e, project_id=project_id, source_id=source_id)
-            raise
+                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "empty": not raw})
     return _legacy_parse(raw)
 
 

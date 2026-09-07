@@ -1583,7 +1583,7 @@ def health() -> dict[str, Any]:
     stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND (lease_until IS NULL OR lease_until < ?)", (time.time(),)).fetchone()[0]
     leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
-                                                          "schema_fallbacks", "schema_failures", "output_truncated", "output_refused")}
+                                                          "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -1596,8 +1596,9 @@ def health() -> dict[str, Any]:
             "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
             "jobs": {**jobs_by, "stale_running": stale, "expired_leases": stale, "leased": leased,
                      "external_pending": jobs_by.get("external_pending", 0)},
-            "structured_outputs": {"fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
-                                   "refused": ev["output_refused"], "steady_state": "fallbacks 0"},
+            "structured_outputs": {"mismatches": ev["schema_mismatches"], "mismatches_recovered_by_retry": ev["schema_mismatch_recovered"],
+                                   "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
+                                   "refused": ev["output_refused"], "steady_state": "all zero"},
             "evidence": {**ev,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
@@ -2047,8 +2048,16 @@ def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], c
                       prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"]))
         if carry_statuses_from:
             rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
-            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)",
-                             [(pid, r["key"], r["status"], r["note"], t) for r in rows])
+            prev_row = conn.execute("SELECT plan FROM plans WHERE id=?", (carry_statuses_from,)).fetchone()
+            prev_ids = (json.loads(prev_row["plan"] or "{}") if prev_row else {}).get("_ids") or {}
+            new_ids = plan.get("_ids") or {}
+            if prev_ids and new_ids:
+                # F4: statuses follow the semantic id, not the array position — a task that moved keeps its DONE
+                by_id = {v: k for k, v in new_ids.items()}
+                carried = [(pid, by_id[prev_ids[r["key"]]], r["status"], r["note"], t) for r in rows if r["key"] in prev_ids and prev_ids[r["key"]] in by_id]
+            else:
+                carried = [(pid, r["key"], r["status"], r["note"], t) for r in rows]
+            conn.executemany("INSERT OR IGNORE INTO plan_items (plan_id, key, status, note, updated_at) VALUES (?,?,?,?,?)", carried)
     return get_plan(pid)  # type: ignore[return-value]
 
 

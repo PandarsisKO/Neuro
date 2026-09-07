@@ -30,6 +30,7 @@ class Settings:
     answer_model: str = field(default_factory=lambda: _env("NEUROSEARCH_ANSWER_MODEL", "claude-sonnet-4-6"))
     embedding_model: str = field(default_factory=lambda: _env("NEUROSEARCH_EMBEDDING_MODEL", "text-embedding-3-small"))
     transcribe_model: str = field(default_factory=lambda: _env("NEUROSEARCH_TRANSCRIBE_MODEL", "whisper-1"))
+    planner_v3: bool = field(default_factory=lambda: (_env("NEUROSEARCH_PLANNER_V3", "") or "").lower() in ("1", "true", "yes"))   # F4: decomposed planner (temporary flag)
 
     # Ingest
     caption_langs: list[str] = field(

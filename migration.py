@@ -266,6 +266,21 @@ def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any]) -> dict[str, A
     seconds = round(time.time() - t0, 2)
     plan = dict((row or {}).get("plan") or {})
     analysis = plan.pop("analysis", None) if plan else None
+    if plan.get("_build"):
+        # Planner V3: map the five structured calls onto the two reporting tasks (analysis ← situation; build ← the four components)
+        for ev in events:
+            if ev.get("task") == "planner.situation":
+                ev["task"] = "planner.analysis"
+            elif ev.get("task") in ("planner.core", "planner.execution", "planner.economics", "planner.actions"):
+                ev["task"] = "planner.build"
+        comp = [e for e in events if e.get("event") == "call" and e.get("task") == "planner.build"]
+        if comp:
+            merged = {"event": "call", "task": "planner.build", "truncated": any(e.get("truncated") for e in comp), "chars": sum(e.get("chars", 0) for e in comp),
+                      "seconds": round(sum(e.get("seconds", 0) for e in comp), 2), "cost": round(sum(e.get("cost") or 0 for e in comp), 6),
+                      "input_tokens": sum(e.get("input_tokens", 0) for e in comp), "output_tokens": sum(e.get("output_tokens", 0) for e in comp),
+                      "cache_read": sum(e.get("cache_read", 0) for e in comp), "cache_write": sum(e.get("cache_write", 0) for e in comp),
+                      "thinking_blocks": sum(e.get("thinking_blocks", 0) for e in comp), "model": comp[-1].get("model")}
+            events = [e for e in events if not (e.get("event") == "call" and e.get("task") == "planner.build")] + [merged]
     emap = set((plan or {}).get("_evidence") or {})
     chk = (plan or {}).get("_evidence_check") or {}
     out: dict[str, Any] = {"error": err, "seconds": seconds, "tasks": {}}
@@ -285,6 +300,8 @@ def run_planner_arm(pid: str, live: bool, rubric: dict[str, Any]) -> dict[str, A
             "thinking_tokens_est": max(0, int(c.get("output_tokens", 0)) - int(c.get("chars", 0)) // 4) if c.get("thinking_blocks") else 0,
             "thinking_blocks": c.get("thinking_blocks", 0), "seconds": c.get("seconds"), "invocations": _invocations_since(usage_from, task)}
     out["plan_evidence_dangling_raw"] = len(chk.get("dangling") or [])     # analysis + plan together, before removal
+    out["planner_version"] = (plan.get("_build") or {}).get("planner_version", "v1")
+    out["build_telemetry"] = plan.get("_build")
     out["plan_evidence_refs_raw"] = chk.get("references")
     out["plan"] = plan
     out["analysis"] = analysis
