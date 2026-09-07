@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 GOLDEN = Path(__file__).parent.parent / "tests" / "fixtures" / "golden"
 GATES = {"retrieval_recall_at_10": 0.90, "citation_validity": 1.0, "finding_quote_validity": 0.98, "plan_evidence_validity": 1.0}
+ZERO_GATES = ("schema_fallbacks", "output_truncated", "output_refused")          # Mission F: structured output is the guarantee; fallbacks are degraded events
 # What Tier 1 can prove (the pipeline handles AI-shaped output correctly) vs what only a real model can show
 PIPELINE_METRICS = ("retrieval_recall_at_5", "retrieval_recall_at_10", "retrieval_mrr", "locator_accuracy", "citation_validity",
                     "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity", "calculator_ok", "fixture_evidence_present")
@@ -267,6 +268,11 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
     rep["returned_models"] = sorted({t["model"] for t in by_task.values() if t.get("model")})
     rep["validators"] = {k: v for k, v in rep["quality"].items() if k in ("citation_validity", "finding_quote_validity", "stored_findings_verified", "plan_evidence_validity")}
     rep["validation_events"] = {r["kind"]: r["n"] for r in db.connect().execute("SELECT kind, COUNT(*) n FROM validation_events WHERE ts>=? GROUP BY kind", (usage_from,)).fetchall()}
+    ve = rep["validation_events"]
+    rep["structured_outputs"] = {"schema_fallbacks": ve.get("schema_fallback", 0), "output_truncated": ve.get("output_truncated", 0), "output_refused": ve.get("output_refused", 0),
+                                 "structured_tasks": sorted(t for t, c in rep["contracts"].items() if c.get("schema"))}
+    for k in ZERO_GATES:
+        rep["quality"][k] = rep["structured_outputs"][k]
     # logical invocations vs transport attempts (a retry must never look like a second research task)
     inv_rows = db.connect().execute("SELECT task, state, COUNT(*) n, COUNT(DISTINCT logical_id) logical FROM invocations WHERE requested_at>=? GROUP BY task, state", (usage_from,)).fetchall()
     inv: dict[str, Any] = {"logical": 0, "attempts": 0, "by_state": {}, "by_task": {}}
@@ -290,6 +296,8 @@ def run(root: Path = GOLDEN, live: bool = False, progress: Any = print) -> dict[
         v = rep["quality"].get(k)
         rep["gates"][k] = {"value": v, "floor": floor, "pass": v is not None and v >= floor}
     rep["gates"]["calculator_ok"] = {"value": calc_ok, "floor": True, "pass": bool(calc_ok)}
+    for k in ZERO_GATES:
+        rep["gates"][k] = {"value": rep["quality"][k], "floor": 0, "pass": rep["quality"][k] == 0}
     rep["gates"]["fixture_evidence_present"] = {"value": rep["quality"]["fixture_evidence_present"], "floor": 1.0, "pass": rep["quality"]["fixture_evidence_present"] == 1.0}
     rep["pass"] = all(g["pass"] for g in rep["gates"].values())
     rep["project_id"] = pid
@@ -318,6 +326,7 @@ def format_report(rep: dict[str, Any]) -> str:
              f"  Plan evidence integrity    {pct(q.get('plan_evidence_validity'))}   ({q.get('plan_evidence_refs')} references)" + (f"   ERROR {q['plan_error']}" if q.get("plan_error") else ""),
              f"  Calculator                 {'ok' if q.get('calculator_ok') else 'FAILED'}   DSCR {q.get('calculator_dscr')}",
              f"  Validation events          " + (", ".join(f"{k} {n}" for k, n in (rep.get("validation_events") or {}).items()) or "none"),
+             f"  Structured outputs         fallbacks {rep.get('structured_outputs', {}).get('schema_fallbacks', '—')} · truncated {rep.get('structured_outputs', {}).get('output_truncated', '—')} · refused {rep.get('structured_outputs', {}).get('output_refused', '—')}   (schema'd tasks: {', '.join(rep.get('structured_outputs', {}).get('structured_tasks') or []) or 'none'})",
              f"  Provider calls             {rep.get('invocations', {}).get('logical', 0)} logical · {rep.get('invocations', {}).get('attempts', 0)} transport attempts · outcome unknown {rep.get('invocations', {}).get('outcome_unknown', 0)} · returned models {', '.join(rep.get('returned_models') or []) or '—'}",
              ""]
     if fake:
@@ -419,7 +428,8 @@ def run_ranking(root: Path = GOLDEN, live: bool = False, progress: Any = print) 
     try:
         client = providers.anthropic_client()
         strip = lambda sysb: [{k: v for k, v in b.items() if k != "cache_control"} for b in sysb] if isinstance(sysb, list) else sysb  # noqa: E731
-        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"]).input_tokens) for r in reqs)
+        fmt = {"output_config": contracts.request_params(c)["output_config"]} if c.schema else {}     # the injected format instructions count too
+        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"], **fmt).input_tokens) for r in reqs)
     except Exception as e:  # noqa: BLE001
         if live:
             raise RuntimeError(f"token counting failed for model {c.model!r} (preflight, nothing was spent): {e}") from e
@@ -797,7 +807,8 @@ def run_findings(pid: str, ids: dict[str, str], man: dict[str, Any], live: bool 
     try:
         client = providers.anthropic_client()
         strip = lambda sysb: [{k: v for k, v in b.items() if k != "cache_control"} for b in sysb] if isinstance(sysb, list) else sysb  # noqa: E731
-        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"]).input_tokens) for _, r in reqs)
+        fmt = {"output_config": contracts.request_params(c)["output_config"]} if c.schema else {}
+        rep["canonical_input_tokens"] = sum(int(client.messages.count_tokens(model=c.model, system=strip(r["system"]), messages=r["messages"], **fmt).input_tokens) for _, r in reqs)
     except Exception as e:  # noqa: BLE001
         if live:
             raise RuntimeError(f"token counting failed for model {c.model!r} (preflight, nothing was spent): {e}") from e

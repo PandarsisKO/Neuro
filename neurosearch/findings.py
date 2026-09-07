@@ -26,10 +26,15 @@ def prompt_version() -> str:
     return "findings-" + hashlib.sha1(SYSTEM.encode()).hexdigest()[:8]
 
 
+def schema_version() -> str | None:
+    from .contracts import contract
+    return contract("findings.extract").schema
+
+
 def input_hash(project: dict[str, Any] | str, source_id: str) -> str:
-    """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision) and
-    the prompt. Staleness compares this, not database rows."""
-    return db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version())
+    """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision), the
+    prompt and (Mission F) the output schema. Staleness compares this, not database rows."""
+    return db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(), schema_version() or "text")
 
 SYSTEM = """You are a research analyst reading a transcript on behalf of a project. Extract the findings that matter for
 the project brief — concrete claims, numbers, techniques, recommendations, warnings, disagreements, or notable
@@ -128,16 +133,47 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     pay a tenth for those instructions."""
     from . import providers, usage
 
+    from .contracts import contract
     usage.guard(usage.estimate_findings(len(user)))
     sys_blocks = _system_blocks(system, head)
+    c = contract("findings.extract")
     resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
+    if c.schema and getattr(resp, "stop_reason", None) == "max_tokens":
+        # a truncated structured output is unusable by construction: one budget escalation, recorded, then it is an error
+        exc = providers.OutputError(providers.OutputError.TRUNCATED, "findings.extract", f"max_tokens={c.max_output_tokens}")
+        providers.output_event("findings.extract", exc, project_id=project_id, source_id=source_id, retried=True)
+        log.warning("findings: output truncated at %d tokens — retrying once with %d", c.max_output_tokens, int(c.max_output_tokens * 1.5))
+        resp = providers.invoke("findings.extract", system=sys_blocks, messages=[{"role": "user", "content": user}], max_output_tokens=int(c.max_output_tokens * 1.5))
+        usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
     _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
     raw = providers.text_of(resp).strip()
     u = getattr(resp, "usage", None)
     _last_call.clear()
     _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
-                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "parse": "strict", "empty": not raw})
+                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "parse": "strict", "empty": not raw, "structured": bool(c.schema)})
+    if c.schema:
+        try:
+            return providers.structured("findings.extract", resp)
+        except providers.SchemaMismatch as e:
+            # degraded: the provider-enforced shape did not arrive; the legacy tolerant parser is the emergency path
+            log.warning("findings: structured output mismatch (%s) — falling back to the legacy parser", e.detail)
+            try:
+                out = _legacy_parse(raw)
+            except Exception:
+                providers.schema_fallback("findings.extract", e, project_id=project_id, source_id=source_id, recovered=False)
+                raise
+            providers.schema_fallback("findings.extract", e, project_id=project_id, source_id=source_id, recovered=bool(out))
+            _last_call["parse"] = "repaired" if out else "no_json"
+            return out
+        except providers.OutputError as e:
+            providers.output_event("findings.extract", e, project_id=project_id, source_id=source_id)
+            raise
+    return _legacy_parse(raw)
+
+
+def _legacy_parse(raw: str) -> dict[str, Any]:
+    """The pre-Mission-F tolerant parser: fences, surrounding prose, first { … last }. Emergency fallback only."""
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.S)
     s, e = text.find("{"), text.rfind("}")
     if s < 0:
@@ -230,7 +266,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
         notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
                       "importance": int(f.get("importance") or 0)})
     prov = {"model": _last_model.get("model"), "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
-            "schema_version": "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
+            "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id)}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None

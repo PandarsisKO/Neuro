@@ -219,13 +219,16 @@ def _invocations_since(ts: float, task: str) -> dict[str, Any]:
     return inv
 
 
-def _count_tokens(model: str, reqs: list[dict[str, Any]], live: bool) -> int | None:
+def _count_tokens(model: str, reqs: list[dict[str, Any]], live: bool, task: str | None = None) -> int | None:
     """Canonical input tokens over exact requests via the provider's token-counting endpoint (free). Also the preflight."""
-    from . import providers
+    from . import contracts, providers
     strip = lambda sysb: [{k: v for k, v in b.items() if k != "cache_control"} for b in sysb] if isinstance(sysb, list) else sysb  # noqa: E731
+    fmt: dict[str, Any] = {}
+    if task and contracts.contract(task).schema:
+        fmt = {"output_config": contracts.request_params(contracts.contract(task))["output_config"]}
     try:
         client = providers.anthropic_client()
-        return sum(int(client.messages.count_tokens(model=model, system=strip(r["system"]), messages=r["messages"]).input_tokens) for r in reqs)
+        return sum(int(client.messages.count_tokens(model=model, system=strip(r["system"]), messages=r["messages"], **fmt).input_tokens) for r in reqs)
     except Exception as e:  # noqa: BLE001
         if live:
             raise RuntimeError(f"token counting failed for model {model!r} (preflight, nothing was spent): {e}") from e

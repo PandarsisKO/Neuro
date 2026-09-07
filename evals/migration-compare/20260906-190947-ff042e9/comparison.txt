@@ -1,0 +1,170 @@
+Neuro Search Sonnet 4.6 → Sonnet 5 migration comparison · live · app 0.18.0-e2.4 @ ff042e9 · rubric v1
+  shared inputs: 9 golden sources, 49 approved findings (findings on claude-sonnet-5); identical for every arm
+  expected spend ≈ $2.92 (max ≈ $4.38) · actual $2.3938 · 1554.56s
+  excluded: discover.quick (no frozen exit test (judgement-based shortlist)); discover.verify (uses the live web_search tool; not freezable)
+
+== planner.analysis
+  metric                                                         4.6            5-disabled     5-adaptive-medium
+  rubric.score                                                     1                     1                     1
+  rubric.structure.score                                           1                     1                     1
+  grounding.fraction                                               —                     —                     —
+  evidence_refs                                                   74                    56                    40
+  dangling_after_removal                                           0                     0                     0
+  json_repaired                                                    0                     0                     0
+  truncated                                                        0                     0                     0
+  parse_failed                                                     0                     0                     0
+  thinking_tokens_est                                              0                     0                 1,603
+  output_chars                                                20,731                14,381                13,640
+  input_tokens                                                   586                   754                   754
+  cache_read                                                       0                     0                     0
+  output_tokens                                                5,558                 5,223                 5,013
+  cost                                                        0.1092                0.0754                0.0733
+  seconds                                                     119.56                  57.4                 54.74
+  rubric.by_kind [4.6]                         assumption 2/2, completeness 4/4, contradiction 1/1, risk 4/4
+  rubric.by_kind [5-disabled]                  assumption 2/2, completeness 4/4, contradiction 1/1, risk 4/4
+  rubric.by_kind [5-adaptive-medium]           assumption 2/2, completeness 4/4, contradiction 1/1, risk 4/4
+  rubric.failed                                                    —                     —                     —
+  structure.failed                                                 —                     —                     —
+  returned_model                                   claude-sonnet-4-6       claude-sonnet-5       claude-sonnet-5
+  outcome_unknown                                                  0                     0                     0
+  VERDICT: PASS — migrate planner.analysis to claude-sonnet-5
+    note    adaptive/medium: rubric 1.0 vs disabled 1.0; ~1,603 thinking tokens; $0.0733 vs $0.0754; 54.74s vs 57.4s
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+    adaptive/medium not recommended: quality effectively equal (rubric 1.0 vs 1.0, structure 1.0 vs 1.0) — disabled is simpler, faster and cheaper
+
+== planner.build
+  metric                                                         4.6            5-disabled     5-adaptive-medium
+  rubric.score                                                     1                     1                0.9583
+  rubric.structure.score                                           1                 0.875                     1
+  grounding.fraction                                               1                     1                     1
+  evidence_refs                                                   57                    40                    42
+  dangling_after_removal                                           0                     0                     0
+  json_repaired                                                    0                     0                     0
+  truncated                                                        0                     0                     0
+  parse_failed                                                     0                     0                     0
+  thinking_tokens_est                                              0                     0                 2,774
+  output_chars                                                33,743                24,246                21,057
+  input_tokens                                                 6,664                 7,109                 6,582
+  cache_read                                                   6,429                 8,673                 8,673
+  output_tokens                                                9,009                 8,873                 8,038
+  cost                                                        0.1571                0.1047                0.0953
+  seconds                                                     182.22                 84.68                 78.93
+  rubric.by_kind [4.6]                         assumption 3/3, completeness 4/4, contradiction 2/2, dependency 4/4, first_step 3/3, open_question 3/3, risk 5/5
+  rubric.by_kind [5-disabled]                  assumption 3/3, completeness 4/4, contradiction 2/2, dependency 4/4, first_step 3/3, open_question 3/3, risk 5/5
+  rubric.by_kind [5-adaptive-medium]           assumption 3/3, completeness 3/4, contradiction 2/2, dependency 4/4, first_step 3/3, open_question 3/3, risk 5/5
+  rubric.failed [4.6]                          —
+  rubric.failed [5-disabled]                   —
+  rubric.failed [5-adaptive-medium]            completeness.closing_day
+  structure.failed [4.6]                       —
+  structure.failed [5-disabled]                open_questions: 2 item(s) missing ['question', 'research_prompt']
+  structure.failed [5-adaptive-medium]         —
+  returned_model                                   claude-sonnet-4-6       claude-sonnet-5       claude-sonnet-5
+  outcome_unknown                                                  0                     0                     0
+  plan_evidence_dangling_raw (both passes)                         0                     0                     0
+  VERDICT: PASS WITH CAVEAT — claude-sonnet-5 holds quality on planner.build; review the caveats before migrating
+    caveat  structure checks lower: 1.0 → 0.875 (open_questions: 2 item(s) missing ['question', 'research_prompt'])
+    note    adaptive/medium: rubric 0.9583 vs disabled 1.0; ~2,774 thinking tokens; $0.0953 vs $0.1047; 78.93s vs 84.68s
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+    adaptive/medium not recommended: quality effectively equal (rubric 1.0 vs 0.9583, structure 0.875 vs 1.0) — disabled is simpler, faster and cheaper
+
+== planner.update
+  metric                                                         4.6            5-disabled
+  n_updates                                                        8                     5
+  addresses_new_finding                                            1                     1
+  addresses_new_fact                                               1                     1
+  well_formed                                                      1                     0
+  json_repaired                                                    1                     1
+  truncated                                                        0                     0
+  parse_failed                                                     0                     0
+  input_tokens                                                 8,180                11,285
+  output_tokens                                                1,457                 1,287
+  cost                                                        0.0464                0.0354
+  seconds                                                      31.94                 15.13
+  billed_calls                                                     1                     1
+  billed_input_tokens                                          8,180                11,285
+  billed_output_tokens                                         1,457                 1,287
+  billed_cache_read_tokens                                         0                     0
+  billed_cache_write_tokens                                        0                     0
+  billed_cost                                                 0.0464                0.0354
+  returned_model                                   claude-sonnet-4-6       claude-sonnet-5
+  outcome_unknown                                                  0                     0
+  VERDICT: FAIL — keep claude-sonnet-4-6 for planner.update
+    FAIL    updates missing section/proposed/reason
+    note    updates proposed: 8 → 5
+    note    single run per arm (n=1)
+
+== export.synthesis
+  metric                                                         4.6            5-disabled
+  words                                                        2,852                 2,166
+  sections_present                                                 6                     3
+  sections_missing [4.6]                       —
+  sections_missing [5-disabled]                Recommended actions, Open questions, How to continue
+  citation_links                                                  36                    34
+  given_links                                                     36                    36
+  link_coverage                                                    1                0.9444
+  n_invented_links                                                 0                     0
+  truncated                                                        0                     1
+  empty                                                            0                     0
+  seconds                                                     105.71                 50.16
+  billed_calls                                                     1                     1
+  billed_input_tokens                                          4,283                 5,562
+  billed_output_tokens                                         5,527                 6,000
+  billed_cache_read_tokens                                         0                     0
+  billed_cache_write_tokens                                        0                     0
+  billed_cost                                                 0.0958                0.0711
+  returned_model                                   claude-sonnet-4-6       claude-sonnet-5
+  outcome_unknown                                                  0                     0
+  VERDICT: FAIL — keep claude-sonnet-4-6 for export.synthesis
+    FAIL    required sections missing: Recommended actions, Open questions, How to continue
+    FAIL    synthesis truncated, empty or fell back to the placeholder
+    caveat  fewer of the given citations preserved: 1.0 → 0.9444
+    note    words 2852 → 2166; citation links 36 → 34 of 36 given
+    note    single run per arm (n=1)
+
+== answer.chat
+  metric                                                         4.6            5-disabled
+  answers                                                         34                    34
+  failed_answers                                                   0                     0
+  citation_validity                                                1                     1
+  answers_cite_expected_source                                     1                     1
+  contradiction_surfaced                                           1                     1
+  gap_detection                                                    1                     1
+  offtopic_handled                                                 1                     1
+  repair_rounds                                                    0                     0
+  repairs_succeeded                                                0                     0
+  answers_with_unrepaired_invalid_citations                        0                     0
+  truncated_answers                                                0                     0
+  tool_rounds                                                     14                    25
+  tool_calls                                                      14                    26
+  mean_answer_chars                                            1,287                 1,348
+  s_per_answer                                                 11.23                  8.65
+  seconds                                                     381.78                294.13
+  billed_calls                                                    48                    59
+  billed_input_tokens                                            116                   118
+  billed_output_tokens                                        12,144                20,032
+  billed_cache_read_tokens                                   146,161               271,176
+  billed_cache_write_tokens                                  125,533               164,098
+  billed_cost                                                 0.6971                 0.665
+  returned_model                                   claude-sonnet-4-6       claude-sonnet-5
+  outcome_unknown                                                  0                     0
+  repair.returned_model                                            —                     —
+  VERDICT: PASS — migrate answer.chat to claude-sonnet-5
+    note    answers 34 → 34; mean length 1287 → 1348 chars (wording differences are not failures)
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+
+== answer.repair
+  VERDICT: PASS WITH CAVEAT — claude-sonnet-5 holds quality on answer.repair; review the caveats before migrating
+    caveat  no repair round was triggered on either arm — repair behaviour is unexercised; it shares chat's prompt family and contract, so it migrates with chat
+    note    repair rounds 0 → 0, succeeded 0 → 0
+
+RECOMMENDATIONS (nothing was changed; production contracts stay as they are until you migrate them)
+  PASS              planner.analysis   → claude-sonnet-5 thinking=disabled
+  PASS_WITH_CAVEAT  planner.build      → claude-sonnet-5 thinking=disabled
+  FAIL              planner.update     → claude-sonnet-4-6 thinking=disabled
+  FAIL              export.synthesis   → claude-sonnet-4-6 thinking=disabled
+  PASS              answer.chat        → claude-sonnet-5 thinking=disabled
+  PASS_WITH_CAVEAT  answer.repair      → claude-sonnet-5 thinking=disabled
+  stay on 4.6       discover.quick, discover.verify (excluded from this migration)
+  (billing categories differ between arms by design: each model has its own prompt cache, so cache read/write splits are not comparable; canonical token deltas were measured in E2.1/E2.2)
+
+  files: evals/migration-compare/20260906-190947-ff042e9/planner-4.6.json, evals/migration-compare/20260906-190947-ff042e9/planner-5-disabled.json, evals/migration-compare/20260906-190947-ff042e9/planner-5-adaptive-medium.json, evals/migration-compare/20260906-190947-ff042e9/planner.update-4.6.json, evals/migration-compare/20260906-190947-ff042e9/planner.update-5-disabled.json, evals/migration-compare/20260906-190947-ff042e9/export.synthesis-4.6.json, evals/migration-compare/20260906-190947-ff042e9/export.synthesis-5-disabled.json, evals/migration-compare/20260906-190947-ff042e9/answer.chat-4.6.json, evals/migration-compare/20260906-190947-ff042e9/answer.chat-5-disabled.json, evals/migration-compare/20260906-190947-ff042e9/comparison.json, evals/migration-compare/20260906-190947-ff042e9/comparison.txt

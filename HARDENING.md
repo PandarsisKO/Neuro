@@ -14,7 +14,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | C | Staleness | Artifacts know the revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild shows a cost estimate and goes through the budget valve; chats stay historical | **COMPLETE (0.16.0)** — exit test `test_staleness_exit_criteria` |
 | D | Survive interruption | Ingestion stages (metadata → transcript → chunks → embeddings → ready, each transactional, resume from the last completed), job leases + heartbeats, `job_events`, one findings job per source, `external_pending` for parked work (re-attach, never resubmit), dependency policies + failure propagation, cancellation semantics, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | **COMPLETE (0.17.0)** |
 | E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
-| F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | |
+| F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **IN PROGRESS** — F1+F2 shipped (0.19.0-f1) |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
@@ -148,6 +148,40 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   0.19.0 structured outputs + planner decomposition · 0.20.0 batch economics · 0.21.0 cheap routing — each independently measurable
   E1 — inference contracts per task (provider, model, thinking policy, effort, max_output_tokens, schema, timeout, retry policy, interactive/background, batch_allowed, fallback_allowed, quality_floor) on top of providers.py + the invocation ledger
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
+```
+
+## Mission F — deterministic AI (approved 0.18.0; invariant: malformed model-generated JSON is no longer a normal failure mode)
+
+Decisions (Kyle): `jsonschema` approved (registry/fake/test validation; provider-enforced structured output is the production
+guarantee — never hand-written validators); planner decomposition behind a temporary flag for one release, old path removed after;
+schemas keep internal `$ref`/`$defs` (only external refs, allOf/oneOf/not are unsupported) with a provider-compat preflight; typed
+handling still needed for max_tokens, refusal, transport/provider failures, unsupported schemas, tool failures and the citations
+incompatibility; `discover.verify` stays on its citation-capable free-text path (citations + output_config.format → 400).
+
+```
+F1+F2 SCHEMA REGISTRY + STRICT FINDINGS/RANKING     COMPLETE (0.19.0-f1)
+[x] schemas.py registry                 versioned JSON schemas (findings-v2, rank-v2) with $defs; provider_schema() strips client-only constraints
+                                        (min/max/length/pattern/format) for output_config.format; validate()/is_valid() use the FULL schema via jsonschema
+[x] provider-compat preflight           schemas.check_provider_compat: internal $ref only, additionalProperties:false on every object, no allOf/oneOf/not;
+                                        run from contracts.validate for every structured contract and in tests for every registry entry — an unsupported
+                                        schema fails at contract time, never in a paid request
+[x] contract ↔ schema binding           InferenceContract.schema = registry key (None = free text); request_params adds output_config.format (GA on 4.6 and 5;
+                                        merged with effort for Claude 5); NEUROSEARCH_TASK_SCHEMA_<TASK>=none is the rollback switch
+[x] schema_version in provenance/hash   findings.input_hash + relevance.input_hash include the schema version; analyses carry schema_version; staleness
+                                        explains "output schema changed"
+[x] fake conformance                    the fake validates its own structured outputs against the requested schema (a non-conformant fake is a test failure);
+                                        NEUROSEARCH_FAKE_AI_BAD_JSON=1 breaks the JSON on purpose to exercise the fallback path
+[x] strict findings + ranking           providers.structured(task, resp): strict json.loads + jsonschema validation; the legacy tolerant parsers
+                                        (findings._legacy_parse, relevance.parse_scores) remain ONLY as observable emergency fallbacks
+[x] typed truncation / refusal          providers.OutputError(TRUNCATED|REFUSED) + SchemaMismatch; a truncated structured output gets exactly one budget
+                                        escalation (1.5× max_output_tokens, recorded) then is an error; refusal is never parsed
+[x] fallback = degraded event           validation_events schema_fallback / output_truncated / output_refused; kv evidence:schema_fallbacks|schema_failures|
+                                        output_truncated|output_refused → /api/health.structured_outputs → Settings → Health "Structured-output fallbacks";
+                                        Tier 1 gates schema_fallbacks = output_truncated = output_refused = 0 (steady state zero)
+[x] token counting includes the injected format instructions (count_tokens gets output_config) so E2-style canonical counts stay honest
+[ ] F3  planner.update + discover.quick (discover.verify unchanged)
+[ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)
+[ ] F5  automated deterministic closeout + ONE live paid run (AI-affecting request/output change) against the existing baselines/rubric
 ```
 
 ## Mission D in 0.17.0 — what shipped

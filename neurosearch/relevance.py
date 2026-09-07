@@ -41,12 +41,32 @@ def _system_blocks(system: str, head: str) -> Any:
 def _call(system: str, user: str, project_id: str | None, collection_id: str, head: str = "") -> dict[str, Any]:
     from . import providers, usage
 
+    from .contracts import contract
     usage.guard(0.02)
     sys_blocks = _system_blocks(system, head)
+    c = contract("rank.relevance")
     resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}])
     usage.record_anthropic(resp, "rank", project_id=project_id)
+    if c.schema and getattr(resp, "stop_reason", None) == "max_tokens":
+        exc = providers.OutputError(providers.OutputError.TRUNCATED, "rank.relevance", f"max_tokens={c.max_output_tokens}")
+        providers.output_event("rank.relevance", exc, project_id=project_id, retried=True)
+        log.warning("rank: output truncated at %d tokens — retrying once with %d", c.max_output_tokens, int(c.max_output_tokens * 1.5))
+        resp = providers.invoke("rank.relevance", system=sys_blocks, messages=[{"role": "user", "content": user}], max_output_tokens=int(c.max_output_tokens * 1.5))
+        usage.record_anthropic(resp, "rank", project_id=project_id)
     text = providers.text_of(resp).strip()
-    return parse_scores(text)
+    if not c.schema:
+        return parse_scores(text)
+    try:
+        return providers.structured("rank.relevance", resp)
+    except providers.SchemaMismatch as e:
+        log.warning("rank: structured output mismatch (%s) — falling back to the tolerant parser", e.detail)
+        out = parse_scores(text)                      # emergency path; `repaired` marks the batch as degraded
+        out["repaired"] = True
+        providers.schema_fallback("rank.relevance", e, project_id=project_id, recovered=bool(out.get("scores")))
+        return out
+    except providers.OutputError as e:
+        providers.output_event("rank.relevance", e, project_id=project_id)
+        raise
 
 
 ITEM_RE = re.compile(r'\{\s*"i"\s*:\s*(\d+)\s*,\s*"score"\s*:\s*(\d+)\s*,\s*"why"\s*:\s*"(.*?)"\s*\}', re.S)
@@ -76,10 +96,17 @@ def prompt_version() -> str:
     return "rank-" + hashlib.sha1(SYSTEM.encode()).hexdigest()[:8]
 
 
+def schema_version() -> str | None:
+    from .contracts import contract
+    return contract("rank.relevance").schema
+
+
 def input_hash(project: dict[str, Any] | str, s: dict[str, Any]) -> str:
-    """What the ranking actually judged: title, description snippet, length (to the minute), the brief and the prompt.
-    View count is deliberately left out — it changes on every metadata refresh and should not make a ranking stale."""
-    return db._sha("relevance", s.get("title"), (s.get("description") or "")[:220], int((s.get("duration") or 0) // 60), db.brief_revision(project), prompt_version())
+    """What the ranking actually judged: title, description snippet, length (to the minute), the brief, the prompt and
+    the output schema. View count is deliberately left out — it changes on every metadata refresh and should not
+    make a ranking stale."""
+    return db._sha("relevance", s.get("title"), (s.get("description") or "")[:220], int((s.get("duration") or 0) // 60), db.brief_revision(project), prompt_version(),
+                   schema_version() or "text")
 
 
 def _line(i: int, s: dict[str, Any]) -> str:
@@ -168,7 +195,7 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                 scored[batch[i]["id"]] = (sc, str(it.get("why") or "")[:80])
     from . import contracts, providers
     prov = {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model, "provider": "fake" if providers.fake() else "anthropic",
-            "prompt_version": prompt_version(), "schema_version": "rank-v1", "brief_revision": db.brief_revision(project)}
+            "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1", "brief_revision": db.brief_revision(project)}
     with db.batch():
         for s in pool:
             if s["id"] in scored:

@@ -257,6 +257,18 @@ class _Msgs:
             text = _synthesis(user)
         else:
             text = _answer(system, messages, task)
+        fmt = (kw.get("output_config") or {}).get("format")
+        if fmt:
+            # structured output requested: the fake must conform exactly like the provider would (Tier 1 proves it).
+            # NEUROSEARCH_FAKE_AI_BAD_JSON=1 breaks the JSON on purpose to exercise the observable fallback path.
+            if os.environ.get("NEUROSEARCH_FAKE_AI_BAD_JSON") == "1":
+                text = "```json\n" + text[:-1] + ', "trailing": true}\n```'
+            else:
+                import jsonschema
+                try:
+                    jsonschema.Draft202012Validator(fmt["schema"]).validate(json.loads(text))
+                except (ValueError, jsonschema.ValidationError) as e:
+                    raise AssertionError(f"fake {task} output does not conform to the requested schema: {e}") from e
         # token accounting, including a simulated prompt cache
         all_in = system + "\n".join(_content_text(m.get("content")) for m in messages)
         total = _tokens(all_in) + 20 * len(kw.get("tools") or [])

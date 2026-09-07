@@ -41,7 +41,7 @@ class InferenceContract:
     interactive: bool = False          # user is waiting (latency class)
     batch_allowed: bool = False        # may be routed through a provider batch API (Rung G)
     fallback_allowed: bool = False     # may run on a fallback model/provider (Rung J)
-    schema: str = "current"            # output schema version (Rung F makes these real)
+    schema: str | None = None          # registry key in schemas.py → provider-enforced structured output + provenance schema_version; None = free text
     quality_floor: float | None = None
     notes: str = ""
 
@@ -68,11 +68,11 @@ def _base() -> dict[str, InferenceContract]:
                           notes="one repair round after a citation validation failure"),
         # migrated E2.2 (0.18.0-e2.3): 4.6-vs-5 comparison on the Golden findings workload passed — thinking explicitly off,
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
-        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, batch_allowed=True, schema="findings-v1",
+        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, batch_allowed=True, schema="findings-v2",
                           notes="per transcript window; quote validator gates the output; Sonnet 5 since E2.2"),
         # migrated E2.1 (0.18.0-e2.2): 4.6-vs-5 comparison on the frozen ranking fixture passed — thinking explicitly off,
         # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
-        InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, batch_allowed=True, schema="rank-v1",
+        InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, batch_allowed=True, schema="rank-v2",
                           notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),
         InferenceContract("discover.quick", "anthropic", m, max_output_tokens=3500, timeout=180.0, interactive=True),
         InferenceContract("discover.verify", "anthropic", m, max_output_tokens=2500, timeout=180.0, interactive=True,
@@ -107,6 +107,8 @@ def contract(task: str) -> InferenceContract:
         over["effort"] = _env(task, "EFFORT")
     if _env(task, "MAX_TOKENS"):
         over["max_output_tokens"] = int(_env(task, "MAX_TOKENS"))
+    if _env(task, "SCHEMA"):                                    # "none" turns structured output off (rollback/experiment); else a registry key
+        over["schema"] = None if _env(task, "SCHEMA").lower() == "none" else _env(task, "SCHEMA")
     c = replace(c, **over) if over else c
     validate(c)
     return c
@@ -146,6 +148,14 @@ def validate(c: InferenceContract) -> None:
         raise ContractError(f"{c.task}: with adaptive thinking max_output_tokens covers thinking + text; {c.max_output_tokens} is too small")
     if c.max_attempts < 1:
         raise ContractError(f"{c.task}: max_attempts must be ≥ 1")
+    if c.schema:
+        from . import schemas
+        if c.provider != "anthropic":
+            raise ContractError(f"{c.task}: structured output schemas are only supported on the anthropic provider")
+        try:
+            schemas.check_provider_compat(schemas.get(c.schema), c.schema)     # an unsupported schema fails here, never in a paid request
+        except schemas.SchemaError as e:
+            raise ContractError(f"{c.task}: {e}") from e
 
 
 def request_params(c: InferenceContract) -> dict[str, Any]:
@@ -158,6 +168,9 @@ def request_params(c: InferenceContract) -> dict[str, Any]:
         p["thinking"] = {"type": c.thinking}
         if c.effort:
             p["output_config"] = {"effort": c.effort}
+    if c.schema and c.provider == "anthropic":
+        from . import schemas
+        p["output_config"] = {**p.get("output_config", {}), **schemas.output_config(c.schema)}   # provider-enforced shape (GA on 4.6 and 5)
     return p
 
 

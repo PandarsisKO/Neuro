@@ -81,6 +81,8 @@ def assess(project_id: str) -> dict[str, Any]:
                     reasons.append("transcript changed")
                 if a.get("prompt_version") != findings.prompt_version():
                     reasons.append("analysis prompt changed")
+                if a.get("schema_version") and findings.schema_version() and a["schema_version"] != findings.schema_version():
+                    reasons.append("output schema changed")
                 reasons = reasons or ["inputs changed"]
             status = STALE if reasons else CURRENT
         elif not a.get("brief_revision"):

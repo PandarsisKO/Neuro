@@ -193,12 +193,83 @@ def text_of(resp: Any) -> str:
     return "".join(getattr(b, "text", "") or "" for b in (getattr(resp, "content", None) or []) if getattr(b, "type", None) == "text")
 
 
+# ------------------------------------------------------------------ typed output failures (Mission F)
+
+class OutputError(RuntimeError):
+    """The provider answered, but the output cannot be used: `kind` is TRUNCATED (stop_reason max_tokens — the JSON
+    is incomplete by construction) or REFUSED (stop_reason refusal — the output ignores the schema). Neither is a
+    parse problem, and neither is retried blindly: TRUNCATED gets one budget escalation at the call site."""
+
+    TRUNCATED, REFUSED, SCHEMA = "TRUNCATED", "REFUSED", "SCHEMA"
+
+    def __init__(self, kind: str, task: str, detail: str = "") -> None:
+        super().__init__(f"{task}: output {kind}" + (f" — {detail}" if detail else ""))
+        self.kind, self.task, self.detail = kind, task, detail
+
+
+class SchemaMismatch(OutputError):
+    """Structured output was requested, generation finished normally, yet the JSON does not parse or does not
+    validate. With provider-enforced schemas this should never happen; when it does, the call site may fall back
+    to its legacy tolerant parser, and that fallback is recorded as a DEGRADED event (Health: structured-output
+    fallbacks, steady state 0)."""
+
+    def __init__(self, task: str, detail: str, text: str) -> None:
+        super().__init__(OutputError.SCHEMA, task, detail)
+        self.text = text
+
+
+def structured(task: str, resp: Any) -> dict[str, Any]:
+    """Parse + validate a structured-output response for `task` against the contract's registry schema.
+    Raises OutputError(TRUNCATED|REFUSED) on the explicit stop reasons and SchemaMismatch when the JSON is not the
+    schema. Malformed model-generated JSON is no longer a normal failure mode: it is an exception with a name."""
+    import json
+
+    from . import contracts as C
+    from . import schemas
+    c = C.contract(task)
+    stop = getattr(resp, "stop_reason", None)
+    if stop == "max_tokens":
+        raise OutputError(OutputError.TRUNCATED, task, f"max_tokens={c.max_output_tokens}")
+    if stop == "refusal":
+        raise OutputError(OutputError.REFUSED, task)
+    text = text_of(resp).strip()
+    if not c.schema:
+        raise C.ContractError(f"{task}: structured() needs a contract with a schema")
+    try:
+        obj = json.loads(text)
+    except ValueError as e:
+        raise SchemaMismatch(task, f"not JSON: {e}", text) from e
+    errors = schemas.validate(c.schema, obj)
+    if errors:
+        raise SchemaMismatch(task, "; ".join(errors[:3]), text)
+    return obj
+
+
+def schema_fallback(task: str, exc: SchemaMismatch, *, project_id: str | None = None, source_id: str | None = None, recovered: bool = True) -> None:
+    """Record that a call site had to use its legacy tolerant parser (or failed outright). This is a degraded event,
+    never normal success: it counts into kv evidence:schema_fallbacks → /api/health → Settings → Health."""
+    from . import db
+    db.validation_event("schema_fallback", {"task": task, "reason": exc.detail[:300], "recovered": recovered, "sample": exc.text[:400]},
+                        project_id=project_id, source_id=source_id)
+    db.kv_bump("evidence:schema_fallbacks")
+    if not recovered:
+        db.kv_bump("evidence:schema_failures")
+
+
+def output_event(task: str, exc: OutputError, *, project_id: str | None = None, source_id: str | None = None, retried: bool = False) -> None:
+    from . import db
+    db.validation_event("output_" + exc.kind.lower(), {"task": task, "detail": exc.detail, "retried_with_larger_budget": retried}, project_id=project_id, source_id=source_id)
+    db.kv_bump("evidence:output_" + exc.kind.lower())
+
+
 # ------------------------------------------------------------------ the router: product code calls invoke(task, ...)
 
 def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,
-           stream: bool = False, **extra: Any) -> Any:
+           stream: bool = False, max_output_tokens: int | None = None, **extra: Any) -> Any:
     """Run one logical inference for `task` under its InferenceContract: the contract chooses provider, model,
-    output budget, thinking policy, timeout and transport retries; the call site supplies only content.
+    output budget, thinking policy, timeout, transport retries and (Mission F) the enforced output schema; the call
+    site supplies only content. `max_output_tokens` is the one explicit override: a single budget escalation after
+    a TRUNCATED structured output (recorded by the call site), never a general knob.
     Returns the response (or, with stream=True, the stream context manager)."""
     from . import contracts as C
     c = C.contract(task)
@@ -207,6 +278,8 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
         raise C.ContractError(f"{task}: invoke() serves message tasks; {c.provider} tasks use their own client methods")
     client = anthropic_client(**({"timeout": c.timeout} if c.timeout else {}))
     kw: dict[str, Any] = {"model": c.model, **C.request_params(c), "extra_headers": {"x-neurosearch-task": task}, **extra}
+    if max_output_tokens:
+        kw["max_tokens"] = int(max_output_tokens)
     if system is not None:
         kw["system"] = system
     if messages is not None:

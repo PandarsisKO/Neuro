@@ -1582,7 +1582,8 @@ def health() -> dict[str, Any]:
     jobs_by = {r["status"]: r["n"] for r in q}
     stale = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND (lease_until IS NULL OR lease_until < ?)", (time.time(),)).fetchone()[0]
     leased = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='running' AND lease_until >= ?", (time.time(),)).fetchone()[0]
-    ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling")}
+    ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
+                                                          "schema_fallbacks", "schema_failures", "output_truncated", "output_refused")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -1595,6 +1596,8 @@ def health() -> dict[str, Any]:
             "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
             "jobs": {**jobs_by, "stale_running": stale, "expired_leases": stale, "leased": leased,
                      "external_pending": jobs_by.get("external_pending", 0)},
+            "structured_outputs": {"fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
+                                   "refused": ev["output_refused"], "steady_state": "fallbacks 0"},
             "evidence": {**ev,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},

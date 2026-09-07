@@ -1,0 +1,83 @@
+{
+ "updates": [
+  {
+   "section": "approach.recommended",
+   "previous": "10% cash equity injection, 10% seller note on full standby, 80% SBA loan. Target a business priced $500K\u2013$1.5M.",
+   "proposed": "At least one lender now requires 15% cash equity injection for acquisitions over $500K and will not count any seller note (full standby or otherwise) toward that requirement. Verify whether your chosen lenders still accept the 10% + seller-note structure before building deal math around it. If the 15% requirement applies, the seller note no longer halves real cash-to-close and must be treated as additional subordinated debt only.",
+   "reason": "New lender guidance directly contradicts the core financing assumption that a full-standby seller note covers half the equity injection. This changes required cash-to-close materially for deals above $500K."
+  },
+  {
+   "section": "costs.upfront (equity injection line)",
+   "previous": "$50K\u2013$150K (scales with deal size; $100K on a $1M deal)",
+   "proposed": "If lender requires 15% cash (no seller note credit): $150K on a $1M deal, $90K on a $600K deal. The seller note becomes subordinated seller financing only, not an equity injection substitute. Recalculate deal size ceiling accordingly.",
+   "reason": "15% cash-only injection replaces the 10% cash + 10% seller note structure for above-$500K deals at this lender."
+  },
+  {
+   "section": "costs.minimum / recommended / premium",
+   "previous": "Minimum $65K\u2013$80K all-in for sub-$600K deal; recommended $125K\u2013$175K for $1M deal; premium $200K+ if no seller note available.",
+   "proposed": "With $120K liquid and a 15% cash-only injection requirement: maximum supportable deal size is approximately $600K\u2013$650K before soft costs ($120K \u00f7 15% = $800K gross, minus ~$25K soft costs and ~$10K working capital reserve). The $700K\u2013$1.5M standard target range is not executable at $120K liquid under this lender's terms. Sub-$700K deals become the primary path, not the fallback.",
+   "reason": "User has $120K liquid. At 15% cash injection with no seller note credit, a $1M deal requires $150K cash injection alone \u2014 exceeding available capital before soft costs. Deal size ceiling drops materially."
+  },
+  {
+   "section": "decisions \u2014 Deal size target",
+   "previous": "Recommended $700K\u2013$1.5M; sub-$700K is the fallback if capital is limited.",
+   "proposed": "Recommended range must shift to $400K\u2013$700K given $120K liquid and the 15% cash-only injection requirement at this lender. Confirm with a second lender whether the 10% + seller note structure is still available \u2014 if yes, a $900K\u2013$1M deal remains possible. Do not assume the seller note structure works until a specific lender confirms it in writing.",
+   "reason": "User capital constraint combined with new lender guidance makes the standard $700K\u2013$1.5M range unexecutable unless a second lender still accepts the 10% + standby note structure."
+  },
+  {
+   "section": "gotchas \u2014 seller note standby",
+   "previous": "Seller note must be on full standby for 10 years to count toward equity injection \u2014 most sellers refuse this when they understand it means zero payments.",
+   "proposed": "At least one lender will not count a seller note toward equity injection at all for deals above $500K, regardless of standby terms. The full-standby seller note strategy may be lender-dependent. Confirm with each lender whether seller notes count toward equity injection before structuring any offer around them.",
+   "reason": "New lender guidance renders the seller-note-as-equity-injection assumption lender-specific rather than universal SBA policy."
+  },
+  {
+   "section": "dependencies \u2014 personal guarantee",
+   "previous": "Personal unlimited guarantee required for all 20%+ owners. (No note about partner refusing.)",
+   "proposed": "User's partner will not sign a personal guarantee. If the partner holds 20%+ ownership in the acquiring entity, the SBA requires their guarantee and the loan cannot proceed with them as a 20%+ owner. Ownership structure must be designed so the partner holds under 20%, or the partner must be excluded from the ownership entity entirely. Confirm structure with transaction attorney before forming the acquisition entity.",
+   "reason": "SBA policy mandates personal guarantees from all 20%+ owners. Partner's refusal is a structural blocking constraint that must be resolved before entity formation."
+  },
+  {
+   "section": "open_questions",
+   "previous": "No open question about partner guarantee or lender equity injection variance.",
+   "proposed": "Add two new blocking questions: (1) Will your second and third lender contacts still accept 10% cash + full-standby seller note toward equity injection for deals above $500K, or have they also moved to 15% cash-only? Answer before setting deal size ceiling. (2) What ownership percentage will your partner hold? If 20%+ and they refuse to guarantee, the acquisition entity structure must be redesigned. Resolve with attorney before any LOI.",
+   "reason": "Both are newly surfaced blocking constraints from new lender guidance and user facts."
+  },
+  {
+   "section": "ready.blockers",
+   "previous": "Capital below $80K total liquid makes the standard $700K\u2013$1.5M deal range unworkable without an equity partner.",
+   "proposed": "At $120K liquid with a 15% cash-only injection requirement, the $700K\u2013$1.5M range is also unworkable. Effective deal size ceiling is approximately $600K\u2013$650K all-in. Additionally, partner's refusal to sign a personal guarantee blocks any ownership structure giving the partner 20%+ equity.",
+   "reason": "User capital and partner guarantee constraint together create tighter blockers than the plan previously identified."
+  }
+ ],
+ "n_updates": 8,
+ "raw_updates": 8,
+ "addresses_new_finding": 1,
+ "addresses_new_fact": 1,
+ "well_formed": 1,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 1,
+ "output_chars": 5748,
+ "output_tokens": 1457,
+ "input_tokens": 8180,
+ "cache_read": 0,
+ "cost": 0.0464,
+ "seconds": 31.94,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-sonnet-4-6"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 8180,
+  "output_tokens": 1457,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "cost": 0.0464
+ }
+}
