@@ -14,7 +14,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | C | Staleness | Artifacts know the revisions they were built from; CURRENT / STALE-STILL-USABLE / REBUILDING / SUPERSEDED; rebuild shows a cost estimate and goes through the budget valve; chats stay historical | **COMPLETE (0.16.0)** — exit test `test_staleness_exit_criteria` |
 | D | Survive interruption | Ingestion stages (metadata → transcript → chunks → embeddings → ready, each transactional, resume from the last completed), job leases + heartbeats, `job_events`, one findings job per source, `external_pending` for parked work (re-attach, never resubmit), dependency policies + failure propagation, cancellation semantics, budget/retry waits, crash matrix + 40-source crash-recovery equivalence | **COMPLETE (0.17.0)** |
 | E | Modernise AI | Task router (`AIRequest(task, latency_class, quality_class, schema)` → inference profile → provider adapter); adapters reject unsupported knobs loudly; then Sonnet 4.6 → Sonnet 5 as the router's first use, with an explicit thinking policy per task and `max_tokens` re-sized per task after recounting (Sonnet 5: new tokenizer ≈ +30% tokens, adaptive thinking on by default and billed inside `max_tokens`, `temperature`/`top_p` rejected) | **COMPLETE (0.18.0)** — rank.relevance + findings.extract on Sonnet 5 (thinking disabled); the other tasks stay on 4.6 by decision, tooling kept |
-| F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **IN PROGRESS** — F1+F2 shipped (0.19.0-f1) |
+| F | Deterministic AI | Structured outputs with versioned schemas (FindingV2, RankingV2, DiscoveryV2, SituationAnalysisV3, PlanPhaseV3, …); the planner split into several small schema'd calls over the same cached material; `_repair_json` demoted to fallback | **COMPLETE (0.19.0) — WITH PLANNER V3 NOT PROMOTED**: structured outputs shipped and passed live on findings.extract, rank.relevance, planner.update, discover.quick; the optional decomposed planner failed its promotion gate and stays experimental behind its flag; V1 remains the production planner |
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | |
@@ -268,7 +268,31 @@ F5 CLOSEOUT TOOLING                          COMPLETE (0.19.0-f5) — `neurosear
         case-insensitively (schemas.normalize_enums) before the full local validation — a value outside the enum is still a mismatch
     [x] legacy resume rejects artifacts that ran but failed (error / pass false): the first run's update and discover results, which died
         on the same connection failure, are rebuilt, not reused
-[ ] F5 live (resume): `neurosearch closeout --live --resume` (Kyle, once) → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
+[x] F5 live (resumed run) — RESULT (Kyle's decision, 0.19.0):
+      findings.extract  PASS   rank.relevance  PASS   planner.update  PASS   discover.quick  PASS   Planner V1  PASS
+      Planner V3        DO NOT PROMOTE
+
+MISSION F OUTCOME (0.19.0): COMPLETE — WITH PLANNER V3 NOT PROMOTED
+  The structured-output migration passed on every production surface it changed (schema-enforced generation + full local validation,
+  zero mismatches / fallbacks / truncations / refusals on findings.extract, rank.relevance, planner.update and discover.quick).
+  The optional decomposed planner (V3) was evaluated on frozen research against V1 and FAILED its promotion gate:
+    planner.situation → options[].fit is locally constrained to an integer 1..5 (the provider-compatible schema cannot carry that
+    constraint, so it is stripped from what the model sees); the live model read `fit` as a larger scale and returned 90 / 45 / 75,
+    then 9 / 6 on the fresh-completion retry → SchemaMismatch twice → typed failure, V3 build not usable, DO NOT PROMOTE.
+    The local validator rejected the outputs exactly as designed: provider structured-output guarantees do NOT replace the full
+    local semantic/schema validation when provider-unsupported constraints are stripped. That is a success of the safety
+    architecture, and a real defect of V3 as shipped.
+  State: Planner V1 = production planner (default). Planner V3 = experimental / disabled behind NEUROSEARCH_PLANNER_V3 (not promoted,
+  no tuning loop). No production model assignment or prompt was changed. Live closeout artifacts: evals/mission-f-closeout/
+  20260906-205402-d2e8b74 (first run, invalidated by a retrieval/connection outage mid-V3) and its resumed run alongside it (the
+  controlled comparison). No further Mission F live testing is required.
+  If V3 is ever revisited, the FIRST known issue is `fit` scale semantics under provider-schema limitations: either describe the
+  scale unmistakably in the prompt/schema description, or widen the schema and map the scale in assembly — and re-check every
+  other stripped numeric constraint (importance 1-5, substance 0-100, score 0-100, fit 1-5 in discovery-v2) the same way.
+  Minor eval-reporting cleanup for later (not blocking): closeout.planner_decision prints "V3 truncation / parse failure / JSON repair"
+  for a component whose parse_failed flag was set by a schema mismatch; the line should name the actual failure kind (mismatch vs
+  truncation vs repair) from the events.
+ → release decision: if PROMOTE, NEUROSEARCH_PLANNER_V3 becomes the default for the next
     release with V1 as the rollback for one cycle; if DO NOT PROMOTE, the default stays V1 and V3 is recorded as not promoted — no tuning loop.
     Then Mission F closes and the ladder continues (Rung G); testing stays the guardrail, not the project.
 [ ] F4  decomposed planner behind NEUROSEARCH_PLANNER_V3 (stable semantic ids per component, evidence validated per component, same external plan format)

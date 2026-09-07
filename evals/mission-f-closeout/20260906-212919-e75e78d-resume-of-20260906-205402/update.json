@@ -1,0 +1,86 @@
+{
+ "updates": [
+  {
+   "section": "constraints",
+   "previous": "SBA 7(a) minimum 10% equity injection required \u2014 up to half can be a seller note on full standby",
+   "proposed": "At least one lender now requires 15% full-cash equity injection for acquisitions over $500K, with no seller note credit toward the injection. Verify with each lender you contact \u2014 terms vary by institution. The 10/10/80 structure may not be available at all lenders for deals above $500K.",
+   "reason": "New lender guidance explicitly states 15% cash-only injection for acquisitions over $500K, with seller note excluded regardless of standby status."
+  },
+  {
+   "section": "constraints",
+   "previous": "Unlimited personal guarantee required for all owners with 20%+ stake",
+   "proposed": "Unlimited personal guarantee required for all owners with 20%+ stake. If your partner holds 20%+ and will not sign, they must be kept below 20% ownership \u2014 structure your entity accordingly before closing. This is a hard SBA requirement and cannot be waived.",
+   "reason": "User has disclosed that their partner will not sign a personal guarantee, which is a structural conflict requiring entity ownership to be arranged so the partner stays below 20%."
+  },
+  {
+   "section": "costs \u2014 minimum/recommended/premium",
+   "previous": "Minimum: $63,000 all-in on a $1M deal (5% cash injection + QoE + attorney at low end). Recommended: $100,000 all-in on a $1M deal (10% full cash injection + QoE + attorney at mid-range + contingency). Premium: $135,000+ if seller won't accept standby and you need full 10% cash plus advisor.",
+   "proposed": "Minimum: $63,000 all-in on a $1M deal if lender accepts 10/10/80 (confirm per lender). Recommended: $150,000+ all-in on a $1M deal if lender requires 15% cash-only injection ($150K injection + QoE + attorney). Premium: $175,000+ with advisor. Note: at least one lender now requires 15% cash-only for deals over $500K \u2014 model both scenarios until your specific lender confirms their requirement.",
+   "reason": "15% cash-only injection at $1M deal = $150K, materially higher than the $50K\u2013$100K previously modeled. User's $120K cash is below this threshold for a $1M deal."
+  },
+  {
+   "section": "decisions \u2014 deal size range",
+   "previous": "Match to your liquid capital: minimum cash floor is 5% of purchase price if seller note is achievable, 10% if not.",
+   "proposed": "Match to your liquid capital with lender-specific injection requirement confirmed first. At $120K cash: (a) if lender accepts 10% cash injection, maximum deal size is ~$1.2M (10% of $1.2M = $120K, reserving nothing for fees \u2014 realistically ~$900K\u2013$1M after fees); (b) if lender requires 15% cash-only injection, maximum deal size is ~$800K ($120K \u00f7 15%) before fees \u2014 realistically $600K\u2013$700K after professional fees. Confirm the injection requirement with your specific lender in Phase 1 before setting your deal size ceiling.",
+   "reason": "User disclosed $120K liquid capital. New lender guidance of 15% cash-only materially compresses the viable deal size range and must be reflected in the deal size decision."
+  },
+  {
+   "section": "open_questions",
+   "previous": "What is your total liquid capital available for an equity injection, excluding retirement accounts?",
+   "proposed": "Liquid capital is confirmed at $120K. The critical open question is now: which lenders require 15% cash-only vs. 10% with seller note credit for acquisitions in your target size range? This determines whether your deal ceiling is ~$700K (15% lender) or ~$1M (10% lender). Ask each lender explicitly in your pre-qualification call.",
+   "reason": "User provided liquid capital figure. The blocking question shifts to lender-specific injection requirement, which now has material variability per the new lender guidance."
+  },
+  {
+   "section": "gotchas",
+   "previous": "(no existing gotcha about partner guarantee or injection rate variability)",
+   "proposed": "Add two new gotchas: (1) Lender injection requirements now vary \u2014 at least one lender requires 15% cash-only for acquisitions over $500K with no seller note credit. Do not assume 10/10/80 is available at every lender. Ask the injection question in your first pre-qualification call. (2) A co-owner partner who will not sign a personal guarantee must be kept below 20% ownership in your acquisition entity. Structure this before you make any offers \u2014 SBA rules require every 20%+ owner to sign, and restructuring after LOI is signed creates lender problems.",
+   "reason": "New lender guidance on injection and user's disclosure about partner guarantee refusal are both material operational risks not covered in existing gotchas."
+  },
+  {
+   "section": "approach \u2014 recommended",
+   "previous": "SBA 7(a) with seller note \u2014 10% cash equity, 10% seller note on full standby, 80% SBA loan.",
+   "proposed": "SBA 7(a) \u2014 target structure depends on lender confirmed in Phase 1. Best case: 10% cash equity, 10% seller note on full standby, 80% SBA loan (10/10/80). If lender requires 15% cash-only injection (now confirmed at least one does for deals over $500K), structure becomes 15% cash, 85% SBA loan with no seller note toward injection. At $120K cash, this limits deal size to approximately $600K\u2013$700K net of fees at a 15%-injection lender, or $900K\u2013$1M at a 10%-injection lender. Confirm with each lender before setting deal size.",
+   "reason": "New lender guidance and user's $120K cash constraint combine to make the 10/10/80 structure lender-dependent rather than assumed."
+  }
+ ],
+ "n_updates": 7,
+ "raw_updates": 7,
+ "addresses_new_finding": 1,
+ "addresses_new_fact": 1,
+ "well_formed": 1,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 0,
+ "output_chars": 5500,
+ "output_tokens": 1359,
+ "input_tokens": 8428,
+ "cache_read": 0,
+ "cost": 0.0,
+ "seconds": 34.29,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-sonnet-4-6"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 8428,
+  "output_tokens": 1359,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "cost": 0.0457
+ },
+ "error": null,
+ "events": {
+  "schema_mismatch": 0,
+  "schema_fallback": 0,
+  "schema_failure": 0,
+  "output_truncated": 0,
+  "output_refused": 0,
+  "plan_assembly_failed": 0
+ }
+}

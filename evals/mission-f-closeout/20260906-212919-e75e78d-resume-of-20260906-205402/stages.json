@@ -1,0 +1,81 @@
+{
+ "stages": {
+  "findings": {
+   "status": "done",
+   "legacy": true,
+   "reused_from": "evals/mission-f-closeout/20260906-205402-d2e8b74"
+  },
+  "ranking": {
+   "status": "done",
+   "legacy": true,
+   "reused_from": "evals/mission-f-closeout/20260906-205402-d2e8b74"
+  },
+  "shared_inputs": {
+   "status": "done",
+   "at": "2026-09-06T21:29:59",
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "source_ids": {
+    "yt01": "e67c80cbb3be4295bb8362d2c4da1dc5",
+    "yt02": "39edf28d7e3048358a43853d9a5287b5",
+    "yt03": "f785bae8c4a9431bafefe5bb71133e27",
+    "pod": "01506db712634a6880ab6fd842fa75a9",
+    "vlog": "1a53afb9188646c69a9f74a196c3d738",
+    "article": "7950f75ad2b94800919e4d0d15e44eda",
+    "report": "16508b55c8fa4413aaf61e2a461ba2bd",
+    "calc": "aa1359ad3be44ddebf2324894d8958b0",
+    "sourdough": "9102e169eb5f4b15bcfbb97a77fcc765"
+   }
+  },
+  "research": {
+   "status": "done",
+   "at": "2026-09-06T21:30:01",
+   "material_hash": "d1d61ede90b5251a",
+   "evidence_count": 25,
+   "material_chars": 18951
+  },
+  "planner_v1": {
+   "status": "done",
+   "at": "2026-09-06T21:34:47",
+   "cost": 0.2419,
+   "research_hash": "d1d61ede90b5251a"
+  },
+  "planner_v3": {
+   "status": "done",
+   "at": "2026-09-06T21:38:02",
+   "cost": 0.1517,
+   "research_hash": "d1d61ede90b5251a"
+  },
+  "update": {
+   "status": "done",
+   "at": "2026-09-06T21:38:36",
+   "cost": 0.0457
+  },
+  "discover": {
+   "status": "done",
+   "at": "2026-09-06T21:39:00",
+   "cost": 0.0209
+  }
+ },
+ "history": [
+  {
+   "resumed_from": "evals/mission-f-closeout/20260906-205402-d2e8b74",
+   "at": "2026-09-06T21:29:53",
+   "reused": [
+    "findings",
+    "ranking"
+   ],
+   "invalidated": {
+    "planner_v1": "built on different research (hash unknown \u2014 the original run retrieved per arm and did not freeze it vs frozen d1d61ede90b5251a); rebuilt on the frozen payload",
+    "planner_v3": "built on different research (hash unknown \u2014 the original run retrieved per arm and did not freeze it vs frozen d1d61ede90b5251a); rebuilt on the frozen payload",
+    "update": "CONNECTION after 3 attempts: Connection error.",
+    "discover": "['discover.quick raised: CONNECTION after 3 attempts: Connection error.']"
+   },
+   "rebuilt": [
+    "planner_v1",
+    "planner_v3"
+   ],
+   "database": "the previous run did not persist its database \u2014 shared inputs (ingest + findings extraction) are rebuilt"
+  }
+ ],
+ "dir": "evals/mission-f-closeout/20260906-212919-e75e78d-resume-of-20260906-205402"
+}
