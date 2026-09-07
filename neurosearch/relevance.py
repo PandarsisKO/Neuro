@@ -183,7 +183,8 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                 scored[batch[i]["id"]] = (sc, str(it.get("why") or "")[:80])
     from . import contracts, providers
     prov = {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model, "provider": "fake" if providers.fake() else "anthropic",
-            "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1", "brief_revision": db.brief_revision(project)}
+            "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1", "brief_revision": db.brief_revision(project),
+            "routing": providers.routing_json("rank.relevance", getattr(providers.last_response(), "model", None))}
     with db.batch():
         for s in pool:
             if s["id"] in scored:

@@ -18,7 +18,7 @@ Every optimisation must prove one of: more reliable · higher quality · faster 
 | G | Cut cost safely | Message Batches for background work (bulk findings, stale rebuilds, evals) — batch is a scheduling choice, not a different operation; same schema/prompt/provenance either way; prompt reorder so volatile findings/facts sit after the stable prefix | **COMPLETE (0.20.0+g5)** — batch findings live PASS (exact 50% model cost, real provider); cache layout: Tier 1 cache read rate 2.1% → 23.4%, chat write premium removed (tail breakpoint OFF by default); ranking not batched, no adaptive breakpoint logic, by decision |
 | H | Cut cost intelligently | Luna/Haiku only behind validators: window pre-filter for findings gated on ≥99% relevant-window recall on the golden corpus; ranking with two-pass agreement; never findings extraction itself | **H1 built, measured, DEFERRED (0.21.0+h2)**: findings window pre-filter (keep/uncertain/drop, fail-open, off by default) passes every quality gate (100% recall, 12/12 nuggets, 57% of extractor tokens skippable on the labeled fixture) but at current prices loses money on the background-batch path the product actually uses (−15% net, 0.77× leverage) and only pays interactively (+18%) or as a two-stage batch (+18%, 2×24 h) on ≥33%-irrelevant corpora — not enabled, no live run; ranking agreement deferred |
 | I | Retrieval | Reranker on the top 40 first; query rewriting only if recall gain beats the added round-trip; embedding-large only if the eval moves; vector index only on evidence of a bottleneck | **COMPLETE — RERANKER MEASURED, NOT ADOPTED (0.22.0+i3)**: hard retrieval fixture + live production-embedding baseline (MRR 0.9093, R@1 86.7%, exact locator 87.2%) kept as permanent regression coverage; the Haiku candidate-only reranker held every safety gate but failed every frozen meaningful-improvement gate (MRR 0.8903, R@1 83.3%, +1.67 s and $0.0027 per query) → KILL; production retrieval unchanged (FTS + embeddings + RRF); query rewriting / embedding-large / vector index untested by decision — no evidence of need |
-| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **J1 + J2 done (0.23.0+j2)**: `safe_fetch` boundary (pinned validated connection, per-hop revalidation, size/decoded/time limits, 54 tests) and durable circuit breakers per provider:operation with a distinct zero-cost `provider_wait` job state (15 tests); J3 (explicit no-fallback policy + provenance) next |
+| J | External failure | `safe_fetch()` (SSRF, private ranges, size/redirect/timeout limits, decompression bombs) for everything except yt-dlp; circuit breakers per provider; per-task fallback policy with `requested_model` / `actual_model` / `fallback_reason` in provenance; Discover-verify holds rather than falls back | **COMPLETE (0.23.0+j3)**: `safe_fetch` boundary (pinned validated connection, per-hop revalidation, size/decoded/time limits; 54 tests), durable circuit breakers per provider:operation with a zero-cost `provider_wait` state (15 tests), and NO_FALLBACK as an explicit invariant on every AI contract with requested/actual/fallback_used/reason/policy-version audit on every invocation and artifact (13 tests) |
 | K | Health | Health console (database, backups, workers, leases, providers, quality, efficiency) — the start of it ships in Settings → Health in 0.15.0 | started |
 | L | Safe change | UI split into ES modules (still no build), fake-AI Playwright end-to-end, release gates: Tier 1 eval → unit → migration → crash/recovery → E2E → RC → Tier 2 eval → cost regression → backup restore | |
 
@@ -150,7 +150,7 @@ EVAL POLICY from here on (Kyle, 0.18.0)
   E2 — the 4.6 → 5 migration as the router's first experiment: live 4.6 baseline frozen first, then Sonnet 5 on the same corpus/prompts/inputs, compared per task (input tokens, visible output, thinking, cost Δ, validators, completion). Worker count unchanged until the comparison is done.
 ```
 
-## Rung J — external failure (J1 + J2 done, 0.23.0+j2; J3 pending)
+## Rung J — external failure (COMPLETE 0.23.0+j3)
 J1 `safe_fetch.py` is the ONE boundary for ordinary URL fetching (`webpage.fetch` → pages and linked documents/PDFs); yt-dlp
 stays separate by design (its own extractor/cookie/redirect logic; documented exception). Pipeline for the initial URL AND every
 redirect hop: parse → http/https only → no userinfo → normalised host/port (idna, browser shorthand like 127.1 canonicalised) →
@@ -214,6 +214,31 @@ passes to another worker; a stale generation's success is ignored; provider_wait
 message, survives restart + lease recovery, and the parked job completes as the probe once the circuit may be tested; batch
 submission parks on anthropic:batches while interactive messages still flow; Health and job diagnostics expose operation, state
 and next check without provider internals.
+
+### J3 — fallback is an explicit contract invariant (0.23.0+j3)
+Every AI contract declares `fallback` (NO_FALLBACK — the only implemented policy) and `fallback_candidates` (must be empty under
+NO_FALLBACK); `contracts.validate` rejects NO_FALLBACK + candidates, VALIDATED (declared but not implemented: it would need
+named candidates, schema/tools/thinking compatibility, task validators, the routing decision in provenance and its own quality
+gate), and unknown policies. Every existing Anthropic task — answer.chat, answer.repair, findings.extract, rank.relevance,
+discover.quick, discover.verify, planner.analysis/build/update, export.synthesis, all Planner V3 components, findings.prefilter,
+retrieval.rerank — plus embed/transcribe is NO_FALLBACK. `FALLBACK_POLICY_VERSION = fallback-policy-v1`.
+Router invariant: there is no fallback code path. A requested-model failure — transient exhaustion, circuit open (→ provider_wait),
+half-open probe failure (→ reopened breaker), auth / permission / billing / spend cap / invalid request (→ typed failure), refusal or
+schema mismatch (→ typed OutputError / SchemaMismatch) — never substitutes another model; Sonnet 5 findings/ranking never fall back
+to settings.answer_model and 4.6 tasks never fall back to Sonnet 5. An explicit per-task override (NEUROSEARCH_TASK_MODEL_*) IS
+the requested model, not a fallback.
+Provenance: `providers.routing_for(task, actual_model)` → {requested_model (the model Neuro Search intentionally selected: contract
++ explicit override), actual_model (what the provider reported — a versioned snapshot of a requested alias is NOT a fallback),
+fallback_used (False: the router's only decision), fallback_reason (null on the normal path), fallback_policy, fallback_policy_version}
+stored as JSON `routing` on project_source_analysis, project_notes, plans (V1 and V3) and discoveries; invocations carry
+`fallback_used = 0` and `fallback_policy_version` on every row, with `model` = requested and `returned_model` = actual.
+Tests (tests/test_j3_fallback.py, 13): every contract explicit + contradictory configs rejected; Sonnet 5 findings failure never asks
+4.6 (and writes no artifact); ranking Sonnet 5 failure never substitutes; 4.6 chat failure never asks Sonnet 5; open circuit parks
+with zero invocations; auth / billing / spend cap / invalid request typed, same model only; refusal + schema failures same model only
+(reranker refusal → original ordering); explicit override = requested model, fallback_used False; versioned alias → actual_model,
+fallback_used False; every artifact table and every completed invocation carries the audit; no automatic-fallback symbol exists in providers.
+**Rung J: COMPLETE (0.23.0+j3)** — the network boundary, durable per-operation circuit breakers with a zero-cost provider_wait, and an
+explicit no-fallback routing invariant with full audit. Discover-verify already holds rather than falls back.
 
 ## Rung I — retrieval (COMPLETE 0.22.0+i3: hard baseline kept; reranker measured live, NOT adopted; retrieval unchanged)
 Premise (Kyle): retrieval is already strong on the golden questions (R@10 100%, R@5 96.9%, MRR 0.922, locator 80% in Tier 1), so a

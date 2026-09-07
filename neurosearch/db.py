@@ -17,6 +17,8 @@ import numpy as np
 
 from .config import settings
 
+FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sources (
     id              TEXT PRIMARY KEY,
@@ -432,6 +434,13 @@ MIGRATIONS = [
     ("invocations", "attempt_no", "ALTER TABLE invocations ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 1"),
     ("invocations", "error_type", "ALTER TABLE invocations ADD COLUMN error_type TEXT"),
     ("invocations", "returned_model", "ALTER TABLE invocations ADD COLUMN returned_model TEXT"),
+    # Rung J3: the routing decision is audited on every invocation and every AI artifact (JSON: requested_model, actual_model, fallback_used, fallback_reason, fallback_policy_version)
+    ("invocations", "fallback_used", "ALTER TABLE invocations ADD COLUMN fallback_used INTEGER NOT NULL DEFAULT 0"),
+    ("invocations", "fallback_policy_version", "ALTER TABLE invocations ADD COLUMN fallback_policy_version TEXT"),
+    ("project_source_analysis", "routing", "ALTER TABLE project_source_analysis ADD COLUMN routing TEXT"),
+    ("project_notes", "routing", "ALTER TABLE project_notes ADD COLUMN routing TEXT"),
+    ("plans", "routing", "ALTER TABLE plans ADD COLUMN routing TEXT"),
+    ("discoveries", "routing", "ALTER TABLE discoveries ADD COLUMN routing TEXT"),
     # Rung G: transport-specific provenance (interactive | batch) — explicit, never hidden
     ("project_notes", "transport", "ALTER TABLE project_notes ADD COLUMN transport TEXT"),
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
@@ -937,8 +946,8 @@ def invocation_start(provider: str, task: str | None, model: str | None, input_h
     iid = new_id()
     t = now()
     with tx() as conn:
-        conn.execute("INSERT INTO invocations (id, job_id, run_id, task, provider, model, input_hash, state, requested_at, logical_id, attempt_no) VALUES (?,?,?,?,?,?,?,'intent',?,?,?)",
-                     (iid, job_id, run_id, task, provider, model, input_hash, t, logical_id or iid, attempt_no))
+        conn.execute("INSERT INTO invocations (id, job_id, run_id, task, provider, model, input_hash, state, requested_at, logical_id, attempt_no, fallback_used, fallback_policy_version) VALUES (?,?,?,?,?,?,?,'intent',?,?,?,0,?)",
+                     (iid, job_id, run_id, task, provider, model, input_hash, t, logical_id or iid, attempt_no, FALLBACK_POLICY_VERSION))
         conn.execute("UPDATE invocations SET state='in_flight' WHERE id=?", (iid,))
     return iid
 
@@ -1425,7 +1434,7 @@ def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **field
     """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
     assert analysis_kind in ANALYSIS_KINDS, analysis_kind
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing"}
     f = {k: v for k, v in fields.items() if k in allowed}
     f.setdefault("status", "current")
     t = now()
@@ -1972,9 +1981,9 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
         conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
         t = now()
         conn.executemany(
-            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id, routing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title"),
-              prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash"), prov.get("transport", "interactive"), prov.get("batch_id")) for n in notes])
+              prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash"), prov.get("transport", "interactive"), prov.get("batch_id"), prov.get("routing")) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
@@ -2035,11 +2044,11 @@ def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = ""
             if it["name"].lower() in existing:
                 continue
             cur = conn.execute(
-                """INSERT INTO discoveries (project_id, name, kind, url, known_for, why, angle, start_with, fit, depth, note, refine, created_at, model, prompt_version, brief_revision)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO discoveries (project_id, name, kind, url, known_for, why, angle, start_with, fit, depth, note, refine, created_at, model, prompt_version, brief_revision, routing)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (project_id, it["name"], it.get("kind"), it.get("url"), it.get("known_for"), it.get("why"), it.get("angle"),
                  json.dumps(it.get("start_with") or []), it.get("fit"), it.get("depth"), note, refine, now(),
-                 prov.get("model"), prov.get("prompt_version"), brev))
+                 prov.get("model"), prov.get("prompt_version"), brev, prov.get("routing")))
             out.append(cur.lastrowid)
     rows = [d for d in list_discoveries(project_id) if d["id"] in set(out)]
     return rows
@@ -2174,9 +2183,9 @@ def save_plan(project_id: str, plan: dict[str, Any], snapshot: dict[str, Any], c
         v = conn.execute("SELECT COALESCE(MAX(version),0)+1 v FROM plans WHERE project_id=?", (project_id,)).fetchone()["v"]
         t = now()
         conn.execute("""INSERT INTO plans (id, project_id, version, plan, snapshot, created_at, updated_at, model, prompt_version,
-                        brief_revision, facts_revision, source_set_revision) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        brief_revision, facts_revision, source_set_revision, routing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                      (pid, project_id, v, json.dumps(plan), json.dumps(snapshot), t, t, prov.get("model"), prov.get("prompt_version"),
-                      prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"]))
+                      prov["brief_revision"], prov["facts_revision"], prov["source_set_revision"], prov.get("routing")))
         if carry_statuses_from:
             rows = conn.execute("SELECT key, status, note FROM plan_items WHERE plan_id=?", (carry_statuses_from,)).fetchall()
             prev_row = conn.execute("SELECT plan FROM plans WHERE id=?", (carry_statuses_from,)).fetchone()

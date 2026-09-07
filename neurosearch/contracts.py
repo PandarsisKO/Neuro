@@ -24,6 +24,8 @@ from typing import Any
 from .config import settings
 
 THINKING = ("disabled", "adaptive")
+FALLBACK_POLICIES = ("NO_FALLBACK", "VALIDATED")
+FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # recorded on every invocation and every AI artifact; bump when the policy semantics change
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
@@ -40,7 +42,12 @@ class InferenceContract:
     backoff: tuple[float, ...] = (1.0, 4.0)
     interactive: bool = False          # user is waiting (latency class)
     batch_allowed: bool = False        # may be routed through a provider batch API (Rung G)
-    fallback_allowed: bool = False     # may run on a fallback model/provider (Rung J)
+    # Rung J3 — fallback is an explicit contract INVARIANT. NO_FALLBACK: the requested model is the only model this task
+    # may run on; any failure (transient, circuit open, auth, billing, refusal, schema) is a wait or a typed failure —
+    # never a substitution. A future VALIDATED policy must name its candidates, prove schema/tools/thinking
+    # compatibility, carry task validators and its own quality gate, and record the routing decision in provenance.
+    fallback: str = "NO_FALLBACK"      # NO_FALLBACK (the only policy implemented) | VALIDATED (not implemented: rejected at validation)
+    fallback_candidates: tuple[str, ...] = ()   # allowed alternate models — must be empty under NO_FALLBACK
     schema: str | None = None          # registry key in schemas.py → provider-enforced structured output + provenance schema_version; None = free text
     max_output_ceiling: int | None = None   # hard cap for the single truncation escalation (structured tasks); None = no escalation allowed
     quality_floor: float | None = None
@@ -49,6 +56,8 @@ class InferenceContract:
     def describe(self) -> dict[str, Any]:
         d = self.__dict__.copy()
         d["backoff"] = list(self.backoff)
+        d["fallback_candidates"] = list(self.fallback_candidates)
+        d["fallback_policy_version"] = FALLBACK_POLICY_VERSION
         return d
 
 
@@ -156,6 +165,12 @@ def validate(c: InferenceContract) -> None:
     """Reject unsupported knobs loudly at contract time — quiet compatibility code is what makes migrations undebuggable."""
     if c.thinking not in THINKING:
         raise ContractError(f"{c.task}: thinking must be one of {THINKING}, got {c.thinking!r}")
+    if c.fallback not in FALLBACK_POLICIES:
+        raise ContractError(f"{c.task}: fallback policy must be one of {FALLBACK_POLICIES}, got {c.fallback!r}")
+    if c.fallback == "NO_FALLBACK" and c.fallback_candidates:
+        raise ContractError(f"{c.task}: NO_FALLBACK contradicts fallback_candidates {list(c.fallback_candidates)}")
+    if c.fallback == "VALIDATED":
+        raise ContractError(f"{c.task}: VALIDATED fallback is declared but not implemented — it needs candidates, compatibility checks, validators and its own quality gate before it can be enabled")
     if c.effort is not None and c.effort not in EFFORTS:
         raise ContractError(f"{c.task}: effort must be one of {EFFORTS}, got {c.effort!r}")
     if c.effort is not None and c.thinking != "adaptive":

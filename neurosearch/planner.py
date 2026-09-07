@@ -223,6 +223,7 @@ def _repair_json(text: str) -> str:
     raise RuntimeError("planner returned JSON that could not be repaired")
 
 
+_last_model: dict[str, Any] = {}          # returned model of the most recent planner pass (provenance)
 OBSERVER: Any = None                 # evals hook: one dict per model call + one per JSON parse; never changes behaviour
 _last_call: dict[str, Any] = {}
 
@@ -282,6 +283,7 @@ def _call_claude(system: str, user: str, max_tokens: int = 16000, progress: Any 
             if progress and n % 2000 < len(text):
                 progress(None, f"{label}… {n // 4:,} tokens so far")
         final = stream.get_final_message()
+        _last_model["model"] = getattr(final, "model", None)
     cost = None
     try:
         cost = usage.record_anthropic(final, "plan")
@@ -357,8 +359,10 @@ def build_plan(project_id: str, instructions: str | None = None, progress: Any =
     db.kv_bump("evidence:plan_refs_dangling", len(dangling))
     snapshot = db.project_snapshot(project_id)
     import hashlib
+    from . import providers
     row = db.save_plan(project_id, plan, snapshot, carry_statuses_from=prev["id"] if prev else None,
-                       provenance={"model": settings.answer_model, "prompt_version": "plan-" + hashlib.sha1((ANALYSIS_SYSTEM + SYSTEM).encode()).hexdigest()[:8]})
+                       provenance={"model": _last_model.get("model") or settings.answer_model, "prompt_version": "plan-" + hashlib.sha1((ANALYSIS_SYSTEM + SYSTEM).encode()).hexdigest()[:8],
+                                   "routing": providers.routing_json("planner.build", _last_model.get("model"))})
     db.update_project(project_id, mode="plan")
     return row
 

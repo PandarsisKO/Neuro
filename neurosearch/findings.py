@@ -268,7 +268,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id), "transport": transport, "batch_id": batch_id,
-            "prefilter": json.dumps(prefilter) if prefilter else None}
+            "prefilter": json.dumps(prefilter) if prefilter else None, "routing": providers.routing_json("findings.extract", model)}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     with db.batch():                                     # notes + analysis land together or not at all

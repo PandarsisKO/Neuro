@@ -115,8 +115,10 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         data = _parse(providers.text_of(resp))
     items = _items(data.get("sources") or [])
     import hashlib
+    returned = getattr(providers.last_response(), "model", None) if contract("discover.quick").schema else getattr(resp, "model", None)
     saved = db.add_discoveries(project_id, items, note=str(data.get("note") or ""), refine=refine,
-                               provenance={"model": settings.answer_model, "prompt_version": "discover-" + hashlib.sha1(QUICK_SYSTEM.encode()).hexdigest()[:8]})
+                               provenance={"model": returned or settings.answer_model, "prompt_version": "discover-" + hashlib.sha1(QUICK_SYSTEM.encode()).hexdigest()[:8],
+                                           "routing": providers.routing_json("discover.quick", returned)})
     if progress:
         progress(0.45, f"{len(saved)} suggestions ready — verifying links on the web…")
 

@@ -270,6 +270,23 @@ def _wrap_openai(client: Any) -> Any:
                  audio=_Attr(transcriptions=_Attr(create=_Ledgered(client.audio.transcriptions.create, "openai", "transcribe"))), _raw=client)
 
 
+# ------------------------------------------------------------------ Rung J3: routing provenance (no automatic fallback exists)
+
+def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
+    """The routing decision to persist with an AI artifact. requested_model = the model Neuro Search intentionally
+    selected for the task (contract + explicit overrides); actual_model = what the provider reported (a versioned
+    snapshot of a requested alias is NOT a fallback); fallback_used reflects the router's decision — and the router has
+    exactly one decision available today: no fallback."""
+    from . import contracts as C
+    c = C.contract(task)
+    return {"requested_model": c.model, "actual_model": (str(actual_model) if actual_model else None) or c.model, "fallback_used": False,
+            "fallback_reason": None, "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION}
+
+
+def routing_json(task: str, actual_model: Any) -> str:
+    return json.dumps(routing_for(task, actual_model))
+
+
 def text_of(resp: Any) -> str:
     """The text of a response, selected by block TYPE. Claude 5 with adaptive thinking returns thinking blocks before
     the text; never assume content[0] is text and never read a thinking block as output."""
