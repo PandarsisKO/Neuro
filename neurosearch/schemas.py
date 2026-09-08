@@ -139,20 +139,23 @@ PREFILTER_V1: dict[str, Any] = {
 # project judgement. `authority_notes` explains the source's characteristics with their basis; the deterministic
 # `authority_signals` in the baseline stay the primary evidence.
 SOURCE_PROFILE_V1: dict[str, Any] = {
+    # No maxLength anywhere: the provider strips client-only constraints (provider_schema), so a maxLength is a local-only
+    # trap that the model cannot see — 0.28.0 lost a whole batch of profiles to authority_notes > 300 chars. Lengths are
+    # guidance in descriptions; the contract's max_output_tokens bounds the whole.
     "type": "object",
     "properties": {
-        "summary": {"type": "string", "maxLength": 600, "description": "two or three neutral sentences: what this source is and what it covers"},
-        "topics": {"type": "array", "items": {"type": "string", "maxLength": 60}, "maxItems": 15, "description": "subjects the source actually discusses, most substantial first"},
-        "entities": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 20, "description": "named organisations, laws, products, places, people, standards mentioned substantively"},
-        "document_type": {"type": "string", "maxLength": 60, "description": "e.g. interview, tutorial, official publication, forum thread, product page, lecture, case study, rate schedule"},
+        "summary": {"type": "string", "description": "two or three neutral sentences: what this source is and what it covers"},
+        "topics": {"type": "array", "items": {"type": "string"}, "maxItems": 15, "description": "short subject phrases the source actually discusses, most substantial first"},
+        "entities": {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "named organisations, laws, products, places, people, standards mentioned substantively"},
+        "document_type": {"type": "string", "description": "a few words, e.g. interview, tutorial, official publication, forum thread, product page, lecture, case study, rate schedule"},
         "evidence_class": {"type": "string", "enum": ["authoritative", "expert", "experiential", "market", "historical", "mixed"],
                            "description": "the KIND of evidence it offers (not how good it is): authoritative = governing/official text; expert = practitioner analysis; experiential = firsthand experience; market = current prices/offers/conditions; historical = past events"},
         "temporal_character": {"type": "string", "enum": ["static", "slow_changing", "periodic", "fast_changing"],
                                "description": "how quickly the factual claims in it go stale"},
-        "useful_for": {"type": "array", "items": {"type": "string", "maxLength": 100}, "maxItems": 12, "description": "concrete questions this source can help answer"},
-        "not_useful_for": {"type": "array", "items": {"type": "string", "maxLength": 100}, "maxItems": 6, "description": "things a title might suggest but the source does not actually cover"},
-        "authority_notes": {"type": "string", "maxLength": 300, "description": "who speaks and on what basis (role, organisation, firsthand vs secondhand) — descriptive, with the basis stated; never a score"},
-        "minority_topics": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 6, "description": "briefly-covered but substantive topics a summary would miss"},
+        "useful_for": {"type": "array", "items": {"type": "string"}, "maxItems": 12, "description": "concrete questions this source can help answer, one short line each"},
+        "not_useful_for": {"type": "array", "items": {"type": "string"}, "maxItems": 6, "description": "things a title might suggest but the source does not actually cover"},
+        "authority_notes": {"type": "string", "description": "one or two sentences: who speaks and on what basis (role, organisation, firsthand vs secondhand) — descriptive, with the basis stated; never a score"},
+        "minority_topics": {"type": "array", "items": {"type": "string"}, "maxItems": 6, "description": "briefly-covered but substantive topics a summary would miss"},
     },
     "required": ["summary", "topics", "entities", "document_type", "evidence_class", "temporal_character", "useful_for", "authority_notes"],
     "additionalProperties": False,

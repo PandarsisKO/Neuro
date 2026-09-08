@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.24.1)
+# Neuro Search — architecture map for Claude Code (current state, 0.28.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -34,7 +34,7 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 
 ## Global Library Intelligence (G4, 0.28.0)
 
-`library.py`: `baseline(source_id)` ($0, cached, revision-aware; metadata + own top terms + deterministic `authority_signals` with basis + centroid (coarse) + farthest-point topic vectors) · `recall(project, query)` = chunk-level retrieval over ready sources OUTSIDE the project → grouped suggestions with passages/why/signals (never attached; works with zero enriched profiles — gated) · `want`/`enrich`/`enrich_wanted` (lazy `library.profile`, schema `source-profile-v1`, provenance + routing, stale on revision change) · `maybe_queue_batch` → `enrich_profiles_batch` job on the Rung G batch machinery. **Never** build a global profile from project findings/summaries/relevance; never enrich the whole library. `discover(mode=)` is library-first; chat tool `search_global_library`.
+`library.py`: `baseline(source_id)` ($0, cached, revision-aware; metadata + own top terms + deterministic `authority_signals` with basis + centroid (coarse) + farthest-point topic vectors) · `recall(project, query)` = chunk-level retrieval over ready sources OUTSIDE the project → grouped suggestions with passages/why/signals (never attached; works with zero enriched profiles — gated) · `want`/`enrich`/`enrich_wanted` (lazy `library.profile`, schema `source-profile-v1`, provenance + routing, stale on revision change) · `maybe_queue_batch` → `enrich_profiles_batch` job on the Rung G batch machinery. **Never** build a global profile from project findings/summaries/relevance; never enrich the whole library. `discover(mode=)` is library-first; chat tool `search_global_library`. Recall requires absolute term coverage (`MIN_COVERAGE`/`STRONG_COVERAGE`, 0.28.1) so off-topic questions return nothing. **Structured-output schemas must not carry string-length constraints** — `provider_schema` strips them, so the model cannot honour them and the result fails locally after being paid for (0.28.2 lost a 30-item batch this way).
 
 ## Exploration + Candidate Index (G3, 0.27.0)
 

@@ -251,3 +251,25 @@ def test_api_profile_recall_and_stats():
     assert s["baseline_profiles"] >= 1 and s["enriched"] == 0
     h = db.health()["library"]
     assert h["profiles"]["enriched"] == 0
+
+
+def test_profile_schema_has_no_provider_invisible_length_traps():
+    """0.28.0 lost a whole enrichment batch: the provider strips maxLength (provider_schema), so the model wrote a
+    350-char authority_notes that failed LOCAL validation. The profile schema may bound lists (maxItems) and enums,
+    never string lengths the model cannot see; a long-but-well-formed profile must validate."""
+    from neurosearch import schemas
+    def walk(node):
+        if isinstance(node, dict):
+            assert "maxLength" not in node and "minLength" not in node, node
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+    walk(schemas.get("source-profile-v1"))
+    obj = json.loads(fake_ai._profile("Title: x\n\ntext"))
+    props = schemas.get("source-profile-v1")["properties"]
+    for k, v in list(obj.items()):
+        if isinstance(v, str) and "enum" not in props.get(k, {}):
+            obj[k] = v + " " + ("very long but well-formed " * 40)
+    assert schemas.validate("source-profile-v1", obj) == []
