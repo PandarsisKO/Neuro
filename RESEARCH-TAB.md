@@ -1,0 +1,79 @@
+# The Research tab — what it is for, how it works, and why it overwhelms (handoff for a redesign session)
+
+*Written 2026-09-08 at 0.34.2, from the code. Everything in the tab is the G5 "Research Intelligence" rung (0.29.0 → 0.30.x), extended by G6 Works, G7 community evidence and B2 completeness. Nothing here costs money unless a button says "model".*
+
+## 1. The one-sentence purpose
+
+Chat answers questions; Findings are quotes you approved; the **Research tab is the project's memory of what it currently believes, how well each belief is evidenced, and what a competent researcher would establish next** — so that the chat, Discover and the Planner stop treating every question as new and stop presenting one source's opinion as settled.
+
+Everything on the tab is *proposed research state* built for $0 from your approved findings. It does not decide anything for you; it keeps score.
+
+## 2. The mental model (five objects, one loop)
+
+```
+approved Findings ──harvest ($0)──▶ CLAIMS ──assess ($0)──▶ strength · readiness · freshness
+                                      │
+                                      ├──▶ KNOWLEDGE MAP   (Claims grouped by topic: what the project knows per area)
+                                      ├──▶ TENSIONS        (where the evidence disagrees, is thin, stale, or one-sided)
+                                      └──▶ EVIDENCE TARGETS (questions that must be settled, with "enough" defined)
+                                                 │
+                                    pursue: project → global library → seen-not-added → web
+                                                 │
+                                    new sources → new findings → back to the top
+```
+
+**Claim** — one proposition the project has evidence for ("SBA 7(a) equity injection must be at least 10 % of total project cost"). Harvested from findings; two findings saying the same thing become one Claim with two evidence rows. Each Claim has a *type* (regulatory / rates / tactic / experiential / …), a *topic*, a *status* you control (proposed → accepted / rejected / superseded), an optional *application* note ("applies to my deal because…"), and three assessments the app computes:
+
+- **Strength** — *how well evidenced*. Governing claims (a rule, a rate, a definition) need one current authoritative source to be Strong. Corroborative claims (experience, tactics, opinion) need several **independent** sources: copies, quotes and reprints of one document count once (G6 lineage), six Reddit posts repeating one article count once, six different owners describing the same failure count six (G7). `strength_why` is the sentence that explains it.
+- **Readiness** — *can you act on it*: separate from strength on purpose. Strong ≠ decision-ready: a rule can be Strong and still not apply to your situation, which is your judgement (the `application` field).
+- **Freshness** — *is it still current*: per Claim class (regulatory, rates, promotional, underwriting practice, tactics, experiential, static…), never a global age cutoff. `current / needs_refresh / stale / uncertain / age_insensitive`, with the reason. The $0 guess errs toward `uncertain`, never toward a false "stale".
+
+**Knowledge Map node** — a topic with ≥ 3 Claims, summarised as a state (strong / developing / weak / missing) with a *why* that never just counts sources.
+
+**Tension** — an automatically detected problem in the evidence: `CONTRADICTION` (two Claims disagree), `NOVEL` (one source says something nobody else does), `WEAK_CONSENSUS` (several sources, none independent), `STALE`, `MISSING_PERSPECTIVE` (only brokers, no owners — the G7 flagship). Each has an impact level and can be *Resolved* or *Dismissed* by you.
+
+**Evidence Target** — a question that must be established before you decide, with a sufficiency rule: *governing* (one authoritative source closes it) or *corroborative* (needs N independent sources). It records what "enough" means, the current gap, and the trail of where the app already looked. **Pursue** runs the mandated escalation in order and at $0: this project's evidence → the global library (other projects' sources) → sources seen but never added (the Candidate Index, reranked against the target, including ones skipped earlier) → the web (only when you press the web variant; that one queues a Discover job).
+
+**Community synthesis** (G7, shown under Sources → Communities, fed by this state) — cross-thread states (FREQUENTLY_REPORTED, MIXED_EXPERIENCE, STRONG_DISAGREEMENT, RARE_BUT_SERIOUS, FIRSTHAND_EXAMPLES), derived, and since B2 qualified when built on partially captured threads.
+
+## 3. How it is meant to be used (the intended weekly loop)
+
+1. Approve findings as usual (chat, Findings view). The Research state harvests them automatically after findings jobs (debounced) — or press **Refresh ($0)**.
+2. Read the **Knowledge Map** first: which areas are strong, which are developing, which are missing. That is the honest map of the project.
+3. Look at **Tensions**: each one is a place where the answer you would get in chat is less settled than it sounds. Resolve the ones you have thought through; leave the rest — the chat's system prompt reads open tensions and hedges accordingly.
+4. Turn the things you actually need to settle into **Evidence Targets** (type the question, pick governing/corroborative). Press **Pursue** — the app looks in everything it already has before it ever searches the web, and shows the trail ("project 0 → library 2 → seen 3 (1 resurfaced)"). Attach what it found, or press the web variant.
+5. Optionally, once per project, press **Normalise Claims (model)** — one bounded model pass that cleans candidate Claims (qualifiers, type, topic, freshness) and proposes targets you did not name. "Evaluate normalisation" is the measured, resumable version (~150 Claims) that proves whether normalisation earns wider use; it is an engineering instrument as much as a feature.
+6. In **Claims**, accept the propositions you stand behind (Accept makes a Claim *yours*; the app never accepts on your behalf), reject the wrong ones, and write an application note on the ones that matter for your decision. Accepted, Strong, current, applicable = decision-ready.
+
+The chat participates through two tools: `research_state` (it reads the map, tensions, targets and community synthesis when a question touches them) and `propose_claim` (an external assertion becomes a proposed Claim plus a target, never accepted truth).
+
+## 4. Why it overwhelms (an honest diagnosis)
+
+- **Everything is on one page, at the same visual weight.** Map, tensions, targets and Claims are four different jobs (orient, worry, plan, decide) rendered as four stacked lists with identical cards. On a 449-source project that is hundreds of rows with no hierarchy.
+- **The most important question — "what should I do next?" — is nowhere.** Targets are the answer, but they sit third, below a map that mostly says "developing".
+- **Engineering instruments are exposed as features.** "Normalise Claims (model)" and "Evaluate normalisation (≈150)" exist to prove the G5.1 policy; a user should see at most "Improve Claims (one model pass, ≈ $1)". The evaluation summary line ("merged 12 · qualifiers present 118/150 · hedges kept…") is a release-gate readout.
+- **Vocabulary is internal.** strength / readiness / freshness / sufficiency / governing / corroborative / lineage / independent / normalised — every card shows five of them. They are the right concepts; they are the wrong labels for a first read.
+- **Claims are a flat, paged list** (300 shown of 4,203) with no way to navigate by topic, status, or "needs my decision". The map nodes are not clickable into their Claims.
+- **Actions are per-card and tiny** (Accept / Reject / Resolved / Dismiss / Pursue) with no batch operations and no explanation of consequences ("Accept" changes what the chat treats as settled — the page does not say so).
+- **No entry point from the work.** You arrive from the sidebar, not from a question. The Discover header links to "the map", the chat mentions tensions, but nothing says "this answer rests on a Weak claim — open it".
+
+## 5. What a redesign could look like (a starting position, not a decision)
+
+- **Lead with "Next":** open evidence targets (with the pursue trail and one-click *Look* / *Search the web*), then tensions with impact — the two things that ask for an action. Map and Claims become drill-downs.
+- **Make the map navigable:** a node click filters the Claims list to that topic; states become a small legend, not a tag per row.
+- **Claims as a workbench, not a list:** filters (needs decision · accepted · weak · stale · by topic), batch accept/reject, one plain-language line per Claim ("Strong — one current SBA SOP; applies to your deal? not yet said") and the internals behind an expander.
+- **Rename in the UI, keep the code:** Strength → *Evidence*, Readiness → *Ready to use?*, Freshness → *Still current?*, governing/corroborative → *one authoritative source is enough / needs independent sources*, Evidence Target → *Open question*, Tension → *Watch-out*.
+- **Hide the instruments** behind a "Research tools" expander (Normalise, Evaluate, the evaluation readout) or move them to Settings → Advanced.
+- **Connect to the work:** a "Why this answer" affordance on chat citations that opens the Claim; a "Settle this" button in chat gaps that creates a target.
+
+## 6. Architecture (for the session that will change it)
+
+**Modules.** `claims.py` (harvest, assess, extract/normalise contract `claims.extract` with schema `claim-set-v1`, `select_cohort` + `run_evaluation`, `relate`, `add_evidence`, independence by lineage/creator, `FRESHNESS_RULES`, `stale_by_source`), `knowledge.py` (`refresh` = harvest → assess → map nodes → tensions → targets → community synthesis; `pursue`, `add_target`, `list_tensions`, `state()` paged: 300 claims / 12 evidence / 100 lists), `works.py` (lineage for independence), `community.py` (`synthesize`, `missions`), `qa.py` (tools `research_state`, `propose_claim`; the research block in the system prompt; the truncation-aware chat), `db.py` tables `project_claims`, `claim_evidence` (with `lineage_id`, `source_revision`, `locator`, `independent`, `stale`), `project_evidence_targets`, `project_knowledge_nodes`, `research_tensions`, `claim_evidence_notes`, `community_syntheses`, kv `claims:eval:{pid}:pending`.
+
+**Endpoints.** `GET /api/projects/{id}/research` (the paged state), `POST …/research/refresh {extract}`, `POST …/research/evaluate {budget}`, `GET …/research/evaluation`, `POST /api/claims/{id}/status {status, application}`, `POST /api/claims/{id}/relate`, `GET/POST /api/projects/{id}/targets`, `POST /api/targets/{id}/pursue {external}`, `POST /api/targets/{id}/status`, `POST /api/tensions/{id}/status`, community: `GET …/community/synthesis`, `GET …/community/missions`.
+
+**UI.** One view `#view-research` in `web/index.html`: `renderResearch(state)` fills `#resMap`, `#resTensions`, `#resTargets`, `#resClaims`; `refreshResearch`, `evaluateNormalisation`, `loadEvaluation`, `claimStatus`, `tensionStatus`, `targetStatus`, `addTarget`, `pursueTarget`; `renderResearchHeader` on Discover; `stTag(state)` for the coloured pills. The sidebar count `#nResearch` = live Claims.
+
+**Invariants the redesign must keep (locked decisions).** Claims are project state, never library state; everything works with zero model calls; normalisation is bounded and importance-driven, never corpus-wide; Strong ≠ decision-ready; freshness is Claim-relative and errs to uncertain; independence is by lineage (G6) and by person (G7); community evidence can never establish a governing rule; model output is proposed state — status changes only through `claims.set_status`; targets escalate project → library → seen → web with web only on request; a synthesis over a partial thread says so. Gates: `tests/test_k6_claims.py` (10-point fixture), `test_k8_works.py`, `test_k9_community.py`, `test_l2_completeness.py`; Tier 1 chat totals are frozen (34 / 196,951) — a change to the research block text in the chat prompt re-freezes them.
+
+**Numbers from the live project** (accounting-practice acquisition, 449 sources): 4,203 Claims harvested, refresh 1.8 s, one bounded normalisation evaluation of 150 Claims in 19 calls for $1.21.
