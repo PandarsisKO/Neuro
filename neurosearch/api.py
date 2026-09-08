@@ -1158,6 +1158,27 @@ async def api_research_refresh(project_id: str, body: ResearchRefreshIn) -> dict
     return res
 
 
+class EvalIn(BaseModel):
+    budget: int = 150            # bounded by design: decision-relevant Claims + a stratified sample, never the corpus
+
+
+@app.post("/api/projects/{project_id}/research/evaluate", dependencies=[Depends(require_auth)])
+def api_research_evaluate(project_id: str, body: EvalIn) -> dict[str, Any]:
+    """G5.1: one durable, bounded normalization evaluation (a job). Measures merges, qualifier/hedge preservation,
+    topic grouping, tensions and cost so broader normalization has to earn adoption."""
+    from . import claims
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    job = db.create_job("extract_claims", {"project_id": project_id, "evaluation": True, "budget": max(10, min(body.budget, 300)), "reason": "bounded normalization evaluation"})
+    return {"job_id": job["id"], "cohort_preview": claims.select_cohort(project_id, max(10, min(body.budget, 300)))["by_reason"]}
+
+
+@app.get("/api/projects/{project_id}/research/evaluation", dependencies=[Depends(require_auth)])
+def api_research_evaluation(project_id: str) -> dict[str, Any]:
+    from . import claims
+    return claims.evaluation_report(project_id) or {"none": True}
+
+
 class ClaimIn(BaseModel):
     text: str
     claim_type: str = "other"

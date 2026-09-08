@@ -196,6 +196,7 @@ def _claims(user: str) -> str:
         out.append({"id": c["id"], "text": text, "claim_type": ctype,
                     "qualifiers": {"jurisdiction": "US" if re.search(r"\b(sba|irs|usa?)\b", text.lower()) else "", "product": "", "population": "",
                                    "conditions": "as hedged by the source" if hedged else "", "timeframe": "", "source_language": "hedged" if hedged else "plain",
+                                   "imposed_by": ("seller_or_listing" if re.search(r"\b(seller|listing) (wants|requires|prefers)\b", text.lower()) else "unclear" if re.search(r"\bmust be a\b", text.lower()) else ""),
                                    "specific_instance": bool(re.search(r"\$[\d,]+", text)) and "listing" in text.lower()},
                     "topic": _cl._topic_of(text), "freshness_class": _cl.guess_freshness(text, ctype), "merge_into": merge if merge and merge != c["id"] else None})
     targets = []

@@ -34,12 +34,28 @@ PROMPT_VERSION = "claims-1"
 TYPES = ("governing", "historical", "expert_interpretation", "practice", "experiential", "market", "causal", "novel_tactic", "other")
 GOVERNING_TYPES = {"governing", "historical"}
 RELATIONS = ("SUPPORTS", "CONTRADICTS", "QUALIFIES", "INTERPRETS", "EXPERIENTIAL")
-FRESHNESS = ("static", "slow_changing", "periodic", "fast_changing")
-# domain-sensitive freshness: how old may the NEWEST supporting evidence be before the Claim is flagged STALE
-FRESHNESS_DAYS = {"static": None, "slow_changing": 3 * 365, "periodic": 400, "fast_changing": 120}
+# G5.1 (0.30.0) — freshness belongs to the CLAIM, not to the age of the video it came from. A 2021 interview can carry a
+# stale rate, a still-current transition insight, a timeless anecdote and a rule that needs re-verification at once.
+# Each class = (days until NEEDS_REFRESH, days until STALE or None = never stale by age alone, note). Uncertain
+# classification never produces a stale verdict — it produces `uncertain`.
+FRESHNESS = ("regulatory", "rates_pricing", "promotional", "underwriting_practice", "tactics", "operational", "experiential", "historical", "static", "uncertain")
+FRESHNESS_RULES: dict[str, tuple[int | None, int | None, str]] = {
+    "regulatory":           (365, None, "verify the current version, amendment or effective date"),
+    "rates_pricing":        (180, 540, "rates, fees, terms, multiples and prices move within months"),
+    "promotional":          (60, 120, "offers and deadlines expire"),
+    "underwriting_practice": (365, 730, "lender practice drifts over 12–24 months"),
+    "tactics":              (6 * 365, None, "acquisition structures and tactics hold for years; newer corroboration preferred"),
+    "operational":          (7 * 365, None, "operational practice holds unless technology or regulation changed"),
+    "experiential":         (None, None, "human behaviour and transition lessons rarely stale by age; check applicability"),
+    "historical":           (None, None, "a firsthand account never stales; flag applicability instead"),
+    "static":               (None, None, "timeless framework, strategy or negotiation insight; stales only when contradicted"),
+    "uncertain":            (3 * 365, None, "the $0 heuristic could not classify this — treat freshness as uncertain, not stale"),
+}
+_LEGACY_FRESHNESS = {"slow_changing": "tactics", "periodic": "regulatory", "fast_changing": "rates_pricing"}   # 0.29.x values
+FRESHNESS_STATUS = ("current", "needs_refresh", "stale", "uncertain", "age_insensitive")
 # corroborative sufficiency: independent supporting sources needed for each strength band
 CORROBORATION = {"strong": 3, "developing": 2, "weak": 1}
-STRENGTHS = ("strong", "developing", "weak", "unsupported", "stale")
+STRENGTHS = ("strong", "developing", "weak", "unsupported")
 
 CLAIMS_BATCH_MIN = 6          # unnormalized candidates that justify an extraction call on their own
 CLAIMS_DEBOUNCE_S = 1800      # otherwise wait this long since the last extraction before spending again
@@ -102,17 +118,48 @@ def guess_type(text: str, evidence_class: str | None) -> str:
     return "other"
 
 
-def guess_freshness(text: str, claim_type: str) -> str:
+def guess_freshness(text: str, claim_type: str, evidence_class: str | None = None) -> str:
+    """$0 Claim-relative freshness class from Claim semantics + temporal language + evidence class + governing domain.
+    Errs toward `uncertain` (never a false stale) when the cues do not agree."""
     t = (text or "").lower()
-    if re.search(r"\b(promotion|offer|deadline|expires?|expiration)\b", t):
-        return "fast_changing"
-    if re.search(r"\b(interest rates?|guarantee fees?|fee schedule|pricing|price list|listing price|asking price|per cent|percent|%)\b", t) and re.search(r"\b(20\d\d|this year|fiscal|currently)\b", t):
-        return "periodic"                                   # a dated figure: re-verify on its cadence
-    if claim_type in ("governing",):
-        return "periodic"          # rules change on a cadence (SOP revisions, tax years)
-    if claim_type in ("historical",):
+    if re.search(r"\b(promotion|promo|offer|deadline|expires?|expiration|limited time)\b", t):
+        return "promotional"
+    if re.search(r"\b(interest rates?|prime rate|guarantee fees?|fee schedule|pricing|price list|listing price|asking price|per cent|percent)\b|%|\$[\d,]+", t) \
+            or (re.search(r"\b(multiples?|valuation|cap rate)\b", t) and re.search(r"\d", t)):
+        return "rates_pricing"
+    if re.search(r"\b(sop|statute|regulation|regulations|regulatory|tax code|irs|irc|§|section \d|eligib|prohibit|shall|federal|state law|licens)\b", t) or claim_type == "governing":
+        return "regulatory"
+    if re.search(r"\b(lenders?|banks?|underwrit\w*|credit box|loan officer)\b", t) and re.search(r"\b(require|requires|want|wants|prefer|look for|expect|typically|usually|will|won't|approve)\b", t):
+        return "underwriting_practice"
+    if claim_type == "historical" or re.search(r"\b(in (19|20)\d\d|back then|at the time|when (i|we) (bought|sold|started))\b", t):
+        return "historical"
+    if re.search(r"\b(framework|principle|mindset|negotiat\w*|strategy|strategic|philosophy|rule of thumb|always|never)\b", t):
         return "static"
-    return "slow_changing"
+    if claim_type == "experiential" or evidence_class == "experiential" and re.search(r"\b(seller|owner|client|employee|customer|staff|transition|retention|relationship|trust|culture|people)\b", t):
+        return "experiential"
+    if re.search(r"\b(software|technology|tool|tools|process|checklist|system|systems|workflow|automation)\b", t):
+        return "operational"
+    if claim_type in ("practice", "novel_tactic", "causal") or re.search(r"\b(structure|structuring|earnout|seller note|standby|loi|deal|acquisition|acquire|buyout|due diligence|diligence)\b", t):
+        return "tactics"
+    return "uncertain"
+
+
+def freshness_status(freshness_class: str, newest_evidence_age_days: float | None) -> tuple[str, str]:
+    """(status, why) for a Claim given its class and the age of its newest supporting evidence."""
+    cls = _LEGACY_FRESHNESS.get(freshness_class, freshness_class)
+    refresh, stale, note = FRESHNESS_RULES.get(cls, FRESHNESS_RULES["uncertain"])
+    if newest_evidence_age_days is None:
+        return ("uncertain", "no dated evidence; freshness cannot be judged") if cls not in ("static", "historical", "experiential") else ("age_insensitive", note)
+    age = int(newest_evidence_age_days)
+    if refresh is None and stale is None:
+        return "age_insensitive", note
+    if stale is not None and age > stale:
+        return "stale", f"newest supporting evidence is {age} days old; {note} (stale after {stale} days)"
+    if refresh is not None and age > refresh:
+        if cls == "uncertain":
+            return "uncertain", f"newest supporting evidence is {age} days old and the Claim's freshness class is uncertain — re-verify rather than assume"
+        return "needs_refresh", f"newest supporting evidence is {age} days old; {note} (re-verify after {refresh} days)"
+    return "current", f"newest supporting evidence is {age} days old, within the {cls.replace('_', ' ')} horizon"
 
 
 def evidence_class_for(src: dict[str, Any]) -> str:
@@ -178,6 +225,8 @@ def project_vocab(project_id: str) -> dict[str, int]:
 
 def _claim(row: Any) -> dict[str, Any]:
     d = dict(row)
+    if d.get("freshness_class") in _LEGACY_FRESHNESS:
+        d["freshness_class"] = _LEGACY_FRESHNESS[d["freshness_class"]]
     for k in ("qualifiers", "routing"):
         if d.get(k):
             try:
@@ -336,10 +385,9 @@ def harvest(project_id: str) -> dict[str, Any]:
         for n in db.list_project_notes(project_id, status=status):
             if n["id"] in have:
                 continue
-            text = _strip_cites(n.get("content") or "")
+            body = _strip_cites(n.get("content") or "")
             title = (n.get("title") or "").strip()
-            if title and title.lower() not in text.lower():
-                text = f"{title} — {text}"
+            text = f"{title} — {body}" if title and title.lower() not in body.lower() else body
             if len(text) < 20 or text.lower().startswith("gap:"):
                 continue
             cites = n.get("citations") or []
@@ -364,9 +412,10 @@ def harvest(project_id: str) -> dict[str, Any]:
                 touched.add(twin["id"])
                 merged += 1
                 continue
-            ctype = guess_type(text, cls)
-            c = add_claim(project_id, text, claim_type=ctype, origin="finding" if status == "approved" else "finding_suggested", origin_note_id=n["id"],
-                          status="proposed", normalized=False, vocab=vocab)
+            ctype = guess_type(body, cls)
+            c = add_claim(project_id, text, claim_type=ctype, freshness_class=guess_freshness(body, ctype, cls), origin="finding" if status == "approved" else "finding_suggested",
+                          origin_note_id=n["id"], status="proposed", normalized=False, vocab=vocab)
+            existing.append(c)
             for cite in cites[:4]:
                 if cite.get("source_id") and db.get_source(cite["source_id"]):
                     add_evidence(c["id"], cite["source_id"], locator=cite.get("timestamp"), start=cite.get("start"), link=cite.get("link"),
@@ -374,12 +423,14 @@ def harvest(project_id: str) -> dict[str, Any]:
             touched.add(c["id"])
             index.add(c)
             created += 1
-    # $0 topics follow the project's vocabulary as it grows (normalized Claims keep the topic the contract named)
+    # $0 topics and freshness follow the project's vocabulary / the Claim's own semantics (normalized Claims keep what the contract named)
+    _first_class = {r["claim_id"]: r["evidence_class"] for r in db.connect().execute(
+        "SELECT claim_id, evidence_class FROM claim_evidence WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND normalized=0) GROUP BY claim_id", (project_id,))}
     with db.batch():
         for c in existing:
             if not c.get("normalized"):
                 t = _topic_of(c["text"], vocab)
-                f = guess_freshness(c["text"], c["claim_type"])
+                f = guess_freshness(c["text"].split(" — ", 1)[-1], c["claim_type"], _first_class.get(c["id"]))
                 if t != c.get("topic") or f != c.get("freshness_class"):
                     db.connect().execute("UPDATE project_claims SET topic=?, freshness_class=? WHERE id=? AND normalized=0", (t, f, c["id"]))
                     touched.add(c["id"])
@@ -453,18 +504,16 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         why.append(f"{len(con)} contradicting source(s) ({len(indep_con)} independent) — unresolved")
         if strength == "strong" and (ctype not in GOVERNING_TYPES or any(e.get("evidence_class") == "authoritative" for e in con)):
             strength = "developing"
-    # domain-sensitive freshness on the newest supporting evidence
-    limit = FRESHNESS_DAYS.get(c.get("freshness_class") or "slow_changing")
-    if sup and limit:
-        ages = []
-        for e in sup:
-            src = srcs.get(e["source_id"]) or {}
-            ts = _published_ts(src) or src.get("created_at")
-            if ts:
-                ages.append((now - float(ts)) / 86400)
-        if ages and min(ages) > limit:
-            strength = "stale"
-            why.append(f"newest supporting evidence is {int(min(ages))} days old; a {c['freshness_class'].replace('_', '-')} Claim should be re-verified after {limit} days")
+    # Claim-relative freshness (G5.1): a separate verdict, never folded into evidence strength
+    ages = []
+    for e in sup:
+        src = srcs.get(e["source_id"]) or {}
+        ts = _published_ts(src)
+        if ts:
+            ages.append((now - float(ts)) / 86400)
+    fstatus, fwhy = freshness_status(c.get("freshness_class") or "uncertain", min(ages) if ages else None) if sup else ("uncertain", "no supporting evidence")
+    if fstatus in ("stale", "needs_refresh", "uncertain") and sup:
+        why.append(fwhy)
     # readiness is NOT strength
     app = c.get("application") or "unknown"
     if strength == "strong" and app == "established":
@@ -473,9 +522,11 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         readiness, rwhy = "not_ready", "evidence is strong but whether it applies to this project's situation is " + ("still developing" if app == "developing" else "not established")
     else:
         readiness, rwhy = "not_ready", f"evidence is {strength}"
+    if fstatus == "stale" and readiness == "ready":
+        readiness, rwhy = "not_ready", "evidence is strong but stale for this Claim's freshness class — re-verify first"
     with db.tx() as conn:
-        conn.execute("UPDATE project_claims SET strength=?, strength_why=?, readiness=?, readiness_why=?, updated_at=? WHERE id=?",
-                     (strength, "; ".join(why), readiness, rwhy, now, claim_id))
+        conn.execute("UPDATE project_claims SET strength=?, strength_why=?, readiness=?, readiness_why=?, freshness_status=?, freshness_why=?, updated_at=? WHERE id=?",
+                     (strength, "; ".join(why), readiness, rwhy, fstatus, fwhy, now, claim_id))
     return get(claim_id)
 
 
@@ -545,7 +596,14 @@ into "lenders allow X". Two similar candidates stay separate unless they assert 
 merge_into to the id of the one you keep). Classify each claim by the KIND of evidence needed to establish it, not by how many sources
 mention it: governing (what a controlling statute/regulation/SOP/contract/manual says), historical (what a person/document said, primary record),
 expert_interpretation, practice (what an industry usually does), experiential (what people commonly experience), market (a price/cost/multiple),
-causal, novel_tactic (an unconventional tactic), other. Give a freshness_class by how fast the truth changes in that domain.
+causal, novel_tactic (an unconventional tactic), other. Give a freshness_class for the CLAIM (not the source): regulatory (law, SBA SOP, tax — verify
+the current version), rates_pricing (rates, fees, terms, multiples, prices), promotional (offers, deadlines), underwriting_practice (what lenders
+currently do), tactics (acquisition structures and tactics — years), operational (best practices), experiential (human behaviour, transitions,
+retention — age alone rarely matters), historical (a firsthand account — never stale), static (timeless framework or strategy), uncertain.
+When a claim states a REQUIREMENT, keep who imposes it in qualifiers.imposed_by — seller/listing preference, legal ownership rule, professional
+licensing rule, a rule for performing specific services (e.g. attest/compilation), lender policy, or a state-specific rule — and never collapse
+"the seller wants a CPA buyer" into "only CPAs can buy CPA firms". Where the evidence leaves that ambiguous, say so in conditions and propose an
+evidence target that decomposes the underlying question by those requirement sources.
 Then, from the project brief and the claims, propose evidence targets the user has not named: what a competent researcher would need to
 establish before deciding, each with a sufficiency kind (governing = one current directly applicable primary source can close it;
 corroborative = several independent sources needed), preferred evidence classes in order, and a one-sentence closure criterion.
@@ -637,11 +695,126 @@ def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str
 
 def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     pid = payload["project_id"]
+    if payload.get("evaluation"):
+        return run_evaluation(pid, budget=int(payload.get("budget") or EVAL_BUDGET), progress=progress)
     harvest(pid)
     res = extract(pid, transport="job")
     from . import knowledge
     knowledge.refresh(pid)
     return res
+
+
+# ---------------------------------------------------------------- bounded normalization evaluation (G5.1)
+# Normalization must EARN adoption: one durable, bounded pass over decision-relevant Claims + a stratified sample, with
+# before/after measurement — never the whole inherited corpus. Long-term policy is lazy and importance-driven.
+
+EVAL_BUDGET = 150
+_HEDGE = re.compile(r"\b(may|might|some|sometimes|can|could|often|usually|typically|generally|unless|depends|in some cases|not always)\b")
+
+
+def select_cohort(project_id: str, budget: int = EVAL_BUDGET) -> dict[str, Any]:
+    """Decision-relevant first: strong + developing, NOVEL/CONTRADICTION/WEAK_CONSENSUS tension Claims, Claims behind open or
+    pursued targets, important stale/needs-refresh Claims, Claims the current plan's evidence points at; then a stratified
+    sample of weak Claims (by topic) up to the budget. Only unnormalized Claims."""
+    from . import knowledge
+    cands = {c["id"]: c for c in unnormalized(project_id)}
+    chosen: dict[str, str] = {}
+
+    def take(ids: list[str], why: str) -> None:
+        for i in ids:
+            if i in cands and i not in chosen and len(chosen) < budget:
+                chosen[i] = why
+    take([c["id"] for c in cands.values() if c["strength"] in ("strong", "developing")], "strong/developing")
+    take([t["claim_id"] for t in knowledge.list_tensions(project_id, status="open") if t.get("claim_id") and t["kind"] in ("NOVEL", "CONTRADICTION", "WEAK_CONSENSUS")], "tension")
+    take([t["claim_id"] for t in knowledge.list_targets(project_id) if t.get("claim_id") and (t["status"] == "open" or t.get("last_escalation"))], "evidence target")
+    imp = {r["id"]: int(r["importance"] or 3) for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,))}
+    take([c["id"] for c in cands.values() if (c.get("freshness_status") in ("stale", "needs_refresh")) and imp.get(c.get("origin_note_id") or -1, 3) >= 4], "important stale")
+    plan = db.latest_plan(project_id)
+    if plan:
+        emap = (plan.get("plan") or {}).get("_evidence") or {}
+        labels = [(v.get("source_id"), v.get("label") or "") for v in emap.values()]
+        dep = []
+        for c in cands.values():
+            srcs = {e["source_id"] for e in c["evidence"]}
+            if any(sid in srcs and overlap(lbl, c["text"]) >= 0.5 for sid, lbl in labels):
+                dep.append(c["id"])
+        take(dep, "planner dependency")
+    # stratified sample of the rest by topic (round-robin), highest importance first inside a topic
+    rest = [c for c in cands.values() if c["id"] not in chosen]
+    by_topic: dict[str, list[dict[str, Any]]] = {}
+    for c in sorted(rest, key=lambda c: -imp.get(c.get("origin_note_id") or -1, 3)):
+        by_topic.setdefault(c.get("topic") or "general", []).append(c)
+    while len(chosen) < budget and any(by_topic.values()):
+        for t in sorted(by_topic):
+            if by_topic[t] and len(chosen) < budget:
+                chosen[by_topic[t].pop(0)["id"]] = "stratified sample"
+    return {"claim_ids": list(chosen), "reasons": chosen, "candidates": len(cands),
+            "by_reason": {r: sum(1 for x in chosen.values() if x == r) for r in set(chosen.values())}}
+
+
+def _snapshot(project_id: str, ids: list[str]) -> dict[str, Any]:
+    from . import knowledge
+    cs = {c["id"]: c for c in list_for_project(project_id) if c["id"] in set(ids)}
+    tens = knowledge.list_tensions(project_id, status="open")
+    return {"claims": {i: {"text": c["text"], "type": c["claim_type"], "topic": c["topic"], "freshness": c["freshness_class"], "qualifiers": c.get("qualifiers") or {},
+                           "hedged": bool(_HEDGE.search(c["text"].lower())), "status": c["status"], "evidence": len(c["evidence"])} for i, c in cs.items()},
+            "topics": len({c["topic"] for c in cs.values()}), "tensions": {k: sum(1 for t in tens if t["kind"] == k) for k in ("NOVEL", "CONTRADICTION", "WEAK_CONSENSUS", "STALE", "MISSING_PERSPECTIVE")},
+            "targets": len(knowledge.list_targets(project_id, status="open")), "ts": time.time()}
+
+
+def run_evaluation(project_id: str, budget: int = EVAL_BUDGET, progress: Any = None) -> dict[str, Any]:
+    """Durable, bounded: select → snapshot → extract (groups of EXTRACT_GROUP, idempotent) → refresh → measure. The
+    report is stored at kv claims:eval:{project} and returned. Rerunning re-measures without re-spending."""
+    from . import knowledge
+    harvest(project_id)
+    cohort = select_cohort(project_id, budget)
+    ids = cohort["claim_ids"]
+    if progress:
+        progress(0.05, f"evaluating normalisation on {len(ids)} claims")
+    before = _snapshot(project_id, ids)
+    cost0 = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
+    cands = [c for c in list_for_project(project_id) if c["id"] in set(ids)]
+    res = extract(project_id, cands, transport="job")
+    knowledge.refresh(project_id)
+    cost1 = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
+    after_all = {c["id"]: c for c in list_for_project(project_id)}
+    after = _snapshot(project_id, ids)
+    rows, merged, hedges_kept, hedged_n, qual_n, imposed, type_changes, over_general = [], 0, 0, 0, 0, {}, 0, []
+    for i in ids:
+        b, a = before["claims"].get(i), after_all.get(i)
+        if not b or not a:
+            continue
+        if a["status"] == "superseded":
+            merged += 1
+        q = a.get("qualifiers") or {}
+        has_q = any(str(v).strip() for k, v in q.items() if k != "specific_instance")
+        qual_n += int(has_q)
+        if q.get("imposed_by"):
+            imposed[q["imposed_by"]] = imposed.get(q["imposed_by"], 0) + 1
+        if b["hedged"]:
+            hedged_n += 1
+            kept = bool(_HEDGE.search(a["text"].lower())) or bool(str(q.get("conditions") or "").strip())
+            hedges_kept += int(kept)
+            if not kept and len(a["text"]) < 0.6 * len(b["text"]):
+                over_general.append({"id": i, "before": b["text"][:200], "after": a["text"][:200]})
+        type_changes += int(a["claim_type"] != b["type"])
+        rows.append({"id": i, "reason": cohort["reasons"].get(i), "before": b["text"][:240], "after": a["text"][:240], "type": [b["type"], a["claim_type"]],
+                     "topic": [b["topic"], a["topic"]], "freshness": [b["freshness"], a["freshness_class"]], "qualifiers": q, "status": a["status"],
+                     "strength": a["strength"], "merged_into": a.get("superseded_by")})
+    report = {"project_id": project_id, "budget": budget, "cohort": {"size": len(ids), "candidates": cohort["candidates"], "by_reason": cohort["by_reason"]},
+              "calls": res.get("calls", 0), "cost_usd": round(float(cost1["c"]) - float(cost0["c"]), 4), "usage_rows": int(cost1["n"]) - int(cost0["n"]),
+              "normalized": res.get("normalized", 0), "targets_proposed": res.get("targets", 0), "merged": merged,
+              "qualifiers_present": qual_n, "hedged_before": hedged_n, "hedges_kept": hedges_kept, "over_generalized": over_general,
+              "imposed_by": imposed, "type_changes": type_changes,
+              "topics": {"before": before["topics"], "after": after["topics"]}, "tensions": {"before": before["tensions"], "after": after["tensions"]},
+              "open_targets": {"before": before["targets"], "after": after["targets"]}, "rows": rows[:200], "ts": time.time()}
+    db.kv_set(f"claims:eval:{project_id}", json.dumps(report))
+    return {k: v for k, v in report.items() if k != "rows"} | {"rows": len(rows)}
+
+
+def evaluation_report(project_id: str) -> dict[str, Any] | None:
+    raw = db.kv_get(f"claims:eval:{project_id}")
+    return json.loads(raw) if raw else None
 
 
 def ensure(project_id: str, allow_model: bool = False) -> dict[str, Any]:

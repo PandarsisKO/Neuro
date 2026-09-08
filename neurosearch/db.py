@@ -390,6 +390,8 @@ CREATE TABLE IF NOT EXISTS project_claims (
     application     TEXT NOT NULL DEFAULT 'unknown',     -- established | developing | unknown   (does it apply to THIS project?)
     readiness       TEXT NOT NULL DEFAULT 'not_ready',   -- ready | not_ready
     readiness_why   TEXT,
+    freshness_status TEXT NOT NULL DEFAULT 'uncertain', -- current | needs_refresh | stale | uncertain | age_insensitive   (G5.1: separate from strength)
+    freshness_why   TEXT,
     origin          TEXT NOT NULL DEFAULT 'finding',     -- finding | finding_suggested | chat | user | model
     origin_note_id  INTEGER,
     extraction_hash TEXT,                                -- revision(s)+contract+text: same inputs → no second spend
@@ -580,6 +582,8 @@ MIGRATIONS = [
     ("projects", "output_pref", "ALTER TABLE projects ADD COLUMN output_pref TEXT"),
     ("projects", "source_prefs", "ALTER TABLE projects ADD COLUMN source_prefs TEXT"),
     ("projects", "questions", "ALTER TABLE projects ADD COLUMN questions TEXT"),
+    ("project_claims", "freshness_status", "ALTER TABLE project_claims ADD COLUMN freshness_status TEXT NOT NULL DEFAULT 'uncertain'"),
+    ("project_claims", "freshness_why", "ALTER TABLE project_claims ADD COLUMN freshness_why TEXT"),
     ("sources", "view_count", "ALTER TABLE sources ADD COLUMN view_count INTEGER"),
     ("sources", "relevance", "ALTER TABLE sources ADD COLUMN relevance INTEGER"),
     ("sources", "relevance_why", "ALTER TABLE sources ADD COLUMN relevance_why TEXT"),

@@ -129,10 +129,14 @@ def test_g5_acceptance_gate_end_to_end(monkeypatch):
     assert novel and "additional corroboration recommended" in novel[0]["description"]
     corro = [t for t in knowledge.list_targets(pid) if t["claim_id"] == out["id"] and t["origin"] == "tension"]
     assert corro and corro[0]["sufficiency"] == "corroborative" and corro[0]["status"] == "open"
-    # (4) the stale Claim is flagged by its domain-sensitive freshness class
+    # (4) the stale Claim is flagged by its CLAIM-relative freshness class — separately from evidence strength (G5.1)
     st = _by_text(pid, STALE_TEXT)
-    assert st["freshness_class"] in ("periodic", "fast_changing") and st["strength"] == "stale", (st["freshness_class"], st["strength"])
+    assert st["freshness_class"] == "rates_pricing" and st["freshness_status"] == "stale", (st["freshness_class"], st["freshness_status"])
+    assert st["strength"] == "weak" and "540 days" in st["freshness_why"]
     assert any(t["kind"] == "STALE" and t["claim_id"] == st["id"] for t in tens)
+    # …while the experiential outlier from the same era would never stale by age, and the governing rule needs re-verification, not a stale verdict
+    assert out["freshness_class"] == "experiential" and out["freshness_status"] == "age_insensitive"
+    assert gov["freshness_class"] == "regulatory" and gov["freshness_status"] in ("current", "needs_refresh")
     # (5)+(6) pursuing the corroboration target: project → library → candidates (reranked, skipped one resurfaced) → external only on request; no network
     n_sources_before = len(db.project_source_ids(pid, ready_only=False))
     r = knowledge.pursue(corro[0]["id"], external=False)
@@ -282,3 +286,55 @@ def test_discover_leads_with_research_state_and_api_surfaces(monkeypatch):
     assert "Research coverage" in d["research"]["summary"]
     block = qa.research_block(pid)
     assert block.startswith("Research state") and "⚠" in block
+
+
+def test_freshness_is_claim_relative_not_source_age(monkeypatch):
+    """G5.1: one 2021 interview carries a stale rate, a still-current transition insight, a timeless anecdote and a rule that
+    needs re-verification. The $0 heuristic errs toward `uncertain`, never a false stale."""
+    pid, _ = _acceptance_fixture(monkeypatch)
+    old = _transcript("old2021", "Buying a practice in 2021: full interview", "Old Pod", "An interview recorded in 2021 about buying a practice.", published="2021-03-01", platform="media")
+    db.add_project_sources(pid, [old])
+    rate = "SBA 7a interest rates were prime plus 2.75 percent, about 6 percent, in 2021 for acquisition loans."
+    trans = "Keep the seller involved with clients through the first busy season; client retention depends on that relationship."
+    anec = "When I bought my first firm in 2019 the seller stayed for eighteen months and every client stayed."
+    rule = "The SBA SOP prohibits using the seller note for the equity injection unless it is on full standby."
+    frame = "Always negotiate the transition terms before the price; the structure matters more than the multiple."
+    vague = "The team was very good and the office was in a nice location."
+    for i, tx in enumerate([rate, trans, anec, rule, frame, vague]):
+        _note(pid, old, tx, tx, importance=4, locator=f"{i}:00", start=i * 60, title=f"Old interview point {i}")
+    claims.ensure(pid)
+    got = {tx: _by_text(pid, tx) for tx in [rate, trans, anec, rule, frame, vague]}
+    assert got[rate]["freshness_class"] == "rates_pricing" and got[rate]["freshness_status"] == "stale"
+    assert got[trans]["freshness_class"] == "experiential" and got[trans]["freshness_status"] == "age_insensitive"
+    assert got[anec]["freshness_class"] == "historical" and got[anec]["freshness_status"] == "age_insensitive"
+    assert got[rule]["freshness_class"] == "regulatory" and got[rule]["freshness_status"] == "needs_refresh" and "current version" in got[rule]["freshness_why"]
+    assert got[frame]["freshness_class"] == "static" and got[frame]["freshness_status"] == "age_insensitive"
+    assert got[vague]["freshness_status"] in ("uncertain", "age_insensitive")            # a lone observation from a 2021 talk is never "stale"
+    assert claims.guess_freshness(vague, "other", "expert") == "uncertain"
+    assert claims.freshness_status("uncertain", 4 * 365)[0] == "uncertain"                 # old + unclassifiable → uncertain, not stale
+    assert all(c["strength"] != "stale" for c in got.values())            # strength never carries a temporal verdict any more
+    stale_t = [t for t in knowledge.list_tensions(pid) if t["kind"] == "STALE"]
+    assert any(t["claim_id"] == got[rate]["id"] for t in stale_t) and not any(t["claim_id"] == got[vague]["id"] for t in stale_t)
+    # legacy 0.29.x classes read as the new ones
+    db.connect().execute("UPDATE project_claims SET freshness_class='slow_changing' WHERE id=?", (got[trans]["id"],)); db.connect().commit()
+    assert claims.get(got[trans]["id"])["freshness_class"] == "tactics"
+
+
+def test_bounded_normalization_evaluation_is_durable_and_measured(monkeypatch):
+    pid, _ = _acceptance_fixture(monkeypatch)
+    claims.ensure(pid)
+    cohort = claims.select_cohort(pid, budget=2)
+    assert len(cohort["claim_ids"]) == 2 and cohort["candidates"] == 3
+    assert "strong/developing" in cohort["by_reason"] and "tension" in cohort["by_reason"]
+    before = _calls("claims.extract")
+    rep = jobs.run_job({"id": "j", "kind": "extract_claims", "payload": {"project_id": pid, "evaluation": True, "budget": 2}})
+    assert rep["cohort"]["size"] == 2 and rep["calls"] == 1 and _calls("claims.extract") == before + 1
+    assert rep["normalized"] >= 1 and rep["hedges_kept"] == rep["hedged_before"] and rep["over_generalized"] == []
+    full = claims.evaluation_report(pid)
+    assert full and len(full["rows"]) == 2 and all(r["after"] for r in full["rows"])
+    # the rest of the corpus stayed unnormalized: the evaluation never becomes corpus-wide normalization
+    assert len(claims.unnormalized(pid)) == 1
+    # a rerun picks up only what is still unnormalized; with nothing left it spends nothing
+    assert claims.run_evaluation(pid, budget=2)["cohort"]["size"] == 1
+    assert claims.run_evaluation(pid, budget=2)["calls"] == 0
+

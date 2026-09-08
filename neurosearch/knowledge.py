@@ -301,8 +301,11 @@ def detect(project_id: str) -> dict[str, int]:
         con = [e for e in ev if e["relation"] == "CONTRADICTS"]
         indep = {e["source_id"] for e in sup if e.get("independent")}
         imp = imp_of.get(c.get("origin_note_id") or -1, 3)
-        if c["strength"] == "stale" and (imp >= STALE_MIN_IMPORTANCE or c["status"] == "accepted"):
-            selected.add(_upsert_tension(project_id, "STALE", c["id"], f"Stale: {c['text'][:140]} — {c.get('strength_why')}", {"freshness_class": c["freshness_class"]}, "high" if c["freshness_class"] == "fast_changing" else "medium"))
+        fs = c.get("freshness_status") or "uncertain"
+        if fs in ("stale", "needs_refresh") and (imp >= STALE_MIN_IMPORTANCE or c["status"] == "accepted" or (fs == "stale" and c["strength"] in ("strong", "developing"))):
+            label = "Stale" if fs == "stale" else "Needs refresh"
+            selected.add(_upsert_tension(project_id, "STALE", c["id"], f"{label}: {c['text'][:140]} — {c.get('freshness_why')}",
+                                         {"freshness_class": c["freshness_class"], "freshness_status": fs}, "high" if fs == "stale" else "medium"))
             counts["STALE"] += 1
         if con:
             other = next((e for e in con), None)
@@ -359,7 +362,7 @@ def detect(project_id: str) -> dict[str, int]:
         if not c or c["status"] in ("rejected", "superseded"):
             set_tension_status(tsn["id"], "resolved")
             continue
-        if tsn["kind"] == "STALE" and c["strength"] != "stale":
+        if tsn["kind"] == "STALE" and (c.get("freshness_status") or "") not in ("stale", "needs_refresh"):
             set_tension_status(tsn["id"], "resolved")
         if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS") and c["strength"] == "strong":
             set_tension_status(tsn["id"], "resolved")
@@ -399,7 +402,7 @@ def refresh(project_id: str) -> dict[str, Any]:
             missing = sorted({m for x in tsns if x["kind"] == "MISSING_PERSPECTIVE" for m in (x.get("evidence") or {}).get("missing", [])})
             if not cs:
                 state, why = "missing", ("an evidence target exists but no Claim addresses it yet" if tgs else "nothing established")
-            elif strong and not tgs and not any(x["kind"] in ("CONTRADICTION", "STALE") for x in tsns):
+            elif strong and not tgs and not any(x["kind"] in ("CONTRADICTION", "STALE") for x in tsns) and not any(c.get("freshness_status") == "stale" for c in strong):
                 lead = strong[0]
                 state, why = "strong", f"{len(strong)} strong Claim(s) — e.g. {lead['strength_why']}"
             elif strong:
@@ -426,7 +429,7 @@ def refresh(project_id: str) -> dict[str, Any]:
 STATE_MAX_CLAIMS = 300
 STATE_MAX_EVIDENCE = 12
 STATE_MAX_LIST = 100
-_STRENGTH_ORDER = {"strong": 0, "developing": 1, "stale": 2, "weak": 3, "unsupported": 4}
+_STRENGTH_ORDER = {"strong": 0, "developing": 1, "weak": 2, "unsupported": 3}
 
 
 def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]:
@@ -457,7 +460,11 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
     tension_counts: dict[str, int] = {}
     for t in tensions_all:
         tension_counts[t["kind"]] = tension_counts.get(t["kind"], 0) + 1
-    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
+    freshness_counts: dict[str, int] = {}
+    for c in all_claims:
+        k = c.get("freshness_status") or "uncertain"
+        freshness_counts[k] = freshness_counts.get(k, 0) + 1
+    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "freshness_counts": freshness_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
             "claim_stats": claims.stats(project_id)}
 
 

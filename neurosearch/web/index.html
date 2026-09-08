@@ -164,7 +164,7 @@
   .note.gap{border-color:var(--banner-line);background:var(--banner)}
   .kn{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--panel)}
   .kn .st{font-size:11px;font-weight:600;letter-spacing:.03em;padding:2px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
-  .st.strong{background:#1f8a4c22;color:#1f8a4c}.st.developing{background:#c7811a22;color:#c7811a}.st.weak{background:#c0392b22;color:#c0392b}.st.missing,.st.unsupported{background:var(--chip);color:var(--muted)}.st.stale{background:#7d3c9822;color:#7d3c98}
+  .st.strong{background:#1f8a4c22;color:#1f8a4c}.st.developing{background:#c7811a22;color:#c7811a}.st.weak{background:#c0392b22;color:#c0392b}.st.missing,.st.unsupported{background:var(--chip);color:var(--muted)}.st.stale{background:#7d3c9822;color:#7d3c98}.st.needs_refresh{background:#7d3c9822;color:#7d3c98}
   .kn .why{font-size:12.5px;color:var(--muted)}
   .kn.tension{border-color:var(--banner-line);background:var(--banner)}
   /* ---- plan ---- */
@@ -352,7 +352,8 @@
     <!-- research (G5): Knowledge Map · Claims · Evidence Targets · Tensions -->
     <div class="view" id="view-research">
       <div class="muted">What the project currently <b>believes</b>, how well each belief is evidenced, and what a competent researcher would establish next. Everything here is proposed research state built from your findings at no cost; <b>Accept</b> makes a Claim yours. Strong is not decision-ready: whether a rule applies to <i>your</i> situation is a separate judgement.</div>
-      <div class="row" style="margin-top:8px"><button class="small" onclick="refreshResearch(false)">Refresh ($0)</button><button class="small ghost" onclick="refreshResearch(true)" title="One bounded model pass: normalises candidate Claims (qualifiers, type, topic, freshness) and proposes evidence targets you have not named">Normalise Claims (model)</button><span class="muted" id="resMsg"></span></div>
+      <div class="row" style="margin-top:8px"><button class="small" onclick="refreshResearch(false)">Refresh ($0)</button><button class="small ghost" onclick="refreshResearch(true)" title="One bounded model pass: normalises candidate Claims (qualifiers, type, topic, freshness) and proposes evidence targets you have not named">Normalise Claims (model)</button><button class="small ghost" onclick="evaluateNormalisation()" title="Durable, bounded: ~150 decision-relevant Claims + a stratified sample are normalised and measured (merges, qualifiers kept, topics, tensions, cost) — normalisation has to earn wider use">Evaluate normalisation (≈150)</button><span class="muted" id="resMsg"></span></div>
+      <div id="resEval" class="muted" style="margin-top:6px"></div>
       <h3 style="margin-top:14px">Knowledge Map</h3><div id="resMap"></div>
       <h3>Research tensions</h3><div id="resTensions"></div>
       <h3>Evidence targets <span class="muted" style="font-weight:normal;font-size:12px">— what “enough” means, and where to look first (project → library → seen → web)</span></h3>
@@ -494,7 +495,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.29.4';
+const UI_VERSION = '0.30.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1165,15 +1166,27 @@ function renderResearch(st) {
   const cs = (st.claims || []).filter(c => c.status !== 'superseded');
   $('#resClaims').innerHTML = (st.claims_total > cs.length ? `<div class="muted">Showing ${cs.length} of ${st.claims_total} Claims (accepted and strongest first).</div>` : '') + (cs.length ? cs.map(c => {
     const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc((e.title || 'source').slice(0, 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
-    return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}">${stTag(c.strength)}<div><div>${esc(c.text)}</div><div class="why">${esc(c.claim_type.replace('_', ' '))} · ${esc(c.freshness_class.replace('_', '-'))} · ${c.status}${c.normalized ? '' : ' · not yet normalised'} — ${esc(c.strength_why || '')}<br>Readiness: <b>${c.readiness === 'ready' ? 'ready' : 'not ready'}</b> — ${esc(c.readiness_why || '')}</div><div>${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`; }).join('')
+    return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}">${stTag(c.strength)}<div><div>${esc(c.text)}</div><div class="why">${esc(c.claim_type.replace('_', ' '))} · ${esc(c.freshness_class.replace('_', ' '))}${c.freshness_status && c.freshness_status !== 'current' && c.freshness_status !== 'age_insensitive' ? ` · <b title="${esc(c.freshness_why || '')}">${esc(c.freshness_status.replace('_', ' '))}</b>` : ''} · ${c.status}${c.normalized ? '' : ' · not yet normalised'} — ${esc(c.strength_why || '')}<br>Readiness: <b>${c.readiness === 'ready' ? 'ready' : 'not ready'}</b> — ${esc(c.readiness_why || '')}</div><div>${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`; }).join('')
     : '');
 }
-async function loadResearch() { try { renderResearch(await api(`/api/projects/${state.project.id}/research`)); } catch (e) { $('#resMsg').textContent = 'could not load: ' + e.message; } }
+async function loadResearch() { try { renderResearch(await api(`/api/projects/${state.project.id}/research`)); loadEvaluation(); } catch (e) { $('#resMsg').textContent = 'could not load: ' + e.message; } }
 async function refreshResearch(extract) {
   $('#resMsg').textContent = extract ? 'normalising…' : 'refreshing…';
   try { const r = await post(`/api/projects/${state.project.id}/research/refresh`, { extract }); renderResearch(r.state);
     const x = r.extracted || {}; $('#resMsg').textContent = `harvested ${r.harvested}` + (extract ? (x.calls != null ? ` · ${x.normalized} normalised, ${x.targets} targets proposed (${x.calls} call${x.calls === 1 ? '' : 's'})` : x.job ? ' · queued as a job' : x.error ? ' · ' + x.error : '') : '');
   } catch (e) { $('#resMsg').textContent = e.message; }
+}
+async function evaluateNormalisation() {
+  if (!confirm('Run one bounded normalisation evaluation (about 150 Claims, ~8 model calls)?')) return;
+  $('#resMsg').textContent = 'queued…';
+  try { const r = await post(`/api/projects/${state.project.id}/research/evaluate`, { budget: 150 }); $('#resMsg').textContent = 'evaluation running as a job (' + Object.entries(r.cohort_preview || {}).map(([k, v]) => `${v} ${k}`).join(', ') + ')'; loadJobs(); setTimeout(loadEvaluation, 15000); }
+  catch (e) { $('#resMsg').textContent = e.message; }
+}
+async function loadEvaluation() {
+  const r = await api(`/api/projects/${state.project.id}/research/evaluation`); const el = $('#resEval'); if (!el) return;
+  if (r.none) { el.textContent = ''; return; }
+  const t = r.tensions || {};
+  el.innerHTML = `<b>Last normalisation evaluation</b> · ${r.cohort.size} Claims (${Object.entries(r.cohort.by_reason || {}).map(([k, v]) => `${v} ${k}`).join(', ')}) · ${r.calls} call${r.calls === 1 ? '' : 's'} · $${(r.cost_usd || 0).toFixed(3)} · merged ${r.merged} · qualifiers present ${r.qualifiers_present}/${r.cohort.size} · hedges kept ${r.hedges_kept}/${r.hedged_before} · over-generalised ${(r.over_generalized || []).length} · topics ${r.topics.before} → ${r.topics.after} · weak-consensus ${t.before?.WEAK_CONSENSUS ?? '?'} → ${t.after?.WEAK_CONSENSUS ?? '?'} · targets proposed ${r.targets_proposed}`;
 }
 async function claimStatus(id, status, application) { await post(`/api/claims/${id}/status`, { status, application: application || null }); loadResearch(); }
 async function tensionStatus(id, status) { await post(`/api/tensions/${id}/status`, { status }); loadResearch(); }
