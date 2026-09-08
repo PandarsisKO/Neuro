@@ -81,6 +81,11 @@ def _tokens(text: str) -> frozenset[str]:
     return _tokens_cached((text or "")[:2000])
 
 
+def jaccard(a: str, b: str) -> float:
+    ta, tb = _tokens(a), _tokens(b)
+    return len(ta & tb) / max(1, len(ta | tb))
+
+
 def overlap(a: str, b: str) -> float:
     """Share of the shorter passage's distinctive tokens present in the other: 1.0 = one repeats the other."""
     ta, tb = _tokens(a), _tokens(b)
@@ -349,7 +354,7 @@ class TwinIndex:
         for t in toks:
             self.post.setdefault(t, []).append(i)
 
-    def twin(self, text: str, threshold: float = SAME_CLAIM_OVERLAP, exclude_id: str | None = None) -> dict[str, Any] | None:
+    def twin(self, text: str, threshold: float = SAME_CLAIM_OVERLAP, exclude_id: str | None = None, symmetric: bool = False) -> dict[str, Any] | None:
         toks = _tokens(text)
         if not toks:
             return None
@@ -362,7 +367,7 @@ class TwinIndex:
             cid, other, c = self.items[i]
             if cid == exclude_id:
                 continue
-            score = shared / max(1, min(len(toks), len(other)))
+            score = shared / max(1, len(toks | other)) if symmetric else shared / max(1, min(len(toks), len(other)))
             if score >= threshold and score > best_score:
                 best, best_score = c, score
         return best
@@ -605,10 +610,13 @@ When a claim states a REQUIREMENT, keep who imposes it in qualifiers.imposed_by 
 licensing rule, a rule for performing specific services (e.g. attest/compilation), lender policy, or a state-specific rule — and never collapse
 "the seller wants a CPA buyer" into "only CPAs can buy CPA firms". Where the evidence leaves that ambiguous, say so in conditions and propose an
 evidence target that decomposes the underlying question by those requirement sources.
-Then, from the project brief and the claims, propose evidence targets the user has not named: what a competent researcher would need to
-establish before deciding, each with a sufficiency kind (governing = one current directly applicable primary source can close it;
-corroborative = several independent sources needed), preferred evidence classes in order, and a one-sentence closure criterion.
-You are proposing research state, not deciding it."""
+Topics are Knowledge Map nodes, not labels: use one of the EXISTING TOPICS you are given whenever the claim belongs there; introduce a new
+topic only when none fits, and keep it broad (2–3 words a researcher would use as a chapter heading) — never one topic per claim.
+Then, from the project brief and the claims, propose AT MOST three evidence targets the user has not named and that are not already
+covered by the EXISTING TARGETS you are given: what a competent researcher would need to establish before deciding, each with a sufficiency
+kind (governing = one current directly applicable primary source can close it; corroborative = several independent sources needed),
+preferred evidence classes in order, and a one-sentence closure criterion. Return an empty targets list when the existing targets already
+cover the ground. You are proposing research state, not deciding it."""
 
 
 def _candidate_payload(c: dict[str, Any]) -> dict[str, Any]:
@@ -641,7 +649,12 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
         ih = extraction_hash(project, group)
         if all(c.get("extraction_hash") == ih for c in group):
             continue
+        from . import knowledge as _kn
+        existing_topics = [r["topic"] for r in db.connect().execute(
+            "SELECT topic, COUNT(*) n FROM project_claims WHERE project_id=? AND status NOT IN ('rejected','superseded') GROUP BY topic ORDER BY n DESC LIMIT 40", (project_id,))]
+        existing_targets = [t["question"][:160] for t in _kn.list_targets(project_id, status="open")[:40]]
         user = json.dumps({"brief": project.get("brief"), "goal": project.get("goal"), "questions": project.get("questions"),
+                           "existing_topics": existing_topics, "existing_targets": existing_targets,
                            "candidates": [_candidate_payload(c) for c in group]}, ensure_ascii=False)
         parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
         calls += 1
@@ -668,7 +681,7 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                               fresh, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
                 normalized += 1
         from . import knowledge
-        for tgt in parsed.get("targets", [])[:8]:
+        for tgt in parsed.get("targets", [])[:3]:
             if knowledge.add_target(project_id, tgt.get("question") or "", topic=tgt.get("topic"), sufficiency=tgt.get("sufficiency") or "corroborative",
                                     preferred_classes=tgt.get("preferred_classes") or [], closure=tgt.get("closure"), origin="model", provenance=prov):
                 targets += 1

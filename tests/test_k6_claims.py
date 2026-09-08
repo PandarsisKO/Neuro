@@ -361,3 +361,19 @@ def test_normalization_evaluation_resumes_the_same_cohort_after_a_failure(monkey
     full = claims.evaluation_report(pid)
     assert len(full["rows"]) == 3 and all(r["before"] and r["after"] for r in full["rows"])
 
+
+def test_targets_dedupe_by_meaning_and_proposals_are_capped(monkeypatch):
+    pid, _ = _acceptance_fixture(monkeypatch)
+    a = knowledge.add_target(pid, "What are the current SBA rules on seller notes and standby?", sufficiency="governing", origin="model")
+    b = knowledge.add_target(pid, "What are the SBA rules on seller notes and standby currently?", sufficiency="governing", origin="model")
+    assert b["id"] == a["id"]                                                # same gap phrased twice → one target
+    mine = knowledge.add_target(pid, "SBA seller note standby rules — what applies to us?", sufficiency="governing", origin="user")
+    knowledge.refresh(pid)
+    assert knowledge.get_target(mine["id"])["status"] != "dropped"           # user targets are never folded away
+    # normalization proposes at most three targets per call and none that duplicate existing ones
+    claims.ensure(pid)
+    before = len(knowledge.list_targets(pid, status="open"))
+    claims.extract(pid)
+    after = len(knowledge.list_targets(pid, status="open"))
+    assert after - before <= 3
+

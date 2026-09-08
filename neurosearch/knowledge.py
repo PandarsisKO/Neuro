@@ -27,6 +27,7 @@ NEEDS = {"practice": ("experiential", "expert"), "experiential": ("experiential"
          "expert_interpretation": ("expert", "authoritative"), "governing": ("authoritative",), "causal": ("expert", "experiential"),
          "novel_tactic": ("experiential", "expert")}
 CANDIDATE_RERANK_LIMIT = 12
+TARGET_DUP_JACCARD = 0.5     # two target questions this similar are one target
 SKIPPED_STATES = ("skipped_low_relevance", "skipped_limit", "skipped_cost")
 
 
@@ -73,6 +74,10 @@ def add_target(project_id: str, question: str, *, topic: str | None = None, clai
     dup = conn.execute("SELECT id FROM project_evidence_targets WHERE project_id=? AND lower(question)=lower(?)", (project_id, question)).fetchone()
     if dup:
         return get_target(dup["id"])
+    # near-duplicate questions (the same gap phrased twice by different passes) fold into the existing target
+    for row in conn.execute("SELECT id, question FROM project_evidence_targets WHERE project_id=? AND status IN ('open','satisfied')", (project_id,)).fetchall():
+        if claims.jaccard(question, row["question"]) >= TARGET_DUP_JACCARD:
+            return get_target(row["id"])
     d_closure, d_rule = default_closure(sufficiency)
     t = time.time()
     tid = db.new_id()
@@ -267,7 +272,7 @@ def set_tension_status(tension_id: str, status: str) -> None:
         c.execute("UPDATE research_tensions SET status=?, updated_at=? WHERE id=?", (status, time.time(), tension_id))
 
 
-ECHO_OVERLAP = 0.35
+ECHO_OVERLAP = 0.3       # Jaccard
 
 
 NOVEL_MAX = 12          # the outliers worth a tension + corroboration target per pass: highest importance first, not every lone finding
@@ -277,9 +282,10 @@ STALE_MAX = 60          # per pass, stale before needs-refresh, highest importan
 
 
 def _echoed(c: dict[str, Any], index: "claims.TwinIndex") -> bool:
-    """Novelty is project-relative: an idea another source in the project also states (even loosely) is not an outlier."""
+    """Novelty is project-relative: an idea another source in the project also states (even loosely) is not an outlier.
+    Symmetric (Jaccard) so a long normalized text cannot 'echo' every short claim that shares a few words."""
     mine = {e["source_id"] for e in c["evidence"]}
-    o = index.twin(c["text"], threshold=ECHO_OVERLAP, exclude_id=c["id"])
+    o = index.twin(c["text"], threshold=ECHO_OVERLAP, exclude_id=c["id"], symmetric=True)
     return bool(o) and bool({e["source_id"] for e in o.get("evidence", [])} - mine)
 
 
@@ -373,10 +379,28 @@ def detect(project_id: str) -> dict[str, int]:
 
 # ---------------------------------------------------------------- the map
 
+def dedupe_targets(project_id: str) -> int:
+    """Open targets whose questions are near-duplicates (Jaccard ≥ TARGET_DUP_JACCARD) fold into the earliest one; the
+    later ones are `dropped`. User-made targets are never dropped. Cheap: open targets only."""
+    rows = [t for t in list_targets(project_id, status="open")]
+    dropped = 0
+    keep: list[dict[str, Any]] = []
+    with db.tx() as conn:
+        for t in rows:                                             # list_targets is created_at ascending
+            dup = next((k for k in keep if claims.jaccard(t["question"], k["question"]) >= TARGET_DUP_JACCARD), None)
+            if dup and t.get("origin") != "user":
+                conn.execute("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE id=?", (time.time(), t["id"]))
+                dropped += 1
+            else:
+                keep.append(t)
+    return dropped
+
+
 def refresh(project_id: str) -> dict[str, Any]:
     """Recompute nodes from Claims + targets + tensions. `why` is the explanation; counts are context, never the verdict."""
     claims.assess_project(project_id)
     detect(project_id)
+    dedupe_targets(project_id)
     for tg in list_targets(project_id):
         assess_target(tg["id"])
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]

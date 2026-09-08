@@ -1260,6 +1260,18 @@ def api_target_add(project_id: str, body: TargetIn) -> dict[str, Any]:
     return tg
 
 
+@app.get("/api/projects/{project_id}/targets", dependencies=[Depends(require_auth)])
+def api_targets_list(project_id: str, status: str | None = None, origin: str | None = None, q: str | None = None, limit: int = 100) -> dict[str, Any]:
+    from . import knowledge
+    rows = knowledge.list_targets(project_id, status=status)
+    if origin:
+        rows = [t for t in rows if t.get("origin") == origin]
+    if q:
+        ql = q.lower()
+        rows = [t for t in rows if ql in (t.get("question") or "").lower()]
+    return {"total": len(rows), "targets": rows[:limit]}
+
+
 class PursueIn(BaseModel):
     external: bool = False       # step 4 (a web Discover job) only when asked
 
