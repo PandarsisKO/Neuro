@@ -78,6 +78,10 @@ def _base() -> dict[str, InferenceContract]:
                           notes="RAG chat with project tools; web_search when the user asks"),
         InferenceContract("answer.repair", "anthropic", m, max_output_tokens=2000, max_attempts=2, backoff=(1.0,), interactive=True,
                           notes="one repair round after a citation validation failure"),
+        # C0 Portable Answers (0.35.1): a shorter version of a FINISHED answer — never a new research pass; only the answer's own
+        # citation markers may appear; evidence warnings are re-attached by the caller, never rewritten by the model
+        InferenceContract("answer.share", "anthropic", m, max_output_tokens=1200, max_attempts=2, backoff=(1.0,), interactive=True,
+                          notes="short/medium rewrite of a finished answer for sharing; markers ⊆ the original's"),
         # migrated E2.2 (0.18.0-e2.3): 4.6-vs-5 comparison on the Golden findings workload passed — thinking explicitly off,
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",

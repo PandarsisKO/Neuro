@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.35.0';
+const UI_VERSION = '0.35.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -733,7 +733,7 @@ function addMsg(role, text, cites = [], extra = {}) {
     const warns = [];
     if (val.warning) warns.push(val.warning);
     for (const a of extra.actions || []) if (a.type === 'gap_noted') warns.push('Research gap recorded: this answer identified something the sources do not yet cover.');
-    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied" style="font-size:12px"></span></div>`;
+    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied" style="font-size:12px"></span></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);
   }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
@@ -766,6 +766,32 @@ function copyMenu(btn) {
     .map(([k, l]) => `<button onclick="copyMsg(this,'${k}')">${l}</button>`).join('');
   bar.appendChild(m);
   setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
+}
+// C0 Share ▾: a shorter version of the finished answer (one model call, never new research), copied WITH its sources and
+// evidence warnings exactly like Copy ▾ — a warning must survive every variant.
+function shareMenu(btn) {
+  const bar = btn.parentElement; const open = bar.querySelector('.menu'); if (open) { open.remove(); return; }
+  const m = document.createElement('div'); m.className = 'menu';
+  m.innerHTML = [['short', 'Short version + sources (2–3 sentences)'], ['medium', 'Medium version + sources (one paragraph)'], ['full', 'Full answer + sources']]
+    .map(([k, l]) => `<button onclick="shareMsg(this,'${k}')">${l}</button>`).join('');
+  bar.appendChild(m);
+  setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
+}
+const SHARE_CACHE = {};
+async function shareMsg(btn, length) {
+  const d = btn.closest('.msg'); const menu = d.querySelector('.menu'); if (menu) menu.remove();
+  const s = d.querySelector('.copied');
+  if (length === 'full') return copyMsg(btn, 'sources');
+  const key = (d.dataset.text || '').slice(0, 200) + '|' + length;
+  try {
+    if (s) s.textContent = 'writing the ' + length + ' version…';
+    let v = SHARE_CACHE[key];
+    if (!v) { v = await post('/api/share', { text: d.dataset.text || '', citations: JSON.parse(d.dataset.cites || '[]'), length, project_id: state.project && state.project.id }); SHARE_CACHE[key] = v; }
+    const orig = d.dataset.text; d.dataset.text = v.text;
+    const out = exportMsg(d, 'sources'); d.dataset.text = orig;
+    try { await navigator.clipboard.writeText(out); } catch (e) { const t = document.createElement('textarea'); t.value = out; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+    if (s) { s.textContent = `Copied ${length} version with ${(v.markers || []).length} source${(v.markers || []).length === 1 ? '' : 's'}` + (v.warning ? ' · ' + v.warning : ''); setTimeout(() => s.textContent = '', 4000); }
+  } catch (e) { if (s) s.textContent = 'could not write the version: ' + e.message; }
 }
 async function copyMsg(btn, mode) {
   const d = btn.closest('.msg'); const out = exportMsg(d, mode); const n = JSON.parse(d.dataset.cites || '[]').length;

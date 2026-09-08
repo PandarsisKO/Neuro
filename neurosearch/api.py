@@ -407,6 +407,27 @@ def api_capture_cancel(job_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+class ShareIn(BaseModel):
+    text: str
+    citations: list[dict[str, Any]] = []
+    length: str = "short"
+    project_id: str | None = None
+
+
+@app.post("/api/share", dependencies=[Depends(require_auth)])
+def api_share(body: ShareIn) -> dict[str, Any]:
+    """C0 Portable Answers: a shorter version of a finished answer for sharing (one model call; never a new research pass).
+    The client re-attaches the sources and evidence warnings exactly as Copy ▾ does."""
+    from . import qa, usage
+    if not body.text.strip():
+        raise HTTPException(400, "nothing to share")
+    usage.guard()
+    try:
+        return qa.share_variant(body.text, body.citations, body.length, project_id=body.project_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 class HeartbeatIn(BaseModel):
     version: str | None = None
 

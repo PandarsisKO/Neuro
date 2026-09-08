@@ -565,7 +565,14 @@ class _Msgs:
             text = _answer(system, messages, task) + " FINAL: the complete answer after the tool call."
             return _Blk(stop_reason="end_turn", model="fake-claude", content=[_Blk(type="text", text=text, citations=None)],
                         usage=_Blk(input_tokens=_tokens(system + user), output_tokens=_tokens(text), cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
-        if task == "discover.verify":
+        if task == "answer.share":
+            body = user.split("ORIGINAL ANSWER:", 1)[-1].split("SOURCES (the only markers", 1)[0].strip()
+            sents = re.split(r"(?<=[.!?])\s+", body)
+            n = 2 if "2–3 sentences" in user else 5
+            text = " ".join(sents[:n]).strip()
+            if os.environ.get("NEUROSEARCH_FAKE_SHARE_STRAY") == "1":
+                text += " Also see [97]."
+        elif task == "discover.verify":
             text = json.dumps(DISCOVER_VERIFY)
         elif task == "discover.quick":
             text = json.dumps(DISCOVER_QUICK)

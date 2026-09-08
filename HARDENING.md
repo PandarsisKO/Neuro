@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.35.1 — Share ▾ (no frozen numbers changed).** New task `answer.share` (interactive); the chat prompt is untouched so Tier 1 stays 34 / 196,951.
+
 **0.35.0 — G6P2 (no frozen numbers changed).** Role weighting applies only to platform `book` chunks; the golden fixture has none, so the retrieval baseline is unchanged. Book deep links moved from `url#href#fragment` to `#book/<sid>/<ordinal>` (in-app).
 
 **0.34.2 — removal is a durable exclusion (`project_sources.excluded`, additive); force-clear of failed sources cancels resurrecting jobs. No frozen numbers changed.

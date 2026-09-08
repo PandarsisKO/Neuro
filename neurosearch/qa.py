@@ -825,3 +825,34 @@ def render_markdown(result: dict[str, Any]) -> str:
         elif a["type"] == "candidates_searched":
             out.append(f"\nChecked the Candidate Index for “{a['query']}”: {a['found']} seen-but-not-acquired.")
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------- C0 Portable Answers — Share ▾ variants (0.35.1)
+
+SHARE_SYSTEM = ("You rewrite a FINISHED research answer to a requested length for sharing. Rules: keep every statement grounded in the "
+                "original — never add facts, numbers or advice that are not in it; keep the original's citation markers like [3] attached to "
+                "the statements they support and use ONLY markers that appear in the original; drop sections rather than invent bridges; "
+                "keep hedges (\"uncertain\", \"one source\", \"corrected in thread\") wherever the original hedges; write plain prose, no headings, no preamble. "
+                "Output the rewritten answer only.")
+SHARE_LENGTHS = {"short": "2–3 sentences: the conclusion and the single most important qualifier.",
+                 "medium": "one paragraph of 4–6 sentences: the conclusion, the key supporting points, and the main caveat."}
+
+
+def share_variant(text: str, citations: list[dict[str, Any]], length: str, *, project_id: str | None = None) -> dict[str, Any]:
+    """A shorter version of a finished answer. The model sees the answer and its numbered sources; the result is checked so
+    that no citation marker outside the original survives (an unknown marker is removed, and the check is reported)."""
+    from . import providers, usage
+    if length not in SHARE_LENGTHS:
+        raise ValueError("length must be short or medium")
+    have = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", text or "")})
+    srcs = "\n".join(f"[{c.get('n')}] {c.get('title') or 'source'}" + (f" — {c.get('timestamp')}" if c.get("timestamp") else "") for c in citations if c.get("n") is not None)
+    user = f"Requested length: {SHARE_LENGTHS[length]}\n\nORIGINAL ANSWER:\n{text}\n\nSOURCES (the only markers you may use):\n{srcs or '(none)'}"
+    resp = providers.invoke("answer.share", system=SHARE_SYSTEM, messages=[{"role": "user", "content": user}])
+    usage.record_anthropic(resp, "answer", project_id=project_id)
+    out = "".join(getattr(b, "text", "") for b in getattr(resp, "content", []) if getattr(b, "type", "") == "text").strip()
+    used = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", out)})
+    stray = [n for n in used if n not in have]
+    if stray:
+        out = re.sub(r" ?\[(\d{1,2})\]", lambda m: "" if int(m.group(1)) in stray else m.group(0), out)
+    return {"text": out, "length": length, "markers": [n for n in used if n in have], "removed_markers": stray,
+            "warning": "the rewrite cited a source the original did not; those markers were removed" if stray else None}
