@@ -417,7 +417,8 @@ CREATE TABLE IF NOT EXISTS claim_evidence (
     derivative_of   TEXT,
     stale           INTEGER NOT NULL DEFAULT 0,          -- 1 once the source revision moved past source_revision
     task            TEXT, model TEXT,
-    created_at      REAL NOT NULL
+    created_at      REAL NOT NULL,
+    lineage_id      TEXT                                 -- G6: the Work this evidence's source belongs to (one Work = one lineage)
 );
 CREATE INDEX IF NOT EXISTS ix_claim_evidence_claim ON claim_evidence(claim_id);
 CREATE INDEX IF NOT EXISTS ix_claim_evidence_source ON claim_evidence(source_id);
@@ -475,6 +476,70 @@ CREATE TABLE IF NOT EXISTS research_tensions (
 );
 CREATE INDEX IF NOT EXISTS ix_tensions_project ON research_tensions(project_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_tensions_identity ON research_tensions(project_id, kind, claim_id, COALESCE(related_claim_id, ''));
+
+-- G6 (0.31.0): Canonical Works. GLOBAL identity (work family) → GLOBAL version/edition (first-class when it changes what is
+-- authoritative) → GLOBAL manifestation (an obtainable representation, possessed or not) → PROJECT relevance (project_works —
+-- never on the Work row). Independence of Claim evidence is computed by lineage (work_id), not source count.
+CREATE TABLE IF NOT EXISTS works (
+    id            TEXT PRIMARY KEY,
+    kind          TEXT NOT NULL DEFAULT 'other',    -- book | paper | statute | regulation | sop | publication | standard | report | course | series | dataset | other
+    title         TEXT NOT NULL,
+    title_norm    TEXT NOT NULL,
+    creators      TEXT,                             -- JSON list
+    publisher     TEXT,
+    identifiers   TEXT,                             -- JSON list of {scheme, value}
+    resolution    TEXT NOT NULL DEFAULT 'stub',     -- stub (named by a citation) | resolved (identity confirmed by an identifier or exact metadata)
+    created_at    REAL NOT NULL,
+    updated_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_works_title ON works(title_norm);
+CREATE TABLE IF NOT EXISTS work_identifiers (
+    scheme   TEXT NOT NULL,                         -- isbn | doi | issn | docnum | sop | citation | pub | url
+    value    TEXT NOT NULL,                         -- normalized
+    work_id  TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    version_id TEXT,                                -- when the identifier names a specific version (SOP 50 10 8, ISBN of an edition)
+    PRIMARY KEY (scheme, value)
+);
+CREATE TABLE IF NOT EXISTS work_versions (
+    id             TEXT PRIMARY KEY,
+    work_id        TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    label          TEXT NOT NULL,                   -- "SOP 50 10 8", "2nd edition", "tax year 2026"
+    edition        TEXT,
+    year           TEXT,
+    effective_date TEXT,
+    supersedes_id  TEXT,                            -- the version this one replaces (revision_of)
+    change_kind    TEXT NOT NULL DEFAULT 'unknown', -- relative to supersedes_id: unknown | supersedes | material | rehost | formatting
+    change_note    TEXT,                            -- which provisions changed (when known)
+    status         TEXT NOT NULL DEFAULT 'unknown', -- current | superseded | unknown
+    created_at     REAL NOT NULL,
+    updated_at     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_work_versions_work ON work_versions(work_id);
+CREATE TABLE IF NOT EXISTS work_manifestations (
+    id            TEXT PRIMARY KEY,
+    work_id       TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    version_id    TEXT REFERENCES work_versions(id) ON DELETE SET NULL,
+    source_id     TEXT REFERENCES sources(id) ON DELETE CASCADE,          -- possessed representation (global source)
+    candidate_id  TEXT REFERENCES candidates(id) ON DELETE SET NULL,      -- seen, not acquired
+    relation      TEXT NOT NULL DEFAULT 'manifestation_of',               -- manifestation_of | reprint_of | translation_of | revision_of | excerpt_of | summary_of | quotes | derivative_of | cites | implements | interprets | possible_manifestation_of
+    form          TEXT,                                                   -- official | mirror | html | excerpt | ocr | scan | reprint | translation | summary | derivative
+    access        TEXT NOT NULL DEFAULT 'unknown',                        -- owned | candidate | unavailable | unknown
+    url           TEXT,
+    confidence    TEXT NOT NULL DEFAULT 'identifier',                     -- identifier | exact_metadata | publisher_metadata | model | possible
+    basis         TEXT,                                                   -- JSON: how the link was established
+    created_at    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_work_manifestations_work ON work_manifestations(work_id);
+CREATE INDEX IF NOT EXISTS ix_work_manifestations_source ON work_manifestations(source_id);
+CREATE TABLE IF NOT EXISTS project_works (                               -- project-relative relevance/use only
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    work_id     TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    relevance   TEXT NOT NULL DEFAULT 'relevant',   -- attached | relevant | targeted | dismissed
+    reason      TEXT,
+    target_id   TEXT,
+    updated_at  REAL NOT NULL,
+    PRIMARY KEY (project_id, work_id)
+);
 
 CREATE TABLE IF NOT EXISTS circuit_breakers (
     operation       TEXT PRIMARY KEY,         -- provider:operation, e.g. anthropic:messages (never per model)
@@ -584,6 +649,7 @@ MIGRATIONS = [
     ("projects", "questions", "ALTER TABLE projects ADD COLUMN questions TEXT"),
     ("project_claims", "freshness_status", "ALTER TABLE project_claims ADD COLUMN freshness_status TEXT NOT NULL DEFAULT 'uncertain'"),
     ("project_claims", "freshness_why", "ALTER TABLE project_claims ADD COLUMN freshness_why TEXT"),
+    ("claim_evidence", "lineage_id", "ALTER TABLE claim_evidence ADD COLUMN lineage_id TEXT"),
     ("sources", "view_count", "ALTER TABLE sources ADD COLUMN view_count INTEGER"),
     ("sources", "relevance", "ALTER TABLE sources ADD COLUMN relevance INTEGER"),
     ("sources", "relevance_why", "ALTER TABLE sources ADD COLUMN relevance_why TEXT"),
@@ -1979,7 +2045,12 @@ def _library_health(conn: sqlite3.Connection) -> dict[str, Any]:
         profiles = library.stats()
     except Exception:  # noqa: BLE001
         profiles = None
-    return {"sources": n, "ready": ready, "shared_by_projects": shared, "candidates_seen": cands, "candidates_not_acquired": cand_unacq, "profiles": profiles,
+    try:
+        from . import works as _works
+        works_stats = _works.stats()
+    except Exception:  # noqa: BLE001
+        works_stats = None
+    return {"sources": n, "ready": ready, "shared_by_projects": shared, "candidates_seen": cands, "candidates_not_acquired": cand_unacq, "profiles": profiles, "works": works_stats,
             "acquisitions_avoided": int(kv_get("library:acquisitions_avoided") or 0),
             "failed_attached": int(kv_get("library:failed_attached") or 0),
             "duplicate_fingerprints": dup_fp,

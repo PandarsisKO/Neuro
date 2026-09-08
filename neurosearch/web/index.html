@@ -303,6 +303,13 @@
             <div class="row" style="margin-top:8px"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" style="width:auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+            <b>Works</b> <span class="muted" id="workCounts"></span>
+            <div class="muted">Canonical documents behind your sources — an SBA SOP, an IRS publication, a statute, a book — with their versions and every copy you own or have seen. Copies of one Work count as <i>one</i> line of evidence in Research. Paste an identifier (e.g. <code>SOP 50 10 8</code>, <code>IRS Publication 946</code>, an ISBN or DOI) to resolve it against what you already own.</div>
+            <div class="row" style="margin-top:8px"><input id="workQ" placeholder="resolve an identifier or filter Works…" oninput="debounce(loadWorks)"><button class="small" onclick="resolveWork()">Resolve</button></div>
+            <div class="muted" id="workMsg" style="margin-top:4px"></div>
+            <div id="works" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+          </div>
         </div>
         <div class="pane" id="pane-course">
           <div class="muted">A small browser extension that runs <i>inside your own logged-in browser</i>. Two jobs: <b>Send this page</b> — any article or guide, including sites that block automated readers (you'll see "blocks automated readers (HTTP 403)" in the queue) or need a login; and <b>Course importer</b> — for courses behind a login (Kajabi, Teachable, Thinkific, Skool, Circle, Podia…): it finds every lesson video (Loom, Vimeo, Wistia, YouTube, mp4) and sends them here with your session. No password is ever shared with the app.</div>
@@ -495,7 +502,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.30.5';
+const UI_VERSION = '0.31.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -706,6 +713,7 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'library_searched') h += `<div class="web">🗄 Checked your global library for “${esc(a.query)}” · ${a.found} owned-but-unattached source${a.found === 1 ? '' : 's'}${a.found ? ': ' + (a.suggestions || []).map(s => `<button class="small" style="margin:2px" onclick="attachFromLibrary('${s.source_id}', this)">Add “${esc((s.title || '').slice(0, 40))}”</button>`).join('') : ''}</div>`;
       if (a.type === 'research_state') h += `<div class="web muted">🧠 Consulted the Knowledge Map · strong ${a.counts?.strong || 0} / developing ${a.counts?.developing || 0} / weak ${a.counts?.weak || 0} · ${a.tensions} open tension${a.tensions === 1 ? '' : 's'} · ${a.targets_open} open target${a.targets_open === 1 ? '' : 's'}</div>`;
       if (a.type === 'claim_proposed') h += `<div class="web">🧠 Proposed Claim (needs evidence): <i>${esc(a.text)}</i> — see Research</div>`;
+      if (a.type === 'work_resolved') h += `<div class="web muted">📜 Resolved “${esc(a.text || '')}” → ${a.identity === 'resolved' ? esc(a.work || '') + ' · ' + esc(a.access || '') : 'identity unresolved'}</div>`;
       if (a.type === 'candidates_searched') h += `<div class="web muted">🗂 Checked what we've seen but not added for “${esc(a.query)}” · ${a.found} candidate${a.found === 1 ? '' : 's'}${a.found ? ' — see Sources → Library → Seen, not added' : ''}</div>`;
       if (a.type === 'searched') h += `<div class="web muted">🔎 Searched the library for “${esc(a.query)}”${a.filter ? ' in ' + esc(a.filter) : ''} · ${a.added} more excerpt${a.added === 1 ? '' : 's'}</div>`;
       if (a.type === 'priority_set') h += `<div class="web">★ ${a.priority ? 'Priority sources' : 'No longer priority'} (${a.count}): <i>${esc((a.titles || []).slice(0, 5).join('; '))}${a.count > 5 ? ' …' : ''}</i> — retrieval ${a.priority ? 'now favours them' : 'treats them normally'}</div>`;
@@ -826,6 +834,7 @@ function showPane(p) {
   document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
   if (p === 'library') { loadLibrary(); loadCandidates(); }
   if (p === 'discover') loadDiscoveries();
+  if (p === 'library') loadWorks();
   if (p === 'course') loadCoursePane();
 }
 let rvSig = null;
@@ -1035,6 +1044,31 @@ async function ingestText() {
   const title = $('#inTextTitle').value.trim(), text = $('#inText').value.trim(); if (!title || !text) return;
   await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: state.project.id, tags: [] });
   $('#inText').value = ''; $('#inTextTitle').value = ''; loadSources();
+}
+// ---- G6 works ----
+async function loadWorks() {
+  const q = $('#workQ').value.trim();
+  const r = await api(`/api/works?project_id=&limit=100` + (q ? '&q=' + encodeURIComponent(q) : ''));
+  const s = r.stats || {}; $('#workCounts').textContent = s.works ? `· ${s.works} work${s.works === 1 ? '' : 's'} · ${s.versions} version${s.versions === 1 ? '' : 's'} · ${s.owned} owned cop${s.owned === 1 ? 'y' : 'ies'}` : '';
+  $('#works').innerHTML = (r.works || []).map(w => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="flex:1">📜 <b>${esc(w.title)}</b> <span class="muted">${esc(w.kind)} · ${w.resolution}${w.versions.length ? ' · ' + w.versions.map(v => esc(v.label) + (v.status === 'superseded' ? ' (superseded)' : '')).join(', ') : ''} · ${w.owned} owned${w.candidates ? ', ' + w.candidates + ' seen' : ''}${w.relevance ? ' · ' + esc(w.relevance) + ' here' : ''}</span></span><button class="small ghost" onclick="$('#workQ').value='${esc(w.title)}';resolveWork()">Resolve</button></div>`).join('') || '<div class="muted">No Works yet — they appear as sources and findings name SOPs, publications, statutes, books or papers.</div>';
+}
+async function resolveWork() {
+  const text = $('#workQ').value.trim(); if (!text) return;
+  $('#workMsg').textContent = 'resolving…';
+  try {
+    const r = await post('/api/works/resolve', { text, project_id: state.project.id });
+    if (r.identity !== 'resolved') { $('#workMsg').textContent = r.note || 'identity unresolved'; return; }
+    const head = `${r.work.title}${r.version ? ' — ' + r.version : ''}`;
+    if (r.access === 'owned' && r.where === 'project') $('#workMsg').textContent = `${head}: already in this project.`;
+    else if (r.access === 'owned') $('#workMsg').innerHTML = `${esc(head)}: you own a copy in another project — <button class="small" onclick="attachFromLibrary('${r.source_ids[0]}', this)">Add it here</button> (no re-acquisition)`;
+    else if (r.access === 'candidate') $('#workMsg').textContent = `${head}: resolved identity; a copy was seen but not acquired — see Seen, not added.`;
+    else $('#workMsg').innerHTML = `${esc(head)}: resolved identity, unresolved access — no copy owned or seen.` + (r.url ? ` <button class="small" onclick="acquireWork('${esc(text)}')">Acquire the official document</button>` : ' Upload a copy you own.');
+  } catch (e) { $('#workMsg').textContent = e.message; }
+  loadWorks();
+}
+async function acquireWork(text) {
+  const r = await post(`/api/projects/${state.project.id}/add`, { input: text, action: 'acquire', tags: [] });
+  const res = r.items[0]?.result || {}; $('#workMsg').textContent = res.queued ? '▶ acquiring the official document…' : (res.note || 'not queued'); loadJobs();
 }
 async function loadLibrary() {
   const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);

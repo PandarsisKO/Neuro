@@ -301,28 +301,49 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
     """Freeze the exact revision + locator. Independence against the Claim's existing evidence is decided here ($0)."""
     if relation not in RELATIONS:
         relation = "SUPPORTS"
+    from . import works
     src = db.get_source(source_id) or {"id": source_id}
     rev = src.get("revision") or db.source_revision(source_id)
     cls = evidence_class_for(src)
+    lin = works.lineage_of(source_id)
+    lineage_id = (lin or {}).get("work_id")
     independent, derivative_of = 1, None
-    for e in evidence_for(claim_id, limit=INDEPENDENCE_WINDOW):   # beyond this many rows nothing changes sufficiency
-        if e["source_id"] == source_id:
-            continue
-        same_creator = bool(src.get("channel")) and src.get("channel") == e.get("channel")
-        if excerpt and e.get("excerpt") and overlap(excerpt, e["excerpt"]) >= DERIVATIVE_OVERLAP:
-            independent, derivative_of = 0, e["source_id"]
-            break
-        if same_creator:
-            independent, derivative_of = 0, e["source_id"]
+    existing = [e for e in evidence_for(claim_id, limit=INDEPENDENCE_WINDOW) if e["source_id"] != source_id]   # beyond this window nothing changes sufficiency
+    # pass 1 — G6 lineage: one Work = one evidentiary lineage (official PDF + mirror + excerpt + quote = 1), whatever the source count
+    promote_over: list[int] = []
+    if lineage_id:
+        same = [e for e in existing if e.get("lineage_id") == lineage_id]
+        if same:
+            rep = next((e for e in same if e.get("independent")), same[0])
+            rep_lin = works.lineage_of(rep["source_id"]) or {}
+            rep_primary = rep_lin.get("relation") in works.PRIMARY_RELATIONS
+            new_primary = (lin or {}).get("relation") in works.PRIMARY_RELATIONS
+            # the lineage's representative is its best primary manifestation: primary beats derivative/quote, official beats mirror
+            if new_primary and (not rep_primary or ((lin or {}).get("form") == "official" and rep_lin.get("form") != "official")):
+                promote_over = [e["id"] for e in same]
+            else:
+                independent, derivative_of = 0, rep["source_id"]
+    # pass 2 — wording/creator heuristics, only where lineage says nothing: a source that belongs to a Work's lineage is
+    # judged by that lineage alone (the first arrival of a Work is a new line of evidence, whatever its wording)
+    if independent and not lineage_id:
+        for e in existing:
+            same_creator = bool(src.get("channel")) and src.get("channel") == e.get("channel")
+            if excerpt and e.get("excerpt") and overlap(excerpt, e["excerpt"]) >= DERIVATIVE_OVERLAP:
+                independent, derivative_of = 0, e["source_id"]
+                break
+            if same_creator:
+                independent, derivative_of = 0, e["source_id"]
     if derivative_of and cls != "authoritative":
         cls = "derivative"
     t = time.time()
     with db.tx() as conn:
         cur = conn.execute("INSERT INTO claim_evidence (claim_id, source_id, source_revision, locator, start, link, relation, excerpt, evidence_class, independent, "
-                           "derivative_of, task, model, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (claim_id, source_id, rev, locator, start, link, relation, (excerpt or "")[:600], cls, independent, derivative_of, task, model, t))
+                           "derivative_of, task, model, created_at, lineage_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (claim_id, source_id, rev, locator, start, link, relation, (excerpt or "")[:600], cls, independent, derivative_of, task, model, t, lineage_id))
         conn.execute("UPDATE project_claims SET updated_at=? WHERE id=?", (t, claim_id))
         eid = cur.lastrowid
+        for old_id in promote_over:
+            conn.execute("UPDATE claim_evidence SET independent=0, derivative_of=?, evidence_class=CASE WHEN evidence_class='authoritative' THEN evidence_class ELSE 'derivative' END WHERE id=?", (source_id, old_id))
     return dict(db.connect().execute("SELECT * FROM claim_evidence WHERE id=?", (eid,)).fetchone())
 
 
@@ -429,6 +450,11 @@ def harvest(project_id: str) -> dict[str, Any]:
             touched.add(c["id"])
             index.add(c)
             created += 1
+            try:                                                           # G6: a finding that names a Work → stub → candidate → target ($0)
+                from . import works as _works
+                _works.cite(project_id, body, source_id=(first or {}).get("source_id"), claim_id=c["id"])
+            except Exception as e:  # noqa: BLE001
+                log.warning("work citation skipped: %s", e)
     # $0 topics and freshness follow the project's vocabulary / the Claim's own semantics (normalized Claims keep what the contract named)
     _first_class = {r["claim_id"]: r["evidence_class"] for r in db.connect().execute(
         "SELECT claim_id, evidence_class FROM claim_evidence WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND normalized=0) GROUP BY claim_id", (project_id,))}
@@ -446,6 +472,31 @@ def harvest(project_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------- assessment ($0, deterministic, explained)
+
+def _primary_gap(evidence: list[dict[str, Any]], works_mod: Any) -> str | None:
+    """G6 stricter governing sufficiency: if the evidence only reaches the governing Work through excerpts / quotes /
+    summaries / derivatives while a primary manifestation is obtainable (owned elsewhere, a candidate, or a resolved
+    identity), say so — Chat can then say 'supported by secondary sources, but the primary source is not yet resolved'."""
+    for e in evidence:
+        lin = works_mod.lineage_of(e["source_id"])
+        if not lin:
+            continue
+        if lin["relation"] in works_mod.PRIMARY_RELATIONS:
+            return None                                                    # a primary manifestation is in the evidence
+    # no primary in the evidence: is one obtainable for any cited Work?
+    for e in evidence:
+        for m in db.connect().execute("SELECT work_id, relation FROM work_manifestations WHERE source_id=?", (e["source_id"],)).fetchall():
+            w = works_mod.get(m["work_id"])
+            if not w:
+                continue
+            prim = works_mod.primary_manifestations(w["id"])
+            owned = [x for x in prim if x.get("access") == "owned"]
+            if owned:
+                return f"the governing primary source ({w['title']}) is owned but not the evidence here — resolve it into the project rather than relying on a {m['relation'].replace('_', ' ')}"
+            if prim or w.get("resolution") == "resolved":
+                return f"the governing primary source ({w['title']}) has not yet been resolved into the project — this Claim rests on a {m['relation'].replace('_', ' ')}"
+    return None
+
 
 def assess(claim_id: str) -> dict[str, Any] | None:
     """Strength from the evidence REQUIREMENT of the Claim type, not the source count; freshness from the domain class;
@@ -476,6 +527,15 @@ def assess(claim_id: str) -> dict[str, Any] | None:
     derivative = [e for e in sup if not e.get("independent")]
     why: list[str] = []
     ctype = c["claim_type"]
+    # $0 re-typing for unnormalized Claims: once an authoritative PRIMARY manifestation supports it, a rule-shaped Claim is governing
+    if not c.get("normalized") and auth and ctype not in GOVERNING_TYPES:
+        from . import works as _w
+        if any((_w.lineage_of(a["source_id"]) or {}).get("relation") in _w.PRIMARY_RELATIONS for a in auth):
+            better = guess_type(c["text"].split(" — ", 1)[-1], "authoritative")
+            if better in GOVERNING_TYPES:
+                ctype = better
+                with db.tx() as conn:
+                    conn.execute("UPDATE project_claims SET claim_type=?, freshness_class=? WHERE id=? AND normalized=0", (ctype, guess_freshness(c["text"].split(" — ", 1)[-1], ctype, "authoritative"), claim_id))
     if not sup:
         strength = "unsupported"
         why.append("no supporting evidence" + (f"; {len(ev) - len(live_ev)} evidence row(s) stale after a source revision" if len(ev) != len(live_ev) else ""))
@@ -486,9 +546,19 @@ def assess(claim_id: str) -> dict[str, Any] | None:
             why.append(f"governing sufficiency: 1 {a['evidence_class']} source directly states it ({a.get('title')}, {a.get('locator') or 'n/a'})")
             if len(sup) > 1:
                 why.append(f"{len(sup) - 1} further source(s) repeat or interpret it — not needed to establish the rule")
+            # G6: a derivative that accurately quotes the rule does not fully verify it while an obtainable primary manifestation exists
+            from . import works as _works
+            prim = _primary_gap(auth, _works)
+            if prim:
+                strength = "developing"
+                why.append(prim)
         else:
             strength = "developing" if len(indep_sources) >= 2 else "weak"
             why.append(f"governing Claim without a primary source: {len(sup)} secondary source(s), {len(indep_sources)} independent — the controlling text itself is missing")
+            from . import works as _works
+            prim = _primary_gap(sup, _works)
+            if prim:
+                why.append(prim)
     else:
         n = len(indep_sources)
         if ctype == "market" and (c.get("qualifiers") or {}).get("specific_instance"):
@@ -503,6 +573,10 @@ def assess(claim_id: str) -> dict[str, Any] | None:
             if ctype in ("novel_tactic", "causal") and strength == "strong" and n < CORROBORATION["strong"] + 1:
                 strength = "developing"
                 why.append(f"{ctype.replace('_', ' ')} Claims need stronger corroboration")
+        from . import works as _works
+        prim = _primary_gap(sup, _works)
+        if prim:
+            why.append(prim)                                              # G6: the Work behind a quote/summary is obtainable — say so
     if sup and len(ev) != len(live_ev):
         why.append(f"{len(ev) - len(live_ev)} evidence row(s) stale: the source was revised since they were frozen — re-verify against the new revision")
     if con:
@@ -518,6 +592,18 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         if ts:
             ages.append((now - float(ts)) / 86400)
     fstatus, fwhy = freshness_status(c.get("freshness_class") or "uncertain", min(ages) if ages else None) if sup else ("uncertain", "no supporting evidence")
+    # G6: version relationship, never "a newer copy exists": unknown/supersedes → needs_refresh; material change → stale;
+    # rehost/formatting → nothing; a historical Claim about the old version → untouched
+    if sup and (c.get("freshness_class") or "") != "historical":
+        from . import works as _works
+        for e in sup:
+            vf = _works.version_freshness(e["source_id"])
+            if not vf or vf["relation"] in ("none", "rehost"):
+                continue
+            if vf["relation"] == "material" and fstatus != "stale":
+                fstatus, fwhy = "stale", f"{vf['newest']} changed the relevant provisions of the version this evidence cites ({vf.get('change_note') or 'see version notes'})"
+            elif vf["relation"] in ("unknown", "supersedes") and fstatus != "stale":
+                fstatus, fwhy = "needs_refresh", f"a newer version ({vf['newest']}) {'supersedes' if vf['relation'] == 'supersedes' else 'exists; differences unknown for'} the version this evidence cites — re-verify against it"
     if fstatus in ("stale", "needs_refresh", "uncertain") and sup:
         why.append(fwhy)
     # readiness is NOT strength
@@ -858,7 +944,11 @@ def evaluation_report(project_id: str) -> dict[str, Any] | None:
 def ensure(project_id: str, allow_model: bool = False) -> dict[str, Any]:
     """What Chat/Discover call before they need Claims: harvest ($0) + assess ($0) + refresh the map ($0); optionally an
     inline extraction when the caller may spend (bounded by EXTRACT_MAX_INLINE)."""
-    from . import knowledge
+    from . import knowledge, works as _works
+    try:
+        _works.index_project_sources(project_id)                          # G6: sources that ARE manifestations of a Work ($0, idempotent)
+    except Exception as e:  # noqa: BLE001
+        log.warning("work indexing skipped: %s", e)
     h = harvest(project_id)
     out: dict[str, Any] = {"harvested": h["created"], "extracted": None}
     if allow_model:

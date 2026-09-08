@@ -84,22 +84,19 @@ def classify(text: str) -> Classification:
     raw = (text or "").strip()
     if not raw:
         return Classification("search_query", raw, label="Nothing to add", detail="Paste a link, upload a file, or describe what you're looking for.", actions=[])
-    # --- identifiers before URLs (a DOI may arrive as a doi.org URL)
-    m = DOI_RE.match(raw)
-    if m and (not raw.lower().startswith(("http://", "https://")) or "doi.org" in raw.lower()):
-        doi = m.group(1).rstrip(".,;")
-        return Classification("work_identity", raw, url=f"https://doi.org/{doi}", identifier=f"doi:{doi}", label="Paper detected (DOI)",
-                              detail=f"DOI {doi}. Finding the best legitimate copy is the Source Resolver (a later step); the publisher's landing page can be added as a page now.",
-                              actions=[_act("page", "Add the landing page"), _act("resolve", "Find an available copy", False, "Source Resolver ships in a later rung"),
-                                       _act("upload", "Upload a copy")], default_action="page")
-    m = ISBN_RE.match(raw)
-    if m:
-        digits = re.sub(r"[- ]", "", m.group(1))
-        if _isbn_ok(digits):
-            return Classification("work_identity", raw, identifier=f"isbn:{digits}", label="Book detected (ISBN)",
-                                  detail=f"ISBN {digits}. A book is an intellectual Work, not a URL: Neuro Search will resolve it to the best legitimate copy when the Source Resolver ships. For now you can upload a copy you own.",
-                                  actions=[_act("resolve", "Find an available copy", False, "Source Resolver ships in a later rung"), _act("upload", "Upload a copy")],
-                                  default_action="upload")
+    # --- identifiers before URLs (a DOI may arrive as a doi.org URL). G6: any canonical identifier — ISBN, DOI, SOP number,
+    # IRS publication, statute / CFR citation, form number — is a Work identity and goes to the Source Resolver ($0).
+    from . import works as _works
+    if not raw.lower().startswith(("http://", "https://")) or "doi.org" in raw.lower():
+        ids = _works.extract_identifiers(raw)
+        if ids and len(raw) <= 120:
+            i = ids[0]
+            kind_label = {"sop": "SBA SOP", "publication": "IRS publication", "statute": "Statute", "regulation": "Regulation", "form": "Form", "paper": "Paper", "book": "Book"}.get(i["kind"], "Work")
+            return Classification("work_identity", raw, url=i.get("url"), identifier=f"{i['scheme']}:{i['value']}", label=f"{kind_label} detected ({i['family']}{' ' + i['version'] if i.get('version') else ''})",
+                                  detail=f"{i['title']} is a Work, not a URL. The resolver checks what you already own (this project, then the global library), then anything seen but not acquired, before any acquisition.",
+                                  actions=[_act("resolve", "Find an available copy")] + ([_act("acquire", "Acquire the official document")] if i.get("url") and i["kind"] in _works.REGULATORY_KINDS else [])
+                                  + ([_act("page", "Add the landing page")] if i.get("url") and i["kind"] not in _works.REGULATORY_KINDS else []) + [_act("upload", "Upload a copy")],
+                                  default_action="resolve")
     # --- not a URL: a research request
     is_url = raw.lower().startswith(("http://", "https://")) or (" " not in raw and bool(URL_RE.match(raw)))
     if not is_url:
@@ -216,6 +213,27 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
             return {"kind": c.kind, "action": action, "queued": False, "note": "Discover needs a project"}
         job = jobs.enqueue("discover", {"project_id": project_id, "refine": c.identifier or c.input})
         return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"]}
+    if action == "resolve":
+        # identity + access only; acquisition is always a separate, explicit step (owned copies are never re-acquired)
+        from . import works as _works
+        res = _works.find_copy(c.identifier or c.input, project_id)
+        kind = (res.get("work") or {}).get("kind")
+        if res.get("access") == "unavailable":
+            note = ("no copy owned or seen — acquire the official document (Acquire), or upload a copy you own" if kind in _works.REGULATORY_KINDS and res.get("url")
+                    else "no copy owned or seen — upload a copy you own (a book/paper is a Work, not a URL)" + (f"; landing page: {res.get('url')}" if res.get("url") else ""))
+        else:
+            note = {"none": "already in this project", "attach": "you already own a copy — attach it (no re-acquisition)", "acquire": "seen but not acquired — acquire from the candidate",
+                    "discover": "identity unresolved — Discover can look for it"}.get(res.get("next") or "", "")
+        return {"kind": c.kind, "action": action, "queued": False, "resolver": res, "note": note}
+    if action == "acquire":
+        from . import works as _works
+        res = _works.find_copy(c.identifier or c.input, project_id)
+        if res.get("access") == "owned":
+            return {"kind": c.kind, "action": action, "queued": False, "resolver": res, "note": "you already own a copy — attach it instead of acquiring again"}
+        if not res.get("url"):
+            return {"kind": c.kind, "action": action, "queued": False, "resolver": res, "note": "no official location known for this Work"}
+        job = jobs.enqueue("ingest_url", {"url": res["url"], "tags": tags or [], "project_id": project_id, "force": force, "review": False})
+        return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": res["url"], "resolver": res}
     if action == "upload":
         return {"kind": c.kind, "action": action, "queued": False, "note": "use Upload (or the chat attach button) to add the file"}
     return {"kind": c.kind, "action": action, "queued": False, "note": c.detail}

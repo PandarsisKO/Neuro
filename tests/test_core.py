@@ -21,7 +21,7 @@ from neurosearch import chunking, db, ingest, jobs, media  # noqa: E402
 from neurosearch.api import app  # noqa: E402
 
 H = {"Authorization": "Bearer t0k"}
-CHAT_ARM_INPUT_TOTAL = 200090   # frozen: plain + cache read + cache write of the 34-question chat arm (re-frozen 0.30.3: concise-answer rule; 0.29.0: + research_state/propose_claim tools + research state line; 0.28.0: + search_global_library; 0.27.0: + search_seen_sources; 0.24.1: library tools + inventory)
+CHAT_ARM_INPUT_TOTAL = 205564   # frozen: plain + cache read + cache write of the 34-question chat arm (re-frozen 0.31.0: + resolve_work tool; 0.30.3: concise-answer rule; 0.29.0: + research_state/propose_claim tools + research state line; 0.28.0: + search_global_library; 0.27.0: + search_seen_sources; 0.24.1: library tools + inventory)
 
 
 # `client` (the one app instance for the whole test session) lives in tests/conftest.py
@@ -1394,9 +1394,9 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     # the TOTAL input (plain + cache read + cache write) — invariant under cache layout; the cache split is measured
     # separately by `neurosearch eval --cache-layout` and asserted in test_cache_layout_measurement_and_savings.
     tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
-    assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 187030 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
+    assert v["answer"]["calls"] == 34 and tot(v["answer"]) == 192504 and v["findings"]["calls"] == 9 and tot(v["findings"]) == 30297
     assert v["plan"]["calls"] == 2 and tot(v["plan"]) == 11026 and v["plan"]["cache_read"] == 4412
-    assert sum(tot(t) for t in v.values()) == 253249
+    assert sum(tot(t) for t in v.values()) == 258723
     assert v["answer"]["cache_read"] > 0                                     # the stable chat prefix is reused across questions
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
     assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["answer.chat"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000

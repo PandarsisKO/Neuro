@@ -1134,6 +1134,97 @@ async def api_library_recall(project_id: str, q: str, limit: int = 8) -> dict[st
 
 # ---- G5 (0.29.0): Knowledge Map, Claims, Evidence Targets, Research Tensions — project research STATE, suggestion-first
 
+# ---- G6 (0.31.0): Canonical Works & Source Resolver — global identity/versions/manifestations, project-relative relevance
+
+class ResolveIn(BaseModel):
+    text: str
+    project_id: str | None = None
+    external: bool = False
+
+
+@app.post("/api/works/resolve", dependencies=[Depends(require_auth)])
+def api_works_resolve(body: ResolveIn) -> dict[str, Any]:
+    """Identity first, then access in the mandated order (project → global library → candidates → external on request). $0."""
+    from . import works
+    return works.find_copy(body.text, body.project_id, external=body.external)
+
+
+@app.get("/api/works", dependencies=[Depends(require_auth)])
+def api_works_list(project_id: str | None = None, q: str | None = None, limit: int = 100) -> dict[str, Any]:
+    from . import works
+    return {"works": works.list_works(project_id, q, limit), "stats": works.stats()}
+
+
+@app.get("/api/works/{work_id}", dependencies=[Depends(require_auth)])
+def api_work_get(work_id: str) -> dict[str, Any]:
+    from . import works
+    w = works.get(work_id)
+    if not w:
+        raise HTTPException(404)
+    return w
+
+
+class VersionIn(BaseModel):
+    label: str
+    edition: str | None = None
+    year: str | None = None
+    effective_date: str | None = None
+    supersedes_id: str | None = None
+    change_kind: str = "unknown"        # unknown | supersedes | material | rehost | formatting
+    change_note: str | None = None
+
+
+@app.post("/api/works/{work_id}/versions", dependencies=[Depends(require_auth)])
+def api_work_version(work_id: str, body: VersionIn) -> dict[str, Any]:
+    """Record a version/edition and how it relates to the one it replaces — this is what drives G6 freshness (needs_refresh
+    vs stale vs nothing), so it is the user's explicit statement, never inferred from 'a newer file exists'."""
+    from . import claims, works
+    if not works.get(work_id):
+        raise HTTPException(404)
+    v = works.ensure_version(work_id, body.label, edition=body.edition, year=body.year, effective_date=body.effective_date, supersedes_id=body.supersedes_id,
+                             change_kind=body.change_kind, change_note=body.change_note, status="current" if body.supersedes_id else "unknown")
+    # re-assess the Claims whose evidence sits on this Work's older versions
+    for m in works.manifestations_of(work_id):
+        if m.get("source_id"):
+            claims.stale_by_source(m["source_id"])
+    return v
+
+
+class LinkIn(BaseModel):
+    source_id: str
+    relation: str = "manifestation_of"
+    version_id: str | None = None
+    form: str | None = None
+
+
+@app.post("/api/works/{work_id}/link", dependencies=[Depends(require_auth)])
+def api_work_link(work_id: str, body: LinkIn) -> dict[str, Any]:
+    from . import works
+    if not works.get(work_id) or not db.get_source(body.source_id):
+        raise HTTPException(404)
+    try:
+        return works.link_source(body.source_id, work_id, version_id=body.version_id, relation=body.relation, form=body.form, confidence="exact_metadata", basis={"from": "user"})
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class RelevanceIn(BaseModel):
+    relevance: str      # attached | relevant | targeted | dismissed
+    reason: str | None = None
+
+
+@app.post("/api/projects/{project_id}/works/{work_id}/relevance", dependencies=[Depends(require_auth)])
+def api_project_work_relevance(project_id: str, work_id: str, body: RelevanceIn) -> dict[str, Any]:
+    from . import works
+    if not db.get_project(project_id) or not works.get(work_id):
+        raise HTTPException(404)
+    try:
+        works.set_project_relevance(project_id, work_id, body.relevance, body.reason)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return works.project_relevance(project_id, work_id) or {}
+
+
 class ResearchRefreshIn(BaseModel):
     extract: bool = False        # allow ONE bounded normalization pass now (model call); default is the $0 path
 

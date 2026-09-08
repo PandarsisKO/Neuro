@@ -50,10 +50,10 @@ CASES = {
     "https://www.reddit.com/r/smallbusiness/comments/abc/how_i_bought/": ("page", "page"),
     "https://www.instagram.com/benkellyone/": ("instagram_profile", None),
     "https://www.instagram.com/reel/Cxyz123/": ("instagram_post", "ingest"),
-    "978-0-13-468599-1": ("work_identity", "upload"),
-    "ISBN 0-306-40615-2": ("work_identity", "upload"),
-    "10.1038/nature12373": ("work_identity", "page"),
-    "https://doi.org/10.1038/nature12373": ("work_identity", "page"),
+    "978-0-13-468599-1": ("work_identity", "resolve"),        # G6: identifiers go to the Source Resolver first
+    "ISBN 0-306-40615-2": ("work_identity", "resolve"),
+    "10.1038/nature12373": ("work_identity", "resolve"),
+    "https://doi.org/10.1038/nature12373": ("work_identity", "resolve"),
     "how do low-time pilots get baron insurance": ("search_query", "discover"),
     "https://www.loom.com/share/abc": ("media", "ingest"),
 }
@@ -97,7 +97,7 @@ def test_containers_are_never_fetched_as_pages_unless_chosen():
     q = resources.route(resources.classify("what does the sba require for seller notes"), pid)
     assert q["queued"] and db.get_job(q["job_id"])["kind"] == "discover" and db.get_job(q["job_id"])["payload"]["refine"].startswith("what does")
     isbn = resources.route(resources.classify("978-0-13-468599-1"), pid)
-    assert not isbn["queued"] and "Upload" in isbn["note"]
+    assert not isbn["queued"] and "upload" in isbn["note"].lower() and isbn["resolver"]["identity"] == "resolved"
 
 
 def test_api_classify_and_add(client):

@@ -201,6 +201,8 @@ def _library_tools() -> list[dict[str, Any]]:
         {"name": "propose_claim", "description": "Record an EXTERNAL factual proposition the user asserts or asks about that needs evidence (e.g. 'SBA lets me borrow $2M'), as a proposed Claim with an Evidence Target. NOT for the user's own constraints/decisions ('my budget is $2M' → record_fact). Keep every qualifier (jurisdiction, product, conditions, timeframe).",
          "input_schema": {"type": "object", "properties": {"text": {"type": "string"}, "claim_type": {"type": "string", "enum": ["governing", "historical", "expert_interpretation", "practice", "experiential", "market", "causal", "novel_tactic", "other"]},
                                                            "topic": {"type": "string"}}, "required": ["text", "claim_type"]}},
+        {"name": "resolve_work", "description": "Resolve a cited Work — an SBA SOP number, IRS publication, statute/CFR citation, ISBN or DOI — to what the user already owns: this project first, then the global library, then sources seen but not acquired. $0. Returns identity + access state (owned / candidate / resolved identity but unavailable / unresolved). Use before suggesting anyone go and find a document.",
+         "input_schema": {"type": "object", "properties": {"text": {"type": "string", "description": "the identifier or citation as written, e.g. 'SOP 50 10 8', 'IRS Publication 946', '26 U.S.C. § 280F'"}}, "required": ["text"]}},
         {"name": "search_seen_sources", "description": "Search the Candidate Index: sources Neuro Search has SEEN (listed from channels, feeds, sites) but NOT acquired. Use when the library lacks evidence for a gap, BEFORE suggesting a web search. Results are metadata only — they cannot be cited; tell the user which ones look worth acquiring (Sources → Library → Seen, not added).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["query"]}},
     ]
@@ -682,6 +684,21 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         knowledge.refresh(project["id"])
         actions.append({"type": "claim_proposed", "claim_id": c["id"], "text": text, "claim_type": ctype, "target_id": (tg or {}).get("id")})
         return f"recorded as a PROPOSED {ctype} Claim (unsupported until evidence is linked) with an evidence target ({suff} sufficiency: {(tg or {}).get('closure')}). It is not accepted project truth."
+    if name == "resolve_work":
+        from . import works as _works
+        res = _works.find_copy((inp.get("text") or "").strip(), project["id"])
+        actions.append({"type": "work_resolved", "text": inp.get("text"), "identity": res.get("identity"), "access": res.get("access"), "work": (res.get("work") or {}).get("title"), "next": res.get("next")})
+        if res.get("identity") != "resolved":
+            return "identity unresolved: no canonical identifier recognised (title-only matching never resolves identity) — Discover would be the next step"
+        w = res["work"]
+        head = f"{w['title']}" + (f" — version {res['version']}" if res.get("version") else "")
+        if res.get("access") == "owned" and res.get("where") == "project":
+            return f"{head}: resolved, and a primary copy is already IN this project (source {', '.join(res['source_ids'])}) — cite it from the excerpts (search_library if needed)."
+        if res.get("access") == "owned":
+            return f"{head}: resolved; the user already OWNS a copy in another project (source {', '.join(res['source_ids'])}) — not evidence here until attached (Sources → Library → Add). Do not suggest acquiring it again."
+        if res.get("access") == "candidate":
+            return f"{head}: resolved identity; a copy has been SEEN but not acquired (Sources → Library → Seen, not added) — metadata only, not evidence."
+        return f"{head}: resolved identity, unresolved access — no copy owned or seen." + (f" Official location: {res['url']} (Sources → Add → Acquire)." if res.get("url") else " Upload a copy you own.")
     if name == "search_seen_sources":
         from . import candidates as _cand
         query = (inp.get("query") or "").strip()
