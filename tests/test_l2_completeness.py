@@ -157,3 +157,32 @@ def test_queue_of_several_requests_and_reopen(monkeypatch):
     again = [x for x in acquire.pending_captures(project_id=pid) if x["source_id"] == sid]
     assert len(again) == 1 and api.api_source_recapture(sid, api.RecaptureIn(project_id=pid)).get("already_waiting")
     assert db.connect().execute("SELECT COUNT(*) FROM sources WHERE platform='community'").fetchone()[0] == 3
+
+
+def test_synthesis_over_a_partial_thread_says_so(monkeypatch):
+    """G7 synthesis never speaks as full-thread consensus over a thread the app only partly holds."""
+    from neurosearch import claims
+    from tests.test_k9_community import _note
+    pid = db.create_project("B2", "Buying a small accounting practice with an SBA loan: what owners actually experience")["id"]
+    cap = _capture_contract()
+    cap["capture"] = {"status": "partial", "captured": 11, "expected": 412, "load_more_remaining": 9, "method": "dom"}
+    sid = community.acquire_thread(THREAD_URL, project_id=pid, capture=cap)["source_id"]
+    posts = {p["post_id"]: p for p in community.posts_of(sid)}
+    for pidx in ("c4", "c5", "c6"):
+        _note(pid, sid, posts[pidx]["text"][:300], f"post {posts[pidx]['ordinal']}", importance=4)
+    claims.ensure(pid)
+    syn = community.synthesize(pid)
+    fy = next(s for s in syn if "first-year maintenance" in s["statement"])
+    assert fy["kind"] == "FREQUENTLY_REPORTED" and fy["coverage"] and fy["coverage"]["partial_threads"][0]["source_id"] == sid
+    assert "11 of ~412 comments" in fy["coverage"]["note"] and "not full-thread consensus" in fy["coverage"]["note"]
+    assert community.syntheses(pid)[0]["coverage"]["note"]
+    # the chat's research_state carries the same qualifier
+    from neurosearch import qa
+    txt = qa._run_tool("research_state", {}, db.get_project(pid), [], [])
+    assert "PARTIAL:" in txt and "11 of ~412" in txt
+    # a complete reading of the same thread clears the qualifier
+    monkeypatch.setattr(community, "_json_get", lambda url: _thread_json())
+    community.acquire_thread(THREAD_URL, project_id=pid, force=True)
+    assert _comp(sid)["status"] == "complete"
+    syn2 = community.synthesize(pid)
+    assert next(s for s in syn2 if "first-year maintenance" in s["statement"])["coverage"] is None

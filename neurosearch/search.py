@@ -41,7 +41,36 @@ def _community_locator(c: dict[str, Any]) -> tuple[str, str] | None:
     return label, (r["permalink"] or c["url"])
 
 
+def _book_locator(c: dict[str, Any]) -> tuple[str, str] | None:
+    """G6P1: a book chunk cites the publication's own structure — 'Ch. 3 → Title · Section' — with the anchor as the deep link."""
+    from . import db as _db
+    r = _db.connect().execute("SELECT label, href, fragment FROM book_sections WHERE source_id=? AND ordinal=?", (c["source_id"], int(c["start"]))).fetchone()
+    if not r:
+        return None
+    return r["label"], f"{c['url']}#{r['href']}" + (f"#{r['fragment']}" if r["fragment"] else "")
+
+
+def locator_for(source_id: str, url: str, platform: str, start: float) -> tuple[str, str | None]:
+    """(human label, deep link) for a position in a source — the publication's own structure where it has one."""
+    c = {"source_id": source_id, "url": url, "start": start}
+    if platform == "book":
+        loc = _book_locator(c)
+        if loc:
+            return loc
+    if platform == "community":
+        loc = _community_locator(c)
+        if loc:
+            return loc
+    return fmt_locator(platform, start), deep_link(url, platform, start)
+
+
 def hit_from_chunk(c: dict[str, Any], score: float) -> dict[str, Any]:
+    if (c.get("platform") or "") == "book":
+        loc = _book_locator(c)
+        if loc:
+            return {"chunk_id": c["id"], "source_id": c["source_id"], "title": c.get("title") or c.get("url"), "channel": c.get("channel"), "platform": "book",
+                    "published_at": c.get("published_at"), "url": c.get("url"), "start": c["start"], "end": c["end"], "timestamp": loc[0], "link": loc[1],
+                    "text": c["text"], "score": round(float(score), 4)}
     if (c.get("platform") or "") == "community":
         loc = _community_locator(c)
         if loc:
@@ -162,5 +191,8 @@ def source_transcript(source_id: str, with_timestamps: bool = True) -> str:
     segs = db.get_segments(source_id)
     src = db.get_source(source_id) or {}
     if with_timestamps:
+        if src.get("platform") == "book":
+            labels = {r["ordinal"]: r["label"] for r in db.connect().execute("SELECT ordinal, label FROM book_sections WHERE source_id=?", (source_id,)).fetchall()}
+            return "\n".join(f"[{labels.get(int(s['start'])) or fmt_locator('book', s['start'])}] {s['text']}" for s in segs)
         return "\n".join(f"[{fmt_locator(src.get('platform') or '', s['start'])}] {s['text']}" for s in segs)
     return " ".join(s["text"] for s in segs)

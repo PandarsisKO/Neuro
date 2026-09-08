@@ -737,6 +737,8 @@ def api_source(source_id: str) -> dict[str, Any]:
     if not s:
         raise HTTPException(404)
     s["segments"] = db.get_segments(source_id)
+    if s.get("platform") == "book":            # G6P1: the publication's own structure, per segment
+        s["sections"] = [dict(r) for r in db.connect().execute("SELECT ordinal, spine_index, href, fragment, chapter, chapter_no, section, role, depth, label, chars FROM book_sections WHERE source_id=? ORDER BY ordinal", (source_id,)).fetchall()]
     s["analyses"] = [dict(r) for r in db.connect().execute("SELECT * FROM project_source_analysis WHERE source_id=?", (source_id,)).fetchall()]
     s["revision"] = s.get("revision") or db.source_revision(source_id)
     return s

@@ -25,7 +25,7 @@ from . import db
 
 STATES = ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "user_dismissed", "duplicate", "acquired")
 LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
-CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document"}
+CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document", "book": "book"}
 
 
 def remember(entries: list[dict[str, Any]], platform: str, project_id: str | None, origin: dict[str, Any]) -> list[str]:

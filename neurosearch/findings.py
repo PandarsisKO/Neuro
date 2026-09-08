@@ -75,7 +75,7 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
         return float(nums[0] * 3600 + nums[1] * 60 + nums[2])
     if len(nums) == 2:
         return float(nums[0] * 60 + nums[1])
-    if len(nums) == 1 and platform in ("document", "web", "spreadsheet"):
+    if len(nums) == 1 and platform in ("document", "web", "spreadsheet", "book"):
         return float(nums[0])
     return None
 
@@ -256,9 +256,11 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         start = _ts_to_seconds(str(f.get("ts", "")), platform)
         cites = []
         if start is not None:
+            from .search import locator_for
+            label, link = locator_for(source_id, src["url"], platform, start) if platform == "book" else (fmt_locator(platform, start), deep_link(src["url"], platform, start))
             cites.append({"n": 1, "source_id": source_id, "title": src["title"], "channel": src.get("channel"),
-                          "url": src["url"], "link": deep_link(src["url"], platform, start),
-                          "timestamp": fmt_locator(platform, start), "start": start, "end": start, "platform": platform,
+                          "url": src["url"], "link": link,
+                          "timestamp": label, "start": start, "end": start, "platform": platform,
                           "snippet": (f.get("quote") or "")[:300]})
         content = f["finding"].strip()
         if cites and "[1]" not in content:

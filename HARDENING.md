@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.34.0 — G6P1 EPUB Core (no frozen numbers changed).** New platform `book` / `book_sections` table (additive); `works.FORMS` gains `epub`; findings citations for books use the structural label. Gate `tests/test_m1_epub.py`. Tier 1 untouched (34 / 196,951).
+
 **0.33.1 — B2 completeness (no frozen numbers changed).** `sources.completeness` in use; partial captures merge; `upsert_source` now clears `error`/`error_class` when passed explicitly as None (a placeholder's browser-needed state ends on success). Gate `tests/test_l2_completeness.py`.
 
 **0.33.0 — B1 browser capture (no frozen numbers changed).** Browser-solvable acquisition failures park the ingest job `external_pending` on provider `browser` (durable, recovery re-attaches; expiry is visible, never a failure); the capture resolves the same job/source via `db.resume_external`. Additive columns `sources.error_class`, `sources.completeness`. Gate `tests/test_l1_browser_capture.py`. Tier 1 untouched.

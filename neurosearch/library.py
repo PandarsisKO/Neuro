@@ -94,7 +94,7 @@ def authority_signals(src: dict[str, Any]) -> list[dict[str, str]]:
         out.append({"signal": "domain", "value": "commercial/other", "basis": f"host {host}"})
     p = src.get("platform")
     kind = {"youtube": "video", "instagram": "social post", "podcast": "podcast episode", "document": "document", "spreadsheet": "spreadsheet",
-            "web": "web page", "file": "uploaded media", "manual": "pasted text", "media": "media"}.get(p or "", p or "unknown")
+            "web": "web page", "file": "uploaded media", "manual": "pasted text", "media": "media", "book": "book (EPUB)"}.get(p or "", p or "unknown")
     out.append({"signal": "kind", "value": kind, "basis": f"platform {p}"})
     title = (src.get("title") or "").lower()
     if p == "document" and re.search(r"\b(publication|pub\.? ?\d+|form \d+|instructions|regulation|statute|code of|manual|handbook|advisory circular|\bad\b|notice|bulletin)\b", title):

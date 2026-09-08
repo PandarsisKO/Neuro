@@ -34,7 +34,7 @@ RELATIONS = ("manifestation_of", "reprint_of", "translation_of", "revision_of", 
 # relations that put a source in the Work's lineage (one evidentiary line); the rest carry their own analysis
 LINEAGE_RELATIONS = {"manifestation_of", "reprint_of", "translation_of", "revision_of", "excerpt_of", "summary_of", "quotes", "derivative_of"}
 PRIMARY_RELATIONS = {"manifestation_of", "reprint_of", "translation_of", "revision_of"}
-FORMS = ("official", "mirror", "html", "excerpt", "ocr", "scan", "reprint", "translation", "summary", "derivative")
+FORMS = ("official", "mirror", "html", "excerpt", "ocr", "scan", "reprint", "translation", "summary", "derivative", "epub")   # epub (G6P1): a complete digital edition the user owns
 CHANGE_KINDS = ("unknown", "supersedes", "material", "rehost", "formatting")
 
 # ---------------------------------------------------------------- identifiers ($0)

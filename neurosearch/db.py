@@ -533,6 +533,21 @@ CREATE INDEX IF NOT EXISTS ix_work_manifestations_work ON work_manifestations(wo
 CREATE INDEX IF NOT EXISTS ix_work_manifestations_source ON work_manifestations(source_id);
 -- G7 (0.32.0): community threads are ONE source each (platform 'community'); posts/comments are evidence locators with
 -- retrieval/edit/deletion state, corrections attached to what they correct, self-described context never verified.
+CREATE TABLE IF NOT EXISTS book_sections (                                -- G6P1: an EPUB's structure; ordinal = the segment locator
+    source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    ordinal      INTEGER NOT NULL,
+    spine_index  INTEGER NOT NULL,
+    href         TEXT,
+    fragment     TEXT,                          -- the anchor inside the content document (deep link without re-ingestion)
+    chapter      TEXT,
+    chapter_no   INTEGER,
+    section      TEXT,
+    role         TEXT,                          -- title_page | copyright | preface | introduction | part | chapter | appendix | notes | bibliography | index | body | back_matter …
+    depth        INTEGER NOT NULL DEFAULT 0,
+    label        TEXT NOT NULL,                 -- the human citation: "Ch. 3 → Disruptive Technological Change · Section"
+    chars        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (source_id, ordinal)
+);
 CREATE TABLE IF NOT EXISTS community_posts (
     source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     post_id         TEXT NOT NULL,                  -- platform id
@@ -756,7 +771,8 @@ MIGRATIONS = [
     ("sources", "canonical_url", "ALTER TABLE sources ADD COLUMN canonical_url TEXT"),
     ("sources", "content_fingerprint", "ALTER TABLE sources ADD COLUMN content_fingerprint TEXT"),
     ("sources", "error_class", "ALTER TABLE sources ADD COLUMN error_class TEXT"),           # B1: classified acquisition failure (browser_solvable:<cls> | <cls>)
-    ("sources", "completeness", "ALTER TABLE sources ADD COLUMN completeness TEXT"),         # B2: JSON — captured vs expected, never "complete" by default
+    ("sources", "completeness", "ALTER TABLE sources ADD COLUMN completeness TEXT"),
+    ("community_syntheses", "coverage", "ALTER TABLE community_syntheses ADD COLUMN coverage TEXT"),   # B2: JSON — partial/unknown threads behind the state         # B2: JSON — captured vs expected, never "complete" by default
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
@@ -2329,7 +2345,7 @@ def project_source_inventory(project_id: str) -> list[dict[str, Any]]:
                             "WHERE id IN (" + ",".join("?" for _ in part) + ") AND status != 'proposed'", part).fetchall()
         for r in rows:
             d = row_to_dict(r)
-            if d["platform"] not in ("document", "spreadsheet"):
+            if d["platform"] not in ("document", "spreadsheet", "book"):
                 d["description"] = None                       # long video descriptions are not inventory material
             d["priority"] = d["id"] in prio
             out.append(d)

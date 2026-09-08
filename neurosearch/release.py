@@ -245,6 +245,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_l1_browser_capture.py"])
         r.check("browser acquisition (B1): browser-solvable failure → requires_browser (durable external job), source stays in its project, the capture resolves the SAME job/source "
                 "(also across restart and unsolicited), non-solvable failures stay failed, a successful reading never asks for Chrome, owned sources bypass the browser, queue carries no secrets", ok, tail)
+        ok, tail = _pytest(["tests/test_m1_epub.py"])
+        r.check("EPUB core (G6P1): spine order never ZIP order, EPUB 2 + 3, nested/missing TOC, non-English, broken markup, protected books refused (no circumvention); "
+                "ordinary upload lifecycle, searchable, findings, answers, deterministic 'Ch. N → title · section' citations, same source on re-upload, ISBN/title+creator → the existing Work", ok, tail)
         ok, tail = _pytest(["tests/test_l2_completeness.py"])
         r.check("capture completeness (B2): partial stays visibly partial (accept never means complete), 'more' stubs and DOM shortfalls recorded as provenance, a partial capture merges and never deletes "
                 "what an earlier reading saw, only a complete reading marks vanished posts, several requests form a queue that advances, Reopen re-requests the SAME source", ok, tail)

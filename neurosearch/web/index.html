@@ -497,7 +497,7 @@ const del = (p, b) => api(p, { method: 'DELETE', body: b ? JSON.stringify(b) : u
 let _t; const debounce = (f, ms = 300) => { clearTimeout(_t); _t = setTimeout(f, ms); };
 const ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
 const fmt = s => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
-const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐', spreadsheet: '🧮' };
+const ICON = { youtube: '▶', instagram: '◎', document: '📄', file: '🎙', manual: '✎', media: '♪', web: '🌐', spreadsheet: '🧮', book: '📖', community: '💬' };
 
 const state = { project: null, conv: null, chats: [], view: 'chats' };
 
@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.33.1';
+const UI_VERSION = '0.34.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -981,7 +981,8 @@ async function viewTranscript(id) {
   const s = await api('/api/sources/' + id);
   const isDoc = s.platform === 'document', isWeb = s.platform === 'web', isSheet = s.platform === 'spreadsheet';
   const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : (isWeb ? s.url : null);
-  const lab = t => isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
+  const secLabel = s.platform === 'book' ? Object.fromEntries((s.sections || []).map(x => [x.ordinal, x.label])) : null;
+  const lab = t => secLabel ? (secLabel[Math.round(t)] || `section ${Math.round(t)}`) : isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
     <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
@@ -1127,7 +1128,7 @@ async function loadCommunity() {
     $('#commCounts').textContent = st.threads ? `· ${st.threads} thread${st.threads === 1 ? '' : 's'} · ${st.substantive} substantive posts · ${st.corrections} correction${st.corrections === 1 ? '' : 's'}` : '';
     $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted" style="font-size:12px;margin:4px 0">Reddit refuses every non-browser reader (since June 2026): to add a thread, open it in Chrome and use the extension's <b>Send this page</b>; to search a subreddit from here, add <code>REDDIT_CLIENT_ID</code> / <code>REDDIT_CLIENT_SECRET</code> (a Reddit “script” app) to <code>.env</code>.</div>`;
     const syn = s.syntheses || [];
-    $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div><div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
+    $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div>${x.coverage && x.coverage.note ? `<div class="muted" style="color:var(--warn);font-size:12px">⚠ ${esc(x.coverage.note)}</div>` : ''}<div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
   } catch (e) { $('#commMsg').textContent = e.message; }
 }
 async function exploreCommunity() {

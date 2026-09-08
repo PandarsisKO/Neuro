@@ -138,7 +138,7 @@ def inventory_block(project_id: str) -> str:
 
 def _kind_label(r: dict[str, Any]) -> str:
     return {"youtube": "video", "instagram": "video", "podcast": "podcast episode", "media": "video", "file": "uploaded media file",
-            "document": "document", "spreadsheet": "spreadsheet", "web": "web page", "manual": "pasted text"}.get(r.get("platform") or "", r.get("platform") or "source")
+            "document": "document", "spreadsheet": "spreadsheet", "web": "web page", "manual": "pasted text", "book": "book"}.get(r.get("platform") or "", r.get("platform") or "source")
 
 
 def build_context(hits: list[dict[str, Any]], start: int = 0) -> str:
@@ -686,7 +686,8 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         if syn:
             lines.append("Community experience (derived from threads — cite the underlying posts, not this summary):")
             for s_ in syn[:8]:
-                lines.append(f"- {s_['kind']}: {s_['statement'][:160]} ({s_['independent_lines']} independent firsthand line(s), {s_['contradicting']} disputing)")
+                cov = (s_.get("coverage") or {}).get("note")
+                lines.append(f"- {s_['kind']}: {s_['statement'][:160]} ({s_['independent_lines']} independent firsthand line(s), {s_['contradicting']} disputing)" + (f" — PARTIAL: {cov}" if cov else ""))
         return "\n".join(lines)
     if name == "propose_claim":
         from . import claims as _claims, knowledge
@@ -739,7 +740,7 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
                 bits.append(r["channel"])
             if r.get("published_at"):
                 bits.append(str(r["published_at"]))
-            if r.get("description") and r.get("platform") in ("document", "spreadsheet"):
+            if r.get("description") and r.get("platform") in ("document", "spreadsheet", "book"):
                 bits.append(r["description"])
             if r.get("status") != "ready":
                 bits.append(f"status: {r.get('status')}")

@@ -439,7 +439,7 @@ def completeness(thread: dict[str, Any]) -> dict[str, Any]:
     was captured, plus the stubs/branches the reading admits it left out. Never 'complete' by default."""
     cap = dict(thread.get("capture") or {})
     captured = sum(1 for p in thread["posts"] if p.get("kind") == "comment")
-    expected = thread.get("num_comments")
+    expected = cap.get("expected") if isinstance(cap.get("expected"), (int, float)) else thread.get("num_comments")
     expected = int(expected) if isinstance(expected, (int, float)) and expected >= 0 else None
     unloaded = int(cap.get("load_more_remaining") or 0)
     unloaded_count = int(cap.get("unloaded_count") or 0)
@@ -749,6 +749,17 @@ def synthesize(project_id: str) -> list[dict[str, Any]]:
     from . import claims
     out = []
     t = time.time()
+    comp_cache: dict[str, dict[str, Any] | None] = {}
+
+    def comp_of(source_id: str) -> dict[str, Any] | None:
+        if source_id not in comp_cache:
+            src = db.get_source(source_id) or {}
+            try:
+                comp_cache[source_id] = json.loads(src["completeness"]) if src.get("completeness") else None
+            except ValueError:
+                comp_cache[source_id] = None
+        return comp_cache[source_id]
+
     with db.tx() as conn:
         conn.execute("DELETE FROM community_syntheses WHERE project_id=?", (project_id,))
         for c in claims.list_for_project(project_id):
@@ -772,10 +783,20 @@ def synthesize(project_id: str) -> list[dict[str, Any]]:
             else:
                 kind = "FIRSTHAND_EXAMPLES"
             links = [{"source_id": e["source_id"], "locator": e.get("locator"), "link": e.get("link"), "relation": e["relation"], "independent": e.get("independent"), "title": e.get("title")} for e in ev]
+            # B2: a state over threads the app only partly holds says so — unseen comments may hold the disagreement
+            partial = []
+            for src_id in {e["source_id"] for e in ev if e.get("platform") == PLATFORM}:
+                cp = comp_of(src_id)
+                if cp and cp.get("status") in ("partial", "unknown"):
+                    partial.append({"source_id": src_id, "status": cp["status"], "captured": cp.get("captured"), "expected": cp.get("expected"), "title": next((e.get("title") for e in ev if e["source_id"] == src_id), None)})
+            coverage = {"partial_threads": partial,
+                        "note": ("based in part on partially captured threads (" + "; ".join(f"{p['captured']} of ~{p['expected']} comments" if p["expected"] else "comment count unknown" for p in partial)
+                                 + ") — unseen comments may hold disagreement; this is not full-thread consensus") if partial else None}
             sid = db.new_id()
-            conn.execute("INSERT INTO community_syntheses (id, project_id, kind, claim_id, statement, independent_lines, supporting, contradicting, evidence, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                         (sid, project_id, kind, c["id"], c["text"][:300], indep, len(sup), len(con), json.dumps(links), t))
-            out.append({"id": sid, "kind": kind, "claim_id": c["id"], "statement": c["text"][:300], "independent_lines": indep, "supporting": len(sup), "contradicting": len(con), "evidence": links})
+            conn.execute("INSERT INTO community_syntheses (id, project_id, kind, claim_id, statement, independent_lines, supporting, contradicting, evidence, created_at, coverage) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         (sid, project_id, kind, c["id"], c["text"][:300], indep, len(sup), len(con), json.dumps(links), t, json.dumps(coverage) if partial else None))
+            out.append({"id": sid, "kind": kind, "claim_id": c["id"], "statement": c["text"][:300], "independent_lines": indep, "supporting": len(sup), "contradicting": len(con), "evidence": links,
+                        "coverage": coverage if partial else None})
     order = {"RARE_BUT_SERIOUS": 0, "STRONG_DISAGREEMENT": 1, "MIXED_EXPERIENCE": 2, "FREQUENTLY_REPORTED": 3, "FIRSTHAND_EXAMPLES": 4}
     out.sort(key=lambda x: (order[x["kind"]], -x["independent_lines"]))
     return out
@@ -788,6 +809,7 @@ def syntheses(project_id: str) -> list[dict[str, Any]]:
         d = dict(r)
         try:
             d["evidence"] = json.loads(d["evidence"] or "[]")
+            d["coverage"] = json.loads(d["coverage"]) if d.get("coverage") else None
         except ValueError:
             pass
         out.append(d)

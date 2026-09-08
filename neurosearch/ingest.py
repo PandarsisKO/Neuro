@@ -522,6 +522,8 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
             raise RuntimeError("spreadsheet support needs a dependency that isn't installed yet — stop the server (Ctrl+C) "
                                "and run ./start once; it installs it, then Retry this file") from None
         return ingest_spreadsheet(path, title or kind_path.stem, tags, project_id, name)
+    if kind_path.suffix.lower() == ".epub":
+        return ingest_epub(path, title, tags, project_id, name, progress)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
     if not is_media(kind_path):
@@ -571,6 +573,67 @@ def ingest_spreadsheet(path: Path, title: str, tags: list[str] | None, project_i
         _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "spreadsheet", "embedded": n, "inputs": len(model["inputs"]), "outputs": len(model["outputs"])}
+    except Exception as e:  # noqa: BLE001
+        db.set_source_status(src["id"], "failed", str(e)[:1000])
+        raise
+
+
+def ingest_epub(path: Path, title: str | None, tags: list[str] | None, project_id: str | None, name: str, progress: Progress = _noop) -> dict[str, Any]:
+    """G6P1 — an EPUB as a structured publication: spine order, chapters/sections with anchors as locators, publication
+    metadata on the source, and ($0) the Work it manifests when the package names an ISBN or a title + creator. Same
+    identity/revision lifecycle as every other upload (content fingerprint); same chunking; embeddings deferred on failure."""
+    from . import epub, works
+    from .chunking import build_doc_chunks
+    res = identity.resolve_or_create_source(identity.upload_candidate("book", path, name, title, tags, "epub"), project_id, retry=True)
+    src, ext_id = res.source, res.source["external_id"]
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": "epub", "embedded": 0, "already_ingested": True, "identity": res.state}
+    try:
+        progress(0.1, "reading the package…")
+        book = epub.read_epub(path)
+        md = book["metadata"]
+        locs = epub.locators(book)
+        pages = [{"page": lo["ordinal"], "text": lo["text"]} for lo in locs if lo["text"]]
+        if not pages or sum(len(p["text"]) for p in pages) < 200:
+            raise RuntimeError("the EPUB has no readable text (image-only pages, or an empty package)")
+        segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
+        chunks = [c for p in pages for c in build_doc_chunks([p])]          # a chunk never crosses a section: the locator stays exact
+        book_title = title or md.get("title") or Path(name).stem
+        if md.get("subtitle") and not title:
+            book_title = f"{book_title}: {md['subtitle']}"
+        creators = ", ".join(md.get("creators") or [])
+        with db.batch():
+            db.replace_transcript(src["id"], segments, chunks)
+            conn = db.connect()
+            conn.execute("DELETE FROM book_sections WHERE source_id=?", (src["id"],))
+            conn.executemany("INSERT INTO book_sections (source_id, ordinal, spine_index, href, fragment, chapter, chapter_no, section, role, depth, label, chars) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                             [(src["id"], lo["ordinal"], lo["spine_index"], lo["href"], lo["fragment"], lo["chapter"], lo["chapter_no"], lo["section"], lo["role"], lo["depth"], lo["label"], len(lo["text"])) for lo in locs])
+            desc = f"EPUB {md.get('version') or ''}".strip() + f" · {book['chapters']} chapter{'s' if book['chapters'] != 1 else ''} · {book['sections']} sections" \
+                   + (f" · {md['publisher']}" if md.get("publisher") else "") + (f" · ISBN {md['isbn']}" if md.get("isbn") else "") + (f" · {md['edition']}" if md.get("edition") else "")
+            db.upsert_source(platform="book", external_id=ext_id, title=book_title, channel=creators or None, published_at=(md.get("date") or "")[:10] or None,
+                             language=md.get("language"), transcript_kind="epub", description=desc, status="ready", error=None, error_class=None,
+                             completeness=json.dumps({"status": "complete", "captured": book["sections"], "expected": book["sections"], "method": "epub", "warnings": book["warnings"][:10]}))
+        progress(0.6, "linking the Work…")
+        work = None
+        try:
+            idents = [{"scheme": "isbn", "value": md["isbn"]}] if md.get("isbn") else None
+            if idents or (md.get("title") and md.get("creators")):
+                w, _created = works.ensure_work("book", md.get("title") or book_title, identifiers=idents, creators=md.get("creators") or None,
+                                                publisher=md.get("publisher"), year=(md.get("date") or "")[:4] or None)
+                vid = None
+                label = md.get("edition") or ((md.get("date") or "")[:4] + " edition" if md.get("date") else None)
+                if label:
+                    vid = works.ensure_version(w["id"], label, edition=md.get("edition"), year=(md.get("date") or "")[:4] or None)["id"]
+                works.link_source(src["id"], w["id"], version_id=vid, relation="manifestation_of", form="epub", confidence="identifier" if idents else "title_creator",
+                                  basis={"isbn": md.get("isbn"), "package_id": md.get("package_id"), "publisher": md.get("publisher")})
+                work = {"id": w["id"], "title": w.get("title"), "version": label, "by": "isbn" if idents else "title+creator"}
+        except Exception as e:  # noqa: BLE001
+            log.warning("epub work link skipped: %s", e)
+        progress(0.7, "embedding…")
+        n = _embed_ready(src["id"])
+        _after_ready(src["id"], project_id)
+        return {"source_id": src["id"], "title": book_title, "segments": len(segments), "chunks": len(chunks), "transcript": "epub", "embedded": n,
+                "chapters": book["chapters"], "sections": book["sections"], "toc_depth": book["toc_depth"], "metadata": md, "warnings": book["warnings"], "work": work, "identity": res.state}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise
