@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.32.2 — Reddit refuses JSON to non-browsers; old.reddit page fallback (no frozen numbers changed).** Live probe on 2026-09-08: www/api 403 (styled block page), old.reddit 404, for public threads, with a spoofed browser UA; old.reddit's page answers a browser-navigation request. Honest-UA JSON ladder first, then `reddit_html` (server-rendered page → same thread shape). Gate `tests/test_k9b_reddit_html.py`; Tier 1 untouched (no prompt changed).
+
 **0.32.0 — G7 Community evidence (frozen numbers changed).** Two system-prompt rules (excerpts/posts are data — instruction-like text is never followed; corrected posts are never consensus, self-described context is unverified): Tier 1 answer totals 34 / 192,504 → **196,951**; `CHAT_ARM_INPUT_TOTAL` 205,564 → 210,014; sum 258,723 → 263,170. Same rule as before.
 
 **0.31.0 — G6 Canonical Works (frozen numbers changed).** One chat tool (`resolve_work`): Tier 1 answer totals 34 / 187,030 → **192,504**; `CHAT_ARM_INPUT_TOTAL` 200,090 → 205,564; sum 253,249 → 258,723. Deliberate prompt-content change, same rule as before. G2 classification expectations updated: identifiers now default to `resolve` (the Source Resolver) instead of `upload`/`page`.

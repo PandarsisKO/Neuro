@@ -240,6 +240,8 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_k9_community.py"])
         r.check("community evidence: thread hierarchy + corrections preserved, independent experience ≠ repeated information, engagement never outranks substance, "
                 "self-described context unverified, community cannot establish a rule, injection text is data, candidates resurface without re-enumeration (G7 gate)", ok, tail)
+        ok, tail = _pytest(["tests/test_k9b_reddit_html.py"])
+        r.check("public threads stay readable when Reddit refuses JSON: old.reddit page → the same thread tree, deleted/edited state, search rows; fallback only on refusal (0.32.2 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k8_works.py"])
         r.check("canonical works: identifier → owned copy at $0; copies + derivatives = one lineage; citation → stub/candidate/target; version relationship drives freshness; "
                 "ambiguous titles never merge; project relevance never mutates the Work (G6 gate)", ok, tail)

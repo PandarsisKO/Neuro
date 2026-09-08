@@ -716,3 +716,84 @@ Text extraction accuracy · numeric accuracy · structured-field accuracy (label
 
 **Cleanup.** `works.merge_work` (versions by label, manifestations deduped, project relevance keeps the stronger state, lineage ids rewritten, `alias` identifiers so old ids resolve) and `works.reconcile_identifiers` (form-number variants) — tested; `POST /api/works/reconcile` folds the live Form 1120S / Form 1120-S pair through it.
 
+
+## 0.32.2 — Reddit stays readable when Reddit refuses JSON (live finding, 2026-09-08)
+
+**What broke.** Reddit's edge refuses the public JSON listing to a client that is not a browser — a spoofed browser User-Agent from Python's TLS stack gets the styled `403` page on www and api.reddit.com and a bare `404` on old.reddit.com — even for threads anyone can read logged out. The G7 adapter had only the JSON reading, so every thread failed with "no readable text on that page" (0.32.0/0.32.1).
+
+**What changed.** `community._json_get` walks a short honest ladder (descriptive `desktop:neurosearch:…` User-Agent, no navigation headers, on www → old → api; Reddit's own rule) and, when all three refuse, names each host's answer in the job message. Then `reddit_html.py` reads **old.reddit.com's server-rendered page** — requested exactly as a browser navigation, the one representation Reddit serves to a plain client — into the same thread shape the JSON adapter produces (ids, parents from the nested `.child` blocks, depth, authors, scores, timestamps, edited/deleted state, permalinks, subreddit, comment count) and the same candidate rows for a subreddit search page. Nothing else in G7 changed: `store_thread`, pruning, corrections, locators and synthesis are representation-neutral; the thread dict carries `representation` for provenance. `safe_fetch` accepts a `None` header value to drop a default header.
+
+**Gate.** `tests/test_k9b_reddit_html.py` (5): the HTML reading of the frozen G7 fixture thread equals the JSON reading post-for-post; deleted/edited state; the fallback engages only on refusal and both refusals surface as one message; a non-thread page is reported, never parsed into an empty thread; search rows; a thread acquired through the page is a full community source with corrections. Release-check gate added. Suite 359.
+
+**Honest limits.** The HTML reading depends on old.reddit.com's markup (`.thing[data-fullname]`, `.md`, `.score.unvoted[title]`, `time[datetime]`) — stable for years, still a dependency; "load more comments" stubs beyond Reddit's server-side render (~200 comments at depth) are not followed. If Reddit ever refuses the page too, the extension's "send this page" path remains.
+
+---
+
+# ADDENDUM — Publication Intelligence Track (G6P) — Kyle, 2026-09-08
+
+**Placement.** Not a second Works/Resolver mission: book, EPUB, periodical, article and interview capabilities EXTEND the live G6 architecture. G1–G6 are shipped and frozen under their gate names, so the track is numbered G6P (an expansion of G6's acquisition and manifestation intelligence), sequenced between G6 and G7:
+
+```text
+G1 Global Source Identity → G2 Universal Resource Input → G3 Collection Exploration + Candidate Index → G4 Global Library Intelligence
+→ G5 Knowledge Map + Claims + Evidence Planning → G6 Canonical Works + Source Resolver
+   └── G6P PUBLICATION INTELLIGENCE TRACK: P1 EPUB Core · P2 EPUB Structure + Work Integration · P3 Book Resolution + Acquisition ·
+       P4 Periodical / Article Intelligence · P5 Issue Slicer · P6 Interview Intelligence · P7 Work-first Discover + Better-Copy UX
+→ G7 Deep + Community Source Discovery → G8 Multimodal Evidence → G9 Recursive Research + Temporal Intelligence + Decision Readiness
+```
+
+*(Sequencing note, recorded at filing: G7 0.32.x had already shipped when this addendum arrived; the addendum's "do not start G7 yet" therefore reads as "G6P1 is the NEXT release" — G7 is not reverted; community posts that name books/interviews/articles will resolve them through G6/G6P as §10 says.)*
+
+## 1. What G6 already solved (do not rebuild)
+Work family → Work Version/Edition → Manifestations → Global Source. Already established: Work identity; versions/editions; manifestation relationships; supersession/version lineage; evidence lineage; Global Library first; project-relative Work relevance; identifier-first deterministic resolution; ISBN/DOI/regulatory identifiers; owned vs seen vs unresolved states; attach without reacquisition; unresolved identity/access states; explicit acquisition after resolution; Work-aware Evidence Targets; manifestation/evidence independence; basic `resolve_work`; Works UI; Add → Resolve behavior.
+
+## 2. What is genuinely new
+A. Native EPUB ingestion (a first-class structured document format, not an opaque ZIP or converted PDF). B. Publication-aware document structure (spine order, chapters, sections, front/body/back matter, native anchors, human-readable citations, images/tables/figures). C. Book-specific acquisition intelligence (G6 identifies books; G6P locates and evaluates obtainable manifestations). D. Periodical hierarchy Publication → Issue → Article. E. Issue slicing (one issue satisfies many article needs without duplicate ingestion). F. Interview intelligence (who was interviewed, who asked, editorial framing, same interview across copies, articles that merely quote it). G. Preferred manifestation / acquisition upgrades (Partial preview → Complete EPUB now available; prefer the better manifestation, keep provenance/history).
+
+## 3. G6P1 — EPUB Core (BUILD NEXT)
+EPUB is independently useful; the larger resolver mission must not delay it. Mission: a user uploads an EPUB and Neuro Search treats it as a structured publication. Pipeline: .epub → recognize → validate package → extract publication metadata → read spine → extract structured XHTML → build segments/chunks → index → retrieve → cite chapter/section. Support at minimum: EPUB 2, EPUB 3, reflowable books, nested TOC, missing/weak TOC, non-English content, large books, malformed-but-recoverable packages, encrypted/protected detection. **No DRM circumvention.** Metadata where available: title, subtitle, creator(s), publisher, language, publication date, modified date, identifiers, ISBN, subjects, description, rights, edition/version hints, package identifier — no paid model call for what deterministic parsing recovers. **The spine defines reading order; never process ZIP contents alphabetically.**
+**Gate P1.** A valid EPUB can: (1) upload through the ordinary source lifecycle; (2) extract in correct reading order; (3) become searchable; (4) produce findings; (5) answer questions; (6) produce deterministic structural citations; (7) survive retry/restart; (8) use normal provenance/jobs/cost/revision infrastructure.
+
+## 4. G6P2 — EPUB Structure + Work Integration
+Exploit EPUB's structure: Book → Front Matter (Preface, Introduction) → Part I → Chapter 1 → Section → Subsection … → Appendix, Notes, Bibliography, Index. Semantic roles where inferable: front_matter / body / back_matter; title_page, copyright, foreword, preface, introduction, part, chapter, section, appendix, notes, bibliography, glossary, index, acknowledgements — roles influence retrieval/findings weighting; low-priority sections are never discarded. Locator: kind epub, spine_index, href, fragment, chapter, section, structural_role (adapted to current locator conventions). Citation hierarchy: prefer "Book · Ch. 3 → Disruptive Technological Change" over synthetic page numbers; fallbacks chapter+section → chapter → content-document title → EPUB section number; citations deterministically map back to ingested content. Deep linking: click citation → chapter/anchor/passage context without re-ingestion. Work integration: Upload EPUB → ISBN/title/creator → resolve Work → resolve Version → create EPUB Manifestation → attach Source; never a second Work G6 already knows.
+**Gate P2.** A real EPUB produces: existing Work matched; correct Version/Edition when determinable; EPUB Manifestation; structured chapters; human-readable citations; no duplicate Source acquisition.
+
+## 5. G6P3 — Book Resolution + Acquisition
+From "I know this book exists" to "I know which Work/version this is and what legitimate manifestations are available." Funnel: B0 current project → B1 Global Library → B2 existing Work/Version records → B3 structured bibliographic resolution → B4 authoritative legitimate full text → B5 publisher/author/institutional copy → B6 legitimate archive → B7 partial preview/excerpt → B8 user-provided copy → B9 metadata-only unresolved Work. Identity: ISBN-10/13, OCLC, LCCN, Open Library ID, Google Books ID, publisher identifiers — one ISBN identifies an edition/format, not the Work family; preserve that distinction. Providers to evaluate: Open Library, Google Books, Library of Congress, HathiTrust, publishers, author sites, institutional repositories — deterministic/structured/free lookup before web/model reasoning. Completeness states: ACQUIRED_FULL, ACQUIRED_PARTIAL, METADATA_ONLY, USER_FILE_REQUIRED, ACCESS_REQUIRED, NOT_FOUND, RECHECK_LATER — a preview never masquerades as the complete book. Related material (author interview, review, lecture, summary, excerpt) helps research but is not the book manifestation unless it actually is one.
+**Gate P3.** exact ISBN → correct edition; another ISBN → same Work, different version; existing EPUB prevents reacquisition; preview remains partial; interview is not a book manifestation; complete EPUB can supersede preview as preferred manifestation.
+
+## 6. G6P4 — Periodical and Article Intelligence
+Publication → Issue → Article (Wired → May 1998 → Interview with Jane Doe). Identity: publication, ISSN, publisher, volume, issue, issue date, article title, author, page range, DOI, article type. Reuse G6 Works/versions/manifestations; no parallel magazine database unless a minimal additive helper abstraction is genuinely necessary. Global Library first: wanted Article X + full issue already owned ⇒ locate the article inside the owned issue, never reacquire externally.
+**Gate P4.** An article Evidence Target recognizes that an existing issue already contains the needed material.
+
+## 7. G6P5 — Issue Slicer
+ONE ISSUE SOURCE → Article A, Article B, Interview C, Review D — article-level research units without duplicating the asset. Boundaries from TOC, headings, page ranges, bylines, known article metadata, layout/structure, title matching — deterministic and text/layout-based first; G8 improves scanned magazines later. **Critical evidence rule: parent issue + sliced article are not independent corroboration — shared lineage.**
+**Gate P5.** issue identity; article identity; article range; parent/child relationship; article-granularity retrieval; no file duplication; no evidence double counting; the same article reprinted elsewhere retains correct lineage.
+
+## 8. G6P6 — Interview Intelligence
+Interviews are specialized first-person evidence. Identity: interviewee, interviewer, publication/show, date, headline, alternate headline, issue, page range, DOI, text fingerprints. Resolve the same interview across print issue, publisher HTML, transcript, archive scan, authorized reprint, excerpt, quoting article — with the G6 relation vocabulary (exact, reprint, excerpt, derived, related). Speaker structure where reliable: EDITORIAL INTRO / INTERVIEWER question / INTERVIEWEE answer; evidence retains speaker attribution — "CEO said X" never collapses into "journalist says CEO believes X". Claimed vs known speaker: never infer identity the structure does not establish.
+**Gate P6.** interviewee attribution; interviewer attribution; editorial text separated; exact reprint recognized; excerpt recognized; derivative article recognized; a related later interview stays distinct; an alternate headline resolves the same interview.
+
+## 9. G6P7 — Work-first Discover + Find a Better Copy
+Discover surfaces WORK CANDIDATES (title, creator, why it matters, resolution: "Complete EPUB already in Global Library" / "Article located in full issue already owned, pp. 41–47") rather than bare URLs. Never block Discover: show immediately → resolver works asynchronously → availability fills in. Universal action "Find a better copy" for any Work/version with poor or missing access (metadata only → full copy; preview → complete; poor OCR → publisher HTML; excerpt → original interview). Manifestation upgrade keeps both manifestations and history; marks the better research manifestation; never deletes provenance.
+**Gate P7.** Discover suggests a Work immediately, progressively resolves manifestations, reuses existing assets, and upgrades the preferred manifestation without corrupting lineage.
+
+## 10. How G6P connects to the ladder
+G2: recognition covers .epub, book catalog URL, periodical issue, article, interview — EPUB works everywhere documents work. G3: metadata preserved for unacquired books/editions/articles/interviews/issues. G4: Library Recall understands "article requested + issue owned = existing evidence candidate" and "book requested + different usable manifestation owned = reuse before acquisition". G5: partial book ≠ full-book coverage; issue + article never count twice; Claims distinguish interviewee statement / editorial statement / interviewer assertion; reprints, excerpts and derivatives never inflate corroboration. G7: community posts naming books/interviews/articles resolve them through G6/G6P rather than becoming independent evidence for what those Works say. G8: G6P preserves EPUB images, SVG, captions, tables, figure location, surrounding text now; G8 interprets later ("preserve now, interpret more deeply in G8"). G9: preserve footnotes, bibliographies, citations, references, named Works for the Reference Graph — no uncontrolled recursive acquisition during G6P.
+
+## 11. Execution order
+G1–G6 DONE → **G6P1 EPUB Core NEXT** → G6P2 → G6P3 → G6P4 → G6P5 → G6P6 → G6P7 → G7 (shipped 0.32.x) → G8 → G9.
+
+## 12. Why here
+G8 answers "can Neuro Search understand visual evidence?"; G6P answers "what publication am I looking at, what structure does it have, which copy/version do I possess?" — resolver and ingestion concerns, directly after G6. EPUB is a structured textual publication format with optional visual assets; its structure is used before multimodal analysis exists.
+
+## 13. Source hierarchy extension
+Books → Author → Work → Edition/Version → EPUB/PDF/Preview; Periodicals → Publication → Year → Issue → Article; Interviews → Interviewee → Publication/Program → Interview. Not hardcoded if the hierarchy abstraction expresses it generically; the capabilities that matter: filter, browse, re-resolve, re-ingest, inspect, attach, analyze, find better manifestation.
+
+## 14. Recurring G6P platform gates (every sub-rung)
+Global identity (reuses G1/G6) · Work identity (attaches to the existing Work/version) · Global Library first · Candidate memory · Completeness (partial vs complete) · Lineage (reprints, excerpts, issue children, derivatives never inflate corroboration) · Provenance (exact evidence location) · Citation quality (publication-native locator) · Durable ingestion (normal jobs) · Cost (deterministic before paid) · Rights (legitimate access, no DRM circumvention) · Evidence boundary (resolved/unacquired manifestations are non-evidence until acquired and attached).
+
+## 15. Publication Intelligence acceptance project (one integrated fixture)
+Book Work → 1997 Edition → EPUB manifestation; Periodical → Issue PDF → Interview article; authorized web reprint of the interview; later article quoting it; partial book preview; complete uploaded EPUB. Must prove: (1) EPUB enters normal ingestion; (2) spine order correct; (3) metadata resolves the existing Work; (4) book version separate from Work family; (5) chapter/section citation stable; (6) partial preview remains partial; (7) complete EPUB becomes preferred; (8) issue reused, not reacquired; (9) article addressable inside the issue; (10) issue + article not independent evidence; (11) authorized reprint resolves correctly; (12) derived article ≠ the interview; (13) editorial text not attributed to the interviewee; (14) interviewee statements keep speaker provenance; (15) Global Library checked before every acquisition; (16) all new work on normal jobs/provenance/cost/revision/release infrastructure.
+
+## 16. Immediate direction
+The next release is **G6P1 — EPUB Core**: independently useful, deterministic enough to build safely, needed for serious book acquisition, directly compatible with G6, independent of G7/G8/G9. After G6P1 is proven with a realistic EPUB, continue through the sub-ladder. The transition: G6 "Neuro Search knows what Work this is" → G6P "Neuro Search understands publications deeply enough to acquire, structure, cite, compare, and reuse the best manifestations of that Work."
