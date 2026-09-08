@@ -248,6 +248,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_n1_research_view.py"])
+        r.check("Research view engine (R1/R3/R5/R6): a deterministic $0 priority order over questions and watch-outs (importance, planner dependence, impact, breadth, known sources); "
+                "watch-outs are issues grouped by kind and area, never rows; areas are named from finding titles, never generic tokens; the sidebar number is what needs the user, never the Claim count", ok, tail)
         ok, tail = _pytest(["tests/test_m2_share.py"])
         r.check("portable answers (C0 Share ▾): a share variant is one model call over the finished answer, never a research pass; it can only cite the original's markers (strays removed and reported); budget-guarded", ok, tail)
         ok, tail = _pytest(["tests/test_m1_epub.py"])

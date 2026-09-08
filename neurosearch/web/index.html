@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.36.0';
+const UI_VERSION = '0.37.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1335,7 +1335,7 @@ async function loadDiscoveries(keepMsg = false) {
 function stTag(x) { return `<span class="st ${esc(x)}">${esc((x || '').replace('_', ' '))}</span>`; }
 function renderResearch(st) {
   const m = st.map || { nodes: [], counts: {} };
-  $('#nResearch').textContent = (st.claims || []).filter(c => c.status !== 'rejected' && c.status !== 'superseded').length || '';
+  $('#nResearch').textContent = (typeof st.attention === 'number' ? st.attention : (st.claims || []).filter(c => c.status !== 'rejected' && c.status !== 'superseded').length) || '';   // R3: what needs you, not how many Claims exist
   $('#resMap').innerHTML = m.nodes.length ? m.nodes.map(n => `<div class="kn">${stTag(n.state)}<div><b>${esc(n.topic)}</b> <span class="muted">· ${n.claims_total} claim${n.claims_total === 1 ? '' : 's'}${n.targets_open ? ` · ${n.targets_open} open target${n.targets_open === 1 ? '' : 's'}` : ''}${n.tensions_open ? ` · ${n.tensions_open} tension${n.tensions_open === 1 ? '' : 's'}` : ''}</span><div class="why">${esc(n.why || '')}</div></div></div>`).join('')
     : `<div class="muted">No Claims yet — approve some findings (or press Refresh) and the map builds itself at no cost.</div>`;
   const ts = st.tensions || [];

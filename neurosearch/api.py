@@ -1555,10 +1555,12 @@ class ResearchRefreshIn(BaseModel):
 
 @app.get("/api/projects/{project_id}/research", dependencies=[Depends(require_auth)])
 def api_research(project_id: str) -> dict[str, Any]:
-    from . import knowledge
+    from . import knowledge, research_view
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return knowledge.state(project_id)
+    st = knowledge.state(project_id)
+    st["attention"] = research_view.attention(project_id)      # the sidebar number (R3): what needs Kyle, never the Claim count
+    return st
 
 
 @app.post("/api/projects/{project_id}/research/refresh", dependencies=[Depends(require_auth)])
@@ -1568,9 +1570,49 @@ async def api_research_refresh(project_id: str, body: ResearchRefreshIn) -> dict
     from . import claims, knowledge
     if not db.get_project(project_id):
         raise HTTPException(404)
+    from . import research_view
     res = await anyio.to_thread.run_sync(lambda: claims.ensure(project_id, allow_model=body.extract))
     res["state"] = knowledge.state(project_id)
+    res["state"]["attention"] = research_view.attention(project_id)
     return res
+
+
+@app.get("/api/projects/{project_id}/research/overview", dependencies=[Depends(require_auth)])
+def api_research_overview(project_id: str, limit: int = 5) -> dict[str, Any]:
+    """R1/R3/R5/R6 ($0, deterministic): the decision-first view — summary, the ranked 'next' list (questions + watch-outs),
+    recently improved, the sidebar attention count, and the Research Areas."""
+    from . import research_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return research_view.overview(project_id, limit=max(1, min(limit, 20)))
+
+
+@app.get("/api/projects/{project_id}/research/questions", dependencies=[Depends(require_auth)])
+def api_research_questions(project_id: str, status: str | None = None) -> dict[str, Any]:
+    from . import research_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    qs = research_view.questions(project_id)
+    if status:
+        qs = [q for q in qs if q["status"] == status]
+    return {"total": len(qs), "questions": qs}
+
+
+@app.get("/api/projects/{project_id}/research/watchouts", dependencies=[Depends(require_auth)])
+def api_research_watchouts(project_id: str) -> dict[str, Any]:
+    from . import research_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    ws = research_view.watchouts(project_id)
+    return {"total": len(ws), "watchouts": ws}
+
+
+@app.get("/api/projects/{project_id}/research/areas", dependencies=[Depends(require_auth)])
+def api_research_areas(project_id: str) -> dict[str, Any]:
+    from . import research_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return research_view.areas(project_id)
 
 
 class EvalIn(BaseModel):
