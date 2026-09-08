@@ -451,3 +451,33 @@ def normalize_enums(name: str, obj: Any) -> Any:
         return node
     sch = get(name)
     return walk(obj, sch, sch)
+
+
+def clamp(name: str, obj: Any) -> Any:
+    """Constraints the provider strips (`_STRIPPED`: maxItems, maxLength, …) are invisible to the model, so locally they
+    are CLAMPS, never rejections: arrays are truncated to maxItems and strings to maxLength before validation. 0.28.0
+    (profiles, maxLength) and 0.30.2 (claims, maxItems on missing_areas) both paid for a batch and then failed it on a
+    constraint the model could not see; this makes that class of failure impossible by construction."""
+    def walk(node: Any, schema: dict[str, Any], root: dict[str, Any]) -> Any:
+        if "$ref" in schema:
+            target: Any = root
+            for seg in schema["$ref"].split("/")[1:]:
+                target = target.get(seg, {})
+            return walk(node, target, root)
+        if isinstance(node, str) and isinstance(schema.get("maxLength"), int) and len(node) > schema["maxLength"]:
+            node = node[: schema["maxLength"]]
+        if isinstance(node, list) and schema.get("type") == "array":
+            if isinstance(schema.get("maxItems"), int) and len(node) > schema["maxItems"]:
+                node = node[: schema["maxItems"]]
+            if isinstance(schema.get("items"), dict):
+                node = [walk(x, schema["items"], root) for x in node]
+            return node
+        if isinstance(node, dict) and schema.get("type") == "object":
+            props = schema.get("properties", {})
+            for k in list(node):
+                if k in props:
+                    node[k] = walk(node[k], props[k], root)
+            return node
+        return node
+    sch = get(name)
+    return walk(obj, sch, sch)

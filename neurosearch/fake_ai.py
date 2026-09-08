@@ -540,6 +540,31 @@ class _Msgs:
                 blk = _Blk(type="tool_use", id="toolu_fake_1", name=want["name"], input=want.get("input") or {})
                 return _Blk(stop_reason="tool_use", model="fake-claude", content=[blk],
                             usage=_Blk(input_tokens=_tokens(system + user), output_tokens=20, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+        # 0.30.3 truncation knobs. NEUROSEARCH_FAKE_CHAT_TRUNCATE=1: the first answer.chat call stops with max_tokens
+        # mid-sentence and the continuation (a "Continue the previous answer" user turn) returns the rest, re-emitting the
+        # last few words as real models do. NEUROSEARCH_FAKE_CHAT_TEXT_THEN_TOOL=1: the first call returns a text block
+        # AND a tool_use block (stop_reason tool_use); the final call returns the complete answer.
+        if task == "answer.chat" and os.environ.get("NEUROSEARCH_FAKE_CHAT_TRUNCATE") == "1":
+            full = _answer(system, messages, task) + " The final sentence of a long multi-section answer ends here, complete."
+            cut = len(full) // 2
+            is_cont = "Continue the previous answer" in user
+            if not is_cont:
+                return _Blk(stop_reason="max_tokens", model="fake-claude", content=[_Blk(type="text", text=full[:cut], citations=None)],
+                            usage=_Blk(input_tokens=_tokens(system + user), output_tokens=2000, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+            tail_start = max(0, cut - 20)                                  # re-emit ~20 chars of overlap on purpose
+            return _Blk(stop_reason="end_turn", model="fake-claude", content=[_Blk(type="text", text=full[tail_start:], citations=None)],
+                        usage=_Blk(input_tokens=_tokens(system + user), output_tokens=_tokens(full[cut:]), cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+        if task == "answer.chat" and os.environ.get("NEUROSEARCH_FAKE_CHAT_TEXT_THEN_TOOL") == "1":
+            offered = {t.get("name") for t in (kw.get("tools") or [])}
+            already = any(isinstance(m.get("content"), list) and any(isinstance(b, dict) and b.get("type") == "tool_result" for b in m["content"]) for m in messages)
+            if "record_fact" in offered and not already:
+                return _Blk(stop_reason="tool_use", model="fake-claude",
+                            content=[_Blk(type="text", text="Based on the available sources, the most important point is", citations=None),
+                                     _Blk(type="tool_use", id="toolu_fake_2", name="record_fact", input={"kind": "decision", "content": "we will model the seller note separately"})],
+                            usage=_Blk(input_tokens=_tokens(system + user), output_tokens=40, cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
+            text = _answer(system, messages, task) + " FINAL: the complete answer after the tool call."
+            return _Blk(stop_reason="end_turn", model="fake-claude", content=[_Blk(type="text", text=text, citations=None)],
+                        usage=_Blk(input_tokens=_tokens(system + user), output_tokens=_tokens(text), cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
         if task == "discover.verify":
             text = json.dumps(DISCOVER_VERIFY)
         elif task == "discover.quick":

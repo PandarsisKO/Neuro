@@ -340,6 +340,7 @@ def structured(task: str, resp: Any) -> dict[str, Any]:
     except ValueError as e:
         raise SchemaMismatch(task, f"not JSON: {e}", text) from e
     obj = schemas.normalize_enums(c.schema, obj)          # enum casing is not guaranteed by the provider; compare case-insensitively
+    obj = schemas.clamp(c.schema, obj)                    # provider-invisible bounds (maxItems/maxLength) clamp, never reject (0.30.3)
     errors = schemas.validate(c.schema, obj)
     if errors:
         raise SchemaMismatch(task, "; ".join(errors[:3]), text)

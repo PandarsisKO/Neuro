@@ -74,7 +74,7 @@ def _m() -> str:
 def _base() -> dict[str, InferenceContract]:
     m = _m()
     return {c.task: c for c in [
-        InferenceContract("answer.chat", "anthropic", m, max_output_tokens=2000, max_attempts=2, backoff=(1.0,), interactive=True,
+        InferenceContract("answer.chat", "anthropic", m, max_output_tokens=4000, max_attempts=2, backoff=(1.0,), interactive=True,
                           notes="RAG chat with project tools; web_search when the user asks"),
         InferenceContract("answer.repair", "anthropic", m, max_output_tokens=2000, max_attempts=2, backoff=(1.0,), interactive=True,
                           notes="one repair round after a citation validation failure"),

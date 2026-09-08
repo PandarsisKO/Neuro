@@ -273,3 +273,17 @@ def test_profile_schema_has_no_provider_invisible_length_traps():
         if isinstance(v, str) and "enum" not in props.get(k, {}):
             obj[k] = v + " " + ("very long but well-formed " * 40)
     assert schemas.validate("source-profile-v1", obj) == []
+
+
+def test_provider_invisible_bounds_clamp_instead_of_rejecting():
+    """0.30.2: the model returned 9 missing_areas against maxItems 8 — a bound the provider strips — and a paid call
+    failed locally. Bounds the model cannot see are clamps: lists truncate, strings truncate, validation then passes."""
+    from neurosearch import schemas
+    obj = {"claims": [], "targets": [], "missing_areas": [f"area {i}" for i in range(12)]}
+    assert schemas.validate("claim-set-v1", obj)                       # raw: fails on maxItems
+    clamped = schemas.clamp("claim-set-v1", obj)
+    assert len(clamped["missing_areas"]) == 8 and schemas.validate("claim-set-v1", clamped) == []
+    prof = json.loads(fake_ai._profile("Title: x\n\ntext"))
+    prof["topics"] = [f"t{i}" for i in range(40)]
+    assert len(schemas.clamp("source-profile-v1", prof)["topics"]) <= 40 and schemas.validate("source-profile-v1", schemas.clamp("source-profile-v1", prof)) == []
+

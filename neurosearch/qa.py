@@ -11,12 +11,13 @@ Conversational project features:
 from __future__ import annotations
 
 import json
+import time
 import logging
 import os
 import re
 from typing import Any
 
-from . import db
+from . import contracts, db
 from .config import settings
 from .search import search
 
@@ -34,7 +35,8 @@ Rules:
 - Quote short, verbatim phrases from the excerpts where the exact wording matters.
 - When different sources disagree, point that out and cite both sides.
 - Excerpts are auto-generated transcripts: forgive small transcription errors and interpret them sensibly.
-- Be concise and useful. Use prose; short bullet lists only when comparing several items.
+- Be concise and useful. Use prose; short bullet lists only when comparing several items. Keep ordinary answers to
+  a few paragraphs; reserve long multi-section answers for questions that genuinely need them.
 - Gap detection: when the excerpts only partly cover the question, end with one short line starting with
   "Gap:" naming what is missing and the most useful next step (e.g. a kind of source to add, a speaker or
   channel to look for, or that a web search would help). Call note_gap with the same text. Skip this when the
@@ -284,6 +286,30 @@ def _tail_breakpoint(messages: list[dict[str, Any]]) -> None:
         usage.mark_last(messages)
 
 
+MAX_TOOL_ROUNDS = 6       # agentic rounds with tools; the round after that runs without tools so the answer ends in text
+CONTINUATIONS_MAX = 2     # automatic "continue where you stopped" rounds after stop_reason=max_tokens (a runaway answer cannot spend unbounded)
+CONTINUE_PROMPT = "Continue the previous answer exactly where it stopped. Do not restart, summarise or repeat prior material; pick up mid-sentence if that is where it stopped."
+
+
+def _join_continuation(prev: str, nxt: str) -> str:
+    """Splice a continuation onto a truncated text. The model's own leading whitespace decides word boundaries (a cut
+    mid-word continues with no space; a new word arrives with one); a repeated overlap (the model re-emitting the last
+    few words) is dropped so no transition text is duplicated; a sentence boundary always gets a space."""
+    a = prev.rstrip()
+    leading_space = nxt[:1].isspace()
+    b = nxt.strip()
+    for n in range(min(120, len(a), len(b)), 12, -1):        # longest repeated tail/head, ≥ 13 chars
+        if a[-n:].lower() == b[:n].lower():
+            b = b[n:].lstrip()
+            leading_space = True
+            break
+    if not b:
+        return prev
+    if leading_space or (a and a[-1] in ".!?:" and b[0].isupper()):
+        return a + " " + b
+    return a + b
+
+
 OBSERVER: Any = None      # evals hook: one dict per provider call (task, round, stop_reason, tools, model); never changes behaviour
 
 
@@ -375,22 +401,44 @@ def ask(
     web_sources: list[dict[str, str]] = []
     web_used = False
     pending_findings: list[str] = []
+    generation: dict[str, Any] = {"rounds": 0, "continuations": 0, "incomplete": False, "calls": []}   # 0.30.3 diagnostics + truncation awareness
+    continuing = False
+    last_stop = None
+    contract_max = contracts.contract("answer.chat").max_output_tokens
 
-    for _round in range(6):
+    for _round in range(MAX_TOOL_ROUNDS + CONTINUATIONS_MAX + 1):
         _tail_breakpoint(messages)
-        resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=tools or None)
+        # the last permitted round runs without tools so a tool-hungry model still ends in text, never in a dangling tool_use
+        offer_tools = tools or None
+        if generation["rounds"] >= MAX_TOOL_ROUNDS:
+            offer_tools = None
+        t0 = time.time()
+        resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=offer_tools)
+        generation["rounds"] += 1
         try:
             usage.record_anthropic(resp, "answer", project_id=project_id)
         except Exception:  # noqa: BLE001
             pass
+        u = getattr(resp, "usage", None)
+        last_stop = getattr(resp, "stop_reason", None)
+        call_rec = {"conversation_id": conversation_id, "round": generation["rounds"], "stop_reason": last_stop, "max_tokens": contract_max,
+                    "input_tokens": int(getattr(u, "input_tokens", 0) or 0), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
+                    "elapsed_ms": int((time.time() - t0) * 1000), "response_chars": len(providers.text_of(resp)), "continuation": continuing}
+        generation["calls"].append(call_rec)
+        log.info("chat generation %s", json.dumps(call_rec))
         if OBSERVER:
-            OBSERVER({"task": "answer.chat", "round": _round + 1, "stop_reason": getattr(resp, "stop_reason", None),
+            OBSERVER({"task": "answer.chat", "round": _round + 1, "stop_reason": last_stop,
                       "tools": [b.name for b in resp.content if getattr(b, "type", None) == "tool_use"], "model": getattr(resp, "model", None)})
         tool_results: list[dict[str, Any]] = []
+        first_text = True
         for block in resp.content:
             btype = getattr(block, "type", None)
             if btype == "text":
-                answer_parts.append(block.text)
+                if continuing and first_text and answer_parts:
+                    answer_parts[-1] = _join_continuation(answer_parts[-1], block.text)   # mid-sentence: no newline, no repeat
+                else:
+                    answer_parts.append(block.text)
+                first_text = False
                 for c in getattr(block, "citations", None) or []:
                     url = getattr(c, "url", None)
                     if url and url not in {w["url"] for w in web_sources}:
@@ -400,13 +448,28 @@ def ask(
             elif btype == "tool_use":
                 result = _run_tool(block.name, block.input, project, pending_findings, actions, ctx)
                 tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
+        continuing = False
         if resp.stop_reason == "tool_use" and tool_results:
             messages.append({"role": "assistant", "content": resp.content})
             messages.append({"role": "user", "content": tool_results})
             continue
+        if resp.stop_reason == "max_tokens":
+            # the model ran out of output budget mid-answer: never return that as if it were complete
+            if generation["continuations"] < CONTINUATIONS_MAX:
+                generation["continuations"] += 1
+                continuing = True
+                messages.append({"role": "assistant", "content": [{"type": "text", "text": providers.text_of(resp)}]})
+                messages.append({"role": "user", "content": CONTINUE_PROMPT})
+                db.kv_bump("chat:continuations")
+                continue
+            generation["incomplete"] = True
+            db.kv_bump("chat:incomplete_answers")
+            log.warning("chat answer still incomplete after %d continuation(s) (conversation %s)", CONTINUATIONS_MAX, conversation_id)
         break
 
     answer = "\n".join(p for p in answer_parts if p.strip()).strip()
+    if generation["incomplete"]:
+        answer = answer.rstrip() + "\n\n[Answer cut short: the model reached its output limit twice. Ask me to continue from the last point.]"
 
     # Citations must point at excerpts we actually supplied. A bad one is NOT silently removed (that would turn a
     # falsely-cited claim into a confident uncited one): the model gets one repair round; if it still cites
@@ -461,7 +524,11 @@ def ask(
 
     if conversation_id:
         db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
-        db.save_message(conversation_id, "assistant", answer, citations=citations, project_id=project_id, meta=validation or None)
+        meta = dict(validation or {})
+        meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
+        if generation["incomplete"]:
+            meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"
+        db.save_message(conversation_id, "assistant", answer, citations=citations, project_id=project_id, meta=meta)
 
     return {
         "answer": answer,
