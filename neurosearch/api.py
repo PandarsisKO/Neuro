@@ -822,7 +822,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         analysed_ids = db.analysed_sources(project_id)
         analyses = db.project_analyses(project_id)
         prio = db.priority_source_ids(project_id)
-        prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at")
+        prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at", "depth")
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
             sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
@@ -833,8 +833,13 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             c = counts.get(r["id"], {})
             r["suggested"] = c.get("suggested", 0)
             r["approved"] = c.get("approved", 0)
+            r["reserve"] = c.get("reserve", 0)          # D1: extracted beyond the cap, lower importance — promotable, never exported
+            r["depth"] = sm.get("depth")                # D2: 'deep' when Read deeper produced the current analysis
+            from . import findings as findings_mod
+            r["long"] = findings_mod.is_long(r)         # D2/D3: a book or ≥ 45 min — a candidate for Read deeper
             r["analysing"] = r["id"] in analysing
             r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
+            r["under_read"] = bool(r["long"] and r.get("depth") != "deep" and r["analysed"] and (r["approved"] + r["suggested"]) <= findings_mod.CAP_BASE)
             r["priority"] = r["id"] in prio
             j = live.get(r["id"])
             if j:
@@ -1890,6 +1895,7 @@ class SuggestIn(BaseModel):
     source_ids: list[str] | None = None   # default: every ready source not yet analysed for this project
     force: bool = False                    # re-analyse even if already done
     transport: str = "interactive"         # interactive (analyze now) | batch (analyze in background) — explicit, per request
+    depth: str | None = None               # D2: "deep" = Read deeper (smaller windows + depth instruction; interactive only)
 
 
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
@@ -1899,11 +1905,13 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
         return {"job": None, "sources": 0, "transport": body.transport}
     if body.transport not in ("interactive", "batch"):
         raise HTTPException(400, "transport must be 'interactive' or 'batch'")
+    if body.depth == "deep" and body.transport == "batch":
+        raise HTTPException(400, "Read deeper runs interactively (local provider or API), not in a background batch")
     if body.transport == "batch":
         job = jobs.enqueue("suggest_findings_batch", {"project_id": project_id, "source_ids": ids, "force": body.force})
     else:
-        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force})
-    return {"job": job["id"], "sources": len(ids), "transport": body.transport}
+        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force or body.depth == "deep", "depth": body.depth})
+    return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth}
 
 
 class EstimateIn(BaseModel):
@@ -1954,6 +1962,18 @@ class NoteIn(BaseModel):
 @app.post("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
 def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
     return db.add_project_note(project_id, body.content, body.citations)
+
+
+@app.get("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
+def api_list_notes(project_id: str, status: str = "reserve", source_id: str | None = None, limit: int = 200) -> dict[str, Any]:
+    """D1: the findings of one status (default `reserve` — extracted beyond the length-aware cap), optionally for one source,
+    importance first. Promote with POST /api/notes/{id}/status {suggested|approved}."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    rows = db.list_project_notes(project_id, status=status)
+    if source_id:
+        rows = [r for r in rows if r.get("source_id") == source_id]
+    return {"total": len(rows), "notes": rows[:limit]}
 
 
 @app.delete("/api/notes/{note_id}", dependencies=[Depends(require_auth)])

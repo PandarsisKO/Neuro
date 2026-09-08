@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.38.3';
+const UI_VERSION = '0.39.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -959,13 +959,16 @@ async function loadSources() {
   const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
   const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
   const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length, browser: all.filter(needsBrowser).length,
-                   ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length };
-  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['skipped', 'Skipped', counts.skipped]];
+                   ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length, deep: all.filter(s => s.status === 'ready' && s.long).length };
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['deep', '📚 Deep content', counts.deep], ['skipped', 'Skipped', counts.skipped]];
   loadCaptureQueue(all.filter(needsBrowser));
   $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
   const f = state.srcFilter || 'all';
-  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : s.status === f && !needsBrowser(s))).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : f === 'deep' ? (s.status === 'ready' && s.long) : s.status === f && !needsBrowser(s)))
+    .sort((a, b) => f === 'deep' ? ((b.under_read ? 1 : 0) - (a.under_read ? 1 : 0)) || ((b.duration || 0) - (a.duration || 0)) : bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  const underRead = f === 'deep' ? rows.filter(s => s.under_read) : [];
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
+    (f === 'deep' ? ` <span class="muted">· books, courses, podcasts and interviews over 45 min · ${underRead.length} under-read (read once, ≤ ${12} findings)</span>` + (underRead.length ? ` <button class="small primary" title="Reads each under-read long source again in smaller parts and keeps every specific finding. $0 on Claude Code (slow); API cost otherwise." onclick="readDeeperAll(${JSON.stringify(underRead.map(s => s.id))})">🔬 Read deeper on all ${underRead.length}</button>` : '') : '') +
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
     (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '');
@@ -984,14 +987,14 @@ async function loadSources() {
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
-      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser(s) ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${completenessLine(s)}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
       <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
         ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
@@ -1052,6 +1055,8 @@ async function runCalc(id) {
     $('#calcMsg').textContent = r.unknown_inputs?.length ? 'ignored: ' + r.unknown_inputs.join(', ') : '✓';
   } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
 }
+async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} long source${ids.length === 1 ? '' : 's'}? Each is re-read in smaller parts (about 3× the model calls of a normal read). Approved findings are kept; suggestions are replaced.`)) return; const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: ids, depth: 'deep' }); toast(`🔬 ${r.sources} queued for a deep read`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function clearFailedSources() {
@@ -1086,6 +1091,19 @@ function browserBlock(s) {
     <div class="muted" style="display:none;margin-top:6px;font-size:12px">Open & Capture opens the page in a new tab. The Neuro Search extension recognizes it (its icon shows a blue dot): press the extension button, then <b>Capture for Neuro Search</b>. The page arrives here as the same source — nothing to paste or re-select. No extension yet? Download it from Settings → Extension, load it in chrome://extensions, and pair it with this app's address and password.</div>
   </div>`;
 }
+// D1: findings extracted beyond the cap ("reserve") — shown inline under the source card, promotable one by one or all at once
+async function toggleReserve(sid, a) {
+  const box = $(`#reserve-${sid}`); if (!box) return;
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = ''; box.innerHTML = '<span class="muted">loading…</span>';
+  const r = await api(`/api/projects/${state.project.id}/notes?status=reserve&source_id=${sid}`);
+  const notes = r.notes || [];
+  box.innerHTML = `<div class="row" style="margin:6px 0 2px"><span class="muted" style="flex:1;font-size:12px">${notes.length} more extracted (lower importance for this brief). They are not exported or planned on until you promote them.</span>
+    <button class="small" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'suggested', '${sid}')">Send all to Suggested</button><button class="small ghost" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'dismissed', '${sid}')">Dismiss all</button></div>` +
+    notes.map(n => findingCard(n, `<button class="small primary" title="Approve" onclick="promoteReserve(${n.id}, 'approved', '${sid}')">✓</button><button class="small" title="Send to Suggested" onclick="promoteReserve(${n.id}, 'suggested', '${sid}')">📌</button><button class="small ghost" title="Dismiss" onclick="promoteReserve(${n.id}, 'dismissed', '${sid}')">✕</button>`)).join('');
+}
+async function promoteReserve(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.style.display = 'none'; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
+async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
 function extLine() { return EXT.state === 'ready' ? '✓ extension ready' : EXT.state === 'stale' ? `extension last seen ${ago(EXT.last_seen)} ago` : EXT.state === 'not_detected' ? '⚠ extension not detected — see How this works' : ''; }
 function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.style.display = d.style.display === 'none' ? '' : 'none'; }
 function openAndCapture(url) { window.open(url, '_blank'); }

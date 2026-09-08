@@ -81,7 +81,7 @@ def assess(project_id: str) -> dict[str, Any]:
             reasons.append("preserved from Neuro Search 0.15 — its original project context cannot be verified")
         elif a.get("input_hash"):
             # exact-input comparison: transcript + steering + prompt, as the task saw them
-            if a["input_hash"] != findings.input_hash(project, sid):
+            if a["input_hash"] != findings.input_hash(project, sid, depth=a.get("depth")):
                 srev = s.get("revision") or db.source_revision(sid)
                 if a.get("brief_revision") != cur["brief_revision"]:
                     reasons.append("brief changed")

@@ -793,6 +793,7 @@ MIGRATIONS = [
     ("sources", "completeness", "ALTER TABLE sources ADD COLUMN completeness TEXT"),
     ("community_syntheses", "coverage", "ALTER TABLE community_syntheses ADD COLUMN coverage TEXT"),   # B2: JSON — partial/unknown threads behind the state         # B2: JSON — captured vs expected, never "complete" by default
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
+    ("project_source_analysis", "depth", "ALTER TABLE project_source_analysis ADD COLUMN depth TEXT"),   # D2: NULL = ordinary reading, 'deep' = Read deeper
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
     ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),
@@ -1827,7 +1828,7 @@ def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **field
     """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
     assert analysis_kind in ANALYSIS_KINDS, analysis_kind
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing", "depth"}
     f = {k: v for k, v in fields.items() if k in allowed}
     f.setdefault("status", "current")
     t = now()
@@ -2469,16 +2470,16 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
     srev = prov.get("source_revision") or source_revision(source_id)
     brev = prov.get("brief_revision") or brief_revision(project_id)
     with tx() as conn:
-        conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status='suggested'", (project_id, source_id))
+        conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status IN ('suggested','reserve')", (project_id, source_id))
         t = now()
         conn.executemany(
             "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id, routing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, "suggested", source_id, n.get("importance"), n.get("title"),
+            [(project_id, n["content"], json.dumps(n.get("citations") or []), t, n.get("status") or "suggested", source_id, n.get("importance"), n.get("title"),
               prov.get("model"), prov.get("prompt_version"), srev, brev, prov.get("input_hash"), prov.get("transport", "interactive"), prov.get("batch_id"), prov.get("routing")) for n in notes])
         conn.execute("UPDATE project_sources SET suggested_at=? WHERE project_id=? AND source_id=?", (t, project_id, source_id))
         if conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source_id)).fetchone() is None:
             conn.execute("INSERT OR IGNORE INTO project_sources (project_id, source_id, suggested_at) VALUES (?,?,?)", (project_id, source_id, t))
-    return len(notes)
+    return sum(1 for n in notes if (n.get("status") or "suggested") == "suggested")
 
 
 def sources_needing_suggestions(project_id: str) -> list[str]:

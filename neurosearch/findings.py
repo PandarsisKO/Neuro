@@ -18,6 +18,42 @@ from .search import deep_link
 log = logging.getLogger(__name__)
 
 WINDOW_CHARS = 60000  # ~15k tokens of transcript per call
+
+# D1 (0.39.0) — the cap on suggested findings is LENGTH-AWARE: a 3-hour course or a book is not a 10-minute clip. Everything
+# the model produced and the quote validator accepted is kept: the top `cap_for(windows)` become suggestions, every window
+# contributes at least COVERAGE_FLOOR of its own (the last hour is never crowded out by the first), and the remainder land
+# as `reserve` notes — never exported, never planned on, never harvested into Claims until the user promotes them.
+CAP_BASE = 12
+CAP_PER_WINDOW = 8
+CAP_MAX = 120
+COVERAGE_FLOOR = 3
+
+
+def cap_for(n_windows: int) -> int:
+    return min(CAP_MAX, CAP_BASE + CAP_PER_WINDOW * max(0, n_windows - 1))
+
+
+def select_findings(per_window: list[list[dict[str, Any]]], cap: int | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(suggested, reserve) from validated findings grouped by window. Deterministic: per-window importance order, then
+    global importance order with window index as the tie-break (earlier first) — a one-window source is exactly the old
+    top-N by importance."""
+    n = len(per_window)
+    cap = cap if cap is not None else cap_for(n)
+    tagged = [(int(f.get("importance") or 0), i, j, f) for i, ws in enumerate(per_window) for j, f in enumerate(ws)]
+    chosen: list[tuple[int, int]] = []
+    if n > 1:
+        for i, ws in enumerate(per_window):
+            ranked = sorted(range(len(ws)), key=lambda j: (-int(ws[j].get("importance") or 0), j))
+            chosen.extend((i, j) for j in ranked[:COVERAGE_FLOOR])
+    order = sorted(tagged, key=lambda t: (-t[0], t[1], t[2]))
+    picked = set(chosen)
+    for imp, i, j, f in order:
+        if len(picked) >= max(cap, len(chosen)):
+            break
+        picked.add((i, j))
+    sug = [f for imp, i, j, f in order if (i, j) in picked]
+    res = [f for imp, i, j, f in order if (i, j) not in picked]
+    return sug, res
 TASK = {"x-neurosearch-task": "findings.extract"}
 
 
@@ -31,10 +67,21 @@ def schema_version() -> str | None:
     return contract("findings.extract").schema
 
 
-def input_hash(project: dict[str, Any] | str, source_id: str) -> str:
+def input_hash(project: dict[str, Any] | str, source_id: str, depth: str | None = None) -> str:
     """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision), the
-    prompt and (Mission F) the output schema. Staleness compares this, not database rows."""
-    return db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(), schema_version() or "text")
+    prompt, (Mission F) the output schema and (D2) the reading depth. Staleness compares this, not database rows."""
+    base = db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(), schema_version() or "text")
+    return db._sha(base, "deep") if depth == "deep" else base
+
+
+# D2 (0.39.0) — "Read deeper": a second, explicit pass over long-form sources with smaller windows (≈3× the attention per
+# minute) and a depth instruction in the USER message; the frozen system prompt is untouched, so ordinary analyses, their
+# hashes and Tier 1 do not change. A deep analysis records depth="deep" and is current on its own terms.
+DEEP_WINDOW_CHARS = 20000
+DEPTH_INSTRUCTION = ("This is a long-form, information-dense source (a book, course, podcast or long interview). Read this part closely and "
+                     "extract EVERY distinct, specific finding it contains — aim for 10–20 for this part: each number, step, condition, "
+                     "rule of thumb, named example, warning and disagreement on its own. Do not summarise several points into one finding.")
+LONG_SOURCE_SECONDS = 45 * 60
 
 SYSTEM = """You are a research analyst reading a transcript on behalf of a project. Extract the findings that matter for
 the project brief — concrete claims, numbers, techniques, recommendations, warnings, disagreements, or notable
@@ -80,7 +127,7 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
     return None
 
 
-def _windows(segs: list[dict[str, Any]], platform: str, source_id: str | None = None) -> list[str]:
+def _windows(segs: list[dict[str, Any]], platform: str, source_id: str | None = None, window_chars: int = WINDOW_CHARS) -> list[str]:
     if platform == "book" and source_id:
         # G6P2: the index, copyright and title pages never earn a model window; back matter goes after the body
         from .epub import SKIP_FOR_FINDINGS, role_weight, section_roles
@@ -90,7 +137,7 @@ def _windows(segs: list[dict[str, Any]], platform: str, source_id: str | None = 
     lines = [f"[{fmt_locator(platform, s['start'])}] {s['text']}" for s in segs]
     out, cur, size = [], [], 0
     for ln in lines:
-        if cur and size + len(ln) > WINDOW_CHARS:
+        if cur and size + len(ln) > window_chars:
             out.append("\n".join(cur)); cur, size = [], 0
         cur.append(ln); size += len(ln) + 1
     if cur:
@@ -129,9 +176,10 @@ def _head(project: dict[str, Any], src: dict[str, Any]) -> str:
             f"SOURCE: {src['title']} ({src.get('channel') or src['platform']})\n")
 
 
-def _user(i: int, n: int, window: str) -> str:
+def _user(i: int, n: int, window: str, depth: str | None = None) -> str:
     part = f" (part {i + 1}/{n})" if n > 1 else ""
-    return f"TRANSCRIPT{part}:\n{window}\n\nExtract the findings now."
+    tail = (DEPTH_INSTRUCTION + "\n\n") if depth == "deep" else ""
+    return f"TRANSCRIPT{part}:\n{window}\n\n{tail}Extract the findings now."
 
 
 def canonical_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
@@ -198,10 +246,16 @@ def _legacy_parse(raw: str) -> dict[str, Any]:
         raise
 
 
-def is_current(project: dict[str, Any], source_id: str) -> bool:
-    ih = input_hash(project, source_id)
+def is_current(project: dict[str, Any], source_id: str, depth: str | None = None) -> bool:
+    """Current for the depth asked: an ordinary request is satisfied by an ordinary OR a deep analysis of the same inputs; a
+    deep request only by a deep one."""
     prev = db.get_analysis(project["id"], source_id, "summary")
-    return bool(prev and prev.get("input_hash") == ih and prev.get("status") == "current")
+    if not prev or prev.get("status") != "current":
+        return False
+    prev_depth = prev.get("depth") or None
+    if depth == "deep" and prev_depth != "deep":
+        return False
+    return prev.get("input_hash") == input_hash(project, source_id, depth=prev_depth)
 
 
 def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, Any]:
@@ -212,7 +266,8 @@ def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, 
 
 
 def materialize(project_id: str, source_id: str, window_results: list[tuple[str, dict[str, Any]]], *, model: str | None,
-                transport: str = "interactive", batch_id: str | None = None, max_findings: int = 12, prefilter: dict[str, Any] | None = None) -> dict[str, Any]:
+                transport: str = "interactive", batch_id: str | None = None, max_findings: int | None = None, prefilter: dict[str, Any] | None = None,
+                depth: str | None = None) -> dict[str, Any]:
     """Turn validated per-window outputs into the stored research artifact — the ONE place findings become notes and an
     analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
     window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
@@ -225,6 +280,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         raise RuntimeError("project or source not found")
     platform = src["platform"]
     all_findings: list[dict[str, Any]] = []
+    per_window: list[list[dict[str, Any]]] = []
     summaries: list[str] = []
     substances: list[int] = []
     rejected = 0
@@ -235,6 +291,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         if isinstance(res.get("substance"), (int, float)):
             substances.append(int(res["substance"]))
         kept_before, rejected_before = len(all_findings), rejected
+        per_window.append([])
         for f in res.get("findings") or []:
             if not (isinstance(f, dict) and f.get("finding")):
                 continue
@@ -248,6 +305,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
                                     project_id=project_id, source_id=source_id, prompt_version=prompt_version())
                 continue
             all_findings.append(f)
+            per_window[-1].append(f)
         if OBSERVER:
             OBSERVER({"source_id": source_id, "window": i + 1, "windows": n_windows, "raw_findings": len(res.get("findings") or []),
                       "kept": len(all_findings) - kept_before, "rejected": rejected - rejected_before,
@@ -256,9 +314,9 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     if rejected:
         db.kv_bump("evidence:findings_rejected", rejected)
     db.kv_bump("evidence:findings_checked", rejected + len(all_findings))
-    all_findings.sort(key=lambda f: -int(f.get("importance") or 0))
+    chosen, reserve = select_findings(per_window, cap=max_findings)
     notes = []
-    for f in all_findings[:max_findings]:
+    for f in chosen + reserve:
         start = _ts_to_seconds(str(f.get("ts", "")), platform)
         cites = []
         if start is not None:
@@ -272,10 +330,10 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         if cites and "[1]" not in content:
             content += " [1]"
         notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
-                      "importance": int(f.get("importance") or 0)})
+                      "importance": int(f.get("importance") or 0), "status": "suggested" if len(notes) < len(chosen) else "reserve"})
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
-            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id), "transport": transport, "batch_id": batch_id,
+            "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,
             "prefilter": json.dumps(prefilter) if prefilter else None, "routing": providers.routing_json("findings.extract", model)}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
@@ -283,11 +341,11 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         n = db.replace_suggestions(project_id, source_id, notes, provenance=prov)
         db.set_source_summary(source_id, summary, substance, project_id=project_id, **prov)
     crash_point("findings_persisted_before_done")
-    return {"source_id": source_id, "title": src["title"], "suggested": n, "substance": substance, "summary": summary,
-            "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id, "prefilter": prefilter}
+    return {"source_id": source_id, "title": src["title"], "suggested": n, "reserve": len(reserve), "windows": n_windows, "cap": max_findings if max_findings is not None else cap_for(n_windows), "depth": depth,
+            "substance": substance, "summary": summary, "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id, "prefilter": prefilter}
 
 
-def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, force: bool = False) -> dict[str, Any]:
+def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None) -> dict[str, Any]:
     """Extract candidate findings for one source in the context of one project (interactive transport). Stores them as
     'suggested'. Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a
     retried or duplicated job never pays twice; force=True re-analyses regardless."""
@@ -298,10 +356,10 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
     segs = db.get_segments(source_id)
     if not segs:
         raise RuntimeError("source has no transcript")
-    if is_current(project, source_id) and not force:
+    if is_current(project, source_id, depth=depth) and not force:
         return _skipped(project_id, source_id, src)
     head = _head(project, src)
-    windows = _windows(segs, src["platform"], source_id)
+    windows = _windows(segs, src["platform"], source_id, window_chars=DEEP_WINDOW_CHARS if depth == "deep" else WINDOW_CHARS)
     from .jobs import check_cancel, crash_point
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
@@ -311,14 +369,14 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         crash_point("findings_before_response")
         try:
-            res = _call(SYSTEM, _user(i, len(windows), w), project_id, source_id, head=head)
+            res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
         except Exception:
             if OBSERVER:
                 OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
                           "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
             raise
         results.append((w, res))
-    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings, prefilter=pf_summary)
+    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings, prefilter=pf_summary, depth=depth)
 
 
 def window_plan(project: dict[str, Any], src: dict[str, Any], windows: list[str]) -> tuple[set[int], dict[str, Any] | None]:
@@ -358,14 +416,23 @@ def batch_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
     return out
 
 
-def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False) -> dict[str, Any]:
+def is_long(src: dict[str, Any], n_segments: int | None = None) -> bool:
+    """A source worth a deep read: a book, or media over LONG_SOURCE_SECONDS, or a document/page long enough for more than one window."""
+    if src.get("platform") == "book":
+        return True
+    if (src.get("duration") or 0) >= LONG_SOURCE_SECONDS:
+        return True
+    return False
+
+
+def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False, depth: str | None = None) -> dict[str, Any]:
     ids = source_ids or db.sources_needing_suggestions(project_id)
     done, failed = 0, []
     for i, sid in enumerate(ids):
         if progress:
             progress(i / max(len(ids), 1), f"reading {i + 1}/{len(ids)}")
         try:
-            suggest_for_source(project_id, sid, force=force)
+            suggest_for_source(project_id, sid, force=force, depth=depth)
             done += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
@@ -373,7 +440,7 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             if isinstance(e, (BudgetPaused, ProviderUnavailable)):
                 # hand the remaining sources back to the queue as a fresh job and stop
                 remaining = ids[i:]
-                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining})
+                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining, "depth": depth})
                 raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)

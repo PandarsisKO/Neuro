@@ -380,7 +380,7 @@ def suggest_updates(project_id: str) -> list[dict[str, Any]]:
         return []
     since = plan["created_at"]
     conn = db.connect()
-    new_notes = [dict(r) for r in conn.execute("SELECT content FROM project_notes WHERE project_id=? AND created_at>?", (project_id, since)).fetchall()]
+    new_notes = [dict(r) for r in conn.execute("SELECT content FROM project_notes WHERE project_id=? AND created_at>? AND status<>'reserve'", (project_id, since)).fetchall()]
     new_facts = [dict(r) for r in conn.execute("SELECT kind, content FROM project_facts WHERE project_id=? AND created_at>?", (project_id, since)).fetchall()]
     new_msgs = [dict(r) for r in conn.execute(
         """SELECT m.role, m.content FROM messages m JOIN conversations c ON c.id=m.conversation_id
