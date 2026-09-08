@@ -2005,6 +2005,16 @@ def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
     return db.add_project_note(project_id, body.content, body.citations)
 
 
+@app.get("/api/projects/{project_id}/findings", dependencies=[Depends(require_auth)])
+def api_findings_query(project_id: str, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
+                       used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    """S4: the Findings workbench — composable filters, facets, sort, paging; use badges (plan · chat · Claim); the low-value sweep."""
+    from . import findings_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return findings_view.query(project_id, q=q, status=status, min_importance=min_importance, source_id=source_id, used=used, stale=stale, area=area, sort=sort, limit=limit, offset=offset)
+
+
 @app.get("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
 def api_list_notes(project_id: str, status: str = "reserve", source_id: str | None = None, limit: int = 200) -> dict[str, Any]:
     """D1: the findings of one status (default `reserve` — extracted beyond the length-aware cap), optionally for one source,

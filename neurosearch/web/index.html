@@ -374,7 +374,19 @@
         <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
       <div id="staleFindings"></div>
       <div id="suggestedWrap"></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px" id="fbBar">
+        <input id="fbQ" placeholder="Search findings…" oninput="debounce(loadWorkbench)" style="flex:1;min-width:160px">
+        <select id="fbStatus" onchange="loadWorkbench()" style="width:auto"><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
+        <select id="fbImp" onchange="loadWorkbench()" style="width:auto"><option value="">any importance</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
+        <select id="fbUsed" onchange="loadWorkbench()" style="width:auto"><option value="">used anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
+        <select id="fbStale" onchange="loadWorkbench()" style="width:auto"><option value="">any source state</option><option value="current">source current</option><option value="stale">source stale</option></select>
+        <select id="fbArea" onchange="loadWorkbench()" style="width:auto"><option value="">any area</option></select>
+        <select id="fbSort" onchange="loadWorkbench()" style="width:auto"><option value="importance">sort: importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
+        <span class="muted" id="fbCount"></span>
+      </div>
+      <div id="fbSweep"></div>
       <div id="notes"></div>
+      <div class="row" id="fbPager" style="margin-top:8px"></div>
     </div>
 
     <!-- plan -->
@@ -524,7 +536,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.41.0';
+const UI_VERSION = '0.42.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1614,14 +1626,46 @@ async function loadNotes() {
     (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
       list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
       || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
-  const gaps = notes.filter(n => n.content.startsWith('Gap:')), ok = notes.filter(n => !n.content.startsWith('Gap:'));
-  const byS = {}; ok.forEach(n => { const k = (n.citations?.[0]?.title) || 'Pinned from chat'; (byS[k] = byS[k] || []).push(n); });
-  $('#notes').innerHTML = (ok.length ? `<h3 style="margin-top:18px">Approved (${ok.length})</h3>` : '') +
-    Object.entries(byS).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span></div>` +
-      list.map(n => findingCard(n, `<button class="small ghost" title="remove" onclick="del('/api/notes/${n.id}').then(loadNotes)">✕</button>`)).join('') + `</div>`).join('') +
-    (gaps.length ? `<h3>Gaps (${gaps.length})</h3>` + gaps.map(n => `<div class="note gap">⚠ <span class="body">${renderAnswer(n.content.slice(4), n.citations || [])}</span> <a href="#" class="muted" onclick="del('/api/notes/${n.id}').then(loadNotes);return false">remove</a></div>`).join('') : '')
-    || '<div class="empty">Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.</div>';
+  loadWorkbench();
 }
+// S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
+const FB = { offset: 0, limit: 100 };
+function useBadges(n) {
+  const u = n.used || {}; const b = [];
+  if (u.plan) b.push(`<span class="tag" title="cited as evidence by the Master Plan">📋 plan</span>`);
+  if (u.chat) b.push(`<span class="tag" title="cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}">💬 ${u.chat}×</span>`);
+  if (u.claim) b.push(`<span class="tag" title="this finding became (or evidences) a Claim — ${u.claim}">🧠 ${esc(u.claim)}</span>`);
+  if (n.source_stale) b.push(`<span class="tag" style="color:var(--warn)" title="its source was analysed against older inputs">⚠ stale source</span>`);
+  if (n.area) b.push(`<span class="tag muted" title="Research Area">${esc(n.area)}</span>`);
+  return b.join(' ');
+}
+async function loadWorkbench(reset = true) {
+  if (reset) FB.offset = 0;
+  const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
+  for (const [k, id] of [['q', 'fbQ'], ['min_importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { return; }
+  // area facet options (keep the current choice)
+  const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
+  sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
+  const f = r.facets; const st = $('#fbStatus').value;
+  $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}` + (f.used ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '');
+  const sw = r.low_value_sweep || {};
+  $('#fbSweep').innerHTML = sw.count && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
+  const rows = r.findings || [];
+  const bySrc = []; const idx = {};
+  for (const n of rows) { const k = n.source_title || 'Pinned from chat'; if (!(k in idx)) { idx[k] = bySrc.length; bySrc.push([k, n.source_id, []]); } bySrc[idx[k]][2].push(n); }
+  const act = n => st === 'approved' || st === 'all' && n.status === 'approved' ? `<button class="small ghost" title="dismiss" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
+    : n.status === 'suggested' ? `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
+    : n.status === 'reserve' ? `<button class="small primary" title="Approve" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small" title="Send to Suggested" onclick="noteStatus(${n.id},'suggested')">📌</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
+    : `<button class="small ghost" title="restore to suggested" onclick="noteStatus(${n.id},'suggested')">↩</button>`;
+  $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button>` : ''}</div>` +
+      list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</div>`).join('')
+    : `<div class="empty">${r.total ? '' : st === 'approved' && !$('#fbQ').value && !$('#fbUsed').value ? 'Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.' : 'No findings match these filters.'}</div>`;
+  const pages = Math.ceil(r.total / FB.limit);
+  $('#fbPager').innerHTML = pages > 1 ? `<button class="small ghost" ${FB.offset === 0 ? 'disabled' : ''} onclick="FB.offset=Math.max(0,FB.offset-FB.limit);loadWorkbench(false)">‹ prev</button><span class="muted" style="margin:0 8px">${Math.floor(FB.offset / FB.limit) + 1} / ${pages}</span><button class="small ghost" ${FB.offset + FB.limit >= r.total ? 'disabled' : ''} onclick="FB.offset+=FB.limit;loadWorkbench(false)">next ›</button>` : '';
+}
+async function loadWorkbenchSource(sid) { const p = new URLSearchParams({ limit: 200, status: 'all', source_id: sid }); const r = await api(`/api/projects/${state.project.id}/findings?` + p); $('#fbCount').textContent = `${r.total} from this source (all statuses)`; $('#notes').innerHTML = (r.findings || []).map(n => findingCard({ ...n, _badges: useBadges(n) }, `<span class="muted" style="font-size:11px">${esc(n.status)}</span>`)).join(''); $('#fbPager').innerHTML = `<button class="small ghost" onclick="loadWorkbench()">‹ back to all</button>`; }
+async function sweepLow(ids) { if (!confirm(`Dismiss ${ids.length} approved findings rated ≤ 2 that nothing ever used? They stay retrievable under status "dismissed".`)) return; await post('/api/notes/bulk-status', { note_ids: ids, status: 'dismissed' }); toast(`${ids.length} dismissed`); loadNotes(); }
 const ATTRIB = /^(?:(?:the\s+)?(?:speaker|host|he|she|they|[A-Z][\w'.-]+(?:\s[A-Z][\w'.-]+)?)\s+(?:says|said|states|stated|recommends|recommended|advises|advised|suggests|suggested|argues|argued|notes|noted|explains|explained|emphasi[sz]es|claims|believes|thinks)\s+(?:that\s+)?)/i;
 function splitFinding(n) {
   let raw = n.content.replace(/\s*\[\d+\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1657,7 +1701,7 @@ function findingCard(n, actions) {
   return `<div class="f">${imp}<div class="main">
       <div class="ttl">${esc(title)}</div>
       ${body ? `<div class="txt">${esc(body)}</div>` : ''}
-      <div class="meta">${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
+      <div class="meta">${n._badges ? n._badges + ' ' : ''}${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
     </div><div class="act">${actions}</div></div>`;
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }

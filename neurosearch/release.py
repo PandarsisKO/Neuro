@@ -251,6 +251,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_n6_findings_workbench.py"])
+        r.check("findings workbench (S4): server-side composable filters (text/status/importance/source/used-by/staleness/area), facets, sorts, paging, use badges from real plan/chat/Claim rows, "
+                "the low-value sweep is a review list and never dismisses by itself", ok, tail)
         ok, tail = _pytest(["tests/test_n5_source_value.py"])
         r.check("source value (S2): what a source gave is measured from findings/Claims (independent evidence only)/plan/chat/priority with documented weights; 'matters' is a rule; "
                 "rows on /api/sources carry value + staleness so the Sources filters compose", ok, tail)
