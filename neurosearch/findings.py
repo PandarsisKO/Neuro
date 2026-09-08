@@ -80,7 +80,13 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
     return None
 
 
-def _windows(segs: list[dict[str, Any]], platform: str) -> list[str]:
+def _windows(segs: list[dict[str, Any]], platform: str, source_id: str | None = None) -> list[str]:
+    if platform == "book" and source_id:
+        # G6P2: the index, copyright and title pages never earn a model window; back matter goes after the body
+        from .epub import SKIP_FOR_FINDINGS, role_weight, section_roles
+        roles = section_roles(source_id)
+        segs = [s for s in segs if roles.get(int(s["start"]), "body") not in SKIP_FOR_FINDINGS]
+        segs = sorted(segs, key=lambda s: (-role_weight(roles.get(int(s["start"]))), s["start"]))
     lines = [f"[{fmt_locator(platform, s['start'])}] {s['text']}" for s in segs]
     out, cur, size = [], [], 0
     for ln in lines:
@@ -135,7 +141,7 @@ def canonical_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
     project, src = db.get_project(project_id), db.get_source(source_id)
     if not project or not src:
         return []
-    windows = _windows(db.get_segments(source_id), src["platform"])
+    windows = _windows(db.get_segments(source_id), src["platform"], source_id)
     head = _head(project, src)
     return [{"system": _system_blocks(SYSTEM, head), "messages": [{"role": "user", "content": _user(i, len(windows), w)}]} for i, w in enumerate(windows)]
 
@@ -295,7 +301,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int = 12, 
     if is_current(project, source_id) and not force:
         return _skipped(project_id, source_id, src)
     head = _head(project, src)
-    windows = _windows(segs, src["platform"])
+    windows = _windows(segs, src["platform"], source_id)
     from .jobs import check_cancel, crash_point
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
@@ -337,7 +343,7 @@ def batch_requests(project_id: str, source_id: str) -> list[dict[str, Any]]:
     if not project or not src:
         return []
     segs = db.get_segments(source_id)
-    windows = _windows(segs, src["platform"])
+    windows = _windows(segs, src["platform"], source_id)
     head = _head(project, src)
     ih = input_hash(project, source_id)
     c = contract("findings.extract")

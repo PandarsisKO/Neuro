@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.35.0 — G6P2 (no frozen numbers changed).** Role weighting applies only to platform `book` chunks; the golden fixture has none, so the retrieval baseline is unchanged. Book deep links moved from `url#href#fragment` to `#book/<sid>/<ordinal>` (in-app).
+
 **0.34.2 — removal is a durable exclusion (`project_sources.excluded`, additive); force-clear of failed sources cancels resurrecting jobs. No frozen numbers changed.
 
 **0.34.1 — account usage limit is a pause, not N failures (no frozen numbers changed).** Anthropic's Console usage limit (400 `invalid_request_error` naming the regain date) → SPEND_CAP → jobs `budget_wait` until that date, `/api/usage.account_limit_until`. Uploader accepts `.epub`; extension 1.5.1 never colours a capture red.

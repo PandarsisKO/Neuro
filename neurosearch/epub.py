@@ -364,3 +364,24 @@ def locators(book: dict[str, Any]) -> list[dict[str, Any]]:
 def cite_label(chapter_no: int | None, chapter: str, section: str | None) -> str:
     head = (f"Ch. {chapter_no} → {chapter}" if chapter_no else chapter) or "book"
     return f"{head} · {section}" if section else head
+
+
+# ---------------------------------------------------------------- semantic roles → weight (G6P2)
+
+# Retrieval and findings weigh a passage by where it sits in the publication: the body is the book; front matter that
+# introduces it counts fully; appendices and notes carry real content at a discount; an index, a copyright page, a
+# title page or acknowledgements are never the answer. Nothing is discarded — the weight only orders.
+ROLE_WEIGHT: dict[str, float] = {"body": 1.0, "chapter": 1.0, "part": 1.0, "introduction": 1.0, "preface": 0.9, "foreword": 0.8, "prologue": 1.0, "epilogue": 0.9,
+                                 "appendix": 0.85, "notes": 0.7, "glossary": 0.7, "bibliography": 0.5, "index": 0.3, "copyright": 0.2, "title_page": 0.2,
+                                 "acknowledgements": 0.3, "back_matter": 0.7, "front_matter": 0.8}
+SKIP_FOR_FINDINGS = {"index", "copyright", "title_page", "acknowledgements"}      # never worth a model window
+
+
+def role_weight(role: str | None) -> float:
+    return ROLE_WEIGHT.get(role or "body", 0.9)
+
+
+def section_roles(source_id: str) -> dict[int, str]:
+    """ordinal → role for a book source (empty for any other platform)."""
+    from . import db
+    return {r["ordinal"]: r["role"] or "body" for r in db.connect().execute("SELECT ordinal, role FROM book_sections WHERE source_id=?", (source_id,)).fetchall()}

@@ -1,6 +1,6 @@
 # HANDOFF — start here in any new session (any model)
 
-*Neuro Search, written 2026-09-08 at 0.34.2. This file is the front door; it stays short and points at the documents that hold the substance.*
+*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.35.0. This file is the front door; it stays short and points at the documents that hold the substance.*
 
 ## 1. Read in this order (about 20 minutes)
 
@@ -33,11 +33,11 @@ The session has a full copy of the repo in its own workspace and a `.venv` (Pyth
 6. Release gate: in the sandbox `NEUROSEARCH_GIT_SHA=<mac short sha> .venv/bin/neurosearch release-check` → copy the two `evals/release/release-check-<ver>-<sha>-*.{txt,json}` to the conversation and to `<repo>/evals/release/`, commit separately ("release-check <ver> @ <sha>: PASS"), and `git tag -f <rung-tag>` (existing tags: `expansion-g5`, `expansion-g5-1`, `expansion-g6`, `expansion-g7`, `browser-b1`, `browser-b2`, `publication-g6p1`).
 7. Live checks go through Kyle's Chrome (the Claude-in-Chrome tools) against `http://localhost:8000` — `fetch('/api/…')` from a tab on that origin; the sandbox and the Mac shell have no network to the app or to the web. Keep live probes to what a test cannot answer.
 
-## 4. Where things stand (0.34.2)
+## 4. Where things stand (0.35.0)
 
-Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 388, Tier 1 chat totals 34 / 196,951.
+Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 390, Tier 1 chat totals 34 / 196,951.
 
-Queued, in Kyle's priority order and with rough cost in "points of a week" (a deterministic rung ≈ 4, a live-iteration rung ≈ 10): Research rebuild R1–R12 (`RESEARCH-MISSION.md`, UI-heavy, ~10–15 over several sessions); G6P2 EPUB Structure + Work Integration (~4); Share ▾ portable-answer variants (~3); B3 candidate links / gap recall (~5); L1 Claude Code provider (`LOCAL-AI-PROVIDER.md`, ~6–8 with live verification); G6P3–P7; B4–B7; G8; G9. Kyle's own to-dos: Reddit script-app credentials in `.env` (enables Explore), reload the extension after each extension bump.
+Queued, in Kyle's priority order and with rough cost in "points of a week" (a deterministic rung ≈ 4, a live-iteration rung ≈ 10): Research rebuild R1–R12 (`RESEARCH-MISSION.md`, UI-heavy, ~10–15 over several sessions); Share ▾ portable-answer variants (~3); B3 candidate links / gap recall (~5); L1 Claude Code provider (`LOCAL-AI-PROVIDER.md`, ~6–8 with live verification); G6P3–P7; B4–B7; G8; G9. Kyle's own to-dos: Reddit script-app credentials in `.env` (enables Explore), reload the extension after each extension bump.
 
 Known cosmetic debt: the live Work "Form 1099DIV" title (dehyphenated before the reconcile fix).
 

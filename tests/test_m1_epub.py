@@ -170,7 +170,7 @@ def test_p1_gate_upload_search_findings_answer_citations_retry(tmp_path, monkeyp
     assert labels[:3] == ["Ch. 1 → Introduction", "Ch. 2 → How Can Great Firms Fail?", "Ch. 2 → How Can Great Firms Fail? · The Disk-Drive Pattern"]
     # (3) searchable + (6) deterministic structural citations
     hits = search.search("disk-drive form factor entrants", source_ids=[sid], limit=5)
-    assert hits and hits[0]["source_id"] == sid and hits[0]["timestamp"] == "Ch. 2 → How Can Great Firms Fail? · The Disk-Drive Pattern" and hits[0]["link"].endswith("#OEBPS/y_ch1.xhtml#c1s2")
+    assert hits and hits[0]["source_id"] == sid and hits[0]["timestamp"] == "Ch. 2 → How Can Great Firms Fail? · The Disk-Drive Pattern" and hits[0]["link"] == f"#book/{sid}/3"
     hits_es = search.search("mercado emergente disrupción", source_ids=[sid], limit=5)
     assert hits_es and hits_es[0]["timestamp"] == "Ch. 4 → Mercados emergentes"
     # (4) findings through the normal (fake) extraction
@@ -217,3 +217,56 @@ def test_upload_endpoint_immediate_and_job_paths(tmp_path, client):
     assert r.get("immediate") and r.get("source_id")
     s = client.get(f"/api/sources/{r['source_id']}", headers=H).json()
     assert s["platform"] == "book" and s["status"] == "ready" and len(s["sections"]) == 6
+
+
+# ---------------------------------------------------------------- G6P2: structure is used, not just stored
+
+def _with_back_matter(path):
+    """The P1 book plus an index page and a copyright page that repeat the chapter's own words."""
+    b = build_epub(path)
+    import shutil
+    tmp = path.with_suffix(".tmp.epub")
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "OEBPS/content.opf":
+                txt = data.decode()
+                txt = txt.replace('</manifest>', '<item id="dx" href="b_index.xhtml" media-type="application/xhtml+xml"/><item id="dc" href="c_copyright.xhtml" media-type="application/xhtml+xml"/></manifest>')
+                txt = txt.replace('<spine>', '<spine><itemref idref="dc"/>').replace('</spine>', '<itemref idref="dx"/></spine>')
+                data = txt.encode()
+            if item.filename == "OEBPS/nav.xhtml":
+                data = data.decode().replace('<li><a href="z_intro.xhtml">', '<li><a href="c_copyright.xhtml">Copyright</a></li><li><a href="z_intro.xhtml">').replace('</ol></nav>', '<li><a href="b_index.xhtml">Index</a></li></ol></nav>').encode()
+            zout.writestr(item, data)
+        zout.writestr("OEBPS/b_index.xhtml", _xhtml("Index", '<h1 id="ix">Index</h1><p>disk-drive industry, form factor, entrants, incumbents, 12, 14, 27. ' * 6 + '</p>'))
+        zout.writestr("OEBPS/c_copyright.xhtml", _xhtml("Copyright", '<h1 id="cp">Copyright</h1><p>Copyright 1997 disk-drive entrants form factor pattern edition notice. All rights reserved. ' * 4 + '</p>'))
+    shutil.move(tmp, path)
+    return path
+
+
+def test_p2_roles_weight_retrieval_and_findings_but_discard_nothing(tmp_path):
+    pid = db.create_project("Books", "disk drives and disruption")["id"]
+    r = ingest.ingest_local_file(_with_back_matter(tmp_path / "bm.epub"), project_id=pid, original_name="bm.epub")
+    sid = r["source_id"]
+    roles = {x["ordinal"]: x["role"] for x in db.connect().execute("SELECT ordinal, role FROM book_sections WHERE source_id=?", (sid,)).fetchall()}
+    assert "copyright" in roles.values() and "index" in roles.values()
+    hits = search.search("disk-drive form factor entrants", source_ids=[sid], limit=5)
+    assert hits[0]["timestamp"].startswith("Ch. ") and "Disk-Drive Pattern" in hits[0]["timestamp"], "the chapter outranks the index page that repeats its words"
+    assert any(h["timestamp"] in ("Index", "Ch. 7 → Index") or "Index" in h["timestamp"] for h in hits), "the index is still retrievable — weighted, never discarded"
+    # findings never spend a model window on the index or the copyright page; body windows come first
+    segs = db.get_segments(sid)
+    wins = findings._windows(segs, "book", sid)
+    joined = "\n".join(wins)
+    assert "All rights reserved" not in joined and "12, 14, 27" not in joined and "Established firms" in joined
+    assert joined.index("Established firms") < joined.index("Appendix data")
+
+
+def test_p2_reader_contract_and_deep_links(tmp_path):
+    from neurosearch import api
+    pid = db.create_project("Books", "disruption")["id"]
+    r = ingest.ingest_local_file(build_epub(tmp_path / "r.epub"), project_id=pid, original_name="r.epub")
+    s = api.api_source(r["source_id"])
+    # the reader's contract: sections carry chapter/section/role/anchor/label and line up with the segments by ordinal
+    assert [x["ordinal"] for x in s["sections"]] == [round(g["start"]) for g in s["segments"]]
+    assert s["sections"][0]["role"] == "introduction" and s["sections"][-1]["role"] == "appendix" and s["sections"][2]["fragment"] == "c1s2"
+    hits = search.search("resource-allocation process", source_ids=[r["source_id"]], limit=5)
+    assert hits and hits[0]["link"] == f"#book/{r['source_id']}/4" and hits[0]["timestamp"] == "Ch. 3 → Value Networks"

@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.34.2';
+const UI_VERSION = '0.35.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -965,7 +965,7 @@ async function loadSources() {
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
+        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
         ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
@@ -978,16 +978,35 @@ async function setPriority(id, flag) {
   await put(`/api/projects/${state.project.id}/priority`, { source_ids: [id], priority: flag });
   loadSources();
 }
-async function viewTranscript(id) {
+async function viewTranscript(id, ordinal) {
   const s = await api('/api/sources/' + id);
   const isDoc = s.platform === 'document', isWeb = s.platform === 'web', isSheet = s.platform === 'spreadsheet';
   const link = t => s.platform === 'youtube' ? `${s.url}${s.url.includes('?') ? '&' : '?'}t=${Math.floor(t)}s` : (isWeb ? s.url : null);
   const secLabel = s.platform === 'book' ? Object.fromEntries((s.sections || []).map(x => [x.ordinal, x.label])) : null;
   const lab = t => secLabel ? (secLabel[Math.round(t)] || `section ${Math.round(t)}`) : isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
+  if (s.platform === 'book') { renderBook(s, ordinal); return; }
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
     <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
 }
+// ---- G6P2: the book reader — Contents tree (chapters → sections, roles) beside the text; a citation opens the book at its section
+const ROLE_LABEL = { title_page: 'title page', copyright: 'copyright', foreword: 'foreword', preface: 'preface', introduction: 'introduction', part: 'part', chapter: 'chapter', appendix: 'appendix', notes: 'notes', bibliography: 'bibliography', glossary: 'glossary', index: 'index', acknowledgements: 'acknowledgements', epilogue: 'epilogue', prologue: 'prologue', back_matter: 'back matter', front_matter: 'front matter' };
+function renderBook(s, ordinal) {
+  const secs = s.sections || [], text = Object.fromEntries((s.segments || []).map(g => [Math.round(g.start), g.text]));
+  const chapters = []; for (const x of secs) { const last = chapters[chapters.length - 1]; if (!last || last.spine !== x.spine_index) chapters.push({ spine: x.spine_index, title: x.chapter, no: x.chapter_no, role: x.role, secs: [] }); chapters[chapters.length - 1].secs.push(x); }
+  const meta = [s.channel, s.published_at, s.description].filter(Boolean).map(esc).join(' · ');
+  $('#dlgBody').innerHTML = `<b>📖 ${esc(s.title)}</b> <span class="muted">${meta}</span> <a class="muted" href="/api/sources/${s.id}/transcript.txt" target="_blank">download .txt</a>
+    <div style="display:flex;gap:14px;margin-top:8px;min-height:50vh">
+      <div style="width:260px;flex:none;overflow:auto;max-height:65vh;border-right:1px solid var(--line);padding-right:8px;font-size:12.5px"><div class="muted" style="margin-bottom:4px">Contents</div>
+        ${chapters.map(c => `<div style="margin:4px 0"><a href="#" onclick="bookGo(${c.secs[0].ordinal});return false"><b>${c.no ? 'Ch. ' + c.no + ' · ' : ''}${esc(c.title || '')}</b></a>${c.role && c.role !== 'body' && c.role !== 'chapter' ? ` <span class="muted">(${esc(ROLE_LABEL[c.role] || c.role)})</span>` : ''}${c.secs.length > 1 ? c.secs.slice(1).filter(x => x.section).map(x => `<div style="padding-left:12px"><a href="#" onclick="bookGo(${x.ordinal});return false">${esc(x.section)}</a></div>`).join('') : ''}</div>`).join('')}</div>
+      <div id="bookText" class="transcript" style="flex:1;max-height:65vh;overflow:auto">${secs.map(x => `<div id="sec-${x.ordinal}" style="margin-bottom:14px"><b>[${esc(x.label)}]</b>${x.role && !['body', 'chapter', 'part', 'introduction'].includes(x.role) ? ` <span class="muted">${esc(ROLE_LABEL[x.role] || x.role)}</span>` : ''}<div>${esc(text[x.ordinal] || '')}</div></div>`).join('')}</div>
+    </div>`;
+  dlg.showModal();
+  if (ordinal) setTimeout(() => bookGo(ordinal), 50);
+}
+function bookGo(ordinal) { const el = document.getElementById('sec-' + ordinal); if (!el) return; el.scrollIntoView({ block: 'start' }); el.style.background = 'var(--user)'; setTimeout(() => el.style.background = '', 1500); }
+// a citation link of the form #book/<source_id>/<ordinal> (search hits, findings, chat) opens the book at that section
+document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[href^="#book/"]'); if (!a) return; e.preventDefault(); const [, sid, ord] = a.getAttribute('href').split('/'); viewTranscript(sid, +ord); });
 async function openCalc(id) {
   const m = await api(`/api/sources/${id}/calculator`);
   const fmtv = v => typeof v === 'number' ? (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : +v.toFixed(4)) : esc(String(v ?? ''));

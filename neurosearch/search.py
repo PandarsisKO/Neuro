@@ -47,7 +47,7 @@ def _book_locator(c: dict[str, Any]) -> tuple[str, str] | None:
     r = _db.connect().execute("SELECT label, href, fragment FROM book_sections WHERE source_id=? AND ordinal=?", (c["source_id"], int(c["start"]))).fetchone()
     if not r:
         return None
-    return r["label"], f"{c['url']}#{r['href']}" + (f"#{r['fragment']}" if r["fragment"] else "")
+    return r["label"], f"#book/{c['source_id']}/{int(c['start'])}"      # an in-app deep link: the UI opens the book at that section (G6P2)
 
 
 def locator_for(source_id: str, url: str, platform: str, start: float) -> tuple[str, str | None]:
@@ -149,6 +149,13 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
         return []
     order = sorted(ranked.items(), key=lambda kv: -kv[1])
     chunks = db.get_chunks_by_ids([cid for cid, _ in order[: k * 2]])
+    # G6P2: a book passage is weighed by its structural role (an index entry never outranks the chapter it points to)
+    book_ids = {c["source_id"] for c in chunks.values() if (c.get("platform") or "") == "book"}
+    if book_ids:
+        from .epub import role_weight, section_roles
+        roles = {sid: section_roles(sid) for sid in book_ids}
+        order = sorted(((cid, sc * role_weight(roles[chunks[cid]["source_id"]].get(int(chunks[cid]["start"]))) if cid in chunks and chunks[cid]["source_id"] in roles else sc)
+                        for cid, sc in order), key=lambda kv: -kv[1])
     hits: list[dict[str, Any]] = []
     per_source: dict[str, int] = {}
     taken: set[int] = set()
