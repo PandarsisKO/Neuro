@@ -36,6 +36,7 @@ def ingest_url(
     since_years: float | None = None,
     max_videos: int | None = None,
     review: bool = True,
+    capture: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Entry point for any URL. Single videos ingest immediately. Playlists/channels are listed first and,
     with review=True (the default), wait as 'proposed' sources until the user approves them
@@ -49,8 +50,15 @@ def ingest_url(
 
     from . import community
     if community.is_reddit_thread(url):
-        # G7: a discussion thread is a community Source (thread + post tree), never a JavaScript page read as HTML
-        return community.acquire_thread(url, tags=tags, project_id=project_id, progress=progress)
+        # G7: a discussion thread is a community Source (thread + post tree), never a JavaScript page read as HTML;
+        # B1: `capture` = what the user's browser saw (the parked job's external result) — same path, same source
+        return community.acquire_thread(url, tags=tags, project_id=project_id, progress=progress, capture=capture)
+    if capture is not None:
+        # B1: a page the browser rendered for us (generic capture): the standard page path with the supplied HTML
+        html = capture.get("html") if isinstance(capture, dict) else None
+        if not html:
+            raise RuntimeError("the browser capture carried no page content")
+        return ingest_webpage(url, tags=tags, project_id=project_id, title=title or (capture.get("title") if isinstance(capture, dict) else None), progress=progress, html=html)
     if kind == "youtube_search":
         # a YouTube search link (Discover hands these out when it isn't sure of a channel): list the top results
         # for review + relevance ranking, exactly like a playlist — never blindly download a search page

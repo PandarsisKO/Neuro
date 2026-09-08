@@ -170,7 +170,9 @@ class FakeExternal:
 
 from .batches import AnthropicBatch  # noqa: E402
 
-EXTERNAL = {"fake": FakeExternal, AnthropicBatch.name: AnthropicBatch}
+from .acquire import AcquisitionFailure, BrowserCapture, park_for_browser  # noqa: E402
+
+EXTERNAL = {"fake": FakeExternal, AnthropicBatch.name: AnthropicBatch, BrowserCapture.name: BrowserCapture}
 
 
 def submit_external(provider: str, kind: str, request: dict[str, Any], deadline: float | None = None, client_ref: str | None = None, **submit_kw: Any) -> None:
@@ -211,6 +213,8 @@ def poll_external_once() -> int:
         db.external_checked(j["id"])
         if state == "pending":
             if j.get("external_deadline") and time.time() > j["external_deadline"]:
+                if j.get("external_provider") == BrowserCapture.name:
+                    continue                                     # a browser request never fails on its own: it is listed as expired until the user acts
                 db.update_job(j["id"], status="failed", message="error: external work missed its deadline")
                 db.job_event(j["id"], "failed", reason="external_deadline")
                 n += 1
@@ -247,12 +251,13 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover"):
         usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
+        ext = payload.get("_external_result") or {}
         return ingest.ingest_url(payload["url"], tags=payload.get("tags"), project_id=payload.get("project_id"),
                                  progress=progress, force=bool(payload.get("force")),
                                  cookies_file=payload.get("cookies_file"), referer=payload.get("referer"),
                                  title=payload.get("title"), collection_id=payload.get("collection_id"),
                                  since_years=payload.get("since_years"), max_videos=payload.get("max_videos"),
-                                 review=payload.get("review", True))
+                                 review=payload.get("review", True), capture=ext.get("capture") if isinstance(ext, dict) else None)
     if kind == "ingest_source":
         return ingest.ingest_source(payload["source_id"], progress=progress, min_date=payload.get("min_date"),
                                     collection_id=payload.get("collection_id"), newest_first=bool(payload.get("newest_first")),
@@ -352,6 +357,14 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             if sid:
                 db.set_source_status(sid, "pending")
             return "queued"
+        af = e if isinstance(e, AcquisitionFailure) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), AcquisitionFailure) else None)
+        if af is not None and af.browser_solvable and job["kind"] == "ingest_url" and (job.get("payload") or {}).get("url") \
+                and not (job.get("payload") or {}).get("_external_result"):
+            # B1: the user's browser can read what the server cannot — the SAME job waits for the capture (durable, restart-safe)
+            park_for_browser(job, run_id, af, job["payload"]["url"])
+            db.job_event(jid, "requires_browser", run_id=run_id, adapter=af.adapter, cls=af.cls)
+            log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
+            return "external_pending"
         if isinstance(e, RateLimited) or isinstance(getattr(e, "__cause__", None), RateLimited):
             db.requeue_job(jid, delay=rate_limit_status()["seconds_left"] + 5, message=f"paused: {e}", wait_reason="rate_limit")
             if sid:

@@ -318,12 +318,18 @@ def api_ingest_html(project_id: str, body: HtmlIn) -> dict[str, Any]:
     """A page captured by the browser extension (for sites that block automated readers or need a login)."""
     if len(body.html) > 8_000_000:
         raise HTTPException(413, "page too large")
+    from . import acquire
+    waiting = acquire.request_for(body.url, project_id)          # B1: the page a parked job is waiting for → that job, that source
+    if waiting and waiting.get("adapter") == "web_page":
+        return {**acquire.resolve_capture(waiting["job_id"], {"contract": "page_capture/1", "method": "dom", "html": body.html, "title": body.title}), "resolved_pending": True,
+                "kind": "web", "title": body.title, "segments": 0}
     return ingest.ingest_webpage(body.url, tags=body.tags, project_id=project_id, title=body.title, html=body.html)
 
 
 class ThreadIn(BaseModel):
     url: str
-    listing: Any                      # Reddit's [link listing, comment listing] JSON, fetched inside the user's browser
+    listing: Any = None               # Reddit's [link listing, comment listing] JSON, fetched inside the user's browser (extension 1.4)
+    capture: dict[str, Any] | None = None   # the reddit_thread_capture/1 contract (extension 1.5+)
     title: str | None = None
     tags: list[str] = []
 
@@ -333,17 +339,89 @@ async def api_ingest_thread(project_id: str, body: ThreadIn) -> dict[str, Any]:
     """A community thread read inside the user's own browser (the extension's "Send this page" on a Reddit thread).
     Reddit refuses every non-browser client since 2026-06-30; the browser is the user's legitimate reader, and the
     thread goes through the very same acquisition path as a server-side read (`community.acquire_thread`)."""
-    from . import community
+    from . import acquire, community
     if not db.get_project(project_id):
         raise HTTPException(404)
     if not community.is_reddit_thread(body.url):
         raise HTTPException(400, "not a Reddit thread URL")
-    if len(json.dumps(body.listing)) > 12_000_000:
+    if body.listing is None and body.capture is None:
+        raise HTTPException(400, "no thread content (listing or capture)")
+    if len(json.dumps(body.listing if body.capture is None else body.capture, default=str)) > 12_000_000:
         raise HTTPException(413, "thread too large")
+    capture = body.capture if body.capture is not None else {"contract": "reddit_thread_capture/1", "method": "json", "listing": body.listing}
+    # B1: if this thread is what a parked job is waiting for, the capture resolves THAT job (same source), never a parallel acquisition
+    waiting = acquire.request_for(body.url, project_id)
+    if waiting:
+        return {**acquire.resolve_capture(waiting["job_id"], capture), "resolved_pending": True}
     try:
-        return await anyio.to_thread.run_sync(lambda: community.acquire_thread(body.url, tags=body.tags, project_id=project_id, listing=body.listing))
+        return await anyio.to_thread.run_sync(lambda: community.acquire_thread(body.url, tags=body.tags, project_id=project_id, capture=capture))
     except RuntimeError as e:
         raise HTTPException(400, str(e))
+
+
+# --------------------------------------------------------------- B1: browser-assisted acquisition
+
+class CaptureIn(BaseModel):
+    contract: str | None = None          # reddit_thread_capture/1 | page_capture/1
+    method: str | None = None            # json | dom
+    url: str | None = None
+    thread: dict[str, Any] | None = None
+    comments: list[dict[str, Any]] | None = None
+    listing: Any = None
+    html: str | None = None
+    title: str | None = None
+    capture: dict[str, Any] | None = None   # completeness diagnostics (B2)
+
+
+@app.get("/api/capture/pending", dependencies=[Depends(require_auth)])
+def api_capture_pending(project_id: str | None = None, url: str | None = None) -> dict[str, Any]:
+    """What the user's browser is being asked to capture (the Browser Capture queue). Content addresses only — never cookies."""
+    from . import acquire
+    return {"items": acquire.pending_captures(project_id=project_id, url=url), "extension": acquire.extension_status()}
+
+
+@app.post("/api/capture/{job_id}", dependencies=[Depends(require_auth)])
+def api_capture_resolve(job_id: str, body: CaptureIn) -> dict[str, Any]:
+    """The extension delivers what the browser saw for a waiting request; the SAME job completes the SAME source."""
+    from . import acquire
+    payload = body.model_dump(exclude_none=True)
+    if not (payload.get("thread") or payload.get("listing") is not None or payload.get("html")):
+        raise HTTPException(400, "the capture carries no content (thread/listing or html)")
+    try:
+        return acquire.resolve_capture(job_id, payload)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(413, str(e))
+
+
+@app.delete("/api/capture/{job_id}", dependencies=[Depends(require_auth)])
+def api_capture_cancel(job_id: str) -> dict[str, Any]:
+    from . import acquire
+    if not acquire.cancel_capture(job_id):
+        raise HTTPException(404, "no browser capture is waiting on that job")
+    return {"ok": True}
+
+
+class HeartbeatIn(BaseModel):
+    version: str | None = None
+
+
+@app.post("/api/extension/heartbeat", dependencies=[Depends(require_auth)])
+def api_extension_heartbeat(body: HeartbeatIn) -> dict[str, Any]:
+    """The extension checks in (every few minutes and when opened): presence for the UI, and the pending count for its badge."""
+    from . import acquire
+    st = acquire.heartbeat(body.version)
+    return {"extension": st, "pending": len(acquire.pending_captures())}
+
+
+@app.get("/api/projects/{project_id}/attention", dependencies=[Depends(require_auth)])
+def api_attention(project_id: str) -> dict[str, Any]:
+    """One line's worth of what needs the user in this project's acquisition (browser captures waiting, extension state)."""
+    from . import acquire
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return acquire.attention(project_id)
 
 
 class SessionIngestIn(BaseModel):
@@ -615,6 +693,8 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         counts = db.suggestion_counts(project_id)
         analysing = db.sources_being_analysed(project_id)
         live = db.live_job_by_source()
+        from . import acquire
+        browser = acquire.pending_by_source()
         analysed_ids = db.analysed_sources(project_id)
         analyses = db.project_analyses(project_id)
         prio = db.priority_source_ids(project_id)
@@ -635,6 +715,11 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}
+            b = browser.get(r["id"])
+            if b:
+                r["acquisition"] = {"state": "requires_browser", "job_id": b["job_id"], "reason": b["reason"], "status": b["status"], "url": b["canonical_url"] or r["url"]}
+            elif (r.get("error_class") or "").startswith("browser_solvable:"):
+                r["acquisition"] = {"state": "requires_browser", "job_id": None, "reason": r.get("error"), "status": "needs_request", "url": r["url"]}
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))
         rows = [r for r in rows if r["id"] not in ids][:limit]

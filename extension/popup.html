@@ -24,6 +24,13 @@
   <span id="setupMsg" class="muted"></span>
 </div>
 <div id="main" style="display:none">
+  <div id="wanted" style="display:none;border:1px solid #2f5bea;border-radius:8px;background:#eef2ff;padding:10px;margin-bottom:10px">
+    <b>Neuro Search wants this page</b>
+    <div class="muted" id="wantedWhy" style="margin-top:4px"></div>
+    <button class="primary" id="captureWanted">Capture for Neuro Search</button>
+    <span id="wantedMsg" class="muted"></span>
+  </div>
+  <div id="queue" class="muted" style="display:none;margin-bottom:8px"></div>
   <div style="border:1px solid #e1e5eb;border-radius:8px;background:#fff;padding:10px;margin-bottom:10px">
     <b>Send this page</b> <span class="muted">— an article or guide as your browser sees it (works on sites that block automated readers or need a login); on an Instagram reel or profile (newest 40 posts, for review), TikTok, Vimeo or Loom page it sends the link with your session instead</span>
     <label>To project</label><select id="pageProject"></select>

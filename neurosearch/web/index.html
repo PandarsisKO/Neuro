@@ -341,6 +341,7 @@
       </div>
       <div id="reviewWrap"></div>
       <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
+      <div id="captureCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
@@ -510,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.32.2';
+const UI_VERSION = '0.33.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -929,17 +930,20 @@ async function loadSources() {
   $('#nSources').textContent = nReady;
   if (FUN.n !== undefined && FUN.n !== nReady) loadFun(state.view === 'sources' ? 'srcFun' : null);   // a new source landed: fresh numbers, fresh comparison
   // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
-  const bucket = s => (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
-  const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length,
+  const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
+  const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
+  const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length, browser: all.filter(needsBrowser).length,
                    ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length };
-  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['skipped', 'Skipped', counts.skipped]];
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['skipped', 'Skipped', counts.skipped]];
+  loadCaptureQueue(all.filter(needsBrowser));
   $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
   const f = state.srcFilter || 'all';
-  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : s.status === f)).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : s.status === f && !needsBrowser(s))).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '');
   const liveLine = s => {
+    if (needsBrowser(s)) return '';
     if (s.status === 'pending' && s.job) {
       const j = s.job;
       if (j.status === 'running') return `<span class="spin"></span> ${esc(j.message || 'working…')} <span class="muted">· ${ago(j.updated_at || Date.now() / 1000)} ago</span>`;
@@ -954,13 +958,13 @@ async function loadSources() {
     <div style="flex:1;min-width:0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
-      ${s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${needsBrowser(s) ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>` : ''}
-        ${s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
         <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
@@ -1004,6 +1008,37 @@ async function suggestSource(id) { const r = await post(`/api/projects/${state.p
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
+// ---- B1: browser-assisted acquisition ----
+let EXT = { state: 'unknown' };
+function browserBlock(s) {
+  const a = s.acquisition || {};
+  return `<div style="margin:6px 0;padding:8px 10px;border:1px solid var(--accent);border-radius:8px;background:var(--user)">
+    <b>🌐 Browser needed</b>${a.status === 'expired' ? ' <span class="muted">· this request expired — open and capture again</span>' : ''}<div class="muted" style="margin-top:2px">${esc(a.reason || 'Neuro Search could not retrieve this directly. Use your browser to finish capturing it.')}</div>
+    <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+      ${a.job_id ? `<button class="small primary" onclick="openAndCapture('${esc(a.url)}')">Open & Capture</button>` : `<button class="small primary" onclick="retry('${s.id}')">Ask again</button>`}
+      <button class="small ghost" onclick="toggleCaptureHelp(this)">How this works</button>
+      ${a.job_id ? `<button class="small ghost" onclick="cancelCapture('${a.job_id}')">Cancel</button>` : ''}
+      <span class="muted" style="font-size:12px">${extLine()}</span>
+    </div>
+    <div class="muted" style="display:none;margin-top:6px;font-size:12px">Open & Capture opens the page in a new tab. The Neuro Search extension recognizes it (its icon shows a blue dot): press the extension button, then <b>Capture for Neuro Search</b>. The page arrives here as the same source — nothing to paste or re-select. No extension yet? Download it from Settings → Extension, load it in chrome://extensions, and pair it with this app's address and password.</div>
+  </div>`;
+}
+function extLine() { return EXT.state === 'ready' ? '✓ extension ready' : EXT.state === 'stale' ? `extension last seen ${ago(EXT.last_seen)} ago` : EXT.state === 'not_detected' ? '⚠ extension not detected — see How this works' : ''; }
+function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.style.display = d.style.display === 'none' ? '' : 'none'; }
+function openAndCapture(url) { window.open(url, '_blank'); }
+async function cancelCapture(jobId) { await del(`/api/capture/${jobId}`); loadSources(); loadJobs(); }
+async function loadCaptureQueue(rows) {
+  try {
+    const q = await api(`/api/capture/pending?project_id=${state.project.id}`); EXT = q.extension || EXT;
+    const items = q.items || [];
+    const card = $('#captureCard');
+    if (!items.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· ${items.length} source${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your browser · ${extLine() || 'extension state unknown'}</span>
+      <div class="muted" style="font-size:12px;margin:4px 0">Open each page in Chrome; the Neuro Search extension recognizes it and captures it into the same source. Nothing is downloaded without your click.</div>
+      ${items.map((it, i) => `<div class="row" style="padding:4px 0;border-top:1px solid var(--line);align-items:center"><span class="muted fixed" style="width:44px">${i + 1} of ${items.length}</span><span style="flex:1;min-width:0">${esc(it.title || it.canonical_url)} <span class="muted">· ${esc(it.adapter === 'reddit_thread' ? 'Reddit thread' : 'web page')}${it.status === 'expired' ? ' · expired' : ''}</span></span><button class="small primary" onclick="openAndCapture('${esc(it.canonical_url || it.url)}')">Open & Capture</button><button class="small ghost" onclick="cancelCapture('${it.job_id}')">Cancel</button></div>`).join('')}`;
+  } catch (e) { /* the sources list still renders */ }
+}
 async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }
 async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
 function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
@@ -1333,7 +1368,7 @@ async function loadJobs() {
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
-  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${STATE_LABEL[j.state || j.status] || j.status}</span>
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}</span>
     <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);

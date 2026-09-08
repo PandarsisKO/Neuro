@@ -1,6 +1,12 @@
 const $ = s => document.querySelector(s);
 let cfg = {}, result = null;
 
+let WANTED = null;   // the app's waiting capture request for the current tab, if any
+
+function canon(u) {
+  try { const x = new URL(u); x.hash = ''; x.search = ''; return (x.origin + x.pathname).replace(/^https?:\/\/(www\.|old\.|new\.)?/, 'https://').replace(/\/$/, ''); } catch (e) { return u; }
+}
+
 async function load() {
   cfg = await chrome.storage.local.get(['appUrl', 'token', 'lastProject']);
   if (cfg.appUrl && cfg.token) {
@@ -9,8 +15,103 @@ async function load() {
       const ps = await api('/api/projects');
       $('#pageProject').innerHTML = ps.map(p => `<option value="${p.id}" ${p.id === cfg.lastProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
     } catch (e) { $('#pageMsg').textContent = 'Could not load projects: ' + e.message; }
+    try {
+      // B1: does the app want THIS page? (one click, the project and reason already known)
+      await api('/api/extension/heartbeat', { method: 'POST', body: JSON.stringify({ version: chrome.runtime.getManifest().version }) });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const p = await api('/api/capture/pending');
+      const items = p.items || [];
+      WANTED = items.find(i => canon(i.canonical_url || i.url || '') === canon(tab.url)) || null;
+      if (WANTED) {
+        $('#wanted').style.display = '';
+        $('#wantedWhy').innerHTML = `Project: <b>${esc(WANTED.project_name || '')}</b>${WANTED.reason ? `<br>${esc(WANTED.reason)}` : ''}`;
+        if (WANTED.project_id) $('#pageProject').value = WANTED.project_id;
+      }
+      const others = items.filter(i => i !== WANTED);
+      if (others.length) {
+        $('#queue').style.display = '';
+        $('#queue').innerHTML = `${others.length} more page${others.length === 1 ? '' : 's'} waiting for your browser — next: <a href="${esc(others[0].canonical_url || others[0].url)}" target="_blank">${esc(others[0].title || others[0].canonical_url || others[0].url)}</a>`;
+      }
+      chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
+    } catch (e) { /* no capture context: the ordinary buttons still work */ }
   }
 }
+
+// ---- B1: the capture contract — produced in the browser, normalized only by the server ----
+// Reddit: the same-origin JSON the user's own session is served (complete tree + expected comment count) is the
+// preferred producer; the rendered DOM is the fallback (B2 adds completeness counts to it).
+async function redditCapture(tab) {
+  const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: async () => {
+    const path = location.pathname.replace(/\/$/, '').replace(/\.json$/, '');
+    const norm = id => (id || '').replace(/^t[13]_/, '');
+    try {
+      const r = await fetch(`${location.origin}${path}.json?raw_json=1&limit=500&depth=12`, { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (r.ok) {
+        const listing = await r.json();
+        const link = listing[0].data.children[0].data;
+        const comments = [];
+        const walk = (children, parent, depth) => { for (const ch of children || []) { if (ch.kind !== 't1') continue; const d = ch.data;
+          comments.push({ reddit_id: d.id, parent_id: parent, depth, author: d.author, text: d.body || '', score: d.score, created_at: d.created_utc, edited: !!d.edited,
+            deleted: d.body === '[deleted]' || d.body === '[removed]' || d.author === '[deleted]', permalink: 'https://www.reddit.com' + (d.permalink || '') });
+          if (d.replies && d.replies.data) walk(d.replies.data.children, d.id, depth + 1); } };
+        if (listing[1]) walk(listing[1].data.children, link.id, 1);
+        return { contract: 'reddit_thread_capture/1', method: 'json', canonical_url: 'https://www.reddit.com' + link.permalink,
+          thread: { reddit_id: link.id, subreddit: link.subreddit_name_prefixed || ('r/' + link.subreddit), title: link.title, author: link.author, body: link.selftext || '', score: link.score,
+                    created_at: link.created_utc, edited: !!link.edited, deleted: link.author === '[deleted]' && !link.selftext, permalink: 'https://www.reddit.com' + link.permalink, expected_comments: link.num_comments },
+          comments, capture: { status: comments.length >= (link.num_comments || 0) ? 'complete' : 'partial', captured: comments.length, expected: link.num_comments, method: 'json' } };
+      }
+    } catch (e) { /* fall through to the DOM */ }
+    // rendered DOM (www.reddit.com's shreddit-comment elements, or old.reddit's .thing rows): what the page shows, with what it does not
+    const post = document.querySelector('shreddit-post');
+    const title = (post && post.getAttribute('post-title')) || document.title;
+    const rid = norm((post && post.getAttribute('id')) || (location.pathname.match(/\/comments\/([a-z0-9]+)/) || [])[1]);
+    const comments = [];
+    for (const el of document.querySelectorAll('shreddit-comment')) {
+      const body = el.querySelector('[slot="comment"]');
+      comments.push({ reddit_id: norm(el.getAttribute('thingid')), parent_id: norm(el.getAttribute('parentid')) || rid, depth: +(el.getAttribute('depth') || 0) + 1,
+        author: el.getAttribute('author'), text: body ? body.innerText.trim() : '', score: +(el.getAttribute('score') || 0) || null, created_at: null, edited: false,
+        deleted: /^\[(deleted|removed)\]$/.test(body ? body.innerText.trim() : ''), permalink: location.origin + (el.getAttribute('permalink') || '') });
+    }
+    for (const el of document.querySelectorAll('.commentarea .thing.comment')) {
+      const md = el.querySelector(':scope > .entry .md');
+      const parentThing = el.parentElement && el.parentElement.closest('.thing');
+      comments.push({ reddit_id: norm(el.getAttribute('data-fullname')), parent_id: parentThing ? norm(parentThing.getAttribute('data-fullname')) : rid, depth: 1,
+        author: el.getAttribute('data-author'), text: md ? md.innerText.trim() : '', score: +((el.querySelector(':scope > .entry .score.unvoted') || {}).title || 0) || null,
+        created_at: ((el.querySelector(':scope > .entry time') || {}).dateTime ? Date.parse(el.querySelector(':scope > .entry time').dateTime) / 1000 : null), edited: !!el.querySelector(':scope > .entry time.edited-timestamp'),
+        deleted: el.classList.contains('deleted'), permalink: location.origin + (el.getAttribute('data-permalink') || '') });
+    }
+    const expected = post ? +(post.getAttribute('comment-count') || 0) : +(((document.querySelector('.commentarea .panestack-title') || {}).innerText || '').match(/\d+/) || [0])[0];
+    const more = document.querySelectorAll('shreddit-comment-tree faceplate-partial, .morecomments, .morechildren').length;
+    const selftext = post ? (post.querySelector('[slot="text-body"]') || {}).innerText || '' : ((document.querySelector('#siteTable .thing.link .md') || {}).innerText || '');
+    return { contract: 'reddit_thread_capture/1', method: 'dom', canonical_url: location.origin + location.pathname,
+      thread: { reddit_id: rid, subreddit: (location.pathname.match(/\/(r\/[^/]+)\//) || [])[1] || '', title, author: post ? post.getAttribute('author') : (document.querySelector('#siteTable .thing.link') || { getAttribute: () => null }).getAttribute('data-author'),
+                body: selftext, score: post ? +(post.getAttribute('score') || 0) : null, created_at: post && post.getAttribute('created-timestamp') ? Date.parse(post.getAttribute('created-timestamp')) / 1000 : null,
+                edited: false, deleted: false, permalink: location.origin + location.pathname, expected_comments: expected || null },
+      comments, capture: { status: expected && comments.length >= expected && !more ? 'complete' : (expected ? 'partial' : 'unknown'), captured: comments.length, expected: expected || null, load_more_remaining: more, method: 'dom' } };
+  } });
+  return result;
+}
+
+async function pageCapture(tab) {
+  const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ contract: 'page_capture/1', method: 'dom', url: location.href, title: document.title, html: document.documentElement.outerHTML }) });
+  return result;
+}
+
+$('#captureWanted').onclick = async () => {
+  if (!WANTED) return;
+  $('#captureWanted').disabled = true; $('#wantedMsg').textContent = 'capturing…';
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const payload = WANTED.adapter === 'reddit_thread' ? await redditCapture(tab) : await pageCapture(tab);
+    if (!payload) throw new Error('nothing could be read from this page');
+    const r = await api(`/api/capture/${WANTED.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
+    const cap = payload.capture || {};
+    const partial = cap.status === 'partial' ? ` <span class="bad">Partial: ${cap.captured} of ~${cap.expected} comments were loaded on the page.</span>` : '';
+    $('#wantedMsg').innerHTML = `<span class="ok">Captured${cap.captured != null ? ` ${cap.captured} comments` : ''} — the app is finishing it.</span>${partial}`;
+    WANTED = null; $('#wanted').style.opacity = .6;
+    chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
+  } catch (e) { $('#wantedMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; $('#captureWanted').disabled = false; }
+};
 
 $('#sendPage').onclick = async () => {
   const pid = $('#pageProject').value; if (!pid) return;
@@ -22,17 +123,13 @@ $('#sendPage').onclick = async () => {
       // a Reddit thread: Reddit refuses every non-browser reader, so the thread's JSON is read here, inside your own
       // browser session, and handed to the app — the app stores it exactly as it would a thread it read itself
       $('#pageMsg').textContent = 'reading the thread in your browser…';
-      const [{ result: got }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: async () => {
-        const path = location.pathname.replace(/\/$/, '').replace(/\.json$/, '');
-        const r = await fetch(`${location.origin}${path}.json?raw_json=1&limit=500&depth=12`, { credentials: 'include', headers: { Accept: 'application/json' } });
-        if (!r.ok) return { error: `Reddit answered HTTP ${r.status}` };
-        try { return { listing: await r.json(), url: location.origin + path + '/' }; } catch (e) { return { error: 'Reddit did not answer with the thread (are you logged in?)' }; }
-      } });
-      if (!got || got.error) throw new Error((got && got.error) || 'could not read the thread');
+      const payload = await redditCapture(tab);
+      if (!payload || !payload.thread || !payload.thread.reddit_id) throw new Error('could not read the thread (are you logged in to Reddit?)');
       $('#pageMsg').textContent = 'sending…';
-      const r = await api(`/api/projects/${pid}/ingest/thread`, { method: 'POST', body: JSON.stringify({ url: got.url.replace(/\/\/(old|new)\.reddit\.com/, '//www.reddit.com'), listing: got.listing, title: tab.title }) });
+      const r = await api(`/api/projects/${pid}/ingest/thread`, { method: 'POST', body: JSON.stringify({ url: payload.canonical_url.replace(/\/\/(old|new)\.reddit\.com/, '//www.reddit.com'), capture: payload, title: tab.title }) });
       await chrome.storage.local.set({ lastProject: pid });
-      $('#pageMsg').innerHTML = `<span class="ok">Added “${esc(r.title)}” (${r.posts} posts, ${r.substantive} substantive).</span> See Sources → Communities in the app.`;
+      const cap = payload.capture || {};
+      $('#pageMsg').innerHTML = r.resolved_pending ? `<span class="ok">Captured — the app is finishing the thread it was waiting for.</span>` : `<span class="ok">Added “${esc(r.title)}” (${r.posts} posts, ${r.substantive} substantive).</span>${cap.status === 'partial' ? ` <span class="bad">Partial: ${cap.captured} of ~${cap.expected} comments were loaded.</span>` : ''} See Sources → Communities in the app.`;
       $('#sendPage').disabled = false; return;
     }
     const MEDIA = ['instagram.com', 'tiktok.com', 'vimeo.com', 'loom.com', 'facebook.com', 'x.com', 'twitter.com', 'wistia.com'];

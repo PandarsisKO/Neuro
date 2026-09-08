@@ -120,8 +120,15 @@ HEADERS = {
 }
 
 
-class Blocked(RuntimeError):
-    """The site refused an automated reader (403/401/429/challenge page)."""
+from .acquire import AcquisitionFailure, classify_page  # noqa: E402
+
+
+class Blocked(AcquisitionFailure):
+    """The site refused an automated reader (403/401/429/challenge page). A classified, browser-solvable failure (B1):
+    the job that hit it becomes a browser-capture request instead of a dead end."""
+
+    def __init__(self, message: str, *, cls: str = "blocked", detail: str | None = None) -> None:
+        super().__init__(message, adapter="web_page", cls=cls, detail=detail)
 
 
 def fetch(url: str, timeout: float = 60.0) -> tuple[str, str, bytes]:
@@ -131,12 +138,25 @@ def fetch(url: str, timeout: float = 60.0) -> tuple[str, str, bytes]:
     from .safe_fetch import safe_fetch
     r = safe_fetch(url, deadline_s=timeout)
     if r.status in (401, 403, 429, 503):
+        cls = classify_page(r.status, r.body[:4000].decode("utf-8", errors="replace")) or "blocked"
         raise Blocked(f"{urlparse(url).netloc} blocks automated readers (HTTP {r.status}). "
                       "Open the page in Chrome and use the Neuro Search extension → 'Send this page', "
-                      "or copy the text into Sources → Paste text.")
+                      "or copy the text into Sources → Paste text.", cls=cls, detail=f"HTTP {r.status}")
+    if r.status == 404:
+        raise AcquisitionFailure(f"HTTP 404 — nothing at that address on {urlparse(r.url).netloc}", adapter="web_page", cls="not_found")
     if r.status >= 400:
-        raise RuntimeError(f"HTTP {r.status} fetching {urlparse(r.url).netloc}")
+        raise AcquisitionFailure(f"HTTP {r.status} fetching {urlparse(r.url).netloc}", adapter="web_page", cls="http_error", detail=f"HTTP {r.status}")
     return r.url, r.content_type, r.body
+
+
+def LOGIN_OR_CHALLENGE(head: str) -> str | None:
+    """A 200 that is really a wall: 'login_wall' | 'challenge' | None."""
+    from .acquire import CHALLENGE, LOGIN_WALL
+    if LOGIN_WALL.search(head):
+        return "login_wall"
+    if CHALLENGE.search(head):
+        return "challenge"
+    return None
 
 
 def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:
@@ -145,7 +165,10 @@ def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:
     if html_text is not None:
         title, pages = extract_sections(html_text)
         if not pages or sum(len(p["text"]) for p in pages) < 200:
-            raise RuntimeError("no readable text on that page")
+            wall = LOGIN_OR_CHALLENGE(html_text[:6000] + " " + " ".join(p["text"] for p in pages))
+            if wall:
+                raise Blocked(f"{urlparse(url).netloc} answered with a sign-in or verification page instead of the content.", cls=wall)
+            raise AcquisitionFailure("no readable text on that page (it may need JavaScript or a login)", adapter="web_page", cls="js_required")
         return {"title": html.unescape(title) or url, "url": url, "pages": pages, "kind": "webpage"}
     final, ctype, body = fetch(url)
     if "pdf" in ctype or final.lower().split("?")[0].endswith(".pdf"):
@@ -162,5 +185,8 @@ def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:
     text = body.decode("utf-8", errors="replace")
     title, pages = extract_sections(text)
     if not pages or sum(len(p["text"]) for p in pages) < 200:
-        raise RuntimeError("no readable text on that page (it may need JavaScript or a login)")
+        wall = LOGIN_OR_CHALLENGE(text[:6000] + " " + " ".join(p["text"] for p in pages))     # a thin page that is really a wall
+        if wall:
+            raise Blocked(f"{urlparse(final).netloc} answered with a sign-in or verification page instead of the content.", cls=wall)
+        raise AcquisitionFailure("no readable text on that page (it may need JavaScript or a login)", adapter="web_page", cls="js_required")
     return {"title": html.unescape(title) or final, "url": final, "pages": pages, "kind": "webpage"}

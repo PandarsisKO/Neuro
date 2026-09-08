@@ -242,6 +242,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_k9_community.py"])
         r.check("community evidence: thread hierarchy + corrections preserved, independent experience ≠ repeated information, engagement never outranks substance, "
                 "self-described context unverified, community cannot establish a rule, injection text is data, candidates resurface without re-enumeration (G7 gate)", ok, tail)
+        ok, tail = _pytest(["tests/test_l1_browser_capture.py"])
+        r.check("browser acquisition (B1): browser-solvable failure → requires_browser (durable external job), source stays in its project, the capture resolves the SAME job/source "
+                "(also across restart and unsolicited), non-solvable failures stay failed, a successful reading never asks for Chrome, owned sources bypass the browser, queue carries no secrets", ok, tail)
         ok, tail = _pytest(["tests/test_k9b_reddit_html.py"])
         r.check("Reddit after 2026-06-30: extension-read thread → same global source; official API via app-only OAuth for threads + search; old.reddit page reading = JSON reading; refusals name the way forward (0.32.2 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k8_works.py"])

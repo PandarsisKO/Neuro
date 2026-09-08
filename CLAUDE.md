@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.32.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.33.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -35,6 +35,10 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 ## Global Library Intelligence (G4, 0.28.0)
 
 `library.py`: `baseline(source_id)` ($0, cached, revision-aware; metadata + own top terms + deterministic `authority_signals` with basis + centroid (coarse) + farthest-point topic vectors) · `recall(project, query)` = chunk-level retrieval over ready sources OUTSIDE the project → grouped suggestions with passages/why/signals (never attached; works with zero enriched profiles — gated) · `want`/`enrich`/`enrich_wanted` (lazy `library.profile`, schema `source-profile-v1`, provenance + routing, stale on revision change) · `maybe_queue_batch` → `enrich_profiles_batch` job on the Rung G batch machinery. **Never** build a global profile from project findings/summaries/relevance; never enrich the whole library. `discover(mode=)` is library-first; chat tool `search_global_library`. Recall requires absolute term coverage (`MIN_COVERAGE`/`STRONG_COVERAGE`, 0.28.1) so off-topic questions return nothing. **Structured-output schemas must not carry string-length constraints** — `provider_schema` strips them, so the model cannot honour them and the result fails locally after being paid for (0.28.2 lost a 30-item batch this way).
+
+## Browser-assisted acquisition (B1, 0.33.0)
+
+`acquire.py` — `requires_browser` is a GENERIC capability state, never a Reddit state: an `AcquisitionFailure(adapter, cls)` is browser-solvable only when the adapter's row in `ADAPTERS` says so (reddit_thread: blocked/login_wall/challenge; web_page: + js_required/empty_render; document/youtube: never). `jobs.execute` parks such an `ingest_url` job `external_pending` (provider `browser`, handle = canonical URL, 14-day deadline that never fails the job) with a pending placeholder source (`sources.error_class = browser_solvable:<cls>`, plain-language `error`) so the project keeps it; the extension posts the capture (`POST /api/capture/{job_id}`: `reddit_thread_capture/1` = thread + comments + capture diagnostics, or `page_capture/1` = html) → `db.resume_external` → the SAME job re-runs `ingest.ingest_url(capture=)` and completes the SAME source. `/ingest/thread` and `/ingest/html` resolve a waiting request for the URL first. Global Library first: an owned thread the server cannot re-read is attached, not sent to the browser. Queue `GET /api/capture/pending`, presence `POST /api/extension/heartbeat` (kv only), `GET /api/projects/{id}/attention`. Extension 1.5: `background.js` heartbeat + badge, popup "wants this page" + contract producers (same-origin JSON first, rendered DOM fallback); the server is the only normalizer (`community.thread_from_capture`). Never put cookies in a capture; the session-cookie path stays `with-session`. Gate `tests/test_l1_browser_capture.py`.
 
 ## Community evidence (G7, 0.32.0; Reddit page fallback 0.32.2)
 

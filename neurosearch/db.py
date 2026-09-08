@@ -755,6 +755,8 @@ MIGRATIONS = [
     # G1 (0.25.0): stronger identity than (platform, external_id) alone — canonical URL and content fingerprint (see identity.py)
     ("sources", "canonical_url", "ALTER TABLE sources ADD COLUMN canonical_url TEXT"),
     ("sources", "content_fingerprint", "ALTER TABLE sources ADD COLUMN content_fingerprint TEXT"),
+    ("sources", "error_class", "ALTER TABLE sources ADD COLUMN error_class TEXT"),           # B1: classified acquisition failure (browser_solvable:<cls> | <cls>)
+    ("sources", "completeness", "ALTER TABLE sources ADD COLUMN completeness TEXT"),         # B2: JSON — captured vs expected, never "complete" by default
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),

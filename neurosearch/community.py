@@ -228,6 +228,53 @@ def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit jso
             "representation": retrieved_via}
 
 
+def thread_from_capture(capture: dict[str, Any], url: str) -> dict[str, Any]:
+    """The extension's `reddit_thread_capture/1` contract (thread + comments + capture diagnostics, produced in the
+    user's browser from the same-origin JSON or from the rendered DOM) → the thread dict. Same shape as every other
+    reading; `capture` diagnostics ride along so B2 can record completeness. A raw Reddit listing is accepted too."""
+    if isinstance(capture, dict) and capture.get("listing") is not None and not capture.get("thread"):
+        t = thread_from_listing(capture["listing"], url, retrieved_via="browser extension")
+        t["capture"] = capture.get("capture") or {"status": "unknown", "method": "json"}
+        return t
+    if not isinstance(capture, dict) or not isinstance(capture.get("thread"), dict):
+        raise RuntimeError("unexpected capture payload (no thread)")
+    th, comments = capture["thread"], capture.get("comments") or []
+    tid = th.get("reddit_id") or reddit_thread_id(th.get("permalink") or url) or ""
+    tid = tid[3:] if tid.startswith("t3_") else tid
+    if not tid:
+        raise RuntimeError("capture has no thread id")
+    perm = th.get("permalink") or th.get("canonical_url") or url
+    posts: list[dict[str, Any]] = [{"post_id": tid, "parent_id": None, "depth": 0, "author": th.get("author"), "score": th.get("score"), "created": th.get("created_at"),
+                                    "edited": bool(th.get("edited")), "deleted": bool(th.get("deleted")) or (th.get("author") in (None, "[deleted]") and not th.get("body")),
+                                    "text": (th.get("title") or "") + ("\n\n" + th["body"] if th.get("body") else ""), "kind": "post", "permalink": perm}]
+    known = {tid}
+    for c in comments:
+        if len(posts) >= MAX_POSTS or not isinstance(c, dict):
+            break
+        cid = str(c.get("reddit_id") or "")
+        cid = cid[3:] if cid.startswith("t1_") else cid
+        if not cid or cid in known:
+            continue
+        pid = str(c.get("parent_id") or tid)
+        pid = pid[3:] if pid[:3] in ("t1_", "t3_") else pid
+        text = c.get("text") or ""
+        deleted = bool(c.get("deleted")) or text in ("[deleted]", "[removed]") or c.get("author") == "[deleted]"
+        posts.append({"post_id": cid, "parent_id": pid if pid in known else tid, "depth": int(c.get("depth") or 1), "author": c.get("author"), "score": c.get("score"),
+                      "created": c.get("created_at"), "edited": bool(c.get("edited")), "deleted": deleted, "text": "" if deleted else text, "kind": "comment",
+                      "permalink": c.get("permalink") or perm})
+        known.add(cid)
+    sub = th.get("subreddit") or _subreddit_from(perm) or ""
+    community = sub if sub.startswith("r/") else (f"r/{sub}" if sub else "")
+    return {"platform": "reddit", "thread_id": tid, "title": th.get("title") or url, "community": community, "url": perm if perm.startswith("http") else "https://www.reddit.com" + perm,
+            "created": th.get("created_at"), "score": th.get("score"), "num_comments": th.get("expected_comments") if th.get("expected_comments") is not None else len(posts) - 1,
+            "posts": posts, "retrieved_at": time.time(), "representation": f"browser extension ({capture.get('method') or 'capture'})", "capture": capture.get("capture") or {}}
+
+
+def _subreddit_from(url: str) -> str | None:
+    m = re.search(r"/(r/[^/]+)/", urlparse(url).path)
+    return m.group(1) if m else None
+
+
 def read_reddit_thread(url: str) -> dict[str, Any]:
     """The post + the comment forest (ids, parents, authors, scores, edited/deleted flags). Order of readings:
     (1) Reddit's official API when credentials are configured; (2) the public .json endpoint with an honest UA (refused to
@@ -252,8 +299,9 @@ def read_reddit_thread(url: str) -> dict[str, Any]:
         return reddit_html.thread_from_html(html, url, max_posts=MAX_POSTS)
     except RuntimeError as e:
         errors.append(f"server-rendered page: {e}")
+    from .acquire import AcquisitionFailure
     hint = "" if reddit_api_configured() else " · Reddit refuses non-browser clients: use the extension's “Send this page” on the thread, or add REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET to .env"
-    raise RuntimeError("; ".join(errors) + hint)
+    raise AcquisitionFailure("; ".join(errors) + hint, adapter="reddit_thread", cls="blocked")
 
 
 def enumerate_reddit(community: str, query: str, *, limit: int = 25, sort: str = "relevance", time_filter: str = "all") -> list[dict[str, Any]]:
@@ -447,17 +495,36 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
 
 
 def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str | None = None, progress: Any = None, query: str | None = None,
-                   listing: Any = None) -> dict[str, Any]:
+                   listing: Any = None, capture: dict[str, Any] | None = None) -> dict[str, Any]:
     """Acquire one community thread as a Source through the standard identity/revision path. Reddit today; other adapters
     plug in here by host. `listing` = the thread's JSON already read inside the user's browser (the extension's
     "Send this page"): the same shape, the same path, one fewer network step."""
-    from . import ingest
+    from . import identity, ingest, media
     if progress:
         progress(0.1, "reading the thread…")
-    if listing is not None and is_reddit_thread(url):
+    if capture is not None and is_reddit_thread(url):
+        thread = thread_from_capture(capture, url)
+    elif listing is not None and is_reddit_thread(url):
         thread = thread_from_listing(listing, url, retrieved_via="browser extension")
     elif is_reddit_thread(url):
-        thread = read_reddit_thread(url)
+        try:
+            thread = read_reddit_thread(url)
+        except Exception as e:  # noqa: BLE001
+            from .acquire import AcquisitionFailure
+            if not isinstance(e, AcquisitionFailure):
+                raise
+            # Global Library first (B1 gate 10): a thread already owned is attached, never sent to the browser; a fresh
+            # re-read (refresh) still happens whenever the server CAN read
+            tid = reddit_thread_id(url)
+            state, existing = identity.resolve(identity.Candidate(platform=PLATFORM, external_id=f"reddit:{tid}", url=media.canonical_url(url)), project_id)
+            if existing and existing.get("status") == "ready":
+                if project_id:
+                    identity.attach_existing(project_id, existing["id"])
+                conn = db.connect()
+                return {"source_id": existing["id"], "title": existing["title"], "identity": state, "already_ingested": True, "community": existing.get("channel"), "chunks": 0,
+                        "posts": conn.execute("SELECT COUNT(*) FROM community_posts WHERE source_id=?", (existing["id"],)).fetchone()[0],
+                        "substantive": conn.execute("SELECT COUNT(*) FROM community_posts WHERE source_id=? AND in_chunks=1", (existing["id"],)).fetchone()[0]}
+            raise
     else:
         raise RuntimeError("no community adapter for this host yet (Reddit threads are supported; other communities can be added as pages)")
     terms = set(re.findall(r"[a-z][a-z0-9\-']{3,}", (query or "").lower())) or None
