@@ -3,6 +3,8 @@
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
 
+**New session? Read `HANDOFF.md` first** — the front door: reading order, how Kyle works with a session, the delivery ritual, where things stand, what "done" means.
+
 ## Standing rules (never break these)
 
 - **Never write to `data/neurosearch.db` from outside the running app** (a mount from another OS/VM corrupts the WAL). Use the API/CLI. Hourly verified snapshots → `data/backups/`.

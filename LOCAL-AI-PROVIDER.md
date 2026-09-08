@@ -1,0 +1,49 @@
+# L1 — Claude Code as Neuro Search's local AI provider (implementation note for whichever session builds it)
+
+*Written 2026-09-08 at 0.34.2. Policy and architecture: EXPANSION.md → "ADDENDUM — Neuro Search Local-First AI Policy" (Kyle) and the assessment beneath it. This note turns that into a buildable rung with the code as it is today.*
+
+## 0. What the policy asks, in one paragraph
+
+On a local installation, eligible AI work runs through a **dedicated, isolated, non-interactive Claude Code worker** by default; the Anthropic API stays fully intact as the automatic fallback when the local provider is *unavailable* (missing, erroring, at its usage limit, unable to perform the operation) and as *user-authorised burst capacity* when it is merely *busy* — never a silent "slow → spend". Provider choice must not change behaviour, persisted data, task semantics or output schemas, and the same abstraction must let the cloud profile run the API as primary with the local provider absent. Claude Code is an inference provider, never the developer: no repo, no tools beyond Neuro Search's own MCP server, structured output only.
+
+## 1. What already exists (do not rebuild)
+
+- **The feature layer is provider-blind.** Every model call goes through `providers.invoke(task, …)` / `invoke_structured(task, …)`; call sites supply content only. `contracts.InferenceContract` pins provider/model/thinking/output budget/timeout/retries/schema per task and carries `fallback="NO_FALLBACK"` (no *model* substitution). `providers._Ledgered` wraps each transport attempt: breaker gate → `invocations` ledger row → typed retry → `ProviderError(error_type)`. `routing_for/routing_json` stamps requested/actual model on every artifact. `schemas.REGISTRY` + `clamp` + local validation own structured outputs. `usage.guard()` / the spend ledger own budgets. `fake_ai.Anthropic` is the offline provider used by every test.
+- **The durable job queue** (`jobs.py`) has worker pools by kind, leases, `external_pending`, budget/rate-limit/provider waits, `breakers` per provider:operation. AI job kinds today: `suggest_findings(_batch)`, `rank_proposed`, `discover`, `build_plan`, `enrich_profiles_batch`, `claims:evaluate`, plus the interactive chat (`qa.ask`, streaming).
+- **Neuro Search's MCP server** (`mcp_server.py`) already exposes the project tools (search, sources, findings, facts…) — the tool surface a Claude Code worker can be allowed.
+- **Doctor / release-check** (`release.py`) already report provider configuration and gate frozen Tier 1 totals per task.
+
+## 2. Design (locked by the policy; concrete here)
+
+**Provider abstraction.** Add `providers.ProviderRouter` in front of the transport: `route(task, policy) → ("local" | "api", reason)`. `InferenceContract` gains `local_capable: bool` (default True for the structured tasks; False for `embed`, `transcribe`, batch-only tasks) and keeps its API model. A new `ClaudeCodeProvider` implements the same call shape `_Ledgered` expects (a `messages.create`-like function returning the SDK response shape used downstream — text blocks, `stop_reason`, `usage`), so the ledger, retries, schema validation and `routing_json` work unchanged; `routing_json` gains `executed_by: local|api` and `fallback_reason`.
+
+**Driving Claude Code.** Headless CLI: `claude -p <prompt>` with `--output-format json` (or `stream-json` for chat streaming), `--max-turns 1` for structured tasks, an explicit `--allowedTools` (empty for structured tasks; `mcp__neurosearch__*` for chat when L2 adds the tool loop via `--mcp-config`), `--permission-mode` that never edits files, a scratch `cwd` outside the repo, and the system prompt passed with `--system-prompt` (verify the exact flag names with `claude --help` on the Mac before relying on them — they have changed across releases; keep them in one table in `claude_code.py`). Structured output: send the same prompt + the same JSON schema in the instruction, parse the CLI's `result` text with the existing `schemas` validation/clamp/repair path (no new parsing path); if the installed CLI supports a native JSON-schema output flag, use it and keep the local validation. Usage: the CLI's JSON carries token counts and cost fields — record them in the ledger as `provider="claude_code"` with `$0 actual`, plus `estimated_api_cost` from the contract's model prices (this is the "avoided spend" number).
+
+**Health.** `claude_code.health()` — binary present, `claude --version`, auth state (a trivial `-p` probe, cached ~10 min), last error class; exposed in `/api/health`, doctor ("Claude Code: ready 2.x · not installed · not signed in · usage limit until …"), and the Jobs header.
+
+**Errors → the policy's two states.** Map CLI outcomes to typed errors: not installed / not signed in / non-zero exit / timeout / malformed output → `UNAVAILABLE` (fallback to API automatically, recorded); a usage-limit message from the CLI → `LOCAL_LIMIT` (fallback, and Health shows the reset time); the worker pool saturated → **not an error**: the job waits in the local pool (`busy`), and the UI offers acceleration (L3). Busy ≠ unavailable is the rule to test.
+
+**Execution policy on jobs.** Additive column `jobs.execution_policy` (`local_preferred` default · `local_only` · `api_requested` · `api_only`) and `jobs.executed_by` + `jobs.fallback_reason` recorded at completion (intent and outcome kept separate). Cloud profile: settings `ai_profile=cloud` makes the router treat local as absent without touching any feature.
+
+**Worker pools.** `jobs.py` gains a `local_ai` pool (size = settings `local_ai_workers`, default 2) that claims AI kinds with `execution_policy in (local_preferred, local_only)`, and an `api_ai` pool (default 1, normally idle) that claims `api_requested/api_only` and fallbacks. General workers keep ingestion. Chat (interactive) goes through the router directly, not the queue; L2 makes it local-first with the "answer now with API ≈ $" offer.
+
+**Isolation.** The worker runs with `cwd` = a per-worker scratch directory under `data/local_ai/`, no repo path, no shell tools, no file tools, a hard wall-clock timeout per task from the contract, output size caps, and the prompt's untrusted content marked as data exactly as today (the chat SYSTEM rules). Nothing the worker returns is executed; it is parsed and validated like an API response.
+
+**Tier 1 and frozen numbers.** The fake provider stays the test path; add a `fake_claude_code` mode (a stub `claude` binary on PATH that echoes fixture outputs) so the router, the fallback, the pools and the policy column are gated offline. Tier 1 totals are per *task and prompt*, not per provider — they do not change unless a prompt changes; the ledger's "avoided spend" is new and unfrozen. Record in HARDENING.md which tasks were verified live on Claude Code and with which model the CLI actually ran (the subscription's models differ from the contracts' pinned API models; `routing_json` must say which ran).
+
+## 3. Phases and gates
+
+- **L1 (this rung, ≈6–8 points incl. live verification):** `claude_code.py` (CLI table, invoke, health, error mapping), `ProviderRouter`, contract `local_capable`, `execution_policy/executed_by/fallback_reason`, the two AI pools, Health/doctor/Jobs-header state, the fake CLI, structured tasks only (findings.extract, rank.relevance, planner.update, discover.quick, claims.extract, library.profile). Gate (`tests/test_n1_local_ai.py`): local runs when healthy; unavailable → API with the reason recorded and nothing else changed (same schema, same artifact fields); busy → waits, never spends; `local_only` never touches the API; `api_only` never touches local; cloud profile treats local as absent; usage-limit → LOCAL_LIMIT with reset time; ledger rows carry provider + avoided cost; doctor reports the state; release-check gate. Live: run each task once on the Mac and record the CLI model + timings in HARDENING.md.
+- **L2 chat (≈4):** local-first answer generation with the retrieval/state block built by Neuro Search, tool loop through the MCP server, stream-json streaming, "Local AI is busy — [Wait] [Answer now with API ≈ $0.03]".
+- **L3 speed-up (≈4):** backlog detection, cost estimate from the ledger/contract prices, the acceleration dialog (next 10 / 25 / all / high-relevance first), `api_requested` marking, burst pool.
+- **L4 usage split + metric + cloud profile switch (≈3):** "2,184 AI tasks · 93 % local · $14.62 actual · $169.69 avoided" in Health and Settings.
+
+## 4. Caveats to state to Kyle before the first live run
+
+1. Claude Code inference draws on the **same subscription allowance** as development sessions; local is not free, it is time-shared, and the Health line should say how much of the week's allowance the app has used if the CLI exposes it.
+2. Check Anthropic's current terms for Claude Code use as an application's background inference engine before making it the default; the API path stays intact whichever way that reads.
+3. Model differences: the CLI runs the subscription's models; Tier 1 quality gates were frozen on the API models. Verify findings/ranking quality on the Golden Project (`neurosearch eval` with the CLI provider, unfrozen, recorded) before local becomes the default for those tasks.
+
+## 5. Files to touch
+
+`neurosearch/claude_code.py` (new), `providers.py` (router, ledger provider name, routing_json fields), `contracts.py` (`local_capable`), `db.py` (three additive job columns + MIGRATIONS), `jobs.py` (pools, policy claims, fallback recording), `config.py` (`local_ai_workers`, `ai_profile`, `claude_code_bin`), `release.py` (doctor line + gate), `api.py` (`/api/health` fields, Jobs header, `PUT /api/jobs/{id}/policy`), `web/index.html` (Jobs header "Claude Code: …", policy badge on job rows), `fake_ai.py` or `tests/fake_claude` (the stub binary), `tests/test_n1_local_ai.py`, docs (EXPANSION rung log, HARDENING, CLAUDE.md "Model routing").
