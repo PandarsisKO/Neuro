@@ -397,7 +397,9 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
 
 # ---------------------------------------------------------------- the overview
 
-def overview(project_id: str, limit: int = 5) -> dict[str, Any]:
+def overview(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
+    """R3. `full=True` also returns the complete `questions` and `watchouts` lists computed in the SAME pass — the shell
+    (R2) renders every pane from one request instead of paying for `_load()` four times."""
     d = _load(project_id)
     ar = areas(project_id, d)
     qs = questions(project_id, d, ar)
@@ -424,8 +426,11 @@ def overview(project_id: str, limit: int = 5) -> dict[str, Any]:
                "issues": len([w for w in ws if w["impact"] in WATCHOUT_ATTENTION_IMPACTS]), "issues_total": len(ws),
                "areas_to_refresh": len(refresh_areas), "areas_weak": len(weak_areas), "areas_total": len(ar["areas"]), "claims_awaiting_decision": len(awaiting),
                "claims_total": len(d["claims"])}
-    return {"summary": summary, "next": nxt, "recently_improved": improved[:6], "attention": min(attention, 99), "attention_capped": attention > 99,
-            "areas": ar["areas"][:12], "empty": not d["claims"]}
+    out = {"summary": summary, "next": nxt, "recently_improved": improved[:6], "attention": min(attention, 99), "attention_capped": attention > 99,
+           "areas": ar["areas"][:12], "empty": not d["claims"]}
+    if full:
+        out.update({"questions": qs, "watchouts": ws, "areas": ar["areas"], "area_of_claim": ar["area_of_claim"], "area_of_topic": ar["area_of_topic"]})
+    return out
 
 
 def attention(project_id: str) -> int:

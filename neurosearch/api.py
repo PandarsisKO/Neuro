@@ -1656,13 +1656,13 @@ async def api_research_refresh(project_id: str, body: ResearchRefreshIn) -> dict
 
 
 @app.get("/api/projects/{project_id}/research/overview", dependencies=[Depends(require_auth)])
-def api_research_overview(project_id: str, limit: int = 5) -> dict[str, Any]:
+def api_research_overview(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
     """R1/R3/R5/R6 ($0, deterministic): the decision-first view — summary, the ranked 'next' list (questions + watch-outs),
     recently improved, the sidebar attention count, and the Research Areas."""
     from . import research_view
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return research_view.overview(project_id, limit=max(1, min(limit, 20)))
+    return research_view.overview(project_id, limit=max(1, min(limit, 20)), full=full)
 
 
 @app.get("/api/projects/{project_id}/research/questions", dependencies=[Depends(require_auth)])
@@ -1854,6 +1854,31 @@ def api_tension_status(tension_id: str, body: TensionStatusIn) -> dict[str, Any]
         raise HTTPException(400, str(e))
     knowledge.refresh(row["project_id"])
     return {"ok": True}
+
+
+class TensionsBulkIn(BaseModel):
+    tension_ids: list[str]
+    status: str    # resolved | dismissed | open
+
+
+@app.post("/api/projects/{project_id}/tensions/bulk-status", dependencies=[Depends(require_auth)])
+def api_tensions_bulk(project_id: str, body: TensionsBulkIn) -> dict[str, Any]:
+    """R5's remaining half: one verdict on a whole watch-out ISSUE — "Not important to my project" / "Resolved" applies to
+    every tension behind it, then ONE refresh. A dismissed tension is never reopened by a later refresh (`_upsert_tension`
+    never resets status), so the verdict is durable."""
+    from . import knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if body.status not in ("open", "resolved", "dismissed"):
+        raise HTTPException(400, "status must be open, resolved or dismissed")
+    mine = {r["id"] for r in db.connect().execute(
+        f"SELECT id FROM research_tensions WHERE project_id=? AND id IN ({','.join('?' for _ in body.tension_ids) or 'NULL'})",
+        (project_id, *body.tension_ids)).fetchall()} if body.tension_ids else set()
+    for tid in mine:
+        knowledge.set_tension_status(tid, body.status)
+    if mine:
+        knowledge.refresh(project_id)
+    return {"changed": len(mine), "skipped": len(set(body.tension_ids)) - len(mine), "status": body.status}
 
 
 @app.get("/api/sources/{source_id}/profile", dependencies=[Depends(require_auth)])

@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.43.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.44.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -65,7 +65,7 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 
 ## Research view engine (R1/R3/R5/R6, 0.37.2)
 
-`research_view.py` ($0, deterministic, no model calls) is the contract the redesigned Research tab renders (`RESEARCH-MISSION.md`, `RESEARCH-TAB.md` §7): `overview` (summary · ranked `next` across open questions + watch-outs · recently improved · `attention` · areas), `questions` (targets in plain language with cost-labelled actions), `watchouts` (tensions grouped into issues by kind × area, `underlying` for drill-down), `areas` (Jaccard clusters over multi-word topic nodes, named from those labels; tiny topics fold whole; lone-word bulk topics are placed Claim by Claim, the unplaceable in **Everything else**; `area_of_claim` is authoritative). Scoring constants live at the top of the module and are documented in RESEARCH-TAB.md §7; `attention` is what needs the user, never the Claim count (`#nResearch`). Endpoints `GET /api/projects/{id}/research/overview|questions|watchouts|areas`. Gate `tests/test_n1_research_view.py`. The shell (R2) is not built yet.
+`research_view.py` ($0, deterministic, no model calls) is the contract the redesigned Research tab renders (`RESEARCH-MISSION.md`, `RESEARCH-TAB.md` §7): `overview` (summary · ranked `next` across open questions + watch-outs · recently improved · `attention` · areas), `questions` (targets in plain language with cost-labelled actions), `watchouts` (tensions grouped into issues by kind × area, `underlying` for drill-down), `areas` (Jaccard clusters over multi-word topic nodes, named from those labels; tiny topics fold whole; lone-word bulk topics are placed Claim by Claim, the unplaceable in **Everything else**; `area_of_claim` is authoritative). Scoring constants live at the top of the module and are documented in RESEARCH-TAB.md §7; `attention` is what needs the user, never the Claim count (`#nResearch`). Endpoints `GET /api/projects/{id}/research/overview|questions|watchouts|areas`. Gate `tests/test_n1_research_view.py`. **R2 the shell (0.44.0):** the tab renders every pane from ONE request — `overview?full=1` returns the same questions/watch-outs/areas/`area_of_claim` in one `_load()` pass — with the heavy `/research` state lazy behind the Claims and Research-tools panes; panes Overview · Open questions · Watch-outs · Areas (Focus filters the others and the Claims workbench) · Claims · Research tools (the old map/tension/target lists, nothing removed); `POST /api/projects/{id}/tensions/bulk-status` gives a whole watch-out ISSUE one durable verdict. Gate `tests/test_n8_research_shell.py`.
 
 ## Exploration + Candidate Index (G3, 0.27.0)
 
@@ -87,4 +87,4 @@ rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); e
 
 ## Working here
 
-Run: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest` (448). Before a release: `neurosearch release-check` (writes the artifact; the Health console shows the last result). Version lives in `neurosearch/__init__.py`, `pyproject.toml` and `UI_VERSION` in `web/index.html` (PEP 440). YouTube may block datacenter IPs — ingest from a laptop with the same CLI against the same `NEUROSEARCH_DATA_DIR`, or with `NEUROSEARCH_COOKIES_FILE`.
+Run: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest` (451). Before a release: `neurosearch release-check` (writes the artifact; the Health console shows the last result). Version lives in `neurosearch/__init__.py`, `pyproject.toml` and `UI_VERSION` in `web/index.html` (PEP 440). YouTube may block datacenter IPs — ingest from a laptop with the same CLI against the same `NEUROSEARCH_DATA_DIR`, or with `NEUROSEARCH_COOKIES_FILE`.

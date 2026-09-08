@@ -251,6 +251,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_n8_research_shell.py"])
+        r.check("Research shell (R2): the tab renders from ONE $0 request (overview(full=True) == the separate endpoints, one pass); a watch-out carries one verdict for every tension "
+                "behind it and a dismissal survives the next refresh; the shell's panes, endpoints and question actions all exist on this build", ok, tail)
         ok, tail = _pytest(["tests/test_n7_pool.py"])
         r.check("known-but-uncaptured pool (S5): skipped pre-cutoff sources + Candidate Index rows in one list with a $0 potential scan (open questions, weak areas, vocabulary, "
                 "timeless vs dated), why-known, capture through retry/acquire only, durable dismissal, never evidence", ok, tail)
