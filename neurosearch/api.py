@@ -407,6 +407,43 @@ def api_capture_cancel(job_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+class CaptureBestIn(BaseModel):
+    n: int = 3
+
+
+@app.get("/api/targets/{target_id}/known", dependencies=[Depends(require_auth)])
+def api_target_known(target_id: str) -> dict[str, Any]:
+    """B3: the promising sources already known for this open question but not captured (Candidate Index links)."""
+    from . import knowledge
+    tg = knowledge.get_target(target_id)
+    if not tg:
+        raise HTTPException(404)
+    return knowledge.known_evidence(tg["project_id"], target_id, limit=5)
+
+
+@app.post("/api/targets/{target_id}/capture-best", dependencies=[Depends(require_auth)])
+def api_target_capture_best(target_id: str, body: CaptureBestIn) -> dict[str, Any]:
+    """B3: acquire the best known sources for an open question through the normal path (attach → ingest job → browser when needed)."""
+    from . import knowledge
+    tg = knowledge.get_target(target_id)
+    if not tg:
+        raise HTTPException(404)
+    return knowledge.capture_best(tg["project_id"], target_id, n=body.n)
+
+
+class LinkDismissIn(BaseModel):
+    project_id: str
+    kind: str
+    ref_id: str
+
+
+@app.post("/api/candidates/{candidate_id}/dismiss-link", dependencies=[Depends(require_auth)])
+def api_candidate_dismiss_link(candidate_id: str, body: LinkDismissIn) -> dict[str, Any]:
+    """B3: 'not useful for this question' — the link is dismissed; the candidate itself stays known."""
+    from . import candidates
+    return {"ok": True, "updated": candidates.dismiss_link(body.project_id, candidate_id, body.kind, body.ref_id)}
+
+
 class ShareIn(BaseModel):
     text: str
     citations: list[dict[str, Any]] = []

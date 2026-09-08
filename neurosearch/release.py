@@ -245,6 +245,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_l1_browser_capture.py"])
         r.check("browser acquisition (B1): browser-solvable failure → requires_browser (durable external job), source stays in its project, the capture resolves the SAME job/source "
                 "(also across restart and unsolicited), non-solvable failures stay failed, a successful reading never asks for Chrome, owned sources bypass the browser, queue carries no secrets", ok, tail)
+        ok, tail = _pytest(["tests/test_m3_links.py"])
+        r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
+                "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
         ok, tail = _pytest(["tests/test_m2_share.py"])
         r.check("portable answers (C0 Share ▾): a share variant is one model call over the finished answer, never a research pass; it can only cite the original's markers (strays removed and reported); budget-guarded", ok, tail)
         ok, tail = _pytest(["tests/test_m1_epub.py"])

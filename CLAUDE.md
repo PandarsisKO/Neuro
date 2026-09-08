@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.35.1)
+# Neuro Search — architecture map for Claude Code (current state, 0.36.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -61,7 +61,7 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 
 ## Exploration + Candidate Index (G3, 0.27.0)
 
-`explore.py`: `enumerate_feed` / `enumerate_sitemap` / `enumerate_website` (all through `safe_fetch`, bounded by `MAX_ITEMS`, `MAX_SITEMAPS`, `HOME_LINKS_MAX`; fail open per child) → `explore()` job → collection + proposed sources (G1 identity) + `candidates.remember` → `rank_proposed` → Review. `candidates.py` = the Discovery Candidate Index (seen, not acquired; global row + per-project state/relevance/reason/origin; `search` = gap recall over metadata FTS; `mark_by_source` on approve; `resolve_acquired` on any source creation). Candidates are NEVER evidence: nothing here touches chunks/FTS/embeddings. Chat tool `search_seen_sources`; API `/api/projects/{id}/candidates`, `/api/candidates/{id}/{dismiss,restore,acquire}` (acquire → `ingest_url`).
+`explore.py`: `enumerate_feed` / `enumerate_sitemap` / `enumerate_website` (all through `safe_fetch`, bounded by `MAX_ITEMS`, `MAX_SITEMAPS`, `HOME_LINKS_MAX`; fail open per child) → `explore()` job → collection + proposed sources (G1 identity) + `candidates.remember` → `rank_proposed` → Review. `candidates.py` = the Discovery Candidate Index (seen, not acquired; global row + per-project state/relevance/reason/origin; `search` = gap recall over metadata FTS; `mark_by_source` on approve; `resolve_acquired` on any source creation). Candidates are NEVER evidence: nothing here touches chunks/FTS/embeddings. Chat tool `search_seen_sources`; API `/api/projects/{id}/candidates`, `/api/candidates/{id}/{dismiss,restore,acquire}` (acquire → `ingest_url`). **B3 (0.36.0):** `candidate_links` = why a known source matters (kind + ref: evidence_target/claim/tension/mission/discovery; open/satisfied/dismissed); `pursue` writes them, `resolve_acquired` satisfies them, `knowledge.known_evidence` / `capture_best` (attach → ingest job → browser when needed; never the web) surface and act on them; `/api/targets/{id}/{known,capture-best}`, `/api/candidates/{id}/dismiss-link`.
 
 ## Chat retrieval (0.24.1)
 

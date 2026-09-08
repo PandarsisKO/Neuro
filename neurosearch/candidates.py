@@ -97,6 +97,8 @@ def resolve_acquired(platform: str, external_id: str, source_id: str) -> None:
     """A source was created by ANY path: the matching candidate (if any) now points at it."""
     with db.tx() as conn:
         conn.execute("UPDATE candidates SET source_id=?, last_verified_at=? WHERE platform=? AND external_id=? AND source_id IS NULL", (source_id, time.time(), platform, external_id))
+        conn.execute("UPDATE candidate_links SET state='satisfied', updated_at=? WHERE state='open' AND candidate_id IN (SELECT id FROM candidates WHERE platform=? AND external_id=?)",
+                     (time.time(), platform, external_id))          # B3: the need this source served is met
 
 
 def dismiss(project_id: str, candidate_id: str, reason: str | None) -> int:
@@ -176,3 +178,55 @@ def list_for_project(project_id: str, state: str | None = None, limit: int = 200
             pass
         out.append(d)
     return out
+
+
+# ---------------------------------------------------------------- B3: durable links — why a known source matters (gap / claim / tension / mission)
+
+LINK_KINDS = ("evidence_target", "claim", "tension", "mission", "discovery")
+
+
+def link(candidate_id: str, project_id: str, kind: str, ref_id: str, *, relevance: int | None = None, why: str | None = None) -> None:
+    """Record that this known-but-not-captured source may serve a research need. Idempotent; relevance/why refresh; a
+    dismissed link stays dismissed (the user's word outranks a re-ranking); a link on an already-acquired candidate is born satisfied."""
+    if kind not in LINK_KINDS:
+        raise ValueError(f"unknown link kind {kind}")
+    t = time.time()
+    with db.tx() as conn:
+        acquired = conn.execute("SELECT source_id FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+        state = "satisfied" if acquired and acquired["source_id"] else "open"
+        conn.execute("INSERT INTO candidate_links (candidate_id, project_id, kind, ref_id, relevance, why, state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) "
+                     "ON CONFLICT(candidate_id, project_id, kind, ref_id) DO UPDATE SET relevance=excluded.relevance, why=COALESCE(excluded.why, candidate_links.why), "
+                     "state=CASE WHEN candidate_links.state='dismissed' THEN 'dismissed' ELSE excluded.state END, updated_at=excluded.updated_at",
+                     (candidate_id, project_id, kind, ref_id, relevance, why, state, t, t))
+
+
+def links_for(project_id: str, kind: str, ref_id: str, *, state: str = "open", limit: int = 10) -> list[dict[str, Any]]:
+    """The known sources linked to one research need, best first, with the candidate's metadata and an acquisition hint."""
+    rows = db.connect().execute(
+        "SELECT l.relevance, l.why, l.state, l.updated_at, c.* FROM candidate_links l JOIN candidates c ON c.id=l.candidate_id "
+        "WHERE l.project_id=? AND l.kind=? AND l.ref_id=? AND l.state=? ORDER BY l.relevance DESC, l.updated_at DESC LIMIT ?", (project_id, kind, ref_id, state, limit)).fetchall()
+    out = []
+    for r in rows:
+        d = db.row_to_dict(r)
+        d["candidate_id"] = d["id"]
+        d["acquisition_hint"] = "browser_likely" if d.get("platform") in ("reddit", "community") or "reddit.com" in (d.get("url") or "") else "server"
+        out.append(d)
+    return out
+
+
+def link_counts(project_id: str, kind: str) -> dict[str, int]:
+    """ref_id → number of open links (one query for a whole page of targets/claims)."""
+    return {r["ref_id"]: r["n"] for r in db.connect().execute(
+        "SELECT ref_id, COUNT(*) AS n FROM candidate_links WHERE project_id=? AND kind=? AND state='open' GROUP BY ref_id", (project_id, kind)).fetchall()}
+
+
+def dismiss_link(project_id: str, candidate_id: str, kind: str, ref_id: str) -> int:
+    with db.tx() as conn:
+        return conn.execute("UPDATE candidate_links SET state='dismissed', updated_at=? WHERE project_id=? AND candidate_id=? AND kind=? AND ref_id=?",
+                            (time.time(), project_id, candidate_id, kind, ref_id)).rowcount
+
+
+def satisfy_links(candidate_id: str) -> int:
+    """The candidate was acquired (any path, any project): every open link to it is satisfied."""
+    with db.tx() as conn:
+        return conn.execute("UPDATE candidate_links SET state='satisfied', updated_at=? WHERE candidate_id=? AND state='open'", (time.time(), candidate_id)).rowcount

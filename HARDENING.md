@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.36.0 — B3 candidate links (no frozen numbers changed).** New additive table `candidate_links`; the chat's `research_state` TOOL output gained a line (tool output is not in the frozen prefix; Tier 1 verified unchanged).
+
 **0.35.1 — Share ▾ (no frozen numbers changed).** New task `answer.share` (interactive); the chat prompt is untouched so Tier 1 stays 34 / 196,951.
 
 **0.35.0 — G6P2 (no frozen numbers changed).** Role weighting applies only to platform `book` chunks; the golden fixture has none, so the retrieval baseline is unchanged. Book deep links moved from `url#href#fragment` to `#book/<sid>/<ordinal>` (in-app).

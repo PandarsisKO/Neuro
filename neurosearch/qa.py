@@ -682,7 +682,9 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
         if open_t:
             lines.append("Open evidence targets (closure = what counts as enough):")
             for tg in open_t[:10]:
-                lines.append(f"- [{tg['sufficiency']}] {tg['question'][:160]} — closure: {(tg.get('closure') or '')[:120]}" + (f" — gap: {tg['gap'][:120]}" if tg.get("gap") else ""))
+                known = tg.get("known_uncaptured") or 0
+                lines.append(f"- [{tg['sufficiency']}] {tg['question'][:160]} — closure: {(tg.get('closure') or '')[:120]}" + (f" — gap: {tg['gap'][:120]}" if tg.get("gap") else "")
+                             + (f" — {known} promising source{'s' if known != 1 else ''} known but not yet captured (the user can capture them from Research)" if known else ""))
         if syn:
             lines.append("Community experience (derived from threads — cite the underlying posts, not this summary):")
             for s_ in syn[:8]:

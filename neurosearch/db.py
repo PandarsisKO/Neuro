@@ -533,6 +533,19 @@ CREATE INDEX IF NOT EXISTS ix_work_manifestations_work ON work_manifestations(wo
 CREATE INDEX IF NOT EXISTS ix_work_manifestations_source ON work_manifestations(source_id);
 -- G7 (0.32.0): community threads are ONE source each (platform 'community'); posts/comments are evidence locators with
 -- retrieval/edit/deletion state, corrections attached to what they correct, self-described context never verified.
+CREATE TABLE IF NOT EXISTS candidate_links (                              -- B3: why a known-but-not-captured source matters to a project
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL,                 -- evidence_target | claim | tension | mission | discovery
+    ref_id       TEXT NOT NULL,
+    relevance    INTEGER,
+    why          TEXT,
+    state        TEXT NOT NULL DEFAULT 'open',  -- open | satisfied (acquired) | dismissed (user: not important)
+    created_at   REAL NOT NULL,
+    updated_at   REAL NOT NULL,
+    PRIMARY KEY (candidate_id, project_id, kind, ref_id)
+);
+CREATE INDEX IF NOT EXISTS ix_candidate_links_ref ON candidate_links(project_id, kind, ref_id, state);
 CREATE TABLE IF NOT EXISTS book_sections (                                -- G6P1: an EPUB's structure; ordinal = the segment locator
     source_id    TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
     ordinal      INTEGER NOT NULL,

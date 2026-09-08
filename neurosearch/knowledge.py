@@ -220,6 +220,8 @@ def pursue(target_id: str, *, external: bool = False, resurface: bool = True) ->
         candidates.mark(pid, [r["id"] for r in resurfaced], "available", reason=f"resurfaced for evidence target: {q[:80]}")
     steps.append({"step": "candidate_index", "found": len(ranked), "resurfaced": len(resurfaced),
                   "candidates": [{"id": r["id"], "title": r.get("title"), "state": r.get("state"), "target_score": r["target_score"], "evidence_class": r.get("evidence_class"), "resurfaced": r.get("resurfaced")} for r in ranked[:8]]})
+    for r in ranked[:8]:                                                   # B3: the gap remembers what could fill it (durable, not a JSON trail)
+        candidates.link(r["id"], pid, "evidence_target", target_id, relevance=int(round(100 * float(r["target_score"]))), why=f"matches the open question: {q[:120]}")
     # 4 — external discovery, only on request
     ext: dict[str, Any] = {"step": "external", "run": False}
     closure_ok = assess_target(target_id)
@@ -478,6 +480,37 @@ STATE_MAX_LIST = 100
 _STRENGTH_ORDER = {"strong": 0, "developing": 1, "weak": 2, "unsupported": 3}
 
 
+def known_evidence(project_id: str, target_id: str, limit: int = 3) -> dict[str, Any]:
+    """B3: for one open question — how many promising sources are known but not captured, and the best few."""
+    from . import candidates
+    rows = candidates.links_for(project_id, "evidence_target", target_id, limit=limit)
+    total = candidates.link_counts(project_id, "evidence_target").get(target_id, 0)
+    return {"known_uncaptured": total, "browser_likely": sum(1 for r in rows if r["acquisition_hint"] == "browser_likely"),
+            "best": [{"candidate_id": r["candidate_id"], "title": r.get("title"), "url": r.get("url"), "relevance": r.get("relevance"), "platform": r.get("platform"),
+                      "acquisition_hint": r["acquisition_hint"], "num_comments": r.get("comment_count") or r.get("view_count")} for r in rows]}
+
+
+def capture_best(project_id: str, target_id: str, n: int = 3) -> dict[str, Any]:
+    """Acquire the best known sources for an open question through the NORMAL path (attach if owned → ingest job, which
+    parks on the browser when the server cannot read it). Never a parallel acquisition."""
+    from . import candidates, identity, jobs as _jobs
+    rows = candidates.links_for(project_id, "evidence_target", target_id, limit=max(1, min(n, 10)))
+    started = []
+    for r in rows:
+        c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (r["candidate_id"],)).fetchone())
+        if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
+            identity.attach_existing(project_id, c["source_id"])
+            candidates.mark(project_id, [c["id"]], "acquired", "attached for an open question")
+            candidates.satisfy_links(c["id"])
+            started.append({"candidate_id": c["id"], "title": c.get("title"), "how": "attached"})
+            continue
+        job = _jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False, "candidate_id": c["id"],
+                                          "reason": f"evidence for an open question", "title": c.get("title")})
+        candidates.mark(project_id, [c["id"]], "acquired", "capturing for an open question")
+        started.append({"candidate_id": c["id"], "title": c.get("title"), "how": "job", "job_id": job["id"], "acquisition_hint": r["acquisition_hint"]})
+    return {"target_id": target_id, "started": started}
+
+
 def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]:
     """Everything the Research view / Chat / Discover need, $0. Claims are capped (accepted and strong first) so a
     thousand-finding project returns a page, not a dump; `claims_total` carries the real count."""
@@ -503,6 +536,10 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
         c["evidence"] = c["evidence"][:STATE_MAX_EVIDENCE]
         page.append(c)
     targets_all, tensions_all = list_targets(project_id), list_tensions(project_id, status="open")
+    from . import candidates as _cands
+    known = _cands.link_counts(project_id, "evidence_target")                      # B3: open questions remember what could fill them
+    for tg in targets_all:
+        tg["known_uncaptured"] = known.get(tg["id"], 0)
     tension_counts: dict[str, int] = {}
     for t in tensions_all:
         tension_counts[t["kind"]] = tension_counts.get(t["kind"], 0) + 1
