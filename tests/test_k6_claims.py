@@ -377,3 +377,20 @@ def test_targets_dedupe_by_meaning_and_proposals_are_capped(monkeypatch):
     after = len(knowledge.list_targets(pid, status="open"))
     assert after - before <= 3
 
+
+def test_requirement_attributed_to_the_seller_opens_the_governing_question(monkeypatch):
+    """The CPA-buyer case: normalization keeps 'the listing requires a CPA buyer' as a seller/listing requirement AND opens
+    the governing target (is it a legal/licensing/service rule?) instead of a target to corroborate the listing."""
+    pid, ids = _acceptance_fixture(monkeypatch)
+    lst = _transcript("listing1", "Central Valley CPA practice listing", "Practice Sales", "Specific requirements: the seller requires the buyer to be a CPA who can prepare compilations.", platform="media")
+    db.add_project_sources(pid, [lst])
+    _note(pid, lst, "Seller requires the buyer to be a CPA who can prepare compilations", "the seller requires the buyer to be a CPA who can prepare compilations", importance=5, title="Buyer must be a CPA")
+    claims.ensure(pid)
+    c = _by_text(pid, "CPA who can prepare compilations")
+    claims.extract(pid, [c])
+    c = claims.get(c["id"])
+    assert c["qualifiers"]["imposed_by"] == "seller_or_listing"
+    assert "seller" in c["text"].lower()                                            # the requirement's source survives normalization
+    tg = [t for t in knowledge.list_targets(pid) if t["claim_id"] == c["id"] and t["sufficiency"] == "governing"]
+    assert tg and "professional licensing" in tg[0]["question"] and tg[0]["closure_rule"]["primary_required"] is True
+

@@ -681,6 +681,17 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                               fresh, ih, prov["model"], PROMPT_VERSION, "claim-set-v1", prov["routing"], transport, t, cid))
                 normalized += 1
         from . import knowledge
+        # requirement provenance → the decomposition target ($0): a requirement the evidence attributes to a seller/listing
+        # (or cannot attribute) is not yet known to be a legal, licensing or service-performance rule — open the governing
+        # question rather than corroborating the listing
+        for item in parsed.get("claims", []):
+            q = item.get("qualifiers") or {}
+            cid = item.get("id")
+            if cid in by_id and q.get("imposed_by") in ("seller_or_listing", "unclear") and re.search(r"\b(must|required?|requires|needs? to|only)\b", (item.get("text") or "").lower()):
+                where = q.get("jurisdiction") or "the relevant jurisdiction"
+                knowledge.add_target(project_id, f"Is this a legal ownership, professional licensing or service-performance requirement in {where}, or only the seller's/listing's preference: {(item.get('text') or by_id[cid]['text'])[:140]}",
+                                     topic=(item.get("topic") or by_id[cid]["topic"]), claim_id=cid, sufficiency="governing",
+                                     preferred_classes=["authoritative", "expert"], closure="one current primary source (statute, board rule or licensing regulation) that either imposes the requirement or shows it is not imposed", origin="model", provenance=prov)
         for tgt in parsed.get("targets", [])[:3]:
             if knowledge.add_target(project_id, tgt.get("question") or "", topic=tgt.get("topic"), sufficiency=tgt.get("sufficiency") or "corroborative",
                                     preferred_classes=tgt.get("preferred_classes") or [], closure=tgt.get("closure"), origin="model", provenance=prov):

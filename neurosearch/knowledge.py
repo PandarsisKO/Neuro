@@ -28,6 +28,7 @@ NEEDS = {"practice": ("experiential", "expert"), "experiential": ("experiential"
          "novel_tactic": ("experiential", "expert")}
 CANDIDATE_RERANK_LIMIT = 12
 TARGET_DUP_JACCARD = 0.5     # two target questions this similar are one target
+MIN_NODE_CLAIMS = 3          # a topic becomes its own map node once this many Claims share it
 SKIPPED_STATES = ("skipped_low_relevance", "skipped_limit", "skipped_cost")
 
 
@@ -406,17 +407,31 @@ def refresh(project_id: str) -> dict[str, Any]:
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
     targets = list_targets(project_id)
     tensions = list_tensions(project_id, status="open")
+    # node keys: a topic is a node when at least MIN_NODE_CLAIMS Claims share it; a finer topic (the contract names
+    # specific ones) folds into the project-vocabulary topic for the MAP only — the Claim keeps its own label
+    vocab = claims.project_vocab(project_id)
+    tcount: dict[str, int] = {}
+    for c in all_claims:
+        tcount[c.get("topic") or "general"] = tcount.get(c.get("topic") or "general", 0) + 1
+
+    def node_key(c: dict[str, Any]) -> str:
+        t = c.get("topic") or "general"
+        return t if tcount.get(t, 0) >= MIN_NODE_CLAIMS else claims._topic_of(c["text"].split(" — ", 1)[-1], vocab)
     topics: dict[str, dict[str, Any]] = {}
     for c in all_claims:
-        topics.setdefault(c.get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["claims"].append(c)
-    claim_topic = {c["id"]: c.get("topic") or "general" for c in all_claims}
+        topics.setdefault(node_key(c), {"claims": [], "targets": [], "tensions": []})["claims"].append(c)
+    claim_topic = {c["id"]: node_key(c) for c in all_claims}
     for tg in targets:
         if tg["status"] == "dropped":
             continue
-        topics.setdefault(claim_topic.get(tg.get("claim_id") or "", tg.get("topic") or "general"), {"claims": [], "targets": [], "tensions": []})["targets"].append(tg)
+        key = claim_topic.get(tg.get("claim_id") or "")
+        if not key:
+            t = tg.get("topic") or "general"
+            key = t if t in topics else claims._topic_of(tg["question"], vocab)
+        topics.setdefault(key, {"claims": [], "targets": [], "tensions": []})["targets"].append(tg)
     for tsn in tensions:
         c = next((x for x in all_claims if x["id"] == tsn.get("claim_id")), None)
-        topics.setdefault((c or {}).get("topic") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
+        topics.setdefault(claim_topic.get((c or {}).get("id") or "") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
     t = time.time()
     nodes = []
     with db.tx() as conn:
