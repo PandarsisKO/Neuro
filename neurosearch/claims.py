@@ -53,8 +53,16 @@ _STOP = {"the", "and", "that", "with", "this", "from", "your", "have", "will", "
 
 # ---------------------------------------------------------------- deterministic helpers ($0)
 
-def _tokens(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z][a-z0-9\-']{3,}", (text or "").lower()) if w not in _STOP}
+from functools import lru_cache
+
+
+@lru_cache(maxsize=50000)
+def _tokens_cached(text: str) -> frozenset[str]:
+    return frozenset(w for w in re.findall(r"[a-z][a-z0-9\-']{3,}", text.lower()) if w not in _STOP)
+
+
+def _tokens(text: str) -> frozenset[str]:
+    return _tokens_cached((text or "")[:2000])
 
 
 def overlap(a: str, b: str) -> float:
@@ -67,6 +75,7 @@ def overlap(a: str, b: str) -> float:
 
 
 DERIVATIVE_OVERLAP = 0.6
+INDEPENDENCE_WINDOW = 24      # evidence rows compared for independence (sufficiency saturates long before)
 SAME_CLAIM_OVERLAP = 0.6      # a harvested finding this close to an existing Claim is evidence for it, not a new Claim
 
 
@@ -136,9 +145,15 @@ def _published_ts(src: dict[str, Any]) -> float | None:
         return None
 
 
-def _topic_of(text: str) -> str:
-    """Two most distinctive content words: a stable, explainable node key until the contract names the topic."""
+def _topic_of(text: str, vocab: dict[str, int] | None = None) -> str:
+    """$0 node key until the contract names the topic. With a project vocabulary (token → number of findings using it)
+    the topic is the claim's most SHARED content word, so nodes aggregate around the project's own vocabulary instead
+    of one node per finding; without one, the first two content words."""
     words = [w for w in re.findall(r"[a-z][a-z0-9\-]{3,}", (text or "").lower()) if w not in _STOP]
+    if vocab:
+        ranked = sorted({w for w in words if vocab.get(w, 0) >= 2}, key=lambda w: (-vocab[w], w))
+        if ranked:
+            return ranked[0]
     seen: list[str] = []
     for w in words:
         if w not in seen:
@@ -146,6 +161,15 @@ def _topic_of(text: str) -> str:
         if len(seen) == 2:
             break
     return " ".join(seen) or "general"
+
+
+def project_vocab(project_id: str) -> dict[str, int]:
+    """Document frequency of content words over the project's findings (cheap; recomputed per harvest)."""
+    df: dict[str, int] = {}
+    for n in db.list_project_notes(project_id, status=None):
+        for w in _tokens(_strip_cites(n.get("content") or "")):
+            df[w] = df.get(w, 0) + 1
+    return df
 
 
 # ---------------------------------------------------------------- rows
@@ -170,10 +194,20 @@ def get(claim_id: str) -> dict[str, Any] | None:
     return c
 
 
-def evidence_for(claim_id: str) -> list[dict[str, Any]]:
-    rows = db.connect().execute("SELECT e.*, s.title, s.platform, s.published_at, s.channel FROM claim_evidence e JOIN sources s ON s.id=e.source_id "
-                                "WHERE e.claim_id=? ORDER BY e.created_at", (claim_id,)).fetchall()
+_EV_SQL = "SELECT e.*, s.title, s.platform, s.published_at, s.channel FROM claim_evidence e JOIN sources s ON s.id=e.source_id "
+
+
+def evidence_for(claim_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+    rows = db.connect().execute(_EV_SQL + "WHERE e.claim_id=? ORDER BY e.created_at" + (f" LIMIT {int(limit)}" if limit else ""), (claim_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def evidence_map(project_id: str) -> dict[str, list[dict[str, Any]]]:
+    """All evidence of a project's Claims in ONE query (the map/state paths must not do N+1 over thousands of Claims)."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    for r in db.connect().execute(_EV_SQL + "JOIN project_claims c ON c.id=e.claim_id WHERE c.project_id=? ORDER BY e.created_at", (project_id,)).fetchall():
+        out.setdefault(r["claim_id"], []).append(dict(r))
+    return out
 
 
 def list_for_project(project_id: str, status: str | None = None, with_evidence: bool = True) -> list[dict[str, Any]]:
@@ -181,14 +215,15 @@ def list_for_project(project_id: str, status: str | None = None, with_evidence: 
     rows = db.connect().execute(q, (project_id, status) if status else (project_id,)).fetchall()
     out = [_claim(r) for r in rows]
     if with_evidence:
+        em = evidence_map(project_id)
         for c in out:
-            c["evidence"] = evidence_for(c["id"])
+            c["evidence"] = em.get(c["id"], [])
     return out
 
 
 def add_claim(project_id: str, text: str, *, claim_type: str = "other", qualifiers: dict[str, Any] | None = None, topic: str | None = None,
               freshness_class: str | None = None, origin: str = "user", origin_note_id: int | None = None, status: str = "proposed",
-              normalized: bool = False, provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+              normalized: bool = False, provenance: dict[str, Any] | None = None, vocab: dict[str, int] | None = None) -> dict[str, Any]:
     if claim_type not in TYPES:
         claim_type = "other"
     t = time.time()
@@ -197,7 +232,7 @@ def add_claim(project_id: str, text: str, *, claim_type: str = "other", qualifie
     with db.tx() as conn:
         conn.execute("INSERT INTO project_claims (id, project_id, text, claim_type, qualifiers, topic, freshness_class, status, normalized, origin, origin_note_id, "
                      "extraction_hash, model, prompt_version, schema_version, routing, transport, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                     (cid, project_id, text.strip(), claim_type, json.dumps(qualifiers or {}), topic or _topic_of(text),
+                     (cid, project_id, text.strip(), claim_type, json.dumps(qualifiers or {}), topic or _topic_of(text, vocab),
                       freshness_class or guess_freshness(text, claim_type), status, 1 if normalized else 0, origin, origin_note_id,
                       prov.get("extraction_hash"), prov.get("model"), prov.get("prompt_version"), prov.get("schema_version"),
                       prov.get("routing"), prov.get("transport"), t, t))
@@ -213,7 +248,7 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
     rev = src.get("revision") or db.source_revision(source_id)
     cls = evidence_class_for(src)
     independent, derivative_of = 1, None
-    for e in evidence_for(claim_id):
+    for e in evidence_for(claim_id, limit=INDEPENDENCE_WINDOW):   # beyond this many rows nothing changes sufficiency
         if e["source_id"] == source_id:
             continue
         same_creator = bool(src.get("channel")) and src.get("channel") == e.get("channel")
@@ -246,6 +281,40 @@ def set_status(claim_id: str, status: str, *, application: str | None = None) ->
 
 # ---------------------------------------------------------------- harvest ($0 candidates)
 
+class TwinIndex:
+    """Inverted token index over Claim texts so the twin search is O(shared tokens), not O(claims) per finding."""
+
+    def __init__(self, claims_: list[dict[str, Any]]):
+        self.items: list[tuple[str, frozenset[str], dict[str, Any]]] = []
+        self.post: dict[str, list[int]] = {}
+        for c in claims_:
+            self.add(c)
+
+    def add(self, c: dict[str, Any]) -> None:
+        toks = _tokens(c["text"])
+        i = len(self.items)
+        self.items.append((c["id"], toks, c))
+        for t in toks:
+            self.post.setdefault(t, []).append(i)
+
+    def twin(self, text: str, threshold: float = SAME_CLAIM_OVERLAP, exclude_id: str | None = None) -> dict[str, Any] | None:
+        toks = _tokens(text)
+        if not toks:
+            return None
+        counts: dict[int, int] = {}
+        for t in toks:
+            for i in self.post.get(t, ()):
+                counts[i] = counts.get(i, 0) + 1
+        best, best_score = None, 0.0
+        for i, shared in counts.items():
+            cid, other, c = self.items[i]
+            if cid == exclude_id:
+                continue
+            score = shared / max(1, min(len(toks), len(other)))
+            if score >= threshold and score > best_score:
+                best, best_score = c, score
+        return best
+
 def _strip_cites(text: str) -> str:
     return re.sub(r"\s*\[\d{1,2}\]", "", text or "").strip()
 
@@ -257,7 +326,11 @@ def harvest(project_id: str) -> dict[str, Any]:
     have = {r["origin_note_id"] for r in db.connect().execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
     have |= {r["note_id"] for r in db.connect().execute("SELECT note_id FROM claim_evidence_notes")}
     existing = [c for c in list_for_project(project_id, with_evidence=False) if c["status"] != "rejected"]
-    for status in ("approved", "suggested"):
+    index = TwinIndex(existing)
+    touched: set[str] = set()
+    vocab = project_vocab(project_id)
+    with db.batch():                                   # one write transaction for the whole harvest
+      for status in ("approved", "suggested"):
         for n in db.list_project_notes(project_id, status=status):
             if n["id"] in have:
                 continue
@@ -278,7 +351,7 @@ def harvest(project_id: str) -> dict[str, Any]:
             cls = evidence_class_for(src) if src else None
             # the same proposition from another source is EVIDENCE for the existing Claim, not a second Claim —
             # independence is decided in add_evidence (a repeated passage counts as derivative)
-            twin = next((x for x in existing if overlap(text, x["text"]) >= SAME_CLAIM_OVERLAP), None)
+            twin = index.twin(text)
             if twin:
                 for cite in cites[:4]:
                     if cite.get("source_id") and db.get_source(cite["source_id"]):
@@ -286,19 +359,28 @@ def harvest(project_id: str) -> dict[str, Any]:
                                      relation="SUPPORTS", excerpt=cite.get("snippet"), task="findings.extract", model=n.get("model"))
                 with db.tx() as conn:
                     conn.execute("INSERT OR IGNORE INTO claim_evidence_notes (claim_id, note_id) VALUES (?,?)", (twin["id"], n["id"]))
-                assess(twin["id"])
+                touched.add(twin["id"])
                 merged += 1
                 continue
             ctype = guess_type(text, cls)
             c = add_claim(project_id, text, claim_type=ctype, origin="finding" if status == "approved" else "finding_suggested", origin_note_id=n["id"],
-                          status="proposed", normalized=False)
+                          status="proposed", normalized=False, vocab=vocab)
             for cite in cites[:4]:
                 if cite.get("source_id") and db.get_source(cite["source_id"]):
                     add_evidence(c["id"], cite["source_id"], locator=cite.get("timestamp"), start=cite.get("start"), link=cite.get("link"),
                                  relation="SUPPORTS", excerpt=cite.get("snippet"), task="findings.extract", model=n.get("model"))
-            assess(c["id"])
-            existing.append(c)
+            touched.add(c["id"])
+            index.add(c)
             created += 1
+    # $0 topics follow the project's vocabulary as it grows (normalized Claims keep the topic the contract named)
+    with db.batch():
+        for c in existing:
+            if not c.get("normalized"):
+                t = _topic_of(c["text"], vocab)
+                if t != c.get("topic"):
+                    db.connect().execute("UPDATE project_claims SET topic=? WHERE id=? AND normalized=0", (t, c["id"]))
+    for cid in touched:                                    # assess once per touched Claim, not once per finding
+        assess(cid)
     return {"created": created, "merged": merged}
 
 
@@ -312,9 +394,14 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         return None
     ev = c["evidence"]
     now = time.time()
-    # refresh stale flags against the live revision
+    srcs: dict[str, dict[str, Any]] = {}
     for e in ev:
-        live = db.source_revision(e["source_id"])
+        if e["source_id"] not in srcs:
+            srcs[e["source_id"]] = db.get_source(e["source_id"]) or {}
+    # refresh stale flags against the live revision (one lookup per source)
+    live_rev = {sid: (srcs[sid].get("revision") or db.source_revision(sid)) for sid in srcs}
+    for e in ev:
+        live = live_rev.get(e["source_id"])
         stale = 1 if (e.get("source_revision") and live and live != e["source_revision"]) else 0
         if stale != e.get("stale", 0):
             with db.tx() as conn:
@@ -367,7 +454,7 @@ def assess(claim_id: str) -> dict[str, Any] | None:
     if sup and limit:
         ages = []
         for e in sup:
-            src = db.get_source(e["source_id"]) or {}
+            src = srcs.get(e["source_id"]) or {}
             ts = _published_ts(src) or src.get("created_at")
             if ts:
                 ages.append((now - float(ts)) / 86400)

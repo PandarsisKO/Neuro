@@ -270,15 +270,14 @@ def set_tension_status(tension_id: str, status: str) -> None:
 ECHO_OVERLAP = 0.35
 
 
-def _echoed(c: dict[str, Any], others: list[dict[str, Any]]) -> bool:
+NOVEL_MAX = 12          # the outliers worth a tension + corroboration target per pass: highest importance first, not every lone finding
+
+
+def _echoed(c: dict[str, Any], index: "claims.TwinIndex") -> bool:
     """Novelty is project-relative: an idea another source in the project also states (even loosely) is not an outlier."""
     mine = {e["source_id"] for e in c["evidence"]}
-    for o in others:
-        if o["id"] == c["id"]:
-            continue
-        if {e["source_id"] for e in o["evidence"]} - mine and claims.overlap(c["text"], o["text"]) >= ECHO_OVERLAP:
-            return True
-    return False
+    o = index.twin(c["text"], threshold=ECHO_OVERLAP, exclude_id=c["id"])
+    return bool(o) and bool({e["source_id"] for e in o.get("evidence", [])} - mine)
 
 
 def detect(project_id: str) -> dict[str, int]:
@@ -286,13 +285,19 @@ def detect(project_id: str) -> dict[str, int]:
     WEAK_CONSENSUS tensions so the gap is pursued, not just displayed."""
     counts = {k: 0 for k in TENSIONS}
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
+    index = claims.TwinIndex(all_claims)
+    imp_of: dict[int, int] = {}
+    if all_claims:
+        for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,)).fetchall():
+            imp_of[r["id"]] = int(r["importance"] or 3)
+    novel_budget = NOVEL_MAX
+    all_claims.sort(key=lambda c: -imp_of.get(c.get("origin_note_id") or -1, 3))     # highest importance first (the NOVEL budget)
     for c in all_claims:
         ev = [e for e in c["evidence"] if not e.get("stale")]
         sup = [e for e in ev if e["relation"] in ("SUPPORTS", "EXPERIENTIAL")]
         con = [e for e in ev if e["relation"] == "CONTRADICTS"]
         indep = {e["source_id"] for e in sup if e.get("independent")}
-        importance = db.connect().execute("SELECT importance FROM project_notes WHERE id=?", (c.get("origin_note_id"),)).fetchone() if c.get("origin_note_id") else None
-        imp = int(importance["importance"] or 3) if importance and importance["importance"] is not None else 3
+        imp = imp_of.get(c.get("origin_note_id") or -1, 3)
         if c["strength"] == "stale":
             _upsert_tension(project_id, "STALE", c["id"], f"Stale: {c['text'][:140]} — {c.get('strength_why')}", {"freshness_class": c["freshness_class"]}, "high" if c["freshness_class"] == "fast_changing" else "medium")
             counts["STALE"] += 1
@@ -307,7 +312,8 @@ def detect(project_id: str) -> dict[str, int]:
                                 {"supporting": len(sup), "independent": 1}, "medium")
                 counts["WEAK_CONSENSUS"] += 1
                 add_target(project_id, f"Independently corroborate: {c['text'][:160]}", topic=c.get("topic"), claim_id=c["id"], sufficiency="corroborative", origin="tension")
-            elif len(indep) == 1 and len(sup) == 1 and (imp >= 4 or c["claim_type"] in ("novel_tactic", "causal")) and not _echoed(c, all_claims):
+            elif len(indep) == 1 and len(sup) == 1 and (imp >= 4 or c["claim_type"] in ("novel_tactic", "causal")) and novel_budget > 0 and not _echoed(c, index):
+                novel_budget -= 1
                 e0 = sup[0]
                 _upsert_tension(project_id, "NOVEL", c["id"], f"Potential outlier: {c['text'][:160]} — currently supported by one {e0.get('evidence_class')} source ({e0.get('title')}); additional corroboration recommended",
                                 {"source_id": e0["source_id"], "locator": e0.get("locator"), "importance": imp}, "high" if imp >= 4 else "medium")
@@ -377,7 +383,7 @@ def refresh(project_id: str) -> dict[str, Any]:
                 state, why = "strong", f"{len(strong)} strong Claim(s) — e.g. {lead['strength_why']}"
             elif strong:
                 state = "developing"
-                why = f"{len(strong)} strong Claim(s) but " + (f"{len(tgs)} open evidence target(s)" if tgs else "an open contradiction/staleness tension")
+                why = f"{len(strong)} strong Claim(s) ({strong[0]['strength_why'].split(';')[0]}) but " + (f"{len(tgs)} open evidence target(s)" if tgs else "an open contradiction/staleness tension")
             elif any(c["strength"] == "developing" for c in cs):
                 lead = next(c for c in cs if c["strength"] == "developing")
                 state, why = "developing", lead["strength_why"] or "partial support"
@@ -396,8 +402,15 @@ def refresh(project_id: str) -> dict[str, Any]:
             "targets_open": sum(1 for x in targets if x["status"] == "open"), "tensions_open": len(tensions)}
 
 
-def state(project_id: str) -> dict[str, Any]:
-    """Everything the Research view / Chat / Discover need, $0."""
+STATE_MAX_CLAIMS = 300
+STATE_MAX_EVIDENCE = 12
+STATE_MAX_LIST = 100
+_STRENGTH_ORDER = {"strong": 0, "developing": 1, "stale": 2, "weak": 3, "unsupported": 4}
+
+
+def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]:
+    """Everything the Research view / Chat / Discover need, $0. Claims are capped (accepted and strong first) so a
+    thousand-finding project returns a page, not a dump; `claims_total` carries the real count."""
     nodes = [dict(r) for r in db.connect().execute("SELECT * FROM project_knowledge_nodes WHERE project_id=? ORDER BY updated_at", (project_id,)).fetchall()]
     if not nodes:
         m = refresh(project_id)
@@ -411,7 +424,16 @@ def state(project_id: str) -> dict[str, Any]:
         order = {"strong": 0, "developing": 1, "weak": 2, "missing": 3}
         nodes.sort(key=lambda n: (order.get(n["state"], 9), n["topic"]))
         m = {"nodes": nodes, "counts": {s: sum(1 for n in nodes if n["state"] == s) for s in NODE_STATES}}
-    return {"map": m, "claims": claims.list_for_project(project_id), "targets": list_targets(project_id), "tensions": list_tensions(project_id, status="open"),
+    all_claims = [c for c in claims.list_for_project(project_id) if c["status"] != "superseded"]
+    all_claims.sort(key=lambda c: (0 if c["status"] == "accepted" else 1 if c["status"] == "proposed" else 2, _STRENGTH_ORDER.get(c["strength"], 9), -(c.get("updated_at") or 0)))
+    page = []
+    for c in all_claims[:max_claims]:
+        c = dict(c)
+        c["evidence_total"] = len(c["evidence"])
+        c["evidence"] = c["evidence"][:STATE_MAX_EVIDENCE]
+        page.append(c)
+    targets_all, tensions_all = list_targets(project_id), list_tensions(project_id, status="open")
+    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
             "claim_stats": claims.stats(project_id)}
 
 

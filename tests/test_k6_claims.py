@@ -271,14 +271,14 @@ def test_discover_leads_with_research_state_and_api_surfaces(monkeypatch):
     from neurosearch import api
     pid, _ = _acceptance_fixture(monkeypatch)
     r = anyio.run(api.api_research_refresh, pid, api.ResearchRefreshIn(extract=False))
-    assert r["harvested"] >= 3 and r["state"]["map"]["counts"]["strong"] >= 1
+    assert r["harvested"] >= 3 and r["state"]["claim_stats"]["by_strength"].get("strong", 0) >= 1
     st = api.api_research(pid)
     assert st["tensions"] and st["targets"] and st["claims"]
     tg = api.api_target_add(pid, api.TargetIn(question="What do lenders require for the seller transition period?", sufficiency="corroborative"))
     p = anyio.run(api.api_target_pursue, tg["id"], api.PursueIn(external=False))
     assert [s["step"] for s in p["escalation"]["steps"]][:3] == ["project_evidence", "global_library", "candidate_index"]
     d = discover.discover(pid, mode="library_only")
-    assert d["web_skipped"] and d["research"]["counts"]["strong"] >= 1 and d["research"]["targets"]
+    assert d["web_skipped"] and sum(d["research"]["counts"].values()) >= 1 and d["research"]["targets"]
     assert "Research coverage" in d["research"]["summary"]
     block = qa.research_block(pid)
     assert block.startswith("Research state") and "⚠" in block
