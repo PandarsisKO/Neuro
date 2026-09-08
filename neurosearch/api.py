@@ -321,6 +321,31 @@ def api_ingest_html(project_id: str, body: HtmlIn) -> dict[str, Any]:
     return ingest.ingest_webpage(body.url, tags=body.tags, project_id=project_id, title=body.title, html=body.html)
 
 
+class ThreadIn(BaseModel):
+    url: str
+    listing: Any                      # Reddit's [link listing, comment listing] JSON, fetched inside the user's browser
+    title: str | None = None
+    tags: list[str] = []
+
+
+@app.post("/api/projects/{project_id}/ingest/thread", dependencies=[Depends(require_auth)])
+async def api_ingest_thread(project_id: str, body: ThreadIn) -> dict[str, Any]:
+    """A community thread read inside the user's own browser (the extension's "Send this page" on a Reddit thread).
+    Reddit refuses every non-browser client since 2026-06-30; the browser is the user's legitimate reader, and the
+    thread goes through the very same acquisition path as a server-side read (`community.acquire_thread`)."""
+    from . import community
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if not community.is_reddit_thread(body.url):
+        raise HTTPException(400, "not a Reddit thread URL")
+    if len(json.dumps(body.listing)) > 12_000_000:
+        raise HTTPException(413, "thread too large")
+    try:
+        return await anyio.to_thread.run_sync(lambda: community.acquire_thread(body.url, tags=body.tags, project_id=project_id, listing=body.listing))
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
 class SessionIngestIn(BaseModel):
     url: str
     title: str | None = None

@@ -85,15 +85,29 @@ def _json_get(url: str) -> Any:
     raise RuntimeError("Reddit refused the listing — " + "; ".join(tried))
 
 
-def _old_reddit_html(url: str) -> str:
+def _old_reddit_html(url: str, *, expect: Any = None) -> str:
     """The server-rendered page on old.reddit.com, requested exactly as a browser navigation (the one representation Reddit
-    serves to a plain client without login). Raises with the status when even that is refused."""
+    serves to a plain client without login). Reddit sometimes answers a cookie-less first visit with a welcome/consent
+    page and only the second visit — carrying the cookies it just set — with the content; `expect(html)` says whether
+    the page is the one we asked for, and when it is not we make that second visit once. Raises with the status (or the
+    page's gist) when even that is refused."""
     from .safe_fetch import safe_fetch
     u = url.replace("://www.reddit.com", "://old.reddit.com", 1).replace("://reddit.com", "://old.reddit.com", 1)
-    res = safe_fetch(u, content_class="html", headers={"User-Agent": BROWSER_UA})
-    if res.status != 200:
-        raise RuntimeError(f"old.reddit.com: HTTP {res.status}")
-    return res.body.decode("utf-8", errors="replace")
+    hdrs: dict[str, str | None] = {"User-Agent": BROWSER_UA}
+    for visit in (1, 2):
+        res = safe_fetch(u, content_class="html", headers=hdrs)
+        if res.status != 200:
+            raise RuntimeError(f"old.reddit.com: HTTP {res.status}")
+        if urlparse(res.url).netloc.lower() != "old.reddit.com":
+            raise RuntimeError(f"old.reddit.com redirected to {res.url[:120]}")
+        html = res.body.decode("utf-8", errors="replace")
+        if expect is None or expect(html):
+            return html
+        cookies = [line.split(";", 1)[0].strip() for line in (res.headers.get("set-cookie") or "").split("\n") if "=" in line]
+        if visit == 2 or not cookies:
+            break
+        hdrs["Cookie"] = "; ".join(cookies)
+    return html
 
 
 def is_reddit_thread(url: str) -> bool:
@@ -119,22 +133,73 @@ def _reddit_html_url(url: str) -> str:
     return f"https://www.reddit.com{u.path.rstrip('/')}/?limit=500&depth=12"
 
 
-def read_reddit_thread(url: str) -> dict[str, Any]:
-    """Reddit's public listing endpoint (no login): the post + the comment forest, with ids, parents, authors, scores,
-    edited/deleted flags. When Reddit refuses the JSON to a non-browser client (it does, even for public threads), the
-    same thread is read from old.reddit.com's server-rendered page (`reddit_html.thread_from_html`) — same shape."""
+# ---------------------------------------------------------------- Reddit's official API (app-only OAuth; read-only public data)
+
+_OAUTH: dict[str, Any] = {"token": None, "expires": 0.0}
+OAUTH_HOST = "https://oauth.reddit.com"
+
+
+def reddit_api_configured() -> bool:
+    from .config import settings
+    return bool(settings.reddit_client_id and settings.reddit_client_secret)
+
+
+def _oauth_token() -> str:
+    """Application-only OAuth (client_credentials): Reddit's sanctioned way for a script to read public data. Cached until
+    it expires. Credentials live only in .env (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET); never in the database."""
+    import base64
+    from .config import settings
+    from .safe_fetch import safe_fetch
+    if _OAUTH["token"] and time.time() < _OAUTH["expires"] - 60:
+        return _OAUTH["token"]
+    basic = base64.b64encode(f"{settings.reddit_client_id}:{settings.reddit_client_secret}".encode()).decode()
+    res = safe_fetch("https://www.reddit.com/api/v1/access_token", method="POST", body=b"grant_type=client_credentials", content_class="html",
+                     headers={"Authorization": "Basic " + basic, "Content-Type": "application/x-www-form-urlencoded", "User-Agent": HONEST_UA,
+                              "Accept": "application/json", "Upgrade-Insecure-Requests": None, "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None,
+                              "Sec-Fetch-Site": None, "Sec-Fetch-User": None})
+    if res.status != 200:
+        raise RuntimeError(f"Reddit API: token request refused (HTTP {res.status}) — check REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env")
     try:
-        data = _json_get(_reddit_json_url(url))
-    except RuntimeError as e:
-        from . import reddit_html
+        tok = json.loads(res.body.decode("utf-8", errors="replace"))
+    except ValueError as e:
+        raise RuntimeError("Reddit API: token response was not JSON") from e
+    if not tok.get("access_token"):
+        raise RuntimeError(f"Reddit API: {tok.get('error') or 'no access token in the response'}")
+    _OAUTH["token"], _OAUTH["expires"] = tok["access_token"], time.time() + float(tok.get("expires_in") or 3600)
+    return _OAUTH["token"]
+
+
+def _api_get(path_and_query: str) -> Any:
+    """GET oauth.reddit.com/<path> with the app-only bearer token; one re-auth on 401."""
+    from .safe_fetch import safe_fetch
+    for attempt in (1, 2):
+        tok = _oauth_token()
+        res = safe_fetch(OAUTH_HOST + path_and_query, content_class="html",
+                         headers={"Authorization": "bearer " + tok, "User-Agent": HONEST_UA, "Accept": "application/json", "Upgrade-Insecure-Requests": None,
+                                  "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None, "Sec-Fetch-Site": None, "Sec-Fetch-User": None})
+        if res.status == 401 and attempt == 1:
+            _OAUTH["token"] = None
+            continue
+        if res.status == 429:
+            raise RuntimeError("Reddit API: rate limited (429) — try again in a minute")
+        if res.status != 200:
+            raise RuntimeError(f"Reddit API: HTTP {res.status}")
         try:
-            html = _old_reddit_html(_reddit_html_url(url))
-            return reddit_html.thread_from_html(html, url, max_posts=MAX_POSTS)
-        except RuntimeError as e2:
-            raise RuntimeError(f"{e}; server-rendered page: {e2}") from e
+            return json.loads(res.body.decode("utf-8", errors="replace"))
+        except ValueError as e:
+            raise RuntimeError("Reddit API: response was not JSON") from e
+    raise RuntimeError("Reddit API: unauthorized")
+
+
+def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit json") -> dict[str, Any]:
+    """A Reddit comments listing (the two-element [link listing, comment listing] JSON — from the API, the public .json
+    endpoint, or the browser extension) → the thread dict every other part of G7 consumes."""
     if not isinstance(data, list) or len(data) < 1:
         raise RuntimeError("unexpected Reddit response")
-    link = data[0]["data"]["children"][0]["data"]
+    try:
+        link = data[0]["data"]["children"][0]["data"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError("unexpected Reddit response (no link in the listing)") from e
     posts: list[dict[str, Any]] = []
     op_id = link["id"]
     posts.append({"post_id": op_id, "parent_id": None, "depth": 0, "author": link.get("author"), "score": link.get("score"),
@@ -159,23 +224,68 @@ def read_reddit_thread(url: str) -> dict[str, Any]:
         walk(data[1]["data"]["children"], op_id, 1)
     community = link.get("subreddit_name_prefixed") or ("r/" + link["subreddit"] if link.get("subreddit") else "")
     return {"platform": "reddit", "thread_id": op_id, "title": link.get("title") or url, "community": community, "url": "https://www.reddit.com" + link.get("permalink", ""),
-            "created": link.get("created_utc"), "score": link.get("score"), "num_comments": link.get("num_comments"), "posts": posts, "retrieved_at": time.time()}
+            "created": link.get("created_utc"), "score": link.get("score"), "num_comments": link.get("num_comments"), "posts": posts, "retrieved_at": time.time(),
+            "representation": retrieved_via}
+
+
+def read_reddit_thread(url: str) -> dict[str, Any]:
+    """The post + the comment forest (ids, parents, authors, scores, edited/deleted flags). Order of readings:
+    (1) Reddit's official API when credentials are configured; (2) the public .json endpoint with an honest UA (refused to
+    every non-browser client since 2026-06-30, kept because it is free to try); (3) old.reddit.com's server-rendered page
+    (login-walled since the same date; kept for the day it is not). When all fail, the error names each — and the browser
+    extension's "Send this page" reads the thread inside the user's own browser (`api_ingest_thread`)."""
+    from urllib.parse import quote
+    errors: list[str] = []
+    if reddit_api_configured():
+        tid = reddit_thread_id(url)
+        try:
+            return thread_from_listing(_api_get(f"/comments/{quote(tid or '')}?raw_json=1&limit=500&depth=12"), url, retrieved_via="reddit api")
+        except RuntimeError as e:
+            errors.append(str(e))
+    try:
+        return thread_from_listing(_json_get(_reddit_json_url(url)), url)
+    except RuntimeError as e:
+        errors.append(str(e))
+    from . import reddit_html
+    try:
+        html = _old_reddit_html(_reddit_html_url(url), expect=reddit_html.looks_like_thread)
+        return reddit_html.thread_from_html(html, url, max_posts=MAX_POSTS)
+    except RuntimeError as e:
+        errors.append(f"server-rendered page: {e}")
+    hint = "" if reddit_api_configured() else " · Reddit refuses non-browser clients: use the extension's “Send this page” on the thread, or add REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET to .env"
+    raise RuntimeError("; ".join(errors) + hint)
 
 
 def enumerate_reddit(community: str, query: str, *, limit: int = 25, sort: str = "relevance", time_filter: str = "all") -> list[dict[str, Any]]:
     """Candidate threads for a mission: cheap metadata (title, excerpt, score, comments, date) — nothing acquired."""
     sub = community.replace("r/", "").strip("/")
     from urllib.parse import quote
-    url = f"https://www.reddit.com/r/{quote(sub)}/search.json?q={quote(query)}&restrict_sr=1&sort={sort}&t={time_filter}&limit={min(limit, 100)}&raw_json=1"
-    try:
-        data = _json_get(url)
-    except RuntimeError as e:
+    q = f"q={quote(query)}&restrict_sr=1&sort={sort}&t={time_filter}&limit={min(limit, 100)}&raw_json=1"
+    errors: list[str] = []
+    data = None
+    if reddit_api_configured():
+        try:
+            data = _api_get(f"/r/{quote(sub)}/search?{q}")
+        except RuntimeError as e:
+            errors.append(str(e))
+    if data is None:
+        try:
+            data = _json_get(f"https://www.reddit.com/r/{quote(sub)}/search.json?{q}")
+        except RuntimeError as e:
+            errors.append(str(e))
+    if data is None:
         from . import reddit_html
         try:
-            html = _old_reddit_html(f"https://www.reddit.com/r/{quote(sub)}/search?q={quote(query)}&restrict_sr=on&sort={sort}&t={time_filter}")
-            return reddit_html.search_from_html(html, sub)[:limit]
-        except RuntimeError as e2:
-            raise RuntimeError(f"{e}; server-rendered page: {e2}") from e
+            html = _old_reddit_html(f"https://www.reddit.com/r/{quote(sub)}/search?q={quote(query)}&restrict_sr=on&sort={sort}&t={time_filter}",
+                                    expect=reddit_html.looks_like_search)
+            rows = reddit_html.search_from_html(html, sub)[:limit]
+            if not rows:
+                reddit_html.expect_page(html, "a search listing")   # raises with the page's gist when it is not one
+            return rows
+        except RuntimeError as e:
+            errors.append(f"server-rendered page: {e}")
+        hint = "" if reddit_api_configured() else " · subreddit search needs Reddit API credentials (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env); threads can still be sent from the extension"
+        raise RuntimeError("; ".join(errors) + hint)
     out = []
     for ch in data.get("data", {}).get("children", []):
         d = ch.get("data", {})
@@ -336,13 +446,17 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
             "firsthand": sum(1 for p in kept if p["signals"]["firsthand"]), "community": thread.get("community")}
 
 
-def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str | None = None, progress: Any = None, query: str | None = None) -> dict[str, Any]:
+def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str | None = None, progress: Any = None, query: str | None = None,
+                   listing: Any = None) -> dict[str, Any]:
     """Acquire one community thread as a Source through the standard identity/revision path. Reddit today; other adapters
-    plug in here by host."""
+    plug in here by host. `listing` = the thread's JSON already read inside the user's browser (the extension's
+    "Send this page"): the same shape, the same path, one fewer network step."""
     from . import ingest
     if progress:
         progress(0.1, "reading the thread…")
-    if is_reddit_thread(url):
+    if listing is not None and is_reddit_thread(url):
+        thread = thread_from_listing(listing, url, retrieved_via="browser extension")
+    elif is_reddit_thread(url):
         thread = read_reddit_thread(url)
     else:
         raise RuntimeError("no community adapter for this host yet (Reddit threads are supported; other communities can be added as pages)")
@@ -533,4 +647,5 @@ def stats() -> dict[str, Any]:
             "substantive": conn.execute("SELECT COUNT(*) FROM community_posts WHERE in_chunks=1").fetchone()[0],
             "corrections": conn.execute("SELECT COUNT(*) FROM community_posts WHERE corrected_by IS NOT NULL").fetchone()[0],
             "unavailable": conn.execute("SELECT COUNT(*) FROM community_posts WHERE availability='unavailable'").fetchone()[0],
-            "explorations": int(db.kv_get("community:explorations") or 0)}
+            "explorations": int(db.kv_get("community:explorations") or 0),
+            "reddit_api": reddit_api_configured()}

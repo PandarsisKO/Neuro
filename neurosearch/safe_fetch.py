@@ -239,7 +239,7 @@ def _record_block(e: FetchBlocked, url: str) -> None:
 
 
 def safe_fetch(url: str, *, content_class: str | None = None, max_redirects: int | None = None, deadline_s: float | None = None,
-               headers: dict[str, str] | None = None, method: str = "GET") -> FetchResult:
+               headers: dict[str, str] | None = None, method: str = "GET", body: bytes | None = None) -> FetchResult:
     """GET a public URL under the boundary. `content_class` fixes the limits up front ('html' | 'document'); when None the
     class is chosen from the response Content-Type (documents get the larger ceiling, pages the smaller)."""
     t_start = time.monotonic()
@@ -260,7 +260,7 @@ def safe_fetch(url: str, *, content_class: str | None = None, max_redirects: int
             conn = conn_cls(host, port, ip, timeout=min(CONNECT_TIMEOUT_S, remaining))
             try:
                 try:
-                    conn.request(method, target, headers=hdrs)
+                    conn.request(method, target, body=body, headers=hdrs)
                     conn.sock.settimeout(min(READ_TIMEOUT_S, max(0.1, deadline - time.monotonic())))
                     resp = conn.getresponse()
                 except (socket.timeout, TimeoutError) as e:
@@ -268,7 +268,10 @@ def safe_fetch(url: str, *, content_class: str | None = None, max_redirects: int
                 except (OSError, ssl.SSLError, http.client.HTTPException) as e:
                     raise FetchBlocked("connect", "That page could not be reached.", host=host, hop=hop) from e
                 status = resp.status
-                rh = {k.lower(): v for k, v in resp.getheaders()}
+                rh: dict[str, str] = {}
+                for k, v in resp.getheaders():
+                    k = k.lower()
+                    rh[k] = (rh[k] + "\n" + v) if k == "set-cookie" and k in rh else v   # every Set-Cookie survives, one per line
                 if status in (301, 302, 303, 307, 308):
                     loc = rh.get("location")
                     if not loc:
@@ -279,7 +282,7 @@ def safe_fetch(url: str, *, content_class: str | None = None, max_redirects: int
                     current = urljoin(norm, loc)
                     hop += 1
                     if status == 303:
-                        method = "GET"
+                        method, body = "GET", None
                     continue                                    # the new target goes through the same validation
                 ctype = rh.get("content-type", "").lower()
                 cls = content_class or content_class_of(ctype, norm)

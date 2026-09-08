@@ -133,7 +133,7 @@ def test_html_reading_keeps_deleted_and_edited_state():
 def test_fallback_engages_only_when_the_json_is_refused(monkeypatch):
     calls = []
     monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing — www.reddit.com: HTTP 403")))
-    monkeypatch.setattr(community, "_old_reddit_html", lambda url: calls.append(url) or _thread_html())
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: calls.append(url) or _thread_html())
     t = community.read_reddit_thread(THREAD_URL)
     assert len(t["posts"]) == 12 and calls and calls[0].startswith("https://www.reddit.com/r/smallbusiness/comments/abc123/")
     # and when the JSON answers, the page is never requested
@@ -143,18 +143,18 @@ def test_fallback_engages_only_when_the_json_is_refused(monkeypatch):
     assert calls == []
     # both refused → one message that names both readings
     monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing — www.reddit.com: HTTP 403")))
-    monkeypatch.setattr(community, "_old_reddit_html", lambda url: (_ for _ in ()).throw(RuntimeError("old.reddit.com: HTTP 429")))
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: (_ for _ in ()).throw(RuntimeError("old.reddit.com: HTTP 429")))
     with pytest.raises(RuntimeError, match="HTTP 403.*server-rendered page: old.reddit.com: HTTP 429"):
         community.read_reddit_thread(THREAD_URL)
     # a page that is not a thread (a block page, a login wall) is reported as such, not parsed into an empty thread
-    monkeypatch.setattr(community, "_old_reddit_html", lambda url: "<html><head><title>Blocked</title></head><body>whoa there</body></html>")
-    with pytest.raises(RuntimeError, match="not a thread \\(Blocked\\)"):
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: "<html><head><title>Blocked</title></head><body>whoa there</body></html>")
+    with pytest.raises(RuntimeError, match="not a thread \\(Blocked\\) — it says: whoa there"):
         community.read_reddit_thread(THREAD_URL)
 
 
 def test_search_page_yields_the_same_candidate_rows(monkeypatch):
     monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing")))
-    monkeypatch.setattr(community, "_old_reddit_html", lambda url: _search_html(SEARCH_ROWS) if "/search?q=" in url else "")
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: _search_html(SEARCH_ROWS) if "/search?q=" in url else "")
     rows = community.enumerate_reddit("r/smallbusiness", "bought an accounting practice", limit=10)
     assert [r["external_id"] for r in rows] == ["reddit:s1", "reddit:s2"]
     r = rows[0]
@@ -165,7 +165,7 @@ def test_search_page_yields_the_same_candidate_rows(monkeypatch):
 
 def test_thread_acquired_through_the_page_is_a_full_community_source(monkeypatch):
     monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing")))
-    monkeypatch.setattr(community, "_old_reddit_html", lambda url: _thread_html())
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: _thread_html())
     pid = db.create_project("G7b", "Buying a small accounting practice with an SBA loan")["id"]
     r = community.acquire_thread(THREAD_URL, project_id=pid)
     assert r["posts"] == 12 and r["substantive"] >= 8
@@ -176,3 +176,104 @@ def test_thread_acquired_through_the_page_is_a_full_community_source(monkeypatch
     assert corrected.get("c1") == "c2", "the wrong SOP quote is marked corrected by its reply, from the HTML tree too"
     src = db.get_source(r["source_id"])
     assert src["platform"] == "community" and src["external_id"] == "reddit:abc123"
+
+
+def test_cookie_handshake_second_visit_gets_the_thread(monkeypatch):
+    """Reddit may answer a cookie-less first visit with a welcome page and set cookies; the second visit carries them."""
+    from neurosearch.safe_fetch import FetchResult
+    monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing")))
+    seen = []
+
+    def fake_fetch(url, **kw):
+        seen.append(dict(kw.get("headers") or {}))
+        if "Cookie" not in (kw.get("headers") or {}):
+            return FetchResult(url=url, status=200, content_type="text/html", body=b"<html><head><title>Welcome to Reddit</title></head><body><p>Welcome to Reddit</p></body></html>",
+                               headers={"set-cookie": "edgebucket=abc; Domain=reddit.com; Path=/\ncsv=2; Path=/; Secure"}, hops=0, pinned=[], content_class="html")
+        return FetchResult(url=url, status=200, content_type="text/html", body=_thread_html().encode(), headers={}, hops=0, pinned=[], content_class="html")
+    monkeypatch.setattr(safe_fetch, "safe_fetch", fake_fetch)
+    t = community.read_reddit_thread(THREAD_URL)
+    assert len(t["posts"]) == 12 and len(seen) == 2 and seen[1]["Cookie"] == "edgebucket=abc; csv=2"
+    assert seen[0]["User-Agent"].startswith("Mozilla/5.0") and "Cookie" not in seen[0]
+    # and a welcome page that stays a welcome page is reported with its gist, not parsed
+    monkeypatch.setattr(safe_fetch, "safe_fetch", lambda url, **kw: FetchResult(url=url, status=200, content_type="text/html", headers={},
+                        body=b"<html><head><title>Welcome to Reddit</title></head><body><p>Welcome to Reddit, please log in</p></body></html>", hops=0, pinned=[], content_class="html"))
+    with pytest.raises(RuntimeError, match="not a thread \\(Welcome to Reddit\\) — it says: Welcome to Reddit, please log in"):
+        community.read_reddit_thread(THREAD_URL)
+
+
+# ---------------------------------------------------------------- the two readers that work after 2026-06-30
+
+
+
+def _no_reddit(monkeypatch):
+    """Reddit as it is now: JSON refused everywhere, old.reddit login-walled."""
+    monkeypatch.setattr(community, "_json_get", lambda url: (_ for _ in ()).throw(RuntimeError("Reddit refused the listing — www.reddit.com: HTTP 403")))
+    monkeypatch.setattr(community, "_old_reddit_html", lambda url, **kw: "<html><head><title>Welcome to Reddit</title></head><body>log in</body></html>")
+
+
+def test_extension_sends_the_thread_read_in_the_browser(monkeypatch):
+    """POST /api/projects/{id}/ingest/thread — the endpoint the extension's "Send this page" calls on a Reddit thread."""
+    import asyncio
+    from fastapi import HTTPException
+    from neurosearch import api
+    _no_reddit(monkeypatch)
+    pid = db.create_project("Ext thread", "buying an accounting practice")["id"]
+    j = asyncio.run(api.api_ingest_thread(pid, api.ThreadIn(url=THREAD_URL, listing=_thread_json(), title="x")))
+    assert j["posts"] == 12 and j["community"] == "r/smallbusiness" and j["substantive"] >= 8
+    src = db.get_source(j["source_id"])
+    assert src["platform"] == "community" and src["status"] == "ready" and src["external_id"] == "reddit:abc123"
+    assert db.connect().execute("SELECT COUNT(*) FROM project_sources WHERE project_id=? AND source_id=?", (pid, j["source_id"])).fetchone()[0] == 1
+    # the same thread sent again is the same global source (identity path), not a duplicate
+    again = asyncio.run(api.api_ingest_thread(pid, api.ThreadIn(url=THREAD_URL, listing=_thread_json())))
+    assert again["source_id"] == j["source_id"]
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(api.api_ingest_thread(pid, api.ThreadIn(url="https://example.com/x", listing=[])))
+    assert e.value.status_code == 400
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(api.api_ingest_thread(pid, api.ThreadIn(url=THREAD_URL, listing={"nope": 1})))
+    assert e.value.status_code == 400
+
+
+def test_server_side_read_names_the_way_forward_when_reddit_refuses(monkeypatch):
+    _no_reddit(monkeypatch)
+    monkeypatch.setattr(settings, "reddit_client_id", None)
+    with pytest.raises(RuntimeError) as e:
+        community.read_reddit_thread(THREAD_URL)
+    msg = str(e.value)
+    assert "HTTP 403" in msg and "Welcome to Reddit" in msg and "Send this page" in msg and "REDDIT_CLIENT_ID" in msg
+    with pytest.raises(RuntimeError, match="REDDIT_CLIENT_ID"):
+        community.enumerate_reddit("r/smallbusiness", "bought a practice")
+
+
+def test_official_api_reads_threads_and_searches_with_app_only_oauth(monkeypatch):
+    from neurosearch.safe_fetch import FetchResult
+    _no_reddit(monkeypatch)
+    monkeypatch.setattr(settings, "reddit_client_id", "cid")
+    monkeypatch.setattr(settings, "reddit_client_secret", "sec")
+    community._OAUTH.update({"token": None, "expires": 0.0})
+    calls = []
+
+    def fake_fetch(url, **kw):
+        h = kw.get("headers") or {}
+        calls.append((kw.get("method", "GET"), url, h))
+        if url.endswith("/api/v1/access_token"):
+            assert kw["method"] == "POST" and kw["body"] == b"grant_type=client_credentials" and h["Authorization"].startswith("Basic ")
+            assert h["User-Agent"].startswith("desktop:neurosearch") and h.get("Sec-Fetch-Mode") is None
+            return FetchResult(url=url, status=200, content_type="application/json", body=json.dumps({"access_token": "tok1", "expires_in": 3600}).encode())
+        assert url.startswith("https://oauth.reddit.com/") and h["Authorization"] == "bearer tok1"
+        if "/comments/abc123" in url:
+            return FetchResult(url=url, status=200, content_type="application/json", body=json.dumps(_thread_json()).encode())
+        if "/r/smallbusiness/search?" in url:
+            return FetchResult(url=url, status=200, content_type="application/json", body=json.dumps({"data": {"children": [{"kind": "t3", "data": {
+                "id": "s1", "permalink": "/r/smallbusiness/comments/s1/x/", "title": "Bought a practice", "selftext": "cost me", "author": "o", "score": 5, "num_comments": 3, "created_utc": 1716300000}}]}}).encode())
+        return FetchResult(url=url, status=404, content_type="text/html", body=b"")
+    import json
+    monkeypatch.setattr(safe_fetch, "safe_fetch", fake_fetch)
+    t = community.read_reddit_thread(THREAD_URL)
+    assert len(t["posts"]) == 12 and t["representation"] == "reddit api"
+    rows = community.enumerate_reddit("r/smallbusiness", "bought a practice")
+    assert rows and rows[0]["external_id"] == "reddit:s1"
+    # one token for both reads; the unauthenticated .json / old.reddit rungs were never needed
+    assert sum(1 for m, u, _ in calls if u.endswith("/access_token")) == 1 and all("oauth.reddit.com" in u or u.endswith("/access_token") for _, u, _ in calls)
+    assert community.stats()["reddit_api"] is True
+    community._OAUTH.update({"token": None, "expires": 0.0})

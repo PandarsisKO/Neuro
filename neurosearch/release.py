@@ -162,6 +162,8 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     r.check("experimental flags at their safe defaults", all(v["ok"] for v in fl.values()), {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
     r.check("ANTHROPIC_API_KEY configured", bool(settings.anthropic_api_key) or settings.fake_ai, "set" if settings.anthropic_api_key else ("fake mode" if settings.fake_ai else "missing — chat, findings, ranking and planning need it"), warn=True)
     r.check("OPENAI_API_KEY configured", bool(settings.openai_api_key) or settings.fake_ai, "set" if settings.openai_api_key else ("fake mode" if settings.fake_ai else "missing — embeddings and transcription need it"), warn=True)
+    r.check("Reddit API credentials (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,
+            "set" if settings.reddit_client_id else "not set — subreddit search (Explore) needs REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET; threads still arrive via the extension", warn=True)
     r.check("production models", True, {"answer": settings.answer_model, "findings": contracts.contract("findings.extract").model, "ranking": contracts.contract("rank.relevance").model, "embeddings": settings.embedding_model})
     # --- lightweight fake smoke: the deterministic engine works end to end in a temp database (no spend)
     if fake_smoke:
@@ -241,7 +243,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         r.check("community evidence: thread hierarchy + corrections preserved, independent experience ≠ repeated information, engagement never outranks substance, "
                 "self-described context unverified, community cannot establish a rule, injection text is data, candidates resurface without re-enumeration (G7 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k9b_reddit_html.py"])
-        r.check("public threads stay readable when Reddit refuses JSON: old.reddit page → the same thread tree, deleted/edited state, search rows; fallback only on refusal (0.32.2 gate)", ok, tail)
+        r.check("Reddit after 2026-06-30: extension-read thread → same global source; official API via app-only OAuth for threads + search; old.reddit page reading = JSON reading; refusals name the way forward (0.32.2 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k8_works.py"])
         r.check("canonical works: identifier → owned copy at $0; copies + derivatives = one lineage; citation → stub/candidate/target; version relationship drives freshness; "
                 "ambiguous titles never merge; project relevance never mutates the Work (G6 gate)", ok, tail)

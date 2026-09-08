@@ -304,7 +304,7 @@
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
-            <b>Communities</b> <span class="muted" id="commCounts"></span>
+            <b>Communities</b> <span class="muted" id="commCounts"></span><div id="commAccess"></div>
             <div class="muted">Lived experience, failure modes and practitioner knowledge — never authority. A thread is one source; its posts are the citations. Missions come from what the research is <i>missing</i> (owner regret, unexpected costs, disagreement), not from topics. Exploring lists candidate threads as cheap metadata; you choose what to acquire.</div>
             <div class="row" style="margin-top:8px"><input id="commName" placeholder="r/smallbusiness" style="max-width:220px"><select id="commMission" style="flex:1"><option value="">— pick a mission from the research state —</option></select><input id="commQ" placeholder="or a manual query" style="max-width:260px"><button class="small" onclick="exploreCommunity()">Explore</button></div>
             <div class="muted" id="commMsg" style="margin-top:4px"></div>
@@ -1061,6 +1061,7 @@ async function loadCommunity() {
     $('#commMission').innerHTML = '<option value="">— pick a mission from the research state —</option>' + COMM_MISSIONS.map((x, i) => `<option value="${i}">${esc(x.kind.replace('_', ' '))}: ${esc(x.query.slice(0, 90))}</option>`).join('');
     const s = await api(`/api/projects/${state.project.id}/community/synthesis`); const st = s.stats || {};
     $('#commCounts').textContent = st.threads ? `· ${st.threads} thread${st.threads === 1 ? '' : 's'} · ${st.substantive} substantive posts · ${st.corrections} correction${st.corrections === 1 ? '' : 's'}` : '';
+    $('#commAccess').innerHTML = st.reddit_api ? '' : `<div class="muted" style="font-size:12px;margin:4px 0">Reddit refuses every non-browser reader (since June 2026): to add a thread, open it in Chrome and use the extension's <b>Send this page</b>; to search a subreddit from here, add <code>REDDIT_CLIENT_ID</code> / <code>REDDIT_CLIENT_SECRET</code> (a Reddit “script” app) to <code>.env</code>.</div>`;
     const syn = s.syntheses || [];
     $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div><div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
   } catch (e) { $('#commMsg').textContent = e.message; }

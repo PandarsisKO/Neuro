@@ -18,6 +18,23 @@ $('#sendPage').onclick = async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const host = new URL(tab.url).hostname.replace(/^www\./, '');
+    if ((host === 'reddit.com' || host.endsWith('.reddit.com')) && /\/comments\//.test(new URL(tab.url).pathname)) {
+      // a Reddit thread: Reddit refuses every non-browser reader, so the thread's JSON is read here, inside your own
+      // browser session, and handed to the app — the app stores it exactly as it would a thread it read itself
+      $('#pageMsg').textContent = 'reading the thread in your browser…';
+      const [{ result: got }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: async () => {
+        const path = location.pathname.replace(/\/$/, '').replace(/\.json$/, '');
+        const r = await fetch(`${location.origin}${path}.json?raw_json=1&limit=500&depth=12`, { credentials: 'include', headers: { Accept: 'application/json' } });
+        if (!r.ok) return { error: `Reddit answered HTTP ${r.status}` };
+        try { return { listing: await r.json(), url: location.origin + path + '/' }; } catch (e) { return { error: 'Reddit did not answer with the thread (are you logged in?)' }; }
+      } });
+      if (!got || got.error) throw new Error((got && got.error) || 'could not read the thread');
+      $('#pageMsg').textContent = 'sending…';
+      const r = await api(`/api/projects/${pid}/ingest/thread`, { method: 'POST', body: JSON.stringify({ url: got.url.replace(/\/\/(old|new)\.reddit\.com/, '//www.reddit.com'), listing: got.listing, title: tab.title }) });
+      await chrome.storage.local.set({ lastProject: pid });
+      $('#pageMsg').innerHTML = `<span class="ok">Added “${esc(r.title)}” (${r.posts} posts, ${r.substantive} substantive).</span> See Sources → Communities in the app.`;
+      $('#sendPage').disabled = false; return;
+    }
     const MEDIA = ['instagram.com', 'tiktok.com', 'vimeo.com', 'loom.com', 'facebook.com', 'x.com', 'twitter.com', 'wistia.com'];
     if (MEDIA.some(h => host === h || host.endsWith('.' + h))) {
       // a video/post page: send the link plus this site's cookies so the app can download it as you

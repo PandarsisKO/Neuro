@@ -27,6 +27,11 @@ class Settings:
     anthropic_api_key: str | None = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     fake_ai: bool = field(default_factory=lambda: (_env("NEUROSEARCH_FAKE_AI", "") or "").lower() in ("1", "true", "yes"))
     openai_api_key: str | None = field(default_factory=lambda: _env("OPENAI_API_KEY"))
+    # Reddit's official API (0.32.2): a 'script' app's client id/secret, app-only OAuth (read-only public data). Reddit refuses
+    # every non-browser client since 2026-06-30, so without these the app cannot search subreddits; threads still arrive
+    # through the browser extension ("Send this page" on a thread).
+    reddit_client_id: str | None = field(default_factory=lambda: _env("REDDIT_CLIENT_ID"))
+    reddit_client_secret: str | None = field(default_factory=lambda: _env("REDDIT_CLIENT_SECRET"))
     answer_model: str = field(default_factory=lambda: _env("NEUROSEARCH_ANSWER_MODEL", "claude-sonnet-4-6"))
     embedding_model: str = field(default_factory=lambda: _env("NEUROSEARCH_EMBEDDING_MODEL", "text-embedding-3-small"))
     transcribe_model: str = field(default_factory=lambda: _env("NEUROSEARCH_TRANSCRIBE_MODEL", "whisper-1"))

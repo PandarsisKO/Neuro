@@ -90,6 +90,24 @@ class _Tree(HTMLParser):
             self.cur.children.append(data)
 
 
+def looks_like_thread(html: str) -> bool:
+    return 'data-fullname="t3_' in html and "commentarea" in html
+
+
+def looks_like_search(html: str) -> bool:
+    return "search-result-listing" in html or "search-result-link" in html or "no results" in html.lower()
+
+
+def expect_page(html: str, what: str) -> None:
+    """Raise a diagnosable error describing the page Reddit answered with instead of `what`."""
+    root = parse(html)
+    title = root.first(lambda n: n.tag == "title")
+    body = root.first(lambda n: n.tag == "body")
+    gist = re.sub(r"\s+", " ", body.text() if body is not None else "")[:240]
+    raise RuntimeError(f"old.reddit.com answered with a page that is not {what}" + (f" ({title.text()[:80]})" if title is not None else "")
+                       + (f" — it says: {gist}" if gist else ""))
+
+
 def parse(html: str) -> Node:
     t = _Tree()
     t.feed(html)
@@ -142,8 +160,7 @@ def thread_from_html(html: str, url: str, *, max_posts: int = 800) -> dict[str, 
     things = [n for n in root.walk() if _is_thing(n)]
     link = next((t for t in things if "link" in t.classes and t.attrs["data-fullname"].startswith("t3_")), None)
     if link is None:
-        title = root.first(lambda n: n.tag == "title")
-        raise RuntimeError("old.reddit.com answered with a page that is not a thread" + (f" ({title.text()[:80]})" if title is not None else ""))
+        expect_page(html, "a thread")
     op_id = link.attrs["data-fullname"][3:]
     tnode = link.first(lambda n: n.tag == "a" and "title" in n.classes, stop=_is_thing)
     title = tnode.text() if tnode is not None else url
