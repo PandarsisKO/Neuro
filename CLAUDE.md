@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.38.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.38.1)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -73,7 +73,7 @@ Each turn: `qa._retrieval_query` (a short or back-referring follow-up is grounde
 
 ## Model routing (current)
 
-**L1 Local-First AI (0.38.0, off by default):** `providers.route(task)` decides local (Claude Code, `claude_code.py`) vs API — never a model substitution — when `NEUROSEARCH_AI_PROFILE=local`, the contract is `local_capable` (the six structured tasks), the job's `execution_policy` allows it and `claude_code.health()` is ready; `LOCAL_UNAVAILABLE`/`LOCAL_LIMIT` fall back to the API with `routing_json.executed_by/fallback_reason`; local pool + API pool in `jobs.start_workers`; ledger `transport='local'`, cost 0, `saved` = avoided spend. Gate `tests/test_n2_local_ai.py`; spec `LOCAL-AI-PROVIDER.md`. Chat/streaming/embeddings/transcription/batches always stay on their API.
+**L1 Local-First AI (0.38.1, off by default):** `providers.route(task)` decides local (Claude Code, `claude_code.py`) vs API — never a model substitution — when `NEUROSEARCH_AI_PROFILE=local`, the contract is `local_capable` (the six structured tasks), the job's `execution_policy` allows it and `claude_code.health()` is ready; `LOCAL_UNAVAILABLE`/`LOCAL_LIMIT` fall back to the API with `routing_json.executed_by/fallback_reason`; local pool + API pool in `jobs.start_workers`; ledger `transport='local'`, cost 0, `saved` = avoided spend. Gate `tests/test_n2_local_ai.py`; spec `LOCAL-AI-PROVIDER.md`. Chat/streaming/embeddings/transcription/batches always stay on their API.
 
 rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); every other Anthropic task (incl. `library.profile`) → `settings.answer_model` (claude-sonnet-4-6); `findings.prefilter` / `retrieval.rerank` contracts exist on `claude-haiku-4-5` but their features are off. Structured outputs on findings.extract, rank.relevance, planner.update, discover.quick; discover.verify stays free-text. Per-task overrides `NEUROSEARCH_TASK_{MODEL,THINKING,MAX_TOKENS,SCHEMA}_<TASK>`; `neurosearch contracts` lists them.
 

@@ -63,7 +63,8 @@ def build_epub(path: Path, *, version=3, toc=True, isbn="9780875845852", protect
     docs = {
         "z_intro.xhtml": _xhtml("Introduction", f'<section epub:type="introduction"><h1 id="intro">Introduction</h1><p>{INTRO}</p></section>'),
         "y_ch1.xhtml": _xhtml("Chapter 1", f'<h1 id="c1">How Can Great Firms Fail?</h1><p>{CH1}</p><h2 id="c1s2">The Disk-Drive Pattern</h2><p>{CH1_S2}</p>'),
-        "x_ch2.xhtml": _xhtml("Chapter 2", f'<h1 id="c2">Value Networks</h1><p>{CH2}</p>'),
+        # the wrapper-div shape real converters emit (Calibre/InDesign): a div holding block children is a container, a leaf div is a paragraph
+        "x_ch2.xhtml": _xhtml("Chapter 2", f'<div class="body"><div class="chapter"><h1 id="c2">Value Networks</h1><p>{CH2}</p></div><div class="leaf">A closing aside inside a leaf div.</div></div>'),
         "w_ch3.xhtml": _xhtml("Chapter 3", f'<h1 id="c3">Mercados emergentes</h1><p>{CH3}</p>' + ("<p>unclosed <b>bold" if broken else ""), lang="es"),
         "a_appendix.xhtml": _xhtml("Appendix", f'<h1 id="appx">Appendix A</h1><p>{APPX}</p>'),
     }

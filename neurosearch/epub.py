@@ -27,6 +27,7 @@ NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container", "opf": "http://www
 MAX_SECTIONS = 4000               # a large book stays bounded (≈ 40 sections × 100 chapters); the rest is one trailing section per document
 MIN_SECTION_CHARS = 40            # headings with nothing under them fold into the next section
 HEADINGS = {"h1", "h2", "h3", "h4"}
+BLOCK_CONTAINERS = {"p", "div", "section", "ul", "ol", "table"} | HEADINGS     # a div holding any of these is a wrapper, not a paragraph
 ROLE_WORDS = {"title_page": r"title[- ]?page", "copyright": r"copyright|imprint|colophon", "foreword": r"foreword", "preface": r"preface", "introduction": r"introduction",
               "acknowledgements": r"acknowledg", "appendix": r"appendix", "notes": r"^notes?$|endnotes|footnotes", "bibliography": r"bibliograph|references|works cited",
               "glossary": r"glossary", "index": r"^index$", "part": r"^part\b", "chapter": r"^chapter\b|^ch\.?\s*\d", "epilogue": r"epilogue|afterword", "prologue": r"prologue"}
@@ -256,7 +257,7 @@ def _sections_of(html: str, doc_title: str | None) -> list[dict[str, Any]]:
             return
         if n.tag in ("script", "style", "nav") and n is not body:
             return
-        if n.tag in ("p", "li", "blockquote", "pre", "dd", "dt", "figcaption", "td", "th", "caption") or (n.tag == "div" and not any(isinstance(c, Node) and c.tag in ("p", "div", "section", "ul", "ol", "table") | HEADINGS for c in n.children)):
+        if n.tag in ("p", "li", "blockquote", "pre", "dd", "dt", "figcaption", "td", "th", "caption") or (n.tag == "div" and not any(isinstance(c, Node) and c.tag in BLOCK_CONTAINERS for c in n.children)):
             t = " ".join(n.text().split()) if n.tag != "pre" else n.text()
             if t:
                 cur["parts"].append(("• " + t) if n.tag == "li" else t)
