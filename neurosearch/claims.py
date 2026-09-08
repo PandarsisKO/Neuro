@@ -104,8 +104,10 @@ def guess_type(text: str, evidence_class: str | None) -> str:
 
 def guess_freshness(text: str, claim_type: str) -> str:
     t = (text or "").lower()
-    if re.search(r"\b(promotion|offer|deadline|expires?|rate|rates|pricing|price|listing|market|current)\b", t):
-        return "fast_changing" if re.search(r"\b(promotion|offer|expires?|deadline)\b", t) else "periodic"
+    if re.search(r"\b(promotion|offer|deadline|expires?|expiration)\b", t):
+        return "fast_changing"
+    if re.search(r"\b(interest rates?|guarantee fees?|fee schedule|pricing|price list|listing price|asking price|per cent|percent|%)\b", t) and re.search(r"\b(20\d\d|this year|fiscal|currently)\b", t):
+        return "periodic"                                   # a dated figure: re-verify on its cadence
     if claim_type in ("governing",):
         return "periodic"          # rules change on a cadence (SOP revisions, tax years)
     if claim_type in ("historical",):

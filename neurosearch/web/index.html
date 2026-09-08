@@ -494,7 +494,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.29.1';
+const UI_VERSION = '0.29.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1156,7 +1156,7 @@ function renderResearch(st) {
   const ts = st.tensions || [];
   $('#resTensions').innerHTML = ts.length ? ts.map(t => `<div class="kn tension">${stTag(t.impact)}<div><b>${esc(t.kind.replace('_', ' '))}</b> <div class="why">${esc(t.description)}</div></div><span style="margin-left:auto;white-space:nowrap"><button class="small ghost" onclick="tensionStatus('${t.id}','resolved')">Resolved</button> <button class="small ghost" onclick="tensionStatus('${t.id}','dismissed')">Dismiss</button></span></div>`).join('')
     : `<div class="muted">None open — no contradictions, single-source outliers, weak consensus, stale Claims or missing perspectives detected.</div>`;
-  const tg = (st.targets || []).filter(t => t.status !== 'closed_by_user');
+  const tg = (st.targets || []).filter(t => t.status !== 'closed_by_user' && t.status !== 'dropped');
   $('#resTargets').innerHTML = tg.length ? tg.map(t => {
     const esc_ = t.last_escalation && t.last_escalation.steps ? t.last_escalation.steps : null;
     const trail = esc_ ? `<div class="why">Looked: ${esc_.map(s => s.step === 'external' ? (s.run ? 'web search queued' : 'web not run') : `${s.step.replace('_', ' ')} ${s.found}${s.resurfaced ? ` (${s.resurfaced} resurfaced)` : ''}`).join(' → ')}</div>` : '';

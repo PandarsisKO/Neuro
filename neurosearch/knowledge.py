@@ -87,7 +87,7 @@ def add_target(project_id: str, question: str, *, topic: str | None = None, clai
 
 
 def set_target_status(target_id: str, status: str) -> dict[str, Any] | None:
-    if status not in ("open", "satisfied", "closed_by_user"):
+    if status not in ("open", "satisfied", "closed_by_user", "dropped"):
         raise ValueError("bad status")
     with db.tx() as c:
         c.execute("UPDATE project_evidence_targets SET status=?, updated_at=? WHERE id=?", (status, time.time(), target_id))
@@ -142,7 +142,7 @@ def assess_target(target_id: str) -> dict[str, Any] | None:
     else:
         gap = c.get("strength_why")
     status = tg["status"]
-    if status != "closed_by_user":
+    if status not in ("closed_by_user", "dropped"):
         status = "satisfied" if satisfied else "open"
     with db.tx() as conn:
         conn.execute("UPDATE project_evidence_targets SET claim_id=COALESCE(claim_id, ?), current_evidence=?, gap=?, status=?, updated_at=? WHERE id=?",
@@ -291,6 +291,7 @@ def detect(project_id: str) -> dict[str, int]:
         for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,)).fetchall():
             imp_of[r["id"]] = int(r["importance"] or 3)
     novel_budget = NOVEL_MAX
+    selected: set[str] = set()
     all_claims.sort(key=lambda c: -imp_of.get(c.get("origin_note_id") or -1, 3))     # highest importance first (the NOVEL budget)
     for c in all_claims:
         ev = [e for e in c["evidence"] if not e.get("stale")]
@@ -299,24 +300,24 @@ def detect(project_id: str) -> dict[str, int]:
         indep = {e["source_id"] for e in sup if e.get("independent")}
         imp = imp_of.get(c.get("origin_note_id") or -1, 3)
         if c["strength"] == "stale":
-            _upsert_tension(project_id, "STALE", c["id"], f"Stale: {c['text'][:140]} — {c.get('strength_why')}", {"freshness_class": c["freshness_class"]}, "high" if c["freshness_class"] == "fast_changing" else "medium")
+            selected.add(_upsert_tension(project_id, "STALE", c["id"], f"Stale: {c['text'][:140]} — {c.get('strength_why')}", {"freshness_class": c["freshness_class"]}, "high" if c["freshness_class"] == "fast_changing" else "medium"))
             counts["STALE"] += 1
         if con:
             other = next((e for e in con), None)
-            _upsert_tension(project_id, "CONTRADICTION", c["id"], f"Contradiction: {c['text'][:140]} is disputed by {other.get('title') if other else 'another source'}",
-                            {"supporting": len(sup), "contradicting": len(con)}, "high")
+            selected.add(_upsert_tension(project_id, "CONTRADICTION", c["id"], f"Contradiction: {c['text'][:140]} is disputed by {other.get('title') if other else 'another source'}",
+                            {"supporting": len(sup), "contradicting": len(con)}, "high"))
             counts["CONTRADICTION"] += 1
         if c["claim_type"] not in claims.GOVERNING_TYPES and len(sup) >= 1:
             if len(indep) == 1 and len(sup) >= 2:
-                _upsert_tension(project_id, "WEAK_CONSENSUS", c["id"], f"Looks corroborated but is not: {len(sup)} sources, 1 independent — the others repeat it. {c['text'][:120]}",
-                                {"supporting": len(sup), "independent": 1}, "medium")
+                selected.add(_upsert_tension(project_id, "WEAK_CONSENSUS", c["id"], f"Looks corroborated but is not: {len(sup)} sources, 1 independent — the others repeat it. {c['text'][:120]}",
+                                {"supporting": len(sup), "independent": 1}, "medium"))
                 counts["WEAK_CONSENSUS"] += 1
                 add_target(project_id, f"Independently corroborate: {c['text'][:160]}", topic=c.get("topic"), claim_id=c["id"], sufficiency="corroborative", origin="tension")
             elif len(indep) == 1 and len(sup) == 1 and (imp >= 4 or c["claim_type"] in ("novel_tactic", "causal")) and novel_budget > 0 and not _echoed(c, index):
                 novel_budget -= 1
                 e0 = sup[0]
-                _upsert_tension(project_id, "NOVEL", c["id"], f"Potential outlier: {c['text'][:160]} — currently supported by one {e0.get('evidence_class')} source ({e0.get('title')}); additional corroboration recommended",
-                                {"source_id": e0["source_id"], "locator": e0.get("locator"), "importance": imp}, "high" if imp >= 4 else "medium")
+                selected.add(_upsert_tension(project_id, "NOVEL", c["id"], f"Potential outlier: {c['text'][:160]} — currently supported by one {e0.get('evidence_class')} source ({e0.get('title')}); additional corroboration recommended",
+                                {"source_id": e0["source_id"], "locator": e0.get("locator"), "importance": imp}, "high" if imp >= 4 else "medium"))
                 counts["NOVEL"] += 1
                 add_target(project_id, f"Corroborate or refute: {c['text'][:160]}", topic=c.get("topic"), claim_id=c["id"], sufficiency="corroborative", origin="tension")
     # missing perspective per topic
@@ -332,9 +333,23 @@ def detect(project_id: str) -> dict[str, int]:
         missing = sorted(needed - present)
         if missing and cs:
             lead = cs[0]
-            _upsert_tension(project_id, "MISSING_PERSPECTIVE", lead["id"], f"Topic '{topic}' has only {', '.join(sorted(x for x in present if x)) or 'no'} evidence; missing {', '.join(missing)} perspective(s)",
-                            {"topic": topic, "present": sorted(x for x in present if x), "missing": missing}, "medium")
+            selected.add(_upsert_tension(project_id, "MISSING_PERSPECTIVE", lead["id"], f"Topic '{topic}' has only {', '.join(sorted(x for x in present if x)) or 'no'} evidence; missing {', '.join(missing)} perspective(s)",
+                            {"topic": topic, "present": sorted(x for x in present if x), "missing": missing}, "medium"))
             counts["MISSING_PERSPECTIVE"] += 1
+    # reconcile: a deterministic pass owns NOVEL/WEAK_CONSENSUS/STALE/MISSING_PERSPECTIVE — anything it did not (re)select is
+    # dismissed and the corroboration target it opened is dropped (user-made targets are never touched)
+    with db.tx() as conn:
+        for tsn in list_tensions(project_id, status="open"):
+            if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS", "STALE", "MISSING_PERSPECTIVE") and tsn["id"] not in selected:
+                conn.execute("UPDATE research_tensions SET status='dismissed', updated_at=? WHERE id=?", (time.time(), tsn["id"]))
+                if tsn.get("claim_id"):
+                    conn.execute("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='open'",
+                                 (time.time(), project_id, tsn["claim_id"]))
+        # a target re-opened by a re-selected tension
+        for tsn in list_tensions(project_id, status="open"):
+            if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS") and tsn.get("claim_id"):
+                conn.execute("UPDATE project_evidence_targets SET status='open', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='dropped'",
+                             (time.time(), project_id, tsn["claim_id"]))
     # auto-resolve tensions whose condition no longer holds
     for tsn in list_tensions(project_id, status="open"):
         c = claims.get(tsn["claim_id"]) if tsn.get("claim_id") else None
@@ -362,8 +377,11 @@ def refresh(project_id: str) -> dict[str, Any]:
     topics: dict[str, dict[str, Any]] = {}
     for c in all_claims:
         topics.setdefault(c.get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["claims"].append(c)
+    claim_topic = {c["id"]: c.get("topic") or "general" for c in all_claims}
     for tg in targets:
-        topics.setdefault(tg.get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["targets"].append(tg)
+        if tg["status"] == "dropped":
+            continue
+        topics.setdefault(claim_topic.get(tg.get("claim_id") or "", tg.get("topic") or "general"), {"claims": [], "targets": [], "tensions": []})["targets"].append(tg)
     for tsn in tensions:
         c = next((x for x in all_claims if x["id"] == tsn.get("claim_id")), None)
         topics.setdefault((c or {}).get("topic") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
