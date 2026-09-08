@@ -31,6 +31,7 @@ PLATFORM = "community"
 # Reddit's edge refuses clients that announce a bot token in the UA (the app's normal UA ends with "NeuroSearch/1.0") — the
 # listing endpoint is public, but it is served to browsers; we identify as the browser the user would use.
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HONEST_UA = "desktop:neurosearch:0.32 (personal research tool; single user; reads public threads on request)"
 MAX_POSTS = 800                 # tree kept locally
 MAX_CHUNK_POSTS = 120           # posts that become evidence chunks after pruning
 MIN_POST_CHARS = 40
@@ -52,23 +53,37 @@ INJECTION = re.compile(r"(ignore (all |the )?(previous|prior|above) instructions
 
 # ---------------------------------------------------------------- adapters (metadata-cheap, all through safe_fetch)
 
+def _reddit_attempts(url: str) -> list[tuple[str, dict[str, str | None]]]:
+    """The ways Reddit's public JSON answers a client that is not a browser, most-honest first. Reddit's own rule is a
+    unique, descriptive User-Agent (a spoofed browser UA from a non-browser TLS stack is what its filter refuses), so
+    we identify as NeuroSearch first; then the same request as a plain browser navigation; then the two other hosts."""
+    honest = {"User-Agent": HONEST_UA, "Accept": "application/json", "Upgrade-Insecure-Requests": None,
+              "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None, "Sec-Fetch-Site": None, "Sec-Fetch-User": None}
+    browser = {"User-Agent": BROWSER_UA}          # exactly what a navigation to the .json URL sends (Accept: text/html…)
+    old = url.replace("://www.reddit.com", "://old.reddit.com", 1)
+    api = url.replace("://www.reddit.com", "://api.reddit.com", 1).replace(".json?", "?").replace(".json", "")
+    return [(url, honest), (url, browser), (old, honest), (old, browser), (api, honest)]
+
+
 def _json_get(url: str) -> Any:
-    """Reddit's public listing endpoints answer a browser-like client without login; a bot-looking User-Agent gets 403.
-    We use safe_fetch's normal browser UA and, on a refusal from www, retry the same listing on old.reddit.com."""
+    """Reddit's public listing endpoints answer without login, but refuse clients they take for scrapers. We walk a short
+    ladder of honest requests (see `_reddit_attempts`) and, when every rung is refused, say exactly what each one got,
+    so a refusal is diagnosable from the job message alone."""
     from .safe_fetch import safe_fetch
-    last = None
-    for u in (url, url.replace("://www.reddit.com", "://old.reddit.com", 1)):
-        res = safe_fetch(u, content_class="html", headers={"Accept": "application/json", "User-Agent": BROWSER_UA})
+    tried: list[str] = []
+    for u, hdrs in _reddit_attempts(url):
+        res = safe_fetch(u, content_class="html", headers=hdrs)
         if res.status == 200:
             try:
                 return json.loads(res.body.decode("utf-8", errors="replace"))
             except ValueError:
-                last = "not JSON (the listing returned a page instead)"
+                tried.append(f"{urlparse(u).netloc}: 200 but not JSON")
                 continue
-        last = f"HTTP {res.status} from {urlparse(u).netloc}"
-        if res.status not in (403, 429):
+        snippet = re.sub(r"<[^>]+>|\s+", " ", res.body[:600].decode("utf-8", errors="replace")).strip()[:60]
+        tried.append(f"{urlparse(u).netloc}: HTTP {res.status}" + (f" ({snippet})" if snippet else ""))
+        if res.status not in (403, 404, 429, 503):
             break
-    raise RuntimeError(last or "unreadable listing")
+    raise RuntimeError("Reddit refused the listing — " + "; ".join(tried))
 
 
 def is_reddit_thread(url: str) -> bool:

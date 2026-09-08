@@ -246,7 +246,7 @@ def safe_fetch(url: str, *, content_class: str | None = None, max_redirects: int
     deadline = t_start + (deadline_s or TOTAL_DEADLINE_S)
     hops_max = MAX_REDIRECTS if max_redirects is None else max_redirects
     current, hop, pinned = url, 0, []
-    hdrs = {**HEADERS, **(headers or {})}
+    hdrs = {k: v for k, v in {**HEADERS, **(headers or {})}.items() if v is not None}   # a None value drops a default header
     try:
         while True:
             norm, scheme, host, port, target = normalise(current, hop)
