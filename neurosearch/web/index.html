@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.33.0';
+const UI_VERSION = '0.33.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -959,6 +959,7 @@ async function loadSources() {
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser(s) ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${completenessLine(s)}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}</div>` : ''}
@@ -1008,8 +1009,17 @@ async function suggestSource(id) { const r = await post(`/api/projects/${state.p
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
-// ---- B1: browser-assisted acquisition ----
+// ---- B1/B2: browser-assisted acquisition + completeness ----
 let EXT = { state: 'unknown' };
+let CAPTURE_SEEN = null;      // job ids waiting at the last poll — a vanished id = a capture landed (B2 walk)
+let CAPTURE_TIMER = null;
+function completenessLine(s) {
+  const c = s.completeness; if (!c || c.status === 'complete' || s.status !== 'ready') return '';
+  const what = c.status === 'partial' ? `⚠ Partial capture: ${c.captured} comment${c.captured === 1 ? '' : 's'} captured${c.expected != null ? `, the thread reports ~${c.expected}` : ''}${c.missing ? ` · ${c.missing} may not be loaded` : ''}${c.partial_reason && !c.missing ? ` · ${esc(c.partial_reason)}` : ''}` : `Completeness unknown: ${c.captured} comment${c.captured === 1 ? '' : 's'} captured, no count reported by the platform`;
+  return `<div class="muted" style="margin-top:3px;color:var(--warn)">${what}${c.accepted ? ' <span class="muted">· accepted as is</span>' : ''} <button class="small ghost" onclick="recapture('${s.id}')">Reopen and capture more</button>${c.accepted ? '' : ` <button class="small ghost" onclick="acceptPartial('${s.id}')">Accept partial</button>`}</div>`;
+}
+async function recapture(id) { const r = await post(`/api/sources/${id}/recapture`, { project_id: state.project.id }); $('#captureCard').style.display = ''; setTimeout(() => { loadSources(); loadJobs(); }, 1500); }
+async function acceptPartial(id) { await post(`/api/sources/${id}/accept-partial`); loadSources(); }
 function browserBlock(s) {
   const a = s.acquisition || {};
   return `<div style="margin:6px 0;padding:8px 10px;border:1px solid var(--accent);border-radius:8px;background:var(--user)">
@@ -1032,11 +1042,30 @@ async function loadCaptureQueue(rows) {
     const q = await api(`/api/capture/pending?project_id=${state.project.id}`); EXT = q.extension || EXT;
     const items = q.items || [];
     const card = $('#captureCard');
-    if (!items.length) { card.style.display = 'none'; return; }
+    // B2: a request that vanished since the last poll = a capture landed → show its outcome (complete / partial) and move on
+    const now = new Set(items.map(i => i.job_id));
+    const landed = CAPTURE_SEEN ? [...CAPTURE_SEEN].filter(([jid]) => !now.has(jid)) : [];
+    CAPTURE_SEEN = new Map(items.map(i => [i.job_id, i]));
+    let outcome = '';
+    for (const [, it] of landed) {
+      if (!it.source_id) continue;
+      try {
+        const src = await api(`/api/sources/${it.source_id}`);
+        const c = src.completeness ? JSON.parse(src.completeness) : null;
+        if (src.status === 'ready') outcome += `<div class="banner" style="margin:4px 0">✓ Captured “${esc(src.title || it.title)}”${c ? ` — ${c.captured} comment${c.captured === 1 ? '' : 's'}` : ''}.${c && c.status === 'partial' ? ` <b>Partial:</b> the thread reports ~${c.expected}; ${c.missing || 0} may not be loaded. <button class="small" onclick="acceptPartial('${src.id}')">Accept partial</button> <button class="small" onclick="recapture('${src.id}')">Reopen and capture more</button>` : c && c.status === 'unknown' ? ' Completeness unknown (no comment count reported).' : ''}</div>`;
+        else if (src.status === 'pending') outcome += `<div class="banner" style="margin:4px 0">⟳ Capture received for “${esc(src.title || it.title)}” — finishing…</div>`;
+        else outcome += `<div class="banner" style="margin:4px 0">✗ “${esc(src.title || it.title)}”: ${esc(src.error || 'the capture could not be used')}</div>`;
+      } catch (e) {}
+    }
+    if (!items.length) { if (outcome) { card.style.display = ''; card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· nothing waiting</span>${outcome}`; } else card.style.display = 'none'; clearTimeout(CAPTURE_TIMER); return; }
     card.style.display = '';
-    card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· ${items.length} source${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your browser · ${extLine() || 'extension state unknown'}</span>
-      <div class="muted" style="font-size:12px;margin:4px 0">Open each page in Chrome; the Neuro Search extension recognizes it and captures it into the same source. Nothing is downloaded without your click.</div>
-      ${items.map((it, i) => `<div class="row" style="padding:4px 0;border-top:1px solid var(--line);align-items:center"><span class="muted fixed" style="width:44px">${i + 1} of ${items.length}</span><span style="flex:1;min-width:0">${esc(it.title || it.canonical_url)} <span class="muted">· ${esc(it.adapter === 'reddit_thread' ? 'Reddit thread' : 'web page')}${it.status === 'expired' ? ' · expired' : ''}</span></span><button class="small primary" onclick="openAndCapture('${esc(it.canonical_url || it.url)}')">Open & Capture</button><button class="small ghost" onclick="cancelCapture('${it.job_id}')">Cancel</button></div>`).join('')}`;
+    const first = items.find(i => i.status !== 'expired') || items[0];
+    card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· ${items.length} source${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your browser · ${extLine() || 'extension state unknown'}</span>${outcome}
+      <div style="margin:6px 0;padding:8px 10px;border:1px solid var(--accent);border-radius:8px;background:var(--user)"><b>Next — ${items.indexOf(first) + 1} of ${items.length}:</b> ${esc(first.title || first.canonical_url)}<div class="muted" style="font-size:12px;margin-top:2px">Open it in Chrome, press the Neuro Search extension button, then <b>Capture for Neuro Search</b>. This list advances by itself when the capture lands.</div>
+        <div class="row" style="margin-top:6px;gap:6px"><button class="small primary" onclick="openAndCapture('${esc(first.canonical_url || first.url)}')">Open & Capture</button><button class="small ghost" onclick="cancelCapture('${first.job_id}')">Skip (cancel)</button>${EXT.state !== 'ready' ? `<span class="muted" style="font-size:12px">${extLine() || ''}</span>` : ''}</div></div>
+      ${items.length > 1 ? `<details><summary class="muted">All ${items.length} waiting</summary>${items.map((it, i) => `<div class="row" style="padding:4px 0;border-top:1px solid var(--line);align-items:center"><span class="muted fixed" style="width:44px">${i + 1}</span><span style="flex:1;min-width:0">${esc(it.title || it.canonical_url)} <span class="muted">· ${esc(it.adapter === 'reddit_thread' ? 'Reddit thread' : 'web page')}${it.status === 'expired' ? ' · expired — open and capture again' : ''}</span></span><button class="small" onclick="openAndCapture('${esc(it.canonical_url || it.url)}')">Open</button><button class="small ghost" onclick="cancelCapture('${it.job_id}')">Cancel</button></div>`).join('')}</details>` : ''}`;
+    clearTimeout(CAPTURE_TIMER);
+    CAPTURE_TIMER = setTimeout(() => { if (state.view === 'sources') loadSources(); }, 5000);
   } catch (e) { /* the sources list still renders */ }
 }
 async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }

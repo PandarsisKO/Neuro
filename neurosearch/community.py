@@ -207,8 +207,14 @@ def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit jso
                   "text": (link.get("title") or "") + ("\n\n" + link["selftext"] if link.get("selftext") else ""), "kind": "post",
                   "permalink": "https://www.reddit.com" + link.get("permalink", "")})
 
+    unloaded = {"stubs": 0, "count": 0}                                   # B2: what the listing itself says it left out
+
     def walk(children: list[dict[str, Any]], parent: str, depth: int) -> None:
         for ch in children:
+            if ch.get("kind") == "more":
+                unloaded["stubs"] += 1
+                unloaded["count"] += int((ch.get("data") or {}).get("count") or 0)
+                continue
             if ch.get("kind") != "t1" or len(posts) >= MAX_POSTS:
                 continue
             d = ch["data"]
@@ -225,7 +231,7 @@ def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit jso
     community = link.get("subreddit_name_prefixed") or ("r/" + link["subreddit"] if link.get("subreddit") else "")
     return {"platform": "reddit", "thread_id": op_id, "title": link.get("title") or url, "community": community, "url": "https://www.reddit.com" + link.get("permalink", ""),
             "created": link.get("created_utc"), "score": link.get("score"), "num_comments": link.get("num_comments"), "posts": posts, "retrieved_at": time.time(),
-            "representation": retrieved_via}
+            "representation": retrieved_via, "capture": {"method": "json", "load_more_remaining": unloaded["stubs"], "unloaded_count": unloaded["count"]}}
 
 
 def thread_from_capture(capture: dict[str, Any], url: str) -> dict[str, Any]:
@@ -427,10 +433,71 @@ def _locator_text(p: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> str:
     return f"{head}:\n{text}"
 
 
+def completeness(thread: dict[str, Any]) -> dict[str, Any]:
+    """B2 — a successful capture and a COMPLETE capture are different states. Deterministic, from what the reading itself
+    reports: the platform's comment count (which includes removed comments, so a shortfall MAY be nothing) versus what
+    was captured, plus the stubs/branches the reading admits it left out. Never 'complete' by default."""
+    cap = dict(thread.get("capture") or {})
+    captured = sum(1 for p in thread["posts"] if p.get("kind") == "comment")
+    expected = thread.get("num_comments")
+    expected = int(expected) if isinstance(expected, (int, float)) and expected >= 0 else None
+    unloaded = int(cap.get("load_more_remaining") or 0)
+    unloaded_count = int(cap.get("unloaded_count") or 0)
+    collapsed = int(cap.get("collapsed") or 0)
+    deleted = sum(1 for p in thread["posts"] if p.get("kind") == "comment" and p.get("deleted"))
+    missing = max(0, expected - captured) if expected is not None else None
+    # a small shortfall against the platform's count is normal (deleted comments stay counted); a large one is a partial read
+    large_shortfall = missing is not None and missing > max(5, int(0.1 * (expected or 0)))
+    if cap.get("status") == "partial" or unloaded or large_shortfall:
+        status, reason = "partial", None
+        if unloaded:
+            reason = f"{unloaded} 'more replies' branch{'es' if unloaded != 1 else ''} ({unloaded_count or 'some'} comments) not loaded"
+        elif missing:
+            reason = f"{missing} comment{'s' if missing != 1 else ''} may not be loaded (the platform's count includes removed comments)"
+        else:
+            reason = cap.get("partial_reason") or "the reader reported a partial capture"
+    elif expected is None and cap.get("status") != "complete":
+        status, reason = "unknown", "the platform did not report a comment count"
+    else:
+        status, reason = "complete", None
+    return {"status": status, "captured": captured, "expected": expected, "missing": missing, "load_more_remaining": unloaded, "unloaded_count": unloaded_count or None,
+            "collapsed": collapsed or None, "deleted": deleted, "method": cap.get("method") or thread.get("representation") or "reddit json",
+            "captured_at": thread.get("retrieved_at"), "partial_reason": reason, "accepted": False}
+
+
+def _merge_partial(source_id: str, posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A PARTIAL capture never deletes what an earlier reading saw: previously known posts absent from this capture keep
+    their rows (their stored ordinal order first, so evidence locators stay valid); the new posts follow."""
+    seen = {p["post_id"] for p in posts}
+    conn = db.connect()
+    kept_prior: list[dict[str, Any]] = []
+    for r in conn.execute("SELECT * FROM community_posts WHERE source_id=? ORDER BY ordinal", (source_id,)).fetchall():
+        if r["post_id"] in seen:
+            continue
+        kept_prior.append({"post_id": r["post_id"], "parent_id": r["parent_id"], "depth": r["depth"], "author": r["author"], "score": r["score"], "created": r["created"],
+                           "edited": bool(r["edited"]), "deleted": bool(r["deleted"]), "text": r["text"] or "", "kind": r["kind"], "permalink": r["permalink"], "_prior": True})
+    if not kept_prior:
+        return posts
+    by_id = {p["post_id"]: p for p in posts}
+    op = next((p for p in posts if p["kind"] == "post"), None)
+    merged = [op] if op else []
+    prior_ids = {p["post_id"] for p in kept_prior}
+    # previously known comments in their stored order, then everything new from this capture (its own order)
+    merged += [p for p in kept_prior if p["kind"] == "comment"]
+    merged += [p for p in posts if p["kind"] == "comment"]
+    for p in merged:
+        if p.get("parent_id") and p["parent_id"] not in by_id and p["parent_id"] not in prior_ids and op:
+            p["parent_id"] = op["post_id"]
+    return merged
+
+
 def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, project_id: str | None = None, query_terms: set[str] | None = None) -> dict[str, Any]:
     """Thread → ONE global source (platform 'community', external_id '<platform>:<thread_id>'), the full post tree in
-    community_posts, and chunks for the pruned high-signal posts (locator = post ordinal; deep link = permalink)."""
+    community_posts, and chunks for the pruned high-signal posts (locator = post ordinal; deep link = permalink).
+    B2: `completeness` is recorded on the source; a partial capture merges into what was already known instead of
+    marking the unseen posts unavailable — only a complete reading can say a post vanished."""
     from . import identity, media
+    comp = completeness(thread)
     posts = thread["posts"]
     for p in posts:
         p["signals"] = signals(p, query_terms)
@@ -446,6 +513,24 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
                                       "transcript_kind": "community", "description": f"{thread.get('community') or thread['platform']} thread · {len(posts)} posts · {thread.get('score')} points"})
     res = identity.resolve_or_create_source(cand, project_id, retry=True)
     src = res.source
+    if comp["status"] != "complete":
+        merged = _merge_partial(src["id"], posts)
+        if merged is not posts:
+            posts = merged
+            for p in posts:
+                if "signals" not in p:
+                    p["signals"] = signals(p, query_terms)
+                    p["injection"] = p["signals"]["injection"]
+            _mark_corrections(posts)
+            by_id = {p["post_id"]: p for p in posts}
+            kept = prune(posts)
+            order = {p["post_id"]: i + 1 for i, p in enumerate(posts)}
+            comp["captured"] = sum(1 for p in posts if p.get("kind") == "comment")
+            comp["missing"] = max(0, comp["expected"] - comp["captured"]) if comp["expected"] is not None else None
+            if comp["status"] == "partial" and not comp["load_more_remaining"] and comp["expected"] is not None and comp["captured"] >= comp["expected"]:
+                comp["status"], comp["partial_reason"] = "complete", None       # the merge reached the platform's count: complete now
+            elif comp["status"] == "partial" and comp["missing"] is not None:
+                comp["partial_reason"] = f"{comp['missing']} comment{'s' if comp['missing'] != 1 else ''} may not be loaded (merged with the earlier reading)"
     pages = [{"page": order[p["post_id"]], "text": _locator_text(p, by_id)} for p in kept]
     segments = [{"start": float(pg["page"]), "end": float(pg["page"]), "text": " ".join(pg["text"].split())} for pg in pages]
     # one chunk per post (the post IS the locator); a very long post is split into pieces that keep its ordinal
@@ -460,9 +545,10 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
         rev = db.source_revision(src["id"])
         conn = db.connect()
         seen_ids = {p["post_id"] for p in posts}
-        for row in conn.execute("SELECT post_id FROM community_posts WHERE source_id=?", (src["id"],)).fetchall():
-            if row["post_id"] not in seen_ids:                            # previously retrieved, now gone → unavailable, never silently dropped
-                conn.execute("UPDATE community_posts SET deleted=1, availability='unavailable', last_seen_revision=last_seen_revision WHERE source_id=? AND post_id=?", (src["id"], row["post_id"]))
+        if comp["status"] == "complete":                                  # only a complete reading can say a post vanished
+            for row in conn.execute("SELECT post_id FROM community_posts WHERE source_id=?", (src["id"],)).fetchall():
+                if row["post_id"] not in seen_ids:                        # previously retrieved, now gone → unavailable, never silently dropped
+                    conn.execute("UPDATE community_posts SET deleted=1, availability='unavailable', last_seen_revision=last_seen_revision WHERE source_id=? AND post_id=?", (src["id"], row["post_id"]))
         for p in posts:
             s = p["signals"]
             conn.execute("INSERT INTO community_posts (source_id, post_id, parent_id, ordinal, depth, kind, author, claimed_context, score, created, edited, deleted, availability, "
@@ -476,9 +562,10 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
                           p.get("score"), p.get("created"), 1 if p.get("edited") else 0, 1 if p.get("deleted") else 0, "unavailable" if p.get("deleted") else "available",
                           p.get("text") or "", p.get("permalink"), p.get("corrected_by"), 1 if p.get("acknowledged") else 0, 1 if s["firsthand"] else 0, 1 if s["disagreement"] else 0,
                           s["quantitative"], json.dumps(s["evidence_links"]), 1 if s["injection"] else 0, 1 if p in kept else 0, thread["retrieved_at"], rev))
+        comp_line = "" if comp["status"] == "complete" else (f" · {comp['captured']} of ~{comp['expected']} comments captured" if comp["expected"] is not None else " · comment count unknown")
         db.upsert_source(platform=PLATFORM, external_id=ext, title=thread["title"], url=url, transcript_kind="community", channel=thread.get("community"),
-                         description=f"{thread.get('community') or thread['platform']} thread · {len(posts)} posts ({len(kept)} substantive) · {thread.get('score')} points",
-                         status="ready", error=None)
+                         description=f"{thread.get('community') or thread['platform']} thread · {len(posts)} posts ({len(kept)} substantive) · {thread.get('score')} points{comp_line}",
+                         status="ready", error=None, error_class=None, completeness=json.dumps(comp))
     # G6: what the thread quotes / discusses resolves to Works — the thread interprets the Work, never a second lineage
     try:
         from . import works
@@ -491,11 +578,11 @@ def store_thread(thread: dict[str, Any], *, tags: list[str] | None = None, proje
         log.warning("community work links skipped: %s", e)
     return {"source_id": src["id"], "title": thread["title"], "posts": len(posts), "substantive": len(kept), "chunks": len(chunks), "identity": res.state,
             "corrections": sum(1 for p in posts if p.get("corrected_by")), "claimed_contexts": sum(1 for p in posts if p["signals"]["claimed_context"]),
-            "firsthand": sum(1 for p in kept if p["signals"]["firsthand"]), "community": thread.get("community")}
+            "firsthand": sum(1 for p in kept if p["signals"]["firsthand"]), "community": thread.get("community"), "completeness": comp}
 
 
 def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str | None = None, progress: Any = None, query: str | None = None,
-                   listing: Any = None, capture: dict[str, Any] | None = None) -> dict[str, Any]:
+                   listing: Any = None, capture: dict[str, Any] | None = None, force: bool = False) -> dict[str, Any]:
     """Acquire one community thread as a Source through the standard identity/revision path. Reddit today; other adapters
     plug in here by host. `listing` = the thread's JSON already read inside the user's browser (the extension's
     "Send this page"): the same shape, the same path, one fewer network step."""
@@ -517,7 +604,7 @@ def acquire_thread(url: str, *, tags: list[str] | None = None, project_id: str |
             # re-read (refresh) still happens whenever the server CAN read
             tid = reddit_thread_id(url)
             state, existing = identity.resolve(identity.Candidate(platform=PLATFORM, external_id=f"reddit:{tid}", url=media.canonical_url(url)), project_id)
-            if existing and existing.get("status") == "ready":
+            if existing and existing.get("status") == "ready" and not force:          # force = an explicit re-read (Reopen and capture more)
                 if project_id:
                     identity.attach_existing(project_id, existing["id"])
                 conn = db.connect()

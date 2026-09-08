@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.33.1 — B2 completeness (no frozen numbers changed).** `sources.completeness` in use; partial captures merge; `upsert_source` now clears `error`/`error_class` when passed explicitly as None (a placeholder's browser-needed state ends on success). Gate `tests/test_l2_completeness.py`.
+
 **0.33.0 — B1 browser capture (no frozen numbers changed).** Browser-solvable acquisition failures park the ingest job `external_pending` on provider `browser` (durable, recovery re-attaches; expiry is visible, never a failure); the capture resolves the same job/source via `db.resume_external`. Additive columns `sources.error_class`, `sources.completeness`. Gate `tests/test_l1_browser_capture.py`. Tier 1 untouched.
 
 **0.32.2 — Reddit blocks every non-browser reader since 2026-06-30 (no frozen numbers changed).** Live probe: www/api 403 block page, old.reddit 404 for JSON and a `200` login wall for pages. Readers now: the browser extension (thread JSON fetched in the user's browser → `POST /api/projects/{id}/ingest/thread`) and Reddit's official API via app-only OAuth with `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` in `.env` (never in the DB). Unauthenticated rungs are kept but expected to fail; the error names each and the way forward. `safe_fetch` gained `body=` (token POST), `None`-drops-header, all `Set-Cookie` lines. Gate `tests/test_k9b_reddit_html.py`; Tier 1 untouched (no prompt changed).

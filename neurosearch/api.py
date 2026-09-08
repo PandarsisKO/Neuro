@@ -715,6 +715,11 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}
+            if r.get("completeness"):
+                try:
+                    r["completeness"] = json.loads(r["completeness"])
+                except ValueError:
+                    r["completeness"] = None
             b = browser.get(r["id"])
             if b:
                 r["acquisition"] = {"state": "requires_browser", "job_id": b["job_id"], "reason": b["reason"], "status": b["status"], "url": b["canonical_url"] or r["url"]}
@@ -1403,7 +1408,39 @@ def api_source_thread(source_id: str) -> dict[str, Any]:
     src = db.get_source(source_id)
     if not src or src.get("platform") != community.PLATFORM:
         raise HTTPException(404)
-    return {"source": {k: src.get(k) for k in ("id", "title", "url", "channel", "published_at", "status", "revision")}, "posts": community.posts_of(source_id)}
+    comp = json.loads(src["completeness"]) if src.get("completeness") else None
+    return {"source": {k: src.get(k) for k in ("id", "title", "url", "channel", "published_at", "status", "revision")}, "completeness": comp, "posts": community.posts_of(source_id)}
+
+
+class RecaptureIn(BaseModel):
+    project_id: str | None = None
+
+
+@app.post("/api/sources/{source_id}/recapture", dependencies=[Depends(require_auth)])
+def api_source_recapture(source_id: str, body: RecaptureIn) -> dict[str, Any]:
+    """B2 — 'Reopen and capture more': read the thread again (server first; the browser when the server cannot) and MERGE
+    into the same source. A partial capture never deletes what an earlier reading saw."""
+    src = db.get_source(source_id)
+    if not src or not (src.get("url") or "").startswith("http"):
+        raise HTTPException(404)
+    from . import acquire
+    if any(r.get("source_id") == source_id for r in acquire.pending_captures()):
+        return {"ok": True, "already_waiting": True}
+    job = jobs.enqueue("ingest_url", {"url": src["url"], "tags": [], "project_id": body.project_id, "force": True, "review": False, "reason": "reopen and capture more"})
+    return {"ok": True, "job_id": job["id"]}
+
+
+@app.post("/api/sources/{source_id}/accept-partial", dependencies=[Depends(require_auth)])
+def api_source_accept_partial(source_id: str) -> dict[str, Any]:
+    """B2 — the user accepts a partial capture as good enough for now; it stays visibly partial (the flag is 'accepted', never 'complete')."""
+    src = db.get_source(source_id)
+    if not src:
+        raise HTTPException(404)
+    comp = json.loads(src["completeness"]) if src.get("completeness") else {"status": "unknown"}
+    comp["accepted"] = True
+    with db.tx() as conn:
+        conn.execute("UPDATE sources SET completeness=?, updated_at=? WHERE id=?", (json.dumps(comp), db.now(), source_id))
+    return {"ok": True, "completeness": comp}
 
 
 class ResearchRefreshIn(BaseModel):

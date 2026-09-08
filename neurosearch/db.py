@@ -905,7 +905,7 @@ def upsert_source(**fields: Any) -> dict[str, Any]:
             ).fetchone()
         t = now()
         if existing:
-            fields = {k: v for k, v in fields.items() if v is not None}
+            fields = {k: v for k, v in fields.items() if v is not None or k in ("error", "error_class")}   # an explicit error=None CLEARS it (B1: a placeholder's browser-needed state ends on success)
             fields["updated_at"] = t
             sets = ", ".join(f"{k}=?" for k in fields)
             conn.execute(f"UPDATE sources SET {sets} WHERE id=?", (*fields.values(), existing["id"]))

@@ -52,7 +52,7 @@ def ingest_url(
     if community.is_reddit_thread(url):
         # G7: a discussion thread is a community Source (thread + post tree), never a JavaScript page read as HTML;
         # B1: `capture` = what the user's browser saw (the parked job's external result) — same path, same source
-        return community.acquire_thread(url, tags=tags, project_id=project_id, progress=progress, capture=capture)
+        return community.acquire_thread(url, tags=tags, project_id=project_id, progress=progress, capture=capture, force=force)
     if capture is not None:
         # B1: a page the browser rendered for us (generic capture): the standard page path with the supplied HTML
         html = capture.get("html") if isinstance(capture, dict) else None
@@ -626,7 +626,7 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
         db.replace_transcript(src["id"], segments, chunks)
         db.upsert_source(platform="web", external_id=ext_id, title=title or page["title"], url=page["url"],
                          transcript_kind=page["kind"], description=f"{len(pages)} sections",
-                         channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None)
+                         channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None, error_class=None)
         progress(0.7, "embedding…")
         n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
