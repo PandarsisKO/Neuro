@@ -142,7 +142,7 @@ def search(project_id: str | None, query: str, limit: int = 20, include_dismisse
         if d.get("source_id"):
             src = conn.execute("SELECT id, status FROM sources WHERE id=?", (d["source_id"],)).fetchone()
         in_library = bool(src and src["status"] == "ready")
-        in_project = bool(src and project_id and conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, src["id"])).fetchone())
+        in_project = bool(src and project_id and conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=? AND excluded=0", (project_id, src["id"])).fetchone())
         if (state == "acquired" or in_project) and not include_acquired:
             continue
         d.update(project=rel, state=state, in_library=in_library, in_project=in_project)

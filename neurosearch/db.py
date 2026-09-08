@@ -767,6 +767,7 @@ MIGRATIONS = [
     # retrieval reserves excerpt slots for priority sources. Sources that are in the project through a collection or tag
     # rather than a direct row are given a row when flagged (priority is a project relationship).
     ("project_sources", "priority", "ALTER TABLE project_sources ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"),
+    ("project_sources", "excluded", "ALTER TABLE project_sources ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0"),   # 0.34.2: removed from THIS project — collections/tags/retries can no longer bring it back
     # G1 (0.25.0): stronger identity than (platform, external_id) alone — canonical URL and content fingerprint (see identity.py)
     ("sources", "canonical_url", "ALTER TABLE sources ADD COLUMN canonical_url TEXT"),
     ("sources", "content_fingerprint", "ALTER TABLE sources ADD COLUMN content_fingerprint TEXT"),
@@ -831,7 +832,7 @@ def _migrate_source_analysis(conn: sqlite3.Connection) -> None:
     rows = conn.execute("SELECT id, summary, substance, relevance, relevance_why FROM sources WHERE summary IS NOT NULL OR substance IS NOT NULL OR relevance IS NOT NULL").fetchall()
     n = 0
     for s in rows:
-        pids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=?", (s["id"],)).fetchall()}
+        pids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=? AND excluded=0", (s["id"],)).fetchall()}
         pids |= {r["project_id"] for r in conn.execute(
             "SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id WHERE sc.source_id=?", (s["id"],)).fetchall()}
         for pid in pids:
@@ -2301,7 +2302,7 @@ def project_source_ids(project_id: str, ready_only: bool = True) -> list[str]:
         return []
     ids: set[str] = set()
     ids.update(r["source_id"] for r in conn.execute(
-        f"SELECT ps.source_id FROM project_sources ps JOIN sources s ON s.id=ps.source_id WHERE ps.project_id=? AND {st}",
+        f"SELECT ps.source_id FROM project_sources ps JOIN sources s ON s.id=ps.source_id WHERE ps.project_id=? AND ps.excluded=0 AND {st}",
         (project_id,)).fetchall())
     ids.update(r["source_id"] for r in conn.execute(
         f"""SELECT sc.source_id FROM project_collections pc
@@ -2321,12 +2322,14 @@ def project_source_ids(project_id: str, ready_only: bool = True) -> list[str]:
                 continue
             if any(t in stags for t in tags):
                 ids.add(r["id"])
-    return sorted(ids)
+    excluded = {r["source_id"] for r in conn.execute("SELECT source_id FROM project_sources WHERE project_id=? AND excluded=1", (project_id,)).fetchall()}
+    return sorted(ids - excluded)
 
 
 def add_project_sources(project_id: str, source_ids: list[str]) -> None:
     with tx() as conn:
         conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
+        conn.executemany("UPDATE project_sources SET excluded=0 WHERE project_id=? AND source_id=? AND excluded=1", [(project_id, s) for s in source_ids])   # an explicit add lifts a removal
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
 
 
@@ -2370,8 +2373,11 @@ def priority_source_ids(project_id: str) -> set[str]:
 
 
 def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
+    """Remove from THIS project and remember it: the row stays as an exclusion marker so a linked collection, a tag match
+    or a retried ingest job cannot bring the source back (0.34.2 — the 'it keeps showing up' bug)."""
     with tx() as conn:
-        conn.executemany("DELETE FROM project_sources WHERE project_id=? AND source_id=?", [(project_id, s) for s in source_ids])
+        conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
+        conn.executemany("UPDATE project_sources SET excluded=1, priority=0 WHERE project_id=? AND source_id=?", [(project_id, s) for s in source_ids])
 
 
 def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
@@ -2534,10 +2540,11 @@ def set_discovery_status(disc_id: int, status: str) -> dict[str, Any] | None:
 def projects_for_source(source_id: str) -> list[str]:
     """Projects this source belongs to (direct membership or via a linked collection)."""
     conn = connect()
-    ids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=?", (source_id,)).fetchall()}
+    ids = {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=? AND excluded=0", (source_id,)).fetchall()}
     ids |= {r["project_id"] for r in conn.execute(
         """SELECT pc.project_id FROM project_collections pc JOIN source_collections sc ON sc.collection_id=pc.collection_id
            WHERE sc.source_id=?""", (source_id,)).fetchall()}
+    ids -= {r["project_id"] for r in conn.execute("SELECT project_id FROM project_sources WHERE source_id=? AND excluded=1", (source_id,)).fetchall()}
     return sorted(ids)
 
 

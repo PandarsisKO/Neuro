@@ -63,7 +63,7 @@ Output ONLY JSON:
 
 def _ts_to_seconds(ts: str, platform: str) -> float | None:
     ts = (ts or "").strip()
-    m = re.match(r"(?:p\.?|§|section|sheet)\s*(\d+)", ts, flags=re.I)
+    m = re.match(r"(?:p\.?|§|section|sheet|post|comment)\s*(\d+)", ts, flags=re.I)
     if m:
         return float(m.group(1))
     parts = ts.replace("[", "").replace("]", "").split(":")
@@ -75,7 +75,7 @@ def _ts_to_seconds(ts: str, platform: str) -> float | None:
         return float(nums[0] * 3600 + nums[1] * 60 + nums[2])
     if len(nums) == 2:
         return float(nums[0] * 60 + nums[1])
-    if len(nums) == 1 and platform in ("document", "web", "spreadsheet", "book"):
+    if len(nums) == 1 and platform in ("document", "web", "spreadsheet", "book", "community"):
         return float(nums[0])
     return None
 
@@ -257,7 +257,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         cites = []
         if start is not None:
             from .search import locator_for
-            label, link = locator_for(source_id, src["url"], platform, start) if platform == "book" else (fmt_locator(platform, start), deep_link(src["url"], platform, start))
+            label, link = locator_for(source_id, src["url"], platform, start) if platform in ("book", "community") else (fmt_locator(platform, start), deep_link(src["url"], platform, start))
             cites.append({"n": 1, "source_id": source_id, "title": src["title"], "channel": src.get("channel"),
                           "url": src["url"], "link": link,
                           "timestamp": label, "start": start, "end": start, "platform": platform,

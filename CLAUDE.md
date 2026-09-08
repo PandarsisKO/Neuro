@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.34.1)
+# Neuro Search — architecture map for Claude Code (current state, 0.34.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -13,6 +13,7 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 - Frozen numbers (Tier 1 totals, retrieval baseline, prefilter/rerank gates) are decisions: never re-tune an experiment to a fixture; changing a frozen value is recorded in HARDENING.md.
 - API keys only in `.env`; cookies server-side (`data/cookies/`); Instagram only via the extension session, cap 40; no account cookies for bulk YouTube downloads by default.
 - Eval policy: Tier 1 (`NEUROSEARCH_FAKE_AI=1 neurosearch eval`) + pytest always; live paid evals only for a major model replacement, a major AI-affecting architecture change, or a regression investigation.
+- `project_sources.excluded=1` is a durable "removed from this project" marker: every membership query (direct, collection, tag) subtracts it; an explicit add lifts it. Never derive membership without it.
 - New test modules must sort AFTER `tests/test_core.py` (it builds the shared settings/DB at import).
 
 ## Modules

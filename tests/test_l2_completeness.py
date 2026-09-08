@@ -186,3 +186,17 @@ def test_synthesis_over_a_partial_thread_says_so(monkeypatch):
     assert _comp(sid)["status"] == "complete"
     syn2 = community.synthesize(pid)
     assert next(s for s in syn2 if "first-year maintenance" in s["statement"])["coverage"] is None
+
+
+def test_findings_on_a_community_thread_cite_the_post(monkeypatch):
+    """0.34.2: findings extracted from a thread carry a citation (post locator + permalink) — never 'Untitled source'."""
+    from neurosearch import findings
+    monkeypatch.setattr(community, "_json_get", lambda url: _thread_json())
+    pid = db.create_project("cite", "buying an accounting practice: first-year costs")["id"]
+    sid = community.acquire_thread(THREAD_URL, project_id=pid)["source_id"]
+    r = findings.suggest_for_source(pid, sid)
+    notes = db.list_project_notes(pid, status="suggested")
+    assert r.get("suggested", 0) >= 1 and notes
+    for n in notes:
+        assert n["citations"] and n["citations"][0]["source_id"] == sid and n["citations"][0]["title"]
+        assert n["citations"][0]["timestamp"].startswith(("post", "comment")) and "reddit.com" in (n["citations"][0]["link"] or "")

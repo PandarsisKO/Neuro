@@ -264,3 +264,35 @@ def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
     from neurosearch import api
     u = api.api_usage()
     assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")
+
+
+# ---------------------------------------------------------------- 0.34.2: "it keeps showing up" — removal is a durable exclusion; failed sources can be force-cleared
+
+def test_removed_source_stays_removed_and_failed_sources_force_clear(monkeypatch):
+    from neurosearch import api, identity
+    pid = db.create_project("clear", "x")["id"]
+    # a failed source that is ALSO a member through a linked collection and a tag match
+    db.update_project(pid, tags=["acq"]) if hasattr(db, "update_project") else None
+    coll = db.upsert_collection("playlist", "pl1", "https://www.youtube.com/playlist?list=pl1", "pl")
+    db.add_project_collections(pid, [coll["id"]])
+    s1 = db.upsert_source(platform="web", external_id="dead-1", url="https://example.com/dead-1", title="dead 1", status="failed", error="boom")
+    db.link_source_collection(s1["id"], coll["id"])
+    db.add_project_sources(pid, [s1["id"]])
+    assert s1["id"] in db.project_source_ids(pid, ready_only=False)
+    # remove from project: the collection link cannot bring it back; an attach lifts the exclusion again
+    db.remove_project_sources(pid, [s1["id"]])
+    assert s1["id"] not in db.project_source_ids(pid, ready_only=False) and pid not in db.projects_for_source(s1["id"])
+    assert identity.classify(db.get_source(s1["id"]), pid) != identity.ALREADY_IN_PROJECT
+    db.add_project_sources(pid, [s1["id"]])
+    assert s1["id"] in db.project_source_ids(pid, ready_only=False)
+    # force-clear: a queued job that would recreate it is cancelled; the row (unused elsewhere, no content) is deleted;
+    # a failed source another project holds is only excluded here
+    j = db.create_job("ingest_url", {"url": s1["url"], "project_id": pid, "tags": []})
+    other = db.create_project("other", "y")["id"]
+    s2 = db.upsert_source(platform="web", external_id="dead-2", url="https://example.com/dead-2", title="dead 2", status="failed", error="boom")
+    db.add_project_sources(pid, [s2["id"]]); db.add_project_sources(other, [s2["id"]])
+    r = api.api_clear_failed_in_project(api.ProjectRefIn(project_id=pid))
+    assert r["cleared"] == 2 and r["deleted"] == 1 and r["excluded"] == 1 and r["jobs_cancelled"] == 1
+    assert db.get_source(s1["id"]) is None and db.get_job(j["id"])["status"] == "cancelled"
+    assert db.get_source(s2["id"]) and s2["id"] not in db.project_source_ids(pid, ready_only=False) and s2["id"] in db.project_source_ids(other, ready_only=False)
+    assert [x for x in api.api_sources(project_id=pid) if x["status"] == "failed"] == []

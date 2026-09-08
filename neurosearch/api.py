@@ -634,6 +634,48 @@ def api_retry_failed_in_project(body: ProjectIn) -> dict[str, Any]:
     return _requeue_sources(body.project_id, "failed")
 
 
+class ProjectRefIn(BaseModel):
+    project_id: str
+
+
+@app.post("/api/sources/clear-failed-in-project", dependencies=[Depends(require_auth)])
+def api_clear_failed_in_project(body: ProjectRefIn) -> dict[str, Any]:
+    """0.34.2 — force-clear the project's failed sources: cancel every job that could recreate them (queued / waiting /
+    running / browser-parked jobs naming the source or its URL), exclude them from this project (a marker that survives
+    collection links, tag matches and retries), and delete the source row outright when no other project holds it and
+    it never produced content. Nothing cited elsewhere is touched."""
+    pid = body.project_id
+    if not db.get_project(pid):
+        raise HTTPException(404)
+    ids = set(db.project_source_ids(pid, ready_only=False))
+    failed = [s for s in db.list_sources(status="failed", limit=10000) if s["id"] in ids]
+    failed += [s for s in db.list_sources(status="pending", limit=10000) if s["id"] in ids and (s.get("error_class") or "").startswith("browser_solvable:")]
+    conn = db.connect()
+    urls = {s["url"] for s in failed}
+    sids = {s["id"] for s in failed}
+    cancelled = 0
+    for j in conn.execute("SELECT id, status, payload FROM jobs WHERE status IN ('queued','running','external_pending')").fetchall():
+        try:
+            pl = json.loads(j["payload"] or "{}")
+        except ValueError:
+            continue
+        if pl.get("source_id") in sids or (pl.get("url") and pl["url"] in urls) or any(x in sids for x in (pl.get("source_ids") or [])):
+            db.request_cancel(j["id"])
+            cancelled += 1
+    excluded = deleted = 0
+    for s in failed:
+        others = [p for p in db.projects_for_source(s["id"]) if p != pid]
+        has_content = conn.execute("SELECT 1 FROM chunks WHERE source_id=? LIMIT 1", (s["id"],)).fetchone() is not None
+        cited = conn.execute("SELECT 1 FROM project_notes WHERE citations LIKE ? LIMIT 1", (f"%{s['id']}%",)).fetchone() is not None
+        if not others and not has_content and not cited:
+            db.delete_source(s["id"])
+            deleted += 1
+        else:
+            db.remove_project_sources(pid, [s["id"]])
+            excluded += 1
+    return {"ok": True, "cleared": len(failed), "deleted": deleted, "excluded": excluded, "jobs_cancelled": cancelled}
+
+
 @app.post("/api/retry-failed", dependencies=[Depends(require_auth)])
 def api_retry_failed() -> dict[str, Any]:
     failed = db.list_sources(status="failed", limit=10000)

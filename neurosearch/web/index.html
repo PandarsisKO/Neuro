@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.34.1';
+const UI_VERSION = '0.34.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -941,7 +941,8 @@ async function loadSources() {
   const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : s.status === f && !needsBrowser(s))).sort((a, b) => bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
-    (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '');
+    (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
+    (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '');
   const liveLine = s => {
     if (needsBrowser(s)) return '';
     if (s.status === 'pending' && s.job) {
@@ -1008,6 +1009,12 @@ async function runCalc(id) {
 }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function clearFailedSources() {
+  if (!confirm('Remove every failed source from this project? Jobs that could bring them back are cancelled; sources nothing else uses are deleted. Sources cited in findings or held by other projects are only removed from this project.')) return;
+  const r = await post('/api/sources/clear-failed-in-project', { project_id: state.project.id });
+  toast(`✕ ${r.cleared} cleared (${r.deleted} deleted, ${r.excluded} removed from this project, ${r.jobs_cancelled} job${r.jobs_cancelled === 1 ? '' : 's'} cancelled)`);
+  state.srcFilter = 'all'; loadSources(); loadJobs();
+}
 async function retryAllSources() { const r = await post('/api/sources/retry-failed-in-project', { project_id: state.project.id }); toast(`↻ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function retry(id) { await post(`/api/sources/${id}/retry`); loadSources(); loadJobs(); }
 // ---- B1/B2: browser-assisted acquisition + completeness ----

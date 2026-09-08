@@ -114,7 +114,7 @@ def classify(source: dict[str, Any] | None, project_id: str | None, conn: sqlite
     if not source:
         return NEW
     conn = conn or db.connect()
-    if project_id and conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (project_id, source["id"])).fetchone():
+    if project_id and conn.execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=? AND excluded=0", (project_id, source["id"])).fetchone():
         return ALREADY_IN_PROJECT
     st = source.get("status")
     if st == "ready":
