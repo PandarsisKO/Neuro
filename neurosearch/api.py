@@ -262,6 +262,10 @@ def api_usage() -> dict[str, Any]:
     t = usage.totals()
     ok, reason, _ = usage.check()
     t["blocked"] = None if ok else reason
+    cap = float(db.kv_get("providers:spend_cap_until") or 0)
+    if cap and cap > time.time():
+        t["account_limit_until"] = cap
+        t["blocked"] = t["blocked"] or f"the Anthropic account's usage limit is reached — access returns {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(cap))}"
     return t
 
 

@@ -7,6 +7,8 @@ Rung 4) will later plug into; for now it only knows two providers and one switch
 """
 from __future__ import annotations
 
+import re
+
 import json
 import logging
 import time
@@ -83,7 +85,10 @@ def classify_error(e: BaseException) -> str:
         if retry_after_of(e) is None and ("spend" in txt or "usage limit" in txt or "enforced_spend_limit" in txt or "monthly limit" in txt):
             return SPEND_CAP
         return RATE_LIMIT
-    if status == 402 or "credit balance" in _error_text(e).lower() or "billing" in _error_text(e).lower():
+    txt_all = _error_text(e).lower()
+    if "usage limit" in txt_all and "regain access" in txt_all:
+        return SPEND_CAP                      # 2026: the Console's monthly usage limit arrives as a 400 invalid_request_error
+    if status == 402 or "credit balance" in txt_all or "billing" in txt_all:
         return BILLING
     if name in ("APITimeoutError", "DeadlineExceededError") or status == 408:
         return TIMEOUT
@@ -112,6 +117,23 @@ RETRY_POLICY: dict[str, dict[str, Any]] = {
 
 def retry_policy(task: str | None) -> dict[str, Any]:
     return RETRY_POLICY.get(task or "", RETRY_POLICY["default"])
+
+
+_REGAIN = re.compile(r"regain access on (\d{4}-\d{2}-\d{2})(?: at (\d{2}:\d{2}))?", re.I)
+
+
+def spend_cap_until(e: BaseException) -> float | None:
+    """When an account-level usage limit names the date access returns, the epoch of that moment (UTC); else None."""
+    import calendar
+    m = _REGAIN.search(_error_text(e))
+    if not m:
+        return None
+    try:
+        y, mo, d = (int(x) for x in m.group(1).split("-"))
+        hh, mm = (int(x) for x in (m.group(2) or "00:00").split(":"))
+        return float(calendar.timegm((y, mo, d, hh, mm, 0)))
+    except ValueError:
+        return None
 
 
 class ProviderError(RuntimeError):

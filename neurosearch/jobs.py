@@ -365,6 +365,19 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             db.job_event(jid, "requires_browser", run_id=run_id, adapter=af.adapter, cls=af.cls)
             log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
             return "external_pending"
+        pe = e if isinstance(e, _PE) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), _PE) else None)
+        if pe is not None and pe.error_type == "SPEND_CAP":
+            # the ACCOUNT's usage limit (Anthropic Console), not Neuro Search's budget: nothing retries until the date it names.
+            # The job waits (0 attempts, $0) like a budget pause, and the whole app can show one banner instead of N failures.
+            from .providers import spend_cap_until
+            until = spend_cap_until(pe.cause) or (time.time() + 6 * 3600)
+            when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(until))
+            db.kv_set("providers:spend_cap_until", str(until))
+            db.requeue_job(jid, delay=max(60, min(until - time.time(), 30 * 24 * 3600)), wait_reason="budget",
+                           message=f"paused: the Anthropic account's usage limit is reached — access returns {when}. Raise the limit in the Anthropic Console to continue sooner.")
+            if sid:
+                db.set_source_status(sid, "pending")
+            return "queued"
         if isinstance(e, RateLimited) or isinstance(getattr(e, "__cause__", None), RateLimited):
             db.requeue_job(jid, delay=rate_limit_status()["seconds_left"] + 5, message=f"paused: {e}", wait_reason="rate_limit")
             if sid:

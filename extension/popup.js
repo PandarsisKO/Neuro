@@ -92,6 +92,15 @@ async function redditCapture(tab) {
   return result;
 }
 
+// A shortfall against Reddit's comment count is usually deleted/removed comments (still counted); only a large one, or
+// unexpanded branches, means the page really did not load everything. Never shown in red: a capture is a success.
+function partialNote(cap) {
+  if (!cap || cap.captured == null || cap.expected == null) return '';
+  const missing = Math.max(0, cap.expected - cap.captured), more = cap.load_more_remaining || 0;
+  if (!more && missing <= Math.max(5, Math.floor(cap.expected * 0.1))) return missing ? ` <span class="muted">(Reddit counts ${cap.expected}; the difference is usually deleted comments.)</span>` : '';
+  return ` <span class="warn">Partial: ${cap.captured} of ~${cap.expected} comments were on the page${more ? ` (${more} “more replies” not expanded)` : ''}. Expand them and capture again to add the rest.</span>`;
+}
+
 async function pageCapture(tab) {
   const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ contract: 'page_capture/1', method: 'dom', url: location.href, title: document.title, html: document.documentElement.outerHTML }) });
   return result;
@@ -106,8 +115,7 @@ $('#captureWanted').onclick = async () => {
     if (!payload) throw new Error('nothing could be read from this page');
     const r = await api(`/api/capture/${WANTED.job_id}`, { method: 'POST', body: JSON.stringify(payload) });
     const cap = payload.capture || {};
-    const partial = cap.status === 'partial' ? ` <span class="bad">Partial: ${cap.captured} of ~${cap.expected} comments were loaded on the page.</span>` : '';
-    $('#wantedMsg').innerHTML = `<span class="ok">Captured${cap.captured != null ? ` ${cap.captured} comments` : ''} — the app is finishing it.</span>${partial}`;
+    $('#wantedMsg').innerHTML = `<span class="ok">Captured${cap.captured != null ? ` ${cap.captured} comments` : ''} — the app is finishing it.</span>${partialNote(cap)}`;
     WANTED = null; $('#wanted').style.opacity = .6;
     chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
   } catch (e) { $('#wantedMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; $('#captureWanted').disabled = false; }
@@ -129,7 +137,7 @@ $('#sendPage').onclick = async () => {
       const r = await api(`/api/projects/${pid}/ingest/thread`, { method: 'POST', body: JSON.stringify({ url: payload.canonical_url.replace(/\/\/(old|new)\.reddit\.com/, '//www.reddit.com'), capture: payload, title: tab.title }) });
       await chrome.storage.local.set({ lastProject: pid });
       const cap = payload.capture || {};
-      $('#pageMsg').innerHTML = r.resolved_pending ? `<span class="ok">Captured — the app is finishing the thread it was waiting for.</span>` : `<span class="ok">Added “${esc(r.title)}” (${r.posts} posts, ${r.substantive} substantive).</span>${cap.status === 'partial' ? ` <span class="bad">Partial: ${cap.captured} of ~${cap.expected} comments were loaded.</span>` : ''} See Sources → Communities in the app.`;
+      $('#pageMsg').innerHTML = r.resolved_pending ? `<span class="ok">Captured — the app is finishing the thread it was waiting for.</span>${partialNote(cap)}` : `<span class="ok">Added “${esc(r.title)}” (${r.posts} posts, ${r.substantive} substantive).</span>${partialNote(cap)} See Sources → Communities in the app.`;
       $('#sendPage').disabled = false; return;
     }
     const MEDIA = ['instagram.com', 'tiktok.com', 'vimeo.com', 'loom.com', 'facebook.com', 'x.com', 'twitter.com', 'wistia.com'];

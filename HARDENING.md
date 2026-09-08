@@ -70,6 +70,8 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.34.1 — account usage limit is a pause, not N failures (no frozen numbers changed).** Anthropic's Console usage limit (400 `invalid_request_error` naming the regain date) → SPEND_CAP → jobs `budget_wait` until that date, `/api/usage.account_limit_until`. Uploader accepts `.epub`; extension 1.5.1 never colours a capture red.
+
 **0.34.0 — G6P1 EPUB Core (no frozen numbers changed).** New platform `book` / `book_sections` table (additive); `works.FORMS` gains `epub`; findings citations for books use the structural label. Gate `tests/test_m1_epub.py`. Tier 1 untouched (34 / 196,951).
 
 **0.33.1 — B2 completeness (no frozen numbers changed).** `sources.completeness` in use; partial captures merge; `upsert_source` now clears `error`/`error_class` when passed explicitly as None (a placeholder's browser-needed state ends on success). Gate `tests/test_l2_completeness.py`.

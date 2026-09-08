@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 
 os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_b1_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
@@ -239,3 +240,27 @@ def test_heartbeat_and_cancel(monkeypatch):
     assert acquire.cancel_capture(j["id"]) is True and acquire.cancel_capture(j["id"]) is False
     assert db.get_job(j["id"])["status"] == "cancelled" and not acquire.pending_captures()
     assert db.get_source(db.get_job(j["id"])["payload"]["source_id"])["status"] == "failed"
+
+
+# ---------------------------------------------------------------- 0.34.1: the ACCOUNT's usage limit pauses jobs instead of failing them one by one
+
+def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
+    from neurosearch import providers
+    import anthropic
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": "You have reached your specified API usage limits. You will regain access on 2026-10-01 at 00:00 UTC."}}
+    exc = anthropic.BadRequestError(message=body["error"]["message"], response=__import__("httpx").Response(400, request=__import__("httpx").Request("POST", "https://x")), body=body)
+    assert providers.classify_error(exc) == providers.SPEND_CAP
+    until = providers.spend_cap_until(exc)
+    assert until and time.strftime("%Y-%m-%d", time.gmtime(until)) == "2026-10-01"
+    pid = db.create_project("cap", "x")["id"]
+    src = db.upsert_source(platform="web", external_id="cap-src", url="https://example.com/cap", title="cap", status="ready")
+    db.add_project_sources(pid, [src["id"]])
+    j = db.create_job("suggest_findings", {"project_id": pid, "source_ids": [src["id"]], "source_id": src["id"]})
+    monkeypatch.setattr(jobs, "run_job", lambda job: (_ for _ in ()).throw(providers.ProviderError(providers.SPEND_CAP, exc, 1, "anthropic:messages")))
+    job = db.claim_job(("suggest_findings",), worker_id="sim")
+    assert jobs.execute(job, "sim") == "queued"
+    row = db.get_job(j["id"])
+    assert row["status"] == "queued" and row["wait_reason"] == "budget" and "usage limit" in row["message"] and "2026-10-01" in row["message"] and int(row.get("attempts") or 0) == 0
+    from neurosearch import api
+    u = api.api_usage()
+    assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")
