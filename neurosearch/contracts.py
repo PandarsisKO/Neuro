@@ -101,7 +101,7 @@ def _base() -> dict[str, InferenceContract]:
                           notes="global source profile (topics, entities, document type, evidence class, temporal character, useful_for); authority = signals with basis, not a verdict"),
         # G5 (0.29.0): claim normalization + proposed evidence targets for a bounded group of $0 candidates; lazy, debounced,
         # idempotent by extraction_hash — never one call per finding
-        InferenceContract("claims.extract", "anthropic", m, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, timeout=180.0,
+        InferenceContract("claims.extract", "anthropic", m, thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=240.0,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="claim-set-v1",
                           notes="normalise candidate Claims (qualifiers, type by evidence requirement, topic, freshness class, merges) + propose evidence targets"),
         InferenceContract("discover.quick", "anthropic", m, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",

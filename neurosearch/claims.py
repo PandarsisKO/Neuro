@@ -59,7 +59,7 @@ STRENGTHS = ("strong", "developing", "weak", "unsupported")
 
 CLAIMS_BATCH_MIN = 6          # unnormalized candidates that justify an extraction call on their own
 CLAIMS_DEBOUNCE_S = 1800      # otherwise wait this long since the last extraction before spending again
-EXTRACT_GROUP = 20            # candidates per model call
+EXTRACT_GROUP = 8             # candidates per model call (20 truncated a 4k output on the real library, 0.30.1)
 EXTRACT_MAX_INLINE = 60       # more than this → job only
 
 _STOP = {"the", "and", "that", "with", "this", "from", "your", "have", "will", "they", "their", "there", "which", "when", "what",
@@ -768,21 +768,33 @@ def run_evaluation(project_id: str, budget: int = EVAL_BUDGET, progress: Any = N
     report is stored at kv claims:eval:{project} and returned. Rerunning re-measures without re-spending."""
     from . import knowledge
     harvest(project_id)
-    cohort = select_cohort(project_id, budget)
-    ids = cohort["claim_ids"]
+    # resumable: a pending evaluation (cohort + before-snapshot + cost mark) survives a failed/interrupted run, so a
+    # retry measures the SAME cohort and only spends on what is still unnormalized
+    pending_raw = db.kv_get(f"claims:eval:{project_id}:pending")
+    pending = json.loads(pending_raw) if pending_raw else None
+    if pending and pending.get("budget") == budget:
+        cohort, ids, before, cost0 = pending["cohort"], pending["cohort"]["claim_ids"], pending["before"], pending["cost0"]
+    else:
+        cohort = select_cohort(project_id, budget)
+        ids = cohort["claim_ids"]
+        before = _snapshot(project_id, ids)
+        row = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
+        cost0 = {"c": float(row["c"]), "n": int(row["n"])}
+        db.kv_set(f"claims:eval:{project_id}:pending", json.dumps({"budget": budget, "cohort": cohort, "before": before, "cost0": cost0}))
     if progress:
         progress(0.05, f"evaluating normalisation on {len(ids)} claims")
-    before = _snapshot(project_id, ids)
-    cost0 = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
     cands = [c for c in list_for_project(project_id) if c["id"] in set(ids)]
-    res = extract(project_id, cands, transport="job")
+    res = extract(project_id, [c for c in cands if not c.get("normalized")], transport="job")
     knowledge.refresh(project_id)
-    cost1 = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
+    row1 = db.connect().execute("SELECT COALESCE(SUM(cost),0) c, COUNT(*) n FROM usage WHERE project_id=? AND kind='claims'", (project_id,)).fetchone()
+    cost1 = {"c": float(row1["c"]), "n": int(row1["n"])}
     after_all = {c["id"]: c for c in list_for_project(project_id)}
     after = _snapshot(project_id, ids)
     rows, merged, hedges_kept, hedged_n, qual_n, imposed, type_changes, over_general = [], 0, 0, 0, 0, {}, 0, []
     for i in ids:
         b, a = before["claims"].get(i), after_all.get(i)
+        if a is None and b is not None:
+            continue
         if not b or not a:
             continue
         if a["status"] == "superseded":
@@ -810,6 +822,7 @@ def run_evaluation(project_id: str, budget: int = EVAL_BUDGET, progress: Any = N
               "topics": {"before": before["topics"], "after": after["topics"]}, "tensions": {"before": before["tensions"], "after": after["tensions"]},
               "open_targets": {"before": before["targets"], "after": after["targets"]}, "rows": rows[:200], "ts": time.time()}
     db.kv_set(f"claims:eval:{project_id}", json.dumps(report))
+    db.kv_set(f"claims:eval:{project_id}:pending", None)
     return {k: v for k, v in report.items() if k != "rows"} | {"rows": len(rows)}
 
 

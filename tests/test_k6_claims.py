@@ -338,3 +338,26 @@ def test_bounded_normalization_evaluation_is_durable_and_measured(monkeypatch):
     assert claims.run_evaluation(pid, budget=2)["cohort"]["size"] == 1
     assert claims.run_evaluation(pid, budget=2)["calls"] == 0
 
+
+def test_normalization_evaluation_resumes_the_same_cohort_after_a_failure(monkeypatch):
+    """A truncated call mid-way (0.30.1, real library) must not lose the before-snapshot or re-spend on normalized claims."""
+    pid, _ = _acceptance_fixture(monkeypatch)
+    claims.ensure(pid)
+    calls = {"n": 0}
+    real = claims.extract
+
+    def flaky(project_id, cands=None, transport="interactive"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            real(project_id, cands[:1], transport)              # one group lands…
+            raise RuntimeError("simulated truncation")            # …then the run dies
+        return real(project_id, cands, transport)
+    monkeypatch.setattr(claims, "extract", flaky)
+    with pytest.raises(RuntimeError):
+        claims.run_evaluation(pid, budget=3)
+    assert db.kv_get(f"claims:eval:{pid}:pending")
+    rep = claims.run_evaluation(pid, budget=3)
+    assert rep["cohort"]["size"] == 3 and rep["normalized"] >= 1 and db.kv_get(f"claims:eval:{pid}:pending") is None
+    full = claims.evaluation_report(pid)
+    assert len(full["rows"]) == 3 and all(r["before"] and r["after"] for r in full["rows"])
+
