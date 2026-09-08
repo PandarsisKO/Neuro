@@ -271,6 +271,8 @@ ECHO_OVERLAP = 0.35
 
 
 NOVEL_MAX = 12          # the outliers worth a tension + corroboration target per pass: highest importance first, not every lone finding
+WEAK_CONSENSUS_MAX = 40 # false-consensus cases per pass (highest importance first); the Claim itself still says "1 independent"
+STALE_MIN_IMPORTANCE = 4  # a stale tension only for Claims that matter (importance ≥ 4 or accepted); every stale Claim still shows `stale`
 
 
 def _echoed(c: dict[str, Any], index: "claims.TwinIndex") -> bool:
@@ -290,7 +292,7 @@ def detect(project_id: str) -> dict[str, int]:
     if all_claims:
         for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,)).fetchall():
             imp_of[r["id"]] = int(r["importance"] or 3)
-    novel_budget = NOVEL_MAX
+    novel_budget, weak_budget = NOVEL_MAX, WEAK_CONSENSUS_MAX
     selected: set[str] = set()
     all_claims.sort(key=lambda c: -imp_of.get(c.get("origin_note_id") or -1, 3))     # highest importance first (the NOVEL budget)
     for c in all_claims:
@@ -299,7 +301,7 @@ def detect(project_id: str) -> dict[str, int]:
         con = [e for e in ev if e["relation"] == "CONTRADICTS"]
         indep = {e["source_id"] for e in sup if e.get("independent")}
         imp = imp_of.get(c.get("origin_note_id") or -1, 3)
-        if c["strength"] == "stale":
+        if c["strength"] == "stale" and (imp >= STALE_MIN_IMPORTANCE or c["status"] == "accepted"):
             selected.add(_upsert_tension(project_id, "STALE", c["id"], f"Stale: {c['text'][:140]} — {c.get('strength_why')}", {"freshness_class": c["freshness_class"]}, "high" if c["freshness_class"] == "fast_changing" else "medium"))
             counts["STALE"] += 1
         if con:
@@ -308,7 +310,8 @@ def detect(project_id: str) -> dict[str, int]:
                             {"supporting": len(sup), "contradicting": len(con)}, "high"))
             counts["CONTRADICTION"] += 1
         if c["claim_type"] not in claims.GOVERNING_TYPES and len(sup) >= 1:
-            if len(indep) == 1 and len(sup) >= 2:
+            if len(indep) == 1 and len(sup) >= 2 and weak_budget > 0:
+                weak_budget -= 1
                 selected.add(_upsert_tension(project_id, "WEAK_CONSENSUS", c["id"], f"Looks corroborated but is not: {len(sup)} sources, 1 independent — the others repeat it. {c['text'][:120]}",
                                 {"supporting": len(sup), "independent": 1}, "medium"))
                 counts["WEAK_CONSENSUS"] += 1

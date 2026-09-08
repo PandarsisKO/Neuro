@@ -88,7 +88,7 @@ def _acceptance_fixture(monkeypatch):
     for sid in secs:
         _note(pid, sid, SOP, "Let me read you the rule. " + SOP, importance=3, locator="0:06", start=6, title="Seller note standby rule")
     _note(pid, outlier, OUTLIER, OUTLIER, importance=5, locator="0:00", start=0, title="Seller transition length")
-    _note(pid, stale, STALE_TEXT, STALE_TEXT, importance=3, locator="§ 1", start=1, title="Guarantee fee rates")
+    _note(pid, stale, STALE_TEXT, STALE_TEXT, importance=4, locator="§ 1", start=1, title="Guarantee fee rates")
     # 1 previously skipped candidate that the new gap makes relevant
     cid = candidates.remember([{"external_id": "cand-transition", "url": "https://www.youtube.com/watch?v=cand-transition",
                                 "title": "Seller transition after buying an accounting practice: how many tax seasons?",
