@@ -47,6 +47,10 @@ def ingest_url(
     kind = media.classify_url(url)
     tags = tags or []
 
+    from . import community
+    if community.is_reddit_thread(url):
+        # G7: a discussion thread is a community Source (thread + post tree), never a JavaScript page read as HTML
+        return community.acquire_thread(url, tags=tags, project_id=project_id, progress=progress)
     if kind == "youtube_search":
         # a YouTube search link (Discover hands these out when it isn't sure of a channel): list the top results
         # for review + relevance ranking, exactly like a playlist — never blindly download a search page

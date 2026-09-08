@@ -304,6 +304,14 @@
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+            <b>Communities</b> <span class="muted" id="commCounts"></span>
+            <div class="muted">Lived experience, failure modes and practitioner knowledge — never authority. A thread is one source; its posts are the citations. Missions come from what the research is <i>missing</i> (owner regret, unexpected costs, disagreement), not from topics. Exploring lists candidate threads as cheap metadata; you choose what to acquire.</div>
+            <div class="row" style="margin-top:8px"><input id="commName" placeholder="r/smallbusiness" style="max-width:220px"><select id="commMission" style="flex:1"><option value="">— pick a mission from the research state —</option></select><input id="commQ" placeholder="or a manual query" style="max-width:260px"><button class="small" onclick="exploreCommunity()">Explore</button></div>
+            <div class="muted" id="commMsg" style="margin-top:4px"></div>
+            <div id="commResults" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
+            <div id="commSynth" style="margin-top:8px"></div>
+          </div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Works</b> <span class="muted" id="workCounts"></span>
             <div class="muted">Canonical documents behind your sources — an SBA SOP, an IRS publication, a statute, a book — with their versions and every copy you own or have seen. Copies of one Work count as <i>one</i> line of evidence in Research. Paste an identifier (e.g. <code>SOP 50 10 8</code>, <code>IRS Publication 946</code>, an ISBN or DOI) to resolve it against what you already own.</div>
             <div class="row" style="margin-top:8px"><input id="workQ" placeholder="resolve an identifier or filter Works…" oninput="debounce(loadWorks)"><button class="small" onclick="resolveWork()">Resolve</button></div>
@@ -502,7 +510,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.31.1';
+const UI_VERSION = '0.32.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -834,7 +842,7 @@ function showPane(p) {
   document.querySelectorAll('.pane').forEach(s => s.classList.toggle('active', s.id === 'pane-' + p));
   if (p === 'library') { loadLibrary(); loadCandidates(); }
   if (p === 'discover') loadDiscoveries();
-  if (p === 'library') loadWorks();
+  if (p === 'library') { loadWorks(); loadCommunity(); }
   if (p === 'course') loadCoursePane();
 }
 let rvSig = null;
@@ -1044,6 +1052,30 @@ async function ingestText() {
   const title = $('#inTextTitle').value.trim(), text = $('#inText').value.trim(); if (!title || !text) return;
   await post('/api/ingest/text', { title, text, url: $('#inTextUrl').value || null, project_id: state.project.id, tags: [] });
   $('#inText').value = ''; $('#inTextTitle').value = ''; loadSources();
+}
+// ---- G7 communities ----
+let COMM_MISSIONS = [];
+async function loadCommunity() {
+  try {
+    const m = await api(`/api/projects/${state.project.id}/community/missions`); COMM_MISSIONS = m.missions || [];
+    $('#commMission').innerHTML = '<option value="">— pick a mission from the research state —</option>' + COMM_MISSIONS.map((x, i) => `<option value="${i}">${esc(x.kind.replace('_', ' '))}: ${esc(x.query.slice(0, 90))}</option>`).join('');
+    const s = await api(`/api/projects/${state.project.id}/community/synthesis`); const st = s.stats || {};
+    $('#commCounts').textContent = st.threads ? `· ${st.threads} thread${st.threads === 1 ? '' : 's'} · ${st.substantive} substantive posts · ${st.corrections} correction${st.corrections === 1 ? '' : 's'}` : '';
+    const syn = s.syntheses || [];
+    $('#commSynth').innerHTML = syn.length ? `<div class="muted" style="margin-top:6px"><b>Cross-thread experience</b> (derived — cite the posts, not this)</div>` + syn.slice(0, 12).map(x => `<div class="kn">${stTag(x.kind === 'FREQUENTLY_REPORTED' ? 'strong' : x.kind === 'RARE_BUT_SERIOUS' || x.kind === 'STRONG_DISAGREEMENT' ? 'weak' : 'developing')}<div><b>${esc(x.kind.replace(/_/g, ' '))}</b> · ${x.independent_lines} independent firsthand line${x.independent_lines === 1 ? '' : 's'}${x.contradicting ? ` · ${x.contradicting} disputing` : ''}<div class="why">${esc(x.statement)}</div><div>${(x.evidence || []).slice(0, 6).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank">${esc(e.relation === 'CONTRADICTS' ? '✗ ' : '')}${esc(e.locator || '')}${e.independent ? '' : ' ↩'}</a>`).join('')}</div></div></div>`).join('') : '';
+  } catch (e) { $('#commMsg').textContent = e.message; }
+}
+async function exploreCommunity() {
+  const community = $('#commName').value.trim(); if (!community) { $('#commMsg').textContent = 'name a community, e.g. r/smallbusiness'; return; }
+  const mi = $('#commMission').value; const mission = mi === '' ? null : COMM_MISSIONS[+mi]; const q = $('#commQ').value.trim() || null;
+  if (!mission && !q) { $('#commMsg').textContent = 'pick a mission or type a query'; return; }
+  $('#commMsg').textContent = 'searching (metadata only)…';
+  try {
+    const r = await post(`/api/projects/${state.project.id}/community/explore`, { community, query: q, mission });
+    $('#commMsg').textContent = `${r.found} candidate thread${r.found === 1 ? '' : 's'} for “${r.query}” — ${r.note}`;
+    $('#commResults').innerHTML = (r.candidates || []).map(x => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="flex:1"><a href="${esc(x.url)}" target="_blank">${esc(x.title || x.url)}</a> <span class="muted">· ${x.community || ''} · ${x.num_comments ?? '?'} comments · ${x.engagement ?? '?'} points (reaction, not truth) · fit ${x.mission_score}${x.experience_language ? ' · experience language' : ''}</span>${x.description ? `<div class="muted" style="font-size:12px">${esc(x.description.slice(0, 200))}</div>` : ''}</span><button class="small primary" onclick="candAct('${x.candidate_id}','acquire')">Acquire thread</button></div>`).join('') || '<div class="muted">nothing found</div>';
+    loadCandidates();
+  } catch (e) { $('#commMsg').textContent = e.message; }
 }
 // ---- G6 works ----
 async function loadWorks() {

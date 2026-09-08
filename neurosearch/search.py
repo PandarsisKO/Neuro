@@ -31,7 +31,23 @@ def deep_link(url: str, platform: str, start: float) -> str:
     return url
 
 
+def _community_locator(c: dict[str, Any]) -> tuple[str, str] | None:
+    """G7: a community chunk cites the POST — 'comment 12 by author' with the comment's own permalink."""
+    from . import db as _db
+    r = _db.connect().execute("SELECT kind, author, permalink, corrected_by, availability FROM community_posts WHERE source_id=? AND ordinal=?", (c["source_id"], int(c["start"]))).fetchone()
+    if not r:
+        return None
+    label = ("post" if r["kind"] == "post" else f"comment {int(c['start'])}") + (f" by {r['author']}" if r["author"] else "") + (" (corrected in thread)" if r["corrected_by"] else "") + (" (now unavailable)" if r["availability"] == "unavailable" else "")
+    return label, (r["permalink"] or c["url"])
+
+
 def hit_from_chunk(c: dict[str, Any], score: float) -> dict[str, Any]:
+    if (c.get("platform") or "") == "community":
+        loc = _community_locator(c)
+        if loc:
+            return {"chunk_id": c["id"], "source_id": c["source_id"], "title": c.get("title") or c.get("url"), "channel": c.get("channel"), "platform": "community",
+                    "published_at": c.get("published_at"), "url": c.get("url"), "start": c["start"], "end": c["end"], "timestamp": loc[0], "link": loc[1],
+                    "text": c["text"], "score": round(float(score), 4)}
     return {
         "chunk_id": c["id"],
         "source_id": c["source_id"],

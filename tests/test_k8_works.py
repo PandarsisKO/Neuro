@@ -195,3 +195,28 @@ def test_governing_claim_through_a_quote_is_not_fully_verified_while_the_primary
     claims.ensure(pid)
     c = next(c for c in claims.list_for_project(pid) if "full standby" in c["text"])
     assert c["strength"] != "strong" and "primary source" in c["strength_why"] and "owned" in c["strength_why"]
+
+
+def test_merge_work_is_the_only_way_two_works_become_one_and_keeps_an_alias():
+    pid = _project()
+    a, _ = works.ensure_work("form", "Form 1120-S", identifiers=[{"scheme": "docnum", "value": "form-1120-s"}])
+    b, _ = works.ensure_work("form", "Form 1120S", identifiers=[{"scheme": "docnum", "value": "form-1120s"}])
+    s1 = _transcript("f1", "How to file Form 1120-S", "Tax Talk", "Form 1120-S walkthrough for S corps.")
+    s2 = _transcript("f2", "Form 1120S deadlines", "Tax Talk", "Form 1120S is due in March.")
+    works.link_source(s1, a["id"], relation="derivative_of", form="derivative")
+    works.link_source(s2, b["id"], relation="derivative_of", form="derivative")
+    va = works.ensure_version(a["id"], "2025")
+    works.ensure_version(b["id"], "2025"); works.ensure_version(b["id"], "2026")
+    works.set_project_relevance(pid, a["id"], "relevant"); works.set_project_relevance(pid, b["id"], "targeted")
+    merges = works.reconcile_identifiers()
+    assert len(merges) == 1 and merges[0]["moved"]["manifestations"] == 1
+    canon = works.get(merges[0]["canonical_work_id"])
+    assert canon and works.get(merges[0]["merged_work_id"]) is None
+    assert works.get_any(merges[0]["merged_work_id"])["id"] == canon["id"]                    # alias survives
+    assert {v["label"] for v in canon["versions"]} == {"2025", "2026"} and len(canon["manifestations"]) == 2
+    assert works.project_relevance(pid, canon["id"])["relevance"] == "targeted"                 # the stronger state wins
+    assert works.by_identifier("docnum", "form-1120s")["work_id"] == canon["id"] and canon["title"] == "Form 1120S"
+    assert db.connect().execute("SELECT COUNT(*) FROM works").fetchone()[0] == 1
+    with pytest.raises(ValueError):
+        works.merge_work(canon["id"], canon["id"])
+

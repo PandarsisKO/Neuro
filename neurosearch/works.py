@@ -184,6 +184,15 @@ def by_identifier(scheme: str, value: str) -> dict[str, Any] | None:
     return {"work_id": r["work_id"], "version_id": r["version_id"]} if r else None
 
 
+def get_any(work_id: str) -> dict[str, Any] | None:
+    """get() that follows merge aliases (an old id keeps resolving after merge_work)."""
+    w = get(work_id)
+    if w:
+        return w
+    a = by_identifier("alias", work_id)
+    return get(a["work_id"]) if a else None
+
+
 def ensure_work(kind: str, title: str, *, identifiers: list[dict[str, str]] | None = None, creators: list[str] | None = None,
                 publisher: str | None = None, year: str | None = None) -> tuple[dict[str, Any], bool]:
     """Find-or-create by the frozen signal order. (1) an identifier hit is identity; (2) exact normalized title + creator
@@ -482,6 +491,92 @@ def find_copy(text: str, project_id: str | None = None, *, external: bool = Fals
         job = db.create_job("discover", {"project_id": project_id, "refine": f"obtain {w['title']}" + (f" {i['version']}" if i.get("version") else ""), "mode": "web_first"})
         out["job_id"] = job["id"]
     return out
+
+
+# ---------------------------------------------------------------- canonical merge (the only way two Works become one)
+
+def merge_work(source_work_id: str, canonical_work_id: str, *, reason: str = "same canonical identifier") -> dict[str, Any]:
+    """Fold `source_work` into `canonical_work`: identifiers, versions (by label), manifestations (dedupe per source/relation),
+    project relevance (keep the stronger state), targets/claims text untouched (they reference sources, not works), plus an
+    audit alias so the old id still resolves. Never called automatically on title similarity — only on identical
+    normalized identifiers or by explicit request."""
+    if source_work_id == canonical_work_id:
+        raise ValueError("same work")
+    src, dst = get(source_work_id), get(canonical_work_id)
+    if not src or not dst:
+        raise ValueError("unknown work")
+    t = time.time()
+    moved = {"identifiers": 0, "versions": 0, "manifestations": 0, "project_works": 0}
+    rank = {"dismissed": 0, "relevant": 1, "targeted": 2, "attached": 3}
+    with db.tx() as c:
+        moved["identifiers"] = c.execute("UPDATE work_identifiers SET work_id=? WHERE work_id=?", (canonical_work_id, source_work_id)).rowcount
+        vmap: dict[str, str] = {}
+        for v in c.execute("SELECT * FROM work_versions WHERE work_id=?", (source_work_id,)).fetchall():
+            hit = c.execute("SELECT id FROM work_versions WHERE work_id=? AND lower(label)=lower(?)", (canonical_work_id, v["label"])).fetchone()
+            if hit:
+                vmap[v["id"]] = hit["id"]
+                c.execute("DELETE FROM work_versions WHERE id=?", (v["id"],))
+            else:
+                c.execute("UPDATE work_versions SET work_id=?, updated_at=? WHERE id=?", (canonical_work_id, t, v["id"]))
+                vmap[v["id"]] = v["id"]
+            moved["versions"] += 1
+        for old_v, new_v in vmap.items():
+            c.execute("UPDATE work_versions SET supersedes_id=? WHERE supersedes_id=?", (new_v, old_v))
+            c.execute("UPDATE work_identifiers SET version_id=? WHERE version_id=?", (new_v, old_v))
+            c.execute("UPDATE work_manifestations SET version_id=? WHERE version_id=?", (new_v, old_v))
+        for m in c.execute("SELECT * FROM work_manifestations WHERE work_id=?", (source_work_id,)).fetchall():
+            dup = c.execute("SELECT id FROM work_manifestations WHERE work_id=? AND relation=? AND COALESCE(source_id,'')=COALESCE(?,'') AND COALESCE(candidate_id,'')=COALESCE(?,'')",
+                            (canonical_work_id, m["relation"], m["source_id"], m["candidate_id"])).fetchone()
+            if dup:
+                c.execute("DELETE FROM work_manifestations WHERE id=?", (m["id"],))
+            else:
+                c.execute("UPDATE work_manifestations SET work_id=? WHERE id=?", (canonical_work_id, m["id"]))
+            moved["manifestations"] += 1
+        for pw in c.execute("SELECT * FROM project_works WHERE work_id=?", (source_work_id,)).fetchall():
+            cur = c.execute("SELECT relevance FROM project_works WHERE project_id=? AND work_id=?", (pw["project_id"], canonical_work_id)).fetchone()
+            if not cur or rank.get(pw["relevance"], 0) > rank.get(cur["relevance"], 0):
+                c.execute("INSERT INTO project_works (project_id, work_id, relevance, reason, target_id, updated_at) VALUES (?,?,?,?,?,?) "
+                          "ON CONFLICT(project_id, work_id) DO UPDATE SET relevance=excluded.relevance, reason=excluded.reason, target_id=COALESCE(excluded.target_id, project_works.target_id), updated_at=excluded.updated_at",
+                          (pw["project_id"], canonical_work_id, pw["relevance"], pw["reason"], pw["target_id"], t))
+            c.execute("DELETE FROM project_works WHERE project_id=? AND work_id=?", (pw["project_id"], source_work_id))
+            moved["project_works"] += 1
+        c.execute("UPDATE claim_evidence SET lineage_id=? WHERE lineage_id=?", (canonical_work_id, source_work_id))
+        # audit alias: the old id and title stay resolvable
+        c.execute("INSERT OR IGNORE INTO work_identifiers (scheme, value, work_id) VALUES ('alias', ?, ?)", (source_work_id, canonical_work_id))
+        c.execute("INSERT OR IGNORE INTO work_identifiers (scheme, value, work_id) VALUES ('alias-title', ?, ?)", (src["title_norm"], canonical_work_id))
+        c.execute("DELETE FROM works WHERE id=?", (source_work_id,))
+        c.execute("UPDATE works SET updated_at=? WHERE id=?", (t, canonical_work_id))
+    db.kv_bump("works:merged")
+    log.info("work %s merged into %s (%s): %s", source_work_id, canonical_work_id, reason, moved)
+    return {"canonical_work_id": canonical_work_id, "merged_work_id": source_work_id, "moved": moved, "reason": reason}
+
+
+def reconcile_identifiers() -> list[dict[str, Any]]:
+    """Identifiers whose normalized form collides (Form 1120-S / 1120S) mark the same Work: normalize in place and
+    merge the collisions through merge_work. Safe by construction — only identical canonical identifiers ever merge."""
+    conn = db.connect()
+    merges = []
+    rows = [dict(r) for r in conn.execute("SELECT scheme, value, work_id, version_id FROM work_identifiers WHERE scheme='docnum'").fetchall()]
+    by_norm: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        norm = "form-" + r["value"][5:].replace("-", "") if r["value"].startswith("form-") else r["value"]
+        by_norm.setdefault(norm, []).append(r)
+    for norm, group in by_norm.items():
+        works_ = sorted({g["work_id"] for g in group}, key=lambda wid: (dict(conn.execute("SELECT created_at FROM works WHERE id=?", (wid,)).fetchone() or {"created_at": 0})["created_at"]))
+        canonical = works_[0]
+        for wid in works_[1:]:
+            if get(wid) and get(canonical):
+                merges.append(merge_work(wid, canonical, reason=f"identical canonical identifier docnum:{norm}"))
+        for g in group:
+            if g["value"] != norm:
+                with db.tx() as c:
+                    c.execute("DELETE FROM work_identifiers WHERE scheme='docnum' AND value=?", (g["value"],))
+                    c.execute("INSERT OR IGNORE INTO work_identifiers (scheme, value, work_id, version_id) VALUES ('docnum', ?, ?, ?)", (norm, canonical, g["version_id"]))
+        if get(canonical) and (get(canonical)["title"] or "").replace("-", "") != get(canonical)["title"]:
+            with db.tx() as c:
+                title = get(canonical)["title"].replace("-", "")
+                c.execute("UPDATE works SET title=?, title_norm=? WHERE id=?", (title, normalize_title(title), canonical))
+    return merges
 
 
 def stats() -> dict[str, Any]:

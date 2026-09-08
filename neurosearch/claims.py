@@ -183,7 +183,7 @@ def evidence_class_for(src: dict[str, Any]) -> str:
         return "authoritative"
     if sig.get("domain") == "education":
         return "expert"
-    if (src.get("platform") or "") in ("youtube", "instagram", "podcast", "media") or sig.get("text_origin") in ("captions", "transcribed"):
+    if (src.get("platform") or "") in ("youtube", "instagram", "podcast", "media", "community") or sig.get("text_origin") in ("captions", "transcribed", "community"):
         return "experiential"
     if (src.get("platform") or "") in ("document", "web"):
         return "expert"
@@ -296,6 +296,26 @@ def add_claim(project_id: str, text: str, *, claim_type: str = "other", qualifie
     return get(cid)  # type: ignore[return-value]
 
 
+def _creator_of(src: dict[str, Any], locator: str | None) -> str | None:
+    if (src.get("platform") or "") == "community":
+        m = re.search(r"(\d+)", locator or "")
+        if m:
+            r = db.connect().execute("SELECT author FROM community_posts WHERE source_id=? AND ordinal=?", (src.get("id"), int(m.group(1)))).fetchone()
+            return (r["author"] or "").lower() or None if r else None
+        return None
+    return (src.get("channel") or "").lower() or None
+
+
+def _firsthand(src: dict[str, Any], locator: str | None) -> bool:
+    if (src.get("platform") or "") != "community":
+        return False
+    m = re.search(r"(\d+)", locator or "")
+    if not m:
+        return False
+    r = db.connect().execute("SELECT firsthand FROM community_posts WHERE source_id=? AND ordinal=?", (src.get("id"), int(m.group(1)))).fetchone()
+    return bool(r and r["firsthand"])
+
+
 def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, start: float | None = None, link: str | None = None,
                  relation: str = "SUPPORTS", excerpt: str | None = None, task: str | None = None, model: str | None = None) -> dict[str, Any]:
     """Freeze the exact revision + locator. Independence against the Claim's existing evidence is decided here ($0)."""
@@ -307,8 +327,27 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
     cls = evidence_class_for(src)
     lin = works.lineage_of(source_id)
     lineage_id = (lin or {}).get("work_id")
+    if (src.get("platform") or "") == "community":
+        m0 = re.search(r"(\d+)", locator or "")
+        pr = db.connect().execute("SELECT permalink FROM community_posts WHERE source_id=? AND ordinal=?", (source_id, int(m0.group(1)))).fetchone() if m0 else None
+        if pr and pr["permalink"]:
+            link = pr["permalink"]                                        # the comment's own permalink, not the thread
+    if not lineage_id and (src.get("platform") or "") == "community":
+        # G7: posts that lean on the same external reference are REPEATED INFORMATION, not independent experience
+        m = re.search(r"(\d+)", locator or "")
+        row = db.connect().execute("SELECT evidence_links, firsthand FROM community_posts WHERE source_id=? AND ordinal=?", (source_id, int(m.group(1)))).fetchone() if m else None
+        if row and row["evidence_links"] and not row["firsthand"]:
+            try:
+                links = json.loads(row["evidence_links"])
+            except ValueError:
+                links = []
+            if links:
+                lineage_id = "url:" + re.sub(r"^https?://(www\.)?", "", links[0]).rstrip("/").lower()
     independent, derivative_of = 1, None
-    existing = [e for e in evidence_for(claim_id, limit=INDEPENDENCE_WINDOW) if e["source_id"] != source_id]   # beyond this window nothing changes sufficiency
+    # beyond this window nothing changes sufficiency; two posts of one community thread are two pieces of evidence, so only
+    # the identical locator is excluded (for other platforms a second row from the same source is the same source)
+    existing = [e for e in evidence_for(claim_id, limit=INDEPENDENCE_WINDOW)
+                if e["source_id"] != source_id or ((src.get("platform") or "") == "community" and (e.get("locator") or "") != (locator or ""))]
     # pass 1 — G6 lineage: one Work = one evidentiary lineage (official PDF + mirror + excerpt + quote = 1), whatever the source count
     promote_over: list[int] = []
     if lineage_id:
@@ -324,10 +363,15 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
             else:
                 independent, derivative_of = 0, rep["source_id"]
     # pass 2 — wording/creator heuristics, only where lineage says nothing: a source that belongs to a Work's lineage is
-    # judged by that lineage alone (the first arrival of a Work is a new line of evidence, whatever its wording)
+    # judged by that lineage alone (the first arrival of a Work is a new line of evidence, whatever its wording).
+    # G7: for community threads the creator is the POST's author, never the community (two owners in one subreddit are two people)
+    my_creator = _creator_of(src, locator)
+    my_firsthand = _firsthand(src, locator)
     if independent and not lineage_id:
         for e in existing:
-            same_creator = bool(src.get("channel")) and src.get("channel") == e.get("channel")
+            same_creator = bool(my_creator) and my_creator == _creator_of({"platform": e.get("platform"), "channel": e.get("channel"), "id": e["source_id"]}, e.get("locator"))
+            if my_firsthand and not same_creator:
+                continue                                                   # another person's own experience is another line, however similar the words
             if excerpt and e.get("excerpt") and overlap(excerpt, e["excerpt"]) >= DERIVATIVE_OVERLAP:
                 independent, derivative_of = 0, e["source_id"]
                 break
@@ -554,7 +598,11 @@ def assess(claim_id: str) -> dict[str, Any] | None:
                 why.append(prim)
         else:
             strength = "developing" if len(indep_sources) >= 2 else "weak"
-            why.append(f"governing Claim without a primary source: {len(sup)} secondary source(s), {len(indep_sources)} independent — the controlling text itself is missing")
+            if all(e.get("evidence_class") in ("experiential", "derivative") for e in sup):
+                strength = "weak"
+                why.append(f"insufficient authority: {len(sup)} community/experiential source(s) cannot establish what a rule says, however many agree — find the governing primary source")
+            else:
+                why.append(f"governing Claim without a primary source: {len(sup)} secondary source(s), {len(indep_sources)} independent — the controlling text itself is missing")
             from . import works as _works
             prim = _primary_gap(sup, _works)
             if prim:

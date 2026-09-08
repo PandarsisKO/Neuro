@@ -1208,6 +1208,28 @@ def api_work_link(work_id: str, body: LinkIn) -> dict[str, Any]:
         raise HTTPException(400, str(e))
 
 
+class MergeIn(BaseModel):
+    into: str
+    reason: str = "user"
+
+
+@app.post("/api/works/{work_id}/merge", dependencies=[Depends(require_auth)])
+def api_work_merge(work_id: str, body: MergeIn) -> dict[str, Any]:
+    """The only way two Works become one (audit alias kept)."""
+    from . import works
+    try:
+        return works.merge_work(work_id, body.into, reason=body.reason)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/works/reconcile", dependencies=[Depends(require_auth)])
+def api_works_reconcile() -> dict[str, Any]:
+    """Normalize identifier variants (Form 1120-S / 1120S) and merge identical canonical identifiers through merge_work."""
+    from . import works
+    return {"merges": works.reconcile_identifiers(), "stats": works.stats()}
+
+
 class RelevanceIn(BaseModel):
     relevance: str      # attached | relevant | targeted | dismissed
     reason: str | None = None
@@ -1223,6 +1245,55 @@ def api_project_work_relevance(project_id: str, work_id: str, body: RelevanceIn)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return works.project_relevance(project_id, work_id) or {}
+
+
+# ---- G7 (0.32.0): Deep & Community Source Discovery — threads as sources, missions from research state, synthesis
+
+class ExploreCommunityIn(BaseModel):
+    community: str                      # "r/smallbusiness"
+    query: str | None = None            # manual query; otherwise the mission's
+    mission: dict[str, Any] | None = None
+    limit: int = 25
+
+
+@app.get("/api/projects/{project_id}/community/missions", dependencies=[Depends(require_auth)])
+def api_community_missions(project_id: str) -> dict[str, Any]:
+    """Search missions derived from research STATE (missing perspectives, tensions, open targets, weak experiential Claims)."""
+    from . import community
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return {"missions": community.missions(project_id)}
+
+
+@app.post("/api/projects/{project_id}/community/explore", dependencies=[Depends(require_auth)])
+async def api_community_explore(project_id: str, body: ExploreCommunityIn) -> dict[str, Any]:
+    """Metadata only: candidate threads into the Candidate Index, ranked against the mission. Nothing acquired."""
+    from . import community
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    try:
+        return await anyio.to_thread.run_sync(lambda: community.explore(body.community, project_id, body.mission, limit=min(body.limit, 100), query=body.query))
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/projects/{project_id}/community/synthesis", dependencies=[Depends(require_auth)])
+def api_community_synthesis(project_id: str, refresh: bool = False) -> dict[str, Any]:
+    from . import community
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    rows = community.synthesize(project_id) if refresh else community.syntheses(project_id)
+    return {"syntheses": rows, "stats": community.stats()}
+
+
+@app.get("/api/sources/{source_id}/thread", dependencies=[Depends(require_auth)])
+def api_source_thread(source_id: str) -> dict[str, Any]:
+    """The preserved post tree of a community source (locators, corrections, claimed context, availability)."""
+    from . import community
+    src = db.get_source(source_id)
+    if not src or src.get("platform") != community.PLATFORM:
+        raise HTTPException(404)
+    return {"source": {k: src.get(k) for k in ("id", "title", "url", "channel", "published_at", "status", "revision")}, "posts": community.posts_of(source_id)}
 
 
 class ResearchRefreshIn(BaseModel):

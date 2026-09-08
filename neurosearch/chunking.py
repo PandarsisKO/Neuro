@@ -166,6 +166,8 @@ def fmt_locator(platform: str, start: float) -> str:
         return f"§ {int(start)}"
     if platform == "spreadsheet":
         return f"sheet {int(start)}"
+    if platform == "community":
+        return f"post {int(start)}"
     return fmt_ts(start)
 
 

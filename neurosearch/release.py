@@ -237,6 +237,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         r.check("library intelligence: recall works with ZERO enriched profiles; profiles project-neutral; nothing attached (G4 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k7_chat_truncation.py"])
         r.check("chat never silently returns an incomplete generation: max_tokens → continuation, text+tool_use → final text, no dangling tool round (0.30.3 gate)", ok, tail)
+        ok, tail = _pytest(["tests/test_k9_community.py"])
+        r.check("community evidence: thread hierarchy + corrections preserved, independent experience ≠ repeated information, engagement never outranks substance, "
+                "self-described context unverified, community cannot establish a rule, injection text is data, candidates resurface without re-enumeration (G7 gate)", ok, tail)
         ok, tail = _pytest(["tests/test_k8_works.py"])
         r.check("canonical works: identifier → owned copy at $0; copies + derivatives = one lineage; citation → stub/candidate/target; version relationship drives freshness; "
                 "ambiguous titles never merge; project relevance never mutates the Work (G6 gate)", ok, tail)
@@ -262,7 +265,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
             rep1 = evals.run(progress=lambda m: None)
             v = rep1["volume"]["by_task"]
             tot = lambda t: t["input_tokens"] + t["cache_read"] + t["cache_write"]  # noqa: E731
-            frozen = {"answer": (34, 192504), "findings": (9, 30297), "plan": (2, 11026)}
+            frozen = {"answer": (34, 196951), "findings": (9, 30297), "plan": (2, 11026)}
             drift = {k: (v[k]["calls"], tot(v[k])) for k in frozen if (v[k]["calls"], tot(v[k])) != frozen[k]}
             r.check("Tier 1 gates PASS", rep1["pass"], {k: g for k, g in rep1["gates"].items() if not g["pass"]} or f"cache read rate {rep1['volume']['cache_read_rate']:.1%}")
             r.check("Tier 1 frozen totals unchanged (router-equivalence)", not drift, drift or frozen)

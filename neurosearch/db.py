@@ -531,6 +531,49 @@ CREATE TABLE IF NOT EXISTS work_manifestations (
 );
 CREATE INDEX IF NOT EXISTS ix_work_manifestations_work ON work_manifestations(work_id);
 CREATE INDEX IF NOT EXISTS ix_work_manifestations_source ON work_manifestations(source_id);
+-- G7 (0.32.0): community threads are ONE source each (platform 'community'); posts/comments are evidence locators with
+-- retrieval/edit/deletion state, corrections attached to what they correct, self-described context never verified.
+CREATE TABLE IF NOT EXISTS community_posts (
+    source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    post_id         TEXT NOT NULL,                  -- platform id
+    parent_id       TEXT,
+    ordinal         INTEGER NOT NULL,               -- locator ('post N'), stable per revision
+    depth           INTEGER NOT NULL DEFAULT 0,
+    kind            TEXT NOT NULL DEFAULT 'comment', -- post | comment
+    author          TEXT,
+    claimed_context TEXT,                           -- JSON {context, basis: 'self-described in the post', verified: false}
+    score           INTEGER,
+    created         REAL,
+    edited          INTEGER NOT NULL DEFAULT 0,
+    deleted         INTEGER NOT NULL DEFAULT 0,
+    availability    TEXT NOT NULL DEFAULT 'available', -- available | unavailable (previously retrieved, now gone)
+    text            TEXT,
+    permalink       TEXT,
+    corrected_by    TEXT,                           -- post_id of the reply that corrects this one
+    acknowledged    INTEGER NOT NULL DEFAULT 0,     -- the author accepted the correction
+    firsthand       INTEGER NOT NULL DEFAULT 0,
+    disagreement    INTEGER NOT NULL DEFAULT 0,
+    quantitative    INTEGER NOT NULL DEFAULT 0,
+    evidence_links  TEXT,                           -- JSON list of URLs the post cites
+    injection       INTEGER NOT NULL DEFAULT 0,     -- instruction-like text detected: quoted as data, never followed
+    in_chunks       INTEGER NOT NULL DEFAULT 0,     -- survived pruning → became retrievable evidence
+    retrieved_at    REAL NOT NULL,
+    last_seen_revision TEXT,
+    PRIMARY KEY (source_id, post_id)
+);
+CREATE INDEX IF NOT EXISTS ix_community_posts_ordinal ON community_posts(source_id, ordinal);
+CREATE TABLE IF NOT EXISTS community_syntheses (                          -- derived cross-thread states; never primary evidence
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,                  -- FREQUENTLY_REPORTED | MIXED_EXPERIENCE | STRONG_DISAGREEMENT | RARE_BUT_SERIOUS | FIRSTHAND_EXAMPLES
+    claim_id        TEXT,
+    statement       TEXT NOT NULL,
+    independent_lines INTEGER NOT NULL DEFAULT 0,
+    supporting      INTEGER NOT NULL DEFAULT 0,
+    contradicting   INTEGER NOT NULL DEFAULT 0,
+    evidence        TEXT,                           -- JSON: exact evidence links (source, locator, permalink, relation, independent)
+    created_at      REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS project_works (                               -- project-relative relevance/use only
     project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     work_id     TEXT NOT NULL REFERENCES works(id) ON DELETE CASCADE,

@@ -402,6 +402,11 @@ def refresh(project_id: str) -> dict[str, Any]:
     claims.assess_project(project_id)
     detect(project_id)
     dedupe_targets(project_id)
+    try:
+        from . import community
+        community.synthesize(project_id)                                  # G7: derived cross-thread states, never primary evidence
+    except Exception as e:  # noqa: BLE001
+        log.warning("community synthesis skipped: %s", e)
     for tg in list_targets(project_id):
         assess_target(tg["id"])
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] not in ("rejected", "superseded")]
