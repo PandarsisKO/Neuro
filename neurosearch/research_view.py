@@ -33,7 +33,7 @@ BREADTH_PER_CLAIM, BREADTH_CAP = 3, 12
 KNOWN_SOURCES_BONUS = 8        # promising candidates already known: the action is cheap
 RECENT_BONUS, RECENT_DAYS = 5, 7
 IMPORTANT_QUESTION = 60        # score at/above which a question counts as "important" for the summary and the badge
-WATCHOUT_ATTENTION_IMPACTS = ("high", "medium")
+WATCHOUT_ATTENTION_IMPACTS = ("high",)          # the sidebar counts issues, not rows: high-impact issues + planner-dependent questions + Claims awaiting a decision
 
 GENERIC_TOPICS = {"general", "both", "year", "years", "also", "thing", "things", "make", "made", "take", "time", "first", "good", "well", "just", "like",
                   "really", "need", "want", "know", "think", "much", "many", "way", "lot", "one", "two", "three", "said", "says", "going", "get", "got",
@@ -130,7 +130,7 @@ def _missing_of(t: dict[str, Any]) -> list[str]:
 
 
 def _area_name_for(topic: str | None, area_of: dict[str, str]) -> str:
-    return area_of.get(topic or "", (topic or "general").replace("_", " ").title())
+    return area_of.get(topic or "general", (topic or "general").replace("_", " ").title())
 
 
 # ---------------------------------------------------------------- Research Areas ($0 clustering over the topic nodes)
@@ -151,7 +151,11 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
         for c in cs:
             bag.update(claims._tokens(c["text"]))
         bags[t] = Counter(dict(bag.most_common(AREA_TERMS)))
-    real = [t for t in by_topic if t not in GENERIC_TOPICS and len(by_topic[t]) >= AREA_MIN_CLAIMS]
+    big = [t for t in by_topic if t not in GENERIC_TOPICS and len(by_topic[t]) >= AREA_MIN_CLAIMS]
+    # a normalized topic reads like a domain ("acquisition due diligence framework"); a lone word ("cash", "deal", "buyer") never does —
+    # single-word topics only stand on their own when the project has no multi-word topic at all
+    multi = [t for t in big if len(t.split()) >= 2]
+    real = multi or big
     minor = [t for t in by_topic if t not in real]
     # greedy agglomeration over the real nodes, largest first, deterministic order
     real.sort(key=lambda t: (-len(by_topic[t]), t))
@@ -168,32 +172,39 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
                 best, best_j = cl_, j
         if best is not None and best_j >= AREA_MERGE:
             best["topics"].append(t)
-            best["bag"] = best["bag"] + bags[t]
+            best["bag"] = Counter(dict((best["bag"] + bags[t]).most_common(AREA_TERMS)))   # re-trim: a big cluster must not become a magnet
         else:
             clusters.append({"topics": [t], "bag": Counter(bags[t])})
     if not clusters:
         clusters.append({"topics": [], "bag": Counter()})
+    core = [dict(topics=list(c["topics"]), bag=Counter(c["bag"])) for c in clusters]   # the real topics only, for naming
     for t in minor:                                             # fold generic/small topics into the nearest cluster (never a card of their own)
-        best = max(clusters, key=lambda cl_: jac(bags[t], cl_["bag"]) if cl_["bag"] else 0.0)
-        best["topics"].append(t)
-        best["bag"] = best["bag"] + bags[t]
-    # names: the finding titles Kyle already reads (most common in the cluster, up to two) — a title is a human label, a
-    # token is not; fall back to the terms most distinctive for the cluster against the others (tf × 1/df)
+        best = max(range(len(clusters)), key=lambda i: jac(bags[t], clusters[i]["bag"]) if clusters[i]["bag"] else 0.0)
+        clusters[best]["topics"].append(t)
+    # names: the cluster's own normalized topics (multi-word labels a model or Kyle wrote) — the largest one, plus a second when it
+    # is nearly as large; else the short finding titles Kyle already reads; else the terms most distinctive against the other clusters
     titles = d["titles"]
     df: Counter = Counter()
     for cl_ in clusters:
         df.update(set(cl_["bag"]))
     used_names: set[str] = set()
     out = []
-    for cl_ in clusters:
-        tc: Counter = Counter()
-        for t in cl_["topics"]:
-            for c in by_topic[t]:
-                title = titles.get(c.get("origin_note_id") or -1) or ""
-                if 2 <= len(title.split()) <= 8:
-                    tc[title] += 1
-        ranked = sorted(tc.items(), key=lambda kv: (-kv[1], kv[0]))
-        name = " · ".join(_title_case(t) for t, _ in ranked[:2])
+    for i, cl_ in enumerate(clusters):
+        labels = sorted(((len(by_topic[t]), t) for t in core[i]["topics"] if len(t.split()) >= 2), key=lambda x: (-x[0], x[1]))
+        name = ""
+        if labels:
+            name = _title_case(labels[0][1])
+            if len(labels) > 1 and labels[1][0] >= 0.6 * labels[0][0]:
+                name += " · " + _title_case(labels[1][1])
+        if not name:
+            tc: Counter = Counter()
+            for t in cl_["topics"]:
+                for c in by_topic[t]:
+                    title = titles.get(c.get("origin_note_id") or -1) or ""
+                    if 2 <= len(title.split()) <= 6:
+                        tc[title] += 1
+            ranked = sorted(tc.items(), key=lambda kv: (-kv[1], kv[0]))
+            name = " · ".join(_title_case(t) for t, _ in ranked[:2])
         if not name:
             scored = sorted(((cnt / (1 + df[w] - 1) * (1.0 if w not in GENERIC_TOPICS else 0.4), w) for w, cnt in cl_["bag"].items()), reverse=True)
             words = []
@@ -364,7 +375,9 @@ def overview(project_id: str, limit: int = 5) -> dict[str, Any]:
         if c["strength"] == "strong" and now - (c.get("updated_at") or 0) < 14 * 86400 and c["status"] == "accepted":
             improved.append({"kind": "claim_strong", "text": c["text"][:160], "detail": c.get("strength_why")})
     awaiting = [c for c in d["claims"] if c["status"] == "proposed" and c["strength"] == "strong" and d["importance"].get(c["id"], 3) >= 4]
-    attention = len([q for q in open_q if q["important"]]) + len([w for w in ws if w["impact"] in WATCHOUT_ATTENTION_IMPACTS]) + len(awaiting)
+    # the sidebar number: on a 4,000-Claim project "important open questions" is a crowd of hundreds, so the count is of things that
+    # are few by construction — issues (already aggregated), questions the Master Plan rests on, and Claims waiting for a yes/no
+    attention = len([q for q in open_q if q["planner_dependent"]]) + len([w for w in ws if w["impact"] in WATCHOUT_ATTENTION_IMPACTS]) + len(awaiting)
     summary = {"important_questions": len(important), "important_settled": len(settled), "open_questions": len(open_q),
                "issues": len([w for w in ws if w["impact"] in WATCHOUT_ATTENTION_IMPACTS]), "issues_total": len(ws),
                "areas_to_refresh": len(refresh_areas), "areas_weak": len(weak_areas), "areas_total": len(ar["areas"]), "claims_awaiting_decision": len(awaiting),
@@ -374,7 +387,7 @@ def overview(project_id: str, limit: int = 5) -> dict[str, Any]:
 
 
 def attention(project_id: str) -> int:
-    """The sidebar number: important open questions + high/medium watch-outs + Claims awaiting an explicit decision. Never the Claim count."""
+    """The sidebar number: high-impact watch-outs + planner-dependent open questions + Claims awaiting an explicit decision. Never the Claim count."""
     try:
         return overview(project_id, limit=1)["attention"]
     except Exception:  # noqa: BLE001

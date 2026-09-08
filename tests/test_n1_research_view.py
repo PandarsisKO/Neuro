@@ -167,14 +167,16 @@ def test_area_cards_summarise_state_without_source_counts(monkeypatch):
 def test_attention_is_what_needs_the_user_not_the_claim_count(monkeypatch):
     pid, _ = _ready(monkeypatch)
     o = rv.overview(pid)
-    imp_q = [q for q in rv.questions(pid) if q["status"] == "open" and q["important"]]
     hi_w = [w for w in rv.watchouts(pid) if w["impact"] in rv.WATCHOUT_ATTENTION_IMPACTS]
-    assert o["attention"] == len(imp_q) + len(hi_w) + o["summary"]["claims_awaiting_decision"]
+    assert o["attention"] == len(hi_w) + o["summary"]["claims_awaiting_decision"] and o["attention"] < o["summary"]["open_questions"] + o["summary"]["claims_total"]
     assert rv.attention(pid) == o["attention"]
-    # settling questions and accepting the strong Claim lowers the number; the Claim count does not move
+    # important open questions are counted in the summary, not in the badge (on a 4,000-Claim project they number in the hundreds)
+    assert o["summary"]["important_questions"] == 2
+    # resolving the high-impact issues and accepting the strong Claim lowers the number; the Claim count does not move
     n_claims = len(claims.list_for_project(pid))
-    for q in imp_q:
-        knowledge.set_target_status(q["id"], "closed_by_user")
+    for w in hi_w:
+        for u in w["underlying"]:
+            knowledge.set_tension_status(u["tension_id"], "dismissed")
     for c in claims.list_for_project(pid):
         if c["strength"] == "strong" and c["status"] == "proposed":
             claims.set_status(c["id"], "accepted")
@@ -200,3 +202,24 @@ def test_api_surfaces_the_view_and_the_state_carries_attention(monkeypatch):
     assert ws["total"] == len(ws["watchouts"]) >= 1
     ar = api.api_research_areas(pid)
     assert ar["areas"] and ar["area_of_topic"]
+
+
+def test_areas_prefer_multiword_topic_labels_and_fold_lone_words(monkeypatch):
+    pid, _ = _ready(monkeypatch)
+    topics = {"acquisition due diligence framework": ["Quality of earnings review before close catches add-back abuse in owner compensation.",
+                                                       "Customer concentration above twenty percent of revenue is a diligence red flag for lenders.",
+                                                       "Verify working capital targets against trailing twelve month balance sheets during diligence."],
+              "franchise economics": ["Franchise royalty rates near six percent compress margins on low-ticket concepts.",
+                                      "Franchise resale multiples run below independent businesses of the same cash flow.",
+                                      "National marketing funds add two percent on top of franchise royalties."],
+              "cash": ["Keep six months of operating cash after close.", "Sweep excess cash to the seller note quarterly.", "Cash on hand at close is negotiated separately."]}
+    for topic, texts in topics.items():
+        for text in texts:
+            claims.add_claim(pid, text, topic=topic, origin="user", status="proposed")
+    knowledge.refresh(pid)
+    ar = rv.areas(pid)
+    names = [a["name"] for a in ar["areas"]]
+    assert "Acquisition due diligence framework" in names and "Franchise economics" in names, names
+    assert not any(n.lower().startswith("cash") for n in names), names
+    assert ar["area_of_topic"]["cash"] in names                 # folded into a real area, never its own card
+    assert len({ar["area_of_topic"][t] for t in ("acquisition due diligence framework", "franchise economics")}) == 2
