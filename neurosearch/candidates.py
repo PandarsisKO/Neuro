@@ -230,3 +230,115 @@ def satisfy_links(candidate_id: str) -> int:
     """The candidate was acquired (any path, any project): every open link to it is satisfied."""
     with db.tx() as conn:
         return conn.execute("UPDATE candidate_links SET state='satisfied', updated_at=? WHERE candidate_id=? AND state='open'", (time.time(), candidate_id)).rowcount
+
+
+# ---------------------------------------------------------------- S5: the known-but-uncaptured pool + the pre-cutoff quick scan ($0)
+
+EVERGREEN = {"how", "framework", "principle", "principles", "checklist", "playbook", "guide", "mistakes", "lessons", "rules", "process", "steps", "strategy",
+             "structure", "negotiat", "diligence", "valuation", "financing", "story", "case", "study", "explained", "beginner", "basics", "fundamentals"}
+DATED = {"news", "update", "breaking", "rates", "rate", "today", "week", "month", "2019", "2020", "2021", "2022", "2023", "2024", "election", "market", "stocks", "crypto", "price", "prices"}
+
+
+def _toks(s: str) -> set[str]:
+    import re
+    return {w for w in re.findall(r"[a-z0-9][a-z0-9'-]+", (s or "").lower()) if len(w) > 2}
+
+
+def _gap_terms(project_id: str) -> tuple[list[tuple[str, str, set[str]]], set[str]]:
+    """(open questions as (id, label, tokens), the project's own vocabulary) — what an uncaptured item can FIT."""
+    from . import research_view
+    qs: list[tuple[str, str, set[str]]] = []
+    try:
+        for q in research_view.questions(project_id):
+            if q["status"] == "open":
+                qs.append((q["id"], q["label"], _toks(q["question"] + " " + (q.get("label") or ""))))
+        for a in research_view.areas(project_id)["areas"]:
+            if a["state"] in ("weak", "missing") and a["name"] != "Everything else":
+                qs.append(("area:" + a["name"], a["name"], _toks(a["name"])))
+    except Exception:  # noqa: BLE001
+        pass
+    p = db.get_project(project_id) or {}
+    vocab = _toks(" ".join(str(p.get(k) or "") for k in ("brief", "goal", "context")))
+    return qs, vocab
+
+
+def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str]) -> tuple[int, str | None, list[str]]:
+    """A quick $0 scan: 0–100 potential, the best fit (an open question / weak area), and the reasons — from words only."""
+    t = _toks(title + " " + (desc or "")[:600])
+    best, best_s = None, 0.0
+    for qid, label, qt in qs:
+        if not qt:
+            continue
+        s = len(t & qt) / max(3, len(qt))
+        if s > best_s:
+            best, best_s = label, s
+    why = []
+    score = 0
+    if linked:
+        score += 45; why.append(f"already found for: {linked[0][:60]}")
+    if best_s >= 0.34:
+        score += int(35 * min(1.0, best_s)); why.append(f"fits an open question: {best}")
+    cov = len(t & vocab) / max(4, len(vocab)) if vocab else 0
+    if cov > 0:
+        score += int(20 * min(1.0, cov * 4)); why.append("uses the project's own vocabulary")
+    if relevance is not None:
+        score += int(relevance * 0.25); why.append(f"ranked {relevance}/100 at review")
+    ever = len({w for w in t if any(w.startswith(e) for e in EVERGREEN)})
+    dated = len(t & DATED)
+    if ever and not dated:
+        score += 10; why.append("reads as timeless (how-to / principles)")
+    elif dated and not ever:
+        score -= 10; why.append("reads as dated (news / rates / a year)")
+    return max(0, min(100, score)), best, why
+
+
+def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
+    """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
+    why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web."""
+    conn = db.connect()
+    qs, vocab = _gap_terms(project_id)
+    prio_creators = {(db.get_source(sid) or {}).get("channel") for sid in db.priority_source_ids(project_id)} - {None, ""}
+    items: list[dict[str, Any]] = []
+    if kind in ("all", "skipped"):
+        rel = db.project_analysis(project_id, "relevance")
+        ids = set(db.project_source_ids(project_id, ready_only=False))
+        for s in db.list_sources(status="skipped", limit=100000):
+            if s["id"] not in ids:
+                continue
+            r = rel.get(s["id"]) or {}
+            score, fit, why = _potential(s.get("title") or "", s.get("description") or "", qs, vocab, r.get("relevance"), [])
+            items.append({"kind": "skipped", "id": s["id"], "title": s.get("title") or s["url"], "url": s["url"], "creator": s.get("channel"), "published_at": s.get("published_at"),
+                          "duration": s.get("duration"), "platform": s["platform"], "why_known": s.get("error") or "skipped at review", "relevance": r.get("relevance"),
+                          "relevance_why": r.get("relevance_why"), "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (s.get("channel") in prio_creators),
+                          "actions": {"capture": {"method": "POST", "endpoint": f"/api/sources/{s['id']}/retry", "label": "Ingest anyway"},
+                                      "dismiss": {"method": "DELETE", "endpoint": f"/api/projects/{project_id}/members", "body": {"source_ids": [s["id"]]}, "label": "Not for this project"}}})
+    if kind in ("all", "candidates"):
+        links: dict[str, list[str]] = {}
+        for r in conn.execute("""SELECT l.candidate_id, t.question FROM candidate_links l LEFT JOIN project_evidence_targets t ON t.id=l.ref_id
+                                 WHERE l.project_id=? AND l.state='open' AND l.kind='evidence_target'""", (project_id,)).fetchall():
+            links.setdefault(r["candidate_id"], []).append(r["question"] or "an open question")
+        for c in list_for_project(project_id, limit=100000):
+            if c.get("state") not in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
+                continue
+            score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"), links.get(c["id"], []))
+            origin = c.get("origin") or {}
+            known = ("found for an open question" if links.get(c["id"]) else f"seen in {origin.get('kind', 'exploration')}{(' of ' + str(origin.get('title'))) if origin.get('title') else ''}")
+            if c.get("reason"):
+                known += f" · {c['reason']}"
+            items.append({"kind": "candidate", "id": c["id"], "title": c.get("title") or c["url"], "url": c["url"], "creator": c.get("creator"), "published_at": c.get("published_at"),
+                          "duration": c.get("duration"), "platform": c["platform"], "why_known": known, "relevance": c.get("relevance"), "relevance_why": c.get("relevance_why"),
+                          "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (c.get("creator") in prio_creators), "state": c.get("state"),
+                          "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire", "body": {"project_id": project_id}, "label": "Capture"},
+                                      "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss", "body": {"project_id": project_id}, "label": "Not for this project"}}})
+    if q:
+        qt = _toks(q)
+        items = [i for i in items if qt <= _toks(i["title"] + " " + (i.get("creator") or "") + " " + " ".join(i["why"]))]
+    keyf = {"fit": lambda i: (-i["potential"], -(i.get("relevance") or 0), i["title"]),
+            "relevance": lambda i: (-(i.get("relevance") or 0), -i["potential"]),
+            "newest": lambda i: ((i.get("published_at") or ""), ),
+            "creator": lambda i: (0 if i["same_creator_as_priority"] else 1, -i["potential"])}.get(rank_by, lambda i: (-i["potential"],))
+    items.sort(key=keyf, reverse=(rank_by == "newest"))
+    counts = {"skipped": sum(1 for i in items if i["kind"] == "skipped"), "candidates": sum(1 for i in items if i["kind"] == "candidate"),
+              "worth_a_look": sum(1 for i in items if i["potential"] >= 40), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
+    return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,
+            "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}

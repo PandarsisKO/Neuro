@@ -536,7 +536,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.42.1';
+const UI_VERSION = '0.43.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -985,7 +985,9 @@ async function loadSources() {
   const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
   const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length, browser: all.filter(needsBrowser).length,
                    ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length, deep: all.filter(s => s.status === 'ready' && s.long).length };
-  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['deep', '📚 Deep content', counts.deep], ['skipped', 'Skipped', counts.skipped]];
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['deep', '📚 Deep content', counts.deep], ['skipped', 'Skipped', counts.skipped], ['pool', '🔎 Known, not captured', POOL.total ?? '…']];
+  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join(''); return loadPool(); }
+  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`).then(r => { POOL.total = r.total; }).catch(() => {});
   loadCaptureQueue(all.filter(needsBrowser));
   $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
   const f = state.srcFilter || 'all';
@@ -1092,6 +1094,32 @@ async function runCalc(id) {
     $('#calcOut').innerHTML = Object.entries(r.outputs).map(([k, v]) => `<div class="co"><span>${esc(k)}</span><b>${fmtv(v)}</b></div>`).join('');
     $('#calcMsg').textContent = r.unknown_inputs?.length ? 'ignored: ' + r.unknown_inputs.join(', ') : '✓';
   } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
+}
+// S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan
+const POOL = { total: null, rank: 'fit', kind: 'all' };
+async function loadPool() {
+  const p = new URLSearchParams({ rank_by: POOL.rank, kind: POOL.kind, limit: 150 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
+  let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); } catch (e) { $('#srcList').innerHTML = '<div class="muted">could not load the pool</div>'; return; }
+  POOL.total = r.total;
+  const c = r.counts;
+  $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>`;
+  $('#srcFilterNote').textContent = '';
+  const pot = v => `<span class="fi" title="potential ${v}/100 — a $0 scan of the title and description against your open questions, weak areas and the project's own words">${'●'.repeat(Math.round(v / 20))}<span class="dim">${'●'.repeat(5 - Math.round(v / 20))}</span></span>`;
+  $('#srcList').innerHTML = `<div class="row" style="gap:6px;margin:4px 0 10px;font-size:12.5px"><span class="muted">${esc(r.explain)}</span></div>
+    <div class="row" style="gap:6px;margin-bottom:8px;font-size:12.5px"><span class="muted">Rank by:</span>
+      ${[['fit', 'fits my open questions'], ['relevance', 'review score'], ['creator', 'same creator as a priority source'], ['newest', 'newest']].map(([k, l]) => `<span class="chipf ${POOL.rank === k ? 'on' : ''}" onclick="POOL.rank='${k}';loadPool()">${l}</span>`).join('')}
+      <span class="muted" style="margin-left:10px">Show:</span>${[['all', 'all'], ['skipped', 'skipped at cutoff'], ['candidates', 'seen while exploring']].map(([k, l]) => `<span class="chipf ${POOL.kind === k ? 'on' : ''}" onclick="POOL.kind='${k}';loadPool()">${l}</span>`).join('')}</div>` +
+    (r.items.map(i => `<div class="src"><div class="ico">${i.kind === 'skipped' ? '⏭' : '👁'}</div><div style="flex:1;min-width:0">
+      <div class="t">${pot(i.potential)} ${i.url && i.url.startsWith('http') ? `<a href="${esc(i.url)}" target="_blank">${esc(i.title)}</a>` : esc(i.title)}${i.same_creator_as_priority ? ' <span class="tag" title="same creator as one of your ★ priority sources">★ creator</span>' : ''}</div>
+      <div class="muted">${esc(i.creator || i.platform)} ${i.published_at ? '· ' + esc(i.published_at) : ''} ${i.duration ? '· ' + fmt(i.duration) : ''} · <span title="how Neuro Search knows about it">${esc(i.why_known)}</span></div>
+      ${i.fits ? `<div class="muted" style="margin-top:2px">fits: <b>${esc(String(i.fits))}</b></div>` : ''}
+      ${i.why.length ? `<div class="muted" style="font-size:12px;margin-top:2px">${esc(i.why.join(' · '))}</div>` : ''}
+      <div class="actions"><button class="small primary" onclick="poolAct(${JSON.stringify(i.actions.capture).replace(/"/g, '&quot;')}, '${esc(i.title).replace(/'/g, '')}')">${esc(i.actions.capture.label)}</button><button class="small ghost" onclick="poolAct(${JSON.stringify(i.actions.dismiss).replace(/"/g, '&quot;')})">${esc(i.actions.dismiss.label)}</button></div>
+    </div></div>`).join('') || '<div class="muted">Nothing known but uncaptured — every seen source is either in the project or dismissed.</div>');
+}
+async function poolAct(a, title) {
+  if (a.method === 'DELETE') await del(a.endpoint, a.body || {}); else await post(a.endpoint, a.body || {});
+  toast(a.label === 'Not for this project' ? 'dismissed' : `⏵ capturing${title ? ' — ' + title.slice(0, 40) : ''}`); POOL.total = null; loadPool(); loadJobs();
 }
 function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
 async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} long source${ids.length === 1 ? '' : 's'}? Each is re-read in smaller parts (about 3× the model calls of a normal read). Approved findings are kept; suggestions are replaced.`)) return; const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: ids, depth: 'deep' }); toast(`🔬 ${r.sources} queued for a deep read`); state.srcFilter = 'working'; loadSources(); loadJobs(); }

@@ -189,6 +189,15 @@ def api_candidates(project_id: str, q: str | None = None, state: str | None = No
     return {"items": items, "counts": candidates.counts(project_id)}
 
 
+@app.get("/api/projects/{project_id}/pool", dependencies=[Depends(require_auth)])
+def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
+    """S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan."""
+    from . import candidates
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return candidates.pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(limit, 500)), kind=kind)
+
+
 @app.post("/api/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
 def api_candidate_dismiss(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
     from . import candidates
