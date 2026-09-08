@@ -45,6 +45,11 @@ TOP_TERMS = 30
 RECALL_CHUNKS = 60                  # chunk-level candidates before grouping by source
 PER_SOURCE_CHUNKS = 3
 MIN_SCORE = 0.012                   # ≈ one RRF rank ≤ 25 in either channel: below this a source is not suggested (precision bias)
+# RRF scores are RANK-based: the top hit of ANY query looks the same, so rank alone cannot tell "covered" from "nearest
+# thing we own". Precision therefore also needs an ABSOLUTE signal: the share of the query's content terms that actually
+# appear in the matched passages (+ title/creator). Below MIN_COVERAGE a source is not suggested at all.
+MIN_COVERAGE = 0.4
+STRONG_COVERAGE = 0.6               # what Discover may treat as "strong" (together with ≥2 passages) — still relevance, not sufficiency
 BATCH_MIN = 8                       # wanted profiles that trigger an opportunistic batch
 INTERACTIVE_MAX = 3                 # profiles enriched inline when a query needs them right now
 PROFILE_CHARS = 14000               # text sample sent for enrichment (head + topic chunks)
@@ -225,9 +230,16 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
         p = profile(sid) or {}
         b = p.get("baseline") or {}
         e = p.get("enriched")
-        why: list[str] = [f"{len(d['chunks'])} matching passage(s); best at {d['chunks'][0]['timestamp']}"]
         term_hits = sorted(qt & set(b.get("terms") or []))
         title_hits = sorted(qt & _tokens(str(b.get("title") or "") + " " + str(b.get("creator") or "")))
+        passage_terms = _tokens(" ".join(c["text"] for c in d["chunks"]))
+        covered = sorted((qt & passage_terms) | set(title_hits))
+        coverage = round(len(covered) / len(qt), 2) if qt else 0.0
+        d["coverage"], d["covered_terms"], d["query_terms"] = coverage, covered, sorted(qt)
+        if coverage < MIN_COVERAGE:
+            continue                                                # the nearest thing we own is not the same as coverage
+        why: list[str] = [f"{len(d['chunks'])} matching passage(s); best at {d['chunks'][0]['timestamp']}",
+                          f"passages cover {len(covered)} of {len(qt)} query terms ({', '.join(covered[:6])})"]
         bonus = 0.0
         if title_hits:
             bonus += 0.004 * len(title_hits); why.append("title/creator mentions " + ", ".join(title_hits[:4]))

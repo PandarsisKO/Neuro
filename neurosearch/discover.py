@@ -115,7 +115,8 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
             library.maybe_queue_batch()                                   # opportunistic: only if enough wanted profiles piled up
         except Exception as e:  # noqa: BLE001
             log.warning("profile batch not queued: %s", e)
-    strong = [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2]
+    strong = [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2
+              and s.get("coverage", 0) >= library.STRONG_COVERAGE]
     if mode == "library_only" or (mode == "library_first" and not refine and len(strong) >= LIBRARY_ENOUGH):
         note = ("Library only — no web search was run." if mode == "library_only" else
                 f"Your library appears to cover this well ({len(strong)} owned sources match strongly, not yet in this project) — the web search was skipped. "

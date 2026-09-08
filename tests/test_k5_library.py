@@ -117,6 +117,9 @@ def test_library_recall_works_with_zero_enriched_profiles_and_respects_the_proje
     assert res_a["scope"] == 0 and res_a["suggestions"] == []
     # the minority-topic case: the sourdough source is irrelevant and must not be suggested for an SBA query (precision bias)
     assert ids["sourdough"] not in {s["source_id"] for s in res["suggestions"]}
+    assert all(s["coverage"] >= library.MIN_COVERAGE and s["covered_terms"] for s in res["suggestions"])
+    # an off-topic question gets NOTHING, not "the nearest thing we own" (RRF ranks alone would always return something)
+    assert library.recall(b, "how do low-time pilots get insurance on a twin engine baron", want_enrichment=False)["suggestions"] == []
     # wanted marks were recorded as provenance of a FUTURE spend, without any call
     assert db.connect().execute("SELECT COUNT(*) FROM source_profiles WHERE enriched_status='wanted'").fetchone()[0] == len(res["suggestions"])
     assert db.connect().execute("SELECT COUNT(*) FROM invocations WHERE task='library.profile'").fetchone()[0] == 0
@@ -208,6 +211,7 @@ def test_discover_library_first_concludes_without_the_web_when_the_library_cover
     # only when several owned sources match STRONGLY does it conclude — and then it says "appears to cover", never "complete"
     monkeypatch.setattr(discover, "LIBRARY_ENOUGH", 1)
     monkeypatch.setattr(discover, "LIBRARY_STRONG", 1.0)
+    monkeypatch.setattr(library, "STRONG_COVERAGE", 0.0)
     r2b = discover.discover(b, None, mode="library_first")
     assert r2b["web_skipped"] and "appears to cover" in r2b["note"] and "Web first" in r2b["note"] and calls["n"] == 0
     monkeypatch.setattr(discover, "LIBRARY_ENOUGH", 4)
