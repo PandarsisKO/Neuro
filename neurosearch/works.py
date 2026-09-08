@@ -85,7 +85,8 @@ def extract_identifiers(text: str) -> list[dict[str, Any]]:
         out.append({"scheme": "citation", "value": f"{m.group(1)}cfr{m.group(2)}", "kind": "regulation", "title": f"{m.group(1)} C.F.R. § {m.group(2)}", "family": f"{m.group(1)} C.F.R. § {m.group(2)}",
                     "version": None, "publisher": "Code of Federal Regulations", "url": f"https://www.ecfr.gov/current/title-{m.group(1)}/section-{m.group(2)}"})
     for m in _FORM.finditer(t):
-        out.append({"scheme": "docnum", "value": f"form-{m.group(1).lower()}", "kind": "form", "title": f"Form {m.group(1)}", "family": f"Form {m.group(1)}", "version": None, "publisher": None, "url": None})
+        num = m.group(1).upper().replace("-", "")                            # 1120-S and 1120S are the same form
+        out.append({"scheme": "docnum", "value": f"form-{num.lower()}", "kind": "form", "title": f"Form {num}", "family": f"Form {num}", "version": None, "publisher": None, "url": None})
     for m in _DOI.finditer(t):
         doi = m.group(1).rstrip(".,;")
         out.append({"scheme": "doi", "value": doi.lower(), "kind": "paper", "title": f"DOI {doi}", "family": f"DOI {doi}", "version": None, "publisher": None, "url": f"https://doi.org/{doi}"})
@@ -389,6 +390,11 @@ def index_source(source_id: str) -> list[dict[str, Any]]:
         relation = {"derivative": "derivative_of", "quotes": "quotes"}.get(form, "manifestation_of")
         m = link_source(source_id, w["id"], version_id=vid, relation=relation, form=form, confidence="identifier",
                         basis={"identifier": f"{i['scheme']}:{i['value']}", "from": "source metadata/url"})
+        # a primary copy names the Work better than its bare identifier (ISBN/DOI stubs get the book's/paper's title)
+        if relation == "manifestation_of" and (w["title"] or "").startswith(("ISBN ", "DOI ")) and src.get("title"):
+            with db.tx() as c:
+                c.execute("UPDATE works SET title=?, title_norm=?, creators=CASE WHEN creators='[]' AND ? IS NOT NULL THEN json_array(?) ELSE creators END, updated_at=? WHERE id=?",
+                          (src["title"][:200], normalize_title(src["title"]), src.get("channel"), src.get("channel"), time.time(), w["id"]))
         out.append({"work": w["title"], "version": i.get("version"), "relation": relation, "form": form, "manifestation_id": m["id"]})
     return out
 
@@ -484,7 +490,8 @@ def stats() -> dict[str, Any]:
             "resolved": conn.execute("SELECT COUNT(*) FROM works WHERE resolution='resolved'").fetchone()[0],
             "versions": conn.execute("SELECT COUNT(*) FROM work_versions").fetchone()[0],
             "manifestations": conn.execute("SELECT COUNT(*) FROM work_manifestations").fetchone()[0],
-            "owned": conn.execute("SELECT COUNT(*) FROM work_manifestations WHERE access='owned'").fetchone()[0],
+            "owned": conn.execute("SELECT COUNT(*) FROM work_manifestations WHERE access='owned' AND relation IN ('manifestation_of','reprint_of','translation_of','revision_of')").fetchone()[0],
+            "discussing": conn.execute("SELECT COUNT(*) FROM work_manifestations WHERE source_id IS NOT NULL AND relation NOT IN ('manifestation_of','reprint_of','translation_of','revision_of')").fetchone()[0],
             "possible": conn.execute("SELECT COUNT(*) FROM work_manifestations WHERE relation='possible_manifestation_of'").fetchone()[0]}
 
 
@@ -501,7 +508,8 @@ def list_works(project_id: str | None = None, q: str | None = None, limit: int =
             continue
         d["versions"] = versions_of(d["id"])
         ms = manifestations_of(d["id"])
-        d["owned"] = sum(1 for m in ms if m["access"] == "owned")
+        d["owned"] = sum(1 for m in ms if m["access"] == "owned" and m["relation"] in PRIMARY_RELATIONS)     # copies of the Work itself
+        d["discussing"] = sum(1 for m in ms if m.get("source_id") and m["relation"] not in PRIMARY_RELATIONS)  # sources that quote / explain / cite it
         d["candidates"] = sum(1 for m in ms if m.get("candidate_id"))
         d["manifestations"] = len(ms)
         out.append(d)

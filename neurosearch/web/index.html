@@ -502,7 +502,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.31.0';
+const UI_VERSION = '0.31.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1049,8 +1049,8 @@ async function ingestText() {
 async function loadWorks() {
   const q = $('#workQ').value.trim();
   const r = await api(`/api/works?project_id=&limit=100` + (q ? '&q=' + encodeURIComponent(q) : ''));
-  const s = r.stats || {}; $('#workCounts').textContent = s.works ? `· ${s.works} work${s.works === 1 ? '' : 's'} · ${s.versions} version${s.versions === 1 ? '' : 's'} · ${s.owned} owned cop${s.owned === 1 ? 'y' : 'ies'}` : '';
-  $('#works').innerHTML = (r.works || []).map(w => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="flex:1">📜 <b>${esc(w.title)}</b> <span class="muted">${esc(w.kind)} · ${w.resolution}${w.versions.length ? ' · ' + w.versions.map(v => esc(v.label) + (v.status === 'superseded' ? ' (superseded)' : '')).join(', ') : ''} · ${w.owned} owned${w.candidates ? ', ' + w.candidates + ' seen' : ''}${w.relevance ? ' · ' + esc(w.relevance) + ' here' : ''}</span></span><button class="small ghost" onclick="$('#workQ').value='${esc(w.title)}';resolveWork()">Resolve</button></div>`).join('') || '<div class="muted">No Works yet — they appear as sources and findings name SOPs, publications, statutes, books or papers.</div>';
+  const s = r.stats || {}; $('#workCounts').textContent = s.works ? `· ${s.works} work${s.works === 1 ? '' : 's'} · ${s.versions} version${s.versions === 1 ? '' : 's'} · ${s.owned} cop${s.owned === 1 ? 'y' : 'ies'} owned · ${s.discussing} source${s.discussing === 1 ? '' : 's'} discussing them` : '';
+  $('#works').innerHTML = (r.works || []).map(w => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span style="flex:1">📜 <b>${esc(w.title)}</b> <span class="muted">${esc(w.kind)} · ${w.resolution}${w.versions.length ? ' · ' + w.versions.map(v => esc(v.label) + (v.status === 'superseded' ? ' (superseded)' : '')).join(', ') : ''} · ${w.owned} cop${w.owned === 1 ? 'y' : 'ies'} owned${w.discussing ? ', ' + w.discussing + ' source' + (w.discussing === 1 ? '' : 's') + ' discussing it' : ''}${w.candidates ? ', ' + w.candidates + ' seen' : ''}${w.relevance ? ' · ' + esc(w.relevance) + ' here' : ''}</span></span><button class="small ghost" onclick="$('#workQ').value='${esc(w.title)}';resolveWork()">Resolve</button></div>`).join('') || '<div class="muted">No Works yet — they appear as sources and findings name SOPs, publications, statutes, books or papers.</div>';
 }
 async function resolveWork() {
   const text = $('#workQ').value.trim(); if (!text) return;
