@@ -223,3 +223,31 @@ def test_areas_prefer_multiword_topic_labels_and_fold_lone_words(monkeypatch):
     assert not any(n.lower().startswith("cash") for n in names), names
     assert ar["area_of_topic"]["cash"] in names                 # folded into a real area, never its own card
     assert len({ar["area_of_topic"][t] for t in ("acquisition due diligence framework", "franchise economics")}) == 2
+
+
+def test_bulk_lone_word_topics_are_placed_claim_by_claim(monkeypatch):
+    pid, _ = _ready(monkeypatch)
+    real = {"acquisition due diligence framework": ["Quality of earnings review before close catches add-back abuse in owner compensation.",
+                                                     "Customer concentration above twenty percent of revenue is a diligence red flag for lenders.",
+                                                     "Verify working capital targets against trailing twelve month balance sheets during diligence."],
+            "franchise economics": ["Franchise royalty rates near six percent compress margins on low-ticket concepts.",
+                                    "Franchise resale multiples run below independent businesses of the same cash flow.",
+                                    "National marketing funds add two percent on top of franchise royalties."]}
+    for topic, texts in real.items():
+        for text in texts:
+            claims.add_claim(pid, text, topic=topic, origin="user", status="proposed")
+    # the harvest's lone-word topic "business" holds Claims that belong to different subjects — and one that belongs nowhere
+    bulk = ["Ask for a quality of earnings review and check customer concentration before close.",
+            "Franchise royalty and marketing fund percentages decide the margins of a franchise resale.",
+            "Zebras have stripes and giraffes have spots."]
+    for text in bulk:
+        claims.add_claim(pid, text, topic="business", origin="user", status="proposed")
+    knowledge.refresh(pid)
+    ar = rv.areas(pid)
+    by_name = {a["name"]: a for a in ar["areas"]}
+    ids = {c["text"]: c["id"] for c in claims.list_for_project(pid)}
+    assert ar["area_of_claim"][ids[bulk[0]]] == "Acquisition due diligence framework"
+    assert ar["area_of_claim"][ids[bulk[1]]] == "Franchise economics"
+    assert ar["area_of_claim"][ids[bulk[2]]] == "Everything else" and by_name["Everything else"]["claims"] >= 1
+    assert "business" not in {n.lower() for n in by_name} and ar["area_of_topic"]["business"] in by_name
+    assert by_name["Acquisition due diligence framework"]["claims"] >= 4

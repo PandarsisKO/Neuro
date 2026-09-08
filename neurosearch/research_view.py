@@ -45,6 +45,7 @@ GENERIC_TOPICS = {"general", "both", "year", "years", "also", "thing", "things",
 AREA_MIN_CLAIMS = 3
 AREA_MERGE = 0.22              # Jaccard over topic-node term bags at/above which two nodes are one area
 AREA_TERMS = 40                # term bag size per node
+BULK_MIN_OVERLAP = 0.15        # a bulk Claim joins an area when at least this share of its words are the area's words; else "Everything else"
 
 
 # ---------------------------------------------------------------- inputs
@@ -129,6 +130,13 @@ def _missing_of(t: dict[str, Any]) -> list[str]:
     return [x.strip() for x in m.group(1).split(",") if x.strip()] if m else []
 
 
+def _area_for(claim_id: str | None, topic: str | None, area_of_claim: dict[str, str], area_of: dict[str, str]) -> str:
+    """The area a Claim belongs to (bulk Claims are placed one by one), else the area its topic maps to."""
+    if claim_id and claim_id in area_of_claim:
+        return area_of_claim[claim_id]
+    return _area_name_for(topic, area_of)
+
+
 def _area_name_for(topic: str | None, area_of: dict[str, str]) -> str:
     return area_of.get(topic or "general", (topic or "general").replace("_", " ").title())
 
@@ -141,7 +149,7 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
     d = data or _load(project_id)
     cl, nodes = d["claims"], d["nodes"]
     if not cl:
-        return {"areas": [], "area_of_topic": {}}
+        return {"areas": [], "area_of_topic": {}, "area_of_claim": {}}
     by_topic: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for c in cl:
         by_topic[c.get("topic") or "general"].append(c)
@@ -178,9 +186,36 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
     if not clusters:
         clusters.append({"topics": [], "bag": Counter()})
     core = [dict(topics=list(c["topics"]), bag=Counter(c["bag"])) for c in clusters]   # the real topics only, for naming
-    for t in minor:                                             # fold generic/small topics into the nearest cluster (never a card of their own)
-        best = max(range(len(clusters)), key=lambda i: jac(bags[t], clusters[i]["bag"]) if clusters[i]["bag"] else 0.0)
-        clusters[best]["topics"].append(t)
+    for cl_ in clusters:
+        cl_["members"] = [c for t in cl_["topics"] for c in by_topic[t]]
+        cl_["sets"] = set(cl_["bag"])
+    catch_all: dict[str, Any] | None = None
+    for t in minor:
+        bulk = (len(t.split()) < 2 or t in GENERIC_TOPICS) and len(by_topic[t]) >= AREA_MIN_CLAIMS
+        if not bulk:                                            # a small coherent topic folds whole into the nearest cluster (never a card of its own)
+            best = max(range(len(clusters)), key=lambda i: jac(bags[t], clusters[i]["bag"]) if clusters[i]["bag"] else 0.0)
+            clusters[best]["topics"].append(t)
+            clusters[best]["members"].extend(by_topic[t])
+            continue
+        # a lone-word topic with many Claims ("business" ×1,243) is not a subject, it is unlabelled bulk: each Claim goes to the area its
+        # own words belong to; a Claim that matches nothing goes to an explicit "Everything else" rather than inflating the largest area
+        for c in by_topic[t]:
+            toks = set(claims._tokens(c["text"]))
+            best_i, best_s = -1, 0.0
+            for i, cl_ in enumerate(clusters):
+                sc = len(toks & cl_["sets"]) / max(1, len(toks)) if cl_["sets"] else 0.0
+                if sc > best_s:
+                    best_i, best_s = i, sc
+            if best_i >= 0 and best_s >= BULK_MIN_OVERLAP:
+                clusters[best_i]["members"].append(c)
+                clusters[best_i].setdefault("bulk_topics", set()).add(t)
+            else:
+                if catch_all is None:
+                    catch_all = {"topics": [], "bag": Counter(), "members": [], "sets": set(), "fixed_name": "Everything else"}
+                catch_all["members"].append(c)
+                catch_all.setdefault("bulk_topics", set()).add(t)
+    if catch_all is not None:
+        clusters.append(catch_all); core.append(dict(topics=[], bag=Counter()))
     # names: the cluster's own normalized topics (multi-word labels a model or Kyle wrote) — the largest one, plus a second when it
     # is nearly as large; else the short finding titles Kyle already reads; else the terms most distinctive against the other clusters
     titles = d["titles"]
@@ -191,8 +226,8 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
     out = []
     for i, cl_ in enumerate(clusters):
         labels = sorted(((len(by_topic[t]), t) for t in core[i]["topics"] if len(t.split()) >= 2), key=lambda x: (-x[0], x[1]))
-        name = ""
-        if labels:
+        name = cl_.get("fixed_name") or ""
+        if not name and labels:
             name = _title_case(labels[0][1])
             if len(labels) > 1 and labels[1][0] >= 0.6 * labels[0][0]:
                 name += " · " + _title_case(labels[1][1])
@@ -224,25 +259,30 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
         cl_["name"] = name
         out.append(cl_)
     area_of: dict[str, str] = {t: cl_["name"] for cl_ in out for t in cl_["topics"]}
+    area_of_claim: dict[str, str] = {c["id"]: cl_["name"] for cl_ in out for c in cl_["members"]}
+    for cl_ in out:                                             # a bulk topic maps (for topic-level filters) to the area holding most of its Claims
+        for t in cl_.get("bulk_topics") or ():
+            if t not in area_of:
+                counts = Counter(area_of_claim[c["id"]] for c in by_topic[t])
+                area_of[t] = counts.most_common(1)[0][0]
     # per-area state and summary
-    tg_by_topic: dict[str, list] = defaultdict(list)
+    tg_by_area: dict[str, list] = defaultdict(list)
     for t in d["targets"]:
         if t["status"] == "open":
-            key = (d["by_id"].get(t.get("claim_id") or "") or {}).get("topic") or t.get("topic") or "general"
-            tg_by_topic[key].append(t)
-    ts_by_topic: dict[str, list] = defaultdict(list)
+            tg_by_area[_area_for(t.get("claim_id"), (d["by_id"].get(t.get("claim_id") or "") or {}).get("topic") or t.get("topic"), area_of_claim, area_of)].append(t)
+    ts_by_area: dict[str, list] = defaultdict(list)
     for t in d["tensions"]:
-        key = (d["by_id"].get(t.get("claim_id") or "") or {}).get("topic") or "general"
-        ts_by_topic[key].append(t)
+        if t.get("claim_id") in d["by_id"]:
+            ts_by_area[area_of_claim.get(t["claim_id"], "General")].append(t)
     cards = []
     for cl_ in out:
-        cs = [c for t in cl_["topics"] for c in by_topic[t]]
+        cs = cl_["members"]
         strong = sum(1 for c in cs if c["strength"] == "strong")
         weak = sum(1 for c in cs if c["strength"] in ("weak", "unsupported"))
         stale = sum(1 for c in cs if c.get("freshness_status") in ("stale", "needs_refresh"))
         accepted = sum(1 for c in cs if c["status"] == "accepted")
-        qs = [t for tp in cl_["topics"] for t in tg_by_topic.get(tp, [])]
-        ws = [t for tp in cl_["topics"] for t in ts_by_topic.get(tp, [])]
+        qs = tg_by_area.get(cl_["name"], [])
+        ws = ts_by_area.get(cl_["name"], [])
         n = max(1, len(cs))
         if strong / n >= 0.5 and not any(w["kind"] == "CONTRADICTION" for w in ws):
             state = "strong"
@@ -268,19 +308,21 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
                       "open_questions": len(qs), "watchouts": len(ws), "understand": understand, "attention": attention})
     order = {"weak": 0, "missing": 1, "developing": 2, "strong": 3}
     cards.sort(key=lambda a: (order[a["state"]], -a["claims"], a["name"]))
-    return {"areas": cards, "area_of_topic": area_of}
+    return {"areas": cards, "area_of_topic": area_of, "area_of_claim": area_of_claim}
 
 
 # ---------------------------------------------------------------- watch-outs (issues, not rows)
 
-def watchouts(project_id: str, data: dict[str, Any] | None = None, area_of: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def watchouts(project_id: str, data: dict[str, Any] | None = None, area_map: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     d = data or _load(project_id)
-    if area_of is None:
-        area_of = areas(project_id, d)["area_of_topic"]
+    if area_map is None:
+        area_map = areas(project_id, d)
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for t in d["tensions"]:
-        topic = (d["by_id"].get(t.get("claim_id") or "") or {}).get("topic") or "general"
-        groups[(t["kind"], _area_name_for(topic, area_of))].append(t)
+        c = d["by_id"].get(t.get("claim_id") or "")
+        if t.get("claim_id") and not c:
+            continue                                            # a tension on a superseded/removed Claim is not an issue anyone can act on
+        groups[(t["kind"], _area_for(t.get("claim_id"), (c or {}).get("topic"), area_map["area_of_claim"], area_map["area_of_topic"]))].append(t)
     out = []
     for (kind, area), ts in groups.items():
         imp_rank = {"high": 0, "medium": 1, "low": 2}
@@ -312,10 +354,10 @@ def watchouts(project_id: str, data: dict[str, Any] | None = None, area_of: dict
 
 # ---------------------------------------------------------------- open questions (evidence targets, in plain language)
 
-def questions(project_id: str, data: dict[str, Any] | None = None, area_of: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     d = data or _load(project_id)
-    if area_of is None:
-        area_of = areas(project_id, d)["area_of_topic"]
+    if area_map is None:
+        area_map = areas(project_id, d)
     out = []
     now = time.time()
     for t in d["targets"]:
@@ -344,7 +386,7 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_of: dict
                         "help": "Looks outside your library and proposes sources for review before anything is ingested."})
         label = d["labels"].get(c.get("id") or "") or (t["question"].split(":", 1)[-1].strip()[:70] if ":" in t["question"] else t["question"][:70])
         headline = (f"Does anyone else confirm this: {label}?" if t["sufficiency"] == "corroborative" else f"What does the authoritative source say: {label}?")
-        out.append({"id": t["id"], "question": t["question"], "headline": headline, "label": label, "area": _area_name_for(topic, area_of), "status": t["status"], "importance": importance, "important": score >= IMPORTANT_QUESTION or importance >= 4 or planner,
+        out.append({"id": t["id"], "question": t["question"], "headline": headline, "label": label, "area": _area_for(c.get("id"), topic, area_map["area_of_claim"], area_map["area_of_topic"]), "status": t["status"], "importance": importance, "important": score >= IMPORTANT_QUESTION or importance >= 4 or planner,
                     "planner_dependent": planner, "what_settles_it": SUFFICIENCY_TEXT.get(t["sufficiency"], t.get("closure") or ""), "closure": t.get("closure"), "current": current, "gap": gap,
                     "why_asking": ("the Master Plan depends on it" if planner else f"a finding you rated {importance}/5" if importance >= 4 else "it came up while building the research state"),
                     "already_checked": already, "known_uncaptured": known, "if_ignored": "Chat and the Master Plan keep treating this as uncertain.", "actions": actions,
@@ -358,8 +400,8 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_of: dict
 def overview(project_id: str, limit: int = 5) -> dict[str, Any]:
     d = _load(project_id)
     ar = areas(project_id, d)
-    qs = questions(project_id, d, ar["area_of_topic"])
-    ws = watchouts(project_id, d, ar["area_of_topic"])
+    qs = questions(project_id, d, ar)
+    ws = watchouts(project_id, d, ar)
     open_q = [q for q in qs if q["status"] == "open"]
     important = [q for q in qs if q["important"]]
     settled = [q for q in important if q["status"] == "satisfied"]
