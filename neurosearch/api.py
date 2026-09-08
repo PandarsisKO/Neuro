@@ -823,6 +823,12 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         analyses = db.project_analyses(project_id)
         prio = db.priority_source_ids(project_id)
         prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at", "depth")
+        from . import sources_value, staleness
+        values = sources_value.compute(project_id)                                        # S2: what each source gave (one pass)
+        try:
+            stale_by = {x["source_id"]: x for x in staleness.assess(project_id)["sources"]}
+        except Exception:  # noqa: BLE001
+            stale_by = {}
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
             sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
@@ -840,6 +846,11 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             r["analysing"] = r["id"] in analysing
             r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
             r["under_read"] = bool(r["long"] and r.get("depth") != "deep" and r["analysed"] and (r["approved"] + r["suggested"]) <= findings_mod.CAP_BASE)
+            v = values.get(r["id"]) or sources_value.empty()
+            st = stale_by.get(r["id"]) or {}
+            r["value"] = {"score": v["value_score"], "label": v["label"], "matters": v["matters"], "never_used": v["never_used"], "used": v["used"],
+                          "claims": v["claims"], "importance": v["importance"], "stale": st.get("status") in ("stale", "legacy_unverified"),
+                          "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
             r["priority"] = r["id"] in prio
             j = live.get(r["id"])
             if j:

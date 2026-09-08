@@ -54,12 +54,10 @@ def _by(t, key):
 def test_tiers_partition_the_stale_set_by_why_and_weight(monkeypatch):
     p, ids = _project()
     assert staleness.triage(p["id"])["stale_total"] == 0
-    # weight: source 0 is a priority source; source 1 has an approved finding rated 5; sources 2 and 3 carry nothing
+    # weight: source 0 is a priority source; source 1 has three approved findings rated 5; sources 2 and 3 carry nothing
     db.connect().execute("UPDATE project_sources SET priority=1 WHERE project_id=? AND source_id=?", (p["id"], ids[0])); db.connect().commit()
-    n = db.list_project_notes(p["id"], status="suggested")
-    n1 = next(x for x in n if x["source_id"] == ids[1])
-    db.set_note_status(n1["id"], "approved")
-    db.connect().execute("UPDATE project_notes SET importance=5 WHERE id=?", (n1["id"],)); db.connect().commit()
+    for k in range(3):
+        n = db.add_project_note(p["id"], f"rule {k} [1]", citations=[{"n": 1, "source_id": ids[1], "title": "t"}], status="approved", source_id=ids[1], importance=5)
     # the brief changes: everything is stale by inputs
     db.update_project(p["id"], brief="hosting and email deliverability")
     t = staleness.triage(p["id"])
@@ -67,7 +65,7 @@ def test_tiers_partition_the_stale_set_by_why_and_weight(monkeypatch):
     assert _by(t, "rebuild_matters") == {ids[0], ids[1]} and _by(t, "accept") == {ids[2], ids[3]}
     assert not _by(t, "rebuild_transcript") and not _by(t, "retry_failed")
     whys = {r["source_id"]: r["why"] for r in t["tiers"]["rebuild_matters"]["sources"]}
-    assert whys[ids[0]] == ["priority source"] and whys[ids[1]] == ["1 approved finding rated 5/5"]
+    assert whys[ids[0]] == ["priority source"] and whys[ids[1]] == ["3 approved findings rated 4–5"]
     # transcript change moves a source into its own, never-acceptable tier
     seg = [{"start": 0.0, "end": 5.0, "text": "a new transcript entirely about email"}]
     db.replace_transcript(ids[2], seg, seg)

@@ -346,6 +346,19 @@
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
         <span class="muted fixed" id="srcCount"></span>
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin:-4px 0 8px;font-size:12.5px" id="srcFilters">
+        <span class="muted">Show:</span>
+        <span class="chipf" data-f="matters" onclick="toggleSrcFilter('matters')" title="Priority, in the Master Plan, evidence of a strong Claim, or findings you rated 4–5">★ Matters</span>
+        <span class="chipf" data-f="stale" onclick="toggleSrcFilter('stale')" title="Analysed against older inputs (see the triage card in Findings)">⚠ Stale</span>
+        <span class="chipf" data-f="priority" onclick="toggleSrcFilter('priority')">★ Priority</span>
+        <span class="chipf" data-f="under_read" onclick="toggleSrcFilter('under_read')" title="Long source read once at the old 12-finding cap">📚 Under-read</span>
+        <span class="chipf" data-f="deep" onclick="toggleSrcFilter('deep')" title="Read with Read deeper">🔬 Deep-read</span>
+        <span class="chipf" data-f="nothing" onclick="toggleSrcFilter('nothing')" title="Ready and analysed, but no approved finding">∅ Gave nothing</span>
+        <span class="chipf" data-f="unused" onclick="toggleSrcFilter('unused')" title="No plan step, chat answer or Claim ever used it">Never used</span>
+        <select id="srcLen" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
+        <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">sort: activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
+        <span class="muted" id="srcFilterNote"></span>
         <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
         <button class="small" onclick="exportCsv(true)">Segments CSV</button>
       </div>
@@ -511,7 +524,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.40.0';
+const UI_VERSION = '0.41.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -964,8 +977,21 @@ async function loadSources() {
   loadCaptureQueue(all.filter(needsBrowser));
   $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
   const f = state.srcFilter || 'all';
-  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : f === 'deep' ? (s.status === 'ready' && s.long) : s.status === f && !needsBrowser(s)))
-    .sort((a, b) => f === 'deep' ? ((b.under_read ? 1 : 0) - (a.under_read ? 1 : 0)) || ((b.duration || 0) - (a.duration || 0)) : bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0));
+  // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
+  const F = state.srcFilters || {};
+  const lenBand = $('#srcLen') ? $('#srcLen').value : '', sortBy = $('#srcSort') ? $('#srcSort').value : 'default';
+  const inBand = s => !lenBand || (lenBand === 'books' ? ['book', 'document', 'spreadsheet', 'file'].includes(s.platform) : lenBand === 'short' ? (s.duration || 0) > 0 && s.duration < 900 : lenBand === 'mid' ? s.duration >= 900 && s.duration < 2700 : lenBand === 'long' ? (s.duration || 0) >= 2700 : true);
+  const v = s => s.value || {};
+  const passes = s => (!F.matters || v(s).matters) && (!F.stale || v(s).stale) && (!F.priority || s.priority) && (!F.under_read || s.under_read) && (!F.deep || s.depth === 'deep')
+    && (!F.nothing || (s.status === 'ready' && s.analysed && !s.approved)) && (!F.unused || (s.status === 'ready' && v(s).never_used)) && inBand(s);
+  document.querySelectorAll('#srcFilters .chipf').forEach(c => c.classList.toggle('on', !!F[c.dataset.f]));
+  const activeF = Object.keys(F).filter(k => F[k]);
+  $('#srcFilterNote').textContent = activeF.length || lenBand ? `${all.filter(passes).length} match` : '';
+  const sorter = (a, b) => sortBy === 'value' ? (v(b).score || 0) - (v(a).score || 0) || (b.approved || 0) - (a.approved || 0)
+    : sortBy === 'unused' ? ((v(a).used && (v(a).used.plan_evidence + v(a).used.chat_citations)) || 0) - ((v(b).used && (v(b).used.plan_evidence + v(b).used.chat_citations)) || 0) || (v(a).score || 0) - (v(b).score || 0)
+    : sortBy === 'longest' ? (b.duration || 0) - (a.duration || 0) : sortBy === 'newest' ? (b.published_at || '').localeCompare(a.published_at || '') : sortBy === 'title' ? (a.title || '').localeCompare(b.title || '')
+    : f === 'deep' ? ((b.under_read ? 1 : 0) - (a.under_read ? 1 : 0)) || ((b.duration || 0) - (a.duration || 0)) : bucket(a) - bucket(b) || (b.updated_at || 0) - (a.updated_at || 0);
+  const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : f === 'deep' ? (s.status === 'ready' && s.long) : s.status === f && !needsBrowser(s))).filter(passes).sort(sorter);
   const underRead = f === 'deep' ? rows.filter(s => s.under_read) : [];
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
     (f === 'deep' ? ` <span class="muted">· books, courses, podcasts and interviews over 45 min · ${underRead.length} under-read (read once, ≤ ${12} findings)</span>` + (underRead.length ? ` <button class="small primary" title="Reads each under-read long source again in smaller parts and keeps every specific finding. $0 on Claude Code (slow); API cost otherwise." onclick="readDeeperAll(${JSON.stringify(underRead.map(s => s.id))})">🔬 Read deeper on all ${underRead.length}</button>` : '') : '') +
@@ -992,7 +1018,7 @@ async function loadSources() {
       ${completenessLine(s)}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${s.approved} approved finding${s.approved === 1 ? '' : 's'}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? '<span class="spin"></span> reading transcript for findings…' : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
         ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
@@ -1055,6 +1081,7 @@ async function runCalc(id) {
     $('#calcMsg').textContent = r.unknown_inputs?.length ? 'ignored: ' + r.unknown_inputs.join(', ') : '✓';
   } catch (e) { $('#calcMsg').textContent = 'error: ' + e.message; }
 }
+function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
 async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} long source${ids.length === 1 ? '' : 's'}? Each is re-read in smaller parts (about 3× the model calls of a normal read). Approved findings are kept; suggestions are replaced.`)) return; const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: ids, depth: 'deep' }); toast(`🔬 ${r.sources} queued for a deep read`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }

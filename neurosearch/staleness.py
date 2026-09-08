@@ -220,28 +220,9 @@ def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str
 # ------------------------------------------------------------------ S1: stale triage (three answers, not one bill)
 
 def _matters(project_id: str) -> dict[str, dict[str, Any]]:
-    """Why a source matters, from rows that exist: priority, Master Plan evidence, evidence of a strong Claim, an approved
-    finding of importance ≥ 4. $0."""
-    conn = db.connect()
-    out: dict[str, dict[str, Any]] = {}
-
-    def mark(sid: str, why: str) -> None:
-        out.setdefault(sid, {"why": []})["why"].append(why)
-    for r in conn.execute("SELECT source_id FROM project_sources WHERE project_id=? AND priority=1", (project_id,)).fetchall():
-        mark(r["source_id"], "priority source")
-    plan = db.latest_plan(project_id)
-    if plan:
-        for v in ((plan.get("plan") or {}).get("_evidence") or {}).values():
-            if v.get("source_id"):
-                mark(v["source_id"], "evidence in the Master Plan")
-    for r in conn.execute("""SELECT DISTINCT e.source_id FROM claim_evidence e JOIN project_claims c ON c.id=e.claim_id
-                             WHERE c.project_id=? AND c.strength='strong' AND c.status<>'rejected'""", (project_id,)).fetchall():
-        mark(r["source_id"], "evidence of a strong Claim")
-    for r in conn.execute("SELECT source_id, MAX(importance) m, COUNT(*) n FROM project_notes WHERE project_id=? AND status='approved' AND importance>=4 GROUP BY source_id",
-                          (project_id,)).fetchall():
-        if r["source_id"]:
-            mark(r["source_id"], f"{r['n']} approved finding{'s' if r['n'] != 1 else ''} rated {r['m']}/5")
-    return out
+    """Why a source matters — the S2 value spine's rule (priority · plan evidence · strong-Claim evidence · ≥ 3 findings rated 4–5). $0."""
+    from . import sources_value
+    return {sid: {"why": v["why"]} for sid, v in sources_value.compute(project_id).items() if v["matters"]}
 
 
 def triage(project_id: str) -> dict[str, Any]:
