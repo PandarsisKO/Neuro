@@ -161,8 +161,8 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     fl = flags_state()
     r.check("experimental flags at their safe defaults", all(v["ok"] for v in fl.values()), {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
     from . import claude_code
-    lh = claude_code.health()
-    r.check(claude_code.status_line(), lh.get("state") in ("ready", "disabled"), lh.get("detail") or "", warn=True)
+    lh = claude_code.health(wait=True)                      # doctor may block for the probe; the API surfaces never do
+    r.check(claude_code.status_line(wait=True), lh.get("state") in ("ready", "disabled"), lh.get("detail") or "", warn=True)
     r.check("ANTHROPIC_API_KEY configured", bool(settings.anthropic_api_key) or settings.fake_ai, "set" if settings.anthropic_api_key else ("fake mode" if settings.fake_ai else "missing — chat, findings, ranking and planning need it"), warn=True)
     r.check("OPENAI_API_KEY configured", bool(settings.openai_api_key) or settings.fake_ai, "set" if settings.openai_api_key else ("fake mode" if settings.fake_ai else "missing — embeddings and transcription need it"), warn=True)
     r.check("Reddit API credentials (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,

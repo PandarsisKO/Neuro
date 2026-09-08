@@ -232,3 +232,17 @@ def test_missing_binary_and_cloud_profile(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "ai_profile", "cloud")
     assert CC.health(force=True)["state"] == "disabled" and CC.status_line().startswith("Claude Code: off")
     assert usage.avoided_this_month() == 0.0
+
+
+def test_api_surfaces_never_block_on_the_probe(monkeypatch, tmp_path):
+    """/api/health and /api/usage return at once with 'checking' while the probe runs in the background; the router waits."""
+    _real(monkeypatch, tmp_path, "hang")
+    monkeypatch.setattr(CC, "PROBE_TIMEOUT", 2.0)
+    import time as _t
+    t0 = _t.time()
+    h = CC.health(wait=False)
+    assert _t.time() - t0 < 0.5 and h["state"] == "checking" and CC.status_line().startswith("Claude Code: checking")
+    _t.sleep(3.0)                                            # the hung probe timed out in the background → a real verdict, no thread left probing
+    h2 = CC.health(wait=False)
+    assert h2["state"] == "error" and "timeout" in (h2.get("detail") or "") or h2["state"] in ("error",)
+    assert CC._state["probing"] is False

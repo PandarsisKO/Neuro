@@ -141,20 +141,47 @@ def _has(flag: str) -> bool:
     return (flag in caps["flags"]) if caps.get("help") else True     # no help text → send the documented flags and let the CLI complain
 
 
-def health(force: bool = False) -> dict[str, Any]:
-    """ready · not_installed · not_signed_in · usage_limit · error · disabled (cloud profile). Cached HEALTH_TTL seconds.
-    The probe is one tiny prompt (it does spend a few subscription tokens), run only when the profile is local."""
+def health(force: bool = False, wait: bool = True) -> dict[str, Any]:
+    """ready · not_installed · not_signed_in · usage_limit · error · disabled (cloud profile) · checking. Cached HEALTH_TTL seconds.
+    The probe is one tiny prompt (it does spend a few subscription tokens), run only when the profile is local. wait=False
+    (the API surfaces) never blocks: a cold or expired verdict starts the probe in the background and returns the last
+    known state (or "checking"); the router (wait=True, worker threads) waits for the verdict."""
     if settings.ai_profile != "local":
         return {"state": "disabled", "detail": "AI profile is cloud (NEUROSEARCH_AI_PROFILE=local enables Claude Code)", "checked_at": time.time()}
     with _lock:
         h = _state["health"]
-        if h and not force and time.time() - h["checked_at"] < HEALTH_TTL:
+        fresh = bool(h) and not force and time.time() - h["checked_at"] < HEALTH_TTL
+        if fresh:
             return h
-    h = _probe()
-    h["checked_at"] = time.time()
-    with _lock:
-        _state["health"] = h
+        if not wait:
+            if not _state.get("probing"):
+                _state["probing"] = True
+                threading.Thread(target=_probe_bg, daemon=True, name="ns-claude-code-probe").start()
+            return dict(h or {"state": "checking", "detail": "checking Claude Code…"}, checking=True)
+        _state["probing"] = True
+    try:
+        h = _probe()
+        h["checked_at"] = time.time()
+        with _lock:
+            _state["health"] = h
+    finally:
+        with _lock:
+            _state["probing"] = False
     return h
+
+
+def _probe_bg() -> None:
+    try:
+        h = _probe()
+        h["checked_at"] = time.time()
+        with _lock:
+            _state["health"] = h
+    except Exception as e:  # noqa: BLE001
+        with _lock:
+            _state["health"] = {"state": "error", "detail": str(e)[:300], "checked_at": time.time()}
+    finally:
+        with _lock:
+            _state["probing"] = False
 
 
 def note_failure(e: LocalUnavailable) -> None:
@@ -297,7 +324,11 @@ def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, 
     text = _strip_fences(str(text)) if schema else str(text)
     usage = data.get("usage") or {}
     mu = data.get("modelUsage") or {}
-    model_name = model or (next(iter(mu.keys())) if isinstance(mu, dict) and mu else None) or "claude-code"
+    if isinstance(mu, dict) and mu:
+        busiest = max(mu.items(), key=lambda kv: int((kv[1] or {}).get("outputTokens") or 0) + int((kv[1] or {}).get("inputTokens") or 0))[0]
+    else:
+        busiest = None
+    model_name = busiest or model or "claude-code"      # what actually answered (the CLI may route a trivial prompt to Haiku)
     cost = data.get("total_cost_usd")
     log.info("claude code %s answered in %.1fs (%s in / %s out)", model_name, time.time() - t0, usage.get("input_tokens"), usage.get("output_tokens"))
     return LocalResponse(text, usage, str(model_name), data.get("session_id"), float(cost) if isinstance(cost, (int, float)) else None)
@@ -333,12 +364,14 @@ def create(**kw: Any) -> LocalResponse:
     return _run(_prompt_of(kw.get("messages")), system=_system_of(kw.get("system")), model=settings.claude_code_model or None, timeout=timeout, schema=schema)
 
 
-def status_line() -> str:
-    """One line for doctor / the Jobs header."""
-    h = health()
+def status_line(wait: bool = False) -> str:
+    """One line for doctor / the Jobs header (never blocks unless asked)."""
+    h = health(wait=wait)
     st = h.get("state")
     if st == "disabled":
         return "Claude Code: off (cloud profile)"
+    if st == "checking":
+        return "Claude Code: checking…"
     if st == "ready":
         return f"Claude Code: ready{(' ' + h['version']) if h.get('version') else ''}"
     if st == "usage_limit":
