@@ -18,6 +18,10 @@ from .config import settings
 CURRENT, STALE, REBUILDING, MISSING, SUPERSEDED, LEGACY = "current", "stale", "rebuilding", "missing", "superseded", "legacy_unverified"
 
 
+ACCEPTED = "current_accepted"     # S1: stale by inputs, accepted by the user as still usable (until the inputs change again)
+LOCAL_MINUTES_PER_WINDOW = 1.2    # observed 2026-09-08: ~one findings window per minute on Claude Code (Sonnet)
+
+
 def _project_jobs(project_id: str) -> list[dict[str, Any]]:
     return [j for j in db.list_jobs(2000) if (j.get("payload") or {}).get("project_id") == project_id]
 
@@ -93,6 +97,9 @@ def assess(project_id: str) -> dict[str, Any]:
                     reasons.append("output schema changed")
                 reasons = reasons or ["inputs changed"]
             status = STALE if reasons else CURRENT
+            if status == STALE and "transcript changed" not in reasons and a.get("accepted_hash") == findings.input_hash(project, sid, depth=a.get("depth")):
+                status = ACCEPTED                                        # S1: the user accepted these findings as still usable for exactly these inputs
+                note = "accepted as still usable for the current brief"
         elif not a.get("brief_revision"):
             status = STALE
             reasons.append("analysed before revisions were recorded")
@@ -115,7 +122,9 @@ def assess(project_id: str) -> dict[str, Any]:
             if status in (STALE, LEGACY):
                 stale_findings_cost += est
         sources.append({"source_id": sid, "title": s.get("title"), "status": status, "note": note, "reasons": reasons, "estimate": round(est, 4),
-                        "analysed_at": (a or {}).get("updated_at"), "model": (a or {}).get("model"), "provider": (a or {}).get("provider")})
+                        "analysed_at": (a or {}).get("updated_at"), "model": (a or {}).get("model"), "provider": (a or {}).get("provider"),
+                        "duration": s.get("duration"), "platform": s.get("platform"), "depth": (a or {}).get("depth"),
+                        "windows": max(1, int(((s.get("duration") or 0) + 3599) // 3600)) if s.get("duration") else 1})
     stale_sources = [x for x in sources if x["status"] in (STALE, LEGACY)]
 
     # ---- plan
@@ -206,3 +215,103 @@ def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str
         upstream = [j["id"] for j in jobs] + [j["id"] for j in live_findings_jobs(project_id)]
         jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"}, blocked_by=upstream or None))
     return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"], "transport": transport}
+
+
+# ------------------------------------------------------------------ S1: stale triage (three answers, not one bill)
+
+def _matters(project_id: str) -> dict[str, dict[str, Any]]:
+    """Why a source matters, from rows that exist: priority, Master Plan evidence, evidence of a strong Claim, an approved
+    finding of importance ≥ 4. $0."""
+    conn = db.connect()
+    out: dict[str, dict[str, Any]] = {}
+
+    def mark(sid: str, why: str) -> None:
+        out.setdefault(sid, {"why": []})["why"].append(why)
+    for r in conn.execute("SELECT source_id FROM project_sources WHERE project_id=? AND priority=1", (project_id,)).fetchall():
+        mark(r["source_id"], "priority source")
+    plan = db.latest_plan(project_id)
+    if plan:
+        for v in ((plan.get("plan") or {}).get("_evidence") or {}).values():
+            if v.get("source_id"):
+                mark(v["source_id"], "evidence in the Master Plan")
+    for r in conn.execute("""SELECT DISTINCT e.source_id FROM claim_evidence e JOIN project_claims c ON c.id=e.claim_id
+                             WHERE c.project_id=? AND c.strength='strong' AND c.status<>'rejected'""", (project_id,)).fetchall():
+        mark(r["source_id"], "evidence of a strong Claim")
+    for r in conn.execute("SELECT source_id, MAX(importance) m, COUNT(*) n FROM project_notes WHERE project_id=? AND status='approved' AND importance>=4 GROUP BY source_id",
+                          (project_id,)).fetchall():
+        if r["source_id"]:
+            mark(r["source_id"], f"{r['n']} approved finding{'s' if r['n'] != 1 else ''} rated {r['m']}/5")
+    return out
+
+
+def triage(project_id: str) -> dict[str, Any]:
+    """Partition the stale set: rebuild_matters · rebuild_transcript · accept (brief-only staleness on sources that carry no
+    weight) · retry_failed. Each tier carries its sources, why, and the cost as time on the local provider or dollars on the API."""
+    from . import claude_code, usage
+    a = assess(project_id)
+    why = _matters(project_id)
+    tiers: dict[str, list[dict[str, Any]]] = {"rebuild_matters": [], "rebuild_transcript": [], "accept": [], "retry_failed": []}
+    for x in a["sources"]:
+        if x["status"] not in (STALE, LEGACY):
+            continue
+        row = {**x, "why": (why.get(x["source_id"]) or {}).get("why") or []}
+        if any(r.startswith("last rebuild failed") for r in x["reasons"]):
+            tiers["retry_failed"].append(row)
+        elif "transcript changed" in x["reasons"]:
+            tiers["rebuild_transcript"].append(row)
+        elif row["why"]:
+            tiers["rebuild_matters"].append(row)
+        else:
+            tiers["accept"].append(row)
+    local = claude_code.health(wait=False).get("state") == "ready" and settings_profile_local()
+    out_tiers = {}
+    for k, rows in tiers.items():
+        api_cost = round(sum(r["estimate"] for r in rows), 4)
+        windows = sum(r.get("windows") or 1 for r in rows)
+        out_tiers[k] = {"count": len(rows), "sources": rows, "api_cost": api_cost, "windows": windows,
+                        "local_minutes": round(windows * LOCAL_MINUTES_PER_WINDOW) if local else None,
+                        "cost_line": (f"$0 · about {_hm(windows * LOCAL_MINUTES_PER_WINDOW)} on Claude Code" if local else f"${api_cost:.2f} on the API") if rows else ""}
+    t = usage.totals()
+    return {"project_id": project_id, "tiers": out_tiers, "plan": a["plan"], "stale_total": sum(len(v) for v in tiers.values()),
+            "accepted": sum(1 for x in a["sources"] if x["status"] == ACCEPTED), "local": local,
+            "budget": a["budget"], "why_legend": {"priority source": "you starred it", "evidence in the Master Plan": "a plan step cites it",
+                                                  "evidence of a strong Claim": "a Strong Claim rests on it", "rated": "you rated its findings 4 or 5"},
+            "explain": {"rebuild_matters": "Stale sources that carry weight: the plan, a Strong Claim, a priority star or a finding you rated 4–5 rests on them. Re-read these first.",
+                        "rebuild_transcript": "Their transcript changed since the findings were written — the quoted evidence may no longer be there. Not acceptable as-is.",
+                        "accept": "Stale only because the brief (or the prompt) changed, and nothing important rests on them. Accepting keeps their findings and stops the nagging until the inputs change again.",
+                        "retry_failed": "The last rebuild failed. The reason is on each row; Retry runs them through the normal path."}}
+
+
+def settings_profile_local() -> bool:
+    from .config import settings
+    return settings.ai_profile == "local"
+
+
+def _hm(minutes: float) -> str:
+    m = int(round(minutes))
+    return f"{m // 60} h {m % 60:02d} min" if m >= 60 else f"{m} min"
+
+
+def accept(project_id: str, source_ids: list[str] | None = None, tier: str | None = None) -> dict[str, Any]:
+    """Mark stale analyses as accepted for exactly their current inputs (never a transcript change)."""
+    from . import findings
+    project = db.get_project(project_id)
+    if not project:
+        raise RuntimeError("project not found")
+    if tier:
+        source_ids = [r["source_id"] for r in triage(project_id)["tiers"].get(tier, {}).get("sources", [])]
+    ids = list(dict.fromkeys(source_ids or []))
+    a = assess(project_id)
+    by = {x["source_id"]: x for x in a["sources"]}
+    accepted, refused = [], []
+    with db.tx() as conn:
+        for sid in ids:
+            x = by.get(sid)
+            if not x or x["status"] not in (STALE, LEGACY) or "transcript changed" in x["reasons"]:
+                refused.append(sid)
+                continue
+            an = db.get_analysis(project_id, sid, "summary") or {}
+            conn.execute("UPDATE project_source_analysis SET accepted_hash=?, accepted_at=? WHERE project_id=? AND source_id=? AND analysis_kind='summary'",
+                         (findings.input_hash(project, sid, depth=an.get("depth")), db.now(), project_id, sid))
+            accepted.append(sid)
+    return {"accepted": len(accepted), "refused": len(refused), "source_ids": accepted}

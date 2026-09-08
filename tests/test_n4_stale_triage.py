@@ -1,0 +1,137 @@
+"""S1 — stale triage (0.40.0): the stale set is three answers — rebuild (matters / transcript changed), accept as still
+usable, retry failed — never one bill. Accepting is recorded against the exact inputs and survives assess until the inputs
+change again; a transcript change is never acceptable; the cost line names the provider. (Sorts after test_n3.)"""
+from __future__ import annotations
+
+import os
+import tempfile
+
+os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_triage_"))
+os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
+os.environ["NEUROSEARCH_FAKE_AI"] = "1"
+
+import pytest  # noqa: E402
+
+from neurosearch import api, claims, db, fake_ai, findings, ingest, jobs, staleness  # noqa: E402
+from neurosearch import claude_code as CC  # noqa: E402
+from neurosearch.config import settings  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fresh(tmp_path, monkeypatch):
+    data = tmp_path / "data"; data.mkdir(); (data / "media").mkdir()
+    monkeypatch.setattr(settings, "data_dir", data)
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.setattr(settings, "auto_suggest", False)
+    monkeypatch.setattr(settings, "ai_profile", "cloud")
+    db._local.conn = None
+    db.init_db()
+    fake_ai.OUTAGES.clear()
+    with jobs._running_lock:
+        jobs._running.clear()
+    yield
+    db._local.conn = None
+
+
+TEXT = "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks"
+
+
+def _project():
+    p = db.create_project("Triage", "hosting")
+    ids = []
+    for i in range(4):
+        r = ingest.ingest_text(f"Hosting talk {i}", TEXT.replace("cloudflare", f"provider{i}"), project_id=p["id"])
+        findings.suggest_for_source(p["id"], r["source_id"], force=True)
+        ids.append(r["source_id"])
+    return p, ids
+
+
+def _by(t, key):
+    return {r["source_id"] for r in t["tiers"][key]["sources"]}
+
+
+def test_tiers_partition_the_stale_set_by_why_and_weight(monkeypatch):
+    p, ids = _project()
+    assert staleness.triage(p["id"])["stale_total"] == 0
+    # weight: source 0 is a priority source; source 1 has an approved finding rated 5; sources 2 and 3 carry nothing
+    db.connect().execute("UPDATE project_sources SET priority=1 WHERE project_id=? AND source_id=?", (p["id"], ids[0])); db.connect().commit()
+    n = db.list_project_notes(p["id"], status="suggested")
+    n1 = next(x for x in n if x["source_id"] == ids[1])
+    db.set_note_status(n1["id"], "approved")
+    db.connect().execute("UPDATE project_notes SET importance=5 WHERE id=?", (n1["id"],)); db.connect().commit()
+    # the brief changes: everything is stale by inputs
+    db.update_project(p["id"], brief="hosting and email deliverability")
+    t = staleness.triage(p["id"])
+    assert t["stale_total"] == 4
+    assert _by(t, "rebuild_matters") == {ids[0], ids[1]} and _by(t, "accept") == {ids[2], ids[3]}
+    assert not _by(t, "rebuild_transcript") and not _by(t, "retry_failed")
+    whys = {r["source_id"]: r["why"] for r in t["tiers"]["rebuild_matters"]["sources"]}
+    assert whys[ids[0]] == ["priority source"] and whys[ids[1]] == ["1 approved finding rated 5/5"]
+    # transcript change moves a source into its own, never-acceptable tier
+    seg = [{"start": 0.0, "end": 5.0, "text": "a new transcript entirely about email"}]
+    db.replace_transcript(ids[2], seg, seg)
+    t2 = staleness.triage(p["id"])
+    assert ids[2] in _by(t2, "rebuild_transcript") and ids[2] not in _by(t2, "accept")
+    # cost lines name the provider: dollars on the API…
+    assert t2["local"] is False and all(x["cost_line"].endswith("on the API") for x in t2["tiers"].values() if x["count"])
+    # …time on Claude Code when the local profile is on and ready
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setenv(CC.FAKE_ENV, "ready")
+    CC._state["health"] = {"state": "ready", "checked_at": 1e12}
+    t3 = staleness.triage(p["id"])
+    assert t3["local"] is True and all("Claude Code" in x["cost_line"] and x["cost_line"].startswith("$0") for x in t3["tiers"].values() if x["count"])
+    assert all(x["local_minutes"] is not None for x in t3["tiers"].values() if x["count"])
+
+
+def test_accept_survives_assess_until_the_inputs_change_again_and_refuses_transcript_changes():
+    p, ids = _project()
+    db.update_project(p["id"], brief="hosting and email deliverability")
+    t = staleness.triage(p["id"])
+    assert _by(t, "accept") == set(ids)
+    r = staleness.accept(p["id"], tier="accept")
+    assert r["accepted"] == 4 and r["refused"] == 0
+    a = staleness.assess(p["id"])
+    assert all(x["status"] == staleness.ACCEPTED and "accepted" in (x["note"] or "") for x in a["sources"])
+    assert a["stale_sources"] == 0 and staleness.triage(p["id"])["stale_total"] == 0 and staleness.triage(p["id"])["accepted"] == 4
+    # nothing was queued or spent by accepting
+    assert not [j for j in db.list_jobs(50) if j["kind"].startswith("suggest")]
+    # the findings are still there and still read as approved/suggested — accept never touches them
+    assert len(db.list_project_notes(p["id"], status="suggested")) >= 4
+    # a further brief change stales them again (the accepted hash no longer matches)
+    db.update_project(p["id"], brief="hosting, email and DNS")
+    assert staleness.triage(p["id"])["stale_total"] == 4
+    # a transcript change is refused
+    seg = [{"start": 0.0, "end": 5.0, "text": "brand new words"}]
+    db.replace_transcript(ids[0], seg, seg)
+    r2 = staleness.accept(p["id"], [ids[0], ids[1]])
+    assert r2["accepted"] == 1 and r2["refused"] == 1
+    # rebuilding an accepted source is still possible and clears the acceptance by producing a fresh analysis
+    findings.suggest_for_source(p["id"], ids[1], force=True)
+    st = next(x for x in staleness.assess(p["id"])["sources"] if x["source_id"] == ids[1])
+    assert st["status"] == "current"
+
+
+def test_rebuild_by_tier_and_retry_failed_only_queue_that_tier(monkeypatch):
+    p, ids = _project()
+    db.connect().execute("UPDATE project_sources SET priority=1 WHERE project_id=? AND source_id=?", (p["id"], ids[0])); db.connect().commit()
+    db.update_project(p["id"], brief="hosting and email deliverability")
+    out = api.api_rebuild_stale(p["id"], api.RebuildIn(what=["findings"], tier="rebuild_matters"))
+    assert out["queued"] == 1 and out["tier"] == "rebuild_matters"
+    j = db.get_job(out["job_ids"][0])
+    assert j["kind"] == "suggest_findings" and j["payload"]["source_ids"] == [ids[0]] and j["payload"]["force"] is True
+    # a failed rebuild lands the source in retry_failed, and retrying queues exactly it
+    claimed = db.claim_job(("suggest_findings",), worker_id="t")
+    assert claimed and claimed["id"] == j["id"]
+    assert db.finish_job(j["id"], claimed["run_id"], "failed", message="error: provider exploded")
+    t = staleness.triage(p["id"])
+    assert _by(t, "retry_failed") == {ids[0]} and ids[0] not in _by(t, "rebuild_matters")
+    assert any("provider exploded" in z for r in t["tiers"]["retry_failed"]["sources"] for z in r["reasons"])
+    out2 = api.api_rebuild_stale(p["id"], api.RebuildIn(what=["findings"], tier="retry_failed"))
+    assert out2["queued"] == 1 and db.get_job(out2["job_ids"][0])["payload"]["source_ids"] == [ids[0]]
+    # an empty tier queues nothing
+    assert api.api_rebuild_stale(p["id"], api.RebuildIn(what=["findings"], tier="rebuild_transcript"))["queued"] == 0
+    # the API accept endpoint defaults to the accept tier and reports counts
+    r = api.api_staleness_accept(p["id"], api.AcceptIn())
+    assert r["accepted"] == 3
+    assert api.api_staleness_triage(p["id"])["tiers"]["accept"]["count"] == 0

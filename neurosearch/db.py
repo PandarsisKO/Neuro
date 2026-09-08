@@ -794,6 +794,8 @@ MIGRATIONS = [
     ("community_syntheses", "coverage", "ALTER TABLE community_syntheses ADD COLUMN coverage TEXT"),   # B2: JSON — partial/unknown threads behind the state         # B2: JSON — captured vs expected, never "complete" by default
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "depth", "ALTER TABLE project_source_analysis ADD COLUMN depth TEXT"),   # D2: NULL = ordinary reading, 'deep' = Read deeper
+    ("project_source_analysis", "accepted_hash", "ALTER TABLE project_source_analysis ADD COLUMN accepted_hash TEXT"),   # S1: the input hash the user accepted as still usable
+    ("project_source_analysis", "accepted_at", "ALTER TABLE project_source_analysis ADD COLUMN accepted_at REAL"),
     ("project_source_analysis", "transport", "ALTER TABLE project_source_analysis ADD COLUMN transport TEXT"),
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
     ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),

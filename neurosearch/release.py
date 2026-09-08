@@ -251,6 +251,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_n4_stale_triage.py"])
+        r.check("stale triage (S1): the stale set partitions into rebuild-matters / transcript-changed / accept / retry-failed by why and weight; accepting is recorded against the exact inputs, "
+                "survives assess until the inputs change, never touches findings, is refused for transcript changes; tier rebuilds queue only that tier; cost lines name the provider", ok, tail)
         ok, tail = _pytest(["tests/test_n3_deep_findings.py"])
         r.check("deep content (D1–D3): the findings cap is length-aware with a per-window coverage floor; overflow is kept as reserve (promotable, never exported/planned/harvested); "
                 "a one-window source is the old top-12; Read deeper = smaller windows + a USER-message depth instruction, current on its own terms, staleness agrees; long sources are flagged under-read", ok, tail)

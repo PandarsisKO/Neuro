@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.39.0';
+const UI_VERSION = '0.40.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1498,8 +1498,41 @@ async function loadStaleness() {
   const nf = $('#nFindings'), np = $('#nPlan');
   if (nf) nf.classList.toggle('stale', s.stale_sources > 0);
   if (np) np.classList.toggle('stale', s.plan.status === 'stale');
-  renderStaleCard('staleFindings', 'findings');
+  renderTriageCard('staleFindings');
   renderStaleCard('stalePlan', 'plan');
+}
+// S1: the stale set as three answers — rebuild (matters / transcript changed) · accept as still usable · retry failed
+async function renderTriageCard(elId) {
+  const el = $('#' + elId); if (!el) return;
+  const s = STALE.data; if (!s) { el.innerHTML = ''; return; }
+  const reb = s.sources.filter(x => x.status === 'rebuilding');
+  if (!s.stale_sources && !s.legacy_sources && !reb.length) { el.innerHTML = ''; return; }
+  if (STALE.left) { el.innerHTML = ''; return; }
+  let t; try { t = await api(`/api/projects/${state.project.id}/staleness/triage`); } catch (e) { el.innerHTML = ''; return; }
+  const T = t.tiers;
+  const row = (key, label, btn, danger) => { const x = T[key]; if (!x || !x.count) return '';
+    const names = x.sources.slice(0, 3).map(r => esc((r.title || '').slice(0, 48))).join(' · ') + (x.count > 3 ? ` · +${x.count - 3}` : '');
+    const why = key === 'rebuild_matters' ? ` <span class="muted">(${esc([...new Set(x.sources.flatMap(r => r.why))].slice(0, 3).join('; '))})</span>` : key === 'retry_failed' ? ` <span class="muted">(${esc([...new Set(x.sources.map(r => (r.reasons.find(z => z.startsWith('last rebuild failed')) || '').replace('last rebuild failed: ', '')))].slice(0, 2).join(' / ').slice(0, 140))})</span>` : '';
+    return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start"><div style="flex:1;min-width:0"><b>${x.count}</b> ${label}${why}<div class="muted" style="font-size:12px">${names}</div><div class="muted" style="font-size:12px">${esc(t.explain[key])}</div></div>
+      <div style="white-space:nowrap">${btn(x)}</div></div>`; };
+  const rebuildBtns = (x, key) => `<button class="small ${key === 'rebuild_transcript' ? 'primary' : ''}" title="${t.local ? 'Runs on Claude Code — $0, slow' : 'Runs on the API'}" onclick="rebuildTier('${key}')">Rebuild · ${esc(x.cost_line)}</button>`;
+  const acceptBtns = x => `<button class="small" onclick="acceptTier('accept')">Accept ${x.count} as still usable</button> <button class="small ghost" onclick="rebuildTier('accept')" title="Re-read them anyway">Rebuild · ${esc(x.cost_line)}</button>`;
+  const retryBtns = x => `<button class="small" onclick="rebuildTier('retry_failed')">Retry ${x.count} · ${esc(x.cost_line)}</button>`;
+  el.innerHTML = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${t.stale_total} source${t.stale_total === 1 ? '' : 's'} analysed against older inputs</b>${t.accepted ? ` <span class="muted">· ${t.accepted} accepted as still usable</span>` : ''}${reb.length ? ` <span class="muted">· ${reb.length} re-analysing</span>` : ''}
+    <div class="muted">Their findings stay readable and usable. Three answers, not one bill — nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
+    ${row('rebuild_matters', 'stale AND carrying weight', x => rebuildBtns(x, 'rebuild_matters'))}
+    ${row('rebuild_transcript', 'whose transcript changed', x => rebuildBtns(x, 'rebuild_transcript'))}
+    ${row('retry_failed', 'whose last rebuild failed', retryBtns)}
+    ${row('accept', 'stale only because the brief changed, carrying no weight', acceptBtns)}
+    <div class="row" style="margin-top:8px"><span class="muted" style="flex:1;font-size:12px">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div></div>`;
+}
+async function rebuildTier(tier) {
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], tier, transport: 'interactive' });
+  toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued`); loadStaleness(); loadJobs();
+}
+async function acceptTier(tier) {
+  const r = await post(`/api/projects/${state.project.id}/staleness/accept`, { tier });
+  toast(`${r.accepted} accepted as still usable${r.refused ? ` · ${r.refused} refused (transcript changed)` : ''}`); loadStaleness();
 }
 function renderStaleCard(elId, what) {
   const el = $('#' + elId); if (!el) return;

@@ -1259,6 +1259,31 @@ class RebuildIn(BaseModel):
     what: list[str] | None = None          # findings | plan
     source_ids: list[str] | None = None
     transport: str = "interactive"         # findings rebuild: interactive (now) | batch (background); the plan is never batched
+    tier: str | None = None                # S1: rebuild_matters | rebuild_transcript | retry_failed | accept — the triage tier's sources
+
+
+@app.get("/api/projects/{project_id}/staleness/triage", dependencies=[Depends(require_auth)])
+def api_staleness_triage(project_id: str) -> dict[str, Any]:
+    """S1: the stale set as three answers — rebuild (matters / transcript changed), accept as still usable, retry failed — with
+    the cost as time on Claude Code or dollars on the API. Pure computation."""
+    from . import staleness
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return staleness.triage(project_id)
+
+
+class AcceptIn(BaseModel):
+    source_ids: list[str] | None = None
+    tier: str | None = "accept"
+
+
+@app.post("/api/projects/{project_id}/staleness/accept", dependencies=[Depends(require_auth)])
+def api_staleness_accept(project_id: str, body: AcceptIn) -> dict[str, Any]:
+    """S1: keep these findings and mark them accepted for the current inputs (refused when the transcript changed)."""
+    from . import staleness
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return staleness.accept(project_id, body.source_ids, tier=None if body.source_ids else body.tier)
 
 
 @app.post("/api/projects/{project_id}/rebuild-stale", dependencies=[Depends(require_auth)])
@@ -1267,7 +1292,12 @@ def api_rebuild_stale(project_id: str, body: RebuildIn) -> dict[str, Any]:
     from . import staleness
     if body.transport not in ("interactive", "batch"):
         raise HTTPException(400, "transport must be 'interactive' or 'batch'")
-    return staleness.rebuild(project_id, body.what, body.source_ids, transport=body.transport)
+    source_ids = body.source_ids
+    if body.tier:
+        source_ids = [r["source_id"] for r in staleness.triage(project_id)["tiers"].get(body.tier, {}).get("sources", [])]
+        if not source_ids:
+            return {"queued": 0, "job_ids": [], "tier": body.tier}
+    return {**staleness.rebuild(project_id, body.what, source_ids, transport=body.transport), "tier": body.tier}
 
 
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])
