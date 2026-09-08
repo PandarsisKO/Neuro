@@ -155,8 +155,8 @@ Cumulative. Every rung preserves everything hardened before it. Every rung has a
 **Mission:** understand what the user supplied before deciding what pipeline to run. `INPUT → RESOURCE CLASSIFICATION → STANDARD SOURCE / COLLECTION LIFECYCLE`.
 **Recognize:** page, website, website_section, sitemap, document, image, video, channel, playlist, feed, repository, community, folder/archive, spreadsheet, search_query, work_identity.
 **UX:** "Add something to research — paste a URL, upload a file, or describe what you're looking for." `irs.gov → Website detected → Explore website / Add page only`; `ISBN → Book detected → Find available copy`; `GitHub repository → Explore relevant files`.
-**Feature Gate:** a root website, repository, community, or Work identity no longer falls through to naive webpage ingestion.
-**Platform Integration Gate:** every resulting source still enters the canonical lifecycle; no type bypasses global dedupe, durable jobs, provenance, revisions/staleness, cost, validation.
+**Feature Gate:** a root website, repository, community, or Work identity no longer falls through to naive webpage ingestion. **A standalone screenshot can enter Neuro Search as a first-class Source, proceed through the standard source lifecycle, and become searchable project evidence** (see the Image addendum).
+**Platform Integration Gate:** every resulting source still enters the canonical lifecycle; no type bypasses global dedupe, durable jobs, provenance, revisions/staleness, cost, validation — for images explicitly: image source identity, global reuse, provenance, durable processing, revision compatibility, cost accounting, evidence validation, project boundary.
 
 ## RUNG 3 — Website & Collection Exploration
 
@@ -202,11 +202,12 @@ Cumulative. Every rung preserves everything hardened before it. Every rung has a
 **Feature Gate:** a large community yields a concise high-signal set of discussions and structured experiential findings without confusing popularity with authority.
 **Platform Integration Gate:** standard identity, durable jobs, revisions/staleness, provenance, evidence validation, project-relative authority, cost accounting. No shadow corpus.
 
-## RUNG 8 — Multimodal Evidence
+## RUNG 8 — Image, Screenshot & Multimodal Evidence
 
-**Mission:** evidence from images, screenshots, scans, charts, maps, diagrams, tables, figures, slides, PDF imagery, SVGs. Visual evidence object preserves original asset, source revision, location, visible text, caption, structured observations, visual interpretation, chart/table extraction, citation locator ("Maintenance Manual · Page 43 · Figure 7 · Region …"). The derived description is not the citation; the original revision and location are. Cheap heuristics first; analyze only substantive visuals.
-**Feature Gate:** a question whose answer exists only inside a visual object is answered with a precise citation to source/page/figure/region.
-**Platform Integration Gate:** same lifecycle, revision model, provenance, retrieval, Claim relationships, staleness, durable jobs, usage accounting, validation as text.
+**Mission:** make all visually encoded research information readable, structured, retrievable, comparable, and citable, whether it originates as a standalone screenshot, photograph, scan, chart, diagram, slide, webpage image, or figure embedded inside another document. Images and screenshots are first-class research sources, not attachments that merely receive OCR or descriptions. Visual evidence object preserves original asset, source revision, visual regions, visible text, structured fields, tables, chart interpretation, visual observations, entities, temporal information, citation locator ("Screenshot 4 · Financial summary" / `source_id, revision_id, image_id, region_id, bounding_box`). The derived description is not the citation; the original revision and region are. Cheap heuristics first; analyze only substantive visuals.
+**Must explicitly support:** standalone image ingestion · screenshot ingestion · visual text extraction · structured field extraction · table reconstruction · chart understanding (exact vs estimated values, never silently conflated) · visual region citations · image collections · visual deduplication · image comparison · temporal extraction · visual-to-project-state promotion · visual references feeding Discover · visual evidence feeding Claims · visual evidence feeding Novel Insights. Field-specific confidence; never hallucinate illegible values. Layers stay separate: original image → extracted observation → normalized data → claim/interpretation, each with provenance to the layer above.
+**Feature Gate (all must pass):** screenshot text retrievable from another Chat · business-listing screenshot yields asking price / revenue / cash flow fields · table screenshot yields usable row/column data · chart explained with exact-vs-estimated distinguished · a fact answerable only by the screenshot is cited to screenshot/region · information persists outside the original conversation · two dashboard versions → meaningful changes identified · an expiration date becomes structured temporal information · a screenshot referencing a document not in the project proposes finding the Work.
+**Platform Integration Gate:** Universal Resource Input, Global Source Identity, Global Library reuse, standard Source lifecycle, durable jobs, provenance, revisions, staleness, structured outputs, validation, retrieval, Claims/Evidence, Knowledge Map, Novel Insights/Research Tensions, Gap Engine, Discover, Planner, Temporal Intelligence, cost accounting, Health/release gates. **No standalone vision silo** — no separate "image memory", no Chat-only vision path that loses provenance.
 
 ## RUNG 9 — Recursive Research, Temporal Intelligence & Decision Readiness
 
@@ -393,6 +394,118 @@ Novelty recall (known high-value information present in only one or two sources)
 **Conceptual model:** CHAT (conversational command layer) → PROJECT STATE (decisions, constraints, preferences, deadlines, authority rules) · RESEARCH STATE (Claims, Evidence, Gaps, Tensions, Novel Insights, Freshness, Readiness) · ACTION (search, acquire, Discover, compare, verify, plan, monitor) → USER RESPONSE. Chat is the interface through which the user interrogates, steers and operates the research intelligence — and that intelligence answers not only "what does most of my evidence say?" but **"what important thing might I otherwise miss, how trustworthy is it, and is it worth investigating before I act?"**
 
 **Already in place (0.24.1):** `search_library` / `list_sources` / `set_source_priority` tools, library inventory in the state block, project-relative priority sources with reserved excerpt slots, follow-up grounding, in-chat attachments — the first pieces of C1/C2 and the tool surface C5–C7 build on.
+
+# ADDENDUM — First-Class Image, Screenshot & Visual Data Ingestion
+
+*Kyle's addendum (2026-09-08). A strengthening of Rung 2 and a major expansion of Rung 8 — not a new rung. It also feeds the Chat addendum, the Candidate Index, the Gap Engine, Novel Insights, Temporal Intelligence, and eventually the mobile workflow.*
+
+## Critical clarification
+
+Images and screenshots are first-class research sources, not attachments that merely receive OCR or descriptions. A user must be able to drag, paste, upload, or capture screenshots, photographs, charts, tables, dashboards, social-media posts, receipts, invoices, schedules, maps, diagrams, product specifications, forms, scanned documents, whiteboards, slides, app interfaces, and websites captured as images — and have Neuro Search extract the useful information into the same evidence system used for text, webpages, PDFs, transcripts, and documents. The core user expectation: **if I can see useful information in an image, Neuro Search should be able to read it, understand it, retrieve it later, and cite where it came from.**
+
+## 1. Image is an explicit Universal Resource type
+
+`IMAGE / SCREENSHOT → STANDARD SOURCE LIFECYCLE → VISUAL EXTRACTION → STRUCTURED EVIDENCE → RETRIEVAL / CLAIMS / CHAT / PLANNER`. Formats where practical: PNG, JPEG/JPG, HEIC, WEBP, TIFF, GIF (static frame). Entry points: upload, drag into Sources, paste from clipboard, paste directly into Chat, send through the browser/mobile workflow. A screenshot pasted into Chat should optionally become a real project Source rather than existing only inside one conversation turn.
+
+## 2. Visual extraction is not OCR alone
+
+Identify visible text, tables, numbers, labels, structured fields, charts, diagrams, UI elements, relationships, layout, objects, visual context. A business-listing screenshot must not be saved as "image showing a business listing"; it yields `asking_price = 2,000,000 USD`, `cash_flow = 325,000 USD`, `revenue = 1,100,000 USD`, `employees = 7`, `location = California` while the screenshot stays the original evidence.
+
+## 3. "Extract data from image" as an explicit capability
+
+Intents: read this screenshot · pull all the numbers out · turn this table into structured data · what does this chart show · add these specifications to the project · compare this with the other listing · save the deadlines shown · extract the prices · what changed between these two screenshots. Chat determines whether the user wants text extraction, structured data, visual interpretation, comparison, project ingestion, fact/claim extraction, or temporal event extraction.
+
+## 4. Visual Evidence Object
+
+Each meaningful image preserves: original image, visual regions, visible text, structured fields, tables, chart interpretation, visual observations, entities, temporal information, evidence locators. E.g. `Screenshot 12 / Region 1 type=header text="Accounting Practice for Sale" / Region 2 type=financial table fields={Asking Price, Revenue, Cash Flow} / Region 3 descriptive text / Region 4 chart`. Content is independently retrievable without losing the original visual context.
+
+## 5. Region-level provenance
+
+Locators more precise than "Screenshot 4": "Screenshot 4, upper-right table"; internally `source_id, revision_id, image_id, region_id, bounding_box (x1,y1,x2,y2)`. The user need not see coordinates; the UI highlights the cited region. Long-term citation: **$325,000 owner cash flow** — Screenshot 4 · Financial summary; clicking opens the screenshot and highlights the region containing `$325,000`.
+
+## 6. Structured tables from screenshots
+
+A table screenshot produces a structured table (row, column, header, value, unit, source region), not flattened OCR text — enabling comparison, calculations, export, spreadsheet conversion, filtering, trend analysis, Chat queries ("Compare the financials from the five businesses I screenshotted").
+
+## 7. Chart understanding
+
+Extract chart type, title, axis labels, units, legend, series, visible values, trend direction, major changes, outliers, annotations. Distinguish **directly readable data** (values visibly present) from **estimated visual data** (inferred from geometry). Never silently treat estimated values as exact: "Revenue appears to rise from approximately $1.2M to $1.7M" stays explicitly approximate.
+
+## 8. Time-sensitive screenshots
+
+Deadlines, promotions, dates, expiration notices, schedules, prices, appointment times, course assignments, flight information, application windows feed Temporal Intelligence. `Promotion: 5x points on groceries, ends December 31, 2026` → `type: promotion, benefit: 5x points, category: groceries, effective_until: 2026-12-31, source: screenshot, refresh_required: true`; Chat may propose "This screenshot contains an expiration date. Add it to the project's tracked deadlines?"
+
+## 9. Screenshot → structured project state
+
+Extractions are eligible for promotion into Fact, Claim, Constraint, Decision, Requirement, Deadline, Price, Metric, Finding, Research Gap, Entity, Plan input — under the existing control rule: **extraction does not automatically equal accepted project truth.** "Asking price: $2,000,000" may safely become extracted evidence; "this business is undervalued" is a derived Claim requiring reasoning and support.
+
+## 10. Field-specific confidence
+
+No single confidence for a whole screenshot: `Asking Price $2,000,000 high · Cash Flow $325,000 high · Employee Count 7? uncertain`. If text is illegible, cropped, obstructed, or ambiguous, say so. Do not hallucinate missing values.
+
+## 11. Original and derived layers stay separate
+
+`ORIGINAL IMAGE → EXTRACTED OBSERVATION → NORMALIZED DATA → CLAIM / INTERPRETATION` (pixels "$325,000" → visible text "$325,000" → `cash_flow_usd = 325000` → "cash flow is ~16.25% of asking price"); each layer retains provenance to the one above.
+
+## 12. Image collections
+
+Several screenshots often form one logical source (6 of a listing, 12 from a carousel, 8 of a report, 20 photographed pages). Allow grouping into a collection/logical document ("Business Listing — Smith CPA Practice: Screenshot 1…4"); detect sequential, overlapping, duplicate screenshots, pages of one document, carousel order where possible.
+
+## 13. Screenshot deduplication
+
+Cheap image identity where practical: exact file hash, perceptual hash, visual similarity, metadata similarity. Visually identical recompressed screenshots should not become independent evidence; a cropped screenshot may relate to a full one without being identical — preserve source relationships.
+
+## 14. Comparative visual analysis
+
+"What's different between these pricing screenshots?", "Compare these three listings", "What changed in this dashboard since last week?", "Which specifications differ?", "Has the promotion changed?" — structured extraction of revision A and B → differences. Screenshots of the same changing object may participate in revision/change tracking rather than being unrelated sources.
+
+## 15. Global Library reuse
+
+An image is a standard global Source: global identity, deduplication, project relationships, provenance, revisions, staleness, retrieval, Claims, cost accounting, durable jobs. **Do not create a separate "image memory" system.**
+
+## 16. Screenshots in Chat
+
+On paste, Chat asks (lightweight UX) or infers: use only in this conversation vs add to project research; where unambiguous, offer **Add screenshot to project**. Once added, its evidence is available to future Chats, Findings, Claims, Knowledge Map, Planner, Gap Engine, Discover — it does not disappear when the conversation ages.
+
+## 17. Screenshot-focused Chat actions
+
+Equivalents of `extract_image_text`, `extract_image_data`, `extract_table`, `analyze_chart`, `compare_images`, `save_image_to_project`, `create_fact_from_visual`, `create_deadline_from_visual`, `create_claim_from_visual`, `find_related_sources` (names follow the hardened architecture). Chat orchestrates the standard visual-source pipeline; no separate Chat-only vision implementation that loses provenance.
+
+## 18. Image search within the project
+
+"Find the screenshot where the business had $325k cash flow", "Which screenshot showed the expiration date?", "Find the chart with the 2027 projection", "Which image mentioned 90% SBA financing?" — retrieval through extracted text, structured fields, entities, captions, and visual descriptions.
+
+## 19. Novelty and Gap Analysis include visual evidence
+
+A screenshot stating "Seller will remain for 24 months" with no other source mentioning a two-year transition → Novel Insight (evidence: Screenshot 7; corroboration: none; impact: high) for the Gap Engine to investigate. Visual evidence must not sit outside the project's intelligence system.
+
+## 20. Image-derived leads feed the Candidate Index
+
+A screenshot may reveal a book, author, company, URL, product, regulation, person, citation, podcast, paper, document number ("See IRS Publication 946"): `VISUAL EVIDENCE → extract reference → resolve entity/work → check Global Library → Candidate Index → propose acquisition`. A screenshot triggers the same recursive research behaviour as text.
+
+## 21. Mobile importance
+
+See something useful → screenshot → send to Neuro Search → extract → save to project → continue researching. Minimize friction between camera/screenshot and durable project evidence; likely one of the highest-frequency ingestion workflows.
+
+## 22. Privacy and image metadata
+
+Do not depend on EXIF for evidence; avoid exposing unnecessary device/location metadata; preserve only metadata useful for research/provenance; treat uploaded screenshots as user-controlled source material. If EXIF is used for date/time provenance, distinguish it from visible evidence.
+
+## 23–26. Gate changes
+
+Recorded directly in Rung 2 (Feature Gate + Platform Integration Gate) and Rung 8 (renamed, updated mission, nine-part Feature Gate, Platform Integration Gate) above.
+
+## 27. Image-specific evaluation criteria
+
+Text extraction accuracy · numeric accuracy · structured-field accuracy (label/value pairing) · table reconstruction · chart fidelity (no invented exact values from unlabeled charts) · citation localization · visual hallucination rate · multi-image grouping · duplicate detection · temporal extraction · persistence (retrievable long after the original Chat) · recursive utility (visible references become leads).
+
+## Updated product rules
+
+> **If useful information is visible to the user, Neuro Search should treat it as potentially ingestible evidence regardless of whether the information is encoded as selectable text.**
+
+> **Visual understanding must produce provenance-backed evidence, not merely an AI description of an image.**
+
+`I SEE SOMETHING USEFUL → SCREENSHOT → NEURO SEARCH → READ IT · STRUCTURE IT · REMEMBER IT · CITE IT · COMPARE IT · RESEARCH FROM IT → PROJECT KNOWLEDGE`. A core ingestion capability, not an optional enhancement to PDFs.
 
 # Rung log
 
