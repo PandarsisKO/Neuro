@@ -23,7 +23,7 @@ import threading
 import time
 from typing import Any
 
-from . import db, ingest, logctx
+from . import db, ingest, logctx, providers
 from .config import settings
 from .embeddings import embed_pending
 
@@ -316,8 +316,11 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     with _running_lock:
         _running[jid] = run_id or ""
     t0 = time.time()
+    providers.set_policy(job.get("execution_policy") or "local_preferred")
+    providers.reset_job_route()
     try:
         result = run_job(job)
+        _record_execution(jid)
         db.finish_job(jid, run_id, "done", message="done", result=result)
         log.info("job done in %.1fs", time.time() - t0)
         _after_done(job)
@@ -408,11 +411,25 @@ def _worker_id(n: int | str) -> str:
     return f"{socket.gethostname()}:{os.getpid()}:{n}"
 
 
-def _worker(n: int, kinds: tuple[str, ...] | None = None) -> None:
+def _record_execution(jid: str) -> None:
+    """L1: which provider actually ran the job's model calls (local · api · mixed) and the first fallback reason, if any."""
+    by, fb = providers.job_route()
+    if by or fb:
+        try:
+            db.set_job_execution(jid, by, fb)
+        except Exception as e:  # noqa: BLE001
+            log.debug("execution record failed: %s", e)
+
+
+LOCAL_POLICIES = ("local_preferred", "local_only")
+API_POLICIES = ("api_requested", "api_only")
+
+
+def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None) -> None:
     wid = _worker_id(n)
-    log.info("worker %d started%s", n, f" ({', '.join(kinds)})" if kinds else "")
+    log.info("worker %d started%s%s", n, f" ({', '.join(kinds)})" if kinds else "", f" [{'/'.join(policies)}]" if policies else "")
     while not _stop.is_set():
-        job = db.claim_job(kinds, worker_id=wid)
+        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies)
         if not job:
             _stop.wait(1.5)
             continue
@@ -462,14 +479,26 @@ def start_workers(n: int | None = None) -> None:
     if requeued:
         log.info("re-queued %d interrupted jobs (they resume from their last completed stage)", requeued)
     _stop.clear()
+    local = settings.ai_profile == "local"
     for i in range(n):
-        t = threading.Thread(target=_worker, args=(i,), daemon=True, name=f"ns-worker-{i}")
+        # local profile: general workers keep ingestion and leave the AI kinds to the two AI pools
+        t = threading.Thread(target=_worker, args=(i,), kwargs={"exclude_kinds": ANALYSIS_KINDS} if local else {}, daemon=True, name=f"ns-worker-{i}")
         t.start()
         _threads.append(t)
-    # one extra worker that only does the cheap Claude jobs, so findings/ranking never wait behind slow downloads
-    t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
-    t.start()
-    _threads.append(t)
+    if local:
+        # L1: the local pool (busy = the job waits, never spends) and one API pool for api_requested / api_only jobs
+        for i in range(max(1, settings.local_ai_workers)):
+            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES}, daemon=True, name=f"ns-worker-local-ai-{i}")
+            t.start()
+            _threads.append(t)
+        t = threading.Thread(target=_worker, args=("api", ANALYSIS_KINDS), kwargs={"policies": API_POLICIES}, daemon=True, name="ns-worker-api-ai")
+        t.start()
+        _threads.append(t)
+    else:
+        # one extra worker that only does the cheap Claude jobs, so findings/ranking never wait behind slow downloads
+        t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
+        t.start()
+        _threads.append(t)
     for target, name in ((_backup_loop, "ns-backup"), (_lease_loop, "ns-lease"), (_recovery_loop, "ns-recovery"), (_external_loop, "ns-external")):
         t = threading.Thread(target=target, daemon=True, name=name)
         t.start()

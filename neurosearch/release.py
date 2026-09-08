@@ -160,6 +160,9 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
         r.check("every AI contract valid and NO_FALLBACK", False, str(e)[:200])
     fl = flags_state()
     r.check("experimental flags at their safe defaults", all(v["ok"] for v in fl.values()), {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
+    from . import claude_code
+    lh = claude_code.health()
+    r.check(claude_code.status_line(), lh.get("state") in ("ready", "disabled"), lh.get("detail") or "", warn=True)
     r.check("ANTHROPIC_API_KEY configured", bool(settings.anthropic_api_key) or settings.fake_ai, "set" if settings.anthropic_api_key else ("fake mode" if settings.fake_ai else "missing — chat, findings, ranking and planning need it"), warn=True)
     r.check("OPENAI_API_KEY configured", bool(settings.openai_api_key) or settings.fake_ai, "set" if settings.openai_api_key else ("fake mode" if settings.fake_ai else "missing — embeddings and transcription need it"), warn=True)
     r.check("Reddit API credentials (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,
@@ -248,6 +251,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_n2_local_ai.py"])
+        r.check("Local-First AI (L1): local runs when ready; unavailable/usage-limit → the API with the reason recorded and nothing else changed; local_only never touches the API; "
+                "api_only/api_requested never touch local; cloud profile = local absent; the ledger carries provider + avoided spend; the stub CLI proves the subprocess contract", ok, tail)
         ok, tail = _pytest(["tests/test_n1_research_view.py"])
         r.check("Research view engine (R1/R3/R5/R6): a deterministic $0 priority order over questions and watch-outs (importance, planner dependence, impact, breadth, known sources); "
                 "watch-outs are issues grouped by kind and area, never rows; areas are named from finding titles, never generic tokens; the sidebar number is what needs the user, never the Claim count", ok, tail)

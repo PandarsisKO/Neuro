@@ -751,6 +751,11 @@ MIGRATIONS = [
     ("jobs", "lease_until", "ALTER TABLE jobs ADD COLUMN lease_until REAL"),
     ("jobs", "cancel_requested_at", "ALTER TABLE jobs ADD COLUMN cancel_requested_at REAL"),
     ("jobs", "wait_reason", "ALTER TABLE jobs ADD COLUMN wait_reason TEXT"),
+    # L1 Local-First AI: intent (execution_policy: local_preferred | local_only | api_requested | api_only) and outcome (executed_by,
+    # fallback_reason) are separate columns — a job that meant local and ran on the API says so
+    ("jobs", "execution_policy", "ALTER TABLE jobs ADD COLUMN execution_policy TEXT NOT NULL DEFAULT 'local_preferred'"),
+    ("jobs", "executed_by", "ALTER TABLE jobs ADD COLUMN executed_by TEXT"),
+    ("jobs", "fallback_reason", "ALTER TABLE jobs ADD COLUMN fallback_reason TEXT"),
     ("jobs", "wait_operation", "ALTER TABLE jobs ADD COLUMN wait_operation TEXT"),
     ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
@@ -1387,8 +1392,24 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     return None
 
 
+EXECUTION_POLICIES = ("local_preferred", "local_only", "api_requested", "api_only")
+
+
+def set_job_policy(job_id: str, policy: str) -> dict[str, Any] | None:
+    assert policy in EXECUTION_POLICIES, policy
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET execution_policy=?, updated_at=? WHERE id=?", (policy, now(), job_id))
+        job_event(job_id, "policy", conn=conn, policy=policy)
+    return get_job(job_id)
+
+
+def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str | None) -> None:
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET executed_by=?, fallback_reason=? WHERE id=?", (executed_by, fallback_reason, job_id))
+
+
 def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
-               dedupe_key: str | None = None) -> dict[str, Any]:
+               dedupe_key: str | None = None, execution_policy: str = "local_preferred") -> dict[str, Any]:
     """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
     identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
     active return the existing job instead of a duplicate."""
@@ -1405,10 +1426,11 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
                 job_event(ex["id"], "deduplicated", conn=conn, kind=kind)
                 return get_job(ex["id"])  # type: ignore[return-value]
         jid = new_id()
+        assert execution_policy in EXECUTION_POLICIES, execution_policy
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy) VALUES (?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
-             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key),
+             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key, execution_policy),
         )
         job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
     return get_job(jid)  # type: ignore[return-value]
@@ -1518,15 +1540,23 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     ).fetchall()]
 
 
-def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS) -> dict[str, Any] | None:
+def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
+              exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
-    Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE."""
+    Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
+    L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
     with tx() as conn:
         q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
         args: list[Any] = [now()]
         if kinds:
             q += f" AND kind IN ({','.join('?' for _ in kinds)})"
             args += list(kinds)
+        if exclude_kinds:
+            q += f" AND kind NOT IN ({','.join('?' for _ in exclude_kinds)})"
+            args += list(exclude_kinds)
+        if policies:
+            q += f" AND execution_policy IN ({','.join('?' for _ in policies)})"
+            args += list(policies)
         row = None
         for cand in conn.execute(q + " ORDER BY created_at LIMIT 50", args).fetchall():
             if cand["cancel_requested_at"]:

@@ -47,6 +47,12 @@ class Settings:
     allow_transcription: bool = field(default_factory=lambda: (_env("NEUROSEARCH_ALLOW_TRANSCRIPTION", "true") or "").lower() == "true")
     max_transcribe_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_TRANSCRIBE_MINUTES", "240") or 240))
     workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_WORKERS", "2") or 2))
+    # L1 Local-First AI: ai_profile=local routes local-capable tasks through Claude Code (claude_code.py) with the API as fallback;
+    # cloud (default until verified live) keeps every call on the API. local_ai_workers = the size of the local pool (busy = wait, never spend).
+    ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())
+    local_ai_workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_LOCAL_AI_WORKERS", "2") or 2))
+    claude_code_bin: str = field(default_factory=lambda: _env("NEUROSEARCH_CLAUDE_CODE_BIN", "claude") or "claude")
+    claude_code_model: str | None = field(default_factory=lambda: _env("NEUROSEARCH_CLAUDE_CODE_MODEL"))
     # politeness: seconds to wait between YouTube fetches (randomised ±50%), and how long to back off after a bot-check
     yt_delay: float = field(default_factory=lambda: float(_env("NEUROSEARCH_YT_DELAY", "4") or 4))
     yt_backoff_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_YT_BACKOFF_MINUTES", "20") or 20))

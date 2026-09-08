@@ -511,7 +511,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.37.2';
+const UI_VERSION = '0.38.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -547,7 +547,7 @@ function setHash(view, conv) { const h = `#p/${state.project.id}/${view}` + (con
 
 // ================= home =================
 async function loadSpend() {
-  try { const u = await api('/api/usage'); const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '');
+  try { const u = await api('/api/usage'); const la = u.local_ai || {}; const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '') + (la.profile === 'local' ? ` · ${la.line || ''}${la.avoided_month ? ` · $${la.avoided_month.toFixed(2)} avoided` : ''}` : '');
     const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } return u; } catch (e) { return null; }
 }
 async function goHome() {

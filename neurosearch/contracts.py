@@ -52,6 +52,9 @@ class InferenceContract:
     max_output_ceiling: int | None = None   # hard cap for the single truncation escalation (structured tasks); None = no escalation allowed
     quality_floor: float | None = None
     notes: str = ""
+    # L1: may this task run on the LOCAL provider (Claude Code)? Only structured, single-turn, text-only tasks; streaming,
+    # tool-using, embedding, transcription and batch-only tasks stay on their API. The API model stays pinned regardless.
+    local_capable: bool = False
 
     def describe(self) -> dict[str, Any]:
         d = self.__dict__.copy()
@@ -84,7 +87,7 @@ def _base() -> dict[str, InferenceContract]:
                           notes="short/medium rewrite of a finished answer for sharing; markers ⊆ the original's"),
         # migrated E2.2 (0.18.0-e2.3): 4.6-vs-5 comparison on the Golden findings workload passed — thinking explicitly off,
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
-        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",
+        InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, local_capable=True, thinking="disabled", max_output_tokens=4000, max_output_ceiling=6000, batch_allowed=True, schema="findings-v2",
                           notes="per transcript window; quote validator gates the output; Sonnet 5 since E2.2"),
         # I2 (0.22.0): candidate-only listwise reranker — one attempt, short timeout, tiny output; any failure → the RRF ordering
         InferenceContract("retrieval.rerank", "anthropic", RERANK_MODEL, thinking="disabled", max_output_tokens=120, max_output_ceiling=200, timeout=20.0,
@@ -96,19 +99,19 @@ def _base() -> dict[str, InferenceContract]:
                           notes="conservative rejection filter before findings.extract; any failure → uncertain (fail open); off unless NEUROSEARCH_FINDINGS_PREFILTER=1"),
         # migrated E2.1 (0.18.0-e2.2): 4.6-vs-5 comparison on the frozen ranking fixture passed — thinking explicitly off,
         # same prompt (rank-f38f9a9c), same output budget; baseline + comparison artifacts kept under evals/
-        InferenceContract("rank.relevance", "anthropic", RANK_MODEL, thinking="disabled", max_output_tokens=6000, max_output_ceiling=9000, batch_allowed=True, schema="rank-v2",
+        InferenceContract("rank.relevance", "anthropic", RANK_MODEL, local_capable=True, thinking="disabled", max_output_tokens=6000, max_output_ceiling=9000, batch_allowed=True, schema="rank-v2",
                           notes="Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"),
         # G4 (0.28.0): project-NEUTRAL "what can this source answer?" — lazy (only for plausible candidates), cached globally,
         # batch-allowed for opportunistic 50% enrichment; never required for library recall
-        InferenceContract("library.profile", "anthropic", m, thinking="disabled", max_output_tokens=1200, max_output_ceiling=1800, timeout=120.0,
+        InferenceContract("library.profile", "anthropic", m, local_capable=True, thinking="disabled", max_output_tokens=1200, max_output_ceiling=1800, timeout=120.0,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="source-profile-v1",
                           notes="global source profile (topics, entities, document type, evidence class, temporal character, useful_for); authority = signals with basis, not a verdict"),
         # G5 (0.29.0): claim normalization + proposed evidence targets for a bounded group of $0 candidates; lazy, debounced,
         # idempotent by extraction_hash — never one call per finding
-        InferenceContract("claims.extract", "anthropic", m, thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=240.0,
+        InferenceContract("claims.extract", "anthropic", m, local_capable=True, thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=240.0,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="claim-set-v1",
                           notes="normalise candidate Claims (qualifiers, type by evidence requirement, topic, freshness class, merges) + propose evidence targets"),
-        InferenceContract("discover.quick", "anthropic", m, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
+        InferenceContract("discover.quick", "anthropic", m, local_capable=True, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
                           notes="structured (F3); discover.verify stays on the citation-capable text/tool path — citations and output_config.format are incompatible"),
         InferenceContract("discover.verify", "anthropic", m, max_output_tokens=2500, timeout=180.0, interactive=True,
                           notes="uses the Anthropic web_search server tool; no fallback provider can serve it"),
@@ -120,7 +123,7 @@ def _base() -> dict[str, InferenceContract]:
         InferenceContract("planner.execution", "anthropic", m, max_output_tokens=6000, max_output_ceiling=9000, timeout=600.0, interactive=True, schema="plan-execution-v3"),
         InferenceContract("planner.economics", "anthropic", m, max_output_tokens=6000, max_output_ceiling=9000, timeout=600.0, interactive=True, schema="plan-economics-v3"),
         InferenceContract("planner.actions", "anthropic", m, max_output_tokens=5000, max_output_ceiling=8000, timeout=600.0, interactive=True, schema="plan-actions-v3"),
-        InferenceContract("planner.update", "anthropic", m, max_output_tokens=4000, max_output_ceiling=6000, timeout=600.0, schema="plan-update-v2",
+        InferenceContract("planner.update", "anthropic", m, local_capable=True, max_output_tokens=4000, max_output_ceiling=6000, timeout=600.0, schema="plan-update-v2",
                           notes="structured (F3): a parse failure is a typed failure, never an empty update list"),
         InferenceContract("export.synthesis", "anthropic", m, max_output_tokens=6000),
         InferenceContract("embed", "openai", settings.embedding_model, max_output_tokens=0, backoff=(1.0, 3.0)),

@@ -1,6 +1,6 @@
 # L1 — Claude Code as Neuro Search's local AI provider (implementation note for whichever session builds it)
 
-*Written 2026-09-08 at 0.34.2. Policy and architecture: EXPANSION.md → "ADDENDUM — Neuro Search Local-First AI Policy" (Kyle) and the assessment beneath it. This note turns that into a buildable rung with the code as it is today.*
+*Written 2026-09-08 at 0.34.2; **L1 built in 0.38.0** (see the rung log in EXPANSION.md for what shipped, its gate and its honest limits — live verification on the Mac is still open). Policy and architecture: EXPANSION.md → "ADDENDUM — Neuro Search Local-First AI Policy" (Kyle) and the assessment beneath it. This note turns that into a buildable rung with the code as it is today.*
 
 ## 0. What the policy asks, in one paragraph
 

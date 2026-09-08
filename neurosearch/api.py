@@ -266,7 +266,23 @@ def api_usage() -> dict[str, Any]:
     if cap and cap > time.time():
         t["account_limit_until"] = cap
         t["blocked"] = t["blocked"] or f"the Anthropic account's usage limit is reached — access returns {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(cap))}"
+    from . import claude_code
+    t["local_ai"] = {**claude_code.health(), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month()}
     return t
+
+
+class JobPolicyIn(BaseModel):
+    policy: str    # local_preferred | local_only | api_requested | api_only
+
+
+@app.put("/api/jobs/{job_id}/policy", dependencies=[Depends(require_auth)])
+def api_job_policy(job_id: str, body: JobPolicyIn) -> dict[str, Any]:
+    """L1: the user's explicit choice of provider for a queued job (api_requested = 'answer now with the API' — never implied by slowness)."""
+    if body.policy not in db.EXECUTION_POLICIES:
+        raise HTTPException(400, f"policy must be one of {', '.join(db.EXECUTION_POLICIES)}")
+    if not db.get_job(job_id):
+        raise HTTPException(404)
+    return db.set_job_policy(job_id, body.policy) or {}
 
 
 class BudgetIn(BaseModel):
@@ -763,6 +779,8 @@ def api_health() -> dict[str, Any]:
     h = db.health()
     h["sites"] = rate_limit_status()
     h["version"] = __import__("neurosearch").__version__
+    from . import claude_code
+    h["local_ai"] = {**claude_code.health(), "profile": settings.ai_profile, "line": claude_code.status_line()}
     return h
 
 

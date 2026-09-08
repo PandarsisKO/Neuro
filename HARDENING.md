@@ -783,3 +783,8 @@ git add evals && git commit -m "Sonnet 4.6 baseline"
 ```
 
 Token counts per task are first-class in that file, so the tokenizer change shows as its own line when Sonnet 5 is compared with `neurosearch eval --live --compare evals/<that file>`. A fake-provider baseline (`neurosearch eval --baseline`) is worth committing too: it is what CI compares pipeline behaviour against.
+
+
+## 0.38.0 — L1 local provider: what is and is not frozen
+
+Tier 1 totals (34 / 196,951 etc.) are per task and prompt, not per provider, and remain frozen; the fake local provider answers with the same fixture outputs. The ledger's `saved` on `transport='local'` rows ("avoided spend") is NEW and UNFROZEN — informational, priced at the contract's API model. The default profile is cloud, so no live behaviour changed at 0.38.0. Not yet recorded: the CLI model each task actually ran on and its timings (first live run on the Mac), and Golden-Project quality with the local provider (run `neurosearch eval` under `NEUROSEARCH_AI_PROFILE=local`, unfrozen).

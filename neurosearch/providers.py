@@ -74,7 +74,19 @@ def _error_text(e: BaseException) -> str:
     return (json.dumps(body, default=str) if body else "") + " " + str(e)
 
 
+LOCAL_TYPES = ("LOCAL_UNAVAILABLE", "LOCAL_LIMIT")     # L1: never retried by the ledger, never trip a breaker; the router falls back
+
+
 def classify_error(e: BaseException) -> str:
+    from . import claude_code as CC
+    if isinstance(e, CC.LocalLimit):
+        return "LOCAL_LIMIT"
+    if isinstance(e, CC.LocalUnavailable):
+        return "LOCAL_UNAVAILABLE"
+    return _classify_error(e)
+
+
+def _classify_error(e: BaseException) -> str:
     """Map an SDK exception to a Neuro Search error type by its class and status. The one place message text is
     consulted: a 429 with NO retry window that names a spend/usage limit is an account condition (SPEND_CAP), not a
     rate limit, and a 400 that names billing/credit balance is BILLING — neither will recover by retrying."""
@@ -301,8 +313,10 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     exactly one decision available today: no fallback."""
     from . import contracts as C
     c = C.contract(task)
+    r = getattr(_tl, "route", None) or {}
     return {"requested_model": c.model, "actual_model": (str(actual_model) if actual_model else None) or c.model, "fallback_used": False,
-            "fallback_reason": None, "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION}
+            "fallback_reason": r.get("fallback_reason"), "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION,
+            "executed_by": r.get("executed_by", "api"), "route_reason": r.get("reason")}    # L1: WHICH PROVIDER ran (model substitution is still not a thing)
 
 
 def routing_json(task: str, actual_model: Any) -> str:
@@ -486,6 +500,7 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     Returns the response (or, with stream=True, the stream context manager)."""
     from . import contracts as C
     c = C.contract(task)
+    _tl.task = task
     C.forbid_sampling_knobs(extra, c)
     if c.provider != "anthropic":
         raise C.ContractError(f"{task}: invoke() serves message tasks; {c.provider} tasks use their own client methods")
@@ -501,8 +516,94 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
         kw["tools"] = tools
     policy = {"max_attempts": c.max_attempts, "backoff": list(c.backoff)}
     if stream:
+        _tl.route = {"executed_by": "api", "reason": "stream", "fallback_reason": None}
         return _LedgeredStream(client.messages.stream._fn if isinstance(client.messages.stream, _LedgeredStream) else client.messages.stream, "anthropic", task)(**kw)
+    target, reason = route(task)
+    if target == "local":
+        from . import claude_code as CC
+        try:
+            resp = _Ledgered(CC.create, CC.PROVIDER, task, policy={"max_attempts": 1, "backoff": []}, operation="claude_code:print")(**kw)
+        except ProviderError as e:
+            if e.error_type not in LOCAL_TYPES:
+                raise
+            CC.note_failure(e.cause if isinstance(e.cause, CC.LocalUnavailable) else CC.LocalUnavailable("error", str(e.cause)))
+            if current_policy() == "local_only":
+                _tl.route = {"executed_by": "none", "reason": reason, "fallback_reason": f"{e.error_type.lower()}: {str(e.cause)[:160]}"}
+                _accumulate_route()
+                raise
+            fb = f"{e.error_type.lower()}: {str(e.cause)[:160]}"
+            log.warning("%s: local provider unavailable (%s) — running on the API", task, fb)
+            _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": fb}
+            _accumulate_route()
+            return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
+        CC.note_success()
+        _tl.route = {"executed_by": "local", "reason": reason, "fallback_reason": None}
+        _accumulate_route()
+        return resp
+    _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": None}
+    _accumulate_route()
     return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
+
+
+# ------------------------------------------------------------------ L1: the provider router (local ⇄ API; never a model substitution)
+
+_policy_tl = _threading.local()
+
+
+def set_policy(policy: str | None) -> None:
+    """The execution policy of the job running on this thread (jobs.execute sets it; interactive calls have none = local_preferred)."""
+    _policy_tl.policy = policy
+
+
+def current_policy() -> str:
+    return getattr(_policy_tl, "policy", None) or "local_preferred"
+
+
+def last_route() -> dict[str, Any]:
+    return dict(getattr(_tl, "route", None) or {})
+
+
+def reset_job_route() -> None:
+    """jobs.execute calls this first: the job's outcome accumulates over every invoke on this thread (a fallback is sticky)."""
+    _tl.job_route = {"by": set(), "fb": None}
+
+
+def _accumulate_route() -> None:
+    jr = getattr(_tl, "job_route", None)
+    r = getattr(_tl, "route", None) or {}
+    if jr is not None and r:
+        jr["by"].add(r.get("executed_by") or "api")
+        if r.get("fallback_reason") and not jr["fb"]:
+            jr["fb"] = r["fallback_reason"]
+
+
+def job_route() -> tuple[str | None, str | None]:
+    """(executed_by, fallback_reason) for the job on this thread: local · api · mixed; None when no model call happened."""
+    jr = getattr(_tl, "job_route", None)
+    if not jr or not jr["by"]:
+        return None, None
+    by = jr["by"] - {"none"}
+    return ("mixed" if len(by) > 1 else (next(iter(by)) if by else "none")), jr["fb"]
+
+
+def route(task: str) -> tuple[str, str]:
+    """("local" | "api", reason). local only when: the task is local-capable, the profile is local, the policy allows it,
+    and Claude Code's cached health is ready (a usage limit or a broken install → API, with the reason). local_only with an
+    unavailable provider still returns "local" so the failure is typed and visible, never silently spent."""
+    from . import claude_code as CC
+    from . import contracts as C
+    c = C.contract(task)
+    pol = current_policy()
+    if pol in ("api_only", "api_requested"):
+        return "api", f"policy:{pol}"
+    if not c.local_capable:
+        return "api", "task_not_local_capable"
+    if settings.ai_profile != "local":
+        return "api", "cloud_profile"
+    h = CC.health()
+    if h.get("state") == "ready" or pol == "local_only":
+        return "local", "local_preferred" if pol != "local_only" else "policy:local_only"
+    return "api", f"local_{h.get('state')}"
 
 
 def anthropic_client(**kw: Any) -> Any:

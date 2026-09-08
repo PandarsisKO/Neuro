@@ -146,8 +146,10 @@ def test_explicit_override_is_the_requested_model_not_a_fallback(monkeypatch):
 
 def test_versioned_alias_is_actual_model_not_fallback():
     r = providers.routing_for("findings.extract", "claude-sonnet-5-20260401")
-    assert r == {"requested_model": "claude-sonnet-5", "actual_model": "claude-sonnet-5-20260401", "fallback_used": False, "fallback_reason": None,
-                 "fallback_policy": "NO_FALLBACK", "fallback_policy_version": "fallback-policy-v1"}
+    assert {k: v for k, v in r.items() if k not in ("executed_by", "route_reason")} == {
+        "requested_model": "claude-sonnet-5", "actual_model": "claude-sonnet-5-20260401", "fallback_used": False, "fallback_reason": None,
+        "fallback_policy": "NO_FALLBACK", "fallback_policy_version": "fallback-policy-v1"}
+    assert r["executed_by"] in ("api", "local")     # L1: WHICH provider ran is provenance too — still never a model substitution
 
 
 # ---------------------------------------------------------------- provenance on every artifact + the ledger

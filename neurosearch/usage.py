@@ -78,10 +78,10 @@ def _price(model: str) -> tuple[float, float]:
 
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
            searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
-           cache_read: int = 0, cache_write: int = 0, transport: str = "interactive") -> float:
+           cache_read: int = 0, cache_write: int = 0, transport: str = "interactive", saved: float = 0.0) -> float:
     """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately.
-    transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing)."""
-    saved = 0.0
+    transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing); transport="local" is
+    the Claude Code provider (cost 0, `saved` = the avoided API spend, passed by the caller)."""
     if cost is None:
         if kind == "whisper":
             cost = seconds / 60 * WHISPER_PER_MINUTE
@@ -118,6 +118,21 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         searches = int(getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0)
     except Exception:  # noqa: BLE001
         pass
+    if getattr(resp, "provider", None) == "claude_code":
+        # L1: the local provider costs $0 here; `saved` records what the SAME tokens would have cost on the task's API model
+        # (the "avoided spend" number), priced at the contract's model, never the CLI's
+        from . import contracts as C
+        from .providers import _tl
+        task = str(getattr(_tl, "task", "") or "")
+        try:
+            api_model = C.contract(task).model if task else settings.answer_model
+        except Exception:  # noqa: BLE001
+            api_model = settings.answer_model
+        pin, pout = _price(api_model)
+        i, o = int(getattr(u, "input_tokens", 0) or 0), int(getattr(u, "output_tokens", 0) or 0)
+        cr, cw = int(getattr(u, "cache_read_input_tokens", 0) or 0), int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o, project_id=project_id, source_id=source_id,
+                      cache_read=cr, cache_write=cw, cost=0.0, saved=(i + cr + cw) / 1e6 * pin + o / 1e6 * pout, transport="local")
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
@@ -221,3 +236,11 @@ def estimate_findings(n_chars: int, batch: bool = False) -> float:
     from .contracts import contract
     pin, pout = _price(contract("findings.extract").model)
     return (n_chars / 4 / 1e6 * pin + 0.0006 * pout) * (BATCH_MULT if batch else 1.0)
+
+
+def avoided_this_month() -> float:
+    """L1: what the local provider's calls would have cost on the API this month (the `saved` column of transport='local' rows)."""
+    now = datetime.now()
+    month0 = datetime(now.year, now.month, 1).timestamp()
+    row = db.connect().execute("SELECT COALESCE(SUM(saved),0) s FROM usage WHERE ts>=? AND transport='local'", (month0,)).fetchone()
+    return round(float(row["s"] or 0), 4)
