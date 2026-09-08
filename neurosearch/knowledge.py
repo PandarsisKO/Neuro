@@ -451,7 +451,10 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
         c["evidence"] = c["evidence"][:STATE_MAX_EVIDENCE]
         page.append(c)
     targets_all, tensions_all = list_targets(project_id), list_tensions(project_id, status="open")
-    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
+    tension_counts: dict[str, int] = {}
+    for t in tensions_all:
+        tension_counts[t["kind"]] = tension_counts.get(t["kind"], 0) + 1
+    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
             "claim_stats": claims.stats(project_id)}
 
 

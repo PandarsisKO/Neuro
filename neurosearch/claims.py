@@ -379,8 +379,10 @@ def harvest(project_id: str) -> dict[str, Any]:
         for c in existing:
             if not c.get("normalized"):
                 t = _topic_of(c["text"], vocab)
-                if t != c.get("topic"):
-                    db.connect().execute("UPDATE project_claims SET topic=? WHERE id=? AND normalized=0", (t, c["id"]))
+                f = guess_freshness(c["text"], c["claim_type"])
+                if t != c.get("topic") or f != c.get("freshness_class"):
+                    db.connect().execute("UPDATE project_claims SET topic=?, freshness_class=? WHERE id=? AND normalized=0", (t, f, c["id"]))
+                    touched.add(c["id"])
     for cid in touched:                                    # assess once per touched Claim, not once per finding
         assess(cid)
     return {"created": created, "merged": merged}
