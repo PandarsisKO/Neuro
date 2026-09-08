@@ -82,6 +82,10 @@
   .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
   .msg sup{color:var(--link);font-weight:600}
   .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
+  .msg .tools{margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;position:relative}
+  .msg .menu{position:absolute;z-index:5;top:100%;left:0;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:220px;padding:4px}
+  .msg .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;padding:7px 10px;border-radius:6px;font-size:13px}
+  .msg .menu button:hover{background:var(--line)}
   #askbar{border-top:1px solid var(--line);padding:10px 22px 12px;background:var(--bg)}
   #askbar .inner{display:flex;gap:8px;align-items:flex-end;max-width:980px}
   #askbar textarea{min-height:46px;max-height:180px}
@@ -685,11 +689,49 @@ function addMsg(role, text, cites = [], extra = {}) {
       if (a.type === 'calculated') h += `<div class="web">🧮 Ran the spreadsheet with ${Object.entries(a.inputs || {}).map(([k, v]) => `${esc(k)} = ${esc(String(v))}`).join(', ') || 'current inputs'} → ${Object.entries(a.outputs || {}).slice(0, 6).map(([k, v]) => `<b>${esc(k)}</b>: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : esc(String(v))}`).join(' · ')}</div>`;
     }
     if (extra.ingest_jobs?.length) h += `<div class="web ingest">` + extra.ingest_jobs.map(j => { const l = esc((j.url || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)); return j.job_id ? `<span class="chip" data-job="${j.job_id}" data-label="${l}">⏳ ${l}</span>` : `<span class="chip" title="${esc(j.detected?.detail || '')}" style="cursor:pointer" onclick="showView('sources');$('#inUrls').value='${esc(j.url || '')}';classifyInput()">🔍 ${l} — ${esc(j.detected?.label || 'detected')} · choose in Sources → Add</span>`; }).join('') + `</div>`;
-    if (cites.length && !extra.no_pin) h += `<div style="margin-top:8px"><button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button></div>`;
-    d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites);
+    // Portable Answers (C0): one-click copy that keeps every source, its deep link and every evidence-status warning.
+    const warns = [];
+    if (val.warning) warns.push(val.warning);
+    for (const a of extra.actions || []) if (a.type === 'gap_noted') warns.push('Research gap recorded: this answer identified something the sources do not yet cover.');
+    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied" style="font-size:12px"></span></div>`;
+    d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);
   }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
   return d;
+}
+// ---- Portable Answers and Evidence: every assistant message copies with human-readable citations + original deep links.
+function citeLabel(c) { return (c.title || 'Untitled source') + (c.timestamp ? ', ' + c.timestamp : ''); }
+function exportMsg(d, mode) {
+  const text = d.dataset.text || '', cites = JSON.parse(d.dataset.cites || '[]'), warns = JSON.parse(d.dataset.warns || '[]');
+  const byN = Object.fromEntries(cites.map(c => [c.n, c]));
+  const used = cites.filter(c => new RegExp('\\[' + c.n + '\\]').test(text));
+  const list = used.length ? used : cites;
+  let body = text;
+  if (mode === 'plain') body = body.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/ ?\[(\d{1,2})\]/g, (m, n) => byN[n] ? ` (${citeLabel(byN[n])})` : m);
+  if (mode === 'markdown') body = body.replace(/\[(\d{1,2})\]/g, (m, n) => byN[n] && byN[n].link ? `[[${n}]](${byN[n].link})` : m);
+  const warnBlock = warns.length ? '\n\n' + warns.map(w => (mode === 'markdown' ? '> ⚠ ' : '⚠ ') + w).join('\n') : '';
+  if (mode === 'response') return body + warnBlock;
+  const src = list.map((c, i) => {
+    const label = (c.removed ? '[source removed] ' : '') + citeLabel(c);
+    if (mode === 'markdown') return `${i + 1}. ${c.link ? `[${label}](${c.link})` : label}`;
+    return `${i + 1}. ${label}` + (c.link ? `\n   ${c.link}` : '');
+  }).join('\n');
+  const srcHead = mode === 'markdown' ? '\n\n### Sources\n' : '\n\nSources\n';
+  return body + warnBlock + (list.length ? srcHead + src : '');
+}
+function copyMenu(btn) {
+  const bar = btn.parentElement; const open = bar.querySelector('.menu'); if (open) { open.remove(); return; }
+  const m = document.createElement('div'); m.className = 'menu';
+  m.innerHTML = [['sources', 'Copy response + sources'], ['response', 'Copy response'], ['plain', 'Copy plain text'], ['markdown', 'Copy Markdown']]
+    .map(([k, l]) => `<button onclick="copyMsg(this,'${k}')">${l}</button>`).join('');
+  bar.appendChild(m);
+  setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
+}
+async function copyMsg(btn, mode) {
+  const d = btn.closest('.msg'); const out = exportMsg(d, mode); const n = JSON.parse(d.dataset.cites || '[]').length;
+  try { await navigator.clipboard.writeText(out); } catch (e) { const t = document.createElement('textarea'); t.value = out; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  const s = d.querySelector('.copied'); if (s) { s.textContent = mode === 'response' ? 'Copied' : `Copied with ${n} source${n === 1 ? '' : 's'}`; setTimeout(() => s.textContent = '', 2000); }
+  const menu = d.querySelector('.menu'); if (menu) menu.remove();
 }
 async function pinMsg(btn) {
   const d = btn.closest('.msg');
