@@ -273,6 +273,7 @@ ECHO_OVERLAP = 0.35
 NOVEL_MAX = 12          # the outliers worth a tension + corroboration target per pass: highest importance first, not every lone finding
 WEAK_CONSENSUS_MAX = 40 # false-consensus cases per pass (highest importance first); the Claim itself still says "1 independent"
 STALE_MIN_IMPORTANCE = 4  # a stale tension only for Claims that matter (importance ≥ 4 or accepted); every stale Claim still shows `stale`
+STALE_MAX = 60          # per pass, stale before needs-refresh, highest importance first; the Research view filters by freshness for the rest
 
 
 def _echoed(c: dict[str, Any], index: "claims.TwinIndex") -> bool:
@@ -292,9 +293,9 @@ def detect(project_id: str) -> dict[str, int]:
     if all_claims:
         for r in db.connect().execute("SELECT id, importance FROM project_notes WHERE project_id=?", (project_id,)).fetchall():
             imp_of[r["id"]] = int(r["importance"] or 3)
-    novel_budget, weak_budget = NOVEL_MAX, WEAK_CONSENSUS_MAX
+    novel_budget, weak_budget, stale_budget = NOVEL_MAX, WEAK_CONSENSUS_MAX, STALE_MAX
     selected: set[str] = set()
-    all_claims.sort(key=lambda c: -imp_of.get(c.get("origin_note_id") or -1, 3))     # highest importance first (the NOVEL budget)
+    all_claims.sort(key=lambda c: (-imp_of.get(c.get("origin_note_id") or -1, 3), 0 if c.get("freshness_status") == "stale" else 1))   # importance first, stale before needs-refresh (the budgets)
     for c in all_claims:
         ev = [e for e in c["evidence"] if not e.get("stale")]
         sup = [e for e in ev if e["relation"] in ("SUPPORTS", "EXPERIENTIAL")]
@@ -302,7 +303,8 @@ def detect(project_id: str) -> dict[str, int]:
         indep = {e["source_id"] for e in sup if e.get("independent")}
         imp = imp_of.get(c.get("origin_note_id") or -1, 3)
         fs = c.get("freshness_status") or "uncertain"
-        if fs in ("stale", "needs_refresh") and (imp >= STALE_MIN_IMPORTANCE or c["status"] == "accepted" or (fs == "stale" and c["strength"] in ("strong", "developing"))):
+        if fs in ("stale", "needs_refresh") and (imp >= STALE_MIN_IMPORTANCE or c["status"] == "accepted" or (fs == "stale" and c["strength"] in ("strong", "developing"))) and stale_budget > 0:
+            stale_budget -= 1
             label = "Stale" if fs == "stale" else "Needs refresh"
             selected.add(_upsert_tension(project_id, "STALE", c["id"], f"{label}: {c['text'][:140]} — {c.get('freshness_why')}",
                                          {"freshness_class": c["freshness_class"], "freshness_status": fs}, "high" if fs == "stale" else "medium"))

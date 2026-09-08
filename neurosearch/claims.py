@@ -124,9 +124,10 @@ def guess_freshness(text: str, claim_type: str, evidence_class: str | None = Non
     t = (text or "").lower()
     if re.search(r"\b(promotion|promo|offer|deadline|expires?|expiration|limited time)\b", t):
         return "promotional"
-    if re.search(r"\b(interest rates?|prime rate|guarantee fees?|fee schedule|pricing|price list|listing price|asking price|per cent|percent)\b|%|\$[\d,]+", t) \
-            or (re.search(r"\b(multiples?|valuation|cap rate)\b", t) and re.search(r"\d", t)):
-        return "rates_pricing"
+    if re.search(r"\b(interest rates?|prime rate|guarantee fees?|fee schedule|pricing|price list|listing price|asking price|cap rate)\b", t) \
+            or (re.search(r"\b(multiples?|valuation)\b", t) and re.search(r"\d", t)) \
+            or (re.search(r"\b(per cent|percent)\b|%|\$[\d,]+", t) and re.search(r"\b(rates?|fees?|prices?|costs?|multiples?|interest|premiums?|salary|salaries)\b", t)):
+        return "rates_pricing"                                  # a figure about money over time — not every "10% down" structure point
     if re.search(r"\b(sop|statute|regulation|regulations|regulatory|tax code|irs|irc|§|section \d|eligib|prohibit|shall|federal|state law|licens)\b", t) or claim_type == "governing":
         return "regulatory"
     if re.search(r"\b(lenders?|banks?|underwrit\w*|credit box|loan officer)\b", t) and re.search(r"\b(require|requires|want|wants|prefer|look for|expect|typically|usually|will|won't|approve)\b", t):
