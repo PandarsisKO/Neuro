@@ -41,6 +41,20 @@ Queued, in Kyle's priority order and with rough cost in "points of a week" (a de
 
 Known cosmetic debt: the live Work "Form 1099DIV" title (dehyphenated before the reconcile fix).
 
+## 4a. Handoff from the Fable session (2026-09-08, 0.43.0) — start here if you are the Opus session
+
+**State of the app.** Everything through 0.43.0 is committed, release-checked and tagged on Kyle's Mac (last tags: `research-r1`, `local-ai-l1`, `local-ai-l4`, `deep-d1`, `stale-s1`, `value-s2`, `findings-s4`, `pool-s5`). The local AI provider is ON in Kyle's `.env` (`NEUROSEARCH_AI_PROFILE=local`, `NEUROSEARCH_LOCAL_AI_WORKERS=2`, `NEUROSEARCH_CLAUDE_CODE_MODEL=sonnet`); Claude Code 2.1.257 runs findings/ranking/profiles/claims/discovery/plan-updates at $0; deep reads ride the slow lane on one local worker.
+
+**Built this session (rung logs in EXPANSION.md, gates in `tests/test_n1…n7`):** Research view engine (R1/R3/R5/R6 — no shell yet); L1 Claude Code provider + L4 usage split; Deep content D1–D3 (length-aware cap, reserve findings, Read deeper with per-part progress + slow lane); S1 stale triage; S2 source value + the Sources filter row; S4 findings workbench; S5 known-but-uncaptured pool with the pre-cutoff scan.
+
+**What Kyle asked for that is NOT built yet, in his priority order:**
+1. **R2 — the Research tab shell** (Kyle: "still a mess, I have no clue how to utilize it"). Render `GET /api/projects/{id}/research/overview` (summary · next · recently improved · areas) as the tab's front page, with Questions / Watch-outs / Areas / Claims as drill-downs; contract and live numbers in `RESEARCH-TAB.md` §7; wireframe intent in `RESEARCH-MISSION.md`. Keep the old lists reachable under "Research tools".
+2. **S3 — the source drawer** (`SOURCES-FINDINGS-MISSION.md` §3.4): one place per source — value line, findings by status with use badges, the Claims they became, where used, staleness tier with one-source actions, "Ask about this source" (pin via `attached_source_ids`). Most of the data already exists on `/api/sources` rows + `/api/projects/{id}/findings?source_id=` + `/api/projects/{id}/notes?status=reserve&source_id=`.
+3. **L2/L3** — local-first chat and the "answer now with API ≈ $" acceleration dialog (`LOCAL-AI-PROVIDER.md`); the job policy endpoint `PUT /api/jobs/{id}/policy` is the hook.
+4. Small follow-ups Kyle will notice: the Research questions' "N promising sources known" link should land on the 🔎 pool filtered to that question; a "capture the N that fit" bulk action on the pool; the first live measurement of how many findings a deep read yields on a 3-hour source (record in EXPANSION.md).
+
+**Working rules that bit this session (beyond CLAUDE.md):** raw-JSON tabs in Kyle's Chrome freeze — run `fetch()` from a tab on `http://localhost:8000/` instead; `tar --overwrite` of unchanged `.py` files still restarts the server (docs-only deliveries go through `device_commit_files` per file); `tests/fake_claude.py` is an import shim — never overwrite it (the CLI stub is `tests/fake_claude_cli.py`); the Mac's Cowork VM cannot run `claude`, so live provider checks go through the app's `/api/health.local_ai`; every findings "used" signal must exclude weak harvested Claims (nearly every finding has one).
+
 ## 5. What "done" means for a rung
 
 A rung is done when: the gate tests pass and are registered in `release.py`; the full suite and Tier 1 pass; the rung log entry in EXPANSION.md states what was built and its honest limits; HARDENING.md records any frozen-number change; CLAUDE.md's map is current; the release-check artifact is committed and the tag moved; and Kyle has been told, in plain language, what to try in the app.
