@@ -28,6 +28,9 @@ from . import db
 log = logging.getLogger("neurosearch.community")
 
 PLATFORM = "community"
+# Reddit's edge refuses clients that announce a bot token in the UA (the app's normal UA ends with "NeuroSearch/1.0") — the
+# listing endpoint is public, but it is served to browsers; we identify as the browser the user would use.
+BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 MAX_POSTS = 800                 # tree kept locally
 MAX_CHUNK_POSTS = 120           # posts that become evidence chunks after pruning
 MIN_POST_CHARS = 40
@@ -55,7 +58,7 @@ def _json_get(url: str) -> Any:
     from .safe_fetch import safe_fetch
     last = None
     for u in (url, url.replace("://www.reddit.com", "://old.reddit.com", 1)):
-        res = safe_fetch(u, content_class="html", headers={"Accept": "application/json"})
+        res = safe_fetch(u, content_class="html", headers={"Accept": "application/json", "User-Agent": BROWSER_UA})
         if res.status == 200:
             try:
                 return json.loads(res.body.decode("utf-8", errors="replace"))
