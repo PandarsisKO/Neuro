@@ -1132,6 +1132,162 @@ async def api_library_recall(project_id: str, q: str, limit: int = 8) -> dict[st
     return await anyio.to_thread.run_sync(lambda: library.recall(project_id, q, limit=limit))
 
 
+# ---- G5 (0.29.0): Knowledge Map, Claims, Evidence Targets, Research Tensions — project research STATE, suggestion-first
+
+class ResearchRefreshIn(BaseModel):
+    extract: bool = False        # allow ONE bounded normalization pass now (model call); default is the $0 path
+
+
+@app.get("/api/projects/{project_id}/research", dependencies=[Depends(require_auth)])
+def api_research(project_id: str) -> dict[str, Any]:
+    from . import knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return knowledge.state(project_id)
+
+
+@app.post("/api/projects/{project_id}/research/refresh", dependencies=[Depends(require_auth)])
+async def api_research_refresh(project_id: str, body: ResearchRefreshIn) -> dict[str, Any]:
+    """Harvest candidate Claims from findings ($0), assess, detect tensions, rebuild the map; with extract=true also run
+    the lazy normalization contract inline (bounded) or queue it as a job when the backlog is large."""
+    from . import claims, knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    res = await anyio.to_thread.run_sync(lambda: claims.ensure(project_id, allow_model=body.extract))
+    res["state"] = knowledge.state(project_id)
+    return res
+
+
+class ClaimIn(BaseModel):
+    text: str
+    claim_type: str = "other"
+    topic: str | None = None
+    qualifiers: dict[str, Any] | None = None
+    needs_evidence: bool = True   # external factual Claim → also opens an Evidence Target; False = record only
+
+
+@app.post("/api/projects/{project_id}/claims", dependencies=[Depends(require_auth)])
+def api_claim_add(project_id: str, body: ClaimIn) -> dict[str, Any]:
+    from . import claims, knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    c = claims.add_claim(project_id, body.text, claim_type=body.claim_type, topic=body.topic, qualifiers=body.qualifiers, origin="user", status="proposed", normalized=True)
+    tgt = None
+    if body.needs_evidence:
+        suff = "governing" if body.claim_type in claims.GOVERNING_TYPES else "corroborative"
+        tgt = knowledge.add_target(project_id, f"Establish: {body.text[:160]}", topic=c["topic"], claim_id=c["id"], sufficiency=suff, origin="user")
+    knowledge.refresh(project_id)
+    return {"claim": claims.get(c["id"]), "target": tgt}
+
+
+class ClaimStatusIn(BaseModel):
+    status: str                      # proposed | accepted | rejected
+    application: str | None = None   # established | developing | unknown
+
+
+@app.post("/api/claims/{claim_id}/status", dependencies=[Depends(require_auth)])
+def api_claim_status(claim_id: str, body: ClaimStatusIn) -> dict[str, Any]:
+    from . import claims, knowledge
+    c = claims.get(claim_id)
+    if not c:
+        raise HTTPException(404)
+    try:
+        out = claims.set_status(claim_id, body.status, application=body.application)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    knowledge.refresh(c["project_id"])
+    return out or {}
+
+
+class ClaimRelateIn(BaseModel):
+    related_claim_id: str
+    relation: str = "CONTRADICTS"
+
+
+@app.post("/api/claims/{claim_id}/relate", dependencies=[Depends(require_auth)])
+def api_claim_relate(claim_id: str, body: ClaimRelateIn) -> dict[str, Any]:
+    """Scope is checked first: a CONTRADICTS across different jurisdiction/product/timeframe/conditions becomes QUALIFIES."""
+    from . import claims, knowledge
+    c = claims.get(claim_id)
+    if not c:
+        raise HTTPException(404)
+    try:
+        res = claims.relate(claim_id, body.related_claim_id, body.relation)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    knowledge.refresh(c["project_id"])
+    return res
+
+
+class TargetIn(BaseModel):
+    question: str
+    sufficiency: str = "corroborative"
+    topic: str | None = None
+    preferred_classes: list[str] | None = None
+    closure: str | None = None
+
+
+@app.post("/api/projects/{project_id}/targets", dependencies=[Depends(require_auth)])
+def api_target_add(project_id: str, body: TargetIn) -> dict[str, Any]:
+    from . import knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    tg = knowledge.add_target(project_id, body.question, topic=body.topic, sufficiency=body.sufficiency, preferred_classes=body.preferred_classes, closure=body.closure, origin="user")
+    if not tg:
+        raise HTTPException(400, "question too short")
+    knowledge.refresh(project_id)
+    return tg
+
+
+class PursueIn(BaseModel):
+    external: bool = False       # step 4 (a web Discover job) only when asked
+
+
+@app.post("/api/targets/{target_id}/pursue", dependencies=[Depends(require_auth)])
+async def api_target_pursue(target_id: str, body: PursueIn) -> dict[str, Any]:
+    """Project evidence → global library → candidate index (reranked against THIS target, skipped ones resurfaced) → external."""
+    from . import knowledge
+    if not knowledge.get_target(target_id):
+        raise HTTPException(404)
+    return await anyio.to_thread.run_sync(lambda: knowledge.pursue(target_id, external=body.external))
+
+
+class TargetStatusIn(BaseModel):
+    status: str   # open | satisfied | closed_by_user
+
+
+@app.post("/api/targets/{target_id}/status", dependencies=[Depends(require_auth)])
+def api_target_status(target_id: str, body: TargetStatusIn) -> dict[str, Any]:
+    from . import knowledge
+    tg = knowledge.get_target(target_id)
+    if not tg:
+        raise HTTPException(404)
+    try:
+        out = knowledge.set_target_status(target_id, body.status)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    knowledge.refresh(tg["project_id"])
+    return out or {}
+
+
+class TensionStatusIn(BaseModel):
+    status: str   # open | resolved | dismissed
+
+
+@app.post("/api/tensions/{tension_id}/status", dependencies=[Depends(require_auth)])
+def api_tension_status(tension_id: str, body: TensionStatusIn) -> dict[str, Any]:
+    from . import knowledge
+    row = db.connect().execute("SELECT project_id FROM research_tensions WHERE id=?", (tension_id,)).fetchone()
+    if not row:
+        raise HTTPException(404)
+    try:
+        knowledge.set_tension_status(tension_id, body.status)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    knowledge.refresh(row["project_id"])
+    return {"ok": True}
+
+
 @app.get("/api/sources/{source_id}/profile", dependencies=[Depends(require_auth)])
 def api_source_profile(source_id: str) -> dict[str, Any]:
     """The project-neutral Source Profile (baseline + enriched if present)."""

@@ -171,7 +171,47 @@ RETRIEVAL_RERANK_V1: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# G5 (0.29.0) — claim normalization + proposed evidence targets. Same rule as source-profile-v1: NO string-length constraints
+# (the provider strips them; a local-only bound fails after paying). Lists bounded with maxItems, categories with enums.
+CLAIM_SET_V1: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "claims": {"type": "array", "maxItems": 40, "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "description": "the candidate id you were given"},
+                "text": {"type": "string", "description": "the normalised proposition WITH its qualifiers and the source's hedging"},
+                "claim_type": {"type": "string", "enum": ["governing", "historical", "expert_interpretation", "practice", "experiential", "market", "causal", "novel_tactic", "other"]},
+                "qualifiers": {"type": "object", "properties": {
+                    "jurisdiction": {"type": "string"}, "product": {"type": "string"}, "population": {"type": "string"},
+                    "conditions": {"type": "string"}, "timeframe": {"type": "string"}, "source_language": {"type": "string"},
+                    "specific_instance": {"type": "boolean", "description": "true when a market claim describes one specific quote/listing"}},
+                    "required": ["jurisdiction", "product", "population", "conditions", "timeframe", "source_language", "specific_instance"], "additionalProperties": False},
+                "topic": {"type": "string", "description": "2-4 word knowledge-map topic"},
+                "freshness_class": {"type": "string", "enum": ["static", "slow_changing", "periodic", "fast_changing"]},
+                "merge_into": {"type": ["string", "null"], "description": "id of the candidate this one duplicates (same proposition, same scope), else null"},
+            },
+            "required": ["id", "text", "claim_type", "qualifiers", "topic", "freshness_class", "merge_into"],
+            "additionalProperties": False}},
+        "targets": {"type": "array", "maxItems": 8, "items": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "topic": {"type": "string"},
+                "sufficiency": {"type": "string", "enum": ["governing", "corroborative"]},
+                "preferred_classes": {"type": "array", "maxItems": 4, "items": {"type": "string", "enum": ["authoritative", "expert", "experiential", "market", "historical"]}},
+                "closure": {"type": "string", "description": "one sentence: what counts as enough"},
+            },
+            "required": ["question", "topic", "sufficiency", "preferred_classes", "closure"],
+            "additionalProperties": False}},
+        "missing_areas": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+    },
+    "required": ["claims", "targets", "missing_areas"],
+    "additionalProperties": False,
+}
+
 REGISTRY: dict[str, dict[str, Any]] = {
+    "claim-set-v1": CLAIM_SET_V1,
     "findings-v2": FINDINGS_V2,
     "prefilter-v1": PREFILTER_V1,
     "source-profile-v1": SOURCE_PROFILE_V1,

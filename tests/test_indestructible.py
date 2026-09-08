@@ -871,7 +871,7 @@ def _legacy_chat_system(project, use_web, full_context):
     # 0.24.1 added the library inventory to the project state (deliberately, after the cached prefix); the legacy
     # layout carries the same lines so the equivalence stays line-for-line.
     block = _legacy_project_block().format(name=project["name"], brief=project.get("brief") or "(none)", findings=findings, facts=facts,
-                                           inventory=qa.inventory_block(project["id"]), steering=db.project_steering(project))
+                                           inventory=qa.inventory_block(project["id"]), research=qa.research_block(project["id"]), steering=db.project_steering(project))
     system = qa.SYSTEM.format(web_rule=qa.WEB_RULE_ON if use_web else qa.WEB_RULE_OFF, project_block=block)
     blocks = [usage.cached_block(system)]
     if full_context is not None:

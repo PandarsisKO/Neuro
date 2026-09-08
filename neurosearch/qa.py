@@ -81,9 +81,30 @@ PROJECT_STATE_BLOCK = """Pinned findings so far (do not repeat them unless asked
 {findings}
 Known project facts (decisions, constraints, requirements):
 {facts}
+{research}
 {inventory}"""
 
 INVENTORY_MAX = 40
+RESEARCH_MAX = 4
+
+
+def research_block(project_id: str) -> str:
+    """G5: the research state the chat must respect — open tensions (an outlier is not consensus; a stale Claim is not
+    current) and open evidence targets. $0: reads the map; never triggers extraction."""
+    try:
+        from . import knowledge
+        st = knowledge.state(project_id)
+    except Exception:  # noqa: BLE001
+        return ""
+    m = st["map"]["counts"]
+    if not st["claims"] and not st["targets"]:
+        return ""
+    lines = [f"Research state (Claims: {m.get('strong', 0)} strong / {m.get('developing', 0)} developing / {m.get('weak', 0)} weak topics; say when an answer rests on a weak or single-source Claim):"]
+    for t in st["tensions"][:RESEARCH_MAX]:
+        lines.append(f"- ⚠ {t['kind']}: {t['description'][:200]}")
+    for tg in [x for x in st["targets"] if x["status"] == "open"][:RESEARCH_MAX]:
+        lines.append(f"- open evidence target: {tg['question'][:140]}")
+    return "\n".join(lines)
 
 
 def inventory_block(project_id: str) -> str:
@@ -173,6 +194,11 @@ def _library_tools() -> list[dict[str, Any]]:
          "input_schema": {"type": "object", "properties": {"filter": {"type": "string"}, "priority": {"type": "boolean", "default": True}}, "required": ["filter"]}},
         {"name": "search_global_library", "description": "Search the user's GLOBAL library — sources they already own in OTHER projects, not attached here. Use when this project's excerpts lack evidence, BEFORE suggesting new acquisition or the web. Results are suggestions with passages you may quote to explain why they look useful, but they are NOT project evidence: do not cite them with [n]; tell the user which to attach (Sources → Library → Add).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 10}}, "required": ["query"]}},
+        {"name": "research_state", "description": "The project's Knowledge Map: topics with Strong/Developing/Weak/Missing state and WHY, open Research Tensions (novel outliers, contradictions, weak consensus, stale, missing perspectives) and open Evidence Targets with their closure criteria. $0. Use when the user asks what is established, what is weak, what to research next, or 'what am I missing'.",
+         "input_schema": {"type": "object", "properties": {"topic": {"type": "string", "description": "optional: restrict to topics containing this text"}}, "required": []}},
+        {"name": "propose_claim", "description": "Record an EXTERNAL factual proposition the user asserts or asks about that needs evidence (e.g. 'SBA lets me borrow $2M'), as a proposed Claim with an Evidence Target. NOT for the user's own constraints/decisions ('my budget is $2M' → record_fact). Keep every qualifier (jurisdiction, product, conditions, timeframe).",
+         "input_schema": {"type": "object", "properties": {"text": {"type": "string"}, "claim_type": {"type": "string", "enum": ["governing", "historical", "expert_interpretation", "practice", "experiential", "market", "causal", "novel_tactic", "other"]},
+                                                           "topic": {"type": "string"}}, "required": ["text", "claim_type"]}},
         {"name": "search_seen_sources", "description": "Search the Candidate Index: sources Neuro Search has SEEN (listed from channels, feeds, sites) but NOT acquired. Use when the library lacks evidence for a gap, BEFORE suggesting a web search. Results are metadata only — they cannot be cited; tell the user which ones look worth acquiring (Sources → Library → Seen, not added).",
          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 20}}, "required": ["query"]}},
     ]
@@ -233,7 +259,7 @@ def chat_system_blocks(project: dict[str, Any] | None, use_web: bool, tools: lis
         findings = "\n".join(f"- {n['content'][:400]}" for n in notes) or "(none yet)"
         facts = "\n".join(f"- [{f['kind']}] {f['content']}" for f in db.list_facts(project["id"])) or "(none yet)"
         project_block = PROJECT_BLOCK.format(name=project["name"], brief=project.get("brief") or "(none)", steering=db.project_steering(project))
-        state_block: str | None = PROJECT_STATE_BLOCK.format(findings=findings, facts=facts, inventory=inventory_block(project["id"]))
+        state_block: str | None = PROJECT_STATE_BLOCK.format(findings=findings, facts=facts, research=research_block(project["id"]), inventory=inventory_block(project["id"]))
     else:
         project_block, state_block = "", None
     system = SYSTEM.format(web_rule=WEB_RULE_ON if use_web else WEB_RULE_OFF, project_block=project_block)
@@ -558,6 +584,37 @@ def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,
                          + (f"\n  profile: {s['profile_summary']}" if s.get("profile_summary") else ""))
         lines.append("Suggest attaching the useful ones (Sources → Library → Add); once attached, search_library will return them as citable excerpts.")
         return "\n".join(lines)
+    if name == "research_state":
+        from . import knowledge
+        st = knowledge.state(project["id"])
+        flt = (inp.get("topic") or "").strip().lower()
+        nodes = [n for n in st["map"]["nodes"] if not flt or flt in n["topic"]]
+        actions.append({"type": "research_state", "counts": st["map"]["counts"], "tensions": len(st["tensions"]), "targets_open": sum(1 for x in st["targets"] if x["status"] == "open")})
+        if not nodes and not st["tensions"] and not st["targets"]:
+            return "no research state yet: no Claims have been harvested (approve findings, or refresh the Research view)"
+        lines = ["Knowledge Map (state — why):"]
+        for n in nodes[:20]:
+            lines.append(f"- {n['topic']}: {n['state'].upper()} — {n['why'][:220]}")
+        if st["tensions"]:
+            lines.append("Open research tensions:")
+            for t in st["tensions"][:10]:
+                lines.append(f"- {t['kind']} ({t['impact']}): {t['description'][:220]}")
+        open_t = [x for x in st["targets"] if x["status"] == "open"]
+        if open_t:
+            lines.append("Open evidence targets (closure = what counts as enough):")
+            for tg in open_t[:10]:
+                lines.append(f"- [{tg['sufficiency']}] {tg['question'][:160]} — closure: {(tg.get('closure') or '')[:120]}" + (f" — gap: {tg['gap'][:120]}" if tg.get("gap") else ""))
+        return "\n".join(lines)
+    if name == "propose_claim":
+        from . import claims as _claims, knowledge
+        text = (inp.get("text") or "").strip()
+        ctype = inp.get("claim_type") if inp.get("claim_type") in _claims.TYPES else "other"
+        c = _claims.add_claim(project["id"], text, claim_type=ctype, topic=inp.get("topic"), origin="chat", status="proposed", normalized=True)
+        suff = "governing" if ctype in _claims.GOVERNING_TYPES else "corroborative"
+        tg = knowledge.add_target(project["id"], f"Establish: {text[:160]}", topic=c["topic"], claim_id=c["id"], sufficiency=suff, origin="chat")
+        knowledge.refresh(project["id"])
+        actions.append({"type": "claim_proposed", "claim_id": c["id"], "text": text, "claim_type": ctype, "target_id": (tg or {}).get("id")})
+        return f"recorded as a PROPOSED {ctype} Claim (unsupported until evidence is linked) with an evidence target ({suff} sufficiency: {(tg or {}).get('closure')}). It is not accepted project truth."
     if name == "search_seen_sources":
         from . import candidates as _cand
         query = (inp.get("query") or "").strip()

@@ -40,7 +40,7 @@ TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|tem
 RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
-ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan", "enrich_profiles_batch")
+ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan", "enrich_profiles_batch", "extract_claims")
 
 
 class Cancelled(RuntimeError):
@@ -260,6 +260,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "enrich_profiles_batch":
         from . import library
         return library.run_batch_job(jid, payload, progress)
+    if kind == "extract_claims":
+        from . import claims
+        return claims.run_job(payload, progress)
     if kind == "explore":
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
@@ -312,6 +315,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         result = run_job(job)
         db.finish_job(jid, run_id, "done", message="done", result=result)
         log.info("job done in %.1fs", time.time() - t0)
+        _after_done(job)
         return "done"
     except ExternalPending as e:
         db.park_external(jid, run_id, e.provider, e.kind, e.handle, e.deadline)
@@ -466,6 +470,20 @@ def stop_workers() -> None:
     for t in _threads:
         t.join(timeout=2)
     _threads.clear()
+
+
+def _after_done(job: dict[str, Any]) -> None:
+    """G5: when findings land, Claims stay current for $0 (harvest) and extraction is queued only when debounced
+    thresholds say so — event-driven, never a paid call per finding. Failures here never fail the job."""
+    try:
+        if job["kind"] in ("suggest_findings", "suggest_findings_batch"):
+            pid = (job.get("payload") or {}).get("project_id")
+            if pid:
+                from . import claims
+                claims.harvest(pid)
+                claims.maybe_extract(pid, f"after {job['kind']}")
+    except Exception as e:  # noqa: BLE001
+        log.warning("post-job claims hook skipped: %s", e)
 
 
 def wait_for_idle(poll: float = 1.0) -> None:

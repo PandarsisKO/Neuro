@@ -175,6 +175,41 @@ def _with_evidence(obj: Any, ids: list[str]) -> Any:
     return obj
 
 
+def _claims(user: str) -> str:
+    """Content-aware fake normalization: keeps the candidate text (adds a hedge qualifier when the text hedges), types by
+    cue words, topic = two content words, freshness by domain words; proposes targets from the brief's questions."""
+    from . import claims as _cl
+    try:
+        payload = json.loads(user)
+    except ValueError:
+        payload = {"candidates": [], "questions": []}
+    out = []
+    seen_texts: dict[str, str] = {}
+    for c in payload.get("candidates", []):
+        text = c["text"]
+        cls = (c.get("evidence") or [{}])[0].get("class")
+        ctype = _cl.guess_type(text, cls)
+        key = " ".join(sorted(_cl._tokens(text)))[:200]
+        merge = seen_texts.get(key)
+        seen_texts.setdefault(key, c["id"])
+        hedged = bool(re.search(r"\b(may|might|some|sometimes|can)\b", text.lower()))
+        out.append({"id": c["id"], "text": text, "claim_type": ctype,
+                    "qualifiers": {"jurisdiction": "US" if re.search(r"\b(sba|irs|usa?)\b", text.lower()) else "", "product": "", "population": "",
+                                   "conditions": "as hedged by the source" if hedged else "", "timeframe": "", "source_language": "hedged" if hedged else "plain",
+                                   "specific_instance": bool(re.search(r"\$[\d,]+", text)) and "listing" in text.lower()},
+                    "topic": _cl._topic_of(text), "freshness_class": _cl.guess_freshness(text, ctype), "merge_into": merge if merge and merge != c["id"] else None})
+    targets = []
+    for q in (payload.get("questions") or [])[:3]:
+        gov = bool(re.search(r"\b(rule|require|allow|sop|law|regulation|eligib)\b", q.lower()))
+        targets.append({"question": q, "topic": _cl._topic_of(q), "sufficiency": "governing" if gov else "corroborative",
+                        "preferred_classes": ["authoritative", "expert"] if gov else ["experiential", "expert", "market"],
+                        "closure": "one current directly applicable primary source" if gov else "several independent practitioner sources with disagreement characterized"})
+    if payload.get("brief"):
+        targets.append({"question": "What do practitioners report going wrong in practice for: " + str(payload["brief"])[:80], "topic": "practical pitfalls",
+                        "sufficiency": "corroborative", "preferred_classes": ["experiential", "expert"], "closure": "at least three independent experiences"})
+    return json.dumps({"claims": out, "targets": targets, "missing_areas": [t["topic"] for t in targets]})
+
+
 def _profile(user: str) -> str:
     """Content-aware, project-neutral fake profile: topics = frequent content words of the sample, entities = capitalised
     tokens, evidence class from deterministic signals in the prompt. Never sees a project."""
@@ -449,6 +484,8 @@ def task_of(system: str, kw: dict[str, Any]) -> str:
         return "findings.extract"
     if "cataloguing a source for a research library" in s:
         return "library.profile"
+    if "normalising research claims for a project" in s:
+        return "claims.extract"
     if "research triage assistant" in s:
         return "rank.relevance"
     if "Master Planner's analyst" in s:
@@ -510,6 +547,8 @@ class _Msgs:
             text = _findings(system, user)
         elif task == "library.profile":
             text = _profile(user)
+        elif task == "claims.extract":
+            text = _claims(user)
         elif task == "rank.relevance":
             text = _rank(user, system)
         elif task in PLANNER_V3:

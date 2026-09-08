@@ -106,6 +106,16 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
 
     if mode not in MODES:
         raise ValueError(f"unknown discover mode {mode!r}")
+    # G5: Discover leads with research STATE — Claims are harvested ($0) and open Evidence Targets steer the passes
+    research: dict[str, Any] = {}
+    try:
+        from . import claims, knowledge
+        claims.ensure(project_id)
+        st = knowledge.state(project_id)
+        research = {"counts": st["map"]["counts"], "nodes": st["map"]["nodes"][:12], "tensions": st["tensions"][:6],
+                    "targets": [t for t in st["targets"] if t["status"] == "open"][:8], "summary": knowledge.summary_text(project_id)}
+    except Exception as e:  # noqa: BLE001
+        log.warning("research state unavailable for discover: %s", e)
     lib: dict[str, Any] = {"suggestions": [], "query": None}
     if mode != "web_only":
         if progress:
@@ -121,8 +131,9 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         note = ("Library only — no web search was run." if mode == "library_only" else
                 f"Your library appears to cover this well ({len(strong)} owned sources match strongly, not yet in this project) — the web search was skipped. "
                 "This is about relevance, not proof that your evidence needs are met: use 'Web first' to search anyway.")
-        return {"added": 0, "verified": 0, "extra": 0, "note": note, "items": [], "library": lib, "mode": mode, "web_skipped": True,
-                "coverage_note": "library relevance only; evidence sufficiency arrives with Claims (G5)"}
+        open_targets = len(research.get("targets") or [])
+        return {"added": 0, "verified": 0, "extra": 0, "note": note, "items": [], "library": lib, "mode": mode, "web_skipped": True, "research": research,
+                "coverage_note": (f"library relevance only — {open_targets} evidence target(s) remain open in the Knowledge Map" if open_targets else "library relevance only; no open evidence targets")}
 
     providers.require_anthropic()
 
@@ -132,6 +143,11 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     user = [f"PROJECT: {project['name']}", db.project_steering(project)]
     if channels:
         user.append("ALREADY IN THE PROJECT (do not repeat): " + ", ".join(channels[:40]))
+    if research.get("targets") and not refine:
+        user.append("OPEN EVIDENCE TARGETS (prioritise sources that could close these; note the evidence class each needs): " +
+                    "; ".join(f"{t['question'][:120]} [{t['sufficiency']}: {', '.join(t.get('preferred_classes') or [])}]" for t in research["targets"][:6]))
+    if research.get("tensions") and not refine:
+        user.append("OPEN RESEARCH TENSIONS (corroborate or refute, do not assume consensus): " + "; ".join(t["description"][:140] for t in research["tensions"][:4]))
     if prior:
         user.append("ALREADY SUGGESTED EARLIER (do not repeat unless refinement asks): " + ", ".join(prior[:40]))
     if refine:
@@ -166,7 +182,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     # ---- pass 2: verify + top up (few searches, short output) ----
     fixed, added = 0, 0
     if not verify:
-        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True, "library": lib, "mode": mode}
+        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True, "library": lib, "mode": mode, "research": research}
     try:
         shortlist = [{"name": d["name"], "kind": d["kind"], "url": d.get("url") or ""} for d in saved]
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]
@@ -196,4 +212,4 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     except Exception as e:  # noqa: BLE001
         log.warning("discover verification pass failed (shortlist kept): %s", e)
     note = str(data.get("note") or "")
-    return {"added": len(saved), "verified": fixed, "extra": added, "note": note, "items": saved, "library": lib, "mode": mode}
+    return {"added": len(saved), "verified": fixed, "extra": added, "note": note, "items": saved, "library": lib, "mode": mode, "research": research}

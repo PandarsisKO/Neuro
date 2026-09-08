@@ -4,6 +4,7 @@ One database file, WAL mode, safe for a single app process with a few worker thr
 """
 from __future__ import annotations
 
+import logging
 import json
 import sqlite3
 import threading
@@ -370,6 +371,108 @@ CREATE TABLE IF NOT EXISTS source_profiles (
     updated_at         REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_source_profiles_status ON source_profiles(enriched_status);
+
+-- G5 (0.29.0): Knowledge Map, Claim graph, Evidence Targets, Research Tensions. Project-scoped research STATE (never library
+-- state). A Claim is a proposition the project currently believes / questions; evidence rows freeze the exact source
+-- revision + locator so a revision can stale precisely the Claims it touched. Everything model-generated is proposed.
+CREATE TABLE IF NOT EXISTS project_claims (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    text            TEXT NOT NULL,                       -- proposition WITH its qualifiers (never "lenders allow X")
+    claim_type      TEXT NOT NULL DEFAULT 'other',       -- governing | historical | expert_interpretation | practice | experiential | market | causal | novel_tactic | other
+    qualifiers      TEXT,                                -- JSON: jurisdiction, product, population, conditions, timeframe, source_language, specific_instance
+    topic           TEXT,                                -- Knowledge Map node key
+    freshness_class TEXT NOT NULL DEFAULT 'slow_changing', -- static | slow_changing | periodic | fast_changing (domain-sensitive)
+    status          TEXT NOT NULL DEFAULT 'proposed',    -- proposed | accepted | rejected | superseded   (user/system state, never rewritten by the model)
+    normalized      INTEGER NOT NULL DEFAULT 0,          -- 0 = $0 candidate awaiting claims.extract; 1 = normalized by the contract
+    strength        TEXT NOT NULL DEFAULT 'unsupported', -- strong | developing | weak | unsupported | stale   (computed, deterministic)
+    strength_why    TEXT,
+    application     TEXT NOT NULL DEFAULT 'unknown',     -- established | developing | unknown   (does it apply to THIS project?)
+    readiness       TEXT NOT NULL DEFAULT 'not_ready',   -- ready | not_ready
+    readiness_why   TEXT,
+    origin          TEXT NOT NULL DEFAULT 'finding',     -- finding | finding_suggested | chat | user | model
+    origin_note_id  INTEGER,
+    extraction_hash TEXT,                                -- revision(s)+contract+text: same inputs → no second spend
+    model           TEXT, prompt_version TEXT, schema_version TEXT, routing TEXT, transport TEXT,
+    superseded_by   TEXT,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_claims_project ON project_claims(project_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_claims_origin_note ON project_claims(project_id, origin_note_id) WHERE origin_note_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS claim_evidence (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id        TEXT NOT NULL REFERENCES project_claims(id) ON DELETE CASCADE,
+    source_id       TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    source_revision TEXT,
+    locator         TEXT,                                -- "12:34" | "p. 4" | "§ 3" | "sheet!A1"
+    start           REAL,
+    link            TEXT,
+    relation        TEXT NOT NULL DEFAULT 'SUPPORTS',    -- SUPPORTS | CONTRADICTS | QUALIFIES | INTERPRETS | EXPERIENTIAL
+    excerpt         TEXT,
+    evidence_class  TEXT,                                -- authoritative | expert | experiential | market | historical | derivative
+    independent     INTEGER NOT NULL DEFAULT 1,          -- 0 when this passage repeats another source (derivative_of)
+    derivative_of   TEXT,
+    stale           INTEGER NOT NULL DEFAULT 0,          -- 1 once the source revision moved past source_revision
+    task            TEXT, model TEXT,
+    created_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_claim_evidence_claim ON claim_evidence(claim_id);
+CREATE INDEX IF NOT EXISTS ix_claim_evidence_source ON claim_evidence(source_id);
+CREATE TABLE IF NOT EXISTS claim_evidence_notes (          -- findings folded into an existing Claim as evidence (harvest idempotency)
+    claim_id TEXT NOT NULL REFERENCES project_claims(id) ON DELETE CASCADE,
+    note_id  INTEGER NOT NULL,
+    PRIMARY KEY (claim_id, note_id)
+);
+CREATE TABLE IF NOT EXISTS project_evidence_targets (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    question        TEXT NOT NULL,
+    topic           TEXT,
+    claim_id        TEXT REFERENCES project_claims(id) ON DELETE SET NULL,
+    sufficiency     TEXT NOT NULL DEFAULT 'corroborative', -- governing | corroborative
+    preferred_classes TEXT,                              -- JSON list, in order
+    closure         TEXT,                                -- human-readable "enough" criterion
+    closure_rule    TEXT,                                -- JSON {min_independent, primary_required, characterize_disagreement}
+    status          TEXT NOT NULL DEFAULT 'open',        -- open | satisfied | closed_by_user
+    origin          TEXT NOT NULL DEFAULT 'system',      -- system | model | user | tension
+    current_evidence TEXT,                               -- JSON summary at last assessment
+    gap             TEXT,
+    last_escalation TEXT,                                -- JSON: the project → library → candidates → external steps and counts
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_targets_project ON project_evidence_targets(project_id, status);
+CREATE TABLE IF NOT EXISTS project_knowledge_nodes (
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    topic           TEXT NOT NULL,
+    state           TEXT NOT NULL DEFAULT 'missing',     -- strong | developing | weak | missing
+    why             TEXT,                                -- the explanation (never a source count)
+    claims_total    INTEGER NOT NULL DEFAULT 0,
+    claims_strong   INTEGER NOT NULL DEFAULT 0,
+    targets_open    INTEGER NOT NULL DEFAULT 0,
+    tensions_open   INTEGER NOT NULL DEFAULT 0,
+    evidence_classes TEXT,                               -- JSON: classes present
+    missing_perspectives TEXT,                           -- JSON
+    updated_at      REAL NOT NULL,
+    PRIMARY KEY (project_id, topic)
+);
+CREATE TABLE IF NOT EXISTS research_tensions (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,                       -- NOVEL | CONTRADICTION | WEAK_CONSENSUS | STALE | MISSING_PERSPECTIVE
+    claim_id        TEXT REFERENCES project_claims(id) ON DELETE CASCADE,
+    related_claim_id TEXT,
+    target_id       TEXT,
+    description     TEXT NOT NULL,
+    evidence        TEXT,                                -- JSON
+    impact          TEXT NOT NULL DEFAULT 'medium',      -- high | medium | low
+    status          TEXT NOT NULL DEFAULT 'open',        -- open | resolved | dismissed
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_tensions_project ON research_tensions(project_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_tensions_identity ON research_tensions(project_id, kind, claim_id, COALESCE(related_claim_id, ''));
 
 CREATE TABLE IF NOT EXISTS circuit_breakers (
     operation       TEXT PRIMARY KEY,         -- provider:operation, e.g. anthropic:messages (never per model)
@@ -872,6 +975,13 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
         )
         conn.execute("UPDATE sources SET revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END WHERE id=?",
                      (segments_revision(segments), bool(chunks), source_id))
+    # G5: a moved revision stales exactly the Claim evidence rows frozen on the old one (no-op for sources without Claims)
+    try:
+        if connect().execute("SELECT 1 FROM claim_evidence WHERE source_id=? LIMIT 1", (source_id,)).fetchone():
+            from . import claims
+            claims.stale_by_source(source_id)
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning("claim staleness hook skipped: %s", e)
 
 
 def segments_revision(segments: list[dict[str, Any]]) -> str:
@@ -1127,6 +1237,8 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
         return f"plan:{payload.get('project_id')}"
     if kind == "discover":
         return f"discover:{payload.get('project_id')}:{payload.get('refine') or ''}"
+    if kind == "extract_claims":
+        return f"claims:{payload.get('project_id')}"
     return None
 
 

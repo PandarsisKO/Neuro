@@ -188,5 +188,5 @@ def test_doctor_is_fast_and_release_check_writes_an_artifact(tmp_path, monkeypat
     assert {c["check"] for c in rc["checks"]} >= {"experimental flags off by default", "Tier 1 gates PASS", "Tier 1 frozen totals unchanged (router-equivalence)",
                                                     "retrieval regression baseline (fake tier) unchanged", "cache layout: input cost index below 1.0", "backup verified and restore round trip equal"}
     art = json.loads(open(rc["artifact"]).read())
-    assert art["verdict"] == "PASS" and art["baselines"]["tier1"]["frozen_totals"]["answer"] == [34, 175395] and art["flags"]
+    assert art["verdict"] == "PASS" and art["baselines"]["tier1"]["frozen_totals"]["answer"] == [34, 186010] and art["flags"]
     assert open(rc["artifact"][:-5] + ".txt").read().endswith("RELEASE CHECK PASS")
