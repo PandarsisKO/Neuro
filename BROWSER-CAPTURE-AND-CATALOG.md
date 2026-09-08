@@ -1,0 +1,146 @@
+# Browser-assisted acquisition + Community cataloging — architecture recommendation (2026-09-08)
+
+*For Kyle's mission "Parts A–Q" (filed in EXPANSION.md). Written after reading the live code; nothing below is built yet except where marked **in hand**.*
+
+## 0. The finding that frames everything
+
+Reddit's block is not a header problem. Since **June 30, 2026** Reddit login-walls old.reddit.com and refuses every non-browser client at the edge (datacenter-IP reputation, TLS fingerprint at the handshake, JavaScript challenge). Live probes from the Mac: `www`/`api.reddit.com` answer the public `.json` with a styled 403 block page; `old.reddit.com` answers 404 to JSON and a 200 login wall ("Welcome to Reddit") to page requests — with a browser UA, with an honest UA, with or without the cookies it sets. The same URLs work in Kyle's Chrome. Two readers remain and both are legitimate: **the user's own browser** and **Reddit's official API** (app-only OAuth, a "script" app's client id/secret in `.env`). The two server-side paths already built (honest-UA JSON ladder; old.reddit page → `reddit_html.py`) stay in the ladder — they are free to try, they read an extension-supplied page, and they are the working readers on the day Reddit relaxes — but the product must not depend on them.
+
+**In hand (0.32.2, tested, not yet delivered — see §12):** official-API reader for threads and subreddit search (`community._api_get`, credentials only in `.env`, doctor check); `thread_from_listing` split from fetching; `acquire_thread(listing=)`; `POST /api/projects/{id}/ingest/thread`; extension 1.4 reads the thread's `.json` inside the user's browser and posts it; refusals name each reading and the way forward; Communities panel guidance; 9 gate tests, suite 363.
+
+## 1. What already exists (do not rebuild)
+
+| Mission concept | Existing object | Notes |
+|---|---|---|
+| **Target / Source Lead** (known, not acquired) | **G3 Candidate Index**: `candidates` (global, one per platform+external_id, FTS, availability, metadata_revision, `source_id` once acquired) + `candidate_projects` (state, relevance, why, reason, origin JSON) | `candidates.remember` is an idempotent UPSERT that bumps `last_seen_at`; `search()` is the "have we seen something for this gap?" recall; `resolve_acquired` makes the candidate resolve to the global Source. **This IS the Target.** |
+| **Container** | `collections` (playlist/channel/manual, `source_collections`, `project_collections`) and the explore job (feed/sitemap/website) | Explore creates *proposed source rows* for every entry (review flow) — wrong for 18k threads. `community.explore` already records candidates only. |
+| **Rank before capture** | YouTube review (`review:` kv + `rank_proposed` job + approve); G7 `rank_candidates` ($0: term coverage × experience language × substance; engagement reported, never the key) | Learning from selections: `candidate_projects.reason/relevance_why` exist; no feedback loop yet. |
+| **Project-driven probes** | G7 `community.missions` — from research STATE (open Evidence Targets, MISSING_PERSPECTIVE/NOVEL/WEAK_CONSENSUS tensions, weak experiential Claims) with experience-language expansions | Exactly Part F's mechanism; not hardcoded terms. |
+| **Gap memory** | `knowledge.pursue`: project → library → **candidates** → external; result stored as `project_evidence_targets.last_escalation` JSON | Candidates found for a gap are *not* a durable relation — they live in a JSON blob. |
+| **Acquire a Target** | `POST /api/candidates/{id}/acquire` → attach if owned, else `ingest_url` job (normal lifecycle) | Global-library-first is already enforced here. |
+| **Browser as acquisition node** | Extension: "Send this page" (rendered HTML → `/ingest/html`), session-cookie path (`/ingest/with-session`), course scanner; **1.4 (in hand)**: Reddit thread JSON read in-browser → `/ingest/thread` | Nothing tells the *user* when the browser would succeed. |
+| **External execution owner** | jobs `external_pending` (no lease; `external_provider/kind/handle/deadline`; recovery re-attaches, never resubmits) | The right home for "the browser owns this acquisition". |
+| **Source identity** | G1 `identity.resolve_or_create_source`, canonical URLs, dedupe keys | A browser capture must enter through this, never beside it. |
+| **Works** | G6 `works` / versions / manifestations | Reddit threads are *sources that discuss Works*, not Works. Do not force them in. |
+
+Naming: the mission's "Target" collides with G5's **Evidence Target** (`project_evidence_targets`, a *question* that needs evidence). Keep the code name **candidate**; in the UI call them **Known sources** ("known, not captured"). A candidate is a source lead; an Evidence Target is a need. The new relation between them (§4) is what Part H asks for.
+
+## 2. Decisions (the 20 questions)
+
+1. **Build:** browser capture as a first-class acquisition path with a `requires_browser` state and one-click recovery (Part A, Q); capture completeness (B); Reddit community as a container with **coverage probes** instead of "scrape everything" (D, E, J); catalog-only scanning from the extension (D); staged $0 ranking + review + capture queue (G, Q); durable candidate↔gap/claim/discovery links (H); Chrome presence heartbeat (Q, lightweight); adapter capability declaration (K, small).
+2. **Do not build / simplify:** a new `targets` table (the Candidate Index is it — extend additively); a plugin framework (two small declarative tables of adapters is enough); a notification subsystem (one `attention` query over jobs + candidate_projects, with a per-project `dismissed_until` kv); scheduled monitoring (later rung; the coverage model makes it trivial then); a DOM scraper designed to *expand* Reddit's lazy tree (Part N — capture what the page shows, report what it does not); embedding every catalog row (Stage 2 only for the plausible few); learning-to-rank (record selections now, learn later); forcing threads into Works.
+3. **Fit with the two Reddit paths:** the ladder becomes *official API (if creds) → public JSON → old.reddit page → browser*. The server paths return a **classified failure** (`browser_solvable`) instead of a string, which is what turns a job into `requires_browser`. Nothing built in 0.32.x is discarded; `thread_from_listing` is the single normalizer for API, JSON, extension-JSON and (via `reddit_html`) extension-HTML captures.
+4. **`targets` as a new table? No.** Additive columns on `candidates` (score, comment_count, flair, outbound_url, container_id, acquisition JSON, capture_state) + one new relation table `candidate_links`. Same global-then-project split as everything else.
+5. **Communities in `collections`? Yes, as kind `community`,** with additive columns (`platform`, `known_count`, `last_scanned_at`) and one new table `catalog_probes` (per container: probe kind/term, cursor, scanned_at, observed/new counts, freshness) — the coverage record. Community containers never create proposed source rows; membership of *known* items is the candidate's `container_id`, of *acquired* items `source_collections` as today.
+6. **Relations:** candidate ↔ project (exists); candidate ↔ Evidence Target / Claim / tension / discovery run / planner need via `candidate_links(kind, ref_id)`; candidate → Source (`source_id`, exists); Source → Works (exists; a captured thread `interprets` Works it names — G7 already does this). Candidates never carry Work ids; a thread is not a manifestation.
+7. **Smallest schema (all additive, `MIGRATIONS` list):** `candidates` +6 columns; `collections` +3; `sources` +2 (`error_class`, `completeness` JSON); new `candidate_links`; new `catalog_probes`; jobs unchanged (external_pending). kv: `extension:last_seen`, `attention:{project}:dismissed_until`.
+8. **Extension:** structured `reddit_thread_capture` contract (JSON-in-browser first, DOM walk fallback with completeness); `Scan listing` for subreddit listing/search pages (thin cards → batch UPSERT); a 5-minute heartbeat (`chrome.alarms` → `POST /api/extension/heartbeat`); pending-capture awareness (service worker pulls `GET /api/capture/pending` on heartbeat and tab update → badge + popup pre-filled with project/reason, one button); generic "capture rendered page" already exists (`/ingest/html`).
+9. **Backend/API:** failure classification in `ingest`/`community`/`webpage` (`AcquisitionFailure(class, message, browser_solvable)`); jobs → `external_pending` with provider `browser`; `GET /api/capture/pending`, `POST /api/capture/{job_id}` (payload resolves the exact job/candidate/source), `POST /api/capture/queue` (from review/gap), `POST /api/extension/heartbeat`, `GET /api/projects/{id}/attention`; `POST /api/collections/community` (map), `POST /api/catalog/batch` (extension scan upsert), `GET /api/collections/{id}/coverage`, `POST /api/collections/{id}/review` (staged ranking), `candidate_links` CRUD folded into existing target/claim/discover endpoints.
+10. **Ranking & dedupe:** identity = Reddit id (`t3_` stripped) + canonical permalink (www, no query), one global row; re-seen rows update score/comment_count/last_seen; Stage 0 deterministic (dismissed, acquired, low_content titles, age); Stage 1 FTS over title+snippet against project terms (brief, gaps, claims, planner questions) + G7 signals; Stage 2 embeddings only for rows with Stage-1 score above a floor and only when the project asks to review; Stage 3 capture only what the user selects. Bands: Critical / High / Potential / Low with the *why*.
+11. **Completeness:** the capture contract carries `expected_comments` (from listing metadata) and `captured`, `unloaded_branches`, `collapsed`; `sources.completeness` JSON; source description and thread view say "184 of ~213"; a partial source is `ready` **and** visibly partial; "Reopen and capture more" re-runs capture and merges by post id (posts never duplicate; new posts append; vanished posts keep their text with availability `unavailable` — G7 already does this on re-acquisition).
+12. **UI:** "Browser needed" state on source/job cards with **Open & Capture** (opens the URL; the extension badge lights); Browser Capture queue panel (Sources); Known-sources review with bands and "Capture selected"; community container view (known/captured/relevant/recommended/new since last scan, coverage table with fresh/stale); gap and claim cards show "N promising discussions known, not captured — Capture best N"; Discover results show "browser capture likely"; chat surfaces uncaptured evidence only when `research_state` has linked candidates for the question's gap; one attention line per project ("3 sources need your browser") with dismiss-for-a-week.
+13. **Tests:** offline, $0, fixtures: fake Reddit responses (403 page / login wall / JSON), a fake extension payload (contract JSON, partial and complete), a fake listing scan batch; tests per phase below; the existing G7 15-point fixture reused so browser-captured threads prove identical evidence behaviour.
+14. **Release gates:** one per phase (below), plus Kyle's 14 Part-Q gates spread over R1–R3.
+15. **Migration risk:** low — additive columns with defaults; `candidates` FTS triggers untouched; `sources.status` vocabulary untouched (`requires_browser` is a *derived* acquisition state from `error_class` + the external_pending job, so nothing that filters on status changes). Old databases: candidates without `container_id` remain valid.
+16. **Cost:** cataloging $0 (metadata upsert); ranking Stages 0–1 $0; Stage 2 embeddings ≈ $0.0001/row for the few hundred plausible rows, only on review; capture $0 (browser) or free API calls; extraction costs stay where they are (after acquisition). No Tier 1 prompt change → frozen numbers untouched.
+17. **Privacy/security:** browser captures carry **content only** — never cookies; the session-cookie path stays the separate, explicit `with-session` flow; pending-capture responses carry URL + project + reason, no secrets; heartbeat carries version only; capture payloads are size-capped and parsed defensively (posts are data — G7's injection marker applies); no automation opens tabs or expands trees; the extension acts only on the user's click.
+18. **Generalize now:** the failure classification, the `requires_browser` state, the capture request/return contract, the heartbeat, the attention query, `candidate_links`, `catalog_probes` — all platform-neutral by construction. **Leave Reddit-specific until a second platform:** the listing-card scanner, the community container's probe kinds (recency/popularity/search), the thread capture contract's fields, the DOM walk.
+19. **Later platforms** map onto the same objects: Container = YouTube channel (exists), podcast feed (exists), website (exists), publication/book catalog (G6P); Target = candidate; acquisition = HTTP (exists) / session (exists) / browser (this) / manual upload (exists); the same review → capture queue → Source path. G6P's "Work-first Discover" reads candidates+works the same way.
+20. **Ladder placement:** this is an **acquisition-platform track (R)**, sitting beside G6P as G6P sits beside G6 — it extends G2/G3/G7 rather than adding a rung. Sequencing conflict to resolve with Kyle: the G6P addendum says "G6P1 EPUB Core next"; R1–R2 are small (days), unblock Reddit today and are prerequisites for any browser-dependent G6P acquisition (paywalled publisher pages). Recommendation: **R1 → R2 → G6P1 → R3 → R4 → R5 → G6P2 → R6 → R7 → G6P3…**, adjusting as G6P1 reveals its own browser needs.
+
+## 3. The acquisition model (Part L, evaluated)
+
+Adopted with the existing names: **Container** (`collections`, kind now includes `community`) → **Known source** (`candidates`) → ranking (`candidate_projects.relevance`, `candidate_links`) → **acquisition** (HTTP `ingest_url` · session `with-session` · browser capture job · manual upload) → **Source** → chunks → evidence. One addition makes it a model rather than a diagram: an **acquisition resolver** (`acquire.resolve(candidate|url, project)`) that returns *and records* the chosen path: `attach` (global library has it) · `http` · `session` · `browser` · `unavailable`, with the reason. Adapters declare capabilities in one table in code:
+
+```python
+ADAPTERS = {"reddit_thread": {"methods": ["structured_api", "public_json", "server_html", "browser_rendered"], "browser_solvable": {403, 404, "login_wall", "challenge"}},
+            "web_page":      {"methods": ["http", "browser_rendered"], "browser_solvable": {401, 403, "login_wall", "challenge", "js_required", "empty_render"}},
+            "course_lesson": {"methods": ["browser_session"]}, "document": {"methods": ["http", "manual_upload"]}, "youtube": {"methods": ["http"]}}
+```
+
+That is the whole "capability model": enough to stop encoding workarounds as scattered conditionals, small enough to be read in one screen.
+
+## 4. Schema (additive)
+
+```sql
+-- candidates: the Target's thin metadata + acquisition memory
+ALTER TABLE candidates ADD COLUMN score INTEGER;            ALTER TABLE candidates ADD COLUMN comment_count INTEGER;
+ALTER TABLE candidates ADD COLUMN flair TEXT;               ALTER TABLE candidates ADD COLUMN outbound_url TEXT;
+ALTER TABLE candidates ADD COLUMN container_id TEXT REFERENCES collections(id) ON DELETE SET NULL;
+ALTER TABLE candidates ADD COLUMN acquisition TEXT;         -- JSON {adapter, preferred, last_attempt: {method, class, at}, requires_browser: bool}
+-- (capture_state is derived: source_id → captured; browser job pending → queued; availability → unavailable; else uncaptured)
+
+-- collections: community containers + coverage summary
+ALTER TABLE collections ADD COLUMN platform TEXT;  ALTER TABLE collections ADD COLUMN known_count INTEGER;  ALTER TABLE collections ADD COLUMN last_scanned_at REAL;
+
+CREATE TABLE IF NOT EXISTS catalog_probes (            -- one row per (container, probe): the coverage record
+    id TEXT PRIMARY KEY, collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,            -- recency | popularity | search
+    spec TEXT NOT NULL,            -- 'new/30d' | 'top/month' | the search term
+    origin TEXT,                   -- system | project:<id> | user
+    cursor TEXT,                   -- platform paging token / last item id, when the scanner reports one
+    last_scanned_at REAL, observed INTEGER, new_found INTEGER, ttl_s INTEGER,   -- freshness = now - last_scanned_at vs ttl
+    UNIQUE (collection_id, kind, spec));
+
+CREATE TABLE IF NOT EXISTS candidate_links (           -- why a known source matters: durable, not a JSON blob
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,            -- evidence_target | claim | tension | discovery | planner | mission
+    ref_id TEXT NOT NULL, relevance INTEGER, why TEXT, state TEXT NOT NULL DEFAULT 'open',   -- open | satisfied | dismissed
+    created_at REAL NOT NULL, updated_at REAL NOT NULL, PRIMARY KEY (candidate_id, project_id, kind, ref_id));
+
+-- sources: classified failure + completeness
+ALTER TABLE sources ADD COLUMN error_class TEXT;           -- http_error | login_wall | challenge | js_required | not_found | too_large | unsupported | browser_solvable:<detail>
+ALTER TABLE sources ADD COLUMN completeness TEXT;          -- JSON {status: complete|partial|unknown, captured, expected, unloaded, collapsed, method, captured_at}
+```
+
+Browser capture requests are **jobs**: `ingest_url` moves to `external_pending` with `external_provider='browser'`, `external_kind='capture:<adapter>'`, `external_handle=<canonical url>`, `external_deadline` = 14 days (then `expired`, still listed as waiting with "expired — reopen"). The queue is `SELECT … FROM jobs WHERE status='external_pending' AND external_provider='browser'` (+ project via payload). Restart-safe by construction (recovery re-attaches to external handles).
+
+## 5. Contracts
+
+**`browser_capture_request`** (server → extension, `GET /api/capture/pending[?url=]`): `{job_id, project_id, project_name, candidate_id?, source_id?, canonical_url, adapter, capture_kind, reason, created_at}`.
+
+**`reddit_thread_capture`** (extension → server, `POST /api/capture/{job_id}` or `/api/projects/{id}/ingest/thread` when unsolicited):
+```
+{ contract: "reddit_thread_capture/1", canonical_url, method: "json"|"dom",
+  thread: {reddit_id, subreddit, title, author, body, score, created_at, edited, deleted, permalink, expected_comments},
+  comments: [{reddit_id, parent_id, depth, author, text, score, created_at, edited, deleted, permalink}],
+  capture: {status: "complete"|"partial"|"unknown", captured, expected, unloaded_branches, collapsed, captured_at} }
+```
+Producer inside the browser, in order: (1) the same-origin `.json` fetch — the user's own session, real TLS; complete tree with `num_comments`; *this is browser acquisition, not "the request Python can't make" — Reddit serves it only to this client*; (2) the DOM walk of the rendered page (`shreddit-comment[thingid][depth][author][permalink]` on www; `.thing[data-fullname]` on old) when (1) is refused, with completeness from "more replies" / collapsed nodes counted. Both emit the contract; the server normalizes once (`thread_from_capture` → the same thread dict → `store_thread`).
+
+**`listing_scan`** (extension → server, `POST /api/catalog/batch`): `{container: {platform:"reddit", kind:"community", external_id:"r/accounting", url}, probe: {kind, spec, cursor?}, items: [{reddit_id, permalink, title, subreddit, author, created_at, score, comment_count, flair, snippet, outbound_url}], scanned_at}` — idempotent UPSERT via `candidates.remember` (+ new columns), probe row updated, response `{observed, known, new, new_relevant}`.
+
+**Heartbeat**: `POST /api/extension/heartbeat {version}` every 5 min and on popup open → kv `extension:last_seen`; UI states *ready* (< 10 min), *last seen N min ago*, *not detected*.
+
+## 6. Phased ladder
+
+Each phase is a release with tests + a release-check gate; nothing in a later phase is needed for an earlier one to be useful.
+
+### R1 — Browser Reddit capture + `requires_browser` (0.33.0)
+**Mission.** A blocked Reddit thread recovers in one click; the app tells the user when the browser will succeed. **Behaviour.** Thread job fails → card says *Browser needed — Reddit is blocking Neuro Search from reading this thread directly, but your browser can access it — [Open & Capture]*; the extension badge lights on that tab, popup shows project + reason + one button; capture → the same job/source becomes ready; official API path when creds exist; Communities panel shows extension status. **Schema.** `sources.error_class`; jobs external_pending (exists); kv heartbeat. **Backend.** `AcquisitionFailure` classification in `community` + `webpage`/`ingest` (login wall, challenge, 401/403 on adapters that declare browser_solvable, js_required/empty render); jobs move to external_pending(browser) instead of failed; `GET /api/capture/pending`, `POST /api/capture/{job_id}`, `POST /api/extension/heartbeat`, `GET /api/projects/{id}/attention` (count only). **Extension 1.5.** contract producer (JSON in-browser; DOM walk arrives in R2), heartbeat, pending-capture badge/pre-fill, capture posts to the job. **UI.** Browser-needed card state + Open & Capture; extension status line; Sources → *Browser capture* list (plain list; queue UX in R2). **Tests.** Part Q gates 1, 2, 3, 4, 5, 6, 7, 9, 10, 14. **Non-goals.** Completeness, catalog, ranking. **Depends on.** 0.32.2 in hand.
+
+### R2 — Capture completeness + the capture queue (0.33.1)
+**Mission.** Never call a partial thread complete; several browser-required items become a guided queue. **Behaviour.** "184 captured · thread reports ~213 · 29 may not be loaded" on the source, thread view and completion toast; *Accept partial* / *Reopen and capture more* (merge by post id); the queue panel walks 1 of N with Open Thread, advancing automatically as captures land; expired requests say so. **Schema.** `sources.completeness`. **Backend.** merge-on-recapture in `store_thread` (revision bump, vanished posts → unavailable — exists), completeness in `/api/sources/{id}` and thread endpoint, queue endpoint. **Extension 1.6.** DOM walk producer with completeness counts; multi-pending awareness. **UI.** queue panel; partial badges. **Tests.** Part Q gates 8, 12; merge idempotence; partial → complete on recapture. **Non-goals.** Catalog. **Depends on.** R1.
+
+### R3 — Known sources: enriched candidates + durable links (0.34.0)
+**Mission.** An uncaptured thread stays useful: attached to gaps, claims, discoveries and the chat. **Behaviour.** Gap card: *3 promising discussions known, not captured — [Capture best 3]*; claim/tension cards likewise; Discover results marked *browser capture likely*; chat mentions linked uncaptured evidence only for the question's gap; candidates list shows capture state and acquisition memory. **Schema.** `candidates` +6 columns, `candidate_links`. **Backend.** `knowledge.pursue` writes `candidate_links` (kind evidence_target) instead of only `last_escalation`; `community.explore` links to its mission; `discover` links results it saw but did not acquire; `qa.research_state` carries linked-uncaptured counts; acquisition resolver `acquire.resolve` (attach/http/session/browser/unavailable, reason recorded in `candidates.acquisition`); `POST /api/capture/queue` from links. **Extension.** none. **UI.** the cards above; Known-sources filters. **Tests.** Part Q gates 11, 13; links survive acquisition (state satisfied) and dismissal; resolver picks attach before anything. **Non-goals.** Subreddit scanning. **Depends on.** R1 (queue from R2 optional).
+
+### R4 — Community containers + Scan (0.35.0)
+**Mission.** Add `r/accounting` once; know what exists without downloading it. **Behaviour.** Paste a subreddit URL → *Map this community* (recommended coverage: recent · top · project-relevant searches from `missions`; metadata only; nothing downloaded) → the extension's *Scan listing* runs the probes in the user's browser (each probe = one listing/search page the user would see; no hidden tabs, no scrolling automation beyond the page the user opened — probes are a checklist the user steps through, the popup shows *3 of 7 probes done*); container view: known / captured / relevant / new since last scan; coverage table fresh/stale. Server-side probes run automatically through the official API when creds exist. **Schema.** `collections` +3, `catalog_probes`. **Backend.** `POST /api/collections/community`, `POST /api/catalog/batch`, `GET /api/collections/{id}/coverage`, probe planner (`community.missions` → search probes; recency/popularity defaults; TTLs), API-side probe runner. **Extension 1.7.** listing-card scanner (www `shreddit-post` attributes; old `.thing`); batch post with cursor. **UI.** Map dialog, container view. **Tests.** upsert idempotence (score 621→784, comment_count 94→137, one row), probe freshness, no proposed source rows created, project-driven probe derivation from research state, batch size caps. **Non-goals.** ranking bands, rescans. **Depends on.** R3.
+
+### R5 — Staged ranking + review + capture selected (0.35.1)
+**Mission.** 5,000 known → 5 captured. **Behaviour.** *Review candidates*: bands Critical / High / Potential / Low with the why (gap match, claim match, novelty vs owned sources, firsthand language, specificity, comments, recency, disagreement potential, diversity); select → capture queue (browser) or acquire (API/attach). Selections recorded for later learning. **Schema.** none (uses `candidate_projects.relevance/why`, `candidate_links`). **Backend.** Stage 0/1 ranker over FTS + G7 signals, Stage 2 embeddings only above the floor and only on review (through usage guard), `POST /api/collections/{id}/review`. **Extension.** none. **UI.** review panel with bands and counts. **Tests.** band assignment deterministic on fixtures; Stage 2 never runs below the floor; engagement never the key; dismissed never resurfaces. **Non-goals.** learned ranking. **Depends on.** R4.
+
+### R6 — Re-scan, freshness, attention (0.36.0)
+**Mission.** Communities stay current without reprocessing; the user is reminded intelligently. **Behaviour.** *Scan for updates* re-runs stale probes only; "623 observed · 581 known · 42 new · 4 high relevance"; project attention line (*4 high-value discussions waiting for browser capture — [Review]*) on Sources/Discover/Home/Gaps with dismiss-for-a-week; Master Planner readiness notes missing evidence only when a linked candidate would change a gap's state. **Schema.** kv dismissals; `catalog_probes.cursor` used. **Backend.** stale detection, delta report, attention query with suppression. **Extension.** scan resumes from cursor. **UI.** as above. **Tests.** rescan touches only stale probes; delta counts; suppression state. **Non-goals.** scheduled monitoring (a later rung; add a job kind then). **Depends on.** R4–R5.
+
+### R7 — Generalized browser/catalog acquisition (0.37.0)
+**Mission.** Prove the abstractions on a second platform, not on Reddit. **Behaviour.** A paywalled/JS-only article fails → *This page requires your browser session — [Capture with Chrome]* → generic rendered-page capture with completeness (visible text vs. truncated) through the same queue; a YouTube channel / podcast feed / website explore records candidates with `container_id` and coverage probes (recency) instead of proposed rows when the container is large (> N). **Schema.** none new. **Backend.** `GenericRenderedPage` adapter in the capability table; explore's proposed-rows path gated by size; catalog adapters = the existing enumerators writing probes. **Extension.** generic capture uses `/api/capture/{job_id}`. **Tests.** a non-browser-solvable failure stays failed (Part Q gate 5 again on web); generic capture resolves the same source; a 2,000-item channel catalogs without proposed rows. **Non-goals.** new platforms. **Depends on.** R1–R6.
+
+## 7. What can be completed now without prejudicing the decisions
+
+Deliverable as **0.32.2** on Kyle's word: the official-API reader; `thread_from_listing`; `acquire_thread(listing=)`; `/ingest/thread`; extension 1.4 (JSON-in-browser, unsolicited — R1 turns it into the pending-capture handoff without changing the payload shape materially); refusal messages that name the way forward; Communities guidance; the two server paths with diagnostics. All of it is R1's substrate and none of it fixes a schema. One open question for Kyle: the extension currently posts the raw Reddit listing (`listing:`) rather than the `reddit_thread_capture` contract; R1 would switch to the contract while keeping `listing:` accepted. Fine to ship either way.
+
+## 8. Risks
+
+Reddit changing `shreddit-*` markup breaks the DOM walk (JSON-in-browser is unaffected); Reddit's API terms (personal use, 100 QPM) — nothing here batches beyond a user action; the extension is MV3 with `<all_urls>` host permission — the heartbeat and pending list add a periodic call to the user's own server only; capture size (a 2,000-comment thread ≈ 3 MB JSON) is within the existing 12 MB cap; a user who never installs the extension sees "Chrome extension required — setup" rather than a dead end.
