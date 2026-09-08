@@ -244,3 +244,17 @@ def avoided_this_month() -> float:
     month0 = datetime(now.year, now.month, 1).timestamp()
     row = db.connect().execute("SELECT COALESCE(SUM(saved),0) s FROM usage WHERE ts>=? AND transport='local'", (month0,)).fetchone()
     return round(float(row["s"] or 0), 4)
+
+
+def local_split(days: int | None = None) -> dict[str, Any]:
+    """L4: the AI task split for this month (or the last `days`): how many model calls, what share ran locally, actual API spend
+    on those calls, and the API spend the local ones avoided. Counts usage rows of model tasks (whisper excluded)."""
+    now = datetime.now()
+    since = (now.timestamp() - days * 86400) if days else datetime(now.year, now.month, 1).timestamp()
+    row = db.connect().execute(
+        "SELECT COUNT(*) n, SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local, COALESCE(SUM(cost),0) actual, "
+        "COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) avoided FROM usage WHERE ts>=? AND kind<>'whisper'", (since,)).fetchone()
+    n, nl = int(row["n"] or 0), int(row["n_local"] or 0)
+    return {"calls": n, "local_calls": nl, "local_share": round(nl / n, 3) if n else 0.0, "actual": round(float(row["actual"] or 0), 4),
+            "avoided": round(float(row["avoided"] or 0), 4), "since": since,
+            "line": (f"{n:,} AI calls · {round(100 * nl / n)}% local · ${float(row['actual'] or 0):.2f} actual · ${float(row['avoided'] or 0):.2f} avoided" if n else "no AI calls yet")}

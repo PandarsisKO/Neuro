@@ -17,7 +17,7 @@ os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 import pytest  # noqa: E402
 
 from neurosearch import claude_code as CC  # noqa: E402
-from neurosearch import contracts, db, fake_ai, jobs, providers, usage  # noqa: E402
+from neurosearch import api, contracts, db, fake_ai, jobs, providers, usage  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
 
 STUB = str(pathlib.Path(__file__).with_name("fake_claude_cli.py"))
@@ -246,3 +246,16 @@ def test_api_surfaces_never_block_on_the_probe(monkeypatch, tmp_path):
     h2 = CC.health(wait=False)
     assert h2["state"] == "error" and "timeout" in (h2.get("detail") or "") or h2["state"] in ("error",)
     assert CC._state["probing"] is False
+
+
+def test_usage_split_counts_local_share_actual_and_avoided(monkeypatch):
+    """L4: the split is what the Health line shows — calls, local share, actual API spend, avoided spend."""
+    assert usage.local_split()["calls"] == 0 and usage.local_split()["line"] == "no AI calls yet"
+    _rank()                                              # local
+    providers.set_policy("api_only"); _rank()            # api
+    providers.set_policy(None)
+    sp = usage.local_split()
+    assert sp["calls"] == 2 and sp["local_calls"] == 1 and sp["local_share"] == 0.5
+    assert sp["avoided"] > 0 and sp["actual"] > 0 and "50% local" in sp["line"]
+    h = api.api_health()
+    assert h["local_ai"]["split"]["calls"] == 2

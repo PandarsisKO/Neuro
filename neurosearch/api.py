@@ -267,7 +267,8 @@ def api_usage() -> dict[str, Any]:
         t["account_limit_until"] = cap
         t["blocked"] = t["blocked"] or f"the Anthropic account's usage limit is reached — access returns {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(cap))}"
     from . import claude_code
-    t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month()}
+    t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
+                     "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
     return t
 
 
@@ -780,7 +781,8 @@ def api_health() -> dict[str, Any]:
     h["sites"] = rate_limit_status()
     h["version"] = __import__("neurosearch").__version__
     from . import claude_code
-    h["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line()}
+    from . import usage
+    h["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split()}
     return h
 
 
