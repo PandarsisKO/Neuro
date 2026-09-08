@@ -1,6 +1,6 @@
 # HANDOFF — start here in any new session (any model)
 
-*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.42.0. This file is the front door; it stays short and points at the documents that hold the substance.*
+*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.42.1. This file is the front door; it stays short and points at the documents that hold the substance.*
 
 ## 1. Read in this order (about 20 minutes)
 
@@ -33,11 +33,11 @@ The session has a full copy of the repo in its own workspace and a `.venv` (Pyth
 6. Release gate: in the sandbox `NEUROSEARCH_GIT_SHA=<mac short sha> .venv/bin/neurosearch release-check` → copy the two `evals/release/release-check-<ver>-<sha>-*.{txt,json}` to the conversation and to `<repo>/evals/release/`, commit separately ("release-check <ver> @ <sha>: PASS"), and `git tag -f <rung-tag>` (existing tags: `expansion-g5`, `expansion-g5-1`, `expansion-g6`, `expansion-g7`, `browser-b1`, `browser-b2`, `publication-g6p1`, `publication-g6p2`, `portable-answers-c0`, `browser-b3`, `research-r1`, `local-ai-l1`, `local-ai-l4`, `deep-d1`, `stale-s1`, `value-s2`, `findings-s4`).
 7. Live checks go through Kyle's Chrome (the Claude-in-Chrome tools) against `http://localhost:8000` — `fetch('/api/…')` from a tab on that origin; the sandbox and the Mac shell have no network to the app or to the web. Keep live probes to what a test cannot answer.
 
-## 4. Where things stand (0.42.0)
+## 4. Where things stand (0.42.1)
 
-Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), Share ▾ (0.35.1), B3 candidate links (0.36.0), Research view engine R1/R3/R5/R6 (0.37.2, `research_view.py` + endpoints; the tab's shell is NOT rebuilt yet), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 446, Tier 1 chat totals 34 / 196,951.
+Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), Share ▾ (0.35.1), B3 candidate links (0.36.0), Research view engine R1/R3/R5/R6 (0.37.2, `research_view.py` + endpoints; the tab's shell is NOT rebuilt yet), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 447, Tier 1 chat totals 34 / 196,951.
 
-Queued, in Kyle's priority order and with rough cost in "points of a week" (a deterministic rung ≈ 4, a live-iteration rung ≈ 10): Mission S — S2 source value (S1 stale triage shipped 0.42.0), S3 source drawer, S4 findings workbench, S5 known-but-uncaptured pool (`SOURCES-FINDINGS-MISSION.md`; S1/S2/S5 are engine-heavy, S3/S4 UI-heavy); Research rebuild R2 shell + R4 + R7–R12 (`RESEARCH-MISSION.md`; the engine and its contract are done — start from `RESEARCH-TAB.md` §7 and render `GET …/research/overview`; UI-heavy, ~8–12 over several sessions); L2 local-first chat + L3 acceleration dialog (`LOCAL-AI-PROVIDER.md`; L1 verified live 2026-09-08, L4 shipped 0.38.3; ~6 over sessions); G6P3–P7; B4–B7; G8; G9. Kyle's own to-dos: Reddit script-app credentials in `.env` (enables Explore), reload the extension after each extension bump.
+Queued, in Kyle's priority order and with rough cost in "points of a week" (a deterministic rung ≈ 4, a live-iteration rung ≈ 10): Mission S — S2 source value (S1 stale triage shipped 0.42.1), S3 source drawer, S4 findings workbench, S5 known-but-uncaptured pool (`SOURCES-FINDINGS-MISSION.md`; S1/S2/S5 are engine-heavy, S3/S4 UI-heavy); Research rebuild R2 shell + R4 + R7–R12 (`RESEARCH-MISSION.md`; the engine and its contract are done — start from `RESEARCH-TAB.md` §7 and render `GET …/research/overview`; UI-heavy, ~8–12 over several sessions); L2 local-first chat + L3 acceleration dialog (`LOCAL-AI-PROVIDER.md`; L1 verified live 2026-09-08, L4 shipped 0.38.3; ~6 over sessions); G6P3–P7; B4–B7; G8; G9. Kyle's own to-dos: Reddit script-app credentials in `.env` (enables Explore), reload the extension after each extension bump.
 
 Known cosmetic debt: the live Work "Form 1099DIV" title (dehyphenated before the reconcile fix).
 

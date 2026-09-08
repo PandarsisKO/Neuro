@@ -425,11 +425,12 @@ LOCAL_POLICIES = ("local_preferred", "local_only")
 API_POLICIES = ("api_requested", "api_only")
 
 
-def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None) -> None:
+def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None,
+            lanes: tuple[str, ...] | None = None) -> None:
     wid = _worker_id(n)
-    log.info("worker %d started%s%s", n, f" ({', '.join(kinds)})" if kinds else "", f" [{'/'.join(policies)}]" if policies else "")
+    log.info("worker %s started%s%s%s", n, f" ({', '.join(kinds)})" if kinds else "", f" [{'/'.join(policies)}]" if policies else "", f" lanes {'/'.join(lanes)}" if lanes else "")
     while not _stop.is_set():
-        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies)
+        job = db.claim_job(kinds, worker_id=wid, exclude_kinds=exclude_kinds, policies=policies, lanes=lanes)
         if not job:
             _stop.wait(1.5)
             continue
@@ -487,8 +488,10 @@ def start_workers(n: int | None = None) -> None:
         _threads.append(t)
     if local:
         # L1: the local pool (busy = the job waits, never spends) and one API pool for api_requested / api_only jobs
+        # 0.42.1: only the FIRST local worker takes the slow lane (Read deeper); the rest keep serving ordinary findings/ranking
         for i in range(max(1, settings.local_ai_workers)):
-            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES}, daemon=True, name=f"ns-worker-local-ai-{i}")
+            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES, "lanes": None if i == 0 else ("normal",)},
+                                 daemon=True, name=f"ns-worker-local-ai-{i}")
             t.start()
             _threads.append(t)
         t = threading.Thread(target=_worker, args=("api", ANALYSIS_KINDS), kwargs={"policies": API_POLICIES}, daemon=True, name="ns-worker-api-ai")

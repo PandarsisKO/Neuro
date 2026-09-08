@@ -817,6 +817,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         counts = db.suggestion_counts(project_id)
         analysing = db.sources_being_analysed(project_id)
         live = db.live_job_by_source()
+        ajobs = db.analysis_jobs_by_source(project_id)
         from . import acquire
         browser = acquire.pending_by_source()
         analysed_ids = db.analysed_sources(project_id)
@@ -844,6 +845,8 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             from . import findings as findings_mod
             r["long"] = findings_mod.is_long(r)         # D2/D3: a book or ≥ 45 min — a candidate for Read deeper
             r["analysing"] = r["id"] in analysing
+            if r["id"] in ajobs:
+                r["analysis_job"] = ajobs[r["id"]]          # 0.42.1: "reading deeper · part 3/12 · 41 findings so far"
             r["analysed"] = r["id"] in counts or r["id"] in analysed_ids
             r["under_read"] = bool(r["long"] and r.get("depth") != "deep" and r["analysed"] and (r["approved"] + r["suggested"]) <= findings_mod.CAP_BASE)
             v = values.get(r["id"]) or sources_value.empty()
@@ -1951,7 +1954,11 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
     if body.transport == "batch":
         job = jobs.enqueue("suggest_findings_batch", {"project_id": project_id, "source_ids": ids, "force": body.force})
     else:
-        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force or body.depth == "deep", "depth": body.depth})
+        if body.depth == "deep":
+            # one job PER source in the slow lane: each finishes and lands on its own, and only one local worker ever carries them
+            made = [db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "depth": "deep", "reason": "read deeper"}, lane="slow") for sid in ids]
+            return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids), "transport": body.transport, "depth": body.depth, "lane": "slow"}
+        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force, "depth": body.depth})
     return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth}
 
 

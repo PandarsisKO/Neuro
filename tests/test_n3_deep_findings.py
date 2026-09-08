@@ -178,3 +178,24 @@ def test_under_read_flag_marks_long_sources_at_the_old_cap(monkeypatch):
     findings.suggest_for_source(p["id"], r["source_id"], depth="deep")
     row = next(s for s in api.api_sources(project_id=p["id"]) if s["id"] == r["source_id"])
     assert row["depth"] == "deep" and row["under_read"] is False
+
+
+def test_deep_reads_report_per_part_progress_and_ride_the_slow_lane(monkeypatch):
+    p = db.create_project("Deep5", "hosting")
+    r = ingest.ingest_text("Long hosting course", _long_transcript(3), project_id=p["id"])
+    msgs = []
+    findings.suggest_for_source(p["id"], r["source_id"], depth="deep", progress=lambda f, m: msgs.append((f, m)))
+    assert len(msgs) >= 3 and msgs[0][1].startswith("reading deeper · part 1/") and "findings so far" in msgs[-1][1]
+    assert all(0 <= f < 1 for f, _ in msgs) and [f for f, _ in msgs] == sorted(f for f, _ in msgs)
+    out = api.api_suggest(p["id"], api.SuggestIn(source_ids=[r["source_id"], r["source_id"]], depth="deep"))
+    assert out["lane"] == "slow" and len(out["jobs"]) == 2
+    j = db.get_job(out["jobs"][0])
+    assert j["lane"] == "slow" and j["payload"]["source_ids"] == [r["source_id"]]
+    # a normal-lane worker never claims it; the any-lane worker does; an ordinary job is claimable by both
+    assert db.claim_job(jobs.ANALYSIS_KINDS, worker_id="w1", policies=jobs.LOCAL_POLICIES, lanes=("normal",)) is None
+    got = db.claim_job(jobs.ANALYSIS_KINDS, worker_id="w0", policies=jobs.LOCAL_POLICIES)
+    assert got and got["id"] == j["id"]
+    normal = db.create_job("rank_proposed", {"project_id": p["id"], "collection_id": "c"})
+    assert db.claim_job(jobs.ANALYSIS_KINDS, worker_id="w1", policies=jobs.LOCAL_POLICIES, lanes=("normal",))["id"] == normal["id"]
+    row = next(s for s in api.api_sources(project_id=p["id"]) if s["id"] == r["source_id"])
+    assert row["analysing"] and row["analysis_job"]["depth"] == "deep" and row["analysis_job"]["lane"] == "slow"

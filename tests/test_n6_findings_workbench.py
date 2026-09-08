@@ -43,19 +43,23 @@ def test_filters_compose_facets_explain_and_badges_come_from_real_rows(monkeypat
         _note(pid, ids["outlier"], f"minor aside {k} about office coffee", "coffee", importance=1, locator="0:30", start=30, title=f"Coffee {k}")
     # a plan step that cites the primary's finding, and a chat answer citing the stale one at its locator
     src = db.get_source(ids["primary"])
-    db.save_plan(pid, {"steps": [{"title": "Standby", "evidence": ["e1"]}], "_evidence": {"e1": {"source_id": ids["primary"], "label": "standby", "url": src["url"], "timestamp": "§ 1"}}}, "test")
+    db.save_plan(pid, {"steps": [{"title": "Standby", "evidence": ["F1"]}], "_evidence": {"F1": {"source_id": ids["primary"], "label": "standby", "url": src["url"], "timestamp": "§ 1"},
+                                                                                       "F2": {"source_id": ids["stale"], "label": "unreferenced", "timestamp": "§ 1"}}}, "test")
     conv = db.create_conversation(pid, "chat")
     db.save_message(conv["id"], "assistant", "Fees [1].", citations=[{"n": 1, "source_id": ids["stale"], "title": "fees", "timestamp": "§ 1"}])
     r = fv.query(pid)
     assert r["total"] == 8 and len(r["findings"]) == 8                         # 6 fixture findings + 2 asides, all approved
     by_src = {f["source_id"]: f for f in r["findings"] if f["source_id"] in (ids["primary"], ids["stale"])}
-    assert by_src[ids["primary"]]["used"]["plan"] == 1 and by_src[ids["primary"]]["used"]["claim"] == "strong"
+    assert by_src[ids["primary"]]["used"]["plan"] == 1 and by_src[ids["primary"]]["used"]["claim"] == "strong" and by_src[ids["primary"]]["used"]["claim_counts"]
+    assert by_src[ids["stale"]]["used"]["plan"] == 0, "evidence the plan body never references is not use"
     assert by_src[ids["stale"]]["used"]["chat"] == 1 and by_src[ids["stale"]]["used"]["never"] is False
+    outl = next(f for f in r["findings"] if f["source_id"] == ids["outlier"] and f["importance"] == 5)
+    assert outl["used"]["claim"] == "weak" and outl["used"]["claim_counts"] is False and outl["used"]["never"] is True   # a weak harvested Claim is not use
     # composable: importance ≥ 4 AND used=plan → the primary only
     r2 = fv.query(pid, min_importance=4, used="plan")
     assert [f["source_id"] for f in r2["findings"]] == [ids["primary"]]
     # facets describe the other dimensions of the filtered set (used facet ignores its own filter)
-    assert r2["facets"]["used"]["plan"] == 1 and r2["facets"]["used"]["claim"] >= 1 and r["facets"]["used"]["never"] >= 2
+    assert r2["facets"]["used"]["plan"] == 1 and r2["facets"]["used"]["claim"] >= 1 and r["facets"]["used"]["never"] >= 3
     assert set(r2["facets"]["importance"]) <= {"5", "4", "3", "1"}
     # text search over title + content + source title
     assert fv.query(pid, q="coffee")["total"] == 2 and fv.query(pid, q="standby seller")["total"] >= 1 and fv.query(pid, q="zebra")["total"] == 0

@@ -756,6 +756,7 @@ MIGRATIONS = [
     ("jobs", "execution_policy", "ALTER TABLE jobs ADD COLUMN execution_policy TEXT NOT NULL DEFAULT 'local_preferred'"),
     ("jobs", "executed_by", "ALTER TABLE jobs ADD COLUMN executed_by TEXT"),
     ("jobs", "fallback_reason", "ALTER TABLE jobs ADD COLUMN fallback_reason TEXT"),
+    ("jobs", "lane", "ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT 'normal'"),   # 0.42.1: 'slow' = long-running local work (Read deeper) that must not hog the pool
     ("jobs", "wait_operation", "ALTER TABLE jobs ADD COLUMN wait_operation TEXT"),
     ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
@@ -1412,7 +1413,7 @@ def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str
 
 
 def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
-               dedupe_key: str | None = None, execution_policy: str = "local_preferred") -> dict[str, Any]:
+               dedupe_key: str | None = None, execution_policy: str = "local_preferred", lane: str = "normal") -> dict[str, Any]:
     """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
     identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
     active return the existing job instead of a duplicate."""
@@ -1431,9 +1432,10 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
         jid = new_id()
         assert execution_policy in EXECUTION_POLICIES, execution_policy
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
-             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key, execution_policy),
+             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key, execution_policy,
+             lane if lane in ("normal", "slow") else "normal"),
         )
         job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
     return get_job(jid)  # type: ignore[return-value]
@@ -1544,7 +1546,7 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
 
 
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
-              exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None) -> dict[str, Any] | None:
+              exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
@@ -1560,6 +1562,9 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         if policies:
             q += f" AND execution_policy IN ({','.join('?' for _ in policies)})"
             args += list(policies)
+        if lanes:
+            q += f" AND lane IN ({','.join('?' for _ in lanes)})"
+            args += list(lanes)
         row = None
         for cand in conn.execute(q + " ORDER BY created_at LIMIT 50", args).fetchall():
             if cand["cancel_requested_at"]:
@@ -2506,6 +2511,21 @@ def suggestion_counts(project_id: str) -> dict[str, dict[str, int]]:
 def analysed_sources(project_id: str) -> set[str]:
     return {r["source_id"] for r in connect().execute(
         "SELECT source_id FROM project_sources WHERE project_id=? AND suggested_at IS NOT NULL", (project_id,)).fetchall()}
+
+
+def analysis_jobs_by_source(project_id: str) -> dict[str, dict[str, Any]]:
+    """source_id → the queued/running findings job on it (status, message, progress, depth, lane) — the source card's live line."""
+    out: dict[str, dict[str, Any]] = {}
+    for r in connect().execute("SELECT id, status, message, progress, payload, lane, updated_at FROM jobs WHERE kind='suggest_findings' AND status IN ('queued','running') ORDER BY created_at").fetchall():
+        try:
+            pl = json.loads(r["payload"] or "{}")
+        except ValueError:
+            continue
+        if pl.get("project_id") != project_id:
+            continue
+        for sid in pl.get("source_ids") or []:
+            out.setdefault(sid, {"id": r["id"], "status": r["status"], "message": r["message"], "progress": r["progress"], "depth": pl.get("depth"), "lane": r["lane"], "updated_at": r["updated_at"]})
+    return out
 
 
 def sources_being_analysed(project_id: str) -> set[str]:

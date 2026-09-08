@@ -345,7 +345,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
             "substance": substance, "summary": summary, "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id, "prefilter": prefilter}
 
 
-def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None) -> dict[str, Any]:
+def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None, progress=None) -> dict[str, Any]:
     """Extract candidate findings for one source in the context of one project (interactive transport). Stores them as
     'suggested'. Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a
     retried or duplicated job never pays twice; force=True re-analyses regardless."""
@@ -363,13 +363,17 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     from .jobs import check_cancel, crash_point
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
+    found = 0
     for i, w in enumerate(windows):
         if i not in kept:                                # H1: the pre-filter dropped this window (recorded in window_decisions + the analysis row)
             continue
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         crash_point("findings_before_response")
+        if progress:
+            progress(i / max(1, len(windows)), f"{'reading deeper' if depth == 'deep' else 'reading'} · part {i + 1}/{len(windows)}" + (f" · {found} findings so far" if found else ""))
         try:
             res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
+            found += len(res.get("findings") or []) if isinstance(res, dict) else 0
         except Exception:
             if OBSERVER:
                 OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
@@ -431,8 +435,13 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
     for i, sid in enumerate(ids):
         if progress:
             progress(i / max(len(ids), 1), f"reading {i + 1}/{len(ids)}")
+        title = (db.get_source(sid) or {}).get("title") or sid[:8]
+
+        def sub(frac: float, msg: str, _i=i, _title=title) -> None:          # per-window progress inside the per-source progress
+            if progress:
+                progress((_i + frac) / max(len(ids), 1), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
         try:
-            suggest_for_source(project_id, sid, force=force, depth=depth)
+            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub)
             done += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
