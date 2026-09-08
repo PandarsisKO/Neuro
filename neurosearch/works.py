@@ -572,10 +572,7 @@ def reconcile_identifiers() -> list[dict[str, Any]]:
                 with db.tx() as c:
                     c.execute("DELETE FROM work_identifiers WHERE scheme='docnum' AND value=?", (g["value"],))
                     c.execute("INSERT OR IGNORE INTO work_identifiers (scheme, value, work_id, version_id) VALUES ('docnum', ?, ?, ?)", (norm, canonical, g["version_id"]))
-        if get(canonical) and (get(canonical)["title"] or "").replace("-", "") != get(canonical)["title"]:
-            with db.tx() as c:
-                title = get(canonical)["title"].replace("-", "")
-                c.execute("UPDATE works SET title=?, title_norm=? WHERE id=?", (title, normalize_title(title), canonical))
+        # titles keep their official punctuation (Form 1099-DIV); only the identifier is normalized
     return merges
 
 

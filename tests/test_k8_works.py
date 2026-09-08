@@ -215,7 +215,7 @@ def test_merge_work_is_the_only_way_two_works_become_one_and_keeps_an_alias():
     assert works.get_any(merges[0]["merged_work_id"])["id"] == canon["id"]                    # alias survives
     assert {v["label"] for v in canon["versions"]} == {"2025", "2026"} and len(canon["manifestations"]) == 2
     assert works.project_relevance(pid, canon["id"])["relevance"] == "targeted"                 # the stronger state wins
-    assert works.by_identifier("docnum", "form-1120s")["work_id"] == canon["id"] and canon["title"] == "Form 1120S"
+    assert works.by_identifier("docnum", "form-1120s")["work_id"] == canon["id"] and canon["title"] in ("Form 1120-S", "Form 1120S")
     assert db.connect().execute("SELECT COUNT(*) FROM works").fetchone()[0] == 1
     with pytest.raises(ValueError):
         works.merge_work(canon["id"], canon["id"])

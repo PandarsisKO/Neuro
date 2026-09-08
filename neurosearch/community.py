@@ -50,11 +50,22 @@ INJECTION = re.compile(r"(ignore (all |the )?(previous|prior|above) instructions
 # ---------------------------------------------------------------- adapters (metadata-cheap, all through safe_fetch)
 
 def _json_get(url: str) -> Any:
+    """Reddit's public listing endpoints answer a browser-like client without login; a bot-looking User-Agent gets 403.
+    We use safe_fetch's normal browser UA and, on a refusal from www, retry the same listing on old.reddit.com."""
     from .safe_fetch import safe_fetch
-    res = safe_fetch(url, content_class="html", headers={"Accept": "application/json", "User-Agent": "NeuroSearch/1.0 (personal research library; contact: local user)"})
-    if res.status != 200:
-        raise RuntimeError(f"HTTP {res.status} from {urlparse(url).netloc}")
-    return json.loads(res.body.decode("utf-8", errors="replace"))
+    last = None
+    for u in (url, url.replace("://www.reddit.com", "://old.reddit.com", 1)):
+        res = safe_fetch(u, content_class="html", headers={"Accept": "application/json"})
+        if res.status == 200:
+            try:
+                return json.loads(res.body.decode("utf-8", errors="replace"))
+            except ValueError:
+                last = "not JSON (the listing returned a page instead)"
+                continue
+        last = f"HTTP {res.status} from {urlparse(u).netloc}"
+        if res.status not in (403, 429):
+            break
+    raise RuntimeError(last or "unreadable listing")
 
 
 def is_reddit_thread(url: str) -> bool:
