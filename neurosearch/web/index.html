@@ -345,6 +345,7 @@
         </div>
       </div>
       <div id="reviewWrap"></div>
+      <div id="bootCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
       <div id="captureCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
@@ -579,7 +580,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.49.1';
+const UI_VERSION = '0.50.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -641,12 +642,15 @@ function wizCollect() { document.querySelectorAll('#dlgBody [id^=w_]').forEach(e
 function renderWizard() {
   const open = WIZ.open || {};
   const sec = (key, title, inner) => `<details ${open[key] ? 'open' : ''} ontoggle="WIZ.open=WIZ.open||{};WIZ.open['${key}']=this.open" style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:8px 12px"><summary style="cursor:pointer;color:var(--muted)">${title}</summary>${inner}</details>`;
-  let body = `<h2 style="margin-bottom:2px">New project</h2><div class="muted">Three things get you going. Everything else is optional and can be added now or later in Settings.</div>` +
-    wizField('name', 'Project name', 'e.g. Grow the roofing business to $2M') +
-    wizField('brief', 'What are you trying to find out or accomplish?', 'e.g. How top service-business operators price, sell and scale — so I can raise our average ticket and systematise sales.', 3) +
-    wizField('urls', 'Links to start with (optional — videos, playlists, whole channels, podcasts; one per line)', 'https://www.youtube.com/watch?v=…\nhttps://www.youtube.com/@somechannel', 3) +
+  // BOOTSTRAP R1: name + goal is the whole required form. Everything below is optional and can equally be added
+  // inside the project — the point is to start searching what the user already owns before asking them anything else.
+  let body = `<h2 style="margin-bottom:2px">Start a project</h2><div class="muted">Two things get you going. Neuro Search starts searching the research you already have straight away; everything else is optional, now or later.</div>` +
+    wizField('name', 'Project name', 'e.g. Personal Portfolio Redesign') +
+    wizField('goal', 'What do you want to accomplish?', 'e.g. Build a modern portfolio website that showcases my video work and helps me apply for senior creative roles.', 3) +
+    sec('u', 'Links to start with — videos, playlists, whole channels, podcasts', wizField('urls', 'One per line', 'https://www.youtube.com/watch?v=…\nhttps://www.youtube.com/@somechannel', 3)) +
     sec('q', 'Starting questions — each becomes a ready-made chat', wizField('questions', 'One per line', 'What do they say about raising average ticket?\nHow do they structure the sales process?', 3)) +
-    sec('s', 'Your situation — budget, deadline, experience, what you already have or decided', wizField('goal', 'What does "done" look like?', 'e.g. A written playbook and a 90-day plan we can act on') +
+    sec('b', 'A longer brief, if the goal needs one', wizField('brief', 'What are you trying to find out?', 'e.g. How top service-business operators price, sell and scale.', 3)) +
+    sec('s', 'Your situation — budget, deadline, experience, what you already have or decided',
       wizField('budget', 'Budget', 'e.g. under $500') + wizField('deadline', 'Deadline / timing', 'e.g. by end of October') +
       wizField('experience', 'Your experience with this', 'e.g. 5 years running the business, never built a sales system') +
       wizField('tools', 'Tools and accounts you already have', 'e.g. HubSpot, Google Workspace') +
@@ -655,12 +659,13 @@ function renderWizard() {
     sec('o', 'Output — who it\'s for and what you want at the end', wizField('audience', 'Who is this for?', 'e.g. just me · my partner · a client') +
       wizField('output_pref', 'What do you want at the end?', 'e.g. a recommendation and a step-by-step plan · a comparison · a content brief', 2) +
       wizField('source_prefs', 'Source preferences', 'e.g. practitioners over marketers; nothing older than 2024'));
-  body += `<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="primary" id="wizCreate" onclick="createProject()">Create project</button></div>`;
+  body += `<div class="row" style="margin-top:14px;justify-content:flex-end"><button class="primary" id="wizCreate" onclick="createProject()">Start project</button></div>`;
   $('#dlgBody').innerHTML = body; $('#w_name')?.focus();
 }
 async function createProject() {
   wizCollect();
   const d = WIZ.data; if (!(d.name || '').trim()) { $('#w_name')?.focus(); return; }
+  if (!(d.goal || '').trim() && !(d.brief || '').trim()) { $('#w_goal')?.focus(); return; }
   const lines = t => (t || '').split('\n').map(x => x.trim()).filter(Boolean);
   const ctx = [['Budget', d.budget], ['Deadline', d.deadline], ['Experience', d.experience], ['Tools/accounts available', d.tools], ['Constraints', d.constraints], ['Already decided/rejected', d.decided]]
     .filter(([, v]) => v && v.trim()).map(([k, v]) => `${k}: ${v.trim()}`).join('\n');
@@ -669,10 +674,10 @@ async function createProject() {
   if (d.deadline) facts.push({ kind: 'constraint', content: 'Deadline: ' + d.deadline.trim() });
   lines(d.constraints).forEach(c => facts.push({ kind: 'constraint', content: c }));
   lines(d.decided).forEach(c => facts.push({ kind: /reject/i.test(c) ? 'rejected' : 'decision', content: c.replace(/^(decided|rejected)\s*:\s*/i, '') }));
-  const btn = $('#wizCreate'); if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  const btn = $('#wizCreate'); if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
   const p = await post('/api/projects', { name: d.name.trim(), goal: d.goal || null, brief: d.brief || null, context: ctx || null, questions: lines(d.questions),
     facts, urls: lines(d.urls), source_prefs: d.source_prefs || null, audience: d.audience || null, output_pref: d.output_pref || null, tags: [] });
-  dlg.close(); location.hash = `#p/${p.id}/${lines(d.urls).length ? 'sources' : 'chats'}`;
+  dlg.close(); location.hash = `#p/${p.id}/sources`;   // the bootstrap scan lands here; the project is usable immediately
 }
 
 // ================= workspace =================
@@ -715,7 +720,7 @@ function showView(v, push = true) {
   state.view = v;
   document.querySelectorAll('aside nav .item').forEach(i => i.classList.toggle('active', i.dataset.view === v));
   document.querySelectorAll('#main .view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
-  if (v === 'sources') { loadSources(); loadJobs(); loadFun('srcFun'); }
+  if (v === 'sources') { loadSources(); loadJobs(); loadBoot(); loadFun('srcFun'); }
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
   if (v === 'research') loadResearch();
@@ -2064,6 +2069,80 @@ async function discAdd(id, url, whole) {
 }
 
 async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
+// ================= BOOTSTRAP R3: Starting Research =================
+// What Neuro Search already owns that this project could use. Every row's reason is a PASSAGE the user can click
+// and check — never "highly relevant to your goal", which is what you get when you ask a model to explain a
+// retrieval it did not perform. Nothing here is attached until the user says so; attaching adds a membership row
+// and never copies, re-downloads or re-transcribes anything.
+const BOOT = { open: new Set(), showAll: false, busy: false };
+function bootWhy(h) {
+  const p = (h.passages || [])[0];
+  return `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || []).join(' · '))}</div>` +
+    (p ? `<div style="font-size:12px;margin-top:4px;padding:6px 8px;border-left:2px solid var(--line)">${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.timestamp || 'open')}</a> ` : ''}${esc(p.text || '')}</div>` : '');
+}
+function bootRow(h) {
+  const open = BOOT.open.has(h.source_id);
+  return `<div class="job" style="flex-wrap:wrap;align-items:flex-start">
+    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' ? 'checked' : ''} style="margin-top:5px">
+    <div style="flex:1;min-width:0">
+      <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted" style="font-size:12px">· ${esc(h.channel)}</span>` : ''}</div>
+      ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
+    </div>
+    <span class="tag" title="${h.band === 'strong' ? 'matched more than one part of your goal, or its passages cover most of it' : 'matched, but less of your goal'}">${h.band === 'strong' ? 'strong' : 'possible'}</span>
+    <button class="small ghost" onclick="BOOT.open.has('${h.source_id}') ? BOOT.open.delete('${h.source_id}') : BOOT.open.add('${h.source_id}'); renderBoot();">${open ? 'Hide why' : 'Why'}</button>
+  </div>`;
+}
+let BOOTSTATE = null;
+async function loadBoot() {
+  if (!state.project) return;
+  try { BOOTSTATE = await api(`/api/projects/${state.project.id}/bootstrap`); } catch (e) { BOOTSTATE = null; }
+  renderBoot();
+}
+function renderBoot() {
+  const el = $('#bootCard'); if (!el) return;
+  const b = BOOTSTATE;
+  const live = (b?.sources || []).filter(h => h.state === 'suggested');
+  if (!b || (!live.length && !b.run)) { el.style.display = 'none'; return; }
+  const c = b.counts, run = b.run || {};
+  if (!live.length) {                       // the scan ran and there is nothing left to decide
+    if (!c.attached) { el.style.display = 'none'; return; }
+    el.style.display = ''; el.innerHTML = `<b>Starting research</b><div class="muted" style="margin-top:4px">Added ${c.attached} source${c.attached === 1 ? '' : 's'} you already owned to this project. ${run.scope ? `Searched ${run.scope} source${run.scope === 1 ? '' : 's'} you already had.` : ''}</div>` +
+      `<div class="row" style="margin-top:8px"><button class="small ghost" onclick="rescanBoot()">🔄 Scan my library again</button></div>`;
+    return;
+  }
+  const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
+  const projs = (b.projects || []).slice(0, 4);
+  el.style.display = '';
+  el.innerHTML = `<b>Neuro Search already found research you have</b>
+    <div class="muted" style="margin-top:4px">${c.strong} strong match${c.strong === 1 ? '' : 'es'}${c.possible ? ` · ${c.possible} more may be useful` : ''}${run.scope ? ` · searched ${run.scope} source${run.scope === 1 ? '' : 's'} outside this project` : ''}${run.found > run.shown ? ` · showing the best ${run.shown} of ${run.found}` : ''}. Nothing is downloaded or transcribed again — these are sources you already own.</div>
+    ${b.stale ? `<div class="banner" style="margin:8px 0">The goal changed since this scan. <button class="small" onclick="rescanBoot()">Scan again</button></div>` : ''}
+    ${projs.length ? `<div class="muted" style="font-size:12px;margin-top:8px">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
+    <div style="margin-top:8px">${shown.map(bootRow).join('')}</div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap">
+      <button class="small primary" onclick="bootDecide('attach')">Add selected</button>
+      <button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>
+      ${live.length > shown.length ? `<button class="small ghost" onclick="BOOT.showAll=true;renderBoot()">Show all ${live.length}</button>` : ''}
+      <span style="flex:1"></span>
+      <button class="small ghost" onclick="rescanBoot()">🔄 Scan again</button>
+    </div>`;
+}
+async function bootDecide(decision) {
+  if (BOOT.busy) return;
+  const ids = [...document.querySelectorAll('#bootCard .bootPick:checked')].map(i => i.value);
+  if (!ids.length) { toast('Nothing selected'); return; }
+  BOOT.busy = true;
+  try {
+    const r = await post(`/api/projects/${state.project.id}/bootstrap/decide`, { source_ids: ids, decision });
+    toast(decision === 'attach' ? `✓ Added ${r.count} source${r.count === 1 ? '' : 's'} you already owned` : `Hid ${r.count}`);
+    if (decision === 'attach') { loadSources().catch(() => {}); }
+  } catch (e) { toast(e.message || e, 'err'); }
+  BOOT.busy = false; loadBoot();
+}
+async function rescanBoot() {
+  try { await post(`/api/projects/${state.project.id}/bootstrap`, {}); toast('🔎 searching what you already own'); }
+  catch (e) { toast(e.message || e, 'err'); }
+  loadJobs(); setTimeout(loadBoot, 1500);
+}
 let jobsTimer;
 function jobLabel(j) {
   const what = j.label || j.payload.url || j.payload.name || j.payload.source_id || '';
@@ -2072,6 +2151,7 @@ function jobLabel(j) {
   if (j.kind === 'rank_proposed') return 'ranking videos by relevance';
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
   if (j.kind === 'refresh_skipped_metadata') return 'refreshing skipped info · ' + what;
+  if (j.kind === 'bootstrap_scan') return 'searching research you already have';
   if (j.kind === 'extract_claims') return j.payload?.evaluation ? 'checking claim quality' : 'finding claims to track';
   return what || j.kind;
 }
@@ -2144,6 +2224,7 @@ async function pollTick() {
   const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
   if (full || changed('jobs')) loadJobs(); else jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
   if (srcChanged) loadSources().catch(() => {});
+  if (full || changed('jobs') || changed('sources')) loadBoot();
 }
 
 async function jobHistory(id, btn) {

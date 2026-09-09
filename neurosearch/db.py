@@ -684,6 +684,28 @@ CREATE TABLE IF NOT EXISTS messages (
     citations       TEXT,   -- JSON
     created_at      REAL NOT NULL
 );
+
+-- Mission BOOTSTRAP (R2): what the library already holds that a NEW project could use. A suggestion row, never a
+-- membership row: attaching is still `project_sources`, and this table records only that we proposed it, why, and
+-- what the user decided. Follows the established relationship-row pattern (project_source_analysis,
+-- candidate_projects, project_works): global object identity on one side, project-specific state on the other.
+-- object_kind is 'source' today; findings and claims are later rungs and deliberately absent (see
+-- BOOTSTRAP-MISSION.md §B2 — a finding is an interpretation and does not cross a project boundary).
+CREATE TABLE IF NOT EXISTS project_reuse (
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    object_kind    TEXT NOT NULL,                        -- source
+    object_id      TEXT NOT NULL,
+    state          TEXT NOT NULL DEFAULT 'suggested',    -- suggested | attached | dismissed
+    band           TEXT,                                 -- strong | possible
+    score          REAL,
+    why            TEXT,                                 -- JSON {passages, terms, coverage} — the matched passages, never an adjective
+    origin         TEXT,                                 -- JSON {queries}
+    brief_revision TEXT,                                 -- which goal/brief this judgement was made against
+    created_at     REAL NOT NULL,
+    updated_at     REAL NOT NULL,
+    PRIMARY KEY (project_id, object_kind, object_id)
+);
+CREATE INDEX IF NOT EXISTS ix_project_reuse_state ON project_reuse(project_id, state, band);
 """
 
 _local = threading.local()
@@ -1537,6 +1559,8 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
         # D2: a deep read is its OWN unit of work — without the depth here, pressing "Read deeper" while an ordinary
         # findings job for that source is queued silently returns the shallow job (0.45.0 fix)
         return f"findings:{payload.get('project_id')}:{payload['source_ids'][0]}" + (":deep" if payload.get("depth") == "deep" else "")
+    if kind == "bootstrap_scan":
+        return f"bootstrap:{payload.get('project_id')}"
     if kind == "rank_proposed":
         return f"rank:{payload.get('collection_id')}"
     if kind == "build_plan":
@@ -2632,6 +2656,63 @@ def add_project_sources(project_id: str, source_ids: list[str]) -> None:
         conn.executemany("INSERT OR IGNORE INTO project_sources (project_id, source_id) VALUES (?,?)", [(project_id, s) for s in source_ids])
         conn.executemany("UPDATE project_sources SET excluded=0 WHERE project_id=? AND source_id=? AND excluded=1", [(project_id, s) for s in source_ids])   # an explicit add lifts a removal
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+
+
+
+# ------------------------------------------------------------------ Mission BOOTSTRAP (R2): reuse suggestions
+
+def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revision_: str | None = None) -> int:
+    """Store this scan's suggestions. A row the user has already decided on (attached/dismissed) keeps its state —
+    a re-scan may refresh why it matched, but it never un-decides the user."""
+    if not rows:
+        return 0
+    t = time.time()
+    conn = connect()
+    with conn:
+        for r in rows:
+            conn.execute(
+                """INSERT INTO project_reuse (project_id, object_kind, object_id, state, band, score, why, origin, brief_revision, created_at, updated_at)
+                   VALUES (?,?,?, 'suggested', ?,?,?,?,?,?,?)
+                   ON CONFLICT(project_id, object_kind, object_id) DO UPDATE SET
+                     band=excluded.band, score=excluded.score, why=excluded.why, origin=excluded.origin,
+                     brief_revision=excluded.brief_revision, updated_at=excluded.updated_at""",
+                (project_id, r["object_kind"], r["object_id"], r.get("band"), r.get("score"), r.get("why"),
+                 r.get("origin"), brief_revision_, t, t))
+    return len(rows)
+
+
+def list_project_reuse(project_id: str, object_kind: str = "source", state: str | None = None) -> list[dict[str, Any]]:
+    q = "SELECT * FROM project_reuse WHERE project_id=? AND object_kind=?"
+    args: list[Any] = [project_id, object_kind]
+    if state:
+        q += " AND state=?"
+        args.append(state)
+    return [dict(r) for r in connect().execute(q + " ORDER BY (band='strong') DESC, score DESC", args).fetchall()]
+
+
+def set_project_reuse_state(project_id: str, object_ids: list[str], state: str, object_kind: str = "source") -> int:
+    if not object_ids:
+        return 0
+    conn = connect()
+    with conn:
+        cur = conn.execute(
+            f"UPDATE project_reuse SET state=?, updated_at=? WHERE project_id=? AND object_kind=? AND object_id IN ({','.join('?' for _ in object_ids)})",
+            (state, time.time(), project_id, object_kind, *object_ids))
+    return cur.rowcount
+
+
+def record_bootstrap_run(project_id: str, summary: dict[str, Any], brief_revision_: str | None = None) -> None:
+    kv_set(f"bootstrap:run:{project_id}", json.dumps({**summary, "brief_revision": brief_revision_, "at": time.time()}))
+
+
+def last_bootstrap_run(project_id: str) -> dict[str, Any] | None:
+    raw = kv_get(f"bootstrap:run:{project_id}")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
 
 
 def project_source_inventory(project_id: str) -> list[dict[str, Any]]:

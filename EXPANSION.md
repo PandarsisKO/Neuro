@@ -2078,3 +2078,67 @@ charged price cannot drift apart. No server change; `jobs.backlog` already retur
 **Gate.** `tests/test_o1_accelerate.py` gains a fourth test: every backlog job carries `api_cost`, `windows` and
 `value`; the totals the estimate divides by are present; the per-job costs sum exactly to the banner's whole-set
 figure; and the UI states the four things a purchase must state before it is made. Suite 525; Tier 1 unchanged.
+
+---
+
+## 0.50.0 — Mission BOOTSTRAP R1–R3: a project starts with what you already own
+
+Kyle's brief opens: *"Every new project should begin with what Neuro Search already knows, not from zero."* The
+investigation is `BOOTSTRAP-MISSION.md`; the headline finding is worth repeating here, because it changed the
+size of the work by an order of magnitude:
+
+**About 70% of the architecture the brief asks for already existed.** Sources, transcripts, chunks, embeddings
+and Source Profiles are already global (G1/G4). `project_source_analysis`, `candidate_projects` and
+`project_works` are already three instances of the relationship-row pattern the brief proposes. `library.recall`
+already does chunk-level cross-project retrieval that keeps a five-minute passage inside a three-hour interview
+recoverable — the brief's §42 requirement, built a year of releases ago — and its own docstring already names "a
+new project" as a trigger it was written to serve. `project_claims` already separates strength from
+applicability from readiness from freshness. The §69 fear that project relevance was stored globally was already
+found and fixed by migration. **What was missing was a caller.** This release is that caller.
+
+**R1 — Start a project.** Required: a name and a goal. Everything else (links, starting questions, a longer
+brief, situation, output) is optional and folded away. `goal` is the retrieval seed; `brief` — the text every
+model task in the product actually reads — is seeded from the goal when the user hasn't written one, so nothing
+downstream had to learn a new field. Creating a project with a goal queues its scan immediately.
+
+**R2 — The bootstrap scan.** New `bootstrap.py` and job `bootstrap_scan` (priority lane, deduped per project).
+The goal is split into the facets worth searching separately — and a long sentence is *replaced* by its parts,
+not accompanied by them, because the whole goal as one query raises the coverage denominator until good passages
+fall under the floor, and keeping both would make every hit look like it "matched 2 parts of your goal" when it
+matched one idea twice. Each facet runs `library.recall` over the sources this project does *not* have; results
+merge by source. **No generation call is ever made** — the only spend is one query embedding per search, the same
+call every search in the product already makes. (The plan said "$0"; that was wrong, and the mission doc now says
+so. "No generation call" is the stronger claim and it is gated.) A goal too short to search says so rather than
+being padded by a model guessing at intent.
+
+**R3 — Starting Research.** A card above In-progress: strong matches pre-ticked, possible ones collapsed, and
+**every reason a passage the user can click** — "1 matching passage, first at 4:12 · covers automation, local,
+personal · matched 2 separate parts of your goal", with the excerpt itself one click away. Never "highly relevant
+to your goal", which is what you get when you ask a model to explain a retrieval it did not perform. Related
+projects appear as *explanations of where relevant material lives* — "Finance & Business Acquisition — 17 of 143
+· the overlap is claude, automation, local" — and the button reviews that subset. There is no import-the-project
+button, because the whole point of Kyle's example is that you don't want the Finance project; you want a slice of
+it.
+
+**What deliberately did not ship** (`BOOTSTRAP-MISSION.md` §B): global claims, cross-project *findings*, a new
+vector index, and project lifecycle states. The argument on findings is the one worth keeping in view: a finding
+is an interpretation written against another project's brief — `project_notes.brief_revision` proves the schema
+already knows it — so copying one across a boundary imports the old framing along with the fact. The portable
+layer is evidence, and evidence already points at global sources. Bootstrap therefore surfaces sources and
+passages; re-deriving a finding for the new goal is `findings.suggest_for_source` on a source already ingested.
+
+**Gate.** New `tests/test_r2_bootstrap.py` (14), built around Kyle's mandatory Finance→Website scenario: the AI
+subset inside a mostly-unrelated 7-source Finance project is found and **no SBA, seller-financing, accounting or
+tax source is surfaced at all**; the related project is explained by its useful subset, never offered as a bundle;
+every suggestion carries a real passage; the scan makes no generation call and attaches nothing; attaching reuses
+the canonical source with **no duplicate row, no rebuilt chunks and no ingestion job**; removing it from the new
+project leaves the library and every other project intact; a re-scan never un-decides the user; and the isolation
+invariants — no chat, no fact, no plan, no finding text crosses a project boundary, and chat in the new project
+answers from the reused source without a trace of the old project's thinking. Suite 539; Tier 1 unchanged.
+
+**Honest limits.** Retrieval quality is only as good as `library.recall`, which requires real term coverage — a
+goal written in words that appear nowhere in the library finds nothing, correctly but disappointingly. The bands
+are two, not four, and "strong" is a rule (matched ≥2 facets, or its passages cover ≥60% of one), not a score.
+Nothing re-ranks as the user adds context yet (R4). Discover is untouched, so it still asks "what is relevant?"
+rather than "what is still missing?" (R5). And a scan is a snapshot: the card says the goal has changed since the
+last scan, but does not re-run itself.

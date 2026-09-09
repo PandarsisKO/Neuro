@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
-from . import cache, db, ingest, jobs, perf, qa
+from . import bootstrap, cache, db, ingest, jobs, perf, qa
 from .chunking import fmt_ts
 from .config import settings
 from .mcp_server import mcp
@@ -1231,7 +1231,10 @@ def api_projects() -> list[dict[str, Any]]:
 
 @app.post("/api/projects", dependencies=[Depends(require_auth)])
 def api_create_project(body: ProjectIn) -> dict[str, Any]:
-    p = db.create_project(body.name, body.brief, body.tags)
+    # R1: name + goal is the whole required form. `brief` remains the model-facing steering text every task reads;
+    # when the user has not written one it is seeded from the goal, so nothing downstream has to learn a new field.
+    brief = (body.brief or "").strip() or (body.goal or "").strip() or None
+    p = db.create_project(body.name, brief, body.tags)
     db.update_project(p["id"], context=body.context, goal=body.goal, audience=body.audience, output_pref=body.output_pref,
                       source_prefs=body.source_prefs, questions=body.questions or [])
     for f in body.facts or []:
@@ -1247,7 +1250,49 @@ def api_create_project(body: ProjectIn) -> dict[str, Any]:
             job_ids.append(jobs.enqueue("ingest_url", {"url": u, "tags": [], "project_id": p["id"]})["id"])
     out = db.get_project(p["id"]) or p
     out["jobs"] = job_ids
+    # BOOTSTRAP R2: a project that knows what it is for starts searching what the user already owns, immediately.
+    if (out.get("goal") or out.get("brief") or "").strip():
+        try:
+            out["bootstrap_job"] = jobs.enqueue("bootstrap_scan", {"project_id": p["id"]}, lane="priority")["id"]
+        except Exception as e:  # noqa: BLE001 — a project must exist even if its scan cannot be queued
+            log.warning("bootstrap could not be queued for %s: %s", p["id"][:8], e)
     return out
+
+
+# ---------------------------------------------------------------- Mission BOOTSTRAP (R2/R3): starting research
+
+class BootstrapDecideIn(BaseModel):
+    source_ids: list[str]
+    decision: str = "attach"          # attach | dismiss
+
+
+@app.post("/api/projects/{project_id}/bootstrap", dependencies=[Depends(require_auth)])
+def api_bootstrap_start(project_id: str) -> dict[str, Any]:
+    """Search everything the user already owns for material this project could use. Retrieval only — one query
+    embedding per search, never a generation call."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    job = jobs.enqueue("bootstrap_scan", {"project_id": project_id}, lane="priority")
+    return {"job_id": job["id"], **bootstrap.state(project_id)}
+
+
+@app.get("/api/projects/{project_id}/bootstrap", dependencies=[Depends(require_auth)])
+def api_bootstrap_state(project_id: str) -> dict[str, Any]:
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return bootstrap.state(project_id)
+
+
+@app.post("/api/projects/{project_id}/bootstrap/decide", dependencies=[Depends(require_auth)])
+def api_bootstrap_decide(project_id: str, body: BootstrapDecideIn) -> dict[str, Any]:
+    """Attach or dismiss suggested sources. Attaching adds a project membership row — the source is never copied,
+    never re-acquired, and stays in every other project it belongs to."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    try:
+        return bootstrap.decide(project_id, body.source_ids, body.decision)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
