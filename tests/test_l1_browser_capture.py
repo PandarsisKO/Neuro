@@ -266,6 +266,35 @@ def test_account_usage_limit_pauses_the_job_until_the_named_date(monkeypatch):
     assert u["account_limit_until"] == until and "usage limit" in (u["blocked"] or "")
 
 
+# ---------------------------------------------------------------- 0.45.6: an out-of-credit account pauses like a spend cap, not a raw failure (Kyle, live)
+
+def test_billing_out_of_credit_pauses_the_job_and_clears_on_the_next_success(monkeypatch):
+    from neurosearch import providers
+    import anthropic
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}
+    exc = anthropic.BadRequestError(message=body["error"]["message"], response=__import__("httpx").Response(400, request=__import__("httpx").Request("POST", "https://x")), body=body)
+    assert providers.classify_error(exc) == providers.BILLING
+    pid = db.create_project("credit", "x")["id"]
+    src = db.upsert_source(platform="web", external_id="credit-src", url="https://example.com/credit", title="credit", status="ready")
+    db.add_project_sources(pid, [src["id"]])
+    j = db.create_job("extract_claims", {"project_id": pid})
+    monkeypatch.setattr(jobs, "run_job", lambda job: (_ for _ in ()).throw(providers.ProviderError(providers.BILLING, exc, 1, "anthropic:messages")))
+    job = db.claim_job(("extract_claims",), worker_id="sim")
+    assert jobs.execute(job, "sim") == "queued"
+    row = db.get_job(j["id"])
+    # a plain-language pause, not the raw SDK exception text, and it never counted as a failed attempt
+    assert row["status"] == "queued" and row["wait_reason"] == "budget" and int(row.get("attempts") or 0) == 0
+    assert "credit balance is too low" in row["message"] and "Plans & Billing" in row["message"]
+    assert "Error code: 400" not in row["message"] and "invalid_request_error" not in row["message"]
+    from neurosearch import api
+    u = api.api_usage()
+    assert "credit balance is too low" in (u["blocked"] or "") and u["billing_blocked_until"] > time.time()
+    # credits get added; the next call that actually succeeds clears the banner rather than waiting out the retry window
+    providers.invoke("answer.chat", system="be brief", messages=[{"role": "user", "content": "hi"}])
+    u2 = api.api_usage()
+    assert not u2.get("blocked") or "credit balance" not in u2["blocked"]
+
+
 # ---------------------------------------------------------------- 0.34.2: "it keeps showing up" — removal is a durable exclusion; failed sources can be force-cleared
 
 def test_removed_source_stays_removed_and_failed_sources_force_clear(monkeypatch):

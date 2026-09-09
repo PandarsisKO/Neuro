@@ -387,7 +387,8 @@ def test_age_cutoff(client, monkeypatch):
     dates = {"vid00000000": "2026-06-01", "vid10000000": "2019-01-01", "vid20000000": "2018-01-01"}
     def fake_info(url, cookies_file=None, referer=None):
         vid = url.split("v=")[1]
-        return {"id": vid, "title": vid, "webpage_url": url, "upload_date": dates[vid].replace("-", ""), "duration": 60}
+        return {"id": vid, "title": vid, "webpage_url": url, "upload_date": dates[vid].replace("-", ""), "duration": 60,
+                "channel": "Chan", "thumbnail": f"https://img.example/{vid}.jpg", "description": "an old video, still on-topic"}
     monkeypatch.setattr(media, "fetch_info", fake_info)
     monkeypatch.setattr(media, "fetch_captions", lambda info, cookies_file=None: ([{"start": 0, "end": 5, "text": "hello content"}], "en"))
     p = client.post("/api/projects", headers=H, json={"name": "Cutoff", "brief": "x"}).json()
@@ -407,6 +408,12 @@ def test_age_cutoff(client, monkeypatch):
         jobs.execute(j)
     statuses = {s["external_id"]: s["status"] for s in db.list_sources(limit=1000) if s["external_id"] in dates}
     assert statuses["vid00000000"] == "ready" and statuses["vid10000000"] == "skipped" and statuses["vid20000000"] == "skipped"
+    # a skipped (pre-cutoff) source's metadata fetch still succeeded — thumbnail, channel and published date must be
+    # kept, not thrown away, so the Sources list can show a real thumbnail and the pool's potential scan has real
+    # title/description text to score instead of the bare listing-stage title.
+    skipped = db.get_source(next(s["id"] for s in db.list_sources(limit=1000) if s["external_id"] == "vid10000000"))
+    assert skipped["thumbnail_url"] == "https://img.example/vid10000000.jpg" and skipped["channel"] == "Chan" and skipped["published_at"] == "2019-01-01"
+    assert "an old video" in (skipped["description"] or "") and skipped["error"] and "before cutoff" in skipped["error"]
 
 
 def test_budget_valve(client, monkeypatch):

@@ -577,7 +577,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.6';
+const UI_VERSION = '0.45.7';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1044,6 +1044,7 @@ function srcRowHtml(s) {
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag" style="color:${s.pool_potential.score >= 40 ? 'var(--ok)' : 'var(--muted)'}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : ''}
       ${completenessLine(s)}
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
@@ -1116,6 +1117,7 @@ async function loadSources() {
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
     (f === 'deep' ? ` <span class="muted">· books, courses, podcasts and interviews over 45 min · ${underRead.length} under-read (read once, ≤ ${12} findings)</span>` + (underRead.length ? ` <button class="small primary" title="Reads each under-read long source again in smaller parts and keeps every specific finding. $0 on Claude Code (slow); API cost otherwise." onclick="readDeeperAll(${JSON.stringify(underRead.map(s => s.id))})">🔬 Read deeper on all ${underRead.length}</button>` : '') : '') +
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
+    (f === 'skipped' && rows.some(s => !s.thumbnail_url) ? ` <button class="small ghost" title="Re-fetches metadata only (no download, stays skipped) for skipped sources with no thumbnail yet — catches up rows skipped before this was fixed." onclick="refreshSkippedMeta()">🔄 Refresh info</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
     (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '');
   SRCG.rows = rows;
@@ -1228,6 +1230,7 @@ async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} l
 async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+async function refreshSkippedMeta() { const r = await post(`/api/projects/${state.project.id}/sources/refresh-skipped-metadata`, {}); toast(r.queued ? `🔄 ${r.queued} queued — thumbnails and the value scan catch up as each finishes` : 'nothing missing a thumbnail'); loadJobs(); }
 async function clearFailedSources() {
   if (!confirm('Remove every failed source from this project? Jobs that could bring them back are cancelled; sources nothing else uses are deleted. Sources cited in findings or held by other projects are only removed from this project.')) return;
   const r = await post('/api/sources/clear-failed-in-project', { project_id: state.project.id });
@@ -1893,6 +1896,7 @@ function jobLabel(j) {
   if (j.kind === 'suggest_findings_batch') { const n = (j.payload.source_ids || []).length || j.batch?.sources || 0; return `background analysis · ${n} source${n === 1 ? '' : 's'}${j.payload.reason === 'stale' ? ' (stale rebuild)' : ''}`; }
   if (j.kind === 'rank_proposed') return 'ranking videos by relevance';
   if (j.kind === 'ingest_source') return 'transcript · ' + what;
+  if (j.kind === 'refresh_skipped_metadata') return 'refreshing skipped info · ' + what;
   return what || j.kind;
 }
 async function retryJob(id) { await post(`/api/jobs/${id}/retry`, {}).catch(e => toast(e.message || e, 'err')); toast('Queued again'); loadJobs(); }

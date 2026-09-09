@@ -362,6 +362,26 @@ def _after_ready(source_id: str, project_id: str | None = None) -> None:
         log.warning("could not queue suggestions: %s", e)
 
 
+def refresh_skipped_metadata(source_id: str) -> dict[str, Any]:
+    """0.45.7 backfill: a source skipped BEFORE the ingest.ingest_source fix (this session) kept only whatever the
+    listing stage saw — no thumbnail, no real description. Re-fetches metadata only (no download, no transcript,
+    no status change) and saves it, so an already-skipped row can show a thumbnail and the pool's potential scan
+    can score real title/description text. Refuses anything not currently 'skipped' — this is a display backfill,
+    never a way to re-run ingestion (that's Retry, which deliberately restages the whole source)."""
+    src = db.get_source(source_id)
+    if not src:
+        raise RuntimeError(f"source {source_id} not found")
+    if src["status"] != "skipped":
+        raise RuntimeError(f"source {source_id} is {src['status']!r}, not skipped — use Retry to re-ingest it")
+    info = media.fetch_info(src["url"])
+    if not info:
+        raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
+    fields = media.info_to_source_fields(info, src["platform"])
+    save = {k: v for k, v in fields.items() if k != "url"}
+    db.upsert_source(**{**save, "platform": src["platform"], "external_id": src["external_id"], "status": "skipped", "error": src.get("error")})
+    return {"source_id": source_id, "refreshed": True}
+
+
 def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str | None = None,
                   referer: str | None = None, keep_title: str | None = None, min_date: str | None = None,
                   collection_id: str | None = None, newest_first: bool = False) -> dict[str, Any]:
@@ -402,8 +422,17 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
                 raise RuntimeError("could not fetch metadata (private, removed, or blocked?)")
             fields = media.info_to_source_fields(info, platform)
             if min_date and fields.get("published_at") and fields["published_at"] < min_date:
-                db.set_source_status(source_id, "skipped", f"published {fields['published_at']}, before cutoff {min_date}")
-                return {"source_id": source_id, "skipped": True, "reason": f"published {fields['published_at']}, before cutoff {min_date}"}
+                reason = f"published {fields['published_at']}, before cutoff {min_date}"
+                # the metadata fetch already succeeded — thumbnail, channel, duration, published date are real and
+                # cheap. Save them even though this source is skipped, instead of throwing the fetch away: a skipped
+                # row with no thumbnail and only the listing stage's bare title is what Kyle saw ("not showing
+                # thumbnails, no indication of value") — the pool's $0 potential scan also reads title/description,
+                # which this was silently starving of the real text.
+                if keep_title:
+                    fields["title"] = keep_title
+                save = {k: v for k, v in fields.items() if k != "url"}
+                db.upsert_source(**{**save, "platform": platform, "external_id": src["external_id"], "status": "skipped", "error": reason})
+                return {"source_id": source_id, "skipped": True, "reason": reason}
             fields["external_id"] = fields.get("external_id") or src["external_id"]
             if keep_title:
                 fields["title"] = keep_title

@@ -250,6 +250,21 @@ def api_pool_capture_many(project_id: str, body: PoolCaptureIn) -> dict[str, Any
                     ) if captured else "nothing at or above that threshold"}
 
 
+@app.post("/api/projects/{project_id}/sources/refresh-skipped-metadata", dependencies=[Depends(require_auth)])
+def api_refresh_skipped_metadata(project_id: str, only_missing: bool = True) -> dict[str, Any]:
+    """0.45.7 backfill: sources skipped before the ingest.ingest_source fix kept only the listing stage's bare title
+    — no thumbnail. Queues one $0 refresh_skipped_metadata job per skipped source in this project (metadata only, no
+    download, no status change) so an already-skipped row can catch up. `only_missing=true` (default) queues only
+    rows with no thumbnail_url yet, so a repeat press doesn't re-fetch what already has real metadata."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+    rows = [s for s in db.list_sources(status="skipped", limit=100000) if s["id"] in ids and (not only_missing or not s.get("thumbnail_url"))]
+    for s in rows:
+        jobs.enqueue("refresh_skipped_metadata", {"source_id": s["id"], "project_id": project_id})
+    return {"queued": len(rows)}
+
+
 @app.post("/api/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
 def api_candidate_dismiss(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
     from . import candidates
@@ -895,6 +910,14 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             stale_by = {x["source_id"]: x for x in staleness.assess(project_id)["sources"]}
         except Exception:  # noqa: BLE001
             stale_by = {}
+        # a skipped (pre-cutoff) source used to show up with no thumbnail and no hint of whether it's worth
+        # ingesting anyway — the same $0 potential scan the pool already runs (candidates.pool) works row by row too.
+        pot_qs = pot_vocab = None
+        pot_rel: dict[str, Any] = {}
+        if any(r.get("status") == "skipped" for r in rows):
+            from . import candidates as candidates_mod
+            pot_qs, pot_vocab = candidates_mod._gap_terms(project_id)
+            pot_rel = db.project_analysis(project_id, "relevance")
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
             sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
@@ -920,6 +943,10 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                           "claims": v["claims"], "importance": v["importance"], "stale": st.get("status") in ("stale", "legacy_unverified"),
                           "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
             r["priority"] = r["id"] in prio
+            if r.get("status") == "skipped" and pot_qs is not None:
+                rr = pot_rel.get(r["id"]) or {}
+                score, fits, why = candidates_mod._potential(r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), [])
+                r["pool_potential"] = {"score": score, "fits": fits, "why": why}
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}

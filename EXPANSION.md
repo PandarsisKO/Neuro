@@ -1222,3 +1222,109 @@ Evidence Target → Open question, etc. as PERMANENT UI labels everywhere, not j
 workbench and the "why" dialog — the Research tools pane (the old Knowledge Map / Tensions / Targets lists, kept for
 completeness) still shows raw labels, since renaming a page nobody asked to keep felt lower value than shipping the
 part that was actually missing.
+
+## S6 + R8 — grouped views (Sources, Findings, Claims) — 0.45.6 (COMPLETE, pending delivery)
+
+Kyle: *"I care most about getting organized around our structure and the content we already have. right now when I
+look at sources, or findings or research, its one GIANT list I have to scroll endlessly through. filters are ok but
+its just a big mess... we can strategize on rescanning and deduping later."* This is `PRODUCT-ORGANIZATION.md` item
+#1, taken narrowly and on purpose: grouping, not rescanning, not dedup — those stay queued.
+
+**Built.** All three surfaces now group instead of running as one flat list, and all three needed no new scanning or
+schema — the grouping key already existed on every row, it was just never read by the view that lists them:
+
+- **Sources** groups by *origin* — `s.channel`, the column `community.py` already sets to the subreddit name, YouTube
+  already sets to the channel name, `epub.py` to the book's creators, and `webpage.py` to the domain. `srcGroupKey`
+  falls back to a platform label only for the few rows with no channel at all. `<details class="fgroup">` per group,
+  a header with the count, an "Expand all / Collapse all" pair, and `SRCG.collapsed` remembers which groups a person
+  closed by hand across re-renders (a new source landing, a filter change). A search or an active chip/value filter
+  forces every group open — grouping must never hide a match. Below 5 groups nothing is grouped at all (there is
+  nothing to declutter).
+- **Findings** already grouped by source (0.43.0) — the gap was that the groups could never collapse, so a project
+  with many sources was still one long scroll of *open* groups. Same `<details>` treatment, same remembered-collapse
+  behaviour (`FGRP`), same "never hide a match while searching" rule.
+- **Claims** gets its first grouping: by *Area* — the same clusters the Overview and Areas panes already compute
+  (`research_view.areas`). `claims_view.query` now computes `area_of_claim` unconditionally (previously only when
+  filtering to one specific area, since nothing else needed it) so every returned Claim carries an `area` even when
+  browsing all of them. A **Group by area** checkbox (default on, off automatically the moment an Area filter narrows
+  the page to one area already) plus the same `<details>`/Expand-all/Collapse-all pattern (`CWG`).
+
+**Honest limits.** This groups the *current page* of a paginated view (30–100 rows), not the underlying resultset —
+consistent with how Findings already grouped before this rung. `channel` is a plain string, so two channels that
+happen to share an exact name (rare) group together; a real Collection object (`collections`/`source_collections`,
+already in the schema from G3) would disambiguate that, but reading a column already on every row shipped this
+without it. Rescanning a channel/subreddit as a first-class object (#8) and adaptive/learning triage (#19/#21) and
+findings deduplication remain **NOT BUILT**, exactly as `PRODUCT-ORGANIZATION.md` said — this rung is grouping only.
+
+## S1 fix — an out-of-credit account failed jobs with a raw SDK error instead of pausing — 0.45.6
+
+Kyle, live: an `extract_claims` job showed `error: BILLING after 1 attempt: Error code: 400 - {'type': 'error', ...
+'message': 'Your credit balance is too low...'}` in the Sources progress card. `providers.classify_error` already
+typed this correctly as `BILLING` (non-transient, never retried) — but unlike `SPEND_CAP` (the Anthropic Console's
+*usage limit*, which names a resume date and gets a plain-language pause + banner), a `BILLING` error (the account's
+*credit balance*, which names no date) fell through to the generic path and was marked `failed` with the exception
+text verbatim as the job's message.
+
+**Built.** `jobs.execute` now parks a `BILLING` error the same way it parks `SPEND_CAP` — `queued`, `wait_reason`
+`budget`, 0 attempts, 0 cost — with a plain sentence ("the Anthropic account's credit balance is too low — add
+credits in Plans & Billing to continue") instead of the raw exception, retried on a fixed 30-minute interval since
+(unlike the usage limit) there is no date to wait for. `providers.py` clears the flag the moment any call actually
+succeeds, so the banner disappears as soon as credits are back rather than waiting out the retry window. `/api/usage`
+surfaces it exactly like the usage-limit banner (`billing_blocked_until`, folded into `blocked`).
+
+**Gate (tests/test_l1_browser_capture.py, +1 → 13).** A `BILLING` exception parks the job (queued, `wait_reason`
+`budget`, 0 attempts), the message names the real cause and never the raw SDK text, `/api/usage` reflects the pause,
+and a subsequent successful call clears it. Suite 470; Tier 1 unchanged (34 / 196,951; findings 9/30,297; plan 2).
+
+## S1 fix — a skipped source's fetched metadata was thrown away, and the pool's value scan never reached it — 0.45.7
+
+Kyle, live, on the 0.45.6 grouping delivery: *"sources that were beyond the cutoff are not showing thumbnails, and
+are not giving any indication on whether they still may be of value to ingest."* Not a grouping regression — both
+were true before 0.45.6 too, just harder to notice as a flat list.
+
+**Root cause 1.** `ingest.ingest_source`'s cutoff check runs AFTER `media.fetch_info` already succeeds — the
+metadata (thumbnail, channel, published date, description) is real and in hand — but the skip branch called
+`db.set_source_status(source_id, "skipped", reason)` and returned, discarding everything `media.info_to_source_fields`
+had just fetched. A skipped row kept only what the LISTING stage saw (bare title, maybe duration), which is why it
+never had a thumbnail: the metadata that would have supplied one was fetched and thrown away in the same breath.
+
+**Root cause 2.** The $0 "is this worth ingesting anyway" scan (`candidates._potential`) has existed since S5
+(0.43.0) — but only inside `candidates.pool()`, the separate "🔎 Known, not captured" view. The ordinary Sources
+list a person actually scans (`GET /api/sources`) never called it, so a skipped row sitting right there in the
+Skipped filter gave no hint either way without switching views.
+
+**Built.** `ingest.ingest_source`'s skip branch now saves the fetched fields (title, channel, channel_url,
+published_at, duration, description, thumbnail_url, language) via `db.upsert_source` before returning — same fields
+the non-skip path saves, same source row, just with `status="skipped"` and the cutoff reason as `error` instead of
+proceeding to transcript/chunks. `api_sources` now runs the same `candidates._potential` scan `pool()` does — same
+`_gap_terms`, same relevance input — for every `skipped` row in a project response and attaches `pool_potential`
+(`score`, `fits`, `why`); the Sources card shows it as a "🔎 worth a look — NN/100" or "🔎 low potential — NN/100"
+tag with the reasons on hover, right next to the row that finally has its thumbnail back. A ready/non-skipped row
+never carries the field — there's nothing to score.
+
+**Gate.** `tests/test_core.py::test_age_cutoff` extended: a skipped source's `thumbnail_url`/`channel`/`published_at`/
+`description` match what the fake `fetch_info` returned, and its `error` still names the cutoff. New
+`tests/test_n7_pool.py::test_skipped_sources_carry_the_pool_potential_scan_on_the_plain_sources_list`: `/api/sources`'s
+`pool_potential.score` for a skipped row equals what `candidates.pool()` computes for the same source (same scan,
+never a second one that could drift), a higher-relevance/timeless/on-topic source outscores a dated one exactly as
+the pool ranks them, and a non-skipped row never carries the field at all.
+
+**Backfill for existing skipped sources.** The `ingest.ingest_source` fix only helps sources skipped from now on —
+Kyle's existing skipped sources (saved before this release, often with no thumbnail) needed a separate path. Built
+`ingest.refresh_skipped_metadata(source_id)`: refuses on anything not currently `status="skipped"` (this is a
+display backfill, never a re-ingest route), otherwise re-runs `media.fetch_info`/`info_to_source_fields` and
+re-upserts the fields while keeping `status="skipped"` and the original cutoff `error` untouched. `POST
+/api/projects/{id}/sources/refresh-skipped-metadata` (`only_missing=True` by default) queues one
+`refresh_skipped_metadata` job per matching skipped source; the Sources tab's "🔄 Refresh info" button (next to
+"⏵ Ingest all N anyway", shown whenever a skipped row is missing a thumbnail) calls it. Job kind added to `RETRYABLE`.
+
+**Gate.** `tests/test_core.py::test_age_cutoff` extended: a skipped source's `thumbnail_url`/`channel`/`published_at`/
+`description` match what the fake `fetch_info` returned, and its `error` still names the cutoff. New
+`tests/test_n7_pool.py::test_skipped_sources_carry_the_pool_potential_scan_on_the_plain_sources_list` and
+`test_refresh_skipped_metadata_backfills_thumbnails_without_changing_status` (queues only rows missing a thumbnail,
+running the job updates thumbnail/channel/description while status/error stay `skipped`, refuses on a non-skipped
+source, a repeat call queues nothing). Suite 472; Tier 1 unchanged.
+
+**Honest limits.** The backfill button re-fetches metadata only, one HTTP request per source, same network path as
+first ingest (yt-dlp) — it does no transcript/chunk work and never changes a source's status, so it's safe to run
+broadly but Kyle still has to click it (never auto-queued on his behalf).

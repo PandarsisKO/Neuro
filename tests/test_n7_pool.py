@@ -112,3 +112,61 @@ def test_capture_the_n_that_fit_takes_the_same_paths_as_a_single_capture(monkeyp
     assert any(getattr(rt, "path", "") == "/api/projects/{project_id}/pool/capture-many" for rt in api.app.routes)
     html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
     assert "/pool/capture-many" in html and "captureManyPool" in html
+
+
+def test_skipped_sources_carry_the_pool_potential_scan_on_the_plain_sources_list(monkeypatch):
+    """Kyle, live: a pre-cutoff source in the Sources tab showed no thumbnail and no hint of whether it was worth
+    ingesting anyway — the pool already runs this exact $0 scan, it just never reached the ordinary sources list
+    a person looks at day to day. GET /api/sources must carry the same score/why the pool shows, keyed the same way
+    ('worth a look' >= 40), and must never compute it (or crash) for a non-skipped row."""
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    timeless = _skipped(pid, "old-timeless-src", "How to structure a seller transition when buying an accounting practice",
+                        "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention principles.", relevance=35)
+    dated = _skipped(pid, "old-dated-src", "SBA rates news update this week", "Breaking: rates moved again today; market update for 2021.", relevance=20)
+    rows = {r["id"]: r for r in api.api_sources(project_id=pid)}
+    pool_by = {i["id"]: i for i in candidates.pool(pid, kind="skipped")["items"]}
+    assert rows[timeless]["pool_potential"]["score"] == pool_by[timeless]["potential"]
+    assert rows[dated]["pool_potential"]["score"] == pool_by[dated]["potential"]
+    # same scan, same ranking as the pool: the higher-relevance, timeless, on-topic one clearly outscores the dated one
+    assert rows[timeless]["pool_potential"]["score"] > rows[dated]["pool_potential"]["score"]
+    assert rows[timeless]["pool_potential"]["fits"]
+    # a ready/non-skipped row never carries the field at all — it isn't a candidate for "worth ingesting anyway"
+    ready = next((r for r in rows.values() if r["status"] not in ("skipped",)), None)
+    assert ready is None or "pool_potential" not in ready
+
+
+def test_refresh_skipped_metadata_backfills_thumbnails_without_changing_status(monkeypatch):
+    """0.45.7 backfill: a source skipped before the ingest.ingest_source fix (or by the `_skipped` test helper, same
+    shape) has no thumbnail_url. The bulk endpoint queues one refresh job per such source; running it re-fetches
+    metadata only and updates the row — status and error stay 'skipped' and the cutoff reason, never re-ingested."""
+    from neurosearch import ingest, media
+    pid, ids = _fixture(monkeypatch)
+    has_thumb = _skipped(pid, "has-thumb", "Already has a thumbnail", "x")
+    db.upsert_source(platform="youtube", external_id="has-thumb", thumbnail_url="https://img.example/already.jpg")
+    missing = _skipped(pid, "missing-thumb", "No thumbnail yet", "an old but on-topic video")
+
+    def fake_info(url, cookies_file=None, referer=None):
+        assert url == db.get_source(missing)["url"]
+        return {"id": "missing-thumb", "title": "No thumbnail yet", "webpage_url": url, "upload_date": "20210301",
+                "channel": "Old Channel", "thumbnail": "https://img.example/missing-thumb.jpg", "description": "refreshed description"}
+    monkeypatch.setattr(media, "fetch_info", fake_info)
+
+    r = api.api_refresh_skipped_metadata(pid)
+    assert r["queued"] == 1   # has_thumb already has a thumbnail — only_missing (default) skips it
+    js = [j for j in db.list_jobs(50) if j["kind"] == "refresh_skipped_metadata"]
+    assert len(js) == 1 and js[0]["payload"]["source_id"] == missing
+    from neurosearch import jobs
+    jobs.execute(db.claim_job(("refresh_skipped_metadata",)))
+    s = db.get_source(missing)
+    assert s["thumbnail_url"] == "https://img.example/missing-thumb.jpg" and s["status"] == "skipped" and "before cutoff" in s["error"]
+    assert db.get_source(has_thumb)["thumbnail_url"] == "https://img.example/already.jpg"   # untouched
+
+    # refusing to run on anything not currently skipped — this is a display backfill, never a re-ingest path
+    ready_id = db.upsert_source(platform="youtube", external_id="ready-one", url="https://www.youtube.com/watch?v=ready-one", status="ready")["id"]
+    with pytest.raises(RuntimeError, match="not skipped"):
+        ingest.refresh_skipped_metadata(ready_id)
+
+    # a repeat call with everything already thumbnailed queues nothing
+    r2 = api.api_refresh_skipped_metadata(pid)
+    assert r2["queued"] == 0
