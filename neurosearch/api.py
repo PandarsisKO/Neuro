@@ -293,6 +293,29 @@ def api_refresh_skipped_metadata(project_id: str, only_missing: bool = True) -> 
     return {"queued": len(rows)}
 
 
+@app.get("/api/projects/{project_id}/sources/caption-recovery", dependencies=[Depends(require_auth)])
+def api_caption_recovery_preview(project_id: str) -> dict[str, Any]:
+    """$0 preview: which ready sources said nothing out loud but carry real text in their caption."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    rows = ingest.caption_recovery_candidates(project_id)
+    return {"candidates": rows, "count": len(rows)}
+
+
+@app.post("/api/projects/{project_id}/sources/caption-recovery", dependencies=[Depends(require_auth)])
+def api_caption_recovery(project_id: str) -> dict[str, Any]:
+    """Kyle, live: short-form video that is music plus on-screen text yields nothing today. New ingests recover the
+    caption automatically (`ingest.recover_caption_text`); this backfills the ones already in the library. `low`
+    lane — it is speculative repair of sources that are already sitting there, and must never displace the work the
+    user is watching. No model call beyond re-embedding the new chunks."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    rows = ingest.caption_recovery_candidates(project_id)
+    for r in rows:
+        jobs.enqueue("recover_captions", {"source_id": r["id"], "project_id": project_id}, lane="low")
+    return {"queued": len(rows)}
+
+
 @app.post("/api/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
 def api_candidate_dismiss(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
     from . import candidates

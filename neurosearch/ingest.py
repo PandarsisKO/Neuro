@@ -486,6 +486,14 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
                 db.upsert_source(platform=platform, external_id=src["external_id"], transcript_kind=kind, language=lang or src.get("language"))
                 db.set_stage(source_id, "transcript")
             stage_event("transcript", segments=len(segments), kind=kind)
+            # music-only short-form video: the audio said nothing, but the caption often carries the substance.
+            # Only fires when the spoken track is effectively empty (see recover_caption_text).
+            try:
+                rec = recover_caption_text(source_id)
+                if rec.get("recovered"):
+                    stage_event("transcript", caption_recovered=rec["caption_chars"], spoken=rec["spoken_chars"])
+            except Exception as e:  # noqa: BLE001 — recovery is a bonus; it must never fail an ingest
+                log.warning("caption recovery skipped for %s: %s", source_id, e)
             if audio is not None:                                          # the download served its purpose
                 for p in (audio, audio.with_suffix(".segments.json")):
                     try:
@@ -837,3 +845,72 @@ def _external_id_from_url(url: str, platform: str) -> str | None:
     if platform == "fixture":
         return url
     return media.canonical_url(url)
+
+
+# ---------------------------------------------------------------- caption recovery (music-only short-form video)
+
+SILENT_TRANSCRIPT_CHARS = 400     # below this a video effectively said nothing out loud
+CAPTION_MIN_CHARS = 200           # a shorter description is a title restated, a hashtag pile, or a link — not content
+CAPTION_MARKER = "— from the video's caption (no spoken narration) —"
+
+
+def caption_recovery_candidates(project_id: str | None = None) -> list[dict[str, Any]]:
+    """Ready sources whose audio said nothing but whose caption carries real text. $0 — pure SQL, no model call."""
+    ids = set(db.project_source_ids(project_id, ready_only=False)) if project_id else None
+    out = []
+    for s in db.list_sources(status="ready", limit=100000):
+        if ids is not None and s["id"] not in ids:
+            continue
+        if (s.get("transcript_kind") or "").endswith("+caption"):
+            continue                                                    # already recovered
+        if len(s.get("description") or "") < CAPTION_MIN_CHARS:
+            continue
+        spoken = sum(len(x["text"]) for x in db.get_segments(s["id"]))
+        if spoken >= SILENT_TRANSCRIPT_CHARS:
+            continue                                                    # it spoke for itself
+        out.append({"id": s["id"], "title": s.get("title"), "spoken_chars": spoken,
+                    "caption_chars": len(s.get("description") or "")})
+    return out
+
+
+def recover_caption_text(source_id: str) -> dict[str, Any]:
+    """Kyle, live: "youtube shorts, instagram reels that only have music — there is value in the text in the video
+    but we are not parsing them." Measured on his library: 20 ready sources hold under 400 characters of transcript
+    and 15 of those produced no findings at all, with titles like "Borrowed $400K Without Going To The Bank".
+
+    Some of those already carry their substance in the caption — one has 1,283 characters reading "1) Go to
+    smbmarket.com & find businesses that cash flow $100k/year. 2) Make a list of 10-20 businesses…" — which the app
+    stored and never read. This appends that caption to the transcript, but ONLY when the spoken track is
+    effectively empty, so a normal video's findings can never be diluted by its marketing blurb.
+
+    The caption goes in behind an explicit marker segment, so anyone reading the transcript sees where the words
+    came from, and no quote can span the boundary. Chunks and embeddings are rebuilt from the stored segments —
+    deterministic, no re-download, no transcription, no model call beyond the ordinary embedding of new chunks.
+    """
+    s = db.get_source(source_id)
+    if not s:
+        raise RuntimeError("source not found")
+    if (s.get("transcript_kind") or "").endswith("+caption"):
+        return {"source_id": source_id, "recovered": False, "reason": "already recovered"}
+    desc = (s.get("description") or "").strip()
+    if len(desc) < CAPTION_MIN_CHARS:
+        return {"source_id": source_id, "recovered": False, "reason": "no caption text worth adding"}
+    segments = db.get_segments(source_id)
+    spoken = sum(len(x["text"]) for x in segments)
+    if spoken >= SILENT_TRANSCRIPT_CHARS:
+        return {"source_id": source_id, "recovered": False, "reason": "the source has a real spoken transcript"}
+
+    start = max([x["end"] for x in segments], default=0.0)
+    extra = [{"start": start, "end": start + 1, "text": CAPTION_MARKER}]
+    for i, para in enumerate([p.strip() for p in re.split(r"\n{2,}", desc) if p.strip()], start=1):
+        extra.append({"start": start + i, "end": start + i + 1, "text": para})
+    merged = normalize_segments(segments + extra)
+    chunks = build_chunks(merged, duration=s.get("duration"))
+    with db.batch():
+        db.replace_transcript(source_id, merged, [])
+        db.replace_chunks(source_id, chunks)
+        db.upsert_source(platform=s["platform"], external_id=s["external_id"],
+                         transcript_kind=f"{s.get('transcript_kind') or 'none'}+caption")
+    embedded = embed_pending(source_id=source_id)
+    return {"source_id": source_id, "recovered": True, "spoken_chars": spoken,
+            "caption_chars": len(desc), "segments": len(merged), "chunks": len(chunks), "embedded": embedded}

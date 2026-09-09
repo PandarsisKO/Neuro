@@ -578,7 +578,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.46.5';
+const UI_VERSION = '0.47.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1123,6 +1123,7 @@ function renderSourceList() {
 }
 async function loadSources() {
   loadReviews();
+  loadCaptionRecovery();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
   const all = await api('/api/sources?' + p);
   const nReady = all.filter(r => r.status === 'ready').length;
@@ -1160,7 +1161,9 @@ async function loadSources() {
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
     (f === 'skipped' && rows.some(s => !s.thumbnail_url) ? ` <button class="small ghost" title="Re-fetches metadata only (no download, stays skipped) for skipped sources with no thumbnail yet — catches up rows skipped before this was fixed." onclick="refreshSkippedMeta()">🔄 Refresh info</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
-    (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '');
+    (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '') +
+    // music-only shorts/reels: the audio said nothing, but the caption often holds the substance
+    (capRecover.n ? ` <button class="small ghost" title="${capRecover.n} source${capRecover.n === 1 ? '' : 's'} said nothing out loud but carry real text in the caption — read that text so they can produce findings. No download, no re-transcription." onclick="recoverCaptions()">💬 Read ${capRecover.n} caption-only source${capRecover.n === 1 ? '' : 's'}</button>` : '');
   SRCG.rows = rows;
   renderSourceList();
 }
@@ -1271,6 +1274,16 @@ async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} l
 async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
+const capRecover = { n: 0 };
+async function loadCaptionRecovery() {
+  try { capRecover.n = (await api(`/api/projects/${state.project.id}/sources/caption-recovery`)).count || 0; }
+  catch (e) { capRecover.n = 0; }
+}
+async function recoverCaptions() {
+  const r = await post(`/api/projects/${state.project.id}/sources/caption-recovery`, {});
+  toast(r.queued ? `💬 ${r.queued} queued — reading their captions` : 'nothing to recover');
+  capRecover.n = 0; loadJobs();
+}
 async function refreshSkippedMeta() { const r = await post(`/api/projects/${state.project.id}/sources/refresh-skipped-metadata`, {}); toast(r.queued ? `🔄 ${r.queued} queued — thumbnails and the value scan catch up as each finishes` : 'nothing missing a thumbnail'); loadJobs(); }
 async function clearFailedSources() {
   if (!confirm('Remove every failed source from this project? Jobs that could bring them back are cancelled; sources nothing else uses are deleted. Sources cited in findings or held by other projects are only removed from this project.')) return;

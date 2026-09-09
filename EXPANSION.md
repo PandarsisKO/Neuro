@@ -1835,3 +1835,45 @@ Tier 1 unchanged.
 cleared the gate — followed by continuous successful work and real spend ($8.93 → $9.32). A forced probe then
 returned `ready` for Claude Code as well, 30 seconds old. Both the API and the local lane were restored by Kyle's
 change; the app simply could not see either until the gates and the probe were made refutable.
+
+## S8 — reading the caption when the video only has music — 0.47.0
+
+Kyle, live: *"we seem to have an issue with youtube shorts, instagram reels that only have music — there is value
+in the text in the video but we are not parsing them."*
+
+**Measured first, and it changed the plan.** Across the live library, **20 ready sources hold under 400 characters
+of transcript and 15 of those produced zero findings** — titles like "Borrowed $400K Without Going To The Bank" and
+"How We Legally Cheat Taxes", real content yielding nothing. (88 more short videos have no transcript at all, but
+they are `skipped` by the date cutoff — a different problem, not this one.) The instinct was OCR. Checking the rows
+first split the problem in two: some of these **already carry their substance in a caption the app stored and never
+read** — one has 1,283 characters beginning *"1) Go to smbmarket.com & find businesses that cash flow $100k/year.
+2) Make a list of 10-20 businesses…"* — while others have an empty description and genuinely need pixels read. So
+the cheap half ships first and the expensive half gets sized against what is actually left.
+
+**Built.** `ingest.recover_caption_text(source_id)` appends the description to the transcript, rebuilds chunks and
+embeddings from the stored segments (deterministic, no re-download, no re-transcription, no model call beyond
+embedding the new chunks), and marks the source `<kind>+caption`. It fires automatically at the end of the
+transcript stage for new ingests, wrapped so a failure can never fail an ingest. `caption_recovery_candidates` is
+the $0 SQL preview; `GET/POST /api/projects/{id}/sources/caption-recovery` previews and backfills what is already
+in the library, on the **`low` lane** — speculative repair of sources already sitting there must never displace the
+work the user is watching. The Sources list grows a "💬 Read N caption-only sources" button when there are any.
+
+**Two guards, because this could easily have been a quality regression dressed up as a feature.** It only fires
+when the spoken track is under `SILENT_TRANSCRIPT_CHARS` (400), so a normal video's findings can never be diluted
+by its marketing blurb; and the caption must clear `CAPTION_MIN_CHARS` (200), so hashtag piles and "link in bio"
+are not promoted to evidence. The caption is inserted behind an explicit marker segment
+(`— from the video's caption (no spoken narration) —`), so a human reading the transcript sees exactly where the
+words came from and no extracted quote can span the boundary.
+
+**Gate.** New `tests/test_p2_captions.py` (5): a silent short gets its caption read, chunked and marked; **a video
+that actually spoke is never touched** (the guard that matters); a boilerplate caption is refused; recovery is
+idempotent, since it runs on every ingest and the button can be pressed repeatedly; candidates and backfill are
+project-scoped and queue on the `low` lane. Suite 504; Tier 1 unchanged.
+
+**Honest limits.** This recovers text the app already had — it reads no pixels, so a short with an empty
+description is still worth nothing and needs the OCR half (ffmpeg keyframes + tesseract would keep that free,
+local and open-source; a vision model would read stylised text better but costs per frame). The right next step is
+to run this backfill and count what remains, rather than sizing OCR against a guess. Caption segments carry
+synthetic timestamps after the last spoken segment, so a citation into one shows a time that does not correspond to
+anything on screen; the marker segment is what makes that legible to a reader, and a real locator kind for
+caption text is not built. The 88 cutoff-skipped shorts are untouched.

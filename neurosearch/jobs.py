@@ -38,7 +38,7 @@ _running_lock = threading.Lock()
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
-RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims")
+RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
@@ -304,6 +304,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return {"embedded": embed_pending(limit=payload.get("limit", 100000))}
     if kind == "refresh_skipped_metadata":
         return ingest.refresh_skipped_metadata(payload["source_id"])
+    if kind == "recover_captions":
+        return ingest.recover_caption_text(payload["source_id"])
     if kind == "external_demo":
         # reference external job: first run submits and parks; the run after the result arrives completes.
         if "_external_result" in payload:
