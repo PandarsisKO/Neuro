@@ -255,9 +255,15 @@ def triage(project_id: str) -> dict[str, Any]:
     for k, rows in tiers.items():
         api_cost = round(sum(r["estimate"] for r in rows), 4)
         windows = sum(r.get("windows") or 1 for r in rows)
+        # 0.45.2: quote BOTH prices, always. The card used to show whichever provider was configured and nothing else, so on
+        # a local setup a 4-hour tier looked like the only option there was — the user could not even see that the same work
+        # was a few dollars on the API, let alone choose it. Time and money are the two currencies; the card names both.
+        api_line = f"${api_cost:.2f} on the API" if rows else ""
+        local_line = f"$0 · about {_hm(windows * LOCAL_MINUTES_PER_WINDOW)} on Claude Code" if rows and local else ""
         out_tiers[k] = {"count": len(rows), "sources": rows, "api_cost": api_cost, "windows": windows,
                         "local_minutes": round(windows * LOCAL_MINUTES_PER_WINDOW) if local else None,
-                        "cost_line": (f"$0 · about {_hm(windows * LOCAL_MINUTES_PER_WINDOW)} on Claude Code" if local else f"${api_cost:.2f} on the API") if rows else ""}
+                        "local_line": local_line, "api_line": api_line,
+                        "cost_line": (local_line or api_line) if rows else ""}
     t = usage.totals()
     return {"project_id": project_id, "tiers": out_tiers, "plan": a["plan"], "stale_total": sum(len(v) for v in tiers.values()),
             "accepted": sum(1 for x in a["sources"] if x["status"] == ACCEPTED), "local": local,

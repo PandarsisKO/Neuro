@@ -38,7 +38,13 @@ FINDINGS_V2: dict[str, Any] = {
                 "finding": {"type": "string", "description": "one sentence of what the title leaves out; may be empty"},
                 "ts": {"type": "string", "description": "the [m:ss] / h:mm:ss / p. N / § N marker just before the quote"},
                 "quote": {"type": "string", "description": "≤ 20 verbatim words from the transcript"},
-                "importance": {"type": "integer", "minimum": 1, "maximum": 5},
+                # 0.45.2: minimum 0, not 1. The prompt asks for 1–5 and the model occasionally answers 0 for a finding it thinks
+                # is worthless; with minimum 1 that ONE number failed the whole window's schema, twice, and the source's entire
+                # read was thrown away — 182 of Kyle's 570 sources died this way ("findings/1/importance: 0 is less than the
+                # minimum of 1"). Every consumer already treats importance as 0-capable (`int(f.get("importance") or 0)`), so
+                # the constraint was stricter than the product. The schema NAME is unchanged, so no input_hash moves and
+                # nothing re-stales. A 0 sorts last and falls inside the low-value sweep, which is exactly what it means.
+                "importance": {"type": "integer", "minimum": 0, "maximum": 5},
             },
             "required": ["title", "finding", "ts", "quote", "importance"],
             "additionalProperties": False,

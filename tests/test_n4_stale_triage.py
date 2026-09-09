@@ -194,3 +194,37 @@ def test_a_legacy_acceptance_holds_for_exactly_the_inputs_it_was_given_for():
     # and accepting again is one action that clears them for the new brief
     assert staleness.accept(p["id"], tier="accept")["accepted"] == 4
     assert staleness.triage(p["id"])["stale_total"] == 0
+
+
+def test_every_tier_quotes_both_currencies_so_faster_is_visible(monkeypatch):
+    """0.45.2. The card used to print ONE price — whichever provider was configured. On Kyle's local setup that made a
+    4-hour tier look like the only thing on offer: the API price existed in the payload but nothing rendered it and no
+    button could reach it, so 'is there a faster option?' had no answer in the UI. Every tier now carries local_line AND
+    api_line, and the fast button only appears when there is a real choice to make."""
+    p, ids = _project()
+    db.update_project(p["id"], brief="hosting and email deliverability")
+
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setattr(CC, "health", lambda wait=False: {"state": "ready"})
+    t = staleness.triage(p["id"])
+    x = t["tiers"]["accept"]
+    assert t["local"] and x["count"] == 4
+    assert x["local_line"].startswith("$0 ") and "Claude Code" in x["local_line"]
+    assert x["api_line"].startswith("$") and "on the API" in x["api_line"]
+    assert x["cost_line"] == x["local_line"]                   # the default answer is still the free one
+    assert x["api_cost"] > 0                                   # …and the paid one is a real, quotable number
+
+    # an empty tier quotes nothing at all (no "$0.00 on the API" on a row that does not exist)
+    empty = t["tiers"]["retry_failed"]
+    assert empty["count"] == 0 and empty["local_line"] == "" and empty["api_line"] == "" and empty["cost_line"] == ""
+
+    # on the cloud profile there is no second currency to offer: one price, and it is the API one
+    monkeypatch.setattr(settings, "ai_profile", "cloud")
+    t2 = staleness.triage(p["id"])
+    y = t2["tiers"]["accept"]
+    assert not t2["local"] and y["local_line"] == "" and y["cost_line"] == y["api_line"]
+
+    # the UI renders the fast button from exactly these fields and routes it at a route that exists
+    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    assert "x.local_line && x.api_cost" in html and "rebuildTier('${key}', true)" in html
+    assert "/accelerate" in html and any(getattr(r, "path", "") == "/api/projects/{project_id}/accelerate" for r in api.app.routes)

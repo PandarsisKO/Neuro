@@ -212,3 +212,26 @@ def test_a_deep_read_is_its_own_unit_of_work(monkeypatch):
     # …while a second identical deep request is still one job
     again = api.api_suggest(p["id"], api.SuggestIn(source_ids=[r["source_id"]], depth="deep"))
     assert again["jobs"][0] == deep["id"]
+
+
+def test_importance_zero_is_a_finding_not_a_dead_source():
+    """0.45.2 regression, found in Kyle's live project. The extraction schema required importance ≥ 1 while the prompt asks
+    for 1–5; when the model answered 0 for one finding, the WHOLE window failed validation — twice, since invoke_structured
+    retries once — and the source's entire read was discarded. 182 of 570 sources were sitting in 'last rebuild failed' for
+    exactly this ("findings/1/importance: 0 is less than the minimum of 1"). A 0 is now valid and simply sorts last."""
+    from neurosearch import schemas
+    win = {"summary": "s", "substance": 50,
+           "findings": [{"title": "worth keeping", "finding": "", "ts": "0:05", "quote": "a", "importance": 5},
+                        {"title": "the model rated this worthless", "finding": "", "ts": "0:09", "quote": "b", "importance": 0}]}
+    assert schemas.validate("findings-v2", win) == []          # the whole window survives one 0
+    assert schemas.validate("findings-v2", {**win, "findings": [{**win["findings"][1], "importance": -1}]})
+    assert schemas.validate("findings-v2", {**win, "findings": [{**win["findings"][1], "importance": 6}]})
+
+    # the schema NAME is untouched, so no input_hash moves and nothing in a live library re-stales because of this fix
+    from neurosearch import contracts, findings
+    assert contracts.contract("findings.extract").schema == "findings-v2"
+    assert findings.schema_version() == "findings-v2"
+
+    # and a 0 ranks below a 1 rather than crashing the chooser
+    sug, _res = findings.select_findings([[{"title": "a", "importance": 0}, {"title": "b", "importance": 1}]], cap=2)
+    assert [f["title"] for f in sug] == ["b", "a"]

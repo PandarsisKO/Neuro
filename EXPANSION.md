@@ -1086,3 +1086,32 @@ change puts all four back, and one re-accept clears them for the new brief. Suit
 
 **Honest limits.** This makes the acceptance *visible*; it does not judge whether those findings are still right — that is what
 the rebuild tiers are for. A legacy row still carries no input baseline, so its only "why" is the migration itself.
+
+## S1 fixes from Kyle's real library — 0.45.2 (COMPLETE, pending delivery)
+
+Two things his screenshot showed that no test could have: 182 of 570 sources sitting in **"whose last rebuild failed"**, and a
+triage card offering **one price** — "$0 · about 4 h 24 min on Claude Code" — with no way to see or choose anything faster.
+
+**1. `importance: 0` killed the whole source.** The extraction schema demanded `importance` ≥ 1 while the prompt asks for 1–5.
+When the model answered 0 for a single finding it thought worthless, that one number failed the entire window's validation —
+twice, because `invoke_structured` retries once — and the source's whole read was discarded with
+`findings/1/importance: 0 is less than the minimum of 1`. **182 sources died of one integer.** Every consumer already treats
+importance as 0-capable (`int(f.get("importance") or 0)`), so the schema was stricter than the product it validated. Now
+`minimum: 0`: a 0 is a finding the model rated worthless, it sorts last, and it falls inside the low-value sweep — which is
+precisely what it means. The schema NAME (`findings-v2`) is unchanged, so no `input_hash` moves and **nothing re-stales**;
+Tier 1 totals are unchanged (34 / 196,951 · 9 / 30,297).
+
+**2. The card quoted one currency.** `cost_line` was a ternary — the local time if Claude Code was configured, the API dollars
+otherwise — so on a local setup the API price was computed, sent, and never rendered, and no button could reach it. A four-hour
+tier looked like the only thing on offer. Each tier now carries `local_line` AND `api_line`, and every rebuild/retry row gets a
+second button: **⏩ Rebuild on the API · $X**, which queues the tier and immediately moves it onto the API pool in value order,
+confirming the dollar figure and the hours it saves first. It appears only when there is a real choice (local active and a
+non-zero API price), so the cloud profile still shows one price and an empty tier shows none.
+
+**Gate (test_n3 +1 → 11, test_n4 +1 → 6).** A window carrying one `importance: 0` validates while −1 and 6 still fail; the
+schema name and `findings.schema_version()` are unchanged (the no-re-stale guarantee); a 0 ranks below a 1 in
+`select_findings`. Both currencies appear on a populated tier, `cost_line` still defaults to the free one, an empty tier quotes
+nothing, the cloud profile offers no second currency, and the fast button's fields and route both exist. Suite 462.
+
+**Honest limits.** The API price is still an estimate from the same shared estimator, not a quote. Nothing retroactively
+re-reads the 182 failed sources — the fix stops the next read failing; pressing **Retry** is what recovers them.
