@@ -199,3 +199,16 @@ def test_deep_reads_report_per_part_progress_and_ride_the_slow_lane(monkeypatch)
     assert db.claim_job(jobs.ANALYSIS_KINDS, worker_id="w1", policies=jobs.LOCAL_POLICIES, lanes=("normal",))["id"] == normal["id"]
     row = next(s for s in api.api_sources(project_id=p["id"]) if s["id"] == r["source_id"])
     assert row["analysing"] and row["analysis_job"]["depth"] == "deep" and row["analysis_job"]["lane"] == "slow"
+
+
+def test_a_deep_read_is_its_own_unit_of_work(monkeypatch):
+    """Regression (0.45.0): an ordinary findings job already queued for a source must not swallow a Read deeper request."""
+    p = db.create_project("Deep6", "hosting")
+    r = ingest.ingest_text("Long hosting course", _long_transcript(2), project_id=p["id"])
+    ordinary = db.create_job("suggest_findings", {"project_id": p["id"], "source_ids": [r["source_id"]]})
+    out = api.api_suggest(p["id"], api.SuggestIn(source_ids=[r["source_id"]], depth="deep"))
+    deep = db.get_job(out["jobs"][0])
+    assert deep["id"] != ordinary["id"] and deep["payload"]["depth"] == "deep" and deep["lane"] == "slow"
+    # …while a second identical deep request is still one job
+    again = api.api_suggest(p["id"], api.SuggestIn(source_ids=[r["source_id"]], depth="deep"))
+    assert again["jobs"][0] == deep["id"]

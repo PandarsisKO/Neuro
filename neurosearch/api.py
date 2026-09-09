@@ -1285,6 +1285,29 @@ class RebuildIn(BaseModel):
     tier: str | None = None                # S1: rebuild_matters | rebuild_transcript | retry_failed | accept — the triage tier's sources
 
 
+@app.get("/api/projects/{project_id}/ai-backlog", dependencies=[Depends(require_auth)])
+def api_ai_backlog(project_id: str) -> dict[str, Any]:
+    """L3: what is waiting on the local provider, the time it will take there, and what the same work costs on the API."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return jobs.backlog(project_id)
+
+
+class AccelerateIn(BaseModel):
+    n: int = 10
+    order: str = "queue"      # queue (oldest first) | value (the sources that matter most first)
+
+
+@app.post("/api/projects/{project_id}/accelerate", dependencies=[Depends(require_auth)])
+def api_accelerate(project_id: str, body: AccelerateIn) -> dict[str, Any]:
+    """L3: buy speed on purpose — move the next N queued local jobs onto the API pool. Never implied by slowness."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if body.order not in ("queue", "value"):
+        raise HTTPException(400, "order must be queue or value")
+    return jobs.accelerate(project_id, n=max(1, min(body.n, 500)), order=body.order)
+
+
 @app.get("/api/projects/{project_id}/staleness/triage", dependencies=[Depends(require_auth)])
 def api_staleness_triage(project_id: str) -> dict[str, Any]:
     """S1: the stale set as three answers — rebuild (matters / transcript changed), accept as still usable, retry failed — with
@@ -2044,6 +2067,17 @@ class NoteIn(BaseModel):
 @app.post("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
 def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
     return db.add_project_note(project_id, body.content, body.citations)
+
+
+@app.get("/api/projects/{project_id}/sources/{source_id}/digest", dependencies=[Depends(require_auth)])
+def api_source_digest(project_id: str, source_id: str) -> dict[str, Any]:
+    """S3: one source, everything it gave this project — value, findings by status with what used each, the Claims they
+    became, where it shows up (plan steps, chat answers), and its staleness tier. $0."""
+    from . import sources_value
+    try:
+        return sources_value.digest(project_id, source_id)
+    except KeyError:
+        raise HTTPException(404) from None
 
 
 @app.get("/api/projects/{project_id}/findings", dependencies=[Depends(require_auth)])

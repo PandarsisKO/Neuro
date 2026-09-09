@@ -15,6 +15,7 @@ waits are not attempts; recovery re-attaches to external handles and never resub
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -561,3 +562,67 @@ def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:
         db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]})
+
+
+# ------------------------------------------------------------------ L3: the acceleration dialog — "the local provider is slow, buy speed on purpose"
+
+WINDOW_CHARS_PER_WINDOW = 60000     # findings._windows; used only to estimate how many model calls a queued source needs
+
+
+def _windows_for(source_id: str) -> int:
+    row = db.connect().execute("SELECT COALESCE(SUM(LENGTH(text)),0) c, COALESCE(MAX(0),0) FROM segments WHERE source_id=?", (source_id,)).fetchone()
+    return max(1, int((int(row["c"] or 0) + WINDOW_CHARS_PER_WINDOW - 1) // WINDOW_CHARS_PER_WINDOW))
+
+
+def backlog(project_id: str | None = None) -> dict[str, Any]:
+    """What is waiting on the local provider, what it will cost in TIME there, and what the same work would cost in
+    DOLLARS on the API. Pure computation — reads the queue, never changes it."""
+    from . import claude_code, sources_value, staleness, usage
+    rate = usage.observed_rate_per_minute()
+    rows = [dict(r) for r in db.connect().execute(
+        "SELECT id, kind, payload, status, execution_policy, lane, created_at FROM jobs WHERE kind IN "
+        f"({','.join('?' for _ in ANALYSIS_KINDS)}) AND status IN ('queued','running') ORDER BY created_at", ANALYSIS_KINDS).fetchall()]
+    value = sources_value.compute(project_id) if project_id else {}
+    items, running = [], []
+    for r in rows:
+        try:
+            pl = json.loads(r["payload"] or "{}")
+        except ValueError:
+            continue
+        if project_id and pl.get("project_id") != project_id:
+            continue
+        sids = pl.get("source_ids") or []
+        cost = round(sum(usage.estimate_source_findings(s, rate) for s in sids), 4)
+        windows = sum(_windows_for(s) for s in sids) or 1
+        if pl.get("depth") == "deep":
+            windows *= 3                                   # deep reads re-window at DEEP_WINDOW_CHARS
+        title = (db.get_source(sids[0]) or {}).get("title") if sids else None
+        item = {"id": r["id"], "kind": r["kind"], "status": r["status"], "lane": r["lane"], "policy": r["execution_policy"], "depth": pl.get("depth"),
+                "source_ids": sids, "title": title, "sources": len(sids), "windows": windows, "api_cost": cost,
+                "value": max((value.get(s, {}).get("value_score", 0) for s in sids), default=0)}
+        (running if r["status"] == "running" else items).append(item)
+    local = [i for i in items if i["policy"] in LOCAL_POLICIES]
+    api_side = [i for i in items if i["policy"] in API_POLICIES]
+    minutes = sum(i["windows"] for i in local) * staleness.LOCAL_MINUTES_PER_WINDOW
+    ready = claude_code.health(wait=False).get("state") == "ready" and settings.ai_profile == "local"
+    return {"local_queued": len(local), "api_queued": len(api_side), "running": running, "jobs": local,
+            "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready else None,
+            "local_eta": staleness._hm(minutes) if ready and local else None,
+            "api_cost": round(sum(i["api_cost"] for i in local), 2), "profile": settings.ai_profile, "local_ready": ready,
+            "choices": [n for n in (10, 25) if n < len(local)] + ([len(local)] if local else []),
+            "line": (f"{len(local)} job{'s' if len(local) != 1 else ''} waiting on Claude Code · about {staleness._hm(minutes)} · the same work on the API ≈ ${sum(i['api_cost'] for i in local):.2f}"
+                     if local and ready else f"{len(local)} AI job{'s' if len(local) != 1 else ''} queued" if local else "nothing waiting")}
+
+
+def accelerate(project_id: str | None, n: int = 10, order: str = "queue") -> dict[str, Any]:
+    """Move the next N queued local jobs onto the API pool — the user's explicit purchase of speed, never implied by
+    slowness. Marks them `api_requested`; the api_ai worker claims them. Returns what it moved and the estimate."""
+    b = backlog(project_id)
+    jobs_ = b["jobs"]
+    if order == "value":
+        jobs_ = sorted(jobs_, key=lambda j: (-j["value"], j["id"]))
+    picked = jobs_[:max(0, n)]
+    for j in picked:
+        db.set_job_policy(j["id"], "api_requested")
+    return {"moved": len(picked), "job_ids": [j["id"] for j in picked], "api_cost": round(sum(j["api_cost"] for j in picked), 2),
+            "order": order, "remaining": len(jobs_) - len(picked)}

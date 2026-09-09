@@ -1384,7 +1384,9 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     if kind == "ingest_source":
         return f"ingest_source:{payload.get('source_id')}"
     if kind == "suggest_findings" and len(payload.get("source_ids") or []) == 1:
-        return f"findings:{payload.get('project_id')}:{payload['source_ids'][0]}"
+        # D2: a deep read is its OWN unit of work — without the depth here, pressing "Read deeper" while an ordinary
+        # findings job for that source is queued silently returns the shallow job (0.45.0 fix)
+        return f"findings:{payload.get('project_id')}:{payload['source_ids'][0]}" + (":deep" if payload.get("depth") == "deep" else "")
     if kind == "rank_proposed":
         return f"rank:{payload.get('collection_id')}"
     if kind == "build_plan":

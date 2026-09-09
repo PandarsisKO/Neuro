@@ -340,7 +340,7 @@
         </div>
       </div>
       <div id="reviewWrap"></div>
-      <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="jobs"></div></div>
+      <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
       <div id="captureCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
         <div id="srcChips" class="row" style="gap:4px"></div>
@@ -546,7 +546,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.44.0';
+const UI_VERSION = '0.45.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1042,9 +1042,9 @@ async function loadSources() {
       ${completenessLine(s)}
       ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
       <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
+        ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
         ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
         ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
         <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
@@ -1132,6 +1132,23 @@ async function poolAct(a, title) {
   toast(a.label === 'Not for this project' ? 'dismissed' : `⏵ capturing${title ? ' — ' + title.slice(0, 40) : ''}`); POOL.total = null; loadPool(); loadJobs();
 }
 function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
+// L3: the local provider is slow on purpose — buying speed is an explicit choice, never implied by slowness
+async function loadBacklog() {
+  const el = $('#backlog'); if (!el || !state.project) return;
+  let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`); } catch (e) { el.innerHTML = ''; return; }
+  if (!b.local_queued || !b.local_ready) { el.innerHTML = ''; return; }
+  const pick = b.choices.map(n => `<button class="small ${n === b.choices[0] ? '' : 'ghost'}" onclick="accelerate(${n},'queue')" title="Runs the next ${n} on the Anthropic API instead of waiting for Claude Code">next ${n}</button>`).join('');
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span style="flex:1;min-width:220px">🖥 ${esc(b.line)}. Nothing is stuck — this is Claude Code working through the queue at $0.</span>
+    ${pick}<button class="small ghost" onclick="accelerate(${b.local_queued},'value')" title="The sources that matter most first (in the plan, priority, strong Claims, findings you rated 4–5)">most valuable first</button></div>`;
+}
+async function accelerate(n, order) {
+  const b = await api(`/api/projects/${state.project.id}/ai-backlog`);
+  const est = order === 'value' ? b.api_cost : (b.jobs.slice(0, n).reduce((t, j) => t + j.api_cost, 0));
+  if (!confirm(`Run ${n} queued job${n === 1 ? '' : 's'} on the Anthropic API instead of waiting for Claude Code? Estimated cost $${est.toFixed(2)}${order === 'value' ? ' (most valuable sources first)' : ''}. The rest keep running locally at $0.`)) return;
+  const r = await post(`/api/projects/${state.project.id}/accelerate`, { n, order });
+  toast(`⏩ ${r.moved} moved to the API · est. $${r.api_cost.toFixed(2)}`); loadJobs();
+}
 async function readDeeperAll(ids) { if (!confirm(`Read deeper on ${ids.length} long source${ids.length === 1 ? '' : 's'}? Each is re-read in smaller parts (about 3× the model calls of a normal read). Approved findings are kept; suggestions are replaced.`)) return; const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: ids, depth: 'deep' }); toast(`🔬 ${r.sources} queued for a deep read`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
 async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
@@ -1450,6 +1467,66 @@ function renderResearch(st) {
     return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}">${stTag(c.strength)}<div><div>${esc(c.text)}</div><div class="why">${esc(c.claim_type.replace('_', ' '))} · ${esc(c.freshness_class.replace('_', ' '))}${c.freshness_status && c.freshness_status !== 'current' && c.freshness_status !== 'age_insensitive' ? ` · <b title="${esc(c.freshness_why || '')}">${esc(c.freshness_status.replace('_', ' '))}</b>` : ''} · ${c.status}${c.normalized ? '' : ' · not yet normalised'} — ${esc(c.strength_why || '')}<br>Readiness: <b>${c.readiness === 'ready' ? 'ready' : 'not ready'}</b> — ${esc(c.readiness_why || '')}</div><div>${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`; }).join('')
     : '');
 }
+// ---- S3: the source drawer — one place per source (value · findings · Claims · where used · staleness) ----
+async function sourceDrawer(sid) {
+  $('#dlgBody').innerHTML = '<span class="spin"></span> reading everything this source gave…'; dlg.showModal();
+  let d; try { d = await api(`/api/projects/${state.project.id}/sources/${sid}/digest`); }
+  catch (e) { $('#dlgBody').innerHTML = `<div class="muted">could not load: ${esc(e.message)}</div>`; return; }
+  const s = d.source, v = d.value, st = d.staleness, u = d.used_in;
+  const badge = f => { const b = []; if (f.used.plan) b.push('<span class="tag" title="cited by the Master Plan">📋 plan</span>');
+    if (f.used.chat) b.push(`<span class="tag" title="cited in ${f.used.chat} chat answer(s)">💬 ${f.used.chat}×</span>`);
+    if (f.used.claim) b.push(`<span class="tag" title="became or evidences a Claim">🧠 ${esc(f.used.claim)}</span>`);
+    return b.join(' '); };
+  const group = (key, label, actions) => {
+    const list = d.findings[key] || []; if (!list.length) return '';
+    return `<div style="margin-top:10px"><b>${label} (${list.length})</b>${actions || ''}</div>` + list.slice(0, 60).map(f => `
+      <div class="f"><span class="fi" title="importance ${f.importance || 0}/5">${'●'.repeat(f.importance || 0)}<span class="dim">${'●'.repeat(5 - (f.importance || 0))}</span></span>
+        <div class="main"><div class="ttl">${esc(f.title || (f.content || '').slice(0, 90))}</div>
+          <div class="meta">${badge(f)} ${f.locator ? `<a class="chip" href="${esc(f.link || '#')}" target="_blank">▶ ${esc(f.locator)}</a>` : ''}${f.area ? `<span class="tag muted">${esc(f.area)}</span>` : ''}</div></div>
+        <div class="act">${key === 'reserve' ? `<button class="small primary" title="Approve" onclick="drawerNote(${f.id},'approved','${sid}')">✓</button><button class="small" title="Send to Suggested" onclick="drawerNote(${f.id},'suggested','${sid}')">📌</button>`
+          : key === 'suggested' ? `<button class="small primary" onclick="drawerNote(${f.id},'approved','${sid}')">✓</button><button class="small ghost" onclick="drawerNote(${f.id},'dismissed','${sid}')">✕</button>`
+          : key === 'approved' ? `<button class="small ghost" title="dismiss" onclick="drawerNote(${f.id},'dismissed','${sid}')">✕</button>` : ''}</div></div>`).join('');
+  };
+  const staleLine = st.status === 'current' ? '<span class="st strong">current</span>'
+    : st.status === 'current_accepted' ? '<span class="st developing">accepted as still usable</span>'
+    : st.status === 'rebuilding' ? '<span class="st developing">re-analysing…</span>'
+    : st.status ? `<span class="st weak">${esc((st.status || '').replace('_', ' '))}</span> <span class="muted">${esc((st.reasons || []).join('; '))}</span>` : '';
+  const oneSource = st.status === 'stale' || st.status === 'legacy_unverified'
+    ? `<button class="small primary" onclick="drawerRebuild('${sid}')">Re-read it${st.tier === 'rebuild_transcript' ? ' — its transcript changed' : ''}</button>` +
+      (st.tier !== 'rebuild_transcript' ? `<button class="small ghost" title="Keep these findings and stop flagging it until the inputs change again" onclick="drawerAccept('${sid}')">Accept as still usable</button>` : '')
+    : '';
+  $('#dlgBody').innerHTML = `
+    <div class="row" style="align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(s.title)}</b>
+      ${s.url && s.url.startsWith('http') ? `<a class="muted" href="${esc(s.url)}" target="_blank">open ↗</a>` : ''}
+      ${v.priority ? '<span class="tag">★ priority</span>' : ''}${s.depth === 'deep' ? '<span class="tag">🔬 deep-read</span>' : ''}${s.long ? '<span class="tag">📚 long-form</span>' : ''}</div>
+    <div class="muted">${esc(s.channel || s.platform)}${s.published_at ? ' · ' + esc(s.published_at) : ''}${s.duration ? ' · ' + fmt(s.duration) : ''} · ${staleLine}</div>
+    <div class="card" style="margin-top:8px"><b>What it gave you</b><div>${esc(v.label)}</div>
+      ${v.why.length ? `<div class="why">Why it matters: ${v.why.map(esc).join(' · ')}</div>` : v.never_used ? `<div class="why">Nothing has used it yet — no plan step, chat answer or Claim rests on it.</div>` : ''}
+      <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="small" onclick="dlg.close();askAboutSource('${sid}',${JSON.stringify(s.title).replace(/"/g, '&quot;')})">💬 Ask about this source</button>
+        <button class="small ghost" onclick="dlg.close();viewTranscript('${sid}')">${s.platform === 'book' ? '📖 Read' : s.platform === 'spreadsheet' ? 'Contents' : 'Transcript'}</button>
+        ${s.long && s.depth !== 'deep' ? `<button class="small ghost" title="Read it again in smaller parts and keep every specific finding" onclick="dlg.close();readDeeper('${sid}')">🔬 Read deeper</button>` : ''}
+        ${oneSource}
+      </div></div>
+    ${(u.plan.uses || []).length || (u.chat || []).length ? `<div style="margin-top:10px"><b>Where it shows up</b></div>` +
+      (u.plan.uses || []).map(p => `<div class="kn"><span class="st strong">📋 plan</span><div><b>${esc(p.where)}</b>${p.text ? `<div class="why">${esc(p.text)}</div>` : ''}</div></div>`).join('') +
+      (u.chat || []).map(c => `<div class="kn"><span class="st developing">💬 chat</span><div><b>${esc(c.conversation)}</b> <span class="muted">· ${esc((c.locators || []).join(', '))}</span><div class="why">${esc(c.snippet)}</div></div></div>`).join('')
+      : ''}
+    ${d.claims.length ? `<div style="margin-top:10px"><b>Claims resting on it (${d.claims.length})</b></div>` + d.claims.slice(0, 12).map(c => `<div class="kn">${stTag(c.strength)}<div><div>${esc((c.text || '').slice(0, 200))}</div><div class="why">${esc(c.claim_type)}${c.independent ? '' : ' · repeats another source'}${c.stale ? ' · evidence stale' : ''}${c.locator ? ' · ' + esc(c.locator) : ''}</div></div></div>`).join('') : ''}
+    ${group('approved', 'Approved findings')}
+    ${group('suggested', 'Waiting for review')}
+    ${group('reserve', 'Extracted beyond the cap', ' <span class="muted" style="font-weight:normal;font-size:12px">— lower importance, kept rather than thrown away</span>')}
+    ${group('dismissed', 'Dismissed')}
+    ${d.findings_total ? '' : '<div class="muted" style="margin-top:10px">No findings from this source yet.</div>'}`;
+}
+async function drawerNote(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); sourceDrawer(sid); if (state.view === 'findings') loadNotes(); if (state.view === 'sources') loadSources(); }
+async function drawerRebuild(sid) { await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], source_ids: [sid], transport: 'interactive' }); toast('↻ queued'); dlg.close(); loadJobs(); if (state.view === 'sources') loadSources(); }
+async function drawerAccept(sid) { await post(`/api/projects/${state.project.id}/staleness/accept`, { source_ids: [sid] }); toast('kept as still usable'); sourceDrawer(sid); loadStaleness(); }
+function askAboutSource(sid, title) {
+  state.attached.push({ id: sid, name: title });
+  $('#qAttach').innerHTML = `<span class="chip" title="pinned to your next question">📎 ${esc(title.slice(0, 60))}</span>`;
+  showView('chat'); setTimeout(() => { const q = $('#q'); if (q) { q.placeholder = `Ask about "${title.slice(0, 40)}"…`; q.focus(); } }, 100);
+}
 // ---- R2: the Research shell — one $0 request renders every pane (research_view.overview?full=1) ----
 const RES = { pane: 'overview', area: null, v: null, state: null, next: [], qs: [], wos: [], open: {} };
 function resSay(m) { const el = $('#resMsg'); if (el) el.textContent = m || ''; }
@@ -1501,7 +1578,7 @@ function renderOverview() {
       ${stat(s.important_questions, 'important open questions', 'Open questions on findings you rated 4–5, or that the Master Plan depends on')}
       ${stat(s.issues, 'watch-outs worth acting on', 'High or medium impact issues — stale evidence, contradictions, one-sided topics, lone viewpoints')}
       ${stat(s.claims_awaiting_decision, 'Claims awaiting your decision', 'Strong, important, still proposed — accept or reject them')}
-      ${stat(`${s.areas_weak}/${s.areas_total}`, 'areas still weak', 'A research area whose Claims are mostly weak or missing')}
+      ${stat(`${(v.areas || []).filter(a => a.strong > 0).length}/${s.areas_total}`, 'areas with a well-evidenced conclusion', 'Areas where at least one Claim is Strong. The rest rest on single or repeated sources — the open questions above are how they move.')}
     </div>
     <h3 style="margin-top:16px">Do these next</h3>
     <div class="muted" style="margin-bottom:6px">Ranked by what it costs you to leave it alone: importance, whether the Master Plan rests on it, impact, and how many Claims it touches. Everything here is $0 unless a button says otherwise.</div>
@@ -1710,6 +1787,7 @@ async function loadJobs() {
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: u.paused ? '' : '', _budget: true });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
+  loadBacklog();
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
     <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
@@ -1858,7 +1936,7 @@ async function loadWorkbench(reset = true) {
     : n.status === 'suggested' ? `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
     : n.status === 'reserve' ? `<button class="small primary" title="Approve" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small" title="Send to Suggested" onclick="noteStatus(${n.id},'suggested')">📌</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
     : `<button class="small ghost" title="restore to suggested" onclick="noteStatus(${n.id},'suggested')">↩</button>`;
-  $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button>` : ''}</div>` +
+  $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="sourceDrawer('${sid}')">source ↗</button>` : ''}</div>` +
       list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</div>`).join('')
     : `<div class="empty">${r.total ? '' : st === 'approved' && !$('#fbQ').value && !$('#fbUsed').value ? 'Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.' : 'No findings match these filters.'}</div>`;
   const pages = Math.ceil(r.total / FB.limit);

@@ -258,3 +258,13 @@ def local_split(days: int | None = None) -> dict[str, Any]:
     return {"calls": n, "local_calls": nl, "local_share": round(nl / n, 3) if n else 0.0, "actual": round(float(row["actual"] or 0), 4),
             "avoided": round(float(row["avoided"] or 0), 4), "since": since,
             "line": (f"{n:,} AI calls · {round(100 * nl / n)}% local · ${float(row['actual'] or 0):.2f} actual · ${float(row['avoided'] or 0):.2f} avoided" if n else "no AI calls yet")}
+
+
+def estimate_source_findings(source_id: str, rate_per_min: float | None = None) -> float:
+    """What a findings pass over ONE source is expected to cost on the API — the same figure `staleness.assess` quotes,
+    in one place so the stale triage (S1) and the acceleration dialog (L3) can never disagree."""
+    s = db.get_source(source_id) or {}
+    if s.get("duration"):
+        return estimate_video(s["duration"], rate_per_min)["analyse"]
+    chars = db.connect().execute("SELECT COALESCE(SUM(LENGTH(text)),0) FROM segments WHERE source_id=?", (source_id,)).fetchone()[0]
+    return estimate_findings(int(chars or 0))

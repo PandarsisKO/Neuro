@@ -251,6 +251,12 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         ok, tail = _pytest(["tests/test_m3_links.py"])
         r.check("candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; "
                 "dismissal is the user's word; Capture best N goes through attach → ingest job, never the web; chat's research state names what is known but uncaptured", ok, tail)
+        ok, tail = _pytest(["tests/test_o1_accelerate.py"])
+        r.check("acceleration dialog (L3): the backlog reports time on Claude Code and the SAME per-source dollar estimate the stale triage quotes; buying speed moves exactly the jobs chosen "
+                "(api_requested, value order honoured) and nothing else; a cloud profile never offers it — slowness alone never spends", ok, tail)
+        ok, tail = _pytest(["tests/test_n9_source_drawer.py"])
+        r.check("source drawer (S3): one $0 request per source returns its measured value, its findings by status with what used each, the Claims resting on it, where it shows up "
+                "(plan steps by title, chat answers by conversation — never a use the plan body does not reference) and its staleness tier with the one-source actions", ok, tail)
         ok, tail = _pytest(["tests/test_n8_research_shell.py"])
         r.check("Research shell (R2): the tab renders from ONE $0 request (overview(full=True) == the separate endpoints, one pass); a watch-out carries one verdict for every tension "
                 "behind it and a dismissal survives the next refresh; the shell's panes, endpoints and question actions all exist on this build", ok, tail)

@@ -122,3 +122,88 @@ def empty() -> dict[str, Any]:
          "claims": {"evidence_rows": 0, "strong": 0, "accepted": 0}, "used": {"plan_evidence": 0, "chat_citations": 0, "last_used_at": None}, "priority": False}
     v.update({"value_score": 0, "why": [], "matters": False, "never_used": True, "label": "nothing yet"})
     return v
+
+
+# ------------------------------------------------------------------ S3: the source drawer — everything one source gave, in one place ($0)
+
+def _walk_plan_uses(node: Any, eids: set[str], label: str | None, out: list[dict[str, Any]], depth: int = 0) -> None:
+    """Every place in the plan BODY that cites one of this source's evidence ids, with the nearest enclosing title."""
+    if depth > 8:
+        return
+    if isinstance(node, dict):
+        here = str(node.get("title") or node.get("name") or node.get("step") or "") or label
+        ev = node.get("evidence")
+        if isinstance(ev, list) and any(isinstance(e, str) and e in eids for e in ev):
+            out.append({"where": here or "the plan", "text": str(node.get("text") or node.get("detail") or node.get("description") or "")[:220]})
+        for k, v in node.items():
+            if not str(k).startswith("_"):
+                _walk_plan_uses(v, eids, here if k not in ("phases", "tasks", "steps") else here, out, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_plan_uses(v, eids, label, out, depth + 1)
+
+
+def used_in(project_id: str, source_id: str) -> dict[str, Any]:
+    """Where this source actually shows up: Master Plan steps that cite it, and chat answers that cited it."""
+    conn = db.connect()
+    plan_uses: list[dict[str, Any]] = []
+    plan = db.latest_plan(project_id)
+    version = None
+    if plan:
+        body = plan.get("plan") or {}
+        eids = {eid for eid, v in (body.get("_evidence") or {}).items() if v.get("source_id") == source_id}
+        if eids:
+            _walk_plan_uses({k: v for k, v in body.items() if not str(k).startswith("_")}, eids, None, plan_uses)
+        version = plan.get("version")
+    seen, chat_uses = set(), []
+    for r in conn.execute("""SELECT m.id, m.content, m.created_at, c.id AS conv_id, c.title FROM messages m JOIN conversations c ON c.id=m.conversation_id
+                             WHERE c.project_id=? AND m.role='assistant' AND m.citations LIKE ? ORDER BY m.created_at DESC LIMIT 40""",
+                          (project_id, f"%{source_id}%")).fetchall():
+        try:
+            cites = json.loads(conn.execute("SELECT citations FROM messages WHERE id=?", (r["id"],)).fetchone()["citations"] or "[]")
+        except (ValueError, TypeError):
+            cites = []
+        locs = [str(c.get("timestamp") or "") for c in cites if (c or {}).get("source_id") == source_id]
+        if not locs or r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        chat_uses.append({"conversation_id": r["conv_id"], "conversation": r["title"] or "untitled chat", "at": r["created_at"],
+                          "locators": sorted({l for l in locs if l})[:4], "snippet": " ".join((r["content"] or "").split())[:200]})
+    return {"plan": {"version": version, "uses": plan_uses[:12]}, "chat": chat_uses[:12]}
+
+
+def digest(project_id: str, source_id: str) -> dict[str, Any]:
+    """One source, everything it gave this project: value, its findings by status (with what used each), the Claims they
+    became, where it shows up, and its staleness tier with the one-source actions. $0, no model call."""
+    from . import findings as findings_mod
+    from . import findings_view, staleness
+    src = db.get_source(source_id)
+    if not src or not db.get_project(project_id):
+        raise KeyError("source or project not found")
+    v = compute(project_id).get(source_id) or empty()
+    fq = findings_view.query(project_id, status="all", source_id=source_id, sort="importance", limit=findings_view.PAGE_MAX)
+    by_status: dict[str, list[dict[str, Any]]] = {}
+    for f in fq["findings"]:
+        by_status.setdefault(f["status"], []).append({"id": f["id"], "title": f.get("title"), "content": f.get("content"), "importance": f.get("importance"),
+                                                      "locator": ((f.get("citations") or [{}])[0] or {}).get("timestamp"),
+                                                      "link": ((f.get("citations") or [{}])[0] or {}).get("link"), "used": f["used"], "area": f.get("area")})
+    claims_rows = [dict(r) for r in db.connect().execute(
+        """SELECT c.id, c.text, c.strength, c.status, c.claim_type, c.freshness_status, e.independent, e.locator, e.stale
+           FROM claim_evidence e JOIN project_claims c ON c.id=e.claim_id
+           WHERE c.project_id=? AND e.source_id=? AND c.status<>'rejected'
+           ORDER BY CASE c.strength WHEN 'strong' THEN 0 WHEN 'developing' THEN 1 ELSE 2 END, c.created_at LIMIT 40""", (project_id, source_id)).fetchall()]
+    st = next((x for x in staleness.assess(project_id)["sources"] if x["source_id"] == source_id), {})
+    tier = None
+    if st.get("status") in ("stale", "legacy_unverified"):
+        tiers = staleness.triage(project_id)["tiers"]
+        tier = next((k for k, t in tiers.items() if any(r["source_id"] == source_id for r in t["sources"])), None)
+    return {"source": {"id": source_id, "title": src.get("title") or src["url"], "url": src["url"], "platform": src["platform"], "channel": src.get("channel"),
+                       "published_at": src.get("published_at"), "duration": src.get("duration"), "status": src["status"],
+                       "long": findings_mod.is_long(src), "depth": (db.get_analysis(project_id, source_id, "summary") or {}).get("depth"),
+                       "summary": (db.get_analysis(project_id, source_id, "summary") or {}).get("summary")},
+            "value": {"score": v["value_score"], "label": v["label"], "why": v["why"], "matters": v["matters"], "never_used": v["never_used"],
+                      "priority": v["priority"], "findings": v["findings"], "importance": v["importance"], "claims": v["claims"], "used": v["used"]},
+            "findings": by_status, "findings_total": fq["total"], "claims": claims_rows,
+            "used_in": used_in(project_id, source_id),
+            "staleness": {"status": st.get("status"), "reasons": st.get("reasons") or [], "tier": tier, "estimate": st.get("estimate"),
+                          "analysed_at": st.get("analysed_at"), "model": st.get("model")}}
