@@ -1493,3 +1493,38 @@ or missing job. Suite 478; Tier 1 unchanged.
 **Honest limits.** A bump is per-job, not per-kind or per-source — bumping one `ingest_source` job doesn't bump
 the rest of a channel's videos; each needs its own click if Kyle wants a whole batch reordered. It also only
 affects CLAIM order, same as lanes — it can't preempt a job a worker has already started running.
+
+## S1 feature — "Check now" for a parked wait — 0.45.13
+
+Kyle: *"in our progress bar we have a message that states: account's usage limit is reached — access returns
+2026-10-01 00:00 UTC. Nothing is lost; it continues from where it stopped. but I think thats an old message and is
+not true. how do we verify?"*
+
+**Root cause.** The date is real — `providers.spend_cap_until()` parses it directly out of Anthropic's own error
+text (`_REGAIN` regex) the moment the SPEND_CAP error is first hit, nothing invented. But `jobs.py`'s SPEND_CAP
+branch turns that into a `not_before` on the job (capped 30 days out), and `claim_job`'s WHERE clause excludes
+any job whose `not_before` is still in the future — so once parked, NOTHING re-attempts the call before that
+stored date arrives, even if the real-world constraint (spend cap, rate limit) already lifted. The banner is a
+frozen snapshot with no way to self-correct early. `api_retry_job`/`db.retry_job` don't help — they only operate
+on `status == "failed"` jobs, not a queued job sitting on a timer wait.
+
+**Built.** `db.check_now(job_id)`: on a `queued` job with an active `not_before`, clears `not_before`/`wait_reason`
+and sets `bumped_at` (reusing the 0.45.12 bump mechanism) so the very next worker cycle makes a genuinely fresh
+call — either it succeeds (clearing the block for everything else parked behind the same constraint) or it
+reports the CURRENT date/reason, replacing the stale one. A job with no active timer wait is a no-op (`"queued"`),
+not an error — nothing to check early on a job that's already eligible to run. `POST /api/jobs/{id}/check-now`
+(404 missing, 409 not queued, same shape as `/bump`). Jobs panel: a "🔄 Check now" button, shown only on the
+timer-driven wait states (`budget_wait`/`rate_limit_wait`/`provider_wait`/`retry_wait` — never `blocked`, which is
+dependency-driven and wouldn't benefit).
+
+**Gate.** New `tests/test_n7_pool.py::test_check_now_unparks_a_timer_wait_and_is_a_noop_otherwise`: a job parked
+30 days out via `requeue_job(..., wait_reason="budget")` gets unparked and bumped by `check_now`; an idle queued
+job with no wait is an untouched no-op; a still-waiting job (shorter delay) is left alone; a `running` job returns
+`"running"` (refused, matching the API's 409); a missing job returns `"missing"` (404). Suite 479; Tier 1
+unchanged.
+
+**Honest limits.** "Check now" doesn't ask Anthropic anything directly — it just removes the artificial wait so
+the ordinary worker loop tries again immediately. If the real-world limit genuinely hasn't lifted yet, the job
+will get re-parked with a fresh (still real) date within one attempt cycle. The Anthropic Console
+(console.anthropic.com → Billing/Limits) remains the independent ground-truth source if Kyle wants to verify
+outside the app entirely.

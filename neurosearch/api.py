@@ -1314,6 +1314,23 @@ def api_bump_job(job_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.post("/api/jobs/{job_id}/check-now", dependencies=[Depends(require_auth)])
+def api_check_now(job_id: str) -> dict[str, Any]:
+    """Kyle: "in our progress bar we have a message that states: account's usage limit is reached — access returns
+    2026-10-01 00:00 UTC ... but I think thats an old message and is not true. how do we verify?" The date is real —
+    parsed straight from Anthropic's own error text when the job was first parked — but nothing re-attempts the call
+    before that date, so the banner can go stale if the real-world limit already lifted. This clears the wait and
+    bumps the job to the front so the very next worker cycle makes a fresh call. A job with no active timer wait has
+    nothing to check early — that's a no-op, not an error, since it just means the job is already eligible to run."""
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    st = db.check_now(job_id)
+    if st != "queued":
+        raise HTTPException(409, f"only a queued job can be checked (this one is {st})")
+    return {"ok": True}
+
+
 @app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
 def api_cancel_job(job_id: str) -> dict[str, Any]:
     """Cancel one queued job. A queued video goes back to the Review card; running jobs can't be interrupted."""

@@ -308,3 +308,44 @@ def test_bump_job_jumps_the_whole_queue_and_is_one_shot(monkeypatch):
         api.api_bump_job(running["id"])
     with pytest.raises(Exception):
         api.api_bump_job("does-not-exist")
+
+
+def test_check_now_unparks_a_timer_wait_and_is_a_noop_otherwise(monkeypatch):
+    """Kyle: "in our progress bar we have a message that states: account's usage limit is reached — access returns
+    2026-10-01 00:00 UTC ... but I think thats an old message and is not true. how do we verify?" The stored date is
+    real (parsed straight from Anthropic's error text) but nothing re-attempts the call before it — 'Check now'
+    clears the wait and bumps the job so the next worker cycle makes a genuinely fresh call."""
+    pid, ids = _fixture(monkeypatch)
+    parked = db.create_job("reembed", {"n": "parked"})
+    db.requeue_job(parked["id"], delay=30 * 24 * 3600, message="paused: budget", wait_reason="budget")
+    j = db.get_job(parked["id"])
+    assert j["not_before"] and j["not_before"] > db.now()
+    assert db.derived_status(j) == "budget_wait"
+
+    assert db.check_now(parked["id"]) == "queued"
+    j = db.get_job(parked["id"])
+    assert not j["not_before"]
+    assert not j["wait_reason"]
+    assert j["bumped_at"]                                              # jumps the queue too, so it runs next
+    assert db.derived_status(j) == "queued"
+
+    # a job with no active timer wait has nothing to check early — no-op, not an error
+    idle = db.create_job("reembed", {"n": "idle"})
+    assert db.check_now(idle["id"]) == "queued"
+    assert not db.get_job(idle["id"])["bumped_at"]                     # untouched — nothing was waiting
+
+    # only a queued job can be checked; missing job is reported distinctly; the API surfaces the same rules
+    still_waiting = db.create_job("reembed", {"n": "still_waiting"})
+    db.requeue_job(still_waiting["id"], delay=100, wait_reason="retry")
+    db.claim_job(("reembed",))                                         # claims the bumped `parked` job first
+    db.claim_job(("reembed",))                                         # now claims `idle`
+    assert db.get_job(still_waiting["id"])["status"] == "queued"       # untouched — not_before is still in the future
+    now_running = db.create_job("reembed", {"n": "now_running"})
+    db.claim_job(("reembed",))                                         # claims `now_running` -> status becomes running
+    assert db.check_now(now_running["id"]) == "running"
+    assert db.check_now("does-not-exist") == "missing"
+    with pytest.raises(Exception):
+        api.api_check_now(now_running["id"])
+    with pytest.raises(Exception):
+        api.api_check_now("does-not-exist")
+    assert api.api_check_now(still_waiting["id"]) == {"ok": True}      # still queued -> checking it now succeeds

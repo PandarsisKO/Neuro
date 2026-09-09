@@ -1769,6 +1769,29 @@ def bump_job(job_id: str) -> str:
         return "queued"
 
 
+def check_now(job_id: str) -> str:
+    """Kyle: a parked job's stored message (e.g. a SPEND_CAP "access returns <date>") is exactly what the provider
+    said the moment it was hit — never invented — but it's frozen text: nothing re-attempts the call before that
+    date arrives, so if the real-world limit already lifted (credits added, limit raised in the Console), the
+    banner just sits there looking stale for however long is left. "Check now" clears the wait (not_before) and
+    bumps the job to the front, so the very next worker cycle makes a fresh call and either succeeds (clearing the
+    block for everything parked behind it) or reports the CURRENT date/reason, replacing the stale one. Only a
+    queued job with an active wait can be checked — nothing to check on one that's already running or waiting on
+    unmet dependencies rather than a timer."""
+    with tx() as conn:
+        r = conn.execute("SELECT status, not_before, blocked_by FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        if r["status"] != "queued":
+            return r["status"]
+        if not r["not_before"]:
+            return "queued"   # not actually waiting on a timer — nothing to check early
+        t = now()
+        conn.execute("UPDATE jobs SET not_before=NULL, wait_reason=NULL, bumped_at=?, updated_at=? WHERE id=? AND status='queued'", (t, t, job_id))
+        job_event(job_id, "checked_now", conn=conn)
+        return "queued"
+
+
 def _release_source_after_cancel(conn: sqlite3.Connection, r: Any) -> None:
     try:
         pl = json.loads(r["payload"] or "{}")
