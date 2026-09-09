@@ -1702,5 +1702,9 @@ status change, no new row) would not move it; the one-minute reconcile is what c
 the honest reason it is acceptable rather than ignored. Cost estimates inside `assess` depend on the observed
 spend rate, which is not in the cache key — an estimate drifting a few cents between recomputes is cosmetic
 where a wrong CURRENT/STALE verdict would not be. The p90 in the table is still a cold miss by design: the first
-request after any change pays full price. The payload is still ~2.3 MB and the UI still re-renders the list
-wholesale on every refresh — both untouched, and both now a larger share of what remains than the server work.
+request after any change pays full price. **The bottleneck has now moved to the browser**, measured after this
+rung: one Sources refresh is 168 ms of fetch, 44 ms of JSON parse and **669 ms total inside `loadSources`** — so
+roughly 450 ms of DOM building for **22,470 nodes**, on a **4.6 MB** payload (3.8 KB per row for 1,234 rows; the
+earlier "~2.3 MB" figure counted `description` bytes only and understated it). Client render is now ~4× the
+server time. R2 part 3 is therefore a frontend rung — send fewer fields, and stop rebuilding every collapsed
+group's DOM on each refresh — not more server caching.
