@@ -103,6 +103,9 @@ async def lifespan(app: FastAPI):
     jobs.stop_workers()
 
 
+LIST_DESCRIPTION_CHARS = 200      # R2: the Sources list shows one ellipsised line; the full text stays on /api/sources/{id}
+
+
 class PerfMiddleware:
     """Pure-ASGI (R0, SPEED-MISSION.md): time every /api request under its ROUTE TEMPLATE. Keying on the raw
     path would mint a new counter per project/source id and measure nothing; Starlette fills `scope["route"]`
@@ -1032,6 +1035,13 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 r["acquisition"] = {"state": "requires_browser", "job_id": b["job_id"], "reason": b["reason"], "status": b["status"], "url": b["canonical_url"] or r["url"]}
             elif (r.get("error_class") or "").startswith("browser_solvable:"):
                 r["acquisition"] = {"state": "requires_browser", "job_id": None, "reason": r.get("error"), "status": "needs_request", "url": r["url"]}
+        # R2 part 3: `description` measured 2,135 KB of this response's 4,026 KB — 53%, for a field the list renders
+        # as one ellipsised muted line and only when a source has no duration. The drawer and the reader fetch the
+        # source again through /api/sources/{id}, so they still get it whole; only the LIST copy is clipped.
+        for r in rows:
+            d = r.get("description")
+            if d and len(d) > LIST_DESCRIPTION_CHARS:
+                r["description"] = d[:LIST_DESCRIPTION_CHARS] + "…"
         perf.record("sources:rows", time.perf_counter() - _rows_t0)
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))

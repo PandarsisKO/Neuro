@@ -265,3 +265,30 @@ def test_staleness_cache_is_invalidated_by_job_churn():
     db.create_job("suggest_findings", {"project_id": p["id"], "source_ids": [s["id"]]})
     api.api_sources(project_id=p["id"], limit=50)
     assert perf.snapshot()["caches"]["staleness"]["miss"] == misses + 1  # a job appeared → recomputed
+
+
+# ---------------------------------------------------------------- R2 part 3: payload
+
+def test_list_clips_description_but_the_single_source_keeps_it_whole():
+    """`description` measured 53% of the Sources payload for a field the list renders as one ellipsised line. The
+    list copy is clipped; the drawer and the reader fetch /api/sources/{id} separately and must still get the full
+    text, or clipping the list would quietly truncate what the user actually reads."""
+    long_desc = "x" * (api.LIST_DESCRIPTION_CHARS * 3)
+    p = db.create_project("Clip", "brief")
+    s = db.upsert_source(platform="youtube", external_id="clip-1", url="https://www.youtube.com/watch?v=clip-1",
+                         title="t", description=long_desc, status="ready")
+    db.add_project_sources(p["id"], [s["id"]])
+
+    row = next(r for r in api.api_sources(project_id=p["id"], limit=50) if r["id"] == s["id"])
+    assert len(row["description"]) == api.LIST_DESCRIPTION_CHARS + 1 and row["description"].endswith("…")
+    assert db.get_source(s["id"])["description"] == long_desc          # untouched at rest
+    assert api.api_source(s["id"])["description"] == long_desc         # and whole on the single-source endpoint
+
+
+def test_short_descriptions_are_left_exactly_alone():
+    p = db.create_project("Clip2", "brief")
+    s = db.upsert_source(platform="youtube", external_id="clip-2", url="https://www.youtube.com/watch?v=clip-2",
+                         title="t", description="short one", status="ready")
+    db.add_project_sources(p["id"], [s["id"]])
+    row = next(r for r in api.api_sources(project_id=p["id"], limit=50) if r["id"] == s["id"])
+    assert row["description"] == "short one"

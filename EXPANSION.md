@@ -1708,3 +1708,48 @@ roughly 450 ms of DOM building for **22,470 nodes**, on a **4.6 MB** payload (3.
 earlier "~2.3 MB" figure counted `description` bytes only and understated it). Client render is now ~4× the
 server time. R2 part 3 is therefore a frontend rung — send fewer fields, and stop rebuilding every collapsed
 group's DOM on each refresh — not more server caching.
+
+## SPEED R2 (part 3) — the frontend rung: send less, build less, rebuild nothing — 0.46.3
+
+**Root cause.** After parts 1 and 2 the server was at 155 ms and the browser was the bottleneck: one Sources
+refresh measured 168 ms fetch + 44 ms parse + **669 ms total**, i.e. ~450 ms building **22,470 DOM nodes** from a
+**4.6 MB** payload. Three separate wastes, each measured before being fixed. (1) `description` was **2,135 KB of
+4,026 KB — 53%** of the payload, for a field the list renders as one ellipsised muted line, and only when a source
+has no duration. (2) Every group's rows were built even when the group was **collapsed** — `renderSourceList` ran
+`list.map(srcRowHtml)` for all 118 groups regardless. (3) Every refresh did `innerHTML = …` over the whole list,
+rebuilding all 22,470 nodes and discarding scroll position, focus and open/closed state — every 3 seconds while a
+job was running, which is exactly when the user is watching.
+
+**Built.** The list response clips `description` to `LIST_DESCRIPTION_CHARS` (200) with an ellipsis; the drawer and
+the reader call `/api/sources/{id}` separately and still receive it whole, so nothing the user actually reads is
+truncated. `renderSourceList` now builds **no row HTML at all** for a collapsed group, and `srcGroupToggled` fills
+one the first time it is opened. And when the group shape is unchanged, the list is **patched rather than
+rebuilt**: each group's content is compared against `SRCG.html` and only the groups that genuinely differ have
+their `.grows` container rewritten, so a job ticking in one group updates live while the other 117 keep their DOM.
+`loadJobs` also stopped deciding poll cadence by looking for a spinner in the DOM — a running source inside a
+collapsed group now has no DOM, and the cadence must not slow down because the user folded a group away.
+
+**Gate.** `tests/test_p1_perf.py` +2 (15 total): a long description is clipped in the list while `db.get_source`
+and `api_source` still return it whole, and a short one is left exactly alone.
+
+**Measured result (live, 1,234 rows in 118 groups).**
+
+| | before | after |
+|---|---|---|
+| payload | 4,688 KB | **2,774 KB** |
+| fetch | 168 ms | **114 ms** |
+| render, all groups open | 669 ms | **162 ms** |
+| render, all groups collapsed | (same 669 ms) | **50 ms** |
+| DOM nodes, all collapsed | 22,588 | **590** |
+| refresh with nothing changed | full rebuild | **DOM preserved** (same element identity verified) |
+
+**4.1× on the render, 38× fewer nodes when collapsed, and a refresh no longer destroys the page.**
+
+**Honest limits.** All 118 groups are open by default, so the lazy-group win only appears once the user collapses
+something — the 50 ms figure is the "Collapse all" path, not the default one. A repeat refresh still costs ~186 ms
+because `loadSources` re-fetches (114 ms) and rebuilds the HTML *strings* for open groups in order to compare them;
+only the DOM write is skipped. Cutting that further means either a per-row signature instead of string comparison,
+or not re-fetching at all — which the R2 part 2 tick already does at the poll level, so this only bites on explicit
+refreshes. `summary` (350 KB) and `analysis` (459 KB) are still sent in full because the list genuinely renders
+both. Scroll preservation was verified indirectly, by proving the DOM elements survive a refresh; the harness could
+not measure scroll position directly in this window.

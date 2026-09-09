@@ -578,7 +578,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.46.2';
+const UI_VERSION = '0.46.3';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1019,8 +1019,21 @@ async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was down
 // (community.py sets it to the subreddit name), a book's creators, or a web page's domain — so origin grouping needs
 // no new scanning or schema, just reading a column that was already there. SRCG remembers which groups the user
 // closed by hand so a refresh (a new source landing, a filter change) doesn't re-open them.
-const SRCG = { collapsed: new Set(), rows: [] };
-function srcGroupToggled(key, open) { if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key); }
+// R2 part 3 (SPEED-MISSION.md): `html` is the last content rendered per group and `byKey` the current rows, so a
+// refresh can patch only the groups that actually changed instead of rebuilding all 22,470 nodes — which also stops
+// every poll from throwing away scroll position and open/closed state.
+const SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {} };
+function srcGroupToggled(key, open) {
+  if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key);
+  if (!open) return;
+  // a collapsed group's rows are never built (on Kyle's project that is most of 1,234 rows of DOM nobody can see),
+  // so fill it the first time it is opened.
+  const el = document.querySelector(`#srcList details[data-k="${CSS.escape(key)}"] .grows`);
+  if (el && !el.innerHTML && (SRCG.byKey[key] || []).length) {
+    const html = SRCG.byKey[key].map(srcRowHtml).join('');
+    el.innerHTML = html; SRCG.html.set(key, html);
+  }
+}
 function srcGroupKey(s) {
   if (s.channel) return s.channel;
   return { video: 'YouTube (no channel)', community: 'Community (no subreddit)', book: 'Books', document: 'Documents',
@@ -1064,22 +1077,49 @@ function renderSourceList() {
   const rows = SRCG.rows;
   const empty = '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
   const grouping = $('#srcGroupToggle') ? $('#srcGroupToggle').checked : true;
-  if (!rows.length) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = empty; return; }
-  if (!grouping) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); return; }
+  if (!rows.length) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = empty; SRCG.keys = []; return; }
+  if (!grouping) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   const groups = {};
   rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
   const keys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b));
-  if (keys.length <= 1) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); return; }
+  if (keys.length <= 1) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(keys);
   // a search or an active chip/value filter means the user is hunting for something specific — never hide a match
   const searching = !!($('#srcQ') && $('#srcQ').value) || Object.values(state.srcFilters || {}).some(Boolean);
   $('#srcGroupCtl').style.display = '';
-  $('#srcList').innerHTML = keys.map(k => {
-    const list = groups[k];
+  SRCG.byKey = groups;
+  const wrap = $('#srcList');
+  // build each group's content once; a CLOSED group builds nothing at all (see srcGroupToggled)
+  const built = keys.map(k => {
     const open = searching || !SRCG.collapsed.has(k);
-    const keyJs = JSON.stringify(k).replace(/"/g, '&quot;');
-    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="srcGroupToggled(${keyJs}, this.open)"><summary class="gh"><b>${esc(k)}</b><span>${list.length} source${list.length === 1 ? '' : 's'}</span></summary>${list.map(srcRowHtml).join('')}</details>`;
-  }).join('');
+    return { k, open, n: groups[k].length, content: open ? groups[k].map(srcRowHtml).join('') : '' };
+  });
+  const sameShape = SRCG.keys.length === keys.length && SRCG.keys.every((k, i) => k === keys[i])
+                    && wrap.children.length === keys.length;
+  if (!sameShape) {
+    wrap.innerHTML = built.map(b => {
+      const keyJs = JSON.stringify(b.k).replace(/"/g, '&quot;');
+      return `<details class="fgroup" data-k="${esc(b.k)}" ${b.open ? 'open' : ''} ontoggle="srcGroupToggled(${keyJs}, this.open)">`
+           + `<summary class="gh"><b>${esc(b.k)}</b><span>${b.n} source${b.n === 1 ? '' : 's'}</span></summary>`
+           + `<div class="grows">${b.content}</div></details>`;
+    }).join('');
+  } else {
+    // patch in place: only the groups whose rendered rows actually differ are touched, so an unchanged group keeps
+    // its DOM (and the page keeps its scroll position) while a job ticking away in one group still updates live.
+    built.forEach((b, i) => {
+      const el = wrap.children[i];
+      if (!el) return;
+      if (el.open !== b.open) el.open = b.open;
+      if (SRCG.html.get(b.k) !== b.content) {
+        const box = el.querySelector('.grows');
+        if (box) box.innerHTML = b.content;
+        const cnt = el.querySelector('summary span');
+        if (cnt) cnt.textContent = `${b.n} source${b.n === 1 ? '' : 's'}`;
+      }
+    });
+  }
+  SRCG.keys = keys;
+  SRCG.html = new Map(built.map(b => [b.k, b.content]));
 }
 async function loadSources() {
   loadReviews();
@@ -1955,7 +1995,7 @@ async function loadJobs() {
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
     <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">🔄 Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);
-  const analysing = !!document.querySelector('#srcList .spin');
+  const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
   const every = (active.length || analysing) ? 3000 : 15000;
   jobsTimer = setTimeout(pollTick, every);
