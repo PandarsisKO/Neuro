@@ -201,6 +201,21 @@ def test_stub_cli_proves_the_headless_contract(monkeypatch, tmp_path):
     assert "--model" not in call            # no model pin unless NEUROSEARCH_CLAUDE_CODE_MODEL is set
 
 
+def test_health_probe_uses_the_pinned_model_not_the_clis_bare_default(monkeypatch, tmp_path):
+    """Kyle: "our Claude Code subscription is not saturated. Only [the CLI's own default model] is. We should be able
+    to do background (non api) still." The probe used to hardcode model=None — the CLI's OWN default, which can be a
+    DIFFERENT, separately-metered model than settings.claude_code_model actually pins real work to. That let one
+    model's own limit report the whole local path dead while the pinned model (what every real call actually uses)
+    was completely fine. The probe must ask with the SAME pin real calls use, so health reflects reality."""
+    argf = _real(monkeypatch, tmp_path, "ok", "OK")
+    monkeypatch.setattr(settings, "claude_code_model", "sonnet")
+    h = CC.health(force=True)
+    assert h["state"] == "ready"
+    calls = [json.loads(l) for l in argf.read_text().splitlines()]
+    probe_call = next(c for c in calls if "-p" in c)        # the version check has no "-p"; the probe prompt does
+    assert "--model" in probe_call and probe_call[probe_call.index("--model") + 1] == "sonnet"
+
+
 @pytest.mark.parametrize("mode,kind", [("limit", "usage_limit"), ("auth", "not_signed_in"), ("crash", "error"), ("garbage", "malformed_output")])
 def test_stub_cli_failures_map_to_the_two_policy_states(monkeypatch, tmp_path, mode, kind):
     _real(monkeypatch, tmp_path, mode)

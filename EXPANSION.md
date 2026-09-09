@@ -1528,3 +1528,37 @@ the ordinary worker loop tries again immediately. If the real-world limit genuin
 will get re-parked with a fresh (still real) date within one attempt cycle. The Anthropic Console
 (console.anthropic.com → Billing/Limits) remains the independent ground-truth source if Kyle wants to verify
 outside the app entirely.
+
+## S1 fix — the local-AI health probe used the CLI's bare default model, not the pinned one — 0.45.14
+
+Kyle: *"This is a serious issue. Our Claude code subscription is not saturated. Only fable work is. We should be able
+to do background (non api) still."* (His `.env` pins `NEUROSEARCH_CLAUDE_CODE_MODEL=sonnet` — see the 0.38.0 rung —
+specifically so findings/ranking quality stays on Sonnet instead of whatever the bare `claude` CLI defaults to.)
+
+**Root cause.** `claude_code._probe()` — the function that decides whether the ENTIRE local-AI path is "ready" —
+hardcoded `model=None` for its one-line health check, ignoring `settings.claude_code_model` entirely. Every REAL
+call (`create()`) already respected the pin and asked for `sonnet`. But the probe asked the CLI's own bare default
+model instead — on Kyle's machine right now, that default is a different, separately-metered model whose credit
+ran out. The probe came back `state: "error"` (exit 1, that model's own billing message), and because
+`providers.route()` refuses to send ANY local-capable work to Claude Code unless health is `"ready"`, that ONE
+unrelated model's exhaustion took down local execution for everything — findings, claims, ranking, plans — even
+though the pinned `sonnet` model, which is what every one of those jobs actually asks for, had headroom the whole
+time. The account-wide `blocked` banner (Anthropic API usage limit, unrelated to Claude Code) made this look like
+a single well-understood outage; it was actually two independent things, and the second one was a bug.
+
+**Built.** The probe now asks with `model=settings.claude_code_model or None` — the exact same pin `create()`
+uses — so a health verdict is a verdict about the model real work is actually going to run on, never about
+whatever the CLI happens to default to when nobody pins it.
+
+**Gate.** New `tests/test_n2_local_ai.py::test_health_probe_uses_the_pinned_model_not_the_clis_bare_default`: with
+`claude_code_model="sonnet"`, `CC.health(force=True)` is asserted to have sent `--model sonnet` on the probe call
+itself (not just a later `create()` call) — using the stub CLI's argv log to check the actual subprocess
+invocation, not just the returned verdict. The existing `test_stub_cli_proves_the_headless_contract` (unpinned,
+`claude_code_model=None`) still asserts no `--model` flag at all, so the unpinned path is unchanged. Suite 480;
+Tier 1 unchanged.
+
+**Honest limits.** This doesn't create redundancy across models — if the PINNED model itself runs out, local still
+correctly falls back to the API, same as before. It only fixes the specific failure mode where the probe and real
+calls disagreed about which model they were even asking. It also doesn't change anything about the account-wide
+Anthropic API usage-limit block (`0.45.13`'s "Check now") — that's a separate, real block on the API path; this
+fix is purely about not letting an irrelevant model's limit falsely report the local path as down too.

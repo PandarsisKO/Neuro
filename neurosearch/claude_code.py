@@ -216,7 +216,13 @@ def _probe() -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         return {"state": "error", "detail": f"`{binary()} --version` failed: {e}"[:300], "version": None}
     try:
-        resp = _run("Reply with exactly the word OK and nothing else.", system=None, model=None, timeout=PROBE_TIMEOUT, schema=None)
+        # Kyle: "our Claude Code subscription is not saturated. Only [the CLI's bare default model] is." The probe used
+        # to hardcode model=None here — the CLI's OWN default (its cheapest-available model, whatever that is today),
+        # which is a DIFFERENT model than settings.claude_code_model actually pins real calls to (create() below already
+        # respects the pin). A probe on the unpinned default can report the whole local path dead over one model's own
+        # limit while the pinned model — the one every real call actually uses — is completely fine. Probe with the same
+        # pin real work uses, so health reflects what's actually about to be asked to run.
+        resp = _run("Reply with exactly the word OK and nothing else.", system=None, model=settings.claude_code_model or None, timeout=PROBE_TIMEOUT, schema=None)
     except LocalLimit as e:
         return {"state": "usage_limit", "detail": e.detail[:300], "version": version, "reset_hint": e.reset_hint}
     except LocalUnavailable as e:
