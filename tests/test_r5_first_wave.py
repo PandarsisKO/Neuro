@@ -48,35 +48,68 @@ def _backlog(n: int = 20) -> str:
     return p["id"]
 
 
-def test_a_new_projects_first_sources_jump_an_unrelated_backlog():
+def _channel(pid: str, n: int, scores: list[int]) -> tuple[str, list[str]]:
+    """A reviewed channel: proposed sources carrying the relevance ranking rank_proposed produced."""
+    coll = db.upsert_collection("channel", f"UC{pid[:8]}", f"https://www.youtube.com/@c{pid[:6]}", "A channel")
+    ids = []
+    for i in range(n):
+        src = db.upsert_source(platform="youtube", external_id=f"chan{pid[:4]}{i:04d}",
+                               url=f"https://www.youtube.com/watch?v=chan{pid[:4]}{i:04d}", status="ready", title=f"Video {i}")
+        db.link_source_collection(src["id"], coll["id"])
+        db.upsert_analysis(pid, src["id"], "relevance", relevance=scores[i], relevance_why="x")
+        ids.append(src["id"])
+    return coll["id"], ids
+
+
+def test_a_channels_first_wave_is_the_top_ranked_videos_not_the_first_to_arrive():
+    """Kyle's rule: "top 3 videos by ranking when ingesting a whole channel". The ranking already exists from the
+    review, so it is decidable per source as each becomes ready — arrival order is irrelevant."""
     _backlog(20)
     new = db.create_project("New", "brief")
-    for i in range(10):
-        jobs.enqueue_suggestions(f"src{i}", new["id"])
-    mine = [j for j in db.list_jobs(limit=200) if (j["payload"] or {}).get("project_id") == new["id"]]
-    promoted = [j for j in mine if j["lane"] == "priority"]
-    assert len(promoted) == jobs.FIRST_WAVE, "a bounded first wave, not the whole project"
-    assert len(mine) == 10 and all(j["lane"] == "normal" for j in mine[:10 - jobs.FIRST_WAVE])
-    # and the promoted ones really are claimed before the older project's queue
+    _coll, ids = _channel(new["id"], 6, [10, 95, 30, 88, 5, 70])       # best: #1 (95), #3 (88), #5 (70)
+    for sid in ids:                                                     # they become ready in ARRIVAL order
+        jobs.enqueue_suggestions(sid, new["id"])
+    lane = {(j["payload"] or {}).get("source_ids", [None])[0]: j["lane"]
+            for j in db.list_jobs(limit=200) if (j["payload"] or {}).get("project_id") == new["id"]}
+    assert [lane[ids[i]] for i in (1, 3, 5)] == ["priority"] * 3, "the three best-ranked jump the queue"
+    assert [lane[ids[i]] for i in (0, 2, 4)] == ["normal"] * 3, "the rest wait their turn"
+    # and a promoted one really is claimed before the older project's backlog
     first = db.claim_job(kinds=("suggest_findings",), worker_id="w")
     assert (first["payload"] or {}).get("project_id") == new["id"]
 
 
+def test_a_source_added_on_its_own_always_starts_right_away():
+    """The other half: "start findings right away when videos are added individually" — you added one video, you
+    are waiting on that video. No collection means no ranking to be 4th in."""
+    _backlog(20)
+    new = db.create_project("New", "brief")
+    solo = db.upsert_source(platform="youtube", external_id="solo0000001",
+                            url="https://www.youtube.com/watch?v=solo0000001", status="ready", title="Just this one")
+    jobs.enqueue_suggestions(solo["id"], new["id"])
+    j = next(j for j in db.list_jobs(limit=200) if (j["payload"] or {}).get("project_id") == new["id"])
+    assert j["lane"] == "priority"
+
+
 def test_the_wave_is_free_it_only_changes_order():
     new = db.create_project("New", "brief")
-    jobs.enqueue_suggestions("src0", new["id"])
+    src = db.upsert_source(platform="youtube", external_id="free0000001",
+                           url="https://www.youtube.com/watch?v=free0000001", status="ready", title="V")
+    jobs.enqueue_suggestions(src["id"], new["id"])
     j = next(j for j in db.list_jobs(limit=50) if (j["payload"] or {}).get("project_id") == new["id"])
     assert j["lane"] == "priority"
     assert j["execution_policy"] == "local_preferred", "promotion must never route work onto the paid API"
 
 
 def test_it_cannot_re_trigger_itself():
-    """0.48.0's lesson: a lane that can re-queue itself needs a rate limit. This one must not be able to."""
+    """0.48.0's lesson: a lane that can re-queue itself needs a rate limit. This one must not be able to —
+    a hundred individually-added sources still cannot promote more than the cap."""
     new = db.create_project("New", "brief")
     for i in range(50):
-        jobs.enqueue_suggestions(f"src{i}", new["id"])
+        src = db.upsert_source(platform="youtube", external_id=f"many{i:07d}",
+                               url=f"https://www.youtube.com/watch?v=many{i:07d}", status="ready", title=f"V{i}")
+        jobs.enqueue_suggestions(src["id"], new["id"])
     mine = [j for j in db.list_jobs(limit=200) if (j["payload"] or {}).get("project_id") == new["id"]]
-    assert sum(1 for j in mine if j["lane"] == "priority") == jobs.FIRST_WAVE
+    assert sum(1 for j in mine if j["lane"] == "priority") == jobs.FIRST_WAVE_CAP
     # once the project HAS findings, nothing is promoted at all
     db.kv_set(f"firstwave:{new['id']}", "0")
     db.add_project_note(new["id"], "a finding", status="suggested")

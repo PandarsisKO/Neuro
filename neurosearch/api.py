@@ -2400,7 +2400,7 @@ def api_findings_first_wave(project_id: str, limit: int = 6) -> dict[str, Any]:
     behind another project's backlog."""
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return db.promote_first_findings(project_id, limit=min(max(1, limit), jobs.FIRST_WAVE * 4))
+    return db.promote_first_findings(project_id, limit=min(max(1, limit), jobs.FIRST_WAVE_CAP * 4))
 
 
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
@@ -2420,7 +2420,7 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
             made = [db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "depth": "deep", "reason": "read deeper"}, lane="slow") for sid in ids]
             return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids), "transport": body.transport, "depth": body.depth, "lane": "slow"}
         job = db.create_job("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force, "depth": body.depth},
-                            lane=jobs.first_wave_lane(project_id))
+                            lane=jobs.first_wave_lane(project_id, ids[0] if len(ids) == 1 else None))
     return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth}
 
 

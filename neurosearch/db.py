@@ -1993,6 +1993,33 @@ def bump_job(job_id: str) -> str:
         return "queued"
 
 
+def rank_within_collections(project_id: str, source_id: str) -> tuple[int | None, int]:
+    """Where this source sits in the relevance ranking of the collection(s) it came from, for THIS project.
+
+    The ranking is the one `rank_proposed` already produced at review time (project_source_analysis, kind
+    'relevance'), so it exists before a single video is downloaded — which is what makes "the top 3 of a channel"
+    decidable the moment each one becomes ready, without waiting for the rest.
+
+    Returns (best 1-based position, collection size). Position is None when the source is in no collection —
+    i.e. it was added on its own, not as part of a channel or playlist."""
+    conn = connect()
+    cols = [r["collection_id"] for r in conn.execute("SELECT collection_id FROM source_collections WHERE source_id=?", (source_id,)).fetchall()]
+    if not cols:
+        return None, 0
+    best, size = None, 0
+    for cid in cols:
+        rows = conn.execute(
+            "SELECT s.id, COALESCE(a.relevance, -1) r FROM sources s JOIN source_collections sc ON sc.source_id=s.id "
+            "LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=? AND a.analysis_kind='relevance' "
+            "WHERE sc.collection_id=? ORDER BY r DESC, s.created_at", (project_id, cid)).fetchall()
+        size = max(size, len(rows))
+        for i, r in enumerate(rows, start=1):
+            if r["id"] == source_id:
+                best = i if best is None else min(best, i)
+                break
+    return best, size
+
+
 def promote_first_findings(project_id: str, limit: int = 6) -> dict[str, Any]:
     """Bump the oldest queued findings jobs of ONE project to the front of the whole queue.
 

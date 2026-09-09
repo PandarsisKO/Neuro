@@ -574,28 +574,37 @@ def wait_for_idle(poll: float = 1.0) -> None:
         time.sleep(poll)
 
 
-FIRST_WAVE = 6        # sources a brand-new project may push to the front of the global queue, ONCE, for free
+FIRST_WAVE_RANKED = 3     # of a whole channel/playlist, the top N by the ranking the user already reviewed
+FIRST_WAVE_CAP = 12       # a hard ceiling per project, whatever the rules below decide
 
 
-def first_wave_lane(project_id: str) -> str:
-    """Kyle, live 2026-09-09: "the app is useless if I need to wait 24 hours for sources to populate. we NEED some
-    sources FAST. but not all of them right away."
+def first_wave_lane(project_id: str, source_id: str | None = None) -> str:
+    """Which sources jump the global queue so a project is usable while the rest of it ingests.
 
-    He was right and the cause was not findings being slow — it was FIFO. A findings job for a project he just
-    created queues behind every job already in the queue, and his other project had ~1,000 of them, so a new
-    project's FIRST finding sat hours away while the machine looked busy and produced nothing he could use.
+    Kyle set the rule, and it is better than the arrival-order one it replaces: *"fast batch of findings needs to
+    be like top 3 videos by ranking when ingesting a whole channel, and start findings right away when videos are
+    added individually."* Both halves are really the same signal — how deliberately did the user choose this
+    source? — and both are free to compute from data that already exists:
 
-    A project with no findings yet gets its first few sources on the `priority` lane so it becomes usable within
-    minutes. Deliberately small, deliberately once, and deliberately FREE: the promotion changes queue ORDER only —
-    same local provider, same model, same $0. (0.48.0 taught the other lesson: a lane that can re-trigger itself
-    needs a rate limit. This one cannot re-trigger — the condition is "this project has no findings", which stops
-    being true as soon as the wave lands, and a hard per-project counter caps it regardless.)"""
+      added on its own   →  always first. You added one video; you are waiting on that video.
+      from a collection  →  only the top FIRST_WAVE_RANKED by the relevance ranking `rank_proposed` already
+                            produced at review time. That ranking exists before anything is downloaded, so "the
+                            top 3 of this channel" is decidable the moment each one becomes ready, without
+                            waiting for its siblings.
+
+    Free either way: this changes queue ORDER only — same local provider, same model, same $0. And it cannot
+    re-trigger itself (0.48.0's lesson): a project that already has findings is not bootstrapping any more, and
+    FIRST_WAVE_CAP bounds the whole thing regardless of what the rules say."""
     try:
         if db.connect().execute("SELECT COUNT(*) FROM project_notes WHERE project_id=? LIMIT 1", (project_id,)).fetchone()[0]:
-            return "normal"                                   # it already has findings: nothing to bootstrap
+            return "normal"                                   # already has findings: nothing to bootstrap
         used = int(db.kv_get(f"firstwave:{project_id}") or 0)
-        if used >= FIRST_WAVE:
+        if used >= FIRST_WAVE_CAP:
             return "normal"
+        rank, size = (db.rank_within_collections(project_id, source_id) if source_id else (None, 0))
+        deliberate = rank is None                              # in no collection = added on its own
+        if not deliberate and (rank or 99) > FIRST_WAVE_RANKED:
+            return "normal"                                    # a channel's 4th-best video can wait its turn
         db.kv_set(f"firstwave:{project_id}", str(used + 1))
         return "priority"
     except Exception:  # noqa: BLE001 — a promotion is a nicety; never let it stop a job being queued
@@ -609,7 +618,7 @@ def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
         return
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:
-        db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]}, lane=first_wave_lane(pid))
+        db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]}, lane=first_wave_lane(pid, source_id))
 
 
 # ------------------------------------------------------------------ L3: the acceleration dialog — "the local provider is slow, buy speed on purpose"
