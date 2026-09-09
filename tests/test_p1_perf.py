@@ -17,7 +17,7 @@ os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 
-from neurosearch import api, db, perf  # noqa: E402
+from neurosearch import api, cache, db, perf  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
 
 
@@ -29,8 +29,10 @@ def _fresh(tmp_path, monkeypatch):
     db._local.conn = None
     db.init_db()
     perf.reset()
+    cache.invalidate()
     yield
     perf.reset()
+    cache.invalidate()
     db._local.conn = None
 
 
@@ -136,3 +138,68 @@ def test_startup_resolves_orphans_but_never_touches_a_live_run():
     assert db.get_invocation_state(dead_call) == "outcome_unknown"
     assert db.get_invocation_state(live_call) == "in_flight"            # still running: untouched
     assert db._resolve_orphan_invocations(db.connect()) == 0            # idempotent
+
+
+# ---------------------------------------------------------------- R2: revision-keyed derived-state cache
+
+def test_cache_reuses_only_while_the_revision_holds():
+    """The whole safety argument for caching derived research state: entries retire because the revision moved,
+    never because a timer expired. A cache that can be stale under any timing is not acceptable here."""
+    calls = []
+    def compute():
+        calls.append(1)
+        return {"v": len(calls)}
+
+    assert cache.get_or_compute("k", "rev1", compute) == {"v": 1}
+    assert cache.get_or_compute("k", "rev1", compute) == {"v": 1}      # same revision → reused, not recomputed
+    assert len(calls) == 1
+    assert cache.get_or_compute("k", "rev2", compute) == {"v": 2}      # revision moved → recomputed
+    assert len(calls) == 2
+    assert perf.snapshot()["caches"]["k"] == {"hit": 1, "miss": 2, "rate": round(1 / 3, 4)}
+    assert cache.invalidate("k") == 1 and cache.size() == 0
+
+
+def test_research_revision_moves_on_any_input_change_including_deletion():
+    """If the revision does not move when research state changes, every cache keyed on it serves stale answers —
+    so this is the single assertion the R2/R3 caches actually rest on. COUNT is in the fingerprint precisely so
+    that a DELETE moves it, which a MAX(updated_at) alone would not."""
+    p = db.create_project("Rev", "brief")
+    r0 = db.project_research_revision(p["id"])
+    assert db.project_research_revision(p["id"]) == r0                 # stable when nothing changes
+
+    db.connect().execute("INSERT INTO research_tensions (id, project_id, kind, description, status, impact, created_at, updated_at) "
+                         "VALUES ('t1',?,'CONTRADICTION','d','open','high',?,?)", (p["id"], db.now(), db.now()))
+    db.connect().commit()
+    r1 = db.project_research_revision(p["id"])
+    assert r1 != r0
+
+    db.connect().execute("DELETE FROM research_tensions WHERE id='t1'")
+    db.connect().commit()
+    assert db.project_research_revision(p["id"]) != r1                 # deletion moves it too
+
+
+def test_sources_endpoint_caches_the_skipped_scan_without_changing_its_answer():
+    """R2's measured hotspot: 0.45.7's skipped-source scan re-ran the whole $0 research derivation on every poll
+    (1.52 s of a 2.58 s endpoint, polled every 3 s). Caching it must be invisible in the OUTPUT — identical
+    pool_potential — and must recompute once the project's research state moves."""
+    p = db.create_project("Pool", "buying a business with seller financing")
+    s = db.upsert_source(platform="youtube", external_id="pool-x1", url="https://www.youtube.com/watch?v=pool-x1",
+                         title="Seller financing explained",
+                         description="how seller financing works when buying a business")
+    db.add_project_sources(p["id"], [s["id"]])
+    db.set_source_status(s["id"], "skipped")
+
+    first = api.api_sources(project_id=p["id"], limit=50)
+    assert first and first[0]["pool_potential"] is not None
+    before = perf.snapshot()["caches"].get("gap_terms", {}).get("miss", 0)
+
+    second = api.api_sources(project_id=p["id"], limit=50)
+    assert [r["pool_potential"] for r in second] == [r["pool_potential"] for r in first]   # same answer
+    assert perf.snapshot()["caches"]["gap_terms"]["hit"] >= 1                              # and it was reused
+    assert perf.snapshot()["caches"]["gap_terms"]["miss"] == before                        # no recompute
+
+    db.connect().execute("INSERT INTO research_tensions (id, project_id, kind, description, status, impact, created_at, updated_at) "
+                         "VALUES ('t2',?,'CONTRADICTION','d','open','high',?,?)", (p["id"], db.now(), db.now()))
+    db.connect().commit()
+    api.api_sources(project_id=p["id"], limit=50)
+    assert perf.snapshot()["caches"]["gap_terms"]["miss"] == before + 1                    # research moved → recomputed

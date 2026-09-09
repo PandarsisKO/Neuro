@@ -1608,3 +1608,50 @@ useless for long-term trends, which is why the durable half reads from `jobs`/`i
 middleware measures server time only; it cannot see network or render time, so R1/R2 will need their own
 client-side marks. `/api/perf` scans `jobs` and `invocations` over its window, so it is read on demand from
 the Health console and must never be polled.
+
+## SPEED R2 (part 1) — the /api/sources hotspot, found by measuring and not by guessing — 0.46.1
+
+**Root cause.** R0's ledger put `GET /api/sources` at **2.53 s p50** against under 0.1 s for every other polled
+endpoint, on a 3 s poll — the server was spending ~84% of every poll window on one request. Per-stage timings
+added inside the endpoint then contradicted the prediction in SPEED-MISSION.md §A. The suspect was
+`staleness.assess` (~2,000 queries); it measured **0.27 s, 11%**. The real cost was `sources:potential_setup`
+at **1.52 s (59%)** plus `sources:rows` at **0.68 s (26%)** — both of them 0.45.7's own skipped-source
+`pool_potential` feature, shipped earlier the same day. It called `candidates._gap_terms`, which runs
+`research_view.questions` and `research_view.areas` — the full $0 research derivation — on **every request**,
+and then re-scored all 452 skipped rows individually. A self-inflicted regression, invisible until measured.
+
+**Built.** `cache.py` — a derived-state cache keyed on a REVISION, never a clock (mission Principle 12: a
+revision cannot go stale, a TTL can). In-process by design (§D: "a dict beats a server"), bounded, cleared on
+restart, `compute()` deliberately run outside the lock so a cold 1.5 s computation cannot become the
+contention the cache exists to remove. `db.project_research_revision` is the fingerprint: COUNT **and**
+MAX(updated_at) over `project_claims`, `project_knowledge_nodes`, `research_tensions`,
+`project_source_analysis` and the project row — COUNT so a deletion moves it too, measured at ~5 ms warm
+against the 1.5 s it guards. `api_sources` now computes the gap-terms/relevance set once per research
+revision, and each row's `pool_potential` once per `(research revision, that source's own updated_at)` — the
+source revision is already on the row, so it costs nothing and still catches a metadata refresh changing the
+title or description underneath the score.
+
+**Gate.** `tests/test_p1_perf.py` +3 (10 total): an entry is reused only while its revision holds and is
+recomputed the moment it moves; the research revision moves on insert **and on delete**; and the endpoint's
+`pool_potential` output is byte-identical before and after caching while the hit counters prove it was reused
+— a cache that changes an answer is a bug, not an optimisation. Suite 490; Tier 1 unchanged.
+
+**Measured result (live, same machine, same project — 1,234 rows, 452 of them skipped).**
+
+| stage | before | after |
+|---|---|---|
+| **`GET /api/sources` total** | **2.53 s p50** | **0.35 s p50** (wall 362–404 ms) |
+| `sources:potential_setup` | 1.52 s | 0.006 s |
+| `sources:rows` | 0.68 s | 0.005 s |
+| `sources:staleness` | 0.27 s | 0.26 s (untouched) |
+
+**7.2× on the endpoint the UI polls every 3 seconds.** Cache hit rates on the live server: `gap_terms` 83%,
+`potential` 83% (2,260 hits / 452 misses).
+
+**Honest limits.** `sources:staleness` at 0.26 s is now **75% of what remains** and is the next target; it
+needs a wider fingerprint than the research revision (source content revisions matter to it), which is why it
+is a separate rung rather than folded in here. The payload is still ~2.3 MB because the UI genuinely renders
+`description`; measurement says that costs little on localhost (stages account for nearly all of the wall
+time), so it is deferred rather than assumed. The p90 in the table above still shows the cold miss — the first
+request after any research change pays the full 1.5 s, by design; only the repeat is free. Nothing here
+touches the poll cadence itself, which is the rest of R2.

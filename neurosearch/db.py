@@ -1388,6 +1388,22 @@ def _resolve_orphan_invocations(conn: sqlite3.Connection) -> int:
     return cur.rowcount or 0
 
 
+def project_research_revision(project_id: str) -> str:
+    """A cheap fingerprint of everything a project's $0 research derivations depend on — Claims, knowledge nodes,
+    tensions, per-source analyses and the project row itself. COUNT as well as MAX(updated_at) so a deletion moves
+    it too, not just an edit. Measured at ~5 ms warm on Kyle's live database against the 1.5 s of research
+    computation it guards (SPEED-MISSION.md R2), which is the whole reason the caches key on this rather than a
+    clock: a revision cannot go stale, a TTL can."""
+    r = connect().execute(
+        "SELECT (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_claims WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_knowledge_nodes WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM research_tensions WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_source_analysis WHERE project_id=?),"
+        "       (SELECT COALESCE(updated_at,0) FROM projects WHERE id=?)",
+        (project_id,) * 5).fetchone()
+    return "|".join(str(x) for x in r)
+
+
 def _pctile(vals: list[float], p: float) -> float:
     return round(sorted(vals)[min(len(vals) - 1, int(len(vals) * p))], 2) if vals else 0.0
 

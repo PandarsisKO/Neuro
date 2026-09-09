@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
-from . import db, ingest, jobs, perf, qa
+from . import cache, db, ingest, jobs, perf, qa
 from .chunking import fmt_ts
 from .config import settings
 from .mcp_server import mcp
@@ -925,35 +925,54 @@ def api_stats() -> dict[str, Any]:
 def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
                       project_id: str | None = None, not_in_project: str | None = None,
                       limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
-    rows = db.list_sources(status=status, collection_id=collection_id, query=q,
-                           limit=limit if not (project_id or not_in_project) else 10000, offset=offset)
+    # R2 (SPEED-MISSION.md): this endpoint measured 2.53 s p50 on Kyle's live server against <0.1 s for every
+    # other polled endpoint, while the UI polls it every 3 s. The per-stage timings below are what say WHICH
+    # part costs that, so the fix lands on the measured bottleneck instead of the assumed one. They stay after
+    # the fix: the same breakdown is how the improvement gets verified, and how a regression would be noticed.
+    with perf.timed("sources:list"):
+        rows = db.list_sources(status=status, collection_id=collection_id, query=q,
+                               limit=limit if not (project_id or not_in_project) else 10000, offset=offset)
     if project_id:
-        ids = set(db.project_source_ids(project_id, ready_only=False))
-        rows = [r for r in rows if r["id"] in ids and r["status"] != "proposed"][:limit]
-        counts = db.suggestion_counts(project_id)
-        analysing = db.sources_being_analysed(project_id)
-        live = db.live_job_by_source()
-        ajobs = db.analysis_jobs_by_source(project_id)
-        from . import acquire
-        browser = acquire.pending_by_source()
-        analysed_ids = db.analysed_sources(project_id)
-        analyses = db.project_analyses(project_id)
-        prio = db.priority_source_ids(project_id)
+        with perf.timed("sources:membership"):
+            ids = set(db.project_source_ids(project_id, ready_only=False))
+            rows = [r for r in rows if r["id"] in ids and r["status"] != "proposed"][:limit]
+        with perf.timed("sources:lookups"):
+            counts = db.suggestion_counts(project_id)
+            analysing = db.sources_being_analysed(project_id)
+            live = db.live_job_by_source()
+            ajobs = db.analysis_jobs_by_source(project_id)
+            from . import acquire
+            browser = acquire.pending_by_source()
+            analysed_ids = db.analysed_sources(project_id)
+            analyses = db.project_analyses(project_id)
+            prio = db.priority_source_ids(project_id)
         prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at", "depth")
         from . import sources_value, staleness
-        values = sources_value.compute(project_id)                                        # S2: what each source gave (one pass)
-        try:
-            stale_by = {x["source_id"]: x for x in staleness.assess(project_id)["sources"]}
-        except Exception:  # noqa: BLE001
-            stale_by = {}
+        with perf.timed("sources:value"):
+            values = sources_value.compute(project_id)                                    # S2: what each source gave (one pass)
+        with perf.timed("sources:staleness"):
+            try:
+                stale_by = {x["source_id"]: x for x in staleness.assess(project_id)["sources"]}
+            except Exception:  # noqa: BLE001
+                stale_by = {}
         # a skipped (pre-cutoff) source used to show up with no thumbnail and no hint of whether it's worth
         # ingesting anyway — the same $0 potential scan the pool already runs (candidates.pool) works row by row too.
         pot_qs = pot_vocab = None
         pot_rel: dict[str, Any] = {}
-        if any(r.get("status") == "skipped" for r in rows):
-            from . import candidates as candidates_mod
-            pot_qs, pot_vocab = candidates_mod._gap_terms(project_id)
-            pot_rel = db.project_analysis(project_id, "relevance")
+        research_rev = ""
+        with perf.timed("sources:potential_setup"):
+            if any(r.get("status") == "skipped" for r in rows):
+                # 0.45.7 added this scan so a pre-cutoff source shows whether it is still worth ingesting, and it
+                # ran `research_view.questions`/`areas` on EVERY request — measured at 1.52 s of the endpoint's
+                # 2.58 s p50, on a 3 s poll (SPEED-MISSION.md R2). It depends only on project research state, so
+                # it is now computed once per revision of that state and reused until the state actually changes.
+                from . import candidates as candidates_mod
+                research_rev = db.project_research_revision(project_id)
+                pot_qs, pot_vocab, pot_rel = cache.get_or_compute(
+                    f"gap_terms:{project_id}", research_rev,
+                    lambda: (*candidates_mod._gap_terms(project_id), db.project_analysis(project_id, "relevance")),
+                    label="gap_terms")
+        _rows_t0 = time.perf_counter()
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
             sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
@@ -980,9 +999,16 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                           "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
             r["priority"] = r["id"] in prio
             if r.get("status") == "skipped" and pot_qs is not None:
+                # 452 skipped rows on Kyle's project, each re-scored on every poll (0.68 s of the endpoint). The
+                # score is a pure function of the source's own words and the project's research state, so it is
+                # keyed on BOTH revisions: the source's `updated_at` (already on the row, so free) catches a
+                # metadata refresh changing the title/description that the research revision would not.
                 rr = pot_rel.get(r["id"]) or {}
-                score, fits, why = candidates_mod._potential(r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), [])
-                r["pool_potential"] = {"score": score, "fits": fits, "why": why}
+                r["pool_potential"] = cache.get_or_compute(
+                    f"potential:{project_id}:{r['id']}", f"{research_rev}@{r.get('updated_at')}",
+                    lambda rr=rr, r=r: dict(zip(("score", "fits", "why"), candidates_mod._potential(
+                        r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), []))),
+                    label="potential")
             j = live.get(r["id"])
             if j:
                 r["job"] = j          # {status, message, position, updated_at}
@@ -996,6 +1022,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 r["acquisition"] = {"state": "requires_browser", "job_id": b["job_id"], "reason": b["reason"], "status": b["status"], "url": b["canonical_url"] or r["url"]}
             elif (r.get("error_class") or "").startswith("browser_solvable:"):
                 r["acquisition"] = {"state": "requires_browser", "job_id": None, "reason": r.get("error"), "status": "needs_request", "url": r["url"]}
+        perf.record("sources:rows", time.perf_counter() - _rows_t0)
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))
         rows = [r for r in rows if r["id"] not in ids][:limit]
