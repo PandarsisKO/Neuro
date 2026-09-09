@@ -172,6 +172,14 @@ class AnthropicBatch:
         b = client.messages.batches.retrieve(handle)
         status = getattr(b, "processing_status", None)
         if status != "ended":
+            # Kyle, live: "the background processes says they will take several hours but I never know if something
+            # is actually happening." The provider reports live per-request counts on every one of these polls and
+            # we were discarding them, so the panel showed a static "up to 24 hours; 0/N ready" for hours. Record
+            # them for ui_state: real progress from the provider, never an invented bar.
+            c = getattr(b, "request_counts", None)
+            if c is not None:
+                got = {k: int(getattr(c, k, 0) or 0) for k in ("processing", "succeeded", "errored", "canceled", "expired")}
+                db.kv_set(f"batch:progress:{handle}", json.dumps({**got, "ts": time.time()}))
             return "pending", None
         counts = cls.persist_results(handle)
         return "done", {"batch_id": handle, "counts": counts, "cancelled": bool(getattr(b, "cancel_initiated_at", None))}
@@ -366,6 +374,19 @@ def ui_state(job: dict[str, Any]) -> dict[str, Any]:
         phase, label = "verifying", "verifying which provider batch is ours before adopting any results"
     elif st == "external_pending":
         phase = "processing"
+        prog = {}
+        try:
+            prog = json.loads(db.kv_get(f"batch:progress:{handle}") or "{}")
+        except ValueError:
+            prog = {}
+        finished = sum(int(prog.get(k, 0)) for k in ("succeeded", "errored", "canceled", "expired"))
+        total = finished + int(prog.get("processing", 0))
+        if total:
+            mins = max(0, int((time.time() - float(prog.get("ts") or 0)) // 60))
+            checked = "just now" if mins < 1 else f"{mins} min ago"
+            return {"phase": phase, "label": f"{finished} of {total} request{'' if total == 1 else 's'} done at the provider "
+                                             f"· checked {checked} · {len(done)}/{n_src} source{'' if n_src == 1 else 's'} written",
+                    "done": len(done), "sources": n_src, "counts": by, "provider_done": finished, "provider_total": total}
         label = f"processing in background — up to 24 hours; {len(done)}/{n_src} sources ready" + (f" · retrying {retrying} item{'s' if retrying != 1 else ''} (round {cohort})" if retrying else "")
     elif st == "done":
         phase, label = "complete", f"complete — {len(done)}/{n_src} sources analysed"

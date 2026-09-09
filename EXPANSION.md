@@ -1921,3 +1921,41 @@ roughly half price again (his own ledger: batch transport has cost $6.84 and sav
 all, but `batches.py` is findings-shaped today — generalising its request builder and materializer to Claims is
 the obvious next step and is not done. Triage runs on every `maybe_extract`, so its cost grows with the
 unnormalized pile; at present that pile is small because extraction keeps up, but it is not itself incremental.
+
+## S9 — honest progress on long background work — 0.48.1
+
+Kyle, live: *"we need much more reliable or insightful progress bars or progress updates, I get nervous that things
+look locked up or frozen, the background processes says they will take several hours but I never know if something
+is actually happening."*
+
+**Two separate causes, both real, both found by looking rather than guessing.**
+
+**1. Claim extraction reported nothing at all.** `claims.extract()` took no `progress` parameter — `run_job`
+received one and passed it only to the evaluation path. So a pass with a measured p90 of **6,821 s** sat at
+`progress = 0.0` for its entire life (confirmed on the live database: a job running six minutes still read
+`prog=0.0`). Worse, a progress report is also the job's heartbeat, so the same omission tripped the UI's "quiet for
+a while — it will time out and retry" warning *while the job was working perfectly*. The bar was not merely
+uninformative, it was actively misleading. It now reports before every group — "group 3 of 12 · 18 claims written
+so far" — plus the harvest and map-refresh phases that bracket it.
+
+**2. The batch path discarded live provider counts.** Anthropic returns `request_counts`
+(processing/succeeded/errored/canceled/expired) on **every** status poll, and `AnthropicBatch.check` read the
+processing status and threw the counts away. The panel therefore showed a static *"processing in background — up
+to 24 hours; 0/12 sources ready"* for hours: a scary number that never moved. `check` now records the counts, and
+`ui_state` renders **"14 of 20 requests done at the provider · checked just now · 3/12 sources written"**. That is
+the provider's own arithmetic plus the freshness of when we last asked.
+
+**Mission Principle 6 governs both: never fake progress.** Every number above is a real count — groups actually
+started, requests the provider actually finished, sources actually written. Nothing interpolates, and the "checked
+N min ago" exists precisely so a stalled poll looks stalled instead of looking like progress.
+
+**Gate.** New `tests/test_p4_progress.py` (3): extraction reports monotonically advancing fractions in `[0,1]` and
+names its position ("group 1 of 3" … "group 3 of 3") rather than saying "working…"; a parked batch surfaces the
+provider's counts and the check freshness and **stops saying "24 hours"**; and a batch with no counts yet falls
+back without inventing any. Suite 512; Tier 1 unchanged.
+
+**Honest limits.** The batch counts are only as fresh as the last poll, which is why the label always states when
+that was — if polling stalls, the timestamp ages visibly instead of the line quietly lying. Claim extraction's
+fraction is by group, so a single slow group still looks static for its duration (up to ~2 min locally); a
+per-call sub-step would need the provider layer to report mid-call, which it does not. Neither change makes
+anything faster — this rung buys knowing, not speed, which is the point Kyle was making.

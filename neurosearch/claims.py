@@ -769,19 +769,34 @@ def unnormalized(project_id: str) -> list[dict[str, Any]]:
     return [c for c in list_for_project(project_id) if not c.get("normalized") and c["status"] != "rejected"]
 
 
-def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transport: str = "interactive") -> dict[str, Any]:
+def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transport: str = "interactive",
+            progress: Any = None) -> dict[str, Any]:
     """Normalize a bounded group of candidates with ONE structured call per EXTRACT_GROUP. Idempotent: a group whose
-    extraction_hash is already stamped on its claims is skipped without spend."""
+    extraction_hash is already stamped on its claims is skipped without spend.
+
+    Kyle, live: "I get nervous that things look locked up or frozen ... I never know if something is actually
+    happening." This loop is why. It took no `progress` at all, so a pass that measured a p90 of 6,821 s sat at
+    0.0 on the bar and never updated its message — and because a progress report is also the job's heartbeat, it
+    additionally tripped the UI's "quiet for a while" warning while it was working perfectly. It now reports after
+    every group, with counts rather than a spinner, so the bar is evidence instead of decoration."""
     from . import providers
     project = db.get_project(project_id)
     if not project:
         return {"normalized": 0, "targets": 0, "calls": 0}
     cands = cands if cands is not None else unnormalized(project_id)
     calls, normalized, targets = 0, 0, 0
+    total_groups = max(1, (len(cands) + EXTRACT_GROUP - 1) // EXTRACT_GROUP)
+    if progress:
+        progress(0.02, f"reading {len(cands)} candidate claim{'' if len(cands) == 1 else 's'} in {total_groups} group{'' if total_groups == 1 else 's'}")
     for i in range(0, len(cands), EXTRACT_GROUP):
         if transport == "job":
             from .jobs import check_cancel
             check_cancel()                                  # safe boundary: no group's model call is in flight yet
+        gno = i // EXTRACT_GROUP + 1
+        if progress:
+            # reported BEFORE the call, so the message names what is being waited on rather than what already ended
+            progress(0.02 + 0.96 * (i / max(1, len(cands))),
+                     f"group {gno} of {total_groups} · {normalized} claim{'' if normalized == 1 else 's'} written so far")
         group = cands[i:i + EXTRACT_GROUP]
         ih = extraction_hash(project, group)
         if all(c.get("extraction_hash") == ih for c in group):
@@ -906,13 +921,17 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     pid = payload["project_id"]
     if payload.get("evaluation"):
         return run_evaluation(pid, budget=int(payload.get("budget") or EVAL_BUDGET), progress=progress)
+    if progress:
+        progress(0.01, "collecting new candidate claims")
     harvest(pid)
     ids = set(payload.get("claim_ids") or [])
     cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
     if ids and not cands:
         return {"normalized": 0, "targets": 0, "calls": 0, "note": "already normalized by an earlier pass"}
-    res = extract(pid, cands=cands, transport="job")
+    res = extract(pid, cands=cands, transport="job", progress=progress)
     from . import knowledge
+    if progress:
+        progress(0.99, f"updating the research map ({res.get('normalized', 0)} claims written)")
     knowledge.refresh(pid)
     return res
 
