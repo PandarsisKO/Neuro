@@ -160,8 +160,9 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     for b in range(0, len(pool), BATCH):
         batches += 1
         batch = pool[b:b + BATCH]
+        done_now = min(b + BATCH, len(pool))
         if progress:
-            progress(b / len(pool), f"ranking {b + 1}-{min(b + BATCH, len(pool))} of {len(pool)}")
+            progress(max(0.02, b / len(pool)), f"ranking {b + 1}-{done_now} of {len(pool)}")
         user = _user(batch)
         try:
             res = _call(SYSTEM, user, project_id, collection_id, head=head)
@@ -181,6 +182,8 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                 continue
             if 0 <= i < len(batch):
                 scored[batch[i]["id"]] = (sc, str(it.get("why") or "")[:80])
+        if progress:                                       # the bar moves when a batch is actually scored, not when one starts
+            progress(min(0.99, done_now / len(pool)), f"ranked {len(scored)} of {len(pool)}")
     from . import contracts, providers
     prov = {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model, "provider": "fake" if providers.fake() else "anthropic",
             "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1", "brief_revision": db.brief_revision(project),

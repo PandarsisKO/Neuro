@@ -73,6 +73,15 @@ That ratio is the entire economic basis of a fast lane — and it is worth 3×, 
 
 ---
 
+14. **Clarity is a speed feature.** (Kyle, live 2026-09-09: *"better clarity does make things faster because then
+    the user is not in the dark and they can strategize about what to do next."*) A user who can see what is
+    happening makes better decisions about what to do next, and stops re-running work out of doubt. Honest,
+    moving, specific progress therefore counts as a performance win and is measured as one — but only when it is
+    real: a fabricated percentage is worse than a spinner, because it destroys the trust that makes every other
+    signal useful.
+15. **Every scheduling decision must be readable.** If the queue's order cannot be explained to the user in five
+    words per rule, it is the wrong order — however good its score. (See `SCHEDULER.md`.)
+
 ## C. PERFORMANCE MODEL
 
 **Perceived latency** — the dominant felt cost. No answer streaming; no optimistic UI (every button waits a round trip *plus* the next 3 s poll); `#srcList` and `#jobs` rebuilt wholesale via `innerHTML` on every tick, destroying expanded panels, focus and selection; serial `await` chains on load (`/api/stats` then `/api/usage`; project then a 2.34 MB source list).
@@ -143,7 +152,7 @@ Ordered by measured value ÷ risk, respecting dependencies. Each rung ships with
 
 **R0 · Permanent instrumentation.** *Changes:* a timing ledger on the hot paths (endpoint duration, queue wait, per-window model latency, cache hit/miss, first-token time), surfaced on the Health console. *Why:* every rung below claims a number; without this we are guessing again. *Benefit:* none directly — it is the measurement contract. *Depends:* nothing. *Risk:* trivial. *Verify:* the tables in §A regenerate themselves from live data.
 
-**R1 · Stream the answer.** *Changes:* `/api/ask` → SSE; tokens render as they arrive; real phase states ("searching · reading 6 sources · writing"). *Why:* the longest blank wait in the product (p90 51 s, max 78 s) becomes motion in under a second. *Benefit:* time-to-first-token from ~5–78 s to <1 s. *Depends:* R0. *Risk:* the citation-repair pass runs after generation — stream the draft, then reconcile citations visibly rather than silently. *Verify:* measured time-to-first-byte; existing chat regression gates unchanged.
+**R1 · Stream the answer. — SHIPPED 0.49.0** (`POST /api/ask/stream`; `providers.invoke(on_text=…)` as a transport, not a second entry point; `done` carries the identical `/api/ask` payload so citations still come from the real result. Local route runs unstreamed.) *Changes:* `/api/ask` → SSE; tokens render as they arrive; real phase states ("searching · reading 6 sources · writing"). *Why:* the longest blank wait in the product (p90 51 s, max 78 s) becomes motion in under a second. *Benefit:* time-to-first-token from ~5–78 s to <1 s. *Depends:* R0. *Risk:* the citation-repair pass runs after generation — stream the draft, then reconcile citations visibly rather than silently. *Verify:* measured time-to-first-byte; existing chat regression gates unchanged.
 
 **R2 · Poll diet and interactive reservation.** *Changes:* one consolidated tick; `/api/sources` stops returning `description` and stops `limit=10000`; a `changes?since=` (or ETag) delta endpoint; the duplicate 5 s capture loop folded in; `Promise.all` on independent loads; optimistic UI on every queue action; client-side source filtering; reserved interactive capacity. *Why:* directly fixes the measured >45 s congestion. *Benefit:* poll payload from ~2.34 MB to a few KB; interactive endpoints stay sub-second under load. *Depends:* R0. *Risk:* delta logic drifting from full-list truth — keep a periodic full reconcile. *Verify:* re-run the two-tab congestion test; every endpoint stays responsive.
 

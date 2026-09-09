@@ -1992,3 +1992,62 @@ fine for it to start doing active work") — automatic yielding on user activity
 The pause is global rather than per project, which matches how the worker pool is shared but means pausing while in
 one project also holds the other's background work. And a job stopped by the pause shows in history as cancelled,
 because it reuses the existing cancel path; the work is not lost, but the label is blunter than it should be.
+
+---
+
+## 0.49.0 — R1: the answer arrives while it is written (and three live bugs)
+
+**Measured problem.** `answer.chat` has a p90 of 51 s and a max of 78 s. Not one second of that was visible: the
+chat showed a spinner and the words "searching this project's sources…" from the first millisecond to the last,
+whatever was actually happening. The work is not wasteful — it is retrieval, up to six agentic tool rounds, two
+possible continuations and a citation check — but a user watching a still spinner has no way to tell a 6-second
+answer from a 78-second one, or a working turn from a wedged one.
+
+**Built — R1 streaming.** `POST /api/ask/stream` returns the same turn as `POST /api/ask`, narrated as
+server-sent events: `phase` frames for what it is doing (`retrieving` → `retrieved` with real hit and source
+counts → `thinking` → `writing` → per-tool labels → `checking` → `repairing` if a citation did not match), `delta`
+frames carrying the answer text as the model writes it, and a final `done` frame carrying **the identical payload
+the non-streaming route returns**. The finished message in the UI is rendered from that payload — citations,
+actions, validation and all — so the streamed text is only what the user reads while it is being written and can
+never become the saved answer. An `open` frame is sent before any model call, and a keep-alive comment every 10 s
+of silence, so the connection itself is visibly alive.
+
+**The transport, not a second entry point.** `providers.invoke` gained one optional argument, `on_text`. When it
+is given and the call routes to the API, the same request runs over the streaming transport, under the same
+`anthropic:messages` breaker, and still returns the complete final `Message` — so nothing downstream of the call
+site changed. A local (Claude Code) route has no token stream and silently runs unstreamed: same answer, no typing
+effect. A stream that fails falls back to the ordinary transport rather than costing the user their answer. Every
+background caller of `answer.chat` keeps the plain path, which is the one with the retry policy.
+
+**Three live bugs Kyle hit while this was being built, all fixed here.**
+
+1. *"How do I know it's actually doing anything?"* — `findings.extract` and `relevance.rank` reported
+   `progress(i / n)` **before** each unit, so the bar read 0 % while the first (often only) part was being read
+   and never passed `(n-1)/n`. His running job genuinely was working and genuinely showed 0.0 for minutes. Both
+   now report on both edges — starting part *i*, then finished part *i* — and never report a bare zero. The job
+   row also carries a muted `· alive 12s ago` derived from the worker's real heartbeat: a number that changes on
+   every poll, and which flips to the existing `quiet for …` warning rather than pretending when it stops.
+2. *Grouped sources ignored the chosen sort.* Group order was always "biggest group first"; only the rows inside
+   each group followed the sort, so sorting by newest buried the newest source three groups down. Groups now
+   follow the sorted row order (first appearance) whenever an explicit sort is chosen; the default activity view
+   keeps size ordering, where the biggest channel first is the useful shape.
+3. Nothing was wrong with the batch poller — it runs on its own 20 s loop, unaffected by either pause. Worth
+   recording because it was the first suspicion and it was wrong.
+
+**Gate.** New `tests/test_r1_ask_stream.py` (8): every stage is announced with a sayable label and real counts;
+the streamed text equals the saved answer; a callback that raises never costs the answer; no callback means the
+streaming transport is never touched; streaming and non-streaming produce identical answers and citations; the
+endpoint opens before any model call and ends with the full result; a failure arrives as an `error` frame instead
+of a dropped connection; and a streamed turn saves exactly one exchange. Suite 524; Tier 1 unchanged.
+
+**Honest limits.** Only chat streams. The planner, Discover and findings still complete before they say anything,
+and they are longer. The streamed text is not markdown-rendered until the turn finishes, so formatting appears at
+the end — deliberate, because half-parsed markdown flickers. And on the local route there is no typing effect at
+all, which will read as a regression to anyone who has seen the API route stream.
+
+**Also in this release: `SCHEDULER.md`** — a design exploration of the bidirectional (outside-in) scheduler Kyle
+asked for: two pools claiming from two different orderings rather than two ends of one, tiers instead of a scalar
+priority, buckets instead of lanes for admission, typed and directional work-stealing (local steals up and
+declines what it would do badly; paid steals down *into the Batch API* so idle capacity becomes cheap capacity),
+value-based stopping conditions that demote rather than delete, and the four measurements that must come first.
+Nothing in it is built.

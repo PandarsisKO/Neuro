@@ -8,6 +8,8 @@ If NEUROSEARCH_APP_TOKEN is unset, everything is open (local use only!).
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import csv
 import io
@@ -2469,6 +2471,56 @@ async def api_ask(body: AskIn) -> dict[str, Any]:
     return await anyio.to_thread.run_sync(
         lambda: qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web,
                        attached_source_ids=body.attached_source_ids or None))
+
+
+SSE_HEARTBEAT = 10.0     # seconds of silence after which the stream sends a keep-alive comment (nothing is ever "frozen")
+
+
+@app.post("/api/ask/stream", dependencies=[Depends(require_auth)])
+async def api_ask_stream(body: AskIn) -> StreamingResponse:
+    """The same answer as POST /api/ask, narrated as it happens (R1). Server-sent events:
+      {"type":"phase","phase":...,"label":...}   what the turn is doing right now
+      {"type":"delta","text":...}                answer text as the model writes it
+      {"type":"done","result":{...}}             the identical payload /api/ask returns — the UI reconciles on this
+      {"type":"error","message":...}
+    The work runs in a worker thread exactly as the non-streaming route does; this endpoint only narrates it."""
+    cid = body.conversation_id or db.new_id()
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+    def push(ev: dict[str, Any] | None) -> None:
+        loop.call_soon_threadsafe(q.put_nowait, ev)
+
+    def run() -> None:
+        try:
+            res = qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web,
+                         attached_source_ids=body.attached_source_ids or None, on_event=push)
+            push({"type": "done", "result": res})
+        except Exception as e:  # noqa: BLE001 — the client must always learn why, not just lose the connection
+            log.exception("ask stream failed")
+            push({"type": "error", "message": str(e)})
+        finally:
+            push(None)
+
+    async def gen() -> Any:
+        task = asyncio.ensure_future(anyio.to_thread.run_sync(run))
+        try:
+            yield 'data: {"type":"open"}\n\n'
+            while True:
+                try:
+                    ev = await asyncio.wait_for(q.get(), timeout=SSE_HEARTBEAT)
+                except asyncio.TimeoutError:
+                    yield ": still working\n\n"      # a comment frame: keeps proxies and the reader awake
+                    continue
+                if ev is None:
+                    break
+                yield f"data: {json.dumps(ev)}\n\n"
+        finally:
+            with contextlib.suppress(Exception):
+                await task
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no", "Connection": "keep-alive"})
 
 
 @app.get("/api/conversations", dependencies=[Depends(require_auth)])

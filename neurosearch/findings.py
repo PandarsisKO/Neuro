@@ -364,16 +364,25 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
     found = 0
+    # A progress bar that reads i/n reports the work ALREADY finished, so it shows 0% while the first (often only)
+    # part is being read, and never passes (n-1)/n. Kyle, live: "how do I know it's actually doing anything?".
+    # Report on both edges instead — starting part i, then finished part i — and never report a bare zero.
+    def _say(frac: float, verb: str, i: int) -> None:
+        if progress:
+            progress(max(0.02, min(0.99, frac)),
+                     f"{verb} · part {i + 1}/{len(windows)}" + (f" · {found} finding{'' if found == 1 else 's'} so far" if found else ""))
+
+    reading = "reading deeper" if depth == "deep" else "reading"
     for i, w in enumerate(windows):
         if i not in kept:                                # H1: the pre-filter dropped this window (recorded in window_decisions + the analysis row)
             continue
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         crash_point("findings_before_response")
-        if progress:
-            progress(i / max(1, len(windows)), f"{'reading deeper' if depth == 'deep' else 'reading'} · part {i + 1}/{len(windows)}" + (f" · {found} findings so far" if found else ""))
+        _say(i / max(1, len(windows)), reading, i)
         try:
             res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
             found += len(res.get("findings") or []) if isinstance(res, dict) else 0
+            _say((i + 1) / max(1, len(windows)), "read", i)      # the bar moves when a part is actually done
         except Exception:
             if OBSERVER:
                 OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
@@ -439,7 +448,7 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
 
         def sub(frac: float, msg: str, _i=i, _title=title) -> None:          # per-window progress inside the per-source progress
             if progress:
-                progress((_i + frac) / max(len(ids), 1), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
+                progress(max(0.02, (_i + frac) / max(len(ids), 1)), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
         try:
             suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub)
             done += 1

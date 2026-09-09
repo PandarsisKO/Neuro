@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.48.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.49.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.

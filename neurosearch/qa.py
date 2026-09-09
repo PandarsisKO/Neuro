@@ -293,6 +293,23 @@ def _tail_breakpoint(messages: list[dict[str, Any]]) -> None:
         usage.mark_last(messages)
 
 
+TOOL_LABELS = {          # R1: what a tool round is actually doing, in the user's words
+    "web_search": "searching the web…",
+    "search_library": "searching more of this project…",
+    "search_global_library": "searching your whole library…",
+    "search_seen_sources": "searching sources it has seen but not acquired…",
+    "search_global_candidates": "searching sources it has seen but not acquired…",
+    "list_sources": "listing what this project contains…",
+    "set_source_priority": "flagging priority sources…",
+    "save_finding": "saving a finding…",
+    "note_gap": "recording a coverage gap…",
+    "record_fact": "recording that decision…",
+    "update_brief": "updating the project brief…",
+    "research_state": "reading the Knowledge Map…",
+    "propose_claim": "recording that claim for evidence…",
+    "resolve_work": "resolving that document against your library…",
+    "calculate": "running your calculator…",
+}
 MAX_TOOL_ROUNDS = 6       # agentic rounds with tools; the round after that runs without tools so the answer ends in text
 CONTINUATIONS_MAX = 2     # automatic "continue where you stopped" rounds after stop_reason=max_tokens (a runaway answer cannot spend unbounded)
 CONTINUE_PROMPT = "Continue the previous answer exactly where it stopped. Do not restart, summarise or repeat prior material; pick up mid-sentence if that is where it stopped."
@@ -328,11 +345,26 @@ def ask(
     use_web: bool = False,
     limit: int = 14,
     attached_source_ids: list[str] | None = None,
+    on_event: Any = None,
 ) -> dict[str, Any]:
     """Answer a question. Returns {answer, citations, hits, web_used, project, ingest_jobs, actions}.
-    attached_source_ids: sources the user uploaded with this message (0.24.1) — included in the excerpts on this turn."""
+    attached_source_ids: sources the user uploaded with this message (0.24.1) — included in the excerpts on this turn.
+    on_event (R1): called with small dicts as the turn progresses — {"type":"phase",...} for what is happening and
+    {"type":"delta","text":...} for answer text as it is written. Purely a narration channel: it never changes what
+    is computed, and a callback that raises is ignored rather than costing the user their answer."""
     project = db.get_project(project_id) if project_id else None
     actions: list[dict[str, Any]] = []
+
+    def emit(**ev: Any) -> None:
+        if on_event is None:
+            return
+        try:
+            on_event(ev)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def phase(name: str, label: str, **extra: Any) -> None:
+        emit(type="phase", phase=name, label=label, **extra)
 
     # 1. URLs in the message -> ingest into this project
     urls = URL_RE.findall(question)
@@ -370,7 +402,12 @@ def ask(
     history = db.get_messages(conversation_id, limit=12) if conversation_id else []
     priority_ids = db.priority_source_ids(project["id"]) if project else set()
     rq = _retrieval_query(question, history)
+    phase("retrieving", "searching this project's sources…")
     hits, full_context = _hits_for(rq, limit, source_ids, priority_ids=priority_ids, attached_ids=attached_source_ids)
+    n_srcs = len({h.get("source_id") for h in hits})
+    phase("retrieved", ("reading the whole project in context" if full_context else
+                        f"read {len(hits)} excerpt{'' if len(hits) == 1 else 's'} from {n_srcs} source{'' if n_srcs == 1 else 's'}"),
+          hits=len(hits), sources=n_srcs, full_context=bool(full_context))
     ctx = {"hits": hits, "source_ids": source_ids, "priority_ids": priority_ids, "seen": {h["chunk_id"] for h in hits}}
 
     tools: list[dict[str, Any]] = []
@@ -420,7 +457,19 @@ def ask(
         if generation["rounds"] >= MAX_TOOL_ROUNDS:
             offer_tools = None
         t0 = time.time()
-        resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=offer_tools)
+        phase("thinking", "continuing the answer…" if continuing else
+              ("working with what it found…" if generation["rounds"] else "thinking…"),
+              round=generation["rounds"] + 1)
+        wrote = [False]
+
+        def _delta(text: str) -> None:
+            if not wrote[0]:
+                wrote[0] = True
+                phase("writing", "writing the answer…")
+            emit(type="delta", text=text)
+
+        resp = providers.invoke("answer.chat", system=system_blocks, messages=messages, tools=offer_tools,
+                                on_text=_delta if on_event is not None else None)
         generation["rounds"] += 1
         try:
             usage.record_anthropic(resp, "answer", project_id=project_id)
@@ -453,6 +502,7 @@ def ask(
             elif btype in ("server_tool_use", "web_search_tool_result"):
                 web_used = True
             elif btype == "tool_use":
+                phase("tool", TOOL_LABELS.get(block.name, f"running {block.name}…"), tool=block.name)
                 result = _run_tool(block.name, block.input, project, pending_findings, actions, ctx)
                 tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
         continuing = False
@@ -481,10 +531,12 @@ def ask(
     # Citations must point at excerpts we actually supplied. A bad one is NOT silently removed (that would turn a
     # falsely-cited claim into a confident uncited one): the model gets one repair round; if it still cites
     # nothing, the answer is rendered as-is with a validation warning the user can see.
+    phase("checking", "checking every citation against the excerpts…")
     from .evidence import check_citations
     _valid, invalid = check_citations(answer + " " + " ".join(pending_findings), len(hits))
     validation: dict[str, Any] = {}
     if invalid:
+        phase("repairing", f"one citation didn't match a real excerpt — rewriting the answer without it ({len(invalid)} to fix)", invalid=len(invalid))
         log.warning("answer cited excerpts that do not exist: %s — asking for a repair", invalid)
         db.validation_event("citation_validation_failed", {"invalid": invalid, "excerpts": len(hits), "answer": answer[:600]}, project_id=project_id)
         try:

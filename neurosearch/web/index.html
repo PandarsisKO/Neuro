@@ -79,6 +79,7 @@
   .msg{max-width:min(820px,92%);padding:11px 13px;border-radius:14px;white-space:pre-wrap;line-height:1.5}
   .msg.user{align-self:flex-end;background:var(--user);color:var(--user-text)}
   .msg.assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+  .liveAnswer{white-space:pre-wrap;line-height:1.5}
   .msg .cites{margin-top:8px;border-top:1px solid var(--line);padding-top:8px;white-space:normal}
   .msg sup{color:var(--link);font-weight:600}
   .msg .web{margin-top:6px;font-size:12px;color:var(--muted);white-space:normal}
@@ -578,7 +579,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.48.2';
+const UI_VERSION = '0.49.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -886,16 +887,59 @@ async function attachFiles(files) {
   }
   $('#qFile').value = ''; if (state.project) api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; }).catch(() => {});
 }
+// R1: one answer, narrated. The server streams phases and text; `done` carries the identical /api/ask payload,
+// so the finished message is rendered from the real result (citations, actions, validation) — the streamed text is
+// only what the user reads while it is being written.
+async function askStream(payload, onEvent) {
+  const r = await fetch('/api/ask/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (r.status === 401) { location.reload(); return; }
+  if (!r.ok || !r.body) { const j = await r.json().catch(() => ({})); throw new Error(j.error || j.detail || r.statusText); }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+  for (;;) {
+    const { value, done } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+      for (const line of frame.split('\n')) {
+        if (!line.startsWith('data: ')) continue;                       // ": still working" heartbeats land here
+        let ev; try { ev = JSON.parse(line.slice(6)); } catch (e) { continue; }
+        onEvent(ev);
+      }
+    }
+  }
+}
 async function ask() {
   const q = $('#q').value.trim(); if (!q) return;
   if (!state.conv) { const c = await post('/api/conversations', { project_id: state.project.id }); state.conv = c.id; await loadChats(); }
   const attached = state.attached.splice(0); $('#qAttach').innerHTML = '';
   $('#q').value = ''; addMsg('user', q + (attached.length ? `\n📎 ${attached.map(a => a.name).join(', ')}` : ''));
-  const thinking = addMsg('assistant', ''); thinking.innerHTML = '<span class="spin"></span> <span class="muted">searching this project\'s sources…</span>';
+  const thinking = addMsg('assistant', '');
+  const t0 = Date.now();
+  let phase = "searching this project's sources…", live = '', tick = null;
+  const paint = () => {
+    const secs = Math.round((Date.now() - t0) / 1000);
+    thinking.innerHTML = live
+      ? `<div class="liveAnswer"></div><div class="muted" style="margin-top:6px"><span class="spin"></span> ${esc(phase)} · ${secs}s</div>`
+      : `<span class="spin"></span> <span class="muted">${esc(phase)} · ${secs}s</span>`;
+    if (live) thinking.querySelector('.liveAnswer').textContent = live;
+    const sc = $('#chat'); if (sc) sc.scrollTop = sc.scrollHeight;
+  };
+  paint(); tick = setInterval(paint, 1000);          // the elapsed counter is the proof it is not frozen
   $('#askBtn').disabled = true;
   try {
-    const r = await post('/api/ask', { question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked,
-                                       attached_source_ids: attached.length ? attached.map(a => a.id) : null });
+    let r = null, err = null;
+    await askStream({ question: q, project_id: state.project.id, conversation_id: state.conv, use_web: $('#useWeb').checked,
+                      attached_source_ids: attached.length ? attached.map(a => a.id) : null },
+      ev => {
+        if (ev.type === 'phase') { phase = ev.label; paint(); }
+        else if (ev.type === 'delta') { live += ev.text; paint(); }
+        else if (ev.type === 'done') r = ev.result;
+        else if (ev.type === 'error') err = ev.message;
+      });
+    clearInterval(tick); tick = null;
+    if (err) throw new Error(err);
+    if (!r) throw new Error('the answer stream ended before the answer did — nothing was saved; ask again');
     thinking.remove();
     const m = addMsg('assistant', r.answer, r.citations, r);
     const c = state.chats.find(x => x.id === state.conv);
@@ -903,7 +947,7 @@ async function ask() {
     if (r.ingest_jobs?.some(j => j.job_id)) watchIngest(m, r.ingest_jobs.filter(j => j.job_id).map(j => j.job_id));
     if ((r.actions || []).some(a => a.type === 'brief_updated')) { state.project.brief = r.project.brief; $('#epBrief').value = r.project.brief; $('#wsFoot').textContent = r.project.brief.slice(0, 140); }
     if ((r.actions || []).some(a => a.type !== 'brief_updated')) $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
-  } catch (e) { thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  } catch (e) { if (tick) clearInterval(tick); thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
   $('#askBtn').disabled = false;
 }
 async function watchIngest(msgEl, jobIds) {
@@ -1081,7 +1125,16 @@ function renderSourceList() {
   if (!grouping) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   const groups = {};
   rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
-  const keys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b));
+  // Kyle, live: "the grouped items don't sort properly if I am sorting by newest — it should also move the groups".
+  // Right: a sort the user chose has to order the GROUPS too, or the newest source is buried three groups down.
+  // `rows` is already sorted, so first appearance IS the group order under whatever sort is active. Only the
+  // default (activity) view keeps the size ordering, where "the biggest channel first" is the useful shape.
+  const sortSel = $('#srcSort') ? $('#srcSort').value : 'default';
+  const seen = [];
+  rows.forEach(s => { const k = srcGroupKey(s); if (!seen.includes(k)) seen.push(k); });
+  const keys = sortSel === 'default'
+    ? Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b))
+    : seen;
   if (keys.length <= 1) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(keys);
   // a search or an active chip/value filter means the user is hunting for something specific — never hide a match
@@ -2000,6 +2053,15 @@ async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e 
 async function bumpJob(id) { await post(`/api/jobs/${id}/bump`, {}).catch(e => toast(e.message || e, 'err')); toast('⏫ moved to the front of the queue'); loadJobs(); }
 const CHECK_NOW_STATES = new Set(['budget_wait', 'rate_limit_wait', 'provider_wait', 'retry_wait']);
 async function checkNowJob(id) { await post(`/api/jobs/${id}/check-now`, {}).catch(e => toast(e.message || e, 'err')); toast('🔄 checking now — this will run next'); loadJobs(); }
+// "How do I know it's actually doing anything?" (Kyle, live). A running job writes a heartbeat every time it
+// finishes a unit of work, so the age of that heartbeat is the honest liveness signal — a number that changes on
+// every poll. It is never invented: if the job has gone quiet, the tag says so instead of pretending.
+function liveTag(j) {
+  if (j.status !== 'running' || !j.updated_at) return '';
+  const q = Math.round(Date.now() / 1000 - j.updated_at);
+  if (q > 180) return ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>`;
+  return ` <span class="muted" title="the worker reported progress this recently — this is what tells you it is alive" style="font-size:11px">· alive ${q < 5 ? 'just now' : q + 's ago'}</span>`;
+}
 let pollFails = 0;
 async function loadJobs() {
   clearTimeout(jobsTimer);
@@ -2026,7 +2088,7 @@ async function loadJobs() {
   loadBacklog();
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work (claim passes, caption recovery, metadata backfill) so it stays out of the way. Your own ingests, findings and ranking keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">🔄 Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
-    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${j.status === 'running' && j.updated_at && Date.now() / 1000 - j.updated_at > 180 ? ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>` : ''}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">🔄 Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">🔄 Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up

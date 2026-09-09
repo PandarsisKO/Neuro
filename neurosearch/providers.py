@@ -493,12 +493,43 @@ def invoke_structured(task: str, *, system: Any, messages: list[dict[str, Any]],
 
 # ------------------------------------------------------------------ the router: product code calls invoke(task, ...)
 
+def _stream_collect(client: Any, task: str, kw: dict[str, Any], on_text: Any) -> Any:
+    """One API call over the streaming transport, under the same breaker as every other message call.
+    Text deltas go to `on_text` as they arrive; the complete Message is returned."""
+    from . import breakers, jobs
+    jid, run_id = jobs.current_job()
+    worker = f"{jid or 'nojob'}:{run_id or ''}"
+    gate = breakers.gate("anthropic:messages", worker)
+    generation = int(gate.get("generation") or 0)
+    fn = client.messages.stream
+    fn = fn._fn if isinstance(fn, _LedgeredStream) else fn
+    try:
+        with _LedgeredStream(fn, "anthropic", task)(**kw) as s:
+            for delta in s.text_stream:
+                if delta:
+                    on_text(delta)
+            final = s.get_final_message()
+    except Exception as e:
+        if classify_error(e) in TRANSIENT_TYPES:
+            breakers.record_failure("anthropic:messages", classify_error(e), worker, retry_after_s=retry_after_of(e), generation=generation)
+        raise
+    breakers.record_success("anthropic:messages", worker, generation=generation)
+    from . import db
+    db.clear_account_gates()
+    return final
+
+
 def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | None = None, tools: list[dict[str, Any]] | None = None,
-           stream: bool = False, max_output_tokens: int | None = None, **extra: Any) -> Any:
+           stream: bool = False, max_output_tokens: int | None = None, on_text: Any = None, **extra: Any) -> Any:
     """Run one logical inference for `task` under its InferenceContract: the contract chooses provider, model,
     output budget, thinking policy, timeout, transport retries and (Mission F) the enforced output schema; the call
     site supplies only content. `max_output_tokens` is the one explicit override: a single budget escalation after
     a TRUNCATED structured output (recorded by the call site), never a general knob.
+    `on_text` (R1) is a transport detail, not a second entry point: when it is given and the call runs on the API,
+    the same request is made over the streaming transport and each text delta is handed to the callback as it
+    arrives; the returned value is still the complete final Message, so every caller downstream is unchanged.
+    A local (claude_code) route has no token stream, so it silently runs unstreamed — the answer is identical,
+    only the typing effect is missing.
     Returns the response (or, with stream=True, the stream context manager)."""
     from . import contracts as C
     c = C.contract(task)
@@ -517,6 +548,16 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
     if tools:
         kw["tools"] = tools
     policy = {"max_attempts": c.max_attempts, "backoff": list(c.backoff)}
+    if on_text is not None and not stream:
+        target, reason = route(task)
+        if target != "local":
+            _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": None}
+            _accumulate_route()
+            try:
+                return _stream_collect(client, task, kw, on_text)
+            except Exception as e:  # noqa: BLE001 — a broken stream must never cost the user their answer
+                log.warning("%s: streaming transport failed (%s) — answering without token streaming", task, e)
+        on_text = None      # fall through to the ordinary path below (local route, or the stream failed)
     if stream:
         _tl.route = {"executed_by": "api", "reason": "stream", "fallback_reason": None}
         return _LedgeredStream(client.messages.stream._fn if isinstance(client.messages.stream, _LedgeredStream) else client.messages.stream, "anthropic", task)(**kw)
