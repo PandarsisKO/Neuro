@@ -1794,3 +1794,44 @@ not "the limit is reached", which is the question the 2026-09-09 $100 top-up con
 real call and the app will not spend money to run a probe. So the button's honest promise is "stop blocking on
 this and let the next real attempt decide", which is why it reports the live reason afterwards rather than
 declaring success. The Claude Code local path reports the same credit condition separately and is untouched here.
+
+## SPEED (out of band) — a stale message, a starved worker pool, and a cached probe — 0.46.5
+
+Three live reports from Kyle in one exchange, all of them real defects, all of them the same underlying shape: the
+app holding a belief with no path back to reality.
+
+**1. "the extract_claims is still reporting the API limits."** `db.claim_job` cleared `not_before`, `wait_reason`
+and `bumped_at` when a job was picked up, but left `message` alone. A job parked with *"paused: the Anthropic
+account's credit balance is too low"* therefore kept displaying that text while it was RUNNING and completing calls
+successfully. Claiming now clears a `paused:%` message; anything the job says about itself afterwards is current.
+
+**2. "I still dont understand why its blocking other tasks and is clogging up API."** Measured, not guessed:
+`extract_claims` has a median of **1,233 s and a p90 of 6,821 s** (SPEED-MISSION.md §A) and ran at `lane=normal`.
+With the local profile there are only **three AI worker slots** — two local plus one API — all serving
+`ANALYSIS_KINDS`, so one claims pass could hold a third of the pool for two hours and findings, ranking, discovery
+and plans queued behind it. Moved to the **slow lane** at both creation sites: only local worker 0 takes that lane,
+so the short jobs the user is actually watching keep flowing. This is exactly the fix 0.42.1 applied to Read-deeper,
+and reusing it beat inventing a new mechanism.
+
+**3. "the probe from 5 minutes ago is not of any use to us now that I literally changed the cap 1 minute ago."**
+Correct, and the same defect as 0.46.4 one layer up: `claude_code.health` caches its verdict for `HEALTH_TTL`
+(10 min) and nothing in the UI could ask for a fresh one, so after the user fixed something the app kept reporting
+the old answer — and this session reported that stale answer to Kyle as if it were current. `POST
+/api/usage/recheck` now also forces a probe (`force=True, wait=False`, so it runs in the background rather than
+holding the request for up to `PROBE_TIMEOUT`).
+
+**Also — the flaky gate, properly this time.** 0.46.2 fixed one cross-test coupling in
+`test_transient_failures_retry_then_fail` (a database-wide retry sweep); it failed again afterwards, from a second
+one. The test monkeypatches `ingest.ingest_url` globally and counted EVERY call, so a worker already mid-run on
+another test's job when the patch landed inflated `calls["n"]`. It now counts only its own URL. Honest limit: the
+failure is intermittent and did not reproduce in the runs around this change, so this is a fix by reading the race,
+not by reproducing it.
+
+**Gate.** `tests/test_p1_perf.py` +1 (19 total): Re-check forces a fresh probe and does not block on it. Suite 499;
+Tier 1 unchanged.
+
+**Live result.** After Kyle raised the cap, the ledger shows six consecutive `claims.extract` BILLING failures at
+30-minute intervals (14:01 → 16:27), then the first **completed at 16:42:23**, about a minute after Re-check
+cleared the gate — followed by continuous successful work and real spend ($8.93 → $9.32). A forced probe then
+returned `ready` for Claude Code as well, 30 seconds old. Both the API and the local lane were restored by Kyle's
+change; the app simply could not see either until the gates and the probe were made refutable.
