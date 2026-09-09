@@ -38,7 +38,59 @@ The session has a full copy of the repo in its own workspace and a `.venv` (Pyth
 
 Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), Share ▾ (0.35.1), B3 candidate links (0.36.0), Research view engine R1/R3/R5/R6 (0.37.2, `research_view.py` + endpoints; the tab's shell is NOT rebuilt yet), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 458, Tier 1 chat totals 34 / 196,951.
 
-Queued, in Kyle's priority order and with rough cost in "points of a week" (a deterministic rung ≈ 4, a live-iteration rung ≈ 10): **Mission SPEED — R0–R9 (`SPEED-MISSION.md`, filed 2026-09-09), the newest mission and the one with measured evidence behind it; R0 and R2/R3 shipped (instrumentation 0.46.0, poll diet + derived-state caching 0.47.x); R1 answer streaming shipped 0.49.0, R4–R6 are the structural core (durable content-addressed windows → in-job concurrency → Fast/Warm/Deep lanes), R5 carries the highest risk on the ladder (thread-local context must be passed explicitly or the ledger, breakers and cancel all silently degrade), R8 is cheap hygiene that can land any time, R9 is a parallel benchmark rung. The stack review (§D) says ADD NOTHING now — no vector DB, no Valkey, no broker, no gateway — and §H records the number that reopens each rejection**; Mission S — S2 source value (S1 stale triage shipped 0.43.0), S3 source drawer, S4 findings workbench, S5 known-but-uncaptured pool (`SOURCES-FINDINGS-MISSION.md`; S1/S2/S5 are engine-heavy, S3/S4 UI-heavy); Research rebuild R2 shell + R4 + R7–R12 (`RESEARCH-MISSION.md`; the engine and its contract are done — start from `RESEARCH-TAB.md` §7 and render `GET …/research/overview`; UI-heavy, ~8–12 over several sessions); L2 local-first chat + L3 acceleration dialog (`LOCAL-AI-PROVIDER.md`; L1 verified live 2026-09-08, L4 shipped 0.38.3; ~6 over sessions); G6P3–P7; B4–B7; G8; G9. Kyle's own to-dos: Reddit script-app credentials in `.env` (enables Explore), reload the extension after each extension bump.
+## Where things stand after 2026-09-09 (0.45.13 → 0.55.0, ~20 releases in one session)
+
+**The through-line of that session, and the thing to fix next.** Three separate fires — a paid claim pass
+re-queuing itself every five minutes (32% of a month's spend), $5 leaving in ten minutes when parked work all
+released at once, and a new project's findings starving behind another project's 1,128-job backlog — were **one
+missing idea wearing three costumes: the app has no notion of ADMISSION.** Every fix so far has been about ORDER
+(lanes, bumps, pauses) or about POLITENESS (a job yielding voluntarily, 0.55.0), and both fail the same way: a
+lane cannot evict a running job, and politeness has to be remembered separately by every long job. `rank_proposed`
+(`work_p90` 384 s) still has not remembered.
+
+**Current mission: SCHEDULER S1–S2** (`SCHEDULER.md` §5, §10). Pool budgets replace lanes in *admission*: a pool
+claims only while its own bucket has room — dollars per rolling window and concurrent requests for the paid pool,
+real CLI concurrency for local, submitted-but-unfinished for batch. It is the smallest change that makes all
+three of the above structurally impossible rather than individually patched, and §9 lists what to measure first
+(R0's perf ledger already answers two of the four).
+
+### Missions in flight
+
+| mission | state | next |
+|---|---|---|
+| **SCHEDULER** (`SCHEDULER.md`) | design only, nothing built | **S1 buckets, S2 tiers — the current mission** |
+| **SPEED** (`SPEED-MISSION.md`) | R0–R3 shipped (0.46.0–0.49.0) | R4 durable windows → R5 in-job concurrency (R5 is the highest-risk rung on the ladder); R8 cheap hygiene any time; R9 needs ~20 min of Kyle's machine |
+| **BOOTSTRAP** (`BOOTSTRAP-MISSION.md`) | R1–R3 shipped (0.50.0) | R4 progressive refinement + re-ranking · R5 gap-first Discover — the product-value half Kyle asked for |
+| Model policy (`contracts.py`, 0.54.0) | engine enforced | the **$5–8 live Haiku comparison**: it converts 11 of the engine's 13 justifications from "debt"/"opinion" into facts |
+| Mission S (`SOURCES-FINDINGS-MISSION.md`) | S1 shipped 0.43.0 | S2 source value · S3 drawer · S4 findings workbench · S5 pool |
+| Research rebuild (`RESEARCH-MISSION.md`) | engine + shell + workbench shipped | R4, R7–R12 (UI-heavy) |
+| Local-first AI (`LOCAL-AI-PROVIDER.md`) | L1/L3/L4 shipped | L2 local-first chat (a recommendation, not a rung) |
+
+### Open debts created on 2026-09-09 (each is small and each is real)
+
+- **`rank_proposed` does not yield** — identical shape to the claims job 0.55.0 fixed (`work_p90` 384 s, same
+  3-worker pool). Mechanically the same change. Likely why channel reviews feel like they freeze everything.
+- **Kyle's `.env` still pins `NEUROSEARCH_CLAUDE_CODE_MODEL=claude-haiku-4-5`**, which overrides every contract's
+  model on the local path. Visible since 0.52.0 (`doctor` names it) but still in force.
+- **The Haiku comparison has not been run.** `eval --migration-compare --live --candidate-model claude-haiku-4-5`
+  covers chat/repair/export/planner.update today; arms for `claims.extract`, `library.profile` and `answer.share`
+  do not exist yet.
+- **Idle-detection auto-yield** — Kyle asked for "if 15 minutes has passed it's fine for it to start doing active
+  work"; only the manual pause was built (0.48.2).
+- **Per-claim area assignment is not persisted** — the structural fix behind 0.47.1's caching workaround.
+- **UI: three tall review cards hide the In-progress card** and their inner lists swallow the page scroll, so the
+  queue controls become unreachable on a project mid-review.
+- **OCR for caption-less shorts** — 18 candidates now, ~100 including cutoff-skipped ones (deferred, 0.47.0).
+- **`SPEED-MISSION.md` §D still says ADD NOTHING** — no vector DB, no Valkey, no broker, no gateway; §H holds the
+  number that reopens each rejection.
+
+### Kyle's own to-dos
+
+- Reddit script-app credentials in `.env` (enables Explore); reload the extension after each extension bump.
+- **Three review cards are sitting un-started** on "Design beautiful and modern web apps" — Kyle Skelly (107),
+  Matthew Encina (93), Chase AI (400). Those 600 candidates are not queued at all; they wait for "Start ingesting
+  selected". A project can look starved when it is really unapproved.
+- Decide whether to clear `NEUROSEARCH_CLAUDE_CODE_MODEL` from `.env` (see the debts above).
 
 Known cosmetic debt: the live Work "Form 1099DIV" title (dehyphenated before the reconcile fix).
 
