@@ -356,3 +356,26 @@ def test_recheck_forces_a_fresh_local_probe_not_a_cached_verdict(monkeypatch):
     out = api.api_usage_recheck()
     assert calls == [(True, False)]                                     # forced, and non-blocking
     assert out["local_ai"] == {"state": "checking", "rechecking": True}
+
+
+def test_research_overview_is_cached_on_the_research_revision():
+    """Kyle: "I never feel clear on how its benefiting me ... it starts to feel like the old version of the app was
+    faster or more useful." Measured on his live project: the Research overview did not return in 250 s and
+    saturated the server while it ran, because the areas pass scales with the Claim pile that automatic extraction
+    keeps growing. It is now computed once per research revision instead of once per request — the same answer,
+    just not rebuilt for every look."""
+    from neurosearch import research_view
+    p = db.create_project("Research", "buying a business")
+    first = research_view.overview(p["id"])
+    misses = perf.snapshot()["caches"]["research_overview"]["miss"]
+
+    second = research_view.overview(p["id"])
+    assert second == first                                              # identical answer, not an approximation
+    assert perf.snapshot()["caches"]["research_overview"]["miss"] == misses
+    assert perf.snapshot()["caches"]["research_overview"]["hit"] >= 1
+
+    db.connect().execute("INSERT INTO research_tensions (id, project_id, kind, description, status, impact, created_at, updated_at) "
+                         "VALUES ('rt1',?,'CONTRADICTION','d','open','high',?,?)", (p["id"], db.now(), db.now()))
+    db.connect().commit()
+    research_view.overview(p["id"])
+    assert perf.snapshot()["caches"]["research_overview"]["miss"] == misses + 1   # research moved → recomputed

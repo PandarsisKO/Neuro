@@ -144,6 +144,20 @@ def _area_name_for(topic: str | None, area_of: dict[str, str]) -> str:
 # ---------------------------------------------------------------- Research Areas ($0 clustering over the topic nodes)
 
 def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Cached on the project's research revision (SPEED R3). At 8,557 Claims the uncached derivation below did not
+    return in 250 s on Kyle's live project and saturated the server while it ran — the bulk-topic pass assigns EVERY
+    Claim of a lone-word topic ("business" x1,243) against EVERY cluster, so its cost grows with the Claim pile that
+    automatic extraction keeps enlarging. That is why the Research tab felt slower than the old version: it was.
+    Caching does not make it cheap, it makes it paid ONCE per actual change instead of once per request; making it
+    cheap is a separate rung, and reducing how fast Claims accumulate is Kyle's call."""
+    if data is None:
+        from . import cache
+        return cache.get_or_compute(f"research_areas:{project_id}", db.project_research_revision(project_id),
+                                    lambda: _areas_uncached(project_id, None), label="research_areas")
+    return _areas_uncached(project_id, data)
+
+
+def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
     """Stable, human-readable clusters over the knowledge nodes. Nodes whose topic is a generic word or that hold too few
     Claims are folded into the nearest cluster rather than shown; names come from each cluster's most distinctive terms."""
     d = data or _load(project_id)
@@ -398,6 +412,13 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
 # ---------------------------------------------------------------- the overview
 
 def overview(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
+    from . import cache
+    return cache.get_or_compute(f"research_overview:{project_id}:{limit}:{int(full)}",
+                                db.project_research_revision(project_id),
+                                lambda: _overview_uncached(project_id, limit, full), label="research_overview")
+
+
+def _overview_uncached(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
     """R3. `full=True` also returns the complete `questions` and `watchouts` lists computed in the SAME pass — the shell
     (R2) renders every pane from one request instead of paying for `_load()` four times."""
     d = _load(project_id)
