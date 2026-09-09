@@ -842,6 +842,19 @@ def init_db() -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_canonical ON sources(platform, canonical_url)")
     conn.commit()
     _migrate_source_analysis(conn)
+    _backfill_job_lanes(conn)
+
+
+def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
+    """0.45.11: Kyle, live — "the active queue needs to be re-prioritized." The 0.45.9/0.45.10 lane tagging only
+    applies to jobs CREATED from then on; anything already sitting in the queue (e.g. rank_proposed or
+    refresh_skipped_metadata jobs queued before the update landed) kept the old 'normal' lane and wouldn't jump
+    ahead or get deprioritized until it was re-queued for some other reason. Runs once per app start, touches only
+    currently-queued jobs (never running/done/failed/cancelled ones), and is a no-op once everything already
+    matches — safe to run on every startup."""
+    conn.execute("UPDATE jobs SET lane='priority', updated_at=? WHERE status='queued' AND kind='rank_proposed' AND lane!='priority'", (now(),))
+    conn.execute("UPDATE jobs SET lane='low', updated_at=? WHERE status='queued' AND kind='refresh_skipped_metadata' AND lane!='low'", (now(),))
+    conn.commit()
 
 
 def _migrate_source_analysis(conn: sqlite3.Connection) -> None:

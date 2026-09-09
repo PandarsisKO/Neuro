@@ -255,3 +255,25 @@ def test_low_lane_never_displaces_priority_or_normal_work(monkeypatch):
     assert r["queued"] == 1
     job = next(j for j in db.list_jobs(20) if j["kind"] == "refresh_skipped_metadata" and j["payload"]["source_id"] == missing)
     assert job["lane"] == "low"
+
+
+def test_job_lane_backfill_reprioritizes_jobs_already_queued_before_the_fix(monkeypatch):
+    """Kyle: "the active queue needs to be re-prioritized." The 0.45.9/0.45.10 lane tags only apply to jobs
+    CREATED from then on — anything already sitting in the queue (e.g. a rank_proposed or refresh_skipped_metadata
+    job queued before this update landed) kept the old 'normal' lane. init_db() now backfills any currently-QUEUED
+    job of those kinds to its correct lane on every app start, so a restart alone fixes the existing backlog too,
+    not just future jobs — and it never touches a job that has already finished."""
+    pid, ids = _fixture(monkeypatch)
+    done_src = db.create_job("rank_proposed", {"collection_id": "c-done", "project_id": pid}, lane="normal")
+    claimed = db.claim_job(("rank_proposed",))
+    assert claimed["id"] == done_src["id"]
+    db.finish_job(claimed["id"], claimed.get("run_id"), "done", message="done")
+
+    stale_rank = db.create_job("rank_proposed", {"collection_id": "c1", "project_id": pid}, lane="normal")
+    stale_backfill = db.create_job("refresh_skipped_metadata", {"source_id": "s1", "project_id": pid}, lane="normal")
+    assert db.get_job(stale_rank["id"])["lane"] == "normal" and db.get_job(stale_backfill["id"])["lane"] == "normal"
+
+    db.init_db()   # simulates a server restart picking up the fix
+    assert db.get_job(stale_rank["id"])["lane"] == "priority"
+    assert db.get_job(stale_backfill["id"])["lane"] == "low"
+    assert db.get_job(done_src["id"])["lane"] == "normal"   # already finished — untouched

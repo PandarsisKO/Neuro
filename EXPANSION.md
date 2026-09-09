@@ -1439,3 +1439,33 @@ other job kind (`ingest_source`, `ingest_url`, `suggest_findings`, `extract_clai
 stays at the `normal` default, which is what Kyle asked for ("transcribing new sources... higher priority over
 refreshing metadata" — normal already outranks low, no change needed there). If another kind turns out to be
 either urgent-interactive or purely speculative, the same two-line pattern (tag the creation site, done) applies.
+
+## S1 fix — the lane fix didn't retroactively touch jobs already sitting in the queue — 0.45.11
+
+Kyle, immediately after 0.45.10 landed: *"the active queue needs to be re-prioritized."* Right — the 0.45.9/0.45.10
+lane tagging only applies to jobs CREATED from then on. Any `rank_proposed`/`refresh_skipped_metadata` job that
+was already queued before the update shipped kept whatever lane it was born with (`normal`), so it wouldn't jump
+ahead or get deprioritized until something re-queued it for an unrelated reason (a retry, a cancel-and-recreate).
+On Kyle's app, with a big backlog and a "Refresh info" press from before this landed, that meant the fix looked
+like it did nothing for what was already sitting there.
+
+**Built.** `db.init_db()` now runs `_backfill_job_lanes(conn)` once on every app start: `UPDATE jobs SET
+lane='priority' WHERE status='queued' AND kind='rank_proposed' AND lane!='priority'`, and the mirror update for
+`refresh_skipped_metadata` → `lane='low'`. Only currently-`queued` jobs are touched — a job that's already
+running, done, failed, or cancelled is left exactly as it was (nothing about its history is rewritten). It's
+idempotent (a no-op once every row already matches) and cheap, so running it unconditionally on every startup —
+rather than gating it behind a one-time migration flag like `_migrate_source_analysis` — is deliberate: it means
+ANY future lane-assignment change to these two kinds self-heals the existing queue on the next restart too,
+without needing a new backfill function each time.
+
+**Gate.** New `tests/test_n7_pool.py::test_job_lane_backfill_reprioritizes_jobs_already_queued_before_the_fix`: a
+`rank_proposed` and a `refresh_skipped_metadata` job are created with the OLD `lane="normal"` (simulating a job
+that predates 0.45.9/0.45.10); calling `db.init_db()` again (simulating a restart) corrects both; a THIRD
+`rank_proposed` job that was claimed and marked `done` before the `init_db()` call keeps its original `normal`
+lane — proof the backfill only reaches the live queue, never job history. Suite 477; Tier 1 unchanged.
+
+**Honest limits.** This is a startup-time backfill, not a live trigger — a job created and queued in the seconds
+before this release lands (this delivery) picks up the correct lane immediately either way, since `create_job`
+already assigns it at creation time now; the backfill exists purely for the population of jobs that predate BOTH
+this fix and the lane feature it's fixing. It only covers the two kinds already tagged; if a future kind gets a
+non-`normal` lane, its own backfill line belongs alongside these two in `_backfill_job_lanes`.
