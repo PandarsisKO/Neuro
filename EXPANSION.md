@@ -1145,3 +1145,31 @@ tier still quotes nothing; the UI reads exactly these fields. Suite 463; Tier 1 
 **Honest limits.** The 1.2 min/window constant is still one measurement from one evening on one machine, and dividing it by the
 worker count assumes the workers do not contend — on a laptop under load the real figure will drift. It is an estimate the card
 now labels as "about", not a promise. Batch results land when Anthropic returns them; there is no ETA for a batch.
+
+
+## S5 — "capture the N that fit" bulk action — 0.45.4 (COMPLETE, pending delivery)
+
+The last item on HANDOFF §4a's small-follow-ups list. The pool (S5, 0.43.0) always scored every item against the project's
+open questions and weak areas and could tell you which ones were "worth a look" (potential ≥ 40), but capturing them meant
+clicking each row. On Kyle's larger project that number can be dozens.
+
+**Built.** `POST /api/projects/{id}/pool/capture-many` — takes the pool's own filter (`kind`, `rank_by`, `q`) plus a
+threshold (`min_potential`, default 40 — the pool's own "worth a look" line) and a cap (`limit`, default 20), and captures
+every item at or above the threshold through **exactly** the per-item path a single Capture click takes: a skipped source
+goes through `_retry_source` (the same function `POST /sources/{id}/retry` calls), a candidate already owned as a source is
+attached (`identity.attach_existing` + `candidates.mark(..., "acquired")`), and any other candidate is queued the normal way
+(`jobs.enqueue("ingest_url", …)`) — never a parallel or abbreviated path, so a bulk capture cannot diverge from what clicking
+each row by hand would have done. Reports what happened in the terms a person asks the question in: attached vs queued,
+how many were considered, and whether more exist above the threshold than the limit captured (so pressing it again finishes
+the rest rather than silently stopping at 20). UI: a **Capture the N that fit** button next to the pool's count line,
+appearing only when something clears the bar, confirming the current rank/show filter before it runs.
+
+**Gate (tests/test_n7_pool.py, +1 → 3).** A mixed pool (a linked candidate, a topically-relevant skipped source, a dated
+low-relevance one) captures exactly the items at or above the threshold and none below it; the skipped source's status and
+job mirror the single-retry path exactly; the candidate is attached or queued, never silently dropped; an empty result
+(threshold nothing clears) is reported as "nothing at or above that threshold", not "0 captured" dressed as success; the
+route and the UI's button both exist. Suite 464; Tier 1 unchanged.
+
+**Honest limits.** `limit` caps a single call at 200 to keep it synchronous and cheap; a pool larger than that needs a second
+press (the response says how many are left). Ingest jobs still go through the normal ingest pipeline and its own costs
+(transcription, embeddings) — capturing is not $0 the way scoring the pool is.

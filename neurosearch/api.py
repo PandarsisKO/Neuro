@@ -198,6 +198,58 @@ def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit:
     return candidates.pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(limit, 500)), kind=kind)
 
 
+class PoolCaptureIn(BaseModel):
+    kind: str = "all"          # all | skipped | candidates — same meaning as the pool's own `kind`
+    rank_by: str = "fit"
+    q: str | None = None
+    min_potential: int = 40    # the pool's own "worth a look" line (candidates._potential ≥ 40)
+    limit: int = 20
+
+
+@app.post("/api/projects/{project_id}/pool/capture-many", dependencies=[Depends(require_auth)])
+def api_pool_capture_many(project_id: str, body: PoolCaptureIn) -> dict[str, Any]:
+    """S5: 'capture the N that fit' — every pool item at or above a potential threshold, up to `limit`, in ONE action.
+    Exactly the per-item paths a single Capture click takes (retry for skipped, attach-or-acquire for a candidate) —
+    never a parallel path — so a bulk capture behaves identically to clicking each row by hand."""
+    from . import candidates, identity
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    r = candidates.pool(project_id, q=body.q, rank_by=body.rank_by, limit=2000, kind=body.kind)
+    chosen = [i for i in r["items"] if i["potential"] >= body.min_potential][:max(1, min(body.limit, 200))]
+    captured: list[str] = []
+    jobs_queued = attached = 0
+    failed: list[str] = []
+    for i in chosen:
+        try:
+            if i["kind"] == "skipped":
+                src = db.get_source(i["id"])
+                if not src:
+                    failed.append(i["id"]); continue
+                _retry_source(src)
+                jobs_queued += 1
+            else:
+                cid = i["id"]
+                c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone())
+                if not c:
+                    failed.append(cid); continue
+                if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
+                    identity.attach_existing(project_id, c["source_id"])       # already owned: attach, no acquisition
+                    candidates.mark(project_id, [cid], "acquired", "attached from the library")
+                    attached += 1
+                else:
+                    jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False})
+                    jobs_queued += 1
+            captured.append(i["id"])
+        except Exception as e:  # noqa: BLE001
+            log.warning("pool capture-many: %s failed: %s", i["id"], e)
+            failed.append(i["id"])
+    return {"captured": len(captured), "jobs_queued": jobs_queued, "attached": attached, "failed": len(failed),
+            "considered": len(chosen), "available_above_threshold": sum(1 for i in r["items"] if i["potential"] >= body.min_potential),
+            "min_potential": body.min_potential,
+            "line": (f"{attached} attached from the library" + (" · " if attached and jobs_queued else "") + (f"{jobs_queued} capture{'s' if jobs_queued != 1 else ''} queued" if jobs_queued else "")
+                    ) if captured else "nothing at or above that threshold"}
+
+
 @app.post("/api/candidates/{candidate_id}/dismiss", dependencies=[Depends(require_auth)])
 def api_candidate_dismiss(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
     from . import candidates

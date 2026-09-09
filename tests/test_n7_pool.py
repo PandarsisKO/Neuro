@@ -73,3 +73,42 @@ def test_pool_unifies_skipped_and_candidates_with_a_potential_scan(monkeypatch):
     assert dated not in {i["id"] for i in candidates.pool(pid)["items"]}
     assert db.connect().execute("SELECT COUNT(*) FROM chunks WHERE source_id IN (?,?)", (timeless, dated)).fetchone()[0] == 0
     assert all(i["explain"] if False else True for i in r["items"]) and "never" in r["explain"].lower()
+
+
+def test_capture_the_n_that_fit_takes_the_same_paths_as_a_single_capture(monkeypatch):
+    """0.45.4 — HANDOFF §4a's 'capture the N that fit' bulk action. One request captures every pool item at or above the
+    'worth a look' threshold (potential >= 40) through EXACTLY the per-item path a single Capture click takes: retry for a
+    skipped source, attach-from-library or ingest for a candidate — never a parallel path, so a bulk capture cannot diverge
+    from what clicking each row by hand would have done."""
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    corro = [t for t in knowledge.list_targets(pid, status="open") if t["sufficiency"] == "corroborative"][0]
+    knowledge.pursue(corro["id"], external=False)
+    timeless = _skipped(pid, "old-timeless", "How to structure a seller transition when buying an accounting practice",
+                        "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention principles.", relevance=35)
+    dated = _skipped(pid, "old-dated", "SBA rates news update this week", "Breaking: rates moved again today; market update for 2021.", relevance=20)
+    before = candidates.pool(pid)
+    # a lower bar catches both the linked candidate and the timeless skipped source; the dated one never clears even that
+    above = [i for i in before["items"] if i["potential"] >= 30]
+    assert len(above) >= 2 and {timeless, next(i["id"] for i in before["items"] if i["kind"] == "candidate")} <= {i["id"] for i in above}
+    assert dated not in {i["id"] for i in above}
+
+    r = api.api_pool_capture_many(pid, api.PoolCaptureIn(min_potential=30, limit=20))
+    assert r["captured"] == len(above) and r["considered"] == len(above) and r["failed"] == 0
+    assert r["available_above_threshold"] == len(above)
+    # a skipped source went pending and got a real ingest job — the exact _retry_source path
+    assert db.get_source(timeless)["status"] == "pending"
+    assert any((j.get("payload") or {}).get("source_id") == timeless or (j.get("payload") or {}).get("url") == db.get_source(timeless)["url"] for j in db.list_jobs(50))
+    # a candidate was captured either by attaching from the library or by queuing a real ingest — never silently skipped
+    assert r["attached"] + r["jobs_queued"] >= 2
+    # the dated, low-potential source is untouched
+    assert db.get_source(dated)["status"] == "skipped"
+
+    # a threshold nothing meets is refused cleanly, not silently "0 captured, looks like success"
+    r2 = api.api_pool_capture_many(pid, api.PoolCaptureIn(min_potential=101, limit=20))
+    assert r2["captured"] == 0 and r2["line"] == "nothing at or above that threshold"
+
+    # the route exists and the button in the UI calls exactly this endpoint
+    assert any(getattr(rt, "path", "") == "/api/projects/{project_id}/pool/capture-many" for rt in api.app.routes)
+    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    assert "/pool/capture-many" in html and "captureManyPool" in html

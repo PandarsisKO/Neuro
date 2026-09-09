@@ -546,7 +546,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.3';
+const UI_VERSION = '0.45.4';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1112,7 +1112,8 @@ async function loadPool() {
   let r; try { r = await api(`/api/projects/${state.project.id}/pool?` + p); } catch (e) { $('#srcList').innerHTML = '<div class="muted">could not load the pool</div>'; return; }
   POOL.total = r.total;
   const c = r.counts;
-  $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>`;
+  $('#srcCount').innerHTML = `${r.total} known, not captured <span class="muted">· ${c.skipped} skipped at the date cutoff · ${c.candidates} seen while exploring · <b>${c.worth_a_look}</b> worth a look · ${c.fits_a_question} fit an open question</span>` +
+    (c.worth_a_look ? ` <button class="small primary" onclick="captureManyPool()" title="Captures every item at or above 'worth a look' (potential ≥ 40) in your current rank/show filter — same as clicking Capture on each one">Capture the ${c.worth_a_look} that fit</button>` : '');
   $('#srcFilterNote').textContent = '';
   const pot = v => `<span class="fi" title="potential ${v}/100 — a $0 scan of the title and description against your open questions, weak areas and the project's own words">${'●'.repeat(Math.round(v / 20))}<span class="dim">${'●'.repeat(5 - Math.round(v / 20))}</span></span>`;
   $('#srcList').innerHTML = `<div class="row" style="gap:6px;margin:4px 0 10px;font-size:12.5px"><span class="muted">${esc(r.explain)}</span></div>
@@ -1130,6 +1131,12 @@ async function loadPool() {
 async function poolAct(a, title) {
   if (a.method === 'DELETE') await del(a.endpoint, a.body || {}); else await post(a.endpoint, a.body || {});
   toast(a.label === 'Not for this project' ? 'dismissed' : `⏵ capturing${title ? ' — ' + title.slice(0, 40) : ''}`); POOL.total = null; loadPool(); loadJobs();
+}
+async function captureManyPool() {
+  if (!confirm(`Capture every item at or above 'worth a look' in the current filter (rank: ${POOL.rank}, show: ${POOL.kind})? Each one goes through the same path as clicking Capture by hand — attached instantly if you already own it, otherwise queued as a normal ingest.`)) return;
+  const r = await post(`/api/projects/${state.project.id}/pool/capture-many`, { rank_by: POOL.rank, kind: POOL.kind, q: $('#srcQ').value || null, min_potential: 40, limit: 20 });
+  toast(r.captured ? `⏵ ${r.line}${r.available_above_threshold > r.considered ? ` · ${r.available_above_threshold - r.considered} more met the threshold — run it again for the rest` : ''}` : r.line);
+  POOL.total = null; loadPool(); loadJobs();
 }
 function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
 // L3: the local provider is slow on purpose — buying speed is an explicit choice, never implied by slowness
