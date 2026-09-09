@@ -574,6 +574,34 @@ def wait_for_idle(poll: float = 1.0) -> None:
         time.sleep(poll)
 
 
+FIRST_WAVE = 6        # sources a brand-new project may push to the front of the global queue, ONCE, for free
+
+
+def first_wave_lane(project_id: str) -> str:
+    """Kyle, live 2026-09-09: "the app is useless if I need to wait 24 hours for sources to populate. we NEED some
+    sources FAST. but not all of them right away."
+
+    He was right and the cause was not findings being slow — it was FIFO. A findings job for a project he just
+    created queues behind every job already in the queue, and his other project had ~1,000 of them, so a new
+    project's FIRST finding sat hours away while the machine looked busy and produced nothing he could use.
+
+    A project with no findings yet gets its first few sources on the `priority` lane so it becomes usable within
+    minutes. Deliberately small, deliberately once, and deliberately FREE: the promotion changes queue ORDER only —
+    same local provider, same model, same $0. (0.48.0 taught the other lesson: a lane that can re-trigger itself
+    needs a rate limit. This one cannot re-trigger — the condition is "this project has no findings", which stops
+    being true as soon as the wave lands, and a hard per-project counter caps it regardless.)"""
+    try:
+        if db.connect().execute("SELECT COUNT(*) FROM project_notes WHERE project_id=? LIMIT 1", (project_id,)).fetchone()[0]:
+            return "normal"                                   # it already has findings: nothing to bootstrap
+        used = int(db.kv_get(f"firstwave:{project_id}") or 0)
+        if used >= FIRST_WAVE:
+            return "normal"
+        db.kv_set(f"firstwave:{project_id}", str(used + 1))
+        return "priority"
+    except Exception:  # noqa: BLE001 — a promotion is a nicety; never let it stop a job being queued
+        return "normal"
+
+
 def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
     """After a source becomes ready: queue finding suggestions for each project it belongs to (if enabled)."""
     from . import providers
@@ -581,7 +609,7 @@ def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
         return
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:
-        db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]})
+        db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]}, lane=first_wave_lane(pid))
 
 
 # ------------------------------------------------------------------ L3: the acceleration dialog — "the local provider is slow, buy speed on purpose"

@@ -2251,3 +2251,42 @@ produced by an undeclared mix of Sonnet 5 and Haiku 4.5, and nothing distinguish
 provenance that would have said so is exactly what was missing. From here forward the record is complete. Deciding
 which tasks *should* run a cheaper model is the next rung, and it belongs to the measurement harness that already
 exists (`eval --migration-compare` with `--baseline-model` / `--candidate-model`), not to intuition.
+
+---
+
+## 0.53.0 — a new project's first findings stop queuing behind another project's backlog
+
+Kyle, live, on a brand-new project with ~70 sources: *"the app is useless if I need to wait 24 hours for sources
+to populate. we NEED some sources FAST. but not all of them right away to be able to use this app while other
+processes are going."*
+
+**Findings were not slow. The queue was FIFO.** `enqueue_suggestions` creates one `suggest_findings` job per
+source on the `normal` lane, and his other project had ~1,000 jobs already waiting (measured `wait_p50` 4,815 s
+against 0.65 s of median work). So a project created a minute ago had its first finding hours away, while the
+machine looked busy and produced nothing he could use. The screenshot told him "background analyses may take up to
+24 hours" — copy borrowed from the batch path, which this work was not even on.
+
+**`jobs.first_wave_lane(project_id)`** — a project with **no findings yet** gets its first `FIRST_WAVE` (6)
+sources on the `priority` lane. Deliberately small, and free: **the promotion changes queue ORDER only** — same
+local provider, same model, same $0. It cannot re-trigger itself, which is tonight's other lesson taken seriously:
+the condition is "this project has no findings", which stops being true the moment the wave lands, and a hard
+per-project counter caps it regardless of that.
+
+**`db.promote_first_findings(project_id, limit)`** is the retroactive half, because a project whose sources were
+queued *before* this existed is still stuck — and nobody should press "Start next" seventy-five times. It bumps
+the oldest queued findings jobs of one project using the existing one-shot bump (cleared the moment a job is
+claimed). `POST /api/projects/{id}/findings/first-wave`, surfaced as **"⏫ Start 6 now"** in the Findings banner,
+whose copy no longer says "up to 24 hours" for work that is not on the batch path — it now says each source
+appears the moment it finishes, which is what actually happens.
+
+**Gate.** New `tests/test_r5_first_wave.py` (5): a new project's first sources are claimed ahead of an older
+project's 20-job backlog; exactly `FIRST_WAVE` are promoted and the rest queue normally; the promotion never
+changes `execution_policy`, so it can never route work onto the paid API; it cannot re-trigger itself once the
+project has findings; and the retroactive promotion moves the *next* jobs rather than the same ones twice. Suite
+557; Tier 1 unchanged.
+
+**Honest limits.** Six is a guess, not a measurement — it is "enough to read while the rest lands", and the right
+number probably depends on how long each source takes. Which six is still arrival order, not value: `sources_value`
+already knows which sources matter most to a project and this does not consult it yet. And the deeper fix is the
+attention promotion in `SCHEDULER.md` §6.1 — the project you are *looking at* should outrank the one you are not,
+continuously, rather than once at creation.

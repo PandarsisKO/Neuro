@@ -2393,6 +2393,16 @@ class SuggestIn(BaseModel):
     depth: str | None = None               # D2: "deep" = Read deeper (smaller windows + depth instruction; interactive only)
 
 
+@app.post("/api/projects/{project_id}/findings/first-wave", dependencies=[Depends(require_auth)])
+def api_findings_first_wave(project_id: str, limit: int = 6) -> dict[str, Any]:
+    """Push this project's first few queued findings jobs to the front of the whole queue. Free — it changes queue
+    ORDER only (same provider, same model, same $0); it exists because a new project's first finding should not sit
+    behind another project's backlog."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return db.promote_first_findings(project_id, limit=min(max(1, limit), jobs.FIRST_WAVE * 4))
+
+
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
 def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
     ids = body.source_ids or (db.project_source_ids(project_id) if body.force else db.sources_needing_suggestions(project_id))
@@ -2409,7 +2419,8 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
             # one job PER source in the slow lane: each finishes and lands on its own, and only one local worker ever carries them
             made = [db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "depth": "deep", "reason": "read deeper"}, lane="slow") for sid in ids]
             return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids), "transport": body.transport, "depth": body.depth, "lane": "slow"}
-        job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force, "depth": body.depth})
+        job = db.create_job("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force, "depth": body.depth},
+                            lane=jobs.first_wave_lane(project_id))
     return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth}
 
 

@@ -1993,6 +1993,27 @@ def bump_job(job_id: str) -> str:
         return "queued"
 
 
+def promote_first_findings(project_id: str, limit: int = 6) -> dict[str, Any]:
+    """Bump the oldest queued findings jobs of ONE project to the front of the whole queue.
+
+    The retroactive half of jobs.first_wave_lane: a project whose sources were queued before that existed is still
+    stuck behind an unrelated backlog, and the user should not have to press "Start next" 75 times. Bumping is the
+    existing one-shot mechanism (cleared the moment a job is claimed) — this only chooses which jobs get it, and
+    changes nothing about cost, provider or model."""
+    rows = connect().execute(
+        "SELECT id FROM jobs WHERE kind='suggest_findings' AND status='queued' AND bumped_at IS NULL "
+        "AND json_extract(payload,'$.project_id')=? ORDER BY created_at LIMIT ?", (project_id, max(0, int(limit)))).fetchall()
+    for r in rows:
+        try:
+            bump_job(r["id"])
+        except Exception:  # noqa: BLE001
+            pass
+    waiting = connect().execute(
+        "SELECT COUNT(*) FROM jobs WHERE kind='suggest_findings' AND status IN ('queued','running') "
+        "AND json_extract(payload,'$.project_id')=?", (project_id,)).fetchone()[0]
+    return {"promoted": len(rows), "waiting": int(waiting)}
+
+
 def check_now(job_id: str) -> str:
     """Kyle: a parked job's stored message (e.g. a SPEND_CAP "access returns <date>") is exactly what the provider
     said the moment it was hit — never invented — but it's frozen text: nothing re-attempts the call before that
