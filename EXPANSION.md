@@ -1877,3 +1877,47 @@ to run this backfill and count what remains, rather than sizing OCR against a gu
 synthetic timestamps after the last spoken segment, so a citation into one shows a time that does not correspond to
 anything on screen; the marker segment is what makes that legible to a reader, and a real locator kind for
 caption text is not built. The 88 cutoff-skipped shorts are untouched.
+
+## R6a — fast/bulk routing for Claim extraction — 0.48.0
+
+Kyle, after being asked what Claims are FOR in his workflow: *"I like the idea of having a huge stack of content I
+can start refining and gaining more insights from over time, also my behavior is to want to feed it everything I
+find as I find it not knowing if it will benefit me later"* — and then: *"I want to surface important claims
+quickly, but want to offload bulky claim work to background and cheap processing."*
+
+**That inverted the previous session's instinct, which was to throttle extraction.** Throttling would have been
+solving his workflow instead of supporting it. The pile is the product; the defect was that the pile got more
+expensive to hold — SPEED-MISSION.md's north star is *"the more Neuro Search has already researched, the less work
+it needs to repeat"*, and Claims were doing the exact opposite.
+
+**Built — Fast/Warm/Deep (R6) applied to one workload, on machinery that already existed.** `claims.triage` is a
+$0, deterministic, model-free split using the two signals **Kyle chose himself**: a candidate that answers an OPEN
+QUESTION he is already waiting on (token overlap ≥ 0.34 against live evidence targets), or one from a source he
+marked PRIORITY. Both are his own recorded judgements, which is the point — §D requires triage to be free and
+instant, "or it becomes the latency it was meant to remove". `maybe_extract` now queues **two** jobs: the important
+few as `lane="priority", execution_policy="api_requested"` (paid, ~3× faster than local, bounded by `FAST_GROUPS`
+× `EXTRACT_GROUP` = 16 claims, cents per pass), and everything else as the ordinary `slow`-lane pass, which runs
+local at $0 and — being slow-lane — cannot hold a worker his findings and ranking need.
+
+**The invariant.** The fast lane REORDERS, it never filters. Everything not picked is returned as `bulk` and still
+extracted; "unimportant" is a scheduling verdict, never an exclusion. That is mission Principle 1, and it is what
+makes "feed it everything, refine later" safe.
+
+**A dedupe bug found by its own test.** `dedupe_key_for("extract_claims")` keyed on the project alone, so the bulk
+pass queued alongside the fast one silently returned the fast job and the remaining pile was never extracted at
+all. Fixed the way 0.45.0 fixed the identical bug for deep reads: a fast pass is its own unit of work (`:fast`).
+The test caught this on first run, which is the argument for writing the routing assertion rather than assuming
+two `create_job` calls produce two jobs.
+
+**Gate.** New `tests/test_p3_claim_triage.py` (4): a claim answering an open target is fast-tracked and can say
+why; **nothing is ever dropped, only reordered**; the fast lane stays bounded when 40 important-looking claims
+arrive at once; and routing produces one paid `priority` job plus one cheap `slow` job. Suite 509; Tier 1
+unchanged.
+
+**Honest limits.** Only two of the four signals discussed are implemented — contradiction-creating claims and
+embedding-novelty were considered and left out because Kyle picked the other two, and adding unpicked signals would
+be inventing his priorities. The bulk lane runs local rather than through the Message Batches API; batch would be
+roughly half price again (his own ledger: batch transport has cost $6.84 and saved $6.81) and holds no worker at
+all, but `batches.py` is findings-shaped today — generalising its request builder and materializer to Claims is
+the obvious next step and is not done. Triage runs on every `maybe_extract`, so its cost grows with the
+unnormalized pile; at present that pile is small because extraction keeps up, but it is not itself incremental.

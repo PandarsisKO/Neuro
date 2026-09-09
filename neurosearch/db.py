@@ -1544,7 +1544,9 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     if kind == "discover":
         return f"discover:{payload.get('project_id')}:{payload.get('refine') or ''}"
     if kind == "extract_claims":
-        return f"claims:{payload.get('project_id')}"
+        # a fast pass over a named few is its OWN unit of work, exactly like a deep read above: without this the
+        # bulk pass queued alongside it silently returns the fast job and the rest of the pile is never extracted.
+        return f"claims:{payload.get('project_id')}" + (":fast" if payload.get("claim_ids") else "")
     return None
 
 

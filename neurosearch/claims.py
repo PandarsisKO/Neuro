@@ -839,6 +839,45 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     return {"normalized": normalized, "targets": targets, "calls": calls}
 
 
+FAST_GROUPS = 2                   # "a few per batch" (Kyle): at EXTRACT_GROUP=8 that is <=16 claims, cents per pass
+
+
+def triage(project_id: str) -> dict[str, Any]:
+    """$0, deterministic, no model call — which unnormalized candidates deserve to jump the queue.
+
+    Kyle: "I want to surface important claims quickly, but want to offload bulky claim work to background and cheap
+    processing", and he chose the two signals: a candidate that ANSWERS AN OPEN QUESTION he is already waiting on,
+    or one that comes from a source he marked PRIORITY. Both are his own judgements already recorded in the data,
+    which is the point — triage must never be a model guessing what matters before the cheap work can start
+    (SPEED-MISSION.md §D: "triage must be free and instant, or it becomes the latency it was meant to remove").
+
+    Everything not picked is returned as `bulk`, never dropped: the fast lane reorders, it does not filter."""
+    from . import knowledge
+    cands = unnormalized(project_id)
+    if not cands:
+        return {"fast": [], "bulk": [], "why": {}}
+    prio_sources = set(db.priority_source_ids(project_id))
+    note_source = {r["id"]: r["source_id"] for r in db.connect().execute(
+        "SELECT id, source_id FROM project_notes WHERE project_id=?", (project_id,)).fetchall()}
+    open_targets = [t for t in knowledge.list_targets(project_id) if t.get("status") not in ("dropped", "satisfied")]
+    target_text = [(t.get("question") or t.get("label") or "") for t in open_targets]
+
+    scored, why = [], {}
+    for c in cands:
+        reasons, score = [], 0.0
+        if note_source.get(c.get("origin_note_id")) in prio_sources:
+            score += 1.0; reasons.append("from a source you marked priority")
+        best = max((overlap(c["text"], q) for q in target_text), default=0.0)
+        if best >= 0.34:
+            score += best; reasons.append("answers an open question you are waiting on")
+        if reasons:
+            scored.append((score, c)); why[c["id"]] = reasons
+    scored.sort(key=lambda x: -x[0])
+    fast = [c for _, c in scored[:FAST_GROUPS * EXTRACT_GROUP]]
+    fast_ids = {c["id"] for c in fast}
+    return {"fast": fast, "bulk": [c for c in cands if c["id"] not in fast_ids], "why": why}
+
+
 def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str, Any] | None:
     """Event-driven, debounced, lazy: queue ONE extract_claims job when enough candidates accumulated or the debounce
     window passed — never a call per finding. Returns the job or None."""
@@ -851,6 +890,14 @@ def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str
     last = float(db.kv_get(f"claims:last_extract:{project_id}") or 0)
     if not force and n < CLAIMS_BATCH_MIN and (time.time() - last) < CLAIMS_DEBOUNCE_S:
         return None
+    tri = triage(project_id)
+    if tri["fast"]:
+        # surface what he is waiting on immediately: small, api_requested (paid, ~3x faster than local), priority
+        # lane so it is claimed ahead of the bulk pass. Bounded by FAST_GROUPS, so a burst cannot become the cost.
+        db.create_job("extract_claims", {"project_id": project_id, "reason": f"{reason} (important)",
+                                         "claim_ids": [c["id"] for c in tri["fast"]],
+                                         "why": {k: v for k, v in tri["why"].items() if k in {c["id"] for c in tri["fast"]}}},
+                      lane="priority", execution_policy="api_requested")
     job = db.create_job("extract_claims", {"project_id": project_id, "reason": reason}, lane="slow")
     return job
 
@@ -860,7 +907,11 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     if payload.get("evaluation"):
         return run_evaluation(pid, budget=int(payload.get("budget") or EVAL_BUDGET), progress=progress)
     harvest(pid)
-    res = extract(pid, transport="job")
+    ids = set(payload.get("claim_ids") or [])
+    cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
+    if ids and not cands:
+        return {"normalized": 0, "targets": 0, "calls": 0, "note": "already normalized by an earlier pass"}
+    res = extract(pid, cands=cands, transport="job")
     from . import knowledge
     knowledge.refresh(pid)
     return res
