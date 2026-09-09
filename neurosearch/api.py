@@ -617,7 +617,7 @@ def api_rank(collection_id: str, body: RankIn) -> dict[str, Any]:
         meta["max_videos"] = body.want
     db.kv_set(f"review:{collection_id}", json.dumps(meta))
     job = db.create_job("rank_proposed", {"collection_id": collection_id, "project_id": body.project_id or meta.get("project_id"),
-                                          "want": body.want or meta.get("max_videos")})
+                                          "want": body.want or meta.get("max_videos")}, lane="priority")
     return {"job_id": job["id"]}
 
 
@@ -1197,15 +1197,30 @@ async def api_masterplan_zip(project_id: str, synthesize: bool = True) -> Any:
 
 @app.get("/api/projects/{project_id}/jobs", dependencies=[Depends(require_auth)])
 def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
-    """Jobs belonging to this project: URL/file ingests queued for it, plus per-video jobs of its sources."""
+    """Jobs belonging to this project: URL/file ingests queued for it, plus per-video jobs of its sources.
+    Kyle, live: with a big enough app-wide backlog, this used to scan only the most-recently-CREATED 400 jobs
+    across every project before filtering to this one — a currently queued/running job could be crowded out of
+    that window by newer jobs (in this project or any other) and simply vanish from the panel, even though it
+    was genuinely active. Every ACTIVE job (queued/running/external_pending) for this project is now always
+    included, however many there are; `limit` only bounds how many additional recent terminal (done/failed/
+    cancelled) jobs ride along for history."""
     ids = set(db.project_source_ids(project_id, ready_only=False))
-    out = []
-    for j in db.list_jobs(limit=400):
+
+    def _mine(j: dict[str, Any]) -> bool:
         pl = j.get("payload") or {}
-        if pl.get("project_id") == project_id or (j["kind"] == "ingest_source" and pl.get("source_id") in ids):
-            out.append(j)
-        if len(out) >= limit:
+        return pl.get("project_id") == project_id or (j["kind"] == "ingest_source" and pl.get("source_id") in ids)
+
+    out = [j for j in db.list_jobs(limit=5000, statuses=db.JOB_ACTIVE) if _mine(j)]
+    have = {j["id"] for j in out}
+    budget = len(out) + max(limit, 0)
+    for j in db.list_jobs(limit=max(limit * 10, 400)):
+        if len(out) >= budget:
             break
+        if j["id"] in have:
+            continue
+        if _mine(j):
+            out.append(j)
+            have.add(j["id"])
     titles = db.source_titles({sid for j in out for sid in ((j.get("payload") or {}).get("source_ids") or [(j.get("payload") or {}).get("source_id")]) if sid})
     for j in out:
         pl = j.get("payload") or {}

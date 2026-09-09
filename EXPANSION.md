@@ -1366,3 +1366,47 @@ before grinding through the backlog, not after. Also asserts the new label strin
 what triggers the job or how big a backlog it processes per run. If Kyle's actual complaint was volume (many
 `extract_claims` runs queuing back-to-back against a large, migrated project) rather than the label or the stuck
 cancel, that's a separate, not-yet-diagnosed question — worth asking him directly once he's seen this land.
+
+## S1 fixes — the Jobs panel could hide an active job, and ranking queued behind the whole AI backlog — 0.45.9
+
+Two more live reports in the same session.
+
+**"our in progress queue gets cut off if theres too many items in queue. I cannot see whats active."**
+`GET /api/projects/{id}/jobs` (`api_project_jobs`) scanned only the most-recently-CREATED 400 jobs APP-WIDE
+(`db.list_jobs(limit=400)`) before filtering down to this project. On an app with a large enough backlog (across
+any project, any job kind), a job that was genuinely still queued or running for Kyle's project — just older than
+400 other jobs created since — fell out of that window and vanished from the panel entirely, even though it
+hadn't run yet. **Built:** `db.list_jobs` takes an optional `statuses` filter; `api_project_jobs` now always
+includes every ACTIVE job (`queued`/`running`/`external_pending`) for the project regardless of age (scanned up
+to 5000 active jobs app-wide — the real ceiling for "how many things could possibly be active at once", not "how
+many things were created recently"), and `limit` now only bounds how many additional recent terminal
+(done/failed/cancelled) jobs ride along for history. **Gate:**
+`tests/test_n7_pool.py::test_project_jobs_never_hides_an_active_job_behind_a_big_backlog` — a job for the project
+is created first, then 450 unrelated jobs (more than the old 400-scan window) land after it; the endpoint still
+returns it.
+
+**"ranking is far too slow. we need to improve that."** `rank_proposed` (scores a channel's videos for the
+Review card before Kyle picks which to ingest — cheap, ~$0.02/batch of 80 titles) shares the exact same small
+local-AI worker pool as every other `jobs.ANALYSIS_KINDS` job: `suggest_findings`, `extract_claims`, `discover`,
+`build_plan`. Scheduling was plain FIFO by `created_at` — a fresh review card's ranking job could sit behind
+however many findings/claims jobs a big migrated project already had queued, with no way to jump the line short
+of the explicit-cost L3 "accelerate" dialog (buying speed onto the API pool, a deliberate design line this
+project has held since L3: never spend implicitly just because something is slow). **Built:** a job's `lane`
+column — already used for `slow` (Read deeper) vs `normal` — gained a third value, `priority`: claimed ahead of
+`normal`-lane jobs of any age, on the SAME local pool, at the SAME $0 cost (`LOCAL_POLICIES`/`API_POLICIES` and
+`providers.route()` are completely untouched — this is pure queue order, never a spending decision).
+`rank_proposed` is now created with `lane="priority"` at all four call sites (`api.py` re-rank endpoint,
+`explore.py`, `ingest.py` ×2 — channel/playlist and Instagram profile review). **Gate:**
+`tests/test_n7_pool.py::test_priority_lane_jobs_are_claimed_before_older_normal_lane_ones` — a priority job
+created AFTER a normal one is still claimed first; the older normal job runs right after it (never starved); a
+source-grep confirms every `rank_proposed` creation site carries the tag. Suite 475; Tier 1 unchanged.
+
+**Honest limits.** The priority lane speeds up QUEUEING, not the per-call latency of an individual ranking batch
+(each of up to 5 batches of 80 titles for a 400-video channel is still one sequential model call — parallelizing
+those batches was considered but skipped this round: `_call`'s thread-local provenance/L1-routing state
+(`providers._tl`, `_policy_tl`) is main-thread-only, and doing it correctly needs to propagate execution policy
+and merge routing state across worker threads, not just wrap the loop in a thread pool). If ranking still feels
+slow after this — because Claude Code itself (local, $0) is inherently slower per call than the API, not because
+of queue position — the honest lever is the same one L3 already built: accelerate the specific rank_proposed job
+onto the API pool for a few cents. Worth telling Kyle this option exists directly, since the priority lane alone
+may not be the whole fix.

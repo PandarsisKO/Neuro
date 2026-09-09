@@ -136,7 +136,7 @@ def ingest_url(
         if review and proposed:
             db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": kind == "channel",
                                                           "project_id": project_id, "max_videos": mx, "ranked": False, "counts": counts}))
-            db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
+            db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx}, lane="priority")
         return {"kind": kind, "collection_id": coll["id"], "title": coll.get("title"),
                 "found": total_found, "queued": queued, "proposed": proposed, "already_ingested": skipped, "counts": counts,
                 "limits": {"since": min_date, "max_videos": mx}, "review": review and proposed > 0}
@@ -184,7 +184,7 @@ def ingest_url(
         db.kv_set(f"review:{coll['id']}", json.dumps({"min_date": min_date, "newest_first": True, "project_id": project_id,
                                                       "max_videos": mx, "ranked": False, "cookies_file": cookies_file,
                                                       "referer": info["url"], "counts": counts}))
-        db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx})
+        db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": mx}, lane="priority")
         return {"kind": "instagram_profile", "collection_id": coll["id"], "title": coll.get("title"), "found": len(entries),
                 "proposed": proposed, "already_ingested": skipped, "counts": counts, "review": proposed > 0}
     platform = {"video": "youtube", "instagram": "instagram", "fixture": "fixture"}.get(kind, "media")

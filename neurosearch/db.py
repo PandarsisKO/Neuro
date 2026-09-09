@@ -756,7 +756,7 @@ MIGRATIONS = [
     ("jobs", "execution_policy", "ALTER TABLE jobs ADD COLUMN execution_policy TEXT NOT NULL DEFAULT 'local_preferred'"),
     ("jobs", "executed_by", "ALTER TABLE jobs ADD COLUMN executed_by TEXT"),
     ("jobs", "fallback_reason", "ALTER TABLE jobs ADD COLUMN fallback_reason TEXT"),
-    ("jobs", "lane", "ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT 'normal'"),   # 0.42.1: 'slow' = long-running local work (Read deeper) that must not hog the pool
+    ("jobs", "lane", "ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT 'normal'"),   # 0.42.1: 'slow' = long-running local work (Read deeper) that must not hog the pool; 0.45.8: 'priority' = claimed ahead of 'normal', for short jobs a user is actively waiting on (e.g. ranking a review card) — never changes cost/provider, only queue order
     ("jobs", "wait_operation", "ALTER TABLE jobs ADD COLUMN wait_operation TEXT"),
     ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
@@ -1437,7 +1437,7 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
             "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
              f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key, execution_policy,
-             lane if lane in ("normal", "slow") else "normal"),
+             lane if lane in ("normal", "slow", "priority") else "normal"),
         )
         job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
     return get_job(jid)  # type: ignore[return-value]
@@ -1541,10 +1541,15 @@ def source_titles(ids: set[str]) -> dict[str, str]:
     return {r["id"]: (r["title"] or r["url"]) for r in connect().execute(f"SELECT id, title, url FROM sources WHERE id IN ({q})", tuple(ids)).fetchall()}
 
 
-def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
-    return [row_to_dict(r) for r in connect().execute(  # type: ignore[misc]
-        "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
-    ).fetchall()]
+def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+    q = "SELECT * FROM jobs"
+    args: list[Any] = []
+    if statuses:
+        q += f" WHERE status IN ({','.join('?' for _ in statuses)})"
+        args += list(statuses)
+    q += " ORDER BY created_at DESC LIMIT ?"
+    args.append(limit)
+    return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
 
 
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
@@ -1568,7 +1573,9 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             q += f" AND lane IN ({','.join('?' for _ in lanes)})"
             args += list(lanes)
         row = None
-        for cand in conn.execute(q + " ORDER BY created_at LIMIT 50", args).fetchall():
+        # a 'priority' job (e.g. ranking — the user is on the review card waiting) is claimed ahead of 'normal'-lane
+        # ones of the same age, so a large background backlog (findings, claims) can never make it wait behind them
+        for cand in conn.execute(q + " ORDER BY (lane='priority') DESC, created_at LIMIT 50", args).fetchall():
             if cand["cancel_requested_at"]:
                 conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled' WHERE id=? AND status='queued'", (now(), cand["id"]))
                 job_event(cand["id"], "cancelled", conn=conn)

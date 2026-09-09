@@ -309,6 +309,6 @@ def explore(url: str, kind: str, project_id: str | None, *, tags: list[str] | No
             "kind": info["kind"], "how": info.get("how")}
     if proposed:
         db.kv_set(f"review:{coll['id']}", json.dumps(meta))
-        db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": want})
+        db.create_job("rank_proposed", {"collection_id": coll["id"], "project_id": project_id, "want": want}, lane="priority")
     return {"kind": info["kind"], "collection_id": coll["id"], "title": info.get("title"), "found": len(entries), "proposed": proposed,
             "already_ingested": skipped, "counts": counts, "how": info.get("how"), "review": proposed > 0}

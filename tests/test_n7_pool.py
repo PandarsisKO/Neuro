@@ -196,3 +196,40 @@ def test_extract_claims_job_can_be_cancelled_mid_run(monkeypatch):
     html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
     assert "extract_claims" in html and "finding claims to track" in html
     assert "extract_claims" in jobs.RETRYABLE   # a transient provider hiccup retries like every other AI job kind, instead of failing outright
+
+
+def test_project_jobs_never_hides_an_active_job_behind_a_big_backlog(monkeypatch):
+    """Kyle, live: "our in progress queue gets cut off if theres too many items in queue. I cannot see whats
+    active." api_project_jobs used to scan only the most-recently-CREATED 400 jobs app-wide (db.list_jobs(400))
+    before filtering down to this project — a genuinely active job for THIS project, created before a big batch
+    of other jobs land (any project, any kind), gets pushed out of that recency window and simply vanishes from
+    the panel, even though it is still queued and will run eventually. Every ACTIVE job for this project must
+    show up regardless of how much has been created elsewhere since."""
+    pid, ids = _fixture(monkeypatch)
+    mine = db.create_job("reembed", {"project_id": pid, "n": "mine"})
+    for i in range(450):                 # more than the old scan window (400) — all created AFTER ours
+        db.create_job("reembed", {"project_id": "someone-elses-project", "n": i})
+    rows = api.api_project_jobs(pid, limit=40)
+    assert any(r["id"] == mine["id"] for r in rows)
+
+
+def test_priority_lane_jobs_are_claimed_before_older_normal_lane_ones(monkeypatch):
+    """Kyle: "ranking is far too slow." rank_proposed shares the same small local-AI worker pool as everything
+    else in jobs.ANALYSIS_KINDS (findings, extract_claims, discover, build_plan) with plain FIFO scheduling — on
+    a project with a big background backlog, a freshly-queued ranking job for a review card Kyle is actively
+    looking at could sit behind hundreds of older jobs before a worker ever reaches it. rank_proposed now gets
+    lane='priority', which is claimed ahead of 'normal'-lane jobs regardless of age — purely queue order, never
+    a change to cost or provider (LOCAL_POLICIES/API_POLICIES and route() are untouched)."""
+    pid, ids = _fixture(monkeypatch)
+    old_normal = db.create_job("reembed", {"n": "old"})                      # created first, ordinary lane
+    new_priority = db.create_job("reembed", {"n": "new"}, lane="priority")   # created after, priority lane
+    assert db.claim_job(("reembed",))["id"] == new_priority["id"]            # priority wins despite being younger
+    assert db.claim_job(("reembed",))["id"] == old_normal["id"]              # the older normal job still runs right after
+
+    # every place a rank_proposed job is queued tags it priority, so a fresh review card never waits behind the backlog
+    import re
+    for path in ("api.py", "explore.py", "ingest.py"):
+        src = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / path).read_text()
+        for m in re.finditer(r'create_job\("rank_proposed"', src):
+            window = src[m.start():m.start() + 260]
+            assert 'lane="priority"' in window, f"{path}: {window[:100]}"
