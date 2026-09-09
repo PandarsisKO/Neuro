@@ -2364,3 +2364,47 @@ with his name and date; and the local-model declaration from 0.52.0 stays indepe
 the argument that a gate catches their failures, not on evidence that Haiku passes them. `user` and `irreversible`
 are both, by construction, admissions that we do not know. The `$5–8` comparison is still the thing that would
 turn eleven of these thirteen justifications into facts.
+
+---
+
+## 0.55.0 — a long job gives the worker back
+
+Kyle, for the third time in one day: *"extracting claims is STILL blocking transcription and findings."*
+
+Measured on his running queue, and the ratio is the entire story:
+
+```
+extract_claims     work_p50   237.55 s    work_p90   843.82 s
+suggest_findings   work_p50     0.95 s    wait_p50 4,781.99 s   (1,128 of them)
+```
+
+One claims run occupies an AI worker for **four to fourteen minutes**. There are **three**. Behind it sat 1,128
+findings jobs each carrying under a second of actual work.
+
+**Why the two earlier attempts could not have worked.** 0.48.0 gave claims a priority lane; 0.48.2 and 0.51.0 gave
+it a pause. Both are about ORDER, and **a lane decides who is claimed next, not who is evicted.** Once a long job
+is running it holds its worker whatever arrives — a priority findings job simply waits for a *different* worker.
+No amount of queue ordering fixes a job that does not let go. The job has to yield voluntarily.
+
+**Which is free here.** `claims.extract` already loops group by group, and every group is idempotent by
+`extraction_hash`, so stopping between groups costs nothing and resuming re-does nothing. `GROUPS_PER_RUN = 2`
+now bounds a bulk run to two model calls (~4 minutes at his measured p50 instead of 14), after which it returns
+`more` and hands the worker back. The remainder resumes on its own: `maybe_extract` already fires after every
+findings job and re-creates the pass once its dedupe key frees — **no second scheduling path was added**, because
+a second path is a second thing to keep honest.
+
+The **fast** pass is deliberately exempt. It is a small, explicitly chosen set the user is waiting on, already
+bounded by `FAST_GROUPS`, and interrupting the thing that exists to be quick would defeat it.
+
+**Gate.** New `tests/test_r7_claims_yield.py` (4): a bulk run stops at exactly `GROUPS_PER_RUN` model calls,
+reports what is left, and still makes real progress before yielding; resuming normalizes *different* candidates
+with their own extraction hashes, so no group is ever paid for twice, and repeated runs terminate rather than
+loop; the fast pass runs past the quota to the end; and — as an executable statement of the reasoning — a running
+long job keeps its worker while a `priority` job is claimed by a different one, which is why ordering could never
+have solved this. Suite 571; Tier 1 unchanged.
+
+**Honest limits.** Two groups is a judgement, not a measurement: it trades a longer total wall-clock for the
+claims pass against never blocking findings for more than a few minutes. `rank_proposed` has the same shape
+(`work_p90` 384 s) and does **not** yield yet — it is the next one to do. And the general fix is still the
+scheduler's admission bucket (`SCHEDULER.md` §5): a pool should not be able to fill with long work in the first
+place, rather than each long job having to remember to be polite.

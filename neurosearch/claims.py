@@ -60,6 +60,14 @@ STRENGTHS = ("strong", "developing", "weak", "unsupported")
 CLAIMS_BATCH_MIN = 6          # unnormalized candidates that justify an extraction call on their own
 CLAIMS_DEBOUNCE_S = 1800      # otherwise wait this long since the last extraction before spending again
 EXTRACT_GROUP = 8             # candidates per model call (20 truncated a 4k output on the real library, 0.30.1)
+GROUPS_PER_RUN = 2            # 0.55.0 — and at most this many groups before the job GIVES THE WORKER BACK.
+                              # Kyle, live, for the third time: "extracting claims is STILL blocking transcription
+                              # and findings". Measured on his queue: an extract_claims run works for 238 s at p50
+                              # and 844 s at p90, against three AI workers, while suggest_findings jobs — 0.95 s of
+                              # work each — waited 4,782 s behind it. Lane order cannot help once a long job is
+                              # RUNNING: a lane decides who is claimed next, not who is evicted. So the long job
+                              # has to yield voluntarily. Each group is idempotent by extraction_hash, so stopping
+                              # between groups costs nothing and resuming re-does nothing.
 EXTRACT_MAX_INLINE = 60       # more than this → job only
 
 _STOP = {"the", "and", "that", "with", "this", "from", "your", "have", "will", "they", "their", "there", "which", "when", "what",
@@ -770,7 +778,7 @@ def unnormalized(project_id: str) -> list[dict[str, Any]]:
 
 
 def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transport: str = "interactive",
-            progress: Any = None) -> dict[str, Any]:
+            progress: Any = None, max_groups: int | None = None) -> dict[str, Any]:
     """Normalize a bounded group of candidates with ONE structured call per EXTRACT_GROUP. Idempotent: a group whose
     extraction_hash is already stamped on its claims is skipped without spend.
 
@@ -788,10 +796,14 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     total_groups = max(1, (len(cands) + EXTRACT_GROUP - 1) // EXTRACT_GROUP)
     if progress:
         progress(0.02, f"reading {len(cands)} candidate claim{'' if len(cands) == 1 else 's'} in {total_groups} group{'' if total_groups == 1 else 's'}")
+    ran, more = 0, False
     for i in range(0, len(cands), EXTRACT_GROUP):
         if transport == "job":
             from .jobs import check_cancel
             check_cancel()                                  # safe boundary: no group's model call is in flight yet
+        if max_groups is not None and ran >= max_groups:
+            more = True                                     # hand the worker back; the remainder is picked up later
+            break
         gno = i // EXTRACT_GROUP + 1
         if progress:
             # reported BEFORE the call, so the message names what is being waited on rather than what already ended
@@ -810,6 +822,7 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                            "candidates": [_candidate_payload(c) for c in group]}, ensure_ascii=False)
         parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
         calls += 1
+        ran += 1
         model = getattr(providers.last_response(), "model", None)
         prov = {"extraction_hash": ih, "model": str(model or ""), "prompt_version": PROMPT_VERSION, "schema_version": "claim-set-v1",
                 "routing": providers.routing_json("claims.extract", model), "transport": transport}
@@ -851,7 +864,8 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     for c in cands:
         assess(c["id"])
     db.kv_set(f"claims:last_extract:{project_id}", str(time.time()))
-    return {"normalized": normalized, "targets": targets, "calls": calls}
+    left = max(0, len(cands) - (ran * EXTRACT_GROUP)) if more else 0
+    return {"normalized": normalized, "targets": targets, "calls": calls, "more": more, "remaining": left}
 
 
 FAST_GROUPS = 2                   # "a few per batch" (Kyle): at EXTRACT_GROUP=8 that is <=16 claims, cents per pass
@@ -946,11 +960,20 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
     cands = [c for c in unnormalized(pid) if c["id"] in ids] if ids else None
     if ids and not cands:
         return {"normalized": 0, "targets": 0, "calls": 0, "note": "already normalized by an earlier pass"}
-    res = extract(pid, cands=cands, transport="job", progress=progress)
+    # The bulk pass yields the worker after GROUPS_PER_RUN groups (see the constant). The FAST pass — a small,
+    # explicitly chosen set the user is waiting on — runs to the end: it is bounded by FAST_GROUPS already, and
+    # interrupting the thing that exists to be quick would defeat it.
+    res = extract(pid, cands=cands, transport="job", progress=progress,
+                  max_groups=None if ids else GROUPS_PER_RUN)
     from . import knowledge
     if progress:
         progress(0.99, f"updating the research map ({res.get('normalized', 0)} claims written)")
     knowledge.refresh(pid)
+    if res.get("more"):
+        # No re-queue here on purpose: `maybe_extract` fires after every findings job and re-creates this pass once
+        # its dedupe key frees, so the remainder resumes on its own without a second scheduling path to keep honest.
+        log.info("claims: yielded the worker after %d group(s), %d candidate(s) still to normalize for %s",
+                 res.get("calls", 0), res.get("remaining", 0), pid[:8])
     return res
 
 
