@@ -903,13 +903,20 @@ def api_usage_recheck() -> dict[str, Any]:
     ever made that could discover the block had lifted. Successful calls now clear the gates on their own; this is
     the manual lever for the case where nothing is willing to make that first call. Clearing costs nothing: if the
     block is still real the next attempt re-sets it, and a usage-limit or credit refusal fails before generation."""
-    from . import usage
+    from . import claude_code, usage
     cleared = db.clear_account_gates()
     unparked = db.release_budget_waits()
+    # Kyle, live: "the probe from 5 minutes ago is not of any use to us now that I literally changed the cap 1
+    # minute ago." Exactly right, and the same defect one layer over: `claude_code.health` caches its verdict for
+    # HEALTH_TTL (10 min), so after the user fixes something the app keeps reporting the old answer and nothing in
+    # the UI could ask for a new one. Re-check now forces a fresh probe too — `wait=False` so it runs in the
+    # background instead of holding this request for up to PROBE_TIMEOUT.
+    local = claude_code.health(force=True, wait=False)
     t = usage.totals()
     ok, reason, _ = usage.check()
     return {"cleared": cleared, "jobs_released": unparked, "blocked": None if ok else reason,
-            "today": t["today"], "month": t["month"]}
+            "today": t["today"], "month": t["month"],
+            "local_ai": {"state": local.get("state"), "rechecking": bool(local.get("checking"))}}
 
 
 @app.get("/api/perf", dependencies=[Depends(require_auth)])
@@ -1970,7 +1977,9 @@ def api_research_evaluate(project_id: str, body: EvalIn) -> dict[str, Any]:
     from . import claims
     if not db.get_project(project_id):
         raise HTTPException(404)
-    job = db.create_job("extract_claims", {"project_id": project_id, "evaluation": True, "budget": max(10, min(body.budget, 300)), "reason": "bounded normalization evaluation"})
+    # slow lane (see claims.py): a claims pass can hold an AI worker for up to two hours, and only local worker 0
+    # takes that lane, so findings and ranking keep flowing while it runs.
+    job = db.create_job("extract_claims", {"project_id": project_id, "evaluation": True, "budget": max(10, min(body.budget, 300)), "reason": "bounded normalization evaluation"}, lane="slow")
     return {"job_id": job["id"], "cohort_preview": claims.select_cohort(project_id, max(10, min(body.budget, 300)))["by_reason"]}
 
 

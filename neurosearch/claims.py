@@ -851,7 +851,7 @@ def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str
     last = float(db.kv_get(f"claims:last_extract:{project_id}") or 0)
     if not force and n < CLAIMS_BATCH_MIN and (time.time() - last) < CLAIMS_DEBOUNCE_S:
         return None
-    job = db.create_job("extract_claims", {"project_id": project_id, "reason": reason})
+    job = db.create_job("extract_claims", {"project_id": project_id, "reason": reason}, lane="slow")
     return job
 
 

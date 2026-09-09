@@ -342,3 +342,17 @@ def test_recheck_endpoint_reports_whether_it_actually_unblocked():
     out2 = api.api_usage_recheck()
     assert out2["cleared"] == [] and out2["blocked"]
     db.kv_set("queue_paused", "0")
+
+
+def test_recheck_forces_a_fresh_local_probe_not_a_cached_verdict(monkeypatch):
+    """Kyle, live: "the probe from 5 minutes ago is not of any use to us now that I literally changed the cap 1
+    minute ago." `claude_code.health` caches for HEALTH_TTL, so after the user fixes something the app kept
+    reporting the stale answer with no way to ask again — the same cached-belief defect as the account gates, one
+    layer up. Re-check must force a new probe, and must not block the request waiting for it."""
+    from neurosearch import claude_code as CC
+    calls = []
+    monkeypatch.setattr(CC, "health", lambda force=False, wait=True: (calls.append((force, wait)) or
+                                                                     {"state": "checking", "checking": True}))
+    out = api.api_usage_recheck()
+    assert calls == [(True, False)]                                     # forced, and non-blocking
+    assert out["local_ai"] == {"state": "checking", "rechecking": True}

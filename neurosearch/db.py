@@ -1748,7 +1748,11 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         run_id = new_id()
         t = now()
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL "
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL, "
+                     # Kyle, live: an extract_claims job showed "paused: the account's credit balance is too low" while it was
+                     # actually RUNNING and making successful calls. Claiming cleared not_before/wait_reason but left the
+                     # message from when it was parked, so the panel kept showing a resolved error as if it were current.
+                     "message=CASE WHEN message LIKE 'paused:%' THEN NULL ELSE message END "
             "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, row["id"])
         )
         if cur.rowcount != 1:

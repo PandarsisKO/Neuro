@@ -635,12 +635,17 @@ def test_instagram_profile_with_session(client, monkeypatch, tmp_path):
 def test_transient_failures_retry_then_fail(client, monkeypatch):
     from neurosearch import jobs, ingest
     calls = {"n": 0}
+    URL = "https://www.instagram.com/reel/x/"
     def boom(url, **kw):
-        calls["n"] += 1
+        # count only THIS test's url: the patch is global, and a worker already mid-run on another test's
+        # ingest_url job when it lands would otherwise inflate the counter and fail this assertion for reasons
+        # that have nothing to do with retries (the same cross-test coupling as the retry-failed sweep below).
+        if url == URL:
+            calls["n"] += 1
         raise RuntimeError("Instagram wants a login for this (or rate-limited the session)")
     monkeypatch.setattr(ingest, "ingest_url", boom)
     monkeypatch.setattr(jobs.db, "claim_job", lambda *a, **k: None)      # keep the background workers' hands off this job
-    j = db.create_job("ingest_url", {"url": "https://www.instagram.com/reel/x/", "project_id": None})
+    j = db.create_job("ingest_url", {"url": URL, "project_id": None})
     jobs.run_job  # noqa
     # drive the worker loop by hand: run + handle like _worker does
     def step():

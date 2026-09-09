@@ -578,7 +578,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.46.4';
+const UI_VERSION = '0.46.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1540,7 +1540,9 @@ async function recheckAccount() {
   // changed, may retire it. Clearing is free — if the block is real the next attempt re-sets it immediately.
   try {
     const r = await post('/api/usage/recheck', {});
-    toast(r.blocked ? `still blocked — ${r.blocked}` : `✅ unblocked${r.jobs_released ? ` · ${r.jobs_released} job${r.jobs_released === 1 ? '' : 's'} released` : ''}`, r.blocked ? 'err' : '');
+    const local = r.local_ai && r.local_ai.rechecking ? ' · re-probing Claude Code' : '';
+    toast(r.blocked ? `still blocked — ${r.blocked}` : `✅ unblocked${r.jobs_released ? ` · ${r.jobs_released} job${r.jobs_released === 1 ? '' : 's'} released` : ''}${local}`, r.blocked ? 'err' : '');
+    if (r.local_ai && r.local_ai.rechecking) setTimeout(() => { loadSpend(); loadHealth && loadHealth(); }, 4000);   // the probe finishes in the background
   } catch (e) { toast(e.message || e, 'err'); }
   loadSpend(); loadJobs();
 }
