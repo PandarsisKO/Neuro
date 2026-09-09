@@ -87,4 +87,6 @@ rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); e
 
 ## Working here
 
+**Performance:** `SPEED-MISSION.md` (filed 2026-09-09, rungs R0–R8) holds the measured latency baseline for the live app — queue wait dominates real compute ~50× (`suggest_findings`: 8.6 s of work, 479 s median wait), local is ~3× slower than the API on identical tasks, chat has no streaming (p90 51 s of blank spinner), and the 3 s Sources poll ships 2.34 MB while running ~2,000 queries in `staleness.assess`. It also records what measured as NOT a bottleneck (the 165 MB embedding matrix loads in 0.10 s warm; cross-project reuse applies to 2 sources of 823) — read §A before optimizing anything here.
+
 Run: `pip install -e . && cp .env.example .env && neurosearch serve`. Tests: `pytest` (480). Before a release: `neurosearch release-check` (writes the artifact; the Health console shows the last result). Version lives in `neurosearch/__init__.py`, `pyproject.toml` and `UI_VERSION` in `web/index.html` (PEP 440). YouTube may block datacenter IPs — ingest from a laptop with the same CLI against the same `NEUROSEARCH_DATA_DIR`, or with `NEUROSEARCH_COOKIES_FILE`.
