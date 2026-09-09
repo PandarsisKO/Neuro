@@ -277,3 +277,34 @@ def test_job_lane_backfill_reprioritizes_jobs_already_queued_before_the_fix(monk
     assert db.get_job(stale_rank["id"])["lane"] == "priority"
     assert db.get_job(stale_backfill["id"])["lane"] == "low"
     assert db.get_job(done_src["id"])["lane"] == "normal"   # already finished — untouched
+
+
+def test_bump_job_jumps_the_whole_queue_and_is_one_shot(monkeypatch):
+    """Kyle: "can we get a manual start button in the progress queue to move it to the top/next in line?" A
+    bumped job is claimed ahead of every lane, including 'priority' and even an older bump; bumps stack FIFO
+    among themselves. The mark is cleared the moment the job is actually claimed — it's a one-time request, never
+    a standing pin that would keep winning forever."""
+    pid, ids = _fixture(monkeypatch)
+    low_job = db.create_job("reembed", {"n": "low"}, lane="low")
+    priority_job = db.create_job("reembed", {"n": "priority"}, lane="priority")
+    assert db.bump_job(low_job["id"]) == "queued"
+    assert db.get_job(low_job["id"])["bumped_at"]
+    assert db.claim_job(("reembed",))["id"] == low_job["id"]          # bumped low-lane job still wins over priority
+    assert db.claim_job(("reembed",))["id"] == priority_job["id"]     # then the queue resumes its normal order
+    assert not db.get_job(low_job["id"])["bumped_at"]                 # cleared once claimed — one-shot
+
+    # two bumps stack FIFO by request order, not creation order
+    a = db.create_job("reembed", {"n": "a"})
+    b = db.create_job("reembed", {"n": "b"})
+    db.bump_job(b["id"]); db.bump_job(a["id"])                        # b bumped first
+    assert db.claim_job(("reembed",))["id"] == b["id"]
+    assert db.claim_job(("reembed",))["id"] == a["id"]
+
+    # only a queued job can be bumped; the API surfaces the same rule
+    running = db.create_job("reembed", {"n": "running"})
+    db.claim_job(("reembed",))
+    assert db.bump_job(running["id"]) == "running"
+    with pytest.raises(Exception):
+        api.api_bump_job(running["id"])
+    with pytest.raises(Exception):
+        api.api_bump_job("does-not-exist")

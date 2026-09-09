@@ -1236,6 +1236,7 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
 
 def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:
     j["state"] = db.derived_status(j)
+    j["bumped"] = bool(j.get("bumped_at"))
     if j["state"] == "provider_wait":
         from . import breakers
         j["provider_wait"] = {"operation": j.get("wait_operation"), "label": breakers.LABELS.get(j.get("wait_operation") or "", j.get("wait_operation")),
@@ -1296,6 +1297,20 @@ def api_dismiss_job(job_id: str) -> dict[str, Any]:
     if j["status"] != "failed":
         raise HTTPException(409, "only failed jobs can be dismissed")
     db.update_job(job_id, status="done", message=f"dismissed — {j.get('message') or 'failed'}"[:500])
+    return {"ok": True}
+
+
+@app.post("/api/jobs/{job_id}/bump", dependencies=[Depends(require_auth)])
+def api_bump_job(job_id: str) -> dict[str, Any]:
+    """Kyle: "can we get a manual start button in the progress queue to move it to the top/next in line?" Only a
+    queued job can be bumped — it jumps ahead of every lane (priority/normal/slow/low) and any older bump, but is
+    a one-shot request: the mark clears the moment a worker actually claims the job, never a standing pin."""
+    j = db.get_job(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    st = db.bump_job(job_id)
+    if st != "queued":
+        raise HTTPException(409, f"only a queued job can be bumped (this one is {st})")
     return {"ok": True}
 
 

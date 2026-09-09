@@ -1469,3 +1469,27 @@ before this release lands (this delivery) picks up the correct lane immediately 
 already assigns it at creation time now; the backfill exists purely for the population of jobs that predate BOTH
 this fix and the lane feature it's fixing. It only covers the two kinds already tagged; if a future kind gets a
 non-`normal` lane, its own backfill line belongs alongside these two in `_backfill_job_lanes`.
+
+## S1 feature — a manual "run this next" button — 0.45.12
+
+Kyle: *"can we get a manual start button in the progress queue to move it to the top/next in line?"* The lane
+system (priority/normal/low) is automatic, by job KIND — it can't express "no, THIS specific one, right now,"
+which is what a person actually wants when they're staring at the queue.
+
+**Built.** `jobs.bumped_at` (nullable) — a manual override that outranks every lane. `db.bump_job(job_id)` sets it
+on a `queued` job (running/terminal jobs can't be bumped — nothing left to jump ahead of, or already underway);
+`POST /api/jobs/{id}/bump` surfaces it (404 missing, 409 not queued). `claim_job`'s ORDER BY now starts with
+`(bumped_at IS NULL), bumped_at` before the lane `CASE` — a bumped job wins over even `priority`, and two bumps
+stack FIFO by when they were REQUESTED, not when the job was originally created. The mark is cleared the instant
+the job is actually claimed (added to the claim UPDATE), so it's a one-shot "do this next," never a standing pin
+that would keep winning forever after it's already run once. Jobs panel: a "⏫ Start next" button on every queued
+job (`bumpJob()` → the endpoint → `loadJobs()`); a bumped job still waiting shows "⏫" before its label.
+
+**Gate.** New `tests/test_n7_pool.py::test_bump_job_jumps_the_whole_queue_and_is_one_shot`: a bumped `low`-lane job
+is claimed before a `priority`-lane one; two bumps run in request order, not creation order; `bumped_at` clears
+once claimed; bumping a `running` job returns `"running"` (refused) and the API surfaces 409/404 for a non-queued
+or missing job. Suite 478; Tier 1 unchanged.
+
+**Honest limits.** A bump is per-job, not per-kind or per-source — bumping one `ingest_source` job doesn't bump
+the rest of a channel's videos; each needs its own click if Kyle wants a whole batch reordered. It also only
+affects CLAIM order, same as lanes — it can't preempt a job a worker has already started running.

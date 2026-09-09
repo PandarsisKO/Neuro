@@ -757,6 +757,7 @@ MIGRATIONS = [
     ("jobs", "executed_by", "ALTER TABLE jobs ADD COLUMN executed_by TEXT"),
     ("jobs", "fallback_reason", "ALTER TABLE jobs ADD COLUMN fallback_reason TEXT"),
     ("jobs", "lane", "ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT 'normal'"),   # 0.42.1: 'slow' = long-running local work (Read deeper) that must not hog the pool; 0.45.9: 'priority' = claimed ahead of 'normal', for short jobs a user is actively waiting on (e.g. ranking a review card); 0.45.10: 'low' = claimed only once nothing priority/normal/slow is waiting, for speculative work on content not yet known to matter (e.g. backfilling metadata for skipped sources) — never changes cost/provider, only queue order
+    ("jobs", "bumped_at", "ALTER TABLE jobs ADD COLUMN bumped_at REAL"),   # 0.45.12: a user's explicit "run this next" — outranks every lane, FIFO among bumps, cleared once claimed (one-shot, never a permanent pin)
     ("jobs", "wait_operation", "ALTER TABLE jobs ADD COLUMN wait_operation TEXT"),
     ("jobs", "attempts", "ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"),
     ("jobs", "dedupe_key", "ALTER TABLE jobs ADD COLUMN dedupe_key TEXT"),
@@ -1586,11 +1587,12 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             q += f" AND lane IN ({','.join('?' for _ in lanes)})"
             args += list(lanes)
         row = None
-        # lane order: 'priority' (the user is waiting, e.g. ranking a review card) first, then 'normal'/'slow'
-        # (ordinary work — transcribing a newly added source, findings, claims), then 'low' last — speculative
-        # work on content not yet known to matter (e.g. backfilling metadata for skipped/stale sources) never
-        # displaces something the user actually asked for or is watching
-        for cand in conn.execute(q + " ORDER BY CASE lane WHEN 'priority' THEN 0 WHEN 'low' THEN 2 ELSE 1 END, created_at LIMIT 50", args).fetchall():
+        # claim order: a manually bumped job ("run this next") outranks everything, FIFO among bumps; then lane
+        # order — 'priority' (the user is waiting, e.g. ranking a review card), then 'normal'/'slow' (ordinary
+        # work — transcribing a newly added source, findings, claims), then 'low' last — speculative work on
+        # content not yet known to matter (e.g. backfilling metadata for skipped/stale sources) never displaces
+        # something the user actually asked for, is watching, or explicitly bumped
+        for cand in conn.execute(q + " ORDER BY (bumped_at IS NULL), bumped_at, CASE lane WHEN 'priority' THEN 0 WHEN 'low' THEN 2 ELSE 1 END, created_at LIMIT 50", args).fetchall():
             if cand["cancel_requested_at"]:
                 conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled' WHERE id=? AND status='queued'", (now(), cand["id"]))
                 job_event(cand["id"], "cancelled", conn=conn)
@@ -1610,7 +1612,7 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         run_id = new_id()
         t = now()
         cur = conn.execute(
-            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL "
+            "UPDATE jobs SET status='running', started_at=?, run_id=?, worker_id=?, claimed_at=?, heartbeat_at=?, lease_until=?, not_before=NULL, wait_reason=NULL, bumped_at=NULL "
             "WHERE id=? AND status='queued'", (t, run_id, worker_id, t, t, t + lease_seconds, row["id"])
         )
         if cur.rowcount != 1:
@@ -1747,6 +1749,24 @@ def request_cancel(job_id: str) -> str:
 def cancel_requested(job_id: str) -> bool:
     r = connect().execute("SELECT cancel_requested_at FROM jobs WHERE id=?", (job_id,)).fetchone()
     return bool(r and r["cancel_requested_at"])
+
+
+def bump_job(job_id: str) -> str:
+    """0.45.12: a user's explicit "run this next" — a manual override on top of the lane system, for the one
+    specific thing they want to jump the whole queue right now (never a standing rule, unlike lane). Only a
+    QUEUED job can be bumped (running is already underway; a terminal job has nothing left to jump ahead of).
+    Bumps stack FIFO by when they were requested, and a bump is cleared the moment the job is actually claimed —
+    one-shot, never a permanent pin that would silently reorder the queue forever."""
+    with tx() as conn:
+        r = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        if r["status"] != "queued":
+            return r["status"]
+        t = now()
+        conn.execute("UPDATE jobs SET bumped_at=?, updated_at=? WHERE id=? AND status='queued'", (t, t, job_id))
+        job_event(job_id, "bumped", conn=conn)
+        return "queued"
 
 
 def _release_source_after_cancel(conn: sqlite3.Connection, r: Any) -> None:
