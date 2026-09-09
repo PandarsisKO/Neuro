@@ -77,3 +77,9 @@ One list over skipped sources (status `skipped`, with the recorded relevance and
 - **S5 Known-but-uncaptured pool** — `candidates.pool`, the chip and view, ranking modes, capture through the normal path. (**Kyle's #3**)
 
 Everything reuses existing tables and paths: no new model calls, no new fetch path, no schema beyond two additive columns (`accepted_brief_revision`; a `value_cache` kv per project revision). Research-tab work (R2 shell) is untouched by this mission and consumes S2's value data when it lands.
+
+## Status, 0.45.5 (added 2026-09-09 — this file is a snapshot; the current copy is the repo-root SOURCES-FINDINGS-MISSION.md)
+
+Everything on this ladder is shipped except D4 (chapter/segment digests), which was always deferred by design ("later"
+in §3.6), not a queued rung. S1–S5 all shipped, including the 0.45.1/0.45.3 stale-triage fixes and the 0.45.4
+"capture the N that fit" pool action. See the repo-root `SOURCES-FINDINGS-MISSION.md` §6 for the full status table.

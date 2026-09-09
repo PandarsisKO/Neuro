@@ -77,3 +77,11 @@ The chat participates through two tools: `research_state` (it reads the map, ten
 **Invariants the redesign must keep (locked decisions).** Claims are project state, never library state; everything works with zero model calls; normalisation is bounded and importance-driven, never corpus-wide; Strong ≠ decision-ready; freshness is Claim-relative and errs to uncertain; independence is by lineage (G6) and by person (G7); community evidence can never establish a governing rule; model output is proposed state — status changes only through `claims.set_status`; targets escalate project → library → seen → web with web only on request; a synthesis over a partial thread says so. Gates: `tests/test_k6_claims.py` (10-point fixture), `test_k8_works.py`, `test_k9_community.py`, `test_l2_completeness.py`; Tier 1 chat totals are frozen (34 / 196,951) — a change to the research block text in the chat prompt re-freezes them.
 
 **Numbers from the live project** (accounting-practice acquisition, 449 sources): 4,203 Claims harvested, refresh 1.8 s, one bounded normalisation evaluation of 150 Claims in 19 calls for $1.21.
+
+## Status, 0.45.5 (added 2026-09-09 — this file is a snapshot; the current copy is the repo-root RESEARCH-TAB.md)
+
+Checked against §5's list: "Lead with Next", "Make the map navigable" and "Hide the instruments" shipped with R2
+(0.44.0). **"Claims as a workbench, not a list" and "Connect to the work" (Why this answer / Settle this) were NOT
+built by R2** — the Claims tab stayed the old capped, unfiltered, raw-vocabulary list under a new tab. Both shipped as
+R7 in 0.45.5 (`claims_view.py` — filters/facets/batch-decide/plain-language over the full claim set; `for_source` +
+"Settle this" wired into chat). See the repo-root `RESEARCH-TAB.md` §9 and `EXPANSION.md` for the full writeup.
