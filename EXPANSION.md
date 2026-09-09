@@ -1328,3 +1328,41 @@ source, a repeat call queues nothing). Suite 472; Tier 1 unchanged.
 **Honest limits.** The backfill button re-fetches metadata only, one HTTP request per source, same network path as
 first ingest (yt-dlp) — it does no transcript/chunk work and never changes a source's status, so it's safe to run
 broadly but Kyle still has to click it (never auto-queued on his behalf).
+
+## S1 fix — extract_claims couldn't actually be cancelled, and its Jobs-panel label was the raw kind name — 0.45.8
+
+Kyle, live, with a screenshot: an `extract_claims` job stuck showing `cancelling... (stops at the next safe point) ·
+3m 8s` — it never actually stopped. The job's label in the panel was also just the bare string `extract_claims`,
+unlike every other job kind, which gets a plain-language line.
+
+**Root cause 1 (the stuck cancel).** `jobs.check_cancel()` — the call every long-running job kind is supposed to
+make at a safe boundary so a cancel request can actually land — is called inside `findings.py` (between sources) and
+`ingest.py` (between stages). `claims.extract()`, which does one `providers.invoke_structured` model call per group
+of `EXTRACT_GROUP` (8) candidates, never called it anywhere. `db.request_cancel` only marks the row
+`cancel_requested_at` — it's `check_cancel()` inside the running job that has to notice and raise `Cancelled`. With
+no call anywhere in the claims code path, a cancel request on `extract_claims` could only take effect once the WHOLE
+job finished on its own — on a backlog of thousands of candidates (4688 "known, not captured" in Kyle's project),
+that's effectively never, which is exactly the "stuck cancelling" Kyle saw.
+
+**Root cause 2 (the label).** `jobLabel()` in `web/index.html` has a plain-language line for `suggest_findings`,
+`ingest_source`, `refresh_skipped_metadata`, etc.; `extract_claims` fell through to `what || j.kind`, which for this
+job kind (no per-source `payload.source_id`) is just the raw kind name.
+
+**Built.** `claims.extract()` now calls `jobs.check_cancel()` at the top of its per-group loop, exactly like
+`findings.py`'s per-source boundary — "nothing of this group's model call is in flight yet" — but only when running
+as a real job (`transport == "job"`; an interactive/eval call is never mid-job-cancellable and shouldn't pay the
+import). `extract_claims` also joined `jobs.RETRYABLE`, matching every other AI job kind (`suggest_findings`,
+`discover`, `build_plan`, …) — a transient provider hiccup now retries with backoff instead of failing outright,
+which may also explain some of what Kyle was seeing as "it errors out too." `jobLabel()` now shows "finding claims
+to track" (or "checking claim quality" for the bounded evaluation pass).
+
+**Gate.** New `tests/test_n7_pool.py::test_extract_claims_job_can_be_cancelled_mid_run`: 17 unnormalized candidates
+(more than one `EXTRACT_GROUP`) so a mid-run cancel has somewhere real to land; claiming the job, requesting a
+cancel, then executing it returns `"cancelled"` (not `"done"`) with nothing normalized — proving the cancel landed
+before grinding through the backlog, not after. Also asserts the new label string is in `web/index.html` and
+`extract_claims` is in `jobs.RETRYABLE`. Suite 473; Tier 1 unchanged.
+
+**Honest limits.** This makes `extract_claims` cancellable and auto-retryable like its peers; it does not change
+what triggers the job or how big a backlog it processes per run. If Kyle's actual complaint was volume (many
+`extract_claims` runs queuing back-to-back against a large, migrated project) rather than the label or the stuck
+cancel, that's a separate, not-yet-diagnosed question — worth asking him directly once he's seen this land.

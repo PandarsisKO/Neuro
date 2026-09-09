@@ -779,6 +779,9 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     cands = cands if cands is not None else unnormalized(project_id)
     calls, normalized, targets = 0, 0, 0
     for i in range(0, len(cands), EXTRACT_GROUP):
+        if transport == "job":
+            from .jobs import check_cancel
+            check_cancel()                                  # safe boundary: no group's model call is in flight yet
         group = cands[i:i + EXTRACT_GROUP]
         ih = extraction_hash(project, group)
         if all(c.get("extraction_hash") == ih for c in group):

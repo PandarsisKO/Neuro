@@ -170,3 +170,29 @@ def test_refresh_skipped_metadata_backfills_thumbnails_without_changing_status(m
     # a repeat call with everything already thumbnailed queues nothing
     r2 = api.api_refresh_skipped_metadata(pid)
     assert r2["queued"] == 0
+
+
+def test_extract_claims_job_can_be_cancelled_mid_run(monkeypatch):
+    """Kyle, live (screenshot): an extract_claims job showed 'cancelling... (stops at the next safe point)' and sat
+    there for minutes without ever actually stopping. Every other AI job kind (findings, ingest) calls
+    jobs.check_cancel() at a safe boundary inside its loop; claims.extract() never did, so a cancel request could
+    only take effect once the WHOLE job finished — on a big candidate backlog, that's never. Also: the job's label
+    in the Jobs panel was the raw kind name 'extract_claims' with no explanation of what it does."""
+    pid, ids = _fixture(monkeypatch)
+    from neurosearch import claims
+    for i in range(17):                                        # more than one EXTRACT_GROUP (8), so a mid-run cancel has somewhere to land
+        claims.add_claim(pid, f"Claim number {i} about a distinct topic area {i} for this test", status="proposed", normalized=False)
+    assert len(claims.unnormalized(pid)) >= 17
+
+    job = db.create_job("extract_claims", {"project_id": pid, "reason": "test"})
+    job = db.claim_job(("extract_claims",))
+    assert db.request_cancel(job["id"]) == "running"
+    assert jobs.execute(job) == "cancelled"
+    assert db.get_job(job["id"])["status"] == "cancelled"
+    # the cancel landed before grinding through every group — nothing got normalized (no spend, nothing half-written)
+    assert not any(c.get("normalized") for c in claims.list_for_project(pid))
+
+    # the Jobs panel no longer shows the bare kind name for this job
+    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    assert "extract_claims" in html and "finding claims to track" in html
+    assert "extract_claims" in jobs.RETRYABLE   # a transient provider hiccup retries like every other AI job kind, instead of failing outright
