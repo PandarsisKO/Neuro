@@ -2203,3 +2203,51 @@ before it trips — it bounds a runaway, not a single expensive minute. It also 
 caused the spike, so an expensive legitimate batch can hold an unrelated cheap background job for ten minutes.
 And the deeper fix is still the bucket in `SCHEDULER.md` §5, which admits work by budget rather than blocking it
 after the fact; this is the narrow version that could ship tonight.
+
+---
+
+## 0.52.0 — the local provider runs the contract's model, not one line of .env
+
+CLAUDE.md has carried this rule since L1: *"never a model substitution — there is no model-substitution code path
+and none may be added."* **It was not true, and it had not been true since L1 shipped.**
+
+`claude_code.create` passed `settings.claude_code_model` for every task, regardless of that task's contract. On
+Kyle's machine that value is `claude-haiku-4-5`. So `findings.extract` — pinned to Sonnet 5 by the E2.2
+comparison, with baseline and comparison artifacts kept under `evals/` to justify it — has been running on **Haiku
+4.5 for every local call**, and 59% of his findings calls go local. `rank.relevance`, pinned to Sonnet 5 by E2.1,
+the same. Nothing recorded it: the routing provenance stored `requested_model = contract.model`, which was the
+model we asked the API for and not the model Claude Code actually ran. The experiment was running the whole time,
+on live data, with no way to tell which model produced which finding.
+
+**The fix is not "forbid Haiku".** Kyle's point stands and is the reason this came up at all: *"we need to be
+picking the fastest and cheapest models that satisfy the goals... for many things Haiku may be preferable."* Often
+true — and the free subscription is worth using. The fix is that the choice has to be **declared** and
+**recorded**, because the difference between *"Haiku because we measured it"* and *"Haiku because of one line in
+`.env`"* is the difference between a trade and a silent quality regression.
+
+- `InferenceContract.local_model` — which model the local provider runs for this task. `None` (every contract
+  today) means the contract's own model, so **the default is no substitution at all**.
+- `contract.model_for(executed_by)` is the single place that answers "which model"; `claude_code.create` uses it.
+- `providers.routing_for` records `local_model` and `api_model` on the artifact whenever the two differ, so a
+  declared difference is visible in provenance and can never be mistaken for the contract's model.
+- `settings.claude_code_model` still works — it is how the subscription stays usable — but it is now an explicit
+  global override that `doctor` reports **by name, listing every task whose measured model it is overriding**.
+- `neurosearch contracts` shows the local model beside the API model for every local-capable task.
+
+**One frozen assertion changed, deliberately.** `test_stub_cli_proves_the_headless_contract` asserted *"no model
+pin unless `NEUROSEARCH_CLAUDE_CODE_MODEL` is set"*. That was the hole written down as a rule: with no env var the
+CLI ran its **own** default model; with one it ran that model for every task. Either way a measured per-task
+choice was replaced, and nothing recorded it. The call is now always pinned to the contract's local model, and the
+test asserts that instead.
+
+**Gate.** New `tests/test_r4_local_model.py` (4): by default every local-capable task runs exactly its contract's
+model (and the two measured Sonnet 5 pins are asserted explicitly, because those are the ones that must never
+drift by accident); a declared local model is allowed, leaves the API model untouched, and appears in the routing
+provenance; the actual call asks for the contract model rather than the env line, while the global override still
+works when set; and `doctor` names every task an override is overriding. Suite 552; Tier 1 unchanged.
+
+**What this does not do.** It does not tell us whether Haiku was *worse*. Kyle's existing corpus contains findings
+produced by an undeclared mix of Sonnet 5 and Haiku 4.5, and nothing distinguishes them retroactively — the
+provenance that would have said so is exactly what was missing. From here forward the record is complete. Deciding
+which tasks *should* run a cheaper model is the next rung, and it belongs to the measurement harness that already
+exists (`eval --migration-compare` with `--baseline-model` / `--candidate-model`), not to intuition.

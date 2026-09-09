@@ -367,7 +367,12 @@ def create(**kw: Any) -> LocalResponse:
         from . import schemas
         schema = schemas.provider_schema(c.schema)
     timeout = float(c.timeout) if c and c.timeout else DEFAULT_TIMEOUT
-    return _run(_prompt_of(kw.get("messages")), system=_system_of(kw.get("system")), model=settings.claude_code_model or None, timeout=timeout, schema=schema)
+    # 0.52.0: the model comes from the CONTRACT (its `local_model`, defaulting to its own model), not from one
+    # global .env line. `settings.claude_code_model` is still honoured as an explicit global override, but it is now
+    # a recorded decision (`doctor` reports it, and routing provenance carries the local model) rather than a silent
+    # substitution of a per-task, measured choice.
+    model = settings.claude_code_model or (c.model_for("local") if c else None)
+    return _run(_prompt_of(kw.get("messages")), system=_system_of(kw.get("system")), model=model, timeout=timeout, schema=schema)
 
 
 def status_line(wait: bool = False) -> str:

@@ -316,9 +316,16 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     from . import contracts as C
     c = C.contract(task)
     r = getattr(_tl, "route", None) or {}
-    return {"requested_model": c.model, "actual_model": (str(actual_model) if actual_model else None) or c.model, "fallback_used": False,
-            "fallback_reason": r.get("fallback_reason"), "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION,
-            "executed_by": r.get("executed_by", "api"), "route_reason": r.get("reason")}    # L1: WHICH PROVIDER ran (model substitution is still not a thing)
+    by = r.get("executed_by", "api")
+    requested = c.model_for(by)          # 0.52.0: the local provider has its own declared model; None = the same one
+    out = {"requested_model": requested, "actual_model": (str(actual_model) if actual_model else None) or requested, "fallback_used": False,
+           "fallback_reason": r.get("fallback_reason"), "fallback_policy": c.fallback, "fallback_policy_version": C.FALLBACK_POLICY_VERSION,
+           "executed_by": by, "route_reason": r.get("reason")}    # L1: WHICH PROVIDER ran (model substitution is still not a thing)
+    if requested != c.model:
+        # a declared, deliberate difference — recorded so it can never be mistaken for the contract's model
+        out["local_model"] = requested
+        out["api_model"] = c.model
+    return out
 
 
 def routing_json(task: str, actual_model: Any) -> str:

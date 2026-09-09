@@ -168,6 +168,20 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     r.check("Reddit API credentials (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,
             "set" if settings.reddit_client_id else "not set — subreddit search (Explore) needs REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET; threads still arrive via the extension", warn=True)
     r.check("production models", True, {"answer": settings.answer_model, "findings": contracts.contract("findings.extract").model, "ranking": contracts.contract("rank.relevance").model, "embeddings": settings.embedding_model})
+    # 0.52.0: a global local-model override silently replaces a per-task, measured model choice on every local call.
+    # It is allowed — it is how the free subscription stays usable — but it must be visible, because the difference
+    # between "Haiku because we measured it" and "Haiku because of one .env line" is the difference between a trade
+    # and a regression.
+    ov = settings.claude_code_model
+    if ov:
+        differs = sorted({c.task: c.model_for("local") for c in contracts.all_contracts()
+                          if c.local_capable and c.model_for("local") != ov})
+        r.check("local model override (NEUROSEARCH_CLAUDE_CODE_MODEL)", not differs,
+                f"{ov} runs EVERY local task; the contracts ask for a different model on: {', '.join(differs)}" if differs
+                else f"{ov} matches every local-capable contract", warn=True)
+    else:
+        r.check("local model follows each contract", True,
+                {c.task: c.model_for("local") for c in contracts.all_contracts() if c.local_capable})
     # --- lightweight fake smoke: the deterministic engine works end to end in a temp database (no spend)
     if fake_smoke:
         was_fake, was_dir = settings.fake_ai, settings.data_dir

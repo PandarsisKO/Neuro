@@ -55,6 +55,18 @@ class InferenceContract:
     # L1: may this task run on the LOCAL provider (Claude Code)? Only structured, single-turn, text-only tasks; streaming,
     # tool-using, embedding, transcription and batch-only tasks stay on their API. The API model stays pinned regardless.
     local_capable: bool = False
+    # L1 correction (0.52.0): WHICH model the local provider runs for this task. It used to be
+    # `settings.claude_code_model` for every task regardless of the contract — a global .env line silently
+    # overriding a per-task, measured model choice. On Kyle's machine that meant `findings.extract`, pinned to
+    # Sonnet 5 by the E2.2 comparison, was running on Haiku 4.5 for every local call (59% of them), with nothing
+    # recording that it had. None = this contract's own model, so the default is no substitution at all. Declaring
+    # a different local model is allowed and is a DECISION: it is recorded on every artifact and reported by
+    # `neurosearch contracts` and `doctor`, because a cheaper model chosen deliberately is a legitimate trade and a
+    # cheaper model arriving by accident is a silent quality regression.
+    local_model: str | None = None
+
+    def model_for(self, executed_by: str) -> str:
+        return (self.local_model or self.model) if executed_by == "local" else self.model
 
     def describe(self) -> dict[str, Any]:
         d = self.__dict__.copy()

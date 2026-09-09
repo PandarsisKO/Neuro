@@ -16,7 +16,7 @@ os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 
-from neurosearch import claude_code as CC  # noqa: E402
+from neurosearch import claude_code as CC
 from neurosearch import api, contracts, db, fake_ai, jobs, providers, usage  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
 
@@ -198,7 +198,11 @@ def test_stub_cli_proves_the_headless_contract(monkeypatch, tmp_path):
     assert "--max-turns" in call and "--system-prompt" in call and "--tools" in call and call[call.index("--tools") + 1] == ""
     assert "--json-schema" in call and json.loads(call[call.index("--json-schema") + 1])["type"] == "object"
     assert SYSTEM in call[call.index("--system-prompt") + 1] and "Score them now." in call[1]
-    assert "--model" not in call            # no model pin unless NEUROSEARCH_CLAUDE_CODE_MODEL is set
+    # 0.52.0 CHANGED THIS INVARIANT. It used to read: "no model pin unless NEUROSEARCH_CLAUDE_CODE_MODEL is set".
+    # That was the hole: with no env var the CLI ran its OWN default model, and with one it ran that model for every
+    # task — either way a per-task, measured model choice was replaced by something else, and nothing recorded it.
+    # The call is now ALWAYS pinned, to the contract's local model (see tests/test_r4_local_model.py).
+    assert "--model" in call and call[call.index("--model") + 1] == contracts.contract("rank.relevance").model_for("local")
 
 
 def test_health_probe_uses_the_pinned_model_not_the_clis_bare_default(monkeypatch, tmp_path):

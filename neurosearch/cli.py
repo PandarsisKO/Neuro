@@ -375,7 +375,8 @@ def contracts() -> None:
         d = c.describe()
         typer.echo(f"{c.task:18s} {c.provider:9s} {c.model:30s} thinking={c.thinking}{'/' + c.effort if c.effort else ''}  max_out={c.max_output_tokens}  "
                    f"attempts={c.max_attempts} timeout={c.timeout or 'default'}  {'interactive' if c.interactive else 'background'}"
-                   f"{'  batch-ok' if c.batch_allowed else ''}  fallback={c.fallback}  schema={c.schema}")
+                   f"{'  batch-ok' if c.batch_allowed else ''}  fallback={c.fallback}  schema={c.schema}"
+                   + (f"  local={c.model_for('local')}" if c.local_capable else ""))
 
 
 @app.command()
