@@ -578,7 +578,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.46.1';
+const UI_VERSION = '0.46.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1936,7 +1936,7 @@ async function loadJobs() {
     // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet
     pollFails++;
     if (!$('#offline')) { const d = document.createElement('div'); d.id = 'offline'; d.className = 'banner'; d.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99'; d.textContent = '⟳ reconnecting to the server…'; document.body.appendChild(d); }
-    jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, Math.min(3000 * pollFails, 15000));
+    jobsTimer = setTimeout(pollTick, Math.min(3000 * pollFails, 15000));
     return;
   }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
@@ -1958,8 +1958,28 @@ async function loadJobs() {
   const analysing = !!document.querySelector('#srcList .spin');
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
   const every = (active.length || analysing) ? 3000 : 15000;
-  jobsTimer = setTimeout(() => { if (state.view === 'sources') { loadJobs(); loadSources().catch(() => {}); } }, every);
+  jobsTimer = setTimeout(pollTick, every);
   if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
+}
+
+// R2: the poll asks "did anything change?" (~6 ms) before rebuilding the Sources view (~440 ms). Panes refresh
+// only when the revision they depend on has actually moved. A full reconcile every RECONCILE_EVERY ticks means a
+// fingerprint that ever missed a change self-corrects within about a minute instead of leaving a stale screen.
+let lastRev = null, ticksSinceFull = 0;
+const RECONCILE_EVERY = 20;
+async function pollTick() {
+  if (state.view !== 'sources' || !state.project) return;
+  let t;
+  try { t = await api(`/api/projects/${state.project.id}/tick`); }
+  catch (e) { loadJobs(); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
+  const rev = t.rev, prev = lastRev;
+  const changed = k => !prev || prev[k] !== rev[k];
+  const full = ++ticksSinceFull >= RECONCILE_EVERY;
+  if (full) ticksSinceFull = 0;
+  lastRev = rev;
+  const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
+  if (full || changed('jobs')) loadJobs(); else jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
+  if (srcChanged) loadSources().catch(() => {});
 }
 
 async function jobHistory(id, btn) {

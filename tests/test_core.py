@@ -661,7 +661,12 @@ def test_transient_failures_retry_then_fail(client, monkeypatch):
     # manual retry endpoint creates a fresh job and retires the failed one
     r = client.post(f"/api/jobs/{j['id']}/retry", headers=H).json()
     assert db.get_job(r["job_id"])["status"] == "queued" and db.get_job(j["id"])["message"].startswith("retried")
-    assert client.post("/api/jobs/retry-failed", headers=H, json={}).json()["retried"] == 0
+    # the sweep is database-wide, and the background workers may have failed a job for some other test by now, so
+    # assert about THIS job (already retired above) against the live set rather than a global count of zero —
+    # the old `== 0` made this test fail intermittently for reasons that had nothing to do with retries.
+    others = {x["id"] for x in db.failed_jobs(None)}
+    assert j["id"] not in others
+    assert client.post("/api/jobs/retry-failed", headers=H, json={}).json()["retried"] == len(others)
 
 
 def test_ingest_skipped_anyway(client):

@@ -203,3 +203,65 @@ def test_sources_endpoint_caches_the_skipped_scan_without_changing_its_answer():
     db.connect().commit()
     api.api_sources(project_id=p["id"], limit=50)
     assert perf.snapshot()["caches"]["gap_terms"]["miss"] == before + 1                    # research moved → recomputed
+
+
+def test_view_revision_moves_on_sources_jobs_and_findings_changes():
+    """The tick is only safe if its fingerprint moves for everything the Sources view renders. Membership can
+    arrive through collections and tags, so `sources` and `jobs` are global on purpose — over-invalidating costs a
+    recompute, under-invalidating shows a wrong screen. `notes` carries status counts because approving a finding
+    changes the badges on a source row without touching any timestamp."""
+    p = db.create_project("View", "brief")
+    r0 = db.project_view_revision(p["id"])
+    assert set(r0) == {"sources", "jobs", "notes", "research"}
+    assert db.project_view_revision(p["id"]) == r0                      # stable when nothing happens
+
+    s = db.upsert_source(platform="youtube", external_id="view-1", url="https://www.youtube.com/watch?v=view-1", title="t")
+    assert db.project_view_revision(p["id"])["sources"] != r0["sources"]
+
+    r1 = db.project_view_revision(p["id"])
+    db.create_job("reembed", {})
+    assert db.project_view_revision(p["id"])["jobs"] != r1["jobs"]
+
+    r2 = db.project_view_revision(p["id"])
+    note = db.add_project_note(p["id"], "a finding", citations=[], status="suggested", source_id=s["id"])
+    assert db.project_view_revision(p["id"])["notes"] != r2["notes"]
+
+    r3 = db.project_view_revision(p["id"])
+    db.set_note_status(note["id"] if isinstance(note, dict) else note, "approved")
+    assert db.project_view_revision(p["id"])["notes"] != r3["notes"]    # status change, no timestamp change
+
+
+def test_tick_answers_did_anything_change_without_building_the_view(client):
+    """The whole point: the poll must be able to ask whether anything changed without paying for the answer. The
+    happy path is exercised in-process because conftest's session client holds its own DB connection from before
+    this module's fixture repointed the data dir; the route itself is checked over HTTP."""
+    p = db.create_project("Tick", "brief")
+    out = api.api_tick(p["id"])
+    assert set(out["rev"]) == {"sources", "jobs", "notes", "research"} and out["active"] == 0
+
+    db.create_job("reembed", {})
+    assert api.api_tick(p["id"])["active"] == 1
+    assert api.api_tick(p["id"])["rev"]["jobs"] != out["rev"]["jobs"]
+    assert perf.stats("tick") is not None                               # the tick times itself like everything else
+
+    assert client.get("/api/projects/does-not-exist/tick",
+                      headers={"Authorization": "Bearer t0k"}).status_code == 404
+
+
+def test_staleness_cache_is_invalidated_by_job_churn():
+    """`assess` reports REBUILDING from live job state, so job churn MUST move its key — otherwise a source keeps
+    claiming it is rebuilding after its job has finished, which is exactly the kind of stale-staleness bug that
+    would make caching here indefensible."""
+    p = db.create_project("Stale", "brief")
+    s = db.upsert_source(platform="youtube", external_id="stale-1", url="https://www.youtube.com/watch?v=stale-1",
+                         title="t", status="ready")
+    db.add_project_sources(p["id"], [s["id"]])
+    api.api_sources(project_id=p["id"], limit=50)
+    misses = perf.snapshot()["caches"]["staleness"]["miss"]
+
+    api.api_sources(project_id=p["id"], limit=50)
+    assert perf.snapshot()["caches"]["staleness"]["miss"] == misses     # nothing moved → reused
+
+    db.create_job("suggest_findings", {"project_id": p["id"], "source_ids": [s["id"]]})
+    api.api_sources(project_id=p["id"], limit=50)
+    assert perf.snapshot()["caches"]["staleness"]["miss"] == misses + 1  # a job appeared → recomputed

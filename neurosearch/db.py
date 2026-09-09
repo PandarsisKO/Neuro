@@ -1404,6 +1404,32 @@ def project_research_revision(project_id: str) -> str:
     return "|".join(str(x) for x in r)
 
 
+def count_active_jobs() -> int:
+    return connect().execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running','external_pending')").fetchone()[0]
+
+
+def project_view_revision(project_id: str) -> dict[str, str]:
+    """R2: the cheap fingerprint of everything the Sources view renders — measured at ~6 ms against the 440 ms the
+    view itself costs, which is what lets a 3 s poll ask "did anything change?" instead of rebuilding the answer.
+
+    `sources` and `jobs` are deliberately GLOBAL rather than project-scoped. Project membership also comes through
+    collections and tags, so a project-scoped source fingerprint would miss a source joining that way and the view
+    would silently go stale — over-invalidating across projects costs a recompute, under-invalidating costs a wrong
+    screen, and only one of those is acceptable. COUNT sits beside MAX(updated_at) everywhere so deletions move the
+    revision too."""
+    c = connect()
+    r = c.execute(
+        "SELECT (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM sources),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM jobs),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(created_at),0)||':'"
+        "               ||SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END)||':'"
+        "               ||SUM(CASE WHEN status='suggested' THEN 1 ELSE 0 END) FROM project_notes WHERE project_id=?)",
+        (project_id,)).fetchone()
+    # project_notes has no updated_at, so the status counts stand in for it: approving a finding changes what the
+    # Sources rows show (their suggested/approved badges) without touching any timestamp.
+    return {"sources": str(r[0]), "jobs": str(r[1]), "notes": str(r[2]), "research": project_research_revision(project_id)}
+
+
 def _pctile(vals: list[float], p: float) -> float:
     return round(sorted(vals)[min(len(vals) - 1, int(len(vals) * p))], 2) if vals else 0.0
 

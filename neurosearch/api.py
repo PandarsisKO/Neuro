@@ -951,8 +951,18 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         with perf.timed("sources:value"):
             values = sources_value.compute(project_id)                                    # S2: what each source gave (one pass)
         with perf.timed("sources:staleness"):
+            # 0.26 s and, after R2 part 1, 75% of what the endpoint still costs. `assess` reads the project row,
+            # its analyses, every source revision AND live job state, so it is keyed on all three revisions rather
+            # than the research one alone — job churn must invalidate it, or a source would keep reporting
+            # "rebuilding" after its job finished. Cost estimates inside the result also depend on the observed
+            # spend rate, which is NOT in the key: an estimate drifting by a few cents between recomputes is
+            # cosmetic, where a wrong CURRENT/STALE verdict would not be.
+            view_rev = db.project_view_revision(project_id)
             try:
-                stale_by = {x["source_id"]: x for x in staleness.assess(project_id)["sources"]}
+                stale_by = cache.get_or_compute(
+                    f"staleness:{project_id}", f"{view_rev['research']}|{view_rev['sources']}|{view_rev['jobs']}",
+                    lambda: {x["source_id"]: x for x in staleness.assess(project_id)["sources"]},
+                    label="staleness")
             except Exception:  # noqa: BLE001
                 stale_by = {}
         # a skipped (pre-cutoff) source used to show up with no thumbnail and no hint of whether it's worth
@@ -1256,6 +1266,19 @@ async def api_masterplan_zip(project_id: str, synthesize: bool = True) -> Any:
     fname = re.sub(r"[^A-Za-z0-9_-]+", "_", p["name"])[:40] or "project"
     return StreamingResponse(iter([data]), media_type="application/zip",
                              headers={"Content-Disposition": f"attachment; filename={fname}_masterplan.zip"})
+
+
+@app.get("/api/projects/{project_id}/tick", dependencies=[Depends(require_auth)])
+def api_tick(project_id: str) -> dict[str, Any]:
+    """R2 — "did anything change?", answered in ~6 ms so the 3 s poll stops rebuilding a 440 ms view to discover
+    that nothing did. The client refetches a pane only when the revision that pane depends on has moved, and
+    reconciles fully on a slow interval regardless, so a fingerprint that ever missed a change self-corrects
+    within a minute rather than leaving a permanently stale screen."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    with perf.timed("tick"):
+        rev = db.project_view_revision(project_id)
+    return {"rev": rev, "active": db.count_active_jobs()}
 
 
 @app.get("/api/projects/{project_id}/jobs", dependencies=[Depends(require_auth)])

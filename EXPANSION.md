@@ -1655,3 +1655,52 @@ is a separate rung rather than folded in here. The payload is still ~2.3 MB beca
 time), so it is deferred rather than assumed. The p90 in the table above still shows the cold miss — the first
 request after any research change pays the full 1.5 s, by design; only the repeat is free. Nothing here
 touches the poll cadence itself, which is the rest of R2.
+
+## SPEED R2 (part 2) — cache the staleness verdict, and stop polling for answers nobody asked for — 0.46.2
+
+**Root cause.** After part 1, `sources:staleness` was 0.26 s and **75% of everything the endpoint still cost**.
+Underneath that, a bigger waste: the whole 440 ms view was rebuilt every 3 seconds whether or not anything had
+changed, which is most of the time.
+
+**Built.** `staleness.assess` is now cached — but not on the research revision, because it also reads live job
+state and every source's revision. Keyed on `research|sources|jobs` together: job churn MUST invalidate it, or a
+source keeps reporting "rebuilding" after its job has finished, which is exactly the stale-staleness bug that
+would make caching here indefensible. `db.project_view_revision` returns the four component revisions; `sources`
+and `jobs` are deliberately GLOBAL rather than project-scoped, because project membership also arrives through
+collections and tags — over-invalidating costs a recompute, under-invalidating shows a wrong screen, and only
+one of those is acceptable. `notes` carries per-status counts because `project_notes` has no `updated_at` and
+approving a finding changes a source row's badges without touching any timestamp.
+
+`GET /api/projects/{id}/tick` answers "did anything change?" in **13 ms**, and the Sources poll now calls it
+first, refreshing a pane only when the revision that pane depends on has moved. A full reconcile every 20 ticks
+(about a minute) means a fingerprint that ever missed a change self-corrects rather than leaving a permanently
+stale screen, and a tick that fails falls straight back to the old unconditional refresh.
+
+**Gate.** `tests/test_p1_perf.py` +3 (13 total): the view revision moves for a new source, a new job, a new
+finding **and a finding's status change with no timestamp change**; the tick returns all four components, counts
+active jobs and 404s for an unknown project; and the staleness cache is proven to recompute when a job appears.
+
+**Measured result (live, same project, cumulative across R2).**
+
+| | before R2 | after part 1 | after part 2 |
+|---|---|---|---|
+| `GET /api/sources` p50 | **2.53 s** | 0.44 s | **0.155 s** |
+| `sources:staleness` | 0.27 s | 0.26 s | **0.019 s** |
+| cost of one poll that finds nothing changed | 2.53 s | 0.44 s | **0.013 s** (tick only) |
+
+**16× on the endpoint, and ~190× on the common case where nothing has changed.**
+
+**Also fixed: a flaky gate.** `test_core.py::test_transient_failures_retry_then_fail` failed intermittently in
+full-suite runs (twice today). Not timing in the retry logic as first assumed — `POST /api/jobs/retry-failed`
+with no project sweeps EVERY failed job in the database, so the test's `retried == 0` only held if no other
+test's job happened to be in `failed` at that instant, and the background workers make that a race. It now
+asserts against the live failed set instead of a global zero, which keeps the endpoint check while removing the
+dependency on other tests. Three consecutive clean full runs. Suite 493; Tier 1 unchanged.
+
+**Honest limits.** The tick's `notes` component is status-count-based, so an *edit* to a finding's text (no
+status change, no new row) would not move it; the one-minute reconcile is what catches that class of miss, and
+the honest reason it is acceptable rather than ignored. Cost estimates inside `assess` depend on the observed
+spend rate, which is not in the cache key — an estimate drifting a few cents between recomputes is cosmetic
+where a wrong CURRENT/STALE verdict would not be. The p90 in the table is still a cold miss by design: the first
+request after any change pays full price. The payload is still ~2.3 MB and the UI still re-renders the list
+wholesale on every refresh — both untouched, and both now a larger share of what remains than the server work.
