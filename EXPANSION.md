@@ -1115,3 +1115,33 @@ nothing, the cloud profile offers no second currency, and the fast button's fiel
 
 **Honest limits.** The API price is still an estimate from the same shared estimator, not a quote. Nothing retroactively
 re-reads the 182 failed sources — the fix stops the next read failing; pressing **Retry** is what recovers them.
+
+## S1 — the odd gap: a wrong ETA and a missing third option — 0.45.3 (COMPLETE, pending delivery)
+
+Kyle: *"the API version is pretty expensive, while the Claude Code version is very slow. multiple hours. that feels odd."*
+He was right, and both halves of the gap were our doing.
+
+**The ETA quoted work, not wall clock.** `local_minutes` was `windows × LOCAL_MINUTES_PER_WINDOW` — never divided by
+`settings.local_ai_workers`, which is 2 on his machine and spawns two independent local workers in `jobs._start_pools`. So the
+free option was advertised at exactly twice its real duration: 200 sources read "about 4 h 24 min" for work two workers finish
+in about 2 h 12 min. The line now divides by the pool and says so ("2 at a time"), and `local_workers` is in the payload.
+Parallelism changes time and never money, so `api_cost` is untouched by it — the gate asserts that.
+
+**There was a third option all along.** `findings.extract` is `batch_allowed=True`, `usage.BATCH_MULT` is 0.5, and
+`/rebuild-stale` has always accepted `transport: "batch"` — one background batch job for the whole tier, results landing source
+by source, at half the model-token price. Nothing offered it. The card presented the two extremes (free but slow / now but full
+price) and hid the middle. Each tier now carries `batch_cost` and `batch_line`, and every rebuild/retry row shows three
+answers. On Kyle's 200-source tier that is: **$0 · about 2 h 12 min · 2 at a time** — **📦 $4.98 in the background** —
+**⏩ $9.96 now**. Both paid buttons confirm the figure and name the alternative before spending.
+
+**Not wrong, and left alone: the API price itself.** 220 windows at $9.96 is $0.045/window, which is what a 60k-char window
+(≈15k tokens in, ~600 out) costs on Sonnet 5. The estimator is honest; the presentation was not.
+
+**Gate (test_n4 +1 → 7).** One worker vs two: same money, half the time, the label says "2 at a time" only when it is true;
+the batch price is the API price at the documented multiplier and is named separately; `findings.extract` really is batchable;
+`transport="batch"` really produces ONE `suggest_findings_batch` job for the whole tier rather than one per source; an empty
+tier still quotes nothing; the UI reads exactly these fields. Suite 463; Tier 1 unchanged.
+
+**Honest limits.** The 1.2 min/window constant is still one measurement from one evening on one machine, and dividing it by the
+worker count assumes the workers do not contend — on a laptop under load the real figure will drift. It is an estimate the card
+now labels as "about", not a promise. Batch results land when Anthropic returns them; there is no ETA for a batch.

@@ -546,7 +546,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.2';
+const UI_VERSION = '0.45.3';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1835,7 +1835,10 @@ async function renderTriageCard(elId) {
       <div style="white-space:nowrap">${btn(x)}</div></div>`; };
   // 0.45.2: both currencies on every button. The local price is time, the API price is dollars; the card shows each tier's
   // two options side by side so "faster" is a thing you can SEE and press, not something you have to know exists.
-  const fastBtn = (x, key, label) => x.local_line && x.api_cost ? ` <button class="small primary" title="Queues them and moves them straight onto the API pool — minutes instead of hours" onclick="rebuildTier('${key}', true)">⏩ ${label} on the API · ${esc(x.api_line)}</button>` : '';
+  // 0.45.3: three prices, because there are three. Free-but-hours, half-price-in-the-background, full-price-now.
+  const fastBtn = (x, key, label) => !x.api_cost ? '' :
+    ` <button class="small" title="One background batch through the Message Batches API — half the price of running it now, and it does not tie up Claude Code. Results land source by source." onclick="rebuildTier('${key}', 'batch')">📦 ${label} in the background · ${esc(x.batch_line.replace(' on the API in the background', ''))}</button>` +
+    (x.local_line ? ` <button class="small primary" title="Queues them and moves them straight onto the API pool — minutes instead of hours" onclick="rebuildTier('${key}', 'api')">⏩ ${label} now · ${esc(x.api_line)}</button>` : '');
   const rebuildBtns = (x, key) => `<button class="small ${key === 'rebuild_transcript' ? 'primary' : ''}" title="${t.local ? 'Runs on Claude Code in the background — $0, but slow' : 'Runs on the API'}" onclick="rebuildTier('${key}')">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, key, 'Rebuild')}`;
   const acceptBtns = x => `<button class="small" onclick="acceptTier('accept')">Accept ${x.count} as still usable</button> <button class="small ghost" onclick="rebuildTier('accept')" title="Re-read them anyway">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, 'accept', 'Rebuild')}`;
   const retryBtns = x => `<button class="small" onclick="rebuildTier('retry_failed')">Retry ${x.count} · ${esc(x.cost_line)}</button>${fastBtn(x, 'retry_failed', 'Retry')}`;
@@ -1847,12 +1850,15 @@ async function renderTriageCard(elId) {
     ${row('accept', 'stale only because the brief changed, carrying no weight', acceptBtns)}
     <div class="row" style="margin-top:8px"><span class="muted" style="flex:1;font-size:12px">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div></div>`;
 }
-async function rebuildTier(tier, onApi) {
+async function rebuildTier(tier, mode) {
   const T = (STALE.triage && STALE.triage.tiers && STALE.triage.tiers[tier]) || {};
-  if (onApi && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} on the API for about ${T.api_line}?\n\nThey are queued first, then moved onto the API pool so they finish in minutes instead of ${T.local_line ? T.local_line.replace('$0 · about ', '').replace(' on Claude Code', '') : 'hours'} on Claude Code. Each job still passes the daily budget on its own.`)) return;
-  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], tier, transport: 'interactive' });
+  const slow = T.local_line ? T.local_line.replace('$0 · about ', '').replace(' on Claude Code', '').replace(/ \(\d+ at a time\)/, '') : 'hours';
+  if (mode === 'batch' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} as one background batch for about $${(T.batch_cost || 0).toFixed(2)}?\n\nThat is half what running them now costs ($${(T.api_cost || 0).toFixed(2)}) because the Message Batches API discounts the model tokens. It runs in the background and results land source by source, so it does not tie up Claude Code or make you wait ${slow}.`)) return;
+  if (mode === 'api' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} on the API right now for about ${T.api_line}?\n\nThey finish in minutes instead of ${slow} on Claude Code. The same work as a background batch is about half this ($${(T.batch_cost || 0).toFixed(2)}) if you can wait. Each job still passes the daily budget on its own.`)) return;
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], tier, transport: mode === 'batch' ? 'batch' : 'interactive' });
   let msg = `${r.queued} job${r.queued === 1 ? '' : 's'} queued`;
-  if (onApi && r.queued) {
+  if (mode === 'batch') msg = `📦 ${T.count} queued as one background batch · est. $${(T.batch_cost || 0).toFixed(2)}`;
+  if (mode === 'api' && r.queued) {
     const a = await post(`/api/projects/${state.project.id}/accelerate`, { n: r.queued, order: 'value' });
     msg += ` · ⏩ ${a.moved} moved to the API, est. $${(a.api_cost || 0).toFixed(2)}`;
   }

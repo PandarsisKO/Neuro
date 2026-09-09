@@ -226,5 +226,41 @@ def test_every_tier_quotes_both_currencies_so_faster_is_visible(monkeypatch):
 
     # the UI renders the fast button from exactly these fields and routes it at a route that exists
     html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
-    assert "x.local_line && x.api_cost" in html and "rebuildTier('${key}', true)" in html
+    assert "x.local_line ?" in html and "rebuildTier('${key}', 'api')" in html
     assert "/accelerate" in html and any(getattr(r, "path", "") == "/api/projects/{project_id}/accelerate" for r in api.app.routes)
+
+
+def test_the_local_eta_is_wall_clock_and_the_batch_price_is_offered(monkeypatch):
+    """0.45.3. Kyle's card read '$0 · about 4 h 24 min on Claude Code' next to '$9.96 on the API' and the gap felt wrong —
+    because both halves were misleading. The ETA multiplied windows by the per-window minute and never divided by the pool
+    actually doing the work, so two workers were quoted as one; and the Message Batches price (half, in the background,
+    findings.extract is batch_allowed) existed in the pricing model but was offered nowhere. Three real options now."""
+    p, ids = _project()
+    db.update_project(p["id"], brief="hosting and email deliverability")
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setattr(CC, "health", lambda wait=False: {"state": "ready"})
+
+    monkeypatch.setattr(settings, "local_ai_workers", 1)
+    one = staleness.triage(p["id"])["tiers"]["accept"]
+    monkeypatch.setattr(settings, "local_ai_workers", 2)
+    two = staleness.triage(p["id"])["tiers"]["accept"]
+    assert one["local_workers"] == 1 and two["local_workers"] == 2
+    assert two["local_minutes"] == round(one["local_minutes"] / 2)      # wall clock, not work
+    assert "2 at a time" in two["local_line"] and "at a time" not in one["local_line"]
+    assert two["api_cost"] == one["api_cost"]                            # parallelism is free; it changes time, never money
+
+    # the batch price is the API price at the documented multiplier, and it is named as a separate answer
+    from neurosearch import usage
+    assert two["batch_cost"] == round(two["api_cost"] * usage.BATCH_MULT, 4) < two["api_cost"]
+    assert "background" in two["batch_line"]
+    # findings.extract really is batchable and the rebuild route really takes that transport
+    from neurosearch import contracts
+    assert contracts.contract("findings.extract").batch_allowed
+    r = api.api_rebuild_stale(p["id"], api.RebuildIn(what=["findings"], tier="accept", transport="batch"))
+    assert r["queued"] == 1                                              # ONE batch job for the whole tier, not one per source
+    assert db.list_jobs(5)[0]["kind"] == "suggest_findings_batch"
+
+    # an empty tier still quotes nothing, and the UI reads exactly these fields
+    assert staleness.triage(p["id"])["tiers"]["retry_failed"]["batch_line"] == ""
+    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    assert "x.batch_line" in html and "rebuildTier('${key}', 'batch')" in html and "rebuildTier('${key}', 'api')" in html

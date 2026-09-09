@@ -258,11 +258,20 @@ def triage(project_id: str) -> dict[str, Any]:
         # 0.45.2: quote BOTH prices, always. The card used to show whichever provider was configured and nothing else, so on
         # a local setup a 4-hour tier looked like the only option there was — the user could not even see that the same work
         # was a few dollars on the API, let alone choose it. Time and money are the two currencies; the card names both.
+        # 0.45.3: the local ETA is WALL CLOCK, so it must divide by the pool that is actually doing the work. It used to be
+        # windows × 1.2 min regardless of NEUROSEARCH_LOCAL_AI_WORKERS, which quoted 4 h 24 min for a job two workers finish
+        # in about half that — the free option was made to look twice as slow as it is.
+        workers = max(1, settings.local_ai_workers)
+        local_minutes = windows * LOCAL_MINUTES_PER_WINDOW / workers
         api_line = f"${api_cost:.2f} on the API" if rows else ""
-        local_line = f"$0 · about {_hm(windows * LOCAL_MINUTES_PER_WINDOW)} on Claude Code" if rows and local else ""
+        local_line = (f"$0 · about {_hm(local_minutes)} on Claude Code" + (f" ({workers} at a time)" if workers > 1 else "")) if rows and local else ""
+        # the third option that already existed and was never offered: the same model through the Message Batches API at
+        # BATCH_MULT of the price, in the background. Between "free but hours" and "now but full price" this is the middle.
+        batch_cost = round(api_cost * usage.BATCH_MULT, 4)
+        batch_line = f"${batch_cost:.2f} on the API in the background" if rows else ""
         out_tiers[k] = {"count": len(rows), "sources": rows, "api_cost": api_cost, "windows": windows,
-                        "local_minutes": round(windows * LOCAL_MINUTES_PER_WINDOW) if local else None,
-                        "local_line": local_line, "api_line": api_line,
+                        "local_minutes": round(local_minutes) if local else None, "local_workers": workers,
+                        "local_line": local_line, "api_line": api_line, "batch_cost": batch_cost, "batch_line": batch_line,
                         "cost_line": (local_line or api_line) if rows else ""}
     t = usage.totals()
     return {"project_id": project_id, "tiers": out_tiers, "plan": a["plan"], "stale_total": sum(len(v) for v in tiers.values()),
