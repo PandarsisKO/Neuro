@@ -401,6 +401,7 @@ def api_usage() -> dict[str, Any]:
         t["blocked"] = t["blocked"] or "the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue"
     from . import claude_code
     t["background_paused"] = db.background_paused()
+    t["rate"] = usage.rate_gate()
     t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
     return t
@@ -940,6 +941,15 @@ def api_background_pause(body: BackgroundPauseIn) -> dict[str, Any]:
         job = claims.maybe_extract(body.project_id, "resumed by you", force=True)
         out["requeued"] = bool(job)
     return out
+
+
+@app.post("/api/usage/rate-resume", dependencies=[Depends(require_auth)])
+def api_rate_resume() -> dict[str, Any]:
+    """The user's explicit "carry on" after the spend-rate ceiling held paid background work. Like the account
+    Re-check, this retires a belief the app formed on its own — it is not a fact, and only the user may clear it."""
+    from . import usage
+    usage.clear_rate_gate()
+    return {"ok": True, **usage.rate_gate()}
 
 
 @app.post("/api/usage/recheck", dependencies=[Depends(require_auth)])

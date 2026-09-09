@@ -1728,7 +1728,9 @@ def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
 
 
-BACKGROUND_LANES = ("slow", "low")     # speculative work: bulk claim passes, caption recovery, metadata backfill
+BACKGROUND_LANES = ("slow", "low")
+BACKGROUND_KINDS = ("extract_claims",)        # paused whatever lane they are on (0.51.0 — see claim_job)
+RATE_HELD_POLICIES = ("api_requested", "api_only")   # held while the spend-rate ceiling is tripped     # speculative work: bulk claim passes, caption recovery, metadata backfill
 
 
 def background_paused() -> bool:
@@ -1744,14 +1746,15 @@ def set_background_paused(paused: bool) -> dict[str, Any]:
     stopped = 0
     if paused:
         rows = connect().execute(
-            f"SELECT id FROM jobs WHERE status='running' AND lane IN ({','.join('?' for _ in BACKGROUND_LANES)}) "
-            "AND cancel_requested_at IS NULL", tuple(BACKGROUND_LANES)).fetchall()
+            f"SELECT id FROM jobs WHERE status='running' AND (lane IN ({','.join('?' for _ in BACKGROUND_LANES)}) "
+            f"OR kind IN ({','.join('?' for _ in BACKGROUND_KINDS)})) AND cancel_requested_at IS NULL",
+            (*BACKGROUND_LANES, *BACKGROUND_KINDS)).fetchall()
         for r in rows:
             request_cancel(r["id"])
             stopped += 1
     waiting = connect().execute(
-        f"SELECT COUNT(*) FROM jobs WHERE status='queued' AND lane IN ({','.join('?' for _ in BACKGROUND_LANES)})",
-        tuple(BACKGROUND_LANES)).fetchone()[0]
+        f"SELECT COUNT(*) FROM jobs WHERE status='queued' AND (lane IN ({','.join('?' for _ in BACKGROUND_LANES)}) "
+        f"OR kind IN ({','.join('?' for _ in BACKGROUND_KINDS)}))", (*BACKGROUND_LANES, *BACKGROUND_KINDS)).fetchone()[0]
     return {"paused": paused, "stopped": stopped, "waiting": waiting}
 
 
@@ -1780,8 +1783,25 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             # on my own ... manual pause and resume would be good." The existing queue pause stops EVERYTHING,
             # including the ingest he just started, which is why it was not the control he wanted. This pauses only
             # the speculative lanes; his own work keeps running.
+            #
+            # 0.51.0: it must also pause BACKGROUND_KINDS regardless of lane. Claim extraction runs a paid pass on
+            # the `priority` lane (0.48.0's fast lane), so the control built to stop background spend was skipping
+            # the largest background spender — 32% of a month's bill. A control that exempts the thing it exists to
+            # stop is worse than no control, because the user believes they have stopped it.
             q += f" AND lane NOT IN ({','.join('?' for _ in BACKGROUND_LANES)})"
             args += list(BACKGROUND_LANES)
+            if BACKGROUND_KINDS:
+                q += f" AND kind NOT IN ({','.join('?' for _ in BACKGROUND_KINDS)})"
+                args += list(BACKGROUND_KINDS)
+        if float(kv_get("usage:rate_blocked_until") or 0) > now():
+            # The spend-RATE ceiling (usage.SPEND_RATE_CEILING). Holds paid background only: jobs whose execution
+            # policy forces the API, and claim extraction. Chat, ingestion, transcription and every local job are
+            # untouched — a spending spike must never take away what the user is sitting in front of.
+            q += f" AND execution_policy NOT IN ({','.join('?' for _ in RATE_HELD_POLICIES)})"
+            args += list(RATE_HELD_POLICIES)
+            if BACKGROUND_KINDS:
+                q += f" AND kind NOT IN ({','.join('?' for _ in BACKGROUND_KINDS)})"
+                args += list(BACKGROUND_KINDS)
         row = None
         # claim order: a manually bumped job ("run this next") outranks everything, FIFO among bumps; then lane
         # order — 'priority' (the user is waiting, e.g. ranking a review card), then 'normal'/'slow' (ordinary

@@ -855,6 +855,12 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
 
 
 FAST_GROUPS = 2                   # "a few per batch" (Kyle): at EXTRACT_GROUP=8 that is <=16 claims, cents per pass
+FAST_MIN_INTERVAL_S = 1800        # 0.51.0 — and at most one such pass per project per this interval. FAST_GROUPS
+                                  # bounds the cost of ONE pass; nothing bounded passes per hour, and on 2026-09-09
+                                  # a fresh paid pass was being queued every five minutes all day (32% of a month's
+                                  # spend). A per-pass cap is not a budget; a rate is.
+TARGET_OVERLAP_FAST = 0.5         # was 0.34, which matched every candidate — "the important few" was 16 every time,
+                                  # and a reason printed on 16 of 16 rows explains nothing.
 
 
 def triage(project_id: str) -> dict[str, Any]:
@@ -870,7 +876,7 @@ def triage(project_id: str) -> dict[str, Any]:
     from . import knowledge
     cands = unnormalized(project_id)
     if not cands:
-        return {"fast": [], "bulk": [], "why": {}}
+        return {"fast": [], "bulk": [], "why": {}, "considered": 0, "qualified": 0, "share": 0.0}
     prio_sources = set(db.priority_source_ids(project_id))
     note_source = {r["id"]: r["source_id"] for r in db.connect().execute(
         "SELECT id, source_id FROM project_notes WHERE project_id=?", (project_id,)).fetchall()}
@@ -883,14 +889,18 @@ def triage(project_id: str) -> dict[str, Any]:
         if note_source.get(c.get("origin_note_id")) in prio_sources:
             score += 1.0; reasons.append("from a source you marked priority")
         best = max((overlap(c["text"], q) for q in target_text), default=0.0)
-        if best >= 0.34:
+        if best >= TARGET_OVERLAP_FAST:
             score += best; reasons.append("answers an open question you are waiting on")
         if reasons:
             scored.append((score, c)); why[c["id"]] = reasons
     scored.sort(key=lambda x: -x[0])
     fast = [c for _, c in scored[:FAST_GROUPS * EXTRACT_GROUP]]
     fast_ids = {c["id"] for c in fast}
-    return {"fast": fast, "bulk": [c for c in cands if c["id"] not in fast_ids], "why": why}
+    # A signal that fires on nearly every candidate is not selecting anything, and paying to hurry "everything" is
+    # just paying. Report the share so it is visible in the job payload and testable.
+    share = round(len(scored) / max(1, len(cands)), 3)
+    return {"fast": fast, "bulk": [c for c in cands if c["id"] not in fast_ids], "why": why,
+            "considered": len(cands), "qualified": len(scored), "share": share}
 
 
 def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str, Any] | None:
@@ -906,11 +916,19 @@ def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str
     if not force and n < CLAIMS_BATCH_MIN and (time.time() - last) < CLAIMS_DEBOUNCE_S:
         return None
     tri = triage(project_id)
-    if tri["fast"]:
-        # surface what he is waiting on immediately: small, api_requested (paid, ~3x faster than local), priority
-        # lane so it is claimed ahead of the bulk pass. Bounded by FAST_GROUPS, so a burst cannot become the cost.
+    # The PAID fast pass has its own rate limit, and `n >= CLAIMS_BATCH_MIN` cannot bypass it. That bypass is
+    # exactly what went wrong: findings produce candidates faster than extraction consumes them, so the count test
+    # was always true, the debounce never once engaged, and a paid pass was queued every few minutes indefinitely.
+    # The free bulk pass below is unaffected — the cheap lane is allowed to be eager.
+    fast_last = float(db.kv_get(f"claims:last_fast:{project_id}") or 0)
+    fast_due = force or (time.time() - fast_last) >= FAST_MIN_INTERVAL_S
+    if tri["fast"] and fast_due:
+        # surface what he is waiting on quickly: small, api_requested (paid, ~3x faster than local), priority lane
+        # so it is claimed ahead of the bulk pass — at most once per FAST_MIN_INTERVAL_S per project.
+        db.kv_set(f"claims:last_fast:{project_id}", str(time.time()))
         db.create_job("extract_claims", {"project_id": project_id, "reason": f"{reason} (important)",
                                          "claim_ids": [c["id"] for c in tri["fast"]],
+                                         "triage": {k: tri[k] for k in ("considered", "qualified", "share")},
                                          "why": {k: v for k, v in tri["why"].items() if k in {c["id"] for c in tri["fast"]}}},
                       lane="priority", execution_policy="api_requested")
     job = db.create_job("extract_claims", {"project_id": project_id, "reason": reason}, lane="slow")

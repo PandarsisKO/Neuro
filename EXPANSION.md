@@ -2142,3 +2142,64 @@ are two, not four, and "strong" is a rule (matched ≥2 facets, or its passages 
 Nothing re-ranks as the user adds context yet (R4). Discover is untouched, so it still asks "what is relevant?"
 rather than "what is still missing?" (R5). And a scan is a snapshot: the card says the goal has changed since the
 last scan, but does not re-run itself.
+
+---
+
+## 0.51.0 — the four holes that let $5 leave in ten minutes
+
+Kyle, live, minutes after topping up his credits: *"I had $40 and now I have already burnt through $5 in that
+short period of time. that feels WAY too fast."*
+
+He was right, and the cause was mine — the fast claim lane shipped in 0.48.0 this morning. His own ledger:
+
+```
+created 20:28:36 → done 20:32:34   2 paid calls, 16 claims
+created 20:34:45 → done 20:39:02   2 paid calls, 16 claims
+created 20:39:11 → done 20:44:28   2 paid calls, 16 claims
+created 20:45:17 → running
+```
+
+A fresh **paid** claim pass every five minutes, all day. Claims had reached **$33.03 of a $103.51 month — 32% of
+everything spent** — with 243 of 362 claim-extraction calls on the paid API rather than Claude Code. Four separate
+mistakes, each fixed and each gated.
+
+**1. A per-pass cap is not a budget.** `FAST_GROUPS = 2` bounds one pass to 16 claims — cents. The 0.48.0 commit
+said "a burst cannot become the cost". It bounded the cost of a pass and never bounded **passes per hour**.
+`maybe_extract` runs after every `suggest_findings` job (there were ~1,030), and the 30-minute debounce is skipped
+whenever six candidates are waiting — which findings made permanently true, so the debounce never once engaged.
+Now the paid pass has its own rate limit (`FAST_MIN_INTERVAL_S`, one per project per 30 min) that the candidate
+count **cannot** bypass. The free bulk pass is untouched: the cheap lane is allowed to be eager.
+
+**2. The pause exempted the biggest spender.** The fast lane runs on `priority`; 0.48.2's "Pause background" skips
+`slow`/`low`. Both were shipped the same day and never checked against each other. `claim_job` now also excludes
+`db.BACKGROUND_KINDS` — claim extraction, whatever lane it is on — and pausing stops a running one. *A control
+that exempts the thing it exists to stop is worse than no control, because the user believes they have stopped it.*
+
+**3. A reason printed on every row is not a reason.** All 16 claims in every batch carried the same line: "answers
+an open question you are waiting on". The overlap floor of 0.34 qualified essentially every candidate, so "the
+important few" was really "a steady 16, forever". The floor is now `TARGET_OVERLAP_FAST = 0.5`, and `triage`
+reports `considered` / `qualified` / `share` into the job payload so a filter that stops filtering is visible
+instead of silent.
+
+**4. Budgets cap a total; nothing watched the rate.** Every dollar above was inside a $50/day budget the whole
+time. And the $5 burst had its own cause: work parked while his credits were empty **released all at once** when
+they landed, on top of the five-minute cadence. New `usage.SPEND_RATE_CEILING` ($6/hour, Kyle's number) is
+maintained by `usage.record` itself — one aggregate per paid call, nothing at claim time — and while it is tripped
+`claim_job` holds **only paid background**: jobs whose execution policy forces the API, and claim extraction. Chat,
+ingestion, transcription and every local job keep running, because a spending spike must never take away the thing
+the user is sitting in front of. It expires on its own after ten minutes, the In-progress card shows the live
+`$/h` figure (amber as it approaches the ceiling), and "▶ Carry on anyway" (`POST /api/usage/rate-resume`) is the
+user's explicit override — the same shape as the account Re-check: a belief the app formed, which only the user
+may retire.
+
+**Gate.** New `tests/test_r3_spend_rate.py` (9), one per mistake, written from the live evidence above: the paid
+pass cannot repeat inside its interval *and the dedupe key freeing is not on its own a licence to spend again*;
+pause holds claim work on any lane and stops a running one while the user's own job still runs; the triage floor
+is above 0.34 and the share is reported; the ceiling notices what `usage.check()` provably cannot; it holds paid
+background and **nothing else**; it expires by itself; and the user can release it. Suite 548; Tier 1 unchanged.
+
+**Honest limits.** The ceiling is a rolling hour, so a burst inside a quiet hour can still spend a few dollars
+before it trips — it bounds a runaway, not a single expensive minute. It also does not distinguish *which* work
+caused the spike, so an expensive legitimate batch can hold an unrelated cheap background job for ten minutes.
+And the deeper fix is still the bucket in `SCHEDULER.md` §5, which admits work by budget rather than blocking it
+after the fact; this is the narrow version that could ship tonight.

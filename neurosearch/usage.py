@@ -99,7 +99,57 @@ def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int =
                          (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
+    if cost:
+        _update_rate_gate()
     return cost
+
+
+# ------------------------------------------------------------------ the spend-RATE ceiling (0.51.0)
+#
+# The daily and monthly budgets are ceilings on a TOTAL. They say nothing about how fast that total is reached,
+# and on 2026-09-09 that gap cost Kyle $5 in ten minutes: work parked while his credits were empty all resumed the
+# instant they were topped up, on top of a background pass that was re-queuing itself every five minutes. Both
+# were well inside a $50/day budget the whole time. A rate is the thing a human actually notices, so it is the
+# thing the machine should watch.
+#
+# What it stops is narrow on purpose: paid BACKGROUND work — jobs whose execution policy forces the API, and claim
+# extraction. Chat, ingestion, transcription and every local job keep running, because a spending spike must never
+# take away the thing the user is sitting in front of.
+
+SPEND_RATE_CEILING = 6.0      # dollars per rolling hour (Kyle's choice: catches a runaway, not a heavy session)
+RATE_COOLOFF_S = 600          # how long paid background stays held once the ceiling is hit; re-armed while it holds
+
+
+def rate_last_hour() -> float:
+    try:
+        row = db.connect().execute("SELECT COALESCE(SUM(cost),0) c FROM usage WHERE ts >= ?", (time.time() - 3600,)).fetchone()
+        return round(float(row["c"]), 4)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _update_rate_gate() -> None:
+    """Maintained by `record` so the gate costs one aggregate per paid call and nothing at claim time."""
+    try:
+        rate = rate_last_hour()
+        if rate > SPEND_RATE_CEILING:
+            db.kv_set("usage:rate_blocked_until", str(time.time() + RATE_COOLOFF_S))
+            db.kv_set("usage:rate_at_block", str(rate))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def rate_gate() -> dict[str, Any]:
+    """Is paid background work held right now, and why — in the user's terms."""
+    until = float(db.kv_get("usage:rate_blocked_until") or 0)
+    blocked = until > time.time()
+    return {"ceiling": SPEND_RATE_CEILING, "rate": rate_last_hour(), "blocked": blocked,
+            "until": until if blocked else None, "at_block": float(db.kv_get("usage:rate_at_block") or 0) if blocked else None}
+
+
+def clear_rate_gate() -> None:
+    """The user's explicit "carry on" — same shape as the account-gate Re-check: a belief, not a fact."""
+    db.kv_set("usage:rate_blocked_until", "0")
 
 
 def cost_of(resp: Any) -> float:
