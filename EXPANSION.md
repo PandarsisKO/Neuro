@@ -1959,3 +1959,36 @@ that was — if polling stalls, the timestamp ages visibly instead of the line q
 fraction is by group, so a single slow group still looks static for its duration (up to ~2 min locally); a
 per-call sub-step would need the provider layer to report mid-call, which it does not. Neither change makes
 anything faster — this rung buys knowing, not speed, which is the point Kyle was making.
+
+## S10 — pause and resume the background, not the app — 0.48.2
+
+Kyle: *"I need it to get out of the way of 'real' work when I start adding new sources or do something on my own …
+it needs to be non blocking or allow interruption. manual pause and resume would be good."*
+
+**Why the existing control was not the one he wanted.** There has always been a queue pause (`queue_paused` →
+`usage.check`), but it stops EVERYTHING — including the ingest he started ten seconds ago. Pressing it to get the
+bulk work out of the way also halts the work he is waiting on, which is why it went unused.
+
+**Built.** `db.BACKGROUND_LANES = ("slow", "low")` names the speculative work — bulk claim passes, caption
+recovery, metadata backfill — and `claim_job` skips exactly those lanes while `background_paused` is set.
+Everything at `normal`/`priority` (his ingests, findings, ranking, review scoring) keeps running untouched.
+`POST /api/jobs/background-pause` toggles it; the In-progress card gets a "⏸ Pause background" / "▶ Resume
+background" button beside the existing queue pause, and the toast reports what was actually held.
+
+**Interruption is safe by construction, which is why pausing also stops what is mid-flight.** Pausing requests a
+stop on running `slow`/`low` jobs at their next safe boundary, and that costs nothing because background work is
+idempotent: a claims group whose `extraction_hash` is already stamped is skipped without spend (`claims.extract`),
+and `recover_caption_text` refuses a source it has already recovered. So a pass stopped halfway resumes from its
+first unfinished unit rather than from the beginning. Resume also **re-triggers** the paused work rather than
+waiting for some later event to notice it should exist.
+
+**Gate.** New `tests/test_p5_background_pause.py` (4): with background paused, a `slow` and a `low` job wait while
+the `normal` and `priority` jobs are still claimed — the invariant that makes this different from the old pause;
+resuming lets the held job through; pausing asks a running background job to stop **and leaves his own running job
+alone**; and the endpoint reports what it held and re-queues on resume. Suite 516; Tier 1 unchanged.
+
+**Honest limits.** It is a manual switch, not the idle-detection Kyle also described ("if 15 minutes has passed its
+fine for it to start doing active work") — automatic yielding on user activity is a separate rung and is not built.
+The pause is global rather than per project, which matches how the worker pool is shared but means pausing while in
+one project also holds the other's background work. And a job stopped by the pause shows in history as cancelled,
+because it reuses the existing cancel path; the work is not lost, but the label is blunter than it should be.

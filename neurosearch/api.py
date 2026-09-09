@@ -398,6 +398,7 @@ def api_usage() -> dict[str, Any]:
         t["billing_blocked_until"] = bcap
         t["blocked"] = t["blocked"] or "the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue"
     from . import claude_code
+    t["background_paused"] = db.background_paused()
     t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
     return t
@@ -916,6 +917,27 @@ def api_health() -> dict[str, Any]:
     h["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split()}
     h["perf"] = {"slowest": perf.slowest(5), "caches": perf.snapshot()["caches"]}   # R0: in-memory, no query cost
     return h
+
+
+class BackgroundPauseIn(BaseModel):
+    paused: bool
+    project_id: str | None = None
+
+
+@app.post("/api/jobs/background-pause", dependencies=[Depends(require_auth)])
+def api_background_pause(body: BackgroundPauseIn) -> dict[str, Any]:
+    """Kyle: "I need it to get out of the way of 'real' work when I start adding new sources or do something on my
+    own ... manual pause and resume would be good." The existing queue pause stops everything including the work he
+    just started, so it was never the right control. This holds only the speculative lanes (`slow`/`low`: bulk claim
+    passes, caption recovery, metadata backfill) while his own ingests, findings and ranking keep running.
+
+    Resuming re-triggers the paused work rather than waiting for some later event to notice it should exist."""
+    out = db.set_background_paused(body.paused)
+    if not body.paused and body.project_id:
+        from . import claims
+        job = claims.maybe_extract(body.project_id, "resumed by you", force=True)
+        out["requeued"] = bool(job)
+    return out
 
 
 @app.post("/api/usage/recheck", dependencies=[Depends(require_auth)])

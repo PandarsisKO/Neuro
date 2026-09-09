@@ -1704,6 +1704,33 @@ def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
 
 
+BACKGROUND_LANES = ("slow", "low")     # speculative work: bulk claim passes, caption recovery, metadata backfill
+
+
+def background_paused() -> bool:
+    return kv_get("background_paused") == "1"
+
+
+def set_background_paused(paused: bool) -> dict[str, Any]:
+    """Pause/resume ONLY the speculative lanes. Running background jobs are asked to stop at their next safe point;
+    that is safe to do because they are idempotent by construction (a claims group whose extraction_hash is already
+    stamped is skipped without spend, caption recovery refuses a source it already recovered), so resuming re-does
+    no paid work — it picks up from the first unfinished unit."""
+    kv_set("background_paused", "1" if paused else "0")
+    stopped = 0
+    if paused:
+        rows = connect().execute(
+            f"SELECT id FROM jobs WHERE status='running' AND lane IN ({','.join('?' for _ in BACKGROUND_LANES)}) "
+            "AND cancel_requested_at IS NULL", tuple(BACKGROUND_LANES)).fetchall()
+        for r in rows:
+            request_cancel(r["id"])
+            stopped += 1
+    waiting = connect().execute(
+        f"SELECT COUNT(*) FROM jobs WHERE status='queued' AND lane IN ({','.join('?' for _ in BACKGROUND_LANES)})",
+        tuple(BACKGROUND_LANES)).fetchone()[0]
+    return {"paused": paused, "stopped": stopped, "waiting": waiting}
+
+
 def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", lease_seconds: float = LEASE_SECONDS,
               exclude_kinds: tuple[str, ...] | None = None, policies: tuple[str, ...] | None = None, lanes: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """Atomically claim the oldest claimable queued job: not waiting (not_before), not blocked, not cancelled.
@@ -1724,6 +1751,13 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
         if lanes:
             q += f" AND lane IN ({','.join('?' for _ in lanes)})"
             args += list(lanes)
+        if BACKGROUND_LANES and kv_get("background_paused") == "1":
+            # Kyle: "I need it to get out of the way of 'real' work when I start adding new sources or do something
+            # on my own ... manual pause and resume would be good." The existing queue pause stops EVERYTHING,
+            # including the ingest he just started, which is why it was not the control he wanted. This pauses only
+            # the speculative lanes; his own work keeps running.
+            q += f" AND lane NOT IN ({','.join('?' for _ in BACKGROUND_LANES)})"
+            args += list(BACKGROUND_LANES)
         row = None
         # claim order: a manually bumped job ("run this next") outranks everything, FIFO among bumps; then lane
         # order — 'priority' (the user is waiting, e.g. ranking a review card), then 'normal'/'slow' (ordinary
