@@ -1753,3 +1753,44 @@ or not re-fetching at all — which the R2 part 2 tick already does at the poll 
 refreshes. `summary` (350 KB) and `analysis` (459 KB) are still sent in full because the list genuinely renders
 both. Scroll preservation was verified indirectly, by proving the DOM elements survive a refresh; the harness could
 not measure scroll position directly in this window.
+
+## SPEED (out of band) — the usage-limit gate could never clear itself — 0.46.4
+
+Kyle, live: *"I don't think that cap is real. I expanded the cap manually."* He was right, and it was a bug rather
+than a stale reading.
+
+**Root cause.** Two account-level gates exist. `providers:billing_until` (credit balance) was cleared on every
+successful call, in both the messages and batches paths. `providers:spend_cap_until` (the Console's *specified
+usage limit*) was **set on SPEND_CAP and cleared nowhere in the codebase** — grep returned one writer and no
+clearer. So a usage limit raised in the Anthropic Console could not unblock the app: the stored date, up to a month
+out, kept `usage.check()` returning blocked, and because that same date is also written to every affected job's
+`not_before`, no job would ever attempt the call that would prove the block had lifted. The gate was a cached
+belief with no path back to reality — the same failure 0.45.13's "Check now" fixed per job, still live at the
+account level.
+
+**Built.** `db.clear_account_gates()` drops both gates and reports which were actually set; `providers` calls it on
+every successful call (replacing the billing-only line), so a working call now retires whatever the account was
+blocked on. `db.release_budget_waits()` wakes the jobs parked *by* that belief — `wait_reason='budget'` only, never
+a rate-limit wait, a dependency block or a running job — because clearing the gate without releasing them would
+leave the queue frozen on a `not_before` derived from the same stale date. `POST /api/usage/recheck` is the manual
+lever for the case where nothing is willing to make that first call, surfaced as a **"🔄 Re-check account"** button
+on the paused banner itself, which is where the user is actually looking. Clearing optimistically is safe: a
+usage-limit or credit refusal fails *before* any generation, so a wrong guess costs nothing and the next attempt
+re-sets the gate immediately.
+
+**Gate.** `tests/test_p1_perf.py` +3 (18 total): both gates clear and the call is idempotent, reporting only what
+was set; `release_budget_waits` frees a budget-parked job while leaving a `rate_limit` wait and a running job
+untouched; and the endpoint reports the live `blocked` reason after clearing, so it can never claim a success it
+cannot support. Suite 498; Tier 1 unchanged.
+
+**Live result — and it separated two things we had been treating as one.** Pressing Re-check on Kyle's app cleared
+both gates and released one job. The released job then made a real call, and the outcome was precise: the
+**usage-limit block did not return** (Kyle's Console change was real, and the app simply could not see it), while a
+**credit-balance refusal came back immediately** — a different condition, still true. Spend was unchanged at $8.93
+across the whole exercise, confirming the refusal costs nothing. So the remaining block is genuinely "add credits",
+not "the limit is reached", which is the question the 2026-09-09 $100 top-up conversation was really about.
+
+**Honest limits.** Re-check clears a belief; it cannot verify the account on its own, because the only proof is a
+real call and the app will not spend money to run a probe. So the button's honest promise is "stop blocking on
+this and let the next real attempt decide", which is why it reports the live reason afterwards rather than
+declaring success. The Claude Code local path reports the same credit condition separately and is untouched here.

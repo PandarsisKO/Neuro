@@ -1404,6 +1404,38 @@ def project_research_revision(project_id: str) -> str:
     return "|".join(str(x) for x in r)
 
 
+ACCOUNT_GATES = ("providers:billing_until", "providers:spend_cap_until")
+
+
+def clear_account_gates() -> list[str]:
+    """Drop the ACCOUNT-level blocks the app is holding. Returns the ones that were actually set.
+
+    `providers:billing_until` always cleared itself on a successful call. `providers:spend_cap_until` did not — it
+    was set on SPEND_CAP and cleared nowhere, so a usage limit RAISED in the Anthropic Console could never unblock
+    the app: the stored date (up to a month out) kept gating `usage.check()`, and because that same date parks every
+    job's `not_before`, nothing would ever attempt the call that would prove the block was gone. The banner outlived
+    the condition — the same failure 0.45.13's "Check now" fixed per job, still live at the account level.
+
+    A gate is a CACHED BELIEF about the account, and only two things may retire it: a call that works (providers
+    calls this on success), or the user saying the situation changed (the Re-check button). Clearing optimistically
+    is safe and cheap — if the block is still real the next attempt re-sets it immediately, and a request refused
+    for a usage limit or credit balance fails before any generation, so it costs nothing."""
+    cleared = [k for k in ACCOUNT_GATES if float(kv_get(k) or 0)]
+    for k in cleared:
+        kv_set(k, "0")
+    return cleared
+
+
+def release_budget_waits() -> int:
+    """Wake every job parked on an ACCOUNT gate (`wait_reason='budget'`), so clearing the gate actually lets work
+    resume instead of leaving jobs sitting on a `not_before` that was derived from the same stale belief. Only
+    timer-parked queued jobs are touched; dependency-blocked and running jobs are left exactly alone."""
+    with tx() as conn:
+        cur = conn.execute("UPDATE jobs SET not_before=NULL, wait_reason=NULL, updated_at=? "
+                           "WHERE status='queued' AND wait_reason='budget' AND not_before IS NOT NULL", (now(),))
+        return cur.rowcount or 0
+
+
 def count_active_jobs() -> int:
     return connect().execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running','external_pending')").fetchone()[0]
 

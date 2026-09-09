@@ -895,6 +895,23 @@ def api_health() -> dict[str, Any]:
     return h
 
 
+@app.post("/api/usage/recheck", dependencies=[Depends(require_auth)])
+def api_usage_recheck() -> dict[str, Any]:
+    """Kyle, live: "I don't think that cap is real. I expanded the cap manually." He was right, and it was a bug —
+    `providers:spend_cap_until` was set on SPEND_CAP and cleared nowhere, so raising the limit in the Anthropic
+    Console could not unblock the app; the stored date gated everything and also parked every job, so no call was
+    ever made that could discover the block had lifted. Successful calls now clear the gates on their own; this is
+    the manual lever for the case where nothing is willing to make that first call. Clearing costs nothing: if the
+    block is still real the next attempt re-sets it, and a usage-limit or credit refusal fails before generation."""
+    from . import usage
+    cleared = db.clear_account_gates()
+    unparked = db.release_budget_waits()
+    t = usage.totals()
+    ok, reason, _ = usage.check()
+    return {"cleared": cleared, "jobs_released": unparked, "blocked": None if ok else reason,
+            "today": t["today"], "month": t["month"]}
+
+
 @app.get("/api/perf", dependencies=[Depends(require_auth)])
 def api_perf(days: int = 7) -> dict[str, Any]:
     """R0 (SPEED-MISSION.md) — the measurement contract the whole speed ladder reports against. Joins this

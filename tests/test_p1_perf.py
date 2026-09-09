@@ -292,3 +292,53 @@ def test_short_descriptions_are_left_exactly_alone():
     db.add_project_sources(p["id"], [s["id"]])
     row = next(r for r in api.api_sources(project_id=p["id"], limit=50) if r["id"] == s["id"])
     assert row["description"] == "short one"
+
+
+# ---------------------------------------------------------------- account gates (0.46.4)
+
+def test_a_successful_call_clears_the_spend_cap_gate_not_just_billing():
+    """The bug Kyle caught: "I don't think that cap is real. I expanded the cap manually." `billing_until` always
+    cleared itself on a successful call; `spend_cap_until` was set on SPEND_CAP and cleared NOWHERE, so a usage
+    limit raised in the Console could never unblock the app — and because the same stored date parks every job,
+    nothing would ever make the call that would prove it lifted."""
+    future = db.now() + 30 * 24 * 3600
+    db.kv_set("providers:spend_cap_until", str(future))
+    db.kv_set("providers:billing_until", str(future))
+    assert set(db.clear_account_gates()) == {"providers:spend_cap_until", "providers:billing_until"}
+    assert float(db.kv_get("providers:spend_cap_until")) == 0
+    assert float(db.kv_get("providers:billing_until")) == 0
+    assert db.clear_account_gates() == []                              # idempotent, reports only what was set
+
+
+def test_recheck_releases_budget_parked_jobs_but_leaves_other_waits_alone():
+    """Clearing the belief has to release the jobs parked BY that belief, or the queue stays frozen on a
+    `not_before` derived from the same stale date. Nothing else may be disturbed."""
+    budget = db.create_job("suggest_findings", {})
+    db.claim_job(("suggest_findings",))
+    db.requeue_job(budget["id"], delay=30 * 24 * 3600, wait_reason="budget", message="paused: usage limit")
+
+    rate = db.create_job("rank_proposed", {})
+    db.claim_job(("rank_proposed",))
+    db.requeue_job(rate["id"], delay=600, wait_reason="rate_limit", message="slow down")
+
+    running = db.create_job("discover", {})
+    db.claim_job(("discover",))
+
+    assert db.release_budget_waits() == 1
+    assert db.get_job(budget["id"])["not_before"] is None               # the budget-parked job is free to run
+    assert db.get_job(rate["id"])["not_before"] is not None             # a rate-limit wait is a different thing
+    assert db.get_job(running["id"])["status"] == "running"             # running work untouched
+    assert db.release_budget_waits() == 0
+
+
+def test_recheck_endpoint_reports_whether_it_actually_unblocked():
+    """The button must never claim success it cannot support: it reports the live `blocked` reason after clearing,
+    so a block that is still real (a daily budget, say) still shows."""
+    db.kv_set("providers:spend_cap_until", str(db.now() + 86400))
+    out = api.api_usage_recheck()
+    assert "providers:spend_cap_until" in out["cleared"] and out["blocked"] is None
+
+    db.kv_set("queue_paused", "1")                                      # a different, still-true block
+    out2 = api.api_usage_recheck()
+    assert out2["cleared"] == [] and out2["blocked"]
+    db.kv_set("queue_paused", "0")

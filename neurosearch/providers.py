@@ -213,7 +213,7 @@ class _Ledgered:
             db.invocation_finish(iid, "completed", provider_request_id=str(rid) if rid else None,
                                  returned_model=str(getattr(res, "model", "") or "") or None)   # configured vs returned
             breakers.record_success(self._operation, worker, generation=generation)
-            db.kv_set("providers:billing_until", "0")   # a call went through: credits are back, clear the banner now rather than waiting out the retry window
+            db.clear_account_gates()   # a call went through: whatever the account was blocked on is provably over
             return res
 
 
@@ -246,7 +246,7 @@ class _GatedBatches:
                     breakers.record_failure("anthropic:batches", et, worker, retry_after_s=retry_after_of(e), generation=int(gate.get("generation") or 0))
                 raise
             breakers.record_success("anthropic:batches", worker, generation=int(gate.get("generation") or 0))
-            db.kv_set("providers:billing_until", "0")
+            db.clear_account_gates()
             return out
         return call
 
