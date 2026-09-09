@@ -1,6 +1,6 @@
 # HANDOFF — start here in any new session (any model)
 
-*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.53.1. This file is the front door; it stays short and points at the documents that hold the substance.*
+*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.54.0. This file is the front door; it stays short and points at the documents that hold the substance.*
 
 ## 1. Read in this order (about 20 minutes)
 

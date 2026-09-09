@@ -380,6 +380,28 @@ def contracts() -> None:
 
 
 @app.command()
+def models() -> None:
+    """The model decision for every AI task, and why — the engine's whole output in one table.
+
+    The rule: every task runs the cheapest tier unless its contract names an admissible reason
+    (capability / evidence / user / irreversible). Anything above the cheapest tier with no reason is a config
+    error and release-check refuses it."""
+    from .contracts import REASON_STRENGTH, cheapest, policy_report, policy_violations
+    rows = [d for d in policy_report() if d["verdict"] != "n/a"]
+    typer.echo(f"cheapest tier: {cheapest()}   ·   {sum(1 for d in rows if d['verdict'] == 'cheapest')} of {len(rows)} tasks are on it\n")
+    for d in sorted(rows, key=lambda d: (d["verdict"] == "cheapest", d["task"])):
+        strength = d.get("strength") or ""
+        tag = {"fact": "●", "measured": "●", "debt": "○", "opinion": "○"}.get(strength, " ")
+        typer.echo(f"{d['task']:20s} {d['model']:20s} {tag} {d['verdict']:13s} {d['why']}")
+        if d.get("settled_by"):
+            typer.echo(f"{'':20s} {'':20s}   ↳ {d['settled_by']}")
+    bad = policy_violations()
+    typer.echo("\n" + ("every task is at the cheapest tier or names an admissible reason"
+                        if not bad else "UNJUSTIFIED:\n  " + "\n  ".join(bad)))
+    typer.echo(f"reason strength: {REASON_STRENGTH}")
+
+
+@app.command()
 def backup() -> None:
     """Snapshot the database now (also happens automatically on start and hourly) → data/backups/."""
     _init()

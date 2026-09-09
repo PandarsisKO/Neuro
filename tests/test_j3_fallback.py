@@ -92,7 +92,9 @@ def test_general_task_failure_never_substitutes_sonnet5():
     fake_ai.OUTAGES["anthropic:messages"] = [err(500, "InternalServerError")] * 6
     with pytest.raises(providers.ProviderError):
         providers.invoke("answer.chat", system="s", messages=[{"role": "user", "content": "hi"}])
-    assert models_invoked("answer.chat") == {settings.answer_model} and "claude-sonnet-5" not in models_invoked("answer.chat")
+    # 0.54.0: the invariant is "one model, the contract's own, never a substitute" — not "the global default"
+    from neurosearch import contracts as _C
+    assert models_invoked("answer.chat") == {_C.contract("answer.chat").model}
 
 
 def test_circuit_open_parks_rather_than_substitutes():

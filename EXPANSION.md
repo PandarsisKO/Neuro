@@ -2301,3 +2301,66 @@ approved without ranking) has no relevance scores, so its sources fall back to a
 — the rule degrades to the old behaviour rather than failing, but it does not do better than it. And the deeper
 fix is still the attention promotion in `SCHEDULER.md` §6.1: the project you are *looking at* should outrank the
 one you are not, continuously, rather than once at creation.
+
+---
+
+## 0.54.0 — the model decision engine: "haiku unless XYZ proven by ABC"
+
+Kyle: *"we need to be picking the fastest and cheapest models that satisfy the goals... for many things Haiku may
+be preferable"*, then: *"we need a decision engine of some sort: haiku unless XYZ proven by ABC."*
+
+**What the engine found the moment it ran.** Fourteen of twenty tasks sat on `claude-sonnet-4-6` — **$3/$15, which
+is both dearer and older than `claude-sonnet-5` at $2/$10**, the model that won *both* live comparisons (E2.1
+ranking, E2.2 findings). Not by decision. HARDENING.md line 211 records why: *"E2.3 live comparison NOT RUN — by
+decision (Kyle, 0.18.0): enough evidence gathered."* The comparison that would have moved them was skipped, the
+contracts stayed where they were, and nothing in the code noticed for months — because nothing in the code was
+responsible for noticing.
+
+**The rule.** Every task runs the cheapest tier (`contracts.TIERS`, ordered by this repo's own `usage.PRICES`)
+unless its contract names one of exactly four reasons:
+
+| reason | strength | means |
+|---|---|---|
+| `capability:<what>` | fact | the cheap tier *cannot* do what the task needs (a server tool, a schema feature, a context length) |
+| `evidence:<path>` | measured | a recorded comparison under `evals/` showing the cheaper tier failed this task's gate |
+| `irreversible` | **debt** | the task writes once into the corpus and has not been compared yet — not a verdict |
+| `user:<who/why>` | **opinion** | the owner looked at the trade and chose to spend; recorded with who and when so it can never later read as a measurement |
+
+A contract above the cheapest tier with **no** reason is a config error that `release-check` refuses. That refusal
+is what makes this an engine rather than a comment: the expensive choice has to justify itself in code, every
+time, or it does not ship. `neurosearch models` prints the whole decision table with the reason and, for the two
+weak kinds, the line *"a recorded comparison would settle this"*.
+
+**The result.** Seven tasks moved to Haiku (`answer.share`, `discover.quick`, `discover.verify`,
+`export.synthesis`, `library.profile`, plus the two already there). Every remaining task moved off 4.6 onto
+Sonnet 5 — **cheaper and newer, in the same change**. Two are held as `irreversible` debts (`findings.extract`,
+`claims.extract`); nine as Kyle's explicit `user` holds (chat, repair and the planner family), which he chose
+after seeing the table.
+
+**The engine caught a mistake in my own use of it.** I first classified `rank.relevance` as reversible — "a batch
+can be re-ranked at will" — and its own frozen tests failed. They were right and I was wrong: re-ranking costs
+pennies, but by the time you re-rank, the twenty videos it chose are already downloaded, transcribed, embedded and
+extracted into the corpus. **Reversible has to mean the *consequences* are undoable, not that the call is cheap to
+repeat** — a cheap model silently deciding which 20 of 400 videos become your library is a corpus risk wearing a
+re-runnable disguise. `rank.relevance` is now `irreversible` and stays on Sonnet 5, which also keeps E2.1's
+evidence intact. The definition of `reversible` was rewritten in the contract to say this.
+
+**Frozen assertions changed deliberately** (recorded in HARDENING.md): several tests asserted *"every non-migrated
+task follows `settings.answer_model`"*, which is precisely the drift the engine ends. The invariant is now the
+engine itself — `policy_violations() == []`, and no task on 4.6 at all — which is strictly stronger than naming
+one model. `test_j3_fallback` likewise now asserts "one model, the contract's own, never a substitute" rather than
+"the global default". **Tier 1 frozen totals are unchanged** (34 / 99,643 / 94,446; findings 9 / 30,297; plan 2 /
+2,202).
+
+**Gate.** New `tests/test_r6_model_policy.py` (9): the tier ladder really is ordered by `usage.PRICES` (so 4.6
+ranking above 5 is checked, not assumed) and an unregistered model sorts to the most expensive rather than
+slipping in; every contract is cheapest-or-justified; 4.6 is gone entirely; an unjustified expensive contract is a
+config error and release-check is where it stops; only the four reason kinds count, `evidence:` must cite *where*,
+and the two weak kinds must state what would settle them; the `irreversible` debt cannot be claimed by something
+marked reversible; everything at the cheapest tier is genuinely reversible; Kyle's holds are stored as opinions
+with his name and date; and the local-model declaration from 0.52.0 stays independent of the tier. Suite 567.
+
+**Honest limits.** Nothing here has been *measured* — no Haiku comparison has been run, so seven tasks moved on
+the argument that a gate catches their failures, not on evidence that Haiku passes them. `user` and `irreversible`
+are both, by construction, admissions that we do not know. The `$5–8` comparison is still the thing that would
+turn eleven of these thirteen justifications into facts.

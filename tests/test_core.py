@@ -1352,13 +1352,15 @@ def test_contract_reproduces_0_17_3_request_shape(isolated_db, monkeypatch):
             return type("R", (), {"model": "claude-sonnet-4-6-20260210", "_request_id": "req_1", "content": [], "usage": None})()
     from neurosearch import fake_ai
     monkeypatch.setattr(fake_ai, "Anthropic", lambda **kw: Capture())
-    # export.synthesis is still a Claude 4.6 contract (findings.extract moved to Sonnet 5 in E2.2 and now carries thinking=disabled)
+    # 0.54.0: the request SHAPE is what this test freezes; the model is whatever the decision engine chose for the
+    # task (export.synthesis is reversible with no gate, so it sits at the cheapest tier — see contracts.decision).
+    from neurosearch import contracts as _C
     res = providers.invoke("export.synthesis", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
     assert set(seen) == {"model", "max_tokens", "system", "messages", "extra_headers"}
-    assert seen["model"] == "claude-sonnet-4-6" and seen["max_tokens"] == 6000 and seen["extra_headers"] == {"x-neurosearch-task": "export.synthesis"}
+    assert seen["model"] == _C.contract("export.synthesis").model and seen["max_tokens"] == 6000 and seen["extra_headers"] == {"x-neurosearch-task": "export.synthesis"}
     # configured vs returned model both on the ledger row
     row = db.connect().execute("SELECT model, returned_model, task FROM invocations ORDER BY requested_at DESC LIMIT 1").fetchone()
-    assert (row["model"], row["returned_model"], row["task"]) == ("claude-sonnet-4-6", "claude-sonnet-4-6-20260210", "export.synthesis")
+    assert (row["model"], row["returned_model"], row["task"]) == (_C.contract("export.synthesis").model, "claude-sonnet-4-6-20260210", "export.synthesis")
     # and the migrated task sends the Claude 5 adapter fields, nothing else
     seen.clear()
     providers.invoke("findings.extract", system=[{"type": "text", "text": "S"}], messages=[{"role": "user", "content": "U"}])
@@ -1394,7 +1396,7 @@ def test_claude5_contract_adapter_and_validation(monkeypatch):
     monkeypatch.setenv("NEUROSEARCH_TASK_THINKING_PLANNER_BUILD", "adaptive:high".split(":")[0])
     monkeypatch.setenv("NEUROSEARCH_TASK_EFFORT_PLANNER_BUILD", "high")
     assert C.contract("findings.extract").model == "claude-sonnet-5" and C.contract("findings.extract").thinking == "disabled"
-    assert C.contract("planner.build").effort == "high" and C.contract("answer.chat").model == "claude-sonnet-4-6"   # a mixed release is legitimate
+    assert C.contract("planner.build").effort == "high" and C.contract("answer.chat").model == C.HELD_MODEL   # held by an explicit user reason (0.54.0)
 
 
 def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
@@ -1416,7 +1418,7 @@ def test_router_equivalence_fake_tier1(isolated_db, monkeypatch):
     assert sum(tot(t) for t in v.values()) == 263170
     assert v["answer"]["cache_read"] > 0                                     # the stable chat prefix is reused across questions
     assert rep["invocations"]["by_task"]["findings.extract"] == {"attempts": 9, "logical": 9, "failed_attempts": 0}
-    assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["answer.chat"]["model"] == settings.answer_model and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
+    assert rep["contracts"]["findings.extract"]["model"] == "claude-sonnet-5" and rep["contracts"]["planner.build"]["max_output_tokens"] == 16000
 
 
 # ---------------------------------------------------------------- Sonnet 5 adapter compatibility (thinking blocks)
@@ -1488,7 +1490,8 @@ def test_tool_loop_preserves_thinking_blocks_unchanged(isolated_db, monkeypatch)
     assert second[-1]["role"] == "user" and second[-1]["content"][0]["type"] == "tool_result" and second[-1]["content"][0]["tool_use_id"] == "tu_1"
     # and the returned model was recorded against the configured one
     row = db.connect().execute("SELECT model, returned_model FROM invocations WHERE task='answer.chat' ORDER BY requested_at DESC LIMIT 1").fetchone()
-    assert row["model"] == settings.answer_model and row["returned_model"] == "claude-sonnet-5-2026"
+    from neurosearch import contracts as _C2
+    assert row["model"] == _C2.contract("answer.chat").model and row["returned_model"] == "claude-sonnet-5-2026"
 
 
 # ------------------------------------------------------------------ E2 ranking-eval infrastructure
@@ -1655,13 +1658,17 @@ def test_migrated_contracts_are_sonnet_5_thinking_disabled(monkeypatch):
     assert f.model == "claude-sonnet-5" and f.thinking == "disabled" and f.effort is None and f.max_output_tokens == 4000 and f.max_attempts == 3 and f.batch_allowed and f.schema == "findings-v2"
     assert C.request_params(f) == {"max_tokens": 4000, "thinking": {"type": "disabled"}, "output_config": {"format": {"type": "json_schema", "schema": schemas.provider_schema("findings-v2")}}}
     assert C.model_family(r.model) == C.model_family(f.model) == "claude-5"
-    assert settings.answer_model == "claude-sonnet-4-6"
-    for t in ("answer.chat", "answer.repair", "discover.quick", "discover.verify", "planner.analysis", "planner.build", "planner.update", "export.synthesis"):
-        assert C.contract(t).model == settings.answer_model, t
-    for t in ("answer.chat", "answer.repair", "discover.verify", "planner.analysis", "planner.build", "export.synthesis"):      # free-text tasks: the plain 4.6 request
-        assert C.request_params(C.contract(t)) == {"max_tokens": C.contract(t).max_output_tokens}, t
-    for t in ("discover.quick", "planner.update"):                                                                            # F3: structured on 4.6
-        assert set(C.request_params(C.contract(t))) == {"max_tokens", "output_config"} and C.contract(t).schema in ("discovery-v2", "plan-update-v2"), t
+    # 0.54.0 REPLACED THE OLD INVARIANT HERE. It used to read "every non-migrated task follows settings.answer_model"
+    # — which is exactly the drift the model decision engine exists to end: fourteen tasks sat on claude-sonnet-4-6
+    # ($3/$15) purely because a comparison was skipped in 0.18.0, while claude-sonnet-5 ($2/$10) is both cheaper and
+    # the model that won E2.1 and E2.2. The invariant is now the ENGINE: every task is at the cheapest tier or names
+    # an admissible reason, and no task sits on 4.6 at all.
+    assert C.policy_violations() == []
+    assert not [c.task for c in C.all_contracts() if c.model == "claude-sonnet-4-6"], "the dearer, older Sonnet is gone"
+    for t in ("answer.chat", "answer.repair", "discover.verify", "planner.analysis", "planner.build", "export.synthesis"):      # free-text tasks: no schema
+        assert set(C.request_params(C.contract(t))) <= {"max_tokens", "thinking"} and C.request_params(C.contract(t))["max_tokens"] == C.contract(t).max_output_tokens, t
+    for t in ("discover.quick", "planner.update"):                                                                            # F3: structured
+        assert "output_config" in C.request_params(C.contract(t)) and C.contract(t).schema in ("discovery-v2", "plan-update-v2"), t
     assert C.contract("discover.verify").schema is None                                                                      # citations ⟂ output_config.format
     assert relevance.prompt_version() == "rank-f38f9a9c" and findings.prompt_version() == "findings-18b5db69"
 
@@ -2130,7 +2137,7 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
     assert len(db.list_project_notes(pid)) == rep["shared_inputs"]["approved_findings"]
     # env + contracts untouched
     assert not any(k.startswith("NEUROSEARCH_TASK_") and ("PLANNER" in k or "ANSWER" in k or "EXPORT" in k) for k in os.environ)
-    assert contracts.contract("answer.chat").model == settings.answer_model == "claude-sonnet-4-6" and contracts.contract("planner.build").model == settings.answer_model
+    assert contracts.contract("answer.chat").model == contracts.HELD_MODEL and contracts.contract("planner.build").model == contracts.HELD_MODEL
     assert rep["spend_estimate"]["maximum"] > rep["spend_estimate"]["estimate"] > 1.0 and db.kv_get("daily_budget") == str(rep["spend_estimate"]["budget"])
     names = {pathlib.Path(f).name for f in rep["files"]}
     assert {"planner-4.6.json", "planner-5-disabled.json", "planner-5-adaptive-medium.json", "planner.update-4.6.json", "planner.update-5-disabled.json",

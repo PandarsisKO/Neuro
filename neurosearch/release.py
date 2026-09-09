@@ -158,6 +158,14 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
         r.check("every AI contract valid and NO_FALLBACK", not bad, bad or "19 contracts")
     except Exception as e:  # noqa: BLE001
         r.check("every AI contract valid and NO_FALLBACK", False, str(e)[:200])
+    # 0.54.0: the model decision engine is ENFORCED here, not merely documented. A task above the cheapest tier
+    # with no admissible reason is a config error — the expensive choice has to justify itself or it does not ship.
+    try:
+        viol = contracts.policy_violations()
+        r.check("every model above the cheapest tier names a reason", not viol, "; ".join(viol) or
+                f"{sum(1 for d in contracts.policy_report() if d['verdict'] == 'cheapest')} at {contracts.cheapest()}, the rest justified")
+    except Exception as e:  # noqa: BLE001
+        r.check("every model above the cheapest tier names a reason", False, str(e)[:200])
     fl = flags_state()
     r.check("experimental flags at their safe defaults", all(v["ok"] for v in fl.values()), {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
     from . import claude_code
