@@ -133,3 +133,64 @@ def test_rebuild_by_tier_and_retry_failed_only_queue_that_tier(monkeypatch):
     r = api.api_staleness_accept(p["id"], api.AcceptIn())
     assert r["accepted"] == 3
     assert api.api_staleness_triage(p["id"])["tiers"]["accept"]["count"] == 0
+
+
+def _make_legacy(project_id: str, source_ids: list[str]) -> None:
+    """A row migrated from Neuro Search 0.15: no input_hash, status legacy_unverified — exactly what db._migrate writes."""
+    with db.tx() as conn:
+        conn.execute("UPDATE project_source_analysis SET status='legacy_unverified', provider='migrated', input_hash=NULL "
+                     "WHERE project_id=? AND source_id IN (%s)" % ",".join("?" * len(source_ids)), (project_id, *source_ids))
+
+
+def test_a_legacy_source_can_be_accepted_and_the_tier_actually_empties():
+    """0.45.1 regression. Every source in a migrated library is legacy_unverified, and assess returned from the legacy
+    branch before reading accepted_hash — so accept() reported success, wrote the hash, and NOTHING changed: the accept
+    tier could never empty and the stale pile looked permanent no matter what the user pressed."""
+    p, ids = _project()
+    _make_legacy(p["id"], ids)
+    a = staleness.assess(p["id"])
+    assert {x["status"] for x in a["sources"]} == {staleness.LEGACY}
+    t = staleness.triage(p["id"])
+    assert _by(t, "accept") == set(ids) and t["stale_total"] == 4 and t["accepted"] == 0
+
+    r = staleness.accept(p["id"], tier="accept")
+    assert r["accepted"] == 4 and r["refused"] == 0
+
+    # the acceptance is now VISIBLE: this is the assertion that failed before the fix
+    a2 = staleness.assess(p["id"])
+    assert all(x["status"] == staleness.ACCEPTED and "accepted" in (x["note"] or "") for x in a2["sources"])
+    assert a2["stale_sources"] == 0
+    t2 = staleness.triage(p["id"])
+    assert t2["stale_total"] == 0 and t2["accepted"] == 4 and t2["tiers"]["accept"]["count"] == 0
+    # an accepted source is not quoted as work to buy any more, and nothing was queued or spent
+    assert all(x["estimate"] == 0 for x in a2["sources"])
+    assert t2["tiers"]["accept"]["api_cost"] == 0 and not [j for j in db.list_jobs(50) if j["kind"].startswith("suggest")]
+    # the findings themselves are untouched
+    assert len(db.list_project_notes(p["id"], status="suggested")) >= 4
+    # and the findings workbench stops calling them stale
+    from neurosearch import findings_view
+    assert findings_view.query(p["id"], status="all")["facets"]["stale"].get("stale", 0) == 0
+
+
+def test_a_legacy_acceptance_holds_for_exactly_the_inputs_it_was_given_for():
+    """Accepting a legacy source is not a blanket 'never ask again'. The accepted hash covers the transcript, the brief and
+    the prompt, so ANY of them changing puts the source back in the pile — the same deal the stale branch gives, and the
+    reason the acceptance is safe to offer: it can never hide findings written for inputs that no longer exist."""
+    p, ids = _project()
+    _make_legacy(p["id"], ids)
+    staleness.accept(p["id"], tier="accept")
+    assert staleness.triage(p["id"])["stale_total"] == 0
+
+    # the transcript changing brings that source back, still as a legacy row, and quoted as work again
+    seg = [{"start": 0.0, "end": 5.0, "text": "brand new words"}]
+    db.replace_transcript(ids[0], seg, seg)
+    back = next(x for x in staleness.assess(p["id"])["sources"] if x["source_id"] == ids[0])
+    assert back["status"] == staleness.LEGACY and back["estimate"] > 0
+    assert staleness.triage(p["id"])["stale_total"] == 1
+
+    # so does editing the brief, for all of them — accepted answers are answers about a question that just changed
+    db.update_project(p["id"], brief="hosting, email and DNS")
+    assert staleness.triage(p["id"])["stale_total"] == 4
+    # and accepting again is one action that clears them for the new brief
+    assert staleness.accept(p["id"], tier="accept")["accepted"] == 4
+    assert staleness.triage(p["id"])["stale_total"] == 0

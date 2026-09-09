@@ -1035,7 +1035,7 @@ Kyle: "dig deep and think about our research tab and our sources tab and find be
 
 The first live render of R2 on the 449-source project (overview in 622 ms for every pane; 4,800 Claims, attention 67, 50 watch-out issues, 29 areas, 1,856 open questions) showed the fourth stat reading "29/29 areas still weak" — an area is only `strong` when half its Claims are, which never happens on a harvested corpus, so the number could never move. Replaced with **"N/29 areas with a well-evidenced conclusion"** (areas holding at least one Strong Claim), which is a progress measure the open questions above it actually shift. UI only.
 
-## S3 — the source drawer — 0.45.0 (COMPLETE, pending delivery; includes 0.44.1)
+## S3 — the source drawer — 0.45.0 (SHIPPED 403223a; includes 0.44.1)
 
 **Built.** `sources_value.digest(pid, sid)` + `GET /api/projects/{id}/sources/{sid}/digest` — one $0 request returns everything a source gave: its measured value (S2 score, label, why it matters, never-used), its findings **by status** (approved · waiting · reserve · dismissed) each with the use badges S4 computes and its transcript locator, the Claims resting on it (strength, independence, stale evidence, locator), **where it shows up** (`used_in`: Master Plan steps found by walking the plan BODY for the evidence ids of this source — the step's own title, never an entry the planner was merely handed; chat answers by conversation title, locators and a snippet), and its staleness with the S1 tier and estimate. UI: a **What this gave** button on every ready source card, the card's value line, and a `source ↗` button on each group in the Findings workbench all open one dialog — value and why, 💬 **Ask about this source** (pins it to the next chat question through the existing `attached_source_ids` path), Transcript / 📖 Read, 🔬 Read deeper when it is long and not yet deep-read, and the one-source staleness actions (Re-read it · Accept as still usable — the same durable acceptance the triage card writes), then where it shows up, the Claims, and every finding with ✓ / 📌 / ✕ (including promoting a `reserve` finding). Also folded in: **0.44.1** — the Overview's fourth stat was "29/29 areas still weak", a number that could never move, and is now "N/29 areas with a well-evidenced conclusion".
 
@@ -1043,7 +1043,7 @@ The first live render of R2 on the 449-source project (overview in 622 ms for ev
 
 **Honest limits.** Chat uses are matched by source id and reported with the citation's locator; the plan walk is depth-capped at 8 and reports at most 12 places. The drawer lists up to 60 findings per status. No "compare two sources" view; no per-source cost history.
 
-## L3 — the acceleration dialog + a Read-deeper dedupe fix — 0.45.0 (COMPLETE, pending delivery)
+## L3 — the acceleration dialog + a Read-deeper dedupe fix — 0.45.0 (SHIPPED 403223a)
 
 **Built.** `jobs.backlog(project_id)` — what waits on the local provider (queued + running AI jobs, per job: sources, windows, the API estimate, the S2 value of its sources), the TIME it needs on Claude Code (`windows × staleness.LOCAL_MINUTES_PER_WINDOW`, deep reads counted at 3× because they re-window) and the DOLLARS the same work costs on the API — using `usage.estimate_source_findings`, the one estimator the stale triage now also calls, so the two surfaces can never disagree. `jobs.accelerate(pid, n, order)` moves exactly the chosen jobs to `api_requested` (order `queue` = oldest first, `value` = the sources that matter most first); the `api_ai` worker pool then claims them while the rest keep running locally at $0. `GET /api/projects/{id}/ai-backlog`, `POST /api/projects/{id}/accelerate`. UI: a banner above the Jobs list — "🖥 N jobs waiting on Claude Code · about 2 h 10 min · the same work on the API ≈ $1.20. Nothing is stuck…" with **next 10 / next 25 / all** and **most valuable first**, each confirming the estimate before it spends. The banner never appears on the cloud profile or when Claude Code is not the one doing the work.
 
@@ -1056,3 +1056,33 @@ The first live render of R2 on the 449-source project (overview in 622 ms for ev
 ## L2 — local-first chat: a recommendation, not a rung (2026-09-09)
 
 The Local-First AI policy asks for chat to run on Claude Code with the API as burst. Having measured the local provider (about a minute per findings window; a deep read of a 3-hour course takes ~7 minutes), the honest recommendation is **not to make chat local-first by default**: chat is the one surface where latency is felt directly by a person waiting, the answer needs a tool loop (`search_library`, `list_sources`, `set_source_priority`) which on the CLI means `--mcp-config` plus a permission surface, and Tier 1's chat totals are frozen against the API models. What the policy actually wants — "don't silently turn slow into spend" — is already delivered by L1 (background work runs local at $0), L3 (the user buys speed on purpose) and L4 (the split is visible). If Kyle wants local chat anyway, the shape to build is a per-project toggle ("answer with Claude Code, slower and $0"), never a default, with the API answer one click away. Left as a decision for him, not a silent default.
+
+## S1 fix — an accepted legacy source stayed stale forever — 0.45.1 (COMPLETE, pending delivery)
+
+**Found live, not in a test.** Kyle's project reads 64 stale sources behind 513 of 519 approved findings, and every one of them
+is `legacy_unverified` — the whole library was migrated from Neuro Search 0.15. Running the S1 accept tier against it returned
+`accepted: 14, refused: 0` and **changed nothing**: `stale_total` stayed 64, `accepted` stayed 0, the tier stayed full.
+
+**The bug.** `staleness.assess` handles the legacy row in its own branch, which appended the "preserved from 0.15" reason and
+fell straight through to the estimate — it never read `accepted_hash`. `accept()` had always written that hash for legacy
+sources (they are exactly what lands in the accept tier), so the write was real and the read never happened. Consequence: on a
+migrated library the accept tier could never empty, and the stale pile looked permanent no matter what the user pressed —
+which is precisely the complaint that "things marked stale never go away". The stale branch had the same check and worked, so
+the S1 gate passed throughout: **every test built its sources with `findings.suggest_for_source`, so not one of them was ever
+`legacy_unverified`.** The tier that only ever appears on real, migrated data was the tier that was never tested.
+
+**Fixed.** The legacy branch now honours an acceptance the same way the stale branch does, and clears the reasons and the
+estimate with it. Because `findings.input_hash` covers the transcript revision, the brief revision and the prompt, an accepted
+legacy source un-accepts itself the moment any of those change — accepting is never "never ask again", and a re-accept is one
+action. Nothing else moves: the findings are untouched, nothing is queued, and an accepted source is no longer quoted as work
+to buy. Downstream, `findings_view`'s stale facet and `sources_value` stop calling those findings stale, because they read the
+status this function returns.
+
+**Gate (tests/test_n4_stale_triage.py, +2 → 5).** A migrated library (`status='legacy_unverified'`, `input_hash` NULL, provider
+`migrated` — what `db._migrate` writes) is accepted and the tier actually empties: assess reports `current_accepted` with its
+note, `stale_sources` 0, `triage.accepted` 4, every estimate 0, nothing queued, the findings still there, and the workbench's
+stale facet down to 0. Then: a transcript change puts that source back to `legacy_unverified` with an estimate again, a brief
+change puts all four back, and one re-accept clears them for the new brief. Suite 460; Tier 1 34 / 196,951 unchanged.
+
+**Honest limits.** This makes the acceptance *visible*; it does not judge whether those findings are still right — that is what
+the rebuild tiers are for. A legacy row still carries no input baseline, so its only "why" is the migration itself.

@@ -83,6 +83,12 @@ def assess(project_id: str) -> dict[str, Any]:
         elif a.get("status") == LEGACY:
             status = LEGACY
             reasons.append("preserved from Neuro Search 0.15 — its original project context cannot be verified")
+            if a.get("accepted_hash") and a["accepted_hash"] == findings.input_hash(project, sid, depth=a.get("depth")):
+                # 0.45.1: a legacy row can be accepted too. accept() has always written the hash for these (they are in the
+                # accept tier), but this branch returned before reading it, so accepting a legacy source did nothing at all
+                # and the tier could never empty. The hash covers the transcript revision, so a later transcript change
+                # un-accepts the source on its own — the same guarantee the stale branch gives.
+                status, reasons, note = ACCEPTED, [], "accepted as still usable for the current brief"
         elif a.get("input_hash"):
             # exact-input comparison: transcript + steering + prompt, as the task saw them
             if a["input_hash"] != findings.input_hash(project, sid, depth=a.get("depth")):
