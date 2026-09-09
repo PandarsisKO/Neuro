@@ -233,3 +233,25 @@ def test_priority_lane_jobs_are_claimed_before_older_normal_lane_ones(monkeypatc
         for m in re.finditer(r'create_job\("rank_proposed"', src):
             window = src[m.start():m.start() + 260]
             assert 'lane="priority"' in window, f"{path}: {window[:100]}"
+
+
+def test_low_lane_never_displaces_priority_or_normal_work(monkeypatch):
+    """Kyle: "we need to be able to skip the line for items that are higher priority. obviously transcribing new
+    sources, ranking things etc are higher priority over refreshing meta data from stale or skipped things that
+    we dont even know if we will utilize." The lane order is now priority < normal/slow < low: a 'low' job (the
+    skipped-metadata backfill — speculative work on content not yet known to matter) is claimed only once nothing
+    priority or normal is waiting, however old it is; it still runs eventually, never starved outright."""
+    pid, ids = _fixture(monkeypatch)
+    old_low = db.create_job("reembed", {"n": "old-low"}, lane="low")            # created first, but low priority
+    new_normal = db.create_job("reembed", {"n": "new-normal"})                  # created after, ordinary lane
+    newer_priority = db.create_job("reembed", {"n": "newer-priority"}, lane="priority")  # created last, priority
+    assert db.claim_job(("reembed",))["id"] == newer_priority["id"]             # priority first regardless of age
+    assert db.claim_job(("reembed",))["id"] == new_normal["id"]                 # then normal
+    assert db.claim_job(("reembed",))["id"] == old_low["id"]                    # low runs last, but it DOES run
+
+    # the skipped-metadata backfill (speculative — content not yet known to be useful) is tagged low
+    missing = _skipped(pid, "low-lane-src", "Some old video", "an old but on-topic video")
+    r = api.api_refresh_skipped_metadata(pid)
+    assert r["queued"] == 1
+    job = next(j for j in db.list_jobs(20) if j["kind"] == "refresh_skipped_metadata" and j["payload"]["source_id"] == missing)
+    assert job["lane"] == "low"

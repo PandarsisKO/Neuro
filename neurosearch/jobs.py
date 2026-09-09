@@ -233,8 +233,8 @@ def poll_external_once() -> int:
 
 # ------------------------------------------------------------------ running a job
 
-def enqueue(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
-    return db.create_job(kind, payload)
+def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal") -> dict[str, Any]:
+    return db.create_job(kind, payload, lane=lane)
 
 
 def run_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -506,7 +506,7 @@ def start_workers(n: int | None = None) -> None:
         # L1: the local pool (busy = the job waits, never spends) and one API pool for api_requested / api_only jobs
         # 0.42.1: only the FIRST local worker takes the slow lane (Read deeper); the rest keep serving ordinary findings/ranking
         for i in range(max(1, settings.local_ai_workers)):
-            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES, "lanes": None if i == 0 else ("normal", "priority")},
+            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES, "lanes": None if i == 0 else ("normal", "priority", "low")},
                                  daemon=True, name=f"ns-worker-local-ai-{i}")
             t.start()
             _threads.append(t)

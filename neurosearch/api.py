@@ -255,13 +255,16 @@ def api_refresh_skipped_metadata(project_id: str, only_missing: bool = True) -> 
     """0.45.7 backfill: sources skipped before the ingest.ingest_source fix kept only the listing stage's bare title
     — no thumbnail. Queues one $0 refresh_skipped_metadata job per skipped source in this project (metadata only, no
     download, no status change) so an already-skipped row can catch up. `only_missing=true` (default) queues only
-    rows with no thumbnail_url yet, so a repeat press doesn't re-fetch what already has real metadata."""
+    rows with no thumbnail_url yet, so a repeat press doesn't re-fetch what already has real metadata.
+    0.45.10: lane='low' — Kyle, live: transcribing a newly added source and ranking a review card are work he
+    actually asked for or is watching; refreshing metadata for sources already skipped (content not yet known to
+    be worth using) is speculative and must never make those wait, so it's claimed only once nothing else is."""
     if not db.get_project(project_id):
         raise HTTPException(404)
     ids = set(db.project_source_ids(project_id, ready_only=False))
     rows = [s for s in db.list_sources(status="skipped", limit=100000) if s["id"] in ids and (not only_missing or not s.get("thumbnail_url"))]
     for s in rows:
-        jobs.enqueue("refresh_skipped_metadata", {"source_id": s["id"], "project_id": project_id})
+        jobs.enqueue("refresh_skipped_metadata", {"source_id": s["id"], "project_id": project_id}, lane="low")
     return {"queued": len(rows)}
 
 

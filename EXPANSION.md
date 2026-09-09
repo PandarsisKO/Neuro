@@ -1410,3 +1410,32 @@ slow after this — because Claude Code itself (local, $0) is inherently slower 
 of queue position — the honest lever is the same one L3 already built: accelerate the specific rank_proposed job
 onto the API pool for a few cents. Worth telling Kyle this option exists directly, since the priority lane alone
 may not be the whole fix.
+
+## S1 fix — a fourth lane for speculative background work — 0.45.10
+
+Kyle, same session, following the priority lane above: *"we need to be able to skip the line for items that are
+higher priority. obviously transcribing new sources, ranking things etc are higher priority over refreshing meta
+data from stale or skipped things that we dont even know if we will utilize."* Exactly right — `priority` only
+solved half of it (ranking jumps the line), but `refresh_skipped_metadata` (the 0.45.7 backfill button for
+already-skipped sources — content the project has already decided isn't worth ingesting yet) was still `normal`
+lane, meaning a big batch of backfill jobs (press "Refresh info" once on a project with many skipped sources)
+could sit in the SAME FIFO position as an actively transcribing `ingest_source` job, on the same general worker
+pool.
+
+**Built.** `lane` gained a fourth value, `low`, claimed only once nothing `priority`/`normal`/`slow` is waiting
+(`db.claim_job`'s ORDER BY is now `CASE lane WHEN 'priority' THEN 0 WHEN 'low' THEN 2 ELSE 1 END, created_at`) —
+still runs eventually, never starved outright, just never displaces work the user asked for or is watching.
+`jobs.enqueue` takes an optional `lane` (was hardcoded to `db.create_job`'s `normal` default); `refresh_skipped_metadata`
+jobs are now queued with `lane="low"`. The local-AI pool's non-lead workers (`lanes=(...)` in `start_workers`) now
+also accept `low`, so a low-lane AI-kind job (none exist yet, but the machinery is ready) isn't invisible to them.
+
+**Gate.** New `tests/test_n7_pool.py::test_low_lane_never_displaces_priority_or_normal_work`: an older `low` job,
+a newer `normal` job and an even newer `priority` job are claimed in exactly `priority → normal → low` order
+regardless of creation time; `api.api_refresh_skipped_metadata` tags its queued job `lane="low"`. Suite 476; Tier 1
+unchanged.
+
+**Honest limits.** Only `rank_proposed` (priority) and `refresh_skipped_metadata` (low) are tagged so far — every
+other job kind (`ingest_source`, `ingest_url`, `suggest_findings`, `extract_claims`, `discover`, `build_plan`)
+stays at the `normal` default, which is what Kyle asked for ("transcribing new sources... higher priority over
+refreshing metadata" — normal already outranks low, no change needed there). If another kind turns out to be
+either urgent-interactive or purely speculative, the same two-line pattern (tag the creation site, done) applies.
