@@ -1,0 +1,363 @@
+{
+ "kind": "release-check",
+ "app_version": "0.45.9",
+ "git_sha": "a14b8ed",
+ "timestamp": "2026-09-09T04:49:06",
+ "seconds": 222.5,
+ "checks": [
+  {
+   "check": "experimental flags off by default",
+   "result": "PASS",
+   "detail": "all off"
+  },
+  {
+   "check": "pytest: whole suite",
+   "result": "PASS",
+   "detail": "475 passed in 110.81s (0:01:50)"
+  },
+  {
+   "check": "migration fixtures (0.1.0 \u2192 0.16.0 databases upgrade cleanly)",
+   "result": "PASS",
+   "detail": "2 passed, 110 deselected in 2.97s"
+  },
+  {
+   "check": "crash/recovery matrix + 40-source equivalence",
+   "result": "PASS",
+   "detail": "15 passed, 40 deselected in 12.89s"
+  },
+  {
+   "check": "global identity: one acquisition, N project relationships (G1 feature gate)",
+   "result": "PASS",
+   "detail": "12 passed in 1.54s"
+  },
+  {
+   "check": "universal input: containers never fall through to naive page ingestion (G2 feature gate)",
+   "result": "PASS",
+   "detail": "29 passed in 2.25s"
+  },
+  {
+   "check": "exploration + Candidate Index: bounded listing, skipped candidates retained, never evidence (G3 feature gate)",
+   "result": "PASS",
+   "detail": "8 passed in 3.15s"
+  },
+  {
+   "check": "library intelligence: recall works with ZERO enriched profiles; profiles project-neutral; nothing attached (G4 gate)",
+   "result": "PASS",
+   "detail": "11 passed in 4.13s"
+  },
+  {
+   "check": "chat never silently returns an incomplete generation: max_tokens \u2192 continuation, text+tool_use \u2192 final text, no dangling tool round (0.30.3 gate)",
+   "result": "PASS",
+   "detail": "5 passed in 1.42s"
+  },
+  {
+   "check": "community evidence: thread hierarchy + corrections preserved, independent experience \u2260 repeated information, engagement never outranks substance, self-described context unverified, community cannot establish a rule, injection text is data, candidates resurface without re-enumeration (G7 gate)",
+   "result": "PASS",
+   "detail": "5 passed in 0.91s"
+  },
+  {
+   "check": "browser acquisition (B1): browser-solvable failure \u2192 requires_browser (durable external job), source stays in its project, the capture resolves the SAME job/source (also across restart and unsolicited), non-solvable failures stay failed, a successful reading never asks for Chrome, owned sources bypass the browser, queue carries no secrets",
+   "result": "PASS",
+   "detail": "12 passed in 3.79s"
+  },
+  {
+   "check": "candidate links (B3): an open question durably remembers the known-but-uncaptured sources that could fill it; acquisition by any path satisfies the link; dismissal is the user's word; Capture best N goes through attach \u2192 ingest job, never the web; chat's research state names what is known but uncaptured",
+   "result": "PASS",
+   "detail": "4 passed in 2.17s"
+  },
+  {
+   "check": "acceleration dialog (L3): the backlog reports time on Claude Code and the SAME per-source dollar estimate the stale triage quotes; buying speed moves exactly the jobs chosen (api_requested, value order honoured) and nothing else; a cloud profile never offers it \u2014 slowness alone never spends",
+   "result": "PASS",
+   "detail": "3 passed in 2.00s"
+  },
+  {
+   "check": "Claims workbench (R7): filter/facet/sort/page over the FULL claim set, never the 300-cap bootstrap page; one plain-language line replaces the internal vocabulary; batch accept/reject is project-scoped and refreshes once; 'Why this answer' finds the Claims a chat citation's source feeds; 'Settle this' reuses the normal target path",
+   "result": "PASS",
+   "detail": "5 passed in 2.38s"
+  },
+  {
+   "check": "source drawer (S3): one $0 request per source returns its measured value, its findings by status with what used each, the Claims resting on it, where it shows up (plan steps by title, chat answers by conversation \u2014 never a use the plan body does not reference) and its staleness tier with the one-source actions",
+   "result": "PASS",
+   "detail": "3 passed in 2.24s"
+  },
+  {
+   "check": "Research shell (R2): the tab renders from ONE $0 request (overview(full=True) == the separate endpoints, one pass); a watch-out carries one verdict for every tension behind it and a dismissal survives the next refresh; the shell's panes, endpoints and question actions all exist on this build",
+   "result": "PASS",
+   "detail": "3 passed in 2.11s"
+  },
+  {
+   "check": "known-but-uncaptured pool (S5): skipped pre-cutoff sources + Candidate Index rows in one list with a $0 potential scan (open questions, weak areas, vocabulary, timeless vs dated), why-known, capture through retry/acquire only, durable dismissal, never evidence",
+   "result": "PASS",
+   "detail": "7 passed in 3.03s"
+  },
+  {
+   "check": "findings workbench (S4): server-side composable filters (text/status/importance/source/used-by/staleness/area), facets, sorts, paging, use badges from real plan/chat/Claim rows, the low-value sweep is a review list and never dismisses by itself",
+   "result": "PASS",
+   "detail": "2 passed in 2.30s"
+  },
+  {
+   "check": "source value (S2): what a source gave is measured from findings/Claims (independent evidence only)/plan/chat/priority with documented weights; 'matters' is a rule; rows on /api/sources carry value + staleness so the Sources filters compose",
+   "result": "PASS",
+   "detail": "2 passed in 2.05s"
+  },
+  {
+   "check": "stale triage (S1): the stale set partitions into rebuild-matters / transcript-changed / accept / retry-failed by why and weight; accepting is recorded against the exact inputs, survives assess until the inputs change, never touches findings, is refused for transcript changes; tier rebuilds queue only that tier; cost lines name the provider",
+   "result": "PASS",
+   "detail": "7 passed in 2.81s"
+  },
+  {
+   "check": "deep content (D1\u2013D3): the findings cap is length-aware with a per-window coverage floor; overflow is kept as reserve (promotable, never exported/planned/harvested); a one-window source is the old top-12; Read deeper = smaller windows + a USER-message depth instruction, current on its own terms, staleness agrees; long sources are flagged under-read",
+   "result": "PASS",
+   "detail": "11 passed in 4.19s"
+  },
+  {
+   "check": "Local-First AI (L1): local runs when ready; unavailable/usage-limit \u2192 the API with the reason recorded and nothing else changed; local_only never touches the API; api_only/api_requested never touch local; cloud profile = local absent; the ledger carries provider + avoided spend; the stub CLI proves the subprocess contract",
+   "result": "PASS",
+   "detail": "22 passed in 8.47s"
+  },
+  {
+   "check": "Research view engine (R1/R3/R5/R6): a deterministic $0 priority order over questions and watch-outs (importance, planner dependence, impact, breadth, known sources); watch-outs are issues grouped by kind and area, never rows; areas are named from finding titles, never generic tokens; the sidebar number is what needs the user, never the Claim count",
+   "result": "PASS",
+   "detail": "11 passed in 3.33s"
+  },
+  {
+   "check": "portable answers (C0 Share \u25be): a share variant is one model call over the finished answer, never a research pass; it can only cite the original's markers (strays removed and reported); budget-guarded",
+   "result": "PASS",
+   "detail": "4 passed in 2.17s"
+  },
+  {
+   "check": "EPUB core (G6P1): spine order never ZIP order, EPUB 2 + 3, nested/missing TOC, non-English, broken markup, protected books refused (no circumvention); ordinary upload lifecycle, searchable, findings, answers, deterministic 'Ch. N \u2192 title \u00b7 section' citations, same source on re-upload, ISBN/title+creator \u2192 the existing Work; G6P2: roles weight retrieval and findings windows without discarding anything, reader contract + in-app deep links",
+   "result": "PASS",
+   "detail": "8 passed in 2.84s"
+  },
+  {
+   "check": "capture completeness (B2): partial stays visibly partial (accept never means complete), 'more' stubs and DOM shortfalls recorded as provenance, a partial capture merges and never deletes what an earlier reading saw, only a complete reading marks vanished posts, several requests form a queue that advances, Reopen re-requests the SAME source",
+   "result": "PASS",
+   "detail": "8 passed in 2.85s"
+  },
+  {
+   "check": "Reddit after 2026-06-30: extension-read thread \u2192 same global source; official API via app-only OAuth for threads + search; old.reddit page reading = JSON reading; refusals name the way forward (0.32.2 gate)",
+   "result": "PASS",
+   "detail": "9 passed in 2.75s"
+  },
+  {
+   "check": "canonical works: identifier \u2192 owned copy at $0; copies + derivatives = one lineage; citation \u2192 stub/candidate/target; version relationship drives freshness; ambiguous titles never merge; project relevance never mutates the Work (G6 gate)",
+   "result": "PASS",
+   "detail": "8 passed in 1.05s"
+  },
+  {
+   "check": "research intelligence: one primary source \u2192 Strong; derivatives \u2260 corroboration; outlier \u2192 tension; stale flagged; target escalates project \u2192 library \u2192 candidates \u2192 external and resurfaces a skipped candidate; boundary + provenance hold; $0 path (G5 gate)",
+   "result": "PASS",
+   "detail": "13 passed in 3.77s"
+  },
+  {
+   "check": "schema registry provider-compatible",
+   "result": "PASS",
+   "detail": [
+    "claim-set-v1",
+    "discovery-v2",
+    "findings-v2",
+    "plan-actions-v3",
+    "plan-core-v3",
+    "plan-economics-v3",
+    "plan-execution-v3",
+    "plan-update-v2",
+    "prefilter-v1",
+    "rank-v2",
+    "retrieval-rerank-v1",
+    "situation-v3",
+    "source-profile-v1"
+   ]
+  },
+  {
+   "check": "contracts valid",
+   "result": "PASS",
+   "detail": null
+  },
+  {
+   "check": "Tier 1 gates PASS",
+   "result": "PASS",
+   "detail": "cache read rate 37.6%"
+  },
+  {
+   "check": "Tier 1 frozen totals unchanged (router-equivalence)",
+   "result": "PASS",
+   "detail": {
+    "answer": [
+     34,
+     196951
+    ],
+    "findings": [
+     9,
+     30297
+    ],
+    "plan": [
+     2,
+     11026
+    ]
+   }
+  },
+  {
+   "check": "Tier 1 zero structured-output events",
+   "result": "PASS",
+   "detail": {
+    "schema_mismatches": 0,
+    "schema_fallbacks": 0,
+    "schema_failures": 0,
+    "output_truncated": 0,
+    "output_refused": 0,
+    "structured_tasks": [
+     "claims.extract",
+     "discover.quick",
+     "findings.extract",
+     "findings.prefilter",
+     "library.profile",
+     "planner.actions",
+     "planner.core",
+     "planner.economics",
+     "planner.execution",
+     "planner.situation",
+     "planner.update",
+     "rank.relevance",
+     "retrieval.rerank"
+    ]
+   }
+  },
+  {
+   "check": "retrieval regression baseline (fake tier) unchanged",
+   "result": "PASS",
+   "detail": {
+    "recall_at_1": 0.8,
+    "recall_at_3": 0.9333,
+    "recall_at_10": 1.0,
+    "mrr": 0.8736,
+    "ndcg_at_10": 0.8155,
+    "locator_exact_at_first_hit": 0.8205,
+    "hard_negative_false_positives": 2
+   }
+  },
+  {
+   "check": "cache layout: stable chat prefix read on every later turn",
+   "result": "PASS",
+   "detail": [
+    [
+     0,
+     2862
+    ],
+    [
+     2862,
+     0
+    ],
+    [
+     2862,
+     0
+    ],
+    [
+     2862,
+     0
+    ]
+   ]
+  },
+  {
+   "check": "cache layout: input cost index below 1.0",
+   "result": "PASS",
+   "detail": 0.7852
+  },
+  {
+   "check": "H1 prefilter quality gates hold (recall 100%, nuggets reachable)",
+   "result": "PASS",
+   "detail": "all pass"
+  },
+  {
+   "check": "H1 prefilter economic gate still FAILS on the batch path (stays deferred)",
+   "result": "PASS",
+   "detail": -0.1518
+  },
+  {
+   "check": "backup verified and restore round trip equal",
+   "result": "PASS",
+   "detail": "35 segments \u2192 backup neurosearch-20260909-0449.db \u2192 restored 35"
+  }
+ ],
+ "verdict": "PASS",
+ "warnings": 0,
+ "baselines": {
+  "tier1": {
+   "frozen_totals": {
+    "answer": [
+     34,
+     196951
+    ],
+    "findings": [
+     9,
+     30297
+    ],
+    "plan": [
+     2,
+     11026
+    ]
+   },
+   "golden_fixture": "tests/fixtures/golden (manifest v1)"
+  },
+  "retrieval": {
+   "fake": {
+    "recall_at_1": 0.8,
+    "recall_at_3": 0.9333,
+    "recall_at_10": 1.0,
+    "mrr": 0.8736,
+    "ndcg_at_10": 0.8155,
+    "locator_exact_at_first_hit": 0.8205,
+    "hard_negative_false_positives": 2
+   },
+   "live_reference": "evals/retrieval/baseline-retrieval-0.22.0+i15-live.json (MRR 0.9093, R@1 86.7%, exact 87.2%)",
+   "reranker_decision": "evals/retrieval/rerank-compare-20260907-115218-live.txt (KILL)"
+  },
+  "cache_layout": {
+   "input_cost_index": 0.7852,
+   "reference": "HARDENING.md Rung G second portion (0.844 at 0.20.0+g5)"
+  },
+  "economics": {
+   "prefilter_background_net_share": -0.1518,
+   "batch_discount": 0.5,
+   "prices": "usage.PRICES (Haiku 1/5, Sonnet 5 2/10)"
+  }
+ },
+ "flags": {
+  "NEUROSEARCH_PLANNER_V3": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "not promoted"
+  },
+  "NEUROSEARCH_FINDINGS_PREFILTER": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "deferred (economics)"
+  },
+  "NEUROSEARCH_RETRIEVAL_RERANK": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "killed (measured live)"
+  },
+  "NEUROSEARCH_CHAT_TAIL_BREAKPOINT": {
+   "current": "0",
+   "safe_default": "0",
+   "ok": true,
+   "status": "off by decision"
+  },
+  "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK": {
+   "current": "",
+   "safe_default": "",
+   "ok": true,
+   "status": "rollback hatch"
+  },
+  "NEUROSEARCH_FAKE_AI": {
+   "current": false,
+   "safe_default": false,
+   "ok": true,
+   "status": "test mode (never in production)"
+  }
+ }
+}
