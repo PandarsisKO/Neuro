@@ -161,6 +161,10 @@
   .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
   .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
   .fgroup .gh b{color:var(--text);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fgroup > summary.gh{cursor:pointer;list-style:none}
+  .fgroup > summary.gh::-webkit-details-marker{display:none}
+  .fgroup > summary.gh::before{content:'▸';color:var(--muted);font-size:11px}
+  .fgroup[open] > summary.gh::before{content:'▾'}
   .note.gap{border-color:var(--banner-line);background:var(--banner)}
   .kn{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--panel)}
   .kn .st{font-size:11px;font-weight:600;letter-spacing:.03em;padding:2px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
@@ -358,9 +362,14 @@
         <span class="chipf" data-f="unused" onclick="toggleSrcFilter('unused')" title="No plan step, chat answer or Claim ever used it">Never used</span>
         <select id="srcLen" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
         <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">sort: activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
+        <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()" style="width:auto"> Group by origin</label>
         <span class="muted" id="srcFilterNote"></span>
         <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
         <button class="small" onclick="exportCsv(true)">Segments CSV</button>
+      </div>
+      <div class="row" id="srcGroupCtl" style="display:none;gap:8px;margin:-4px 0 6px;font-size:12.5px">
+        <a href="#" onclick="SRCG.collapsed=new Set();renderSourceList();return false">Expand all</a>
+        <a href="#" onclick="SRCG.collapsed='all';renderSourceList();return false">Collapse all</a>
       </div>
       <div id="srcList"></div>
     </div>
@@ -385,6 +394,10 @@
         <span class="muted" id="fbCount"></span>
       </div>
       <div id="fbSweep"></div>
+      <div class="row" id="fbGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
+        <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
+        <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
+      </div>
       <div id="notes"></div>
       <div class="row" id="fbPager" style="margin-top:8px"></div>
     </div>
@@ -408,9 +421,14 @@
           <select id="cwFresh" onchange="CW.freshness=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">still current or not</option><option value="stale">likely outdated</option><option value="needs_refresh">may need a refresh</option><option value="uncertain">unclear if current</option></select>
           <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" id="cwNeeds" onchange="CW.needs_decision=this.checked;CW.offset=0;loadClaimsWorkbench()" style="width:auto"> needs your decision</label>
           <select id="cwSort" onchange="CW.sort=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="priority">sort: needs a decision first</option><option value="strength">most evidenced first</option><option value="newest">newest</option><option value="topic">by topic</option></select>
+          <label class="row" style="gap:4px;width:auto" title="Group Claims by the same Areas the Overview and Areas panes use"><input type="checkbox" id="cwGroupToggle" checked onchange="loadClaimsWorkbench()" style="width:auto"> Group by area</label>
           <span class="muted" id="cwCount"></span>
         </div>
         <div id="cwBulk" style="display:none"></div>
+        <div class="row" id="cwGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
+          <a href="#" onclick="CWG.collapsed=new Set();loadClaimsWorkbench();return false">Expand all</a>
+          <a href="#" onclick="CWG.collapsed='all';loadClaimsWorkbench();return false">Collapse all</a>
+        </div>
         <div id="resClaims"></div>
         <div class="row" id="cwPager" style="margin-top:8px"></div>
       </div>
@@ -559,7 +577,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.5';
+const UI_VERSION = '0.45.6';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -996,6 +1014,71 @@ async function rvStart(id, btn) {
   }
 }
 async function rvDiscard(id) { if (!confirm('Discard this list? Nothing was downloaded; you can paste the link again later.')) return; await post(`/api/collections/${id}/approve`, { source_ids: [] }); delete rvUnchecked[id]; delete rvAutoApplied[id]; rvSig = null; loadReviews(); }
+// Grouping (PRODUCT-ORGANIZATION.md #1): every source already carries a "channel" — a YouTube channel, a subreddit
+// (community.py sets it to the subreddit name), a book's creators, or a web page's domain — so origin grouping needs
+// no new scanning or schema, just reading a column that was already there. SRCG remembers which groups the user
+// closed by hand so a refresh (a new source landing, a filter change) doesn't re-open them.
+const SRCG = { collapsed: new Set(), rows: [] };
+function srcGroupToggled(key, open) { if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key); }
+function srcGroupKey(s) {
+  if (s.channel) return s.channel;
+  return { video: 'YouTube (no channel)', community: 'Community (no subreddit)', book: 'Books', document: 'Documents',
+           spreadsheet: 'Spreadsheets', podcast: 'Podcasts', file: 'Files' }[s.platform] || 'Other';
+}
+function srcRowHtml(s) {
+  const needsBrowser = !!(s.acquisition && s.acquisition.state === 'requires_browser');
+  const liveLine = (() => {
+    if (needsBrowser) return '';
+    if (s.status === 'pending' && s.job) {
+      const j = s.job;
+      if (j.status === 'running') return `<span class="spin"></span> ${esc(j.message || 'working…')} <span class="muted">· ${ago(j.updated_at || Date.now() / 1000)} ago</span>`;
+      if (j.waiting_until && j.waiting_until > Date.now() / 1000) return `⏸ ${esc(j.message || 'waiting')} <span class="muted">· resumes in ${ago(2 * Date.now() / 1000 - j.waiting_until)}</span>`;
+      return `⏳ waiting in line · #${j.position}${j.message ? ' · ' + esc(j.message) : ''}`;
+    }
+    if (s.status === 'pending') return '⏳ pending (no job — use Retry)';
+    return '';
+  })();
+  return `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
+    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
+    <div style="flex:1;min-width:0">
+      <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${completenessLine(s)}
+      ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
+      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
+      <div class="actions">
+        ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
+        ${needsBrowser ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
+        ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
+        <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
+        <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
+        <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
+      </div>
+    </div></div>`;
+}
+function renderSourceList() {
+  const rows = SRCG.rows;
+  const empty = '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
+  const grouping = $('#srcGroupToggle') ? $('#srcGroupToggle').checked : true;
+  if (!rows.length) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = empty; return; }
+  if (!grouping) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); return; }
+  const groups = {};
+  rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
+  const keys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b));
+  if (keys.length <= 1) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); return; }
+  if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(keys);
+  // a search or an active chip/value filter means the user is hunting for something specific — never hide a match
+  const searching = !!($('#srcQ') && $('#srcQ').value) || Object.values(state.srcFilters || {}).some(Boolean);
+  $('#srcGroupCtl').style.display = '';
+  $('#srcList').innerHTML = keys.map(k => {
+    const list = groups[k];
+    const open = searching || !SRCG.collapsed.has(k);
+    const keyJs = JSON.stringify(k).replace(/"/g, '&quot;');
+    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="srcGroupToggled(${keyJs}, this.open)"><summary class="gh"><b>${esc(k)}</b><span>${list.length} source${list.length === 1 ? '' : 's'}</span></summary>${list.map(srcRowHtml).join('')}</details>`;
+  }).join('');
+}
 async function loadSources() {
   loadReviews();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
@@ -1035,36 +1118,8 @@ async function loadSources() {
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
     (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '');
-  const liveLine = s => {
-    if (needsBrowser(s)) return '';
-    if (s.status === 'pending' && s.job) {
-      const j = s.job;
-      if (j.status === 'running') return `<span class="spin"></span> ${esc(j.message || 'working…')} <span class="muted">· ${ago(j.updated_at || Date.now() / 1000)} ago</span>`;
-      if (j.waiting_until && j.waiting_until > Date.now() / 1000) return `⏸ ${esc(j.message || 'waiting')} <span class="muted">· resumes in ${ago(2 * Date.now() / 1000 - j.waiting_until)}</span>`;
-      return `⏳ waiting in line · #${j.position}${j.message ? ' · ' + esc(j.message) : ''}`;
-    }
-    if (s.status === 'pending') return '⏳ pending (no job — use Retry)';
-    return '';
-  };
-  $('#srcList').innerHTML = rows.map(s => `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
-    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
-    <div style="flex:1;min-width:0">
-      <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
-      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
-      ${needsBrowser(s) ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
-      ${completenessLine(s)}
-      ${liveLine(s) ? `<div style="margin-top:3px;font-size:13px">${liveLine(s)}</div>` : ''}
-      ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
-      <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
-        ${needsBrowser(s) ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
-        ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
-        <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
-        <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
-        <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
-      </div>
-    </div></div>`).join('') || '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
+  SRCG.rows = rows;
+  renderSourceList();
 }
 async function setPriority(id, flag) {
   await put(`/api/projects/${state.project.id}/priority`, { source_ids: [id], priority: flag });
@@ -1486,6 +1541,7 @@ function renderResearch(st) {
 // ---- R7: the Claims workbench — filters, facets, sort, paging, batch accept/reject, one plain-language line per Claim.
 // RESEARCH-TAB.md §5 asked for this when R2 was designed; R2 moved the old flat list under a tab without rebuilding it.
 const CW = { q: '', status: 'all', strength: '', freshness: '', needs_decision: false, sort: 'priority', offset: 0, limit: 30, sel: new Set() };
+const CWG = { collapsed: new Set() };   // remembers which area-groups the user closed by hand (area -> closed)
 function claimCard(c) {
   const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc((e.title || 'source').slice(0, 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
   return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div style="flex:1;min-width:0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
@@ -1507,7 +1563,25 @@ async function loadClaimsWorkbench() {
   let r; try { r = await api(`/api/projects/${state.project.id}/claims?` + p); } catch (e) { $('#resClaims').innerHTML = '<div class="muted">could not load Claims</div>'; return; }
   const f = r.facets;
   $('#cwCount').textContent = `${r.total} match${r.total === 1 ? 'es' : ''} this filter · ${f.needs_decision} need${f.needs_decision === 1 ? 's' : ''} a decision`;
-  $('#resClaims').innerHTML = r.claims.length ? r.claims.map(claimCard).join('') : `<div class="empty">Nothing matches this filter${RES.area ? ' in this area' : ''}.</div>`;
+  // PRODUCT-ORGANIZATION.md #9/#12: group this page by the same Area the Overview/Areas panes already name — pointless
+  // once a single area is already the filter (RES.area), since every row would share the one group.
+  const grouping = $('#cwGroupToggle') && $('#cwGroupToggle').checked && !RES.area;
+  const byArea = []; const aidx = {};
+  if (grouping) for (const c of r.claims) { const k = c.area || 'Everything else'; if (!(k in aidx)) { aidx[k] = byArea.length; byArea.push([k, []]); } byArea[aidx[k]][1].push(c); }
+  $('#cwGroupCtl').style.display = grouping && byArea.length > 1 ? '' : 'none';
+  if (!r.claims.length) {
+    $('#resClaims').innerHTML = `<div class="empty">Nothing matches this filter${RES.area ? ' in this area' : ''}.</div>`;
+  } else if (!grouping || byArea.length <= 1) {
+    $('#resClaims').innerHTML = r.claims.map(claimCard).join('');
+  } else {
+    if (CWG.collapsed === 'all') CWG.collapsed = new Set(byArea.map(([k]) => k));
+    const searching = !!CW.q || CW.needs_decision || !!CW.strength || !!CW.freshness;
+    $('#resClaims').innerHTML = byArea.map(([area, list]) => {
+      const open = searching || byArea.length <= 4 || !CWG.collapsed.has(area);
+      const keyJs = JSON.stringify(area).replace(/"/g, '&quot;');
+      return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?CWG.collapsed.delete(${keyJs}):CWG.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(area)}</b><span>${list.length}</span></summary>${list.map(claimCard).join('')}</details>`;
+    }).join('');
+  }
   const pages = Math.max(1, Math.ceil(r.total / CW.limit));
   const cur = Math.floor(CW.offset / CW.limit) + 1;
   $('#cwPager').innerHTML = r.total > CW.limit ? `<button class="small ghost" ${cur <= 1 ? 'disabled' : ''} onclick="CW.offset=Math.max(0,CW.offset-CW.limit);loadClaimsWorkbench()">‹ prev</button><span class="muted">page ${cur} of ${pages}</span><button class="small ghost" ${cur >= pages ? 'disabled' : ''} onclick="CW.offset+=CW.limit;loadClaimsWorkbench()">next ›</button>` : '';
@@ -1986,6 +2060,7 @@ async function loadNotes() {
 }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
 const FB = { offset: 0, limit: 100 };
+const FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
 function useBadges(n) {
   const u = n.used || {}; const b = [];
   if (u.plan) b.push(`<span class="tag" title="cited as evidence by the Master Plan">📋 plan</span>`);
@@ -2014,8 +2089,16 @@ async function loadWorkbench(reset = true) {
     : n.status === 'suggested' ? `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
     : n.status === 'reserve' ? `<button class="small primary" title="Approve" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small" title="Send to Suggested" onclick="noteStatus(${n.id},'suggested')">📌</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
     : `<button class="small ghost" title="restore to suggested" onclick="noteStatus(${n.id},'suggested')">↩</button>`;
-  $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="sourceDrawer('${sid}')">source ↗</button>` : ''}</div>` +
-      list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</div>`).join('')
+  // PRODUCT-ORGANIZATION.md #1: this list already groups by source (nothing new there) — what was missing was any
+  // way to collapse a group, so a project with many sources was still one long scroll of open groups.
+  if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
+  const grpSearching = !!($('#fbQ').value || $('#fbImp').value || $('#fbUsed').value || $('#fbStale').value || $('#fbArea').value);
+  $('#fbGroupCtl').style.display = bySrc.length > 1 ? '' : 'none';
+  $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
+    const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
+    const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');
+    return `<details class="fgroup" ${open ? 'open' : ''} ontoggle="this.open?FGRP.collapsed.delete(${keyJs}):FGRP.collapsed.add(${keyJs})"><summary class="gh"><b>${esc(title)}</b><span>${list.length}</span>${sid ? `<button class="small ghost" title="only this source" onclick="event.preventDefault();$('#fbQ').value='';FB.source=null;loadWorkbenchSource('${sid}')">filter</button><button class="small ghost" title="Everything this source gave the project" onclick="event.preventDefault();sourceDrawer('${sid}')">source ↗</button>` : ''}</summary>` +
+      list.map(n => findingCard({ ...n, _badges: useBadges(n) }, act(n))).join('') + `</details>`; }).join('')
     : `<div class="empty">${r.total ? '' : st === 'approved' && !$('#fbQ').value && !$('#fbUsed').value ? 'Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.' : 'No findings match these filters.'}</div>`;
   const pages = Math.ceil(r.total / FB.limit);
   $('#fbPager').innerHTML = pages > 1 ? `<button class="small ghost" ${FB.offset === 0 ? 'disabled' : ''} onclick="FB.offset=Math.max(0,FB.offset-FB.limit);loadWorkbench(false)">‹ prev</button><span class="muted" style="margin:0 8px">${Math.floor(FB.offset / FB.limit) + 1} / ${pages}</span><button class="small ghost" ${FB.offset + FB.limit >= r.total ? 'disabled' : ''} onclick="FB.offset+=FB.limit;loadWorkbench(false)">next ›</button>` : '';

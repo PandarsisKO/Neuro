@@ -41,6 +41,8 @@ TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|tem
 RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
+BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
+                                   # a fixed interval until a call succeeds again (providers.py clears the flag then)
 ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan", "enrich_profiles_batch", "extract_claims")
 
 
@@ -370,6 +372,17 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
             return "external_pending"
         pe = e if isinstance(e, _PE) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), _PE) else None)
+        if pe is not None and pe.error_type == "BILLING":
+            # the account's credit balance, not a rate/usage cap — this will not clear itself on a schedule the way
+            # SPEND_CAP's stated date does, so this parks (0 attempts, $0) and retries on a fixed interval; a plain
+            # banner beats a raw SDK exception as the job's message, and one banner beats N sources failing alike.
+            until = time.time() + BILLING_RETRY_SECONDS
+            db.kv_set("providers:billing_until", str(until))
+            db.requeue_job(jid, delay=BILLING_RETRY_SECONDS, wait_reason="budget",
+                           message="paused: the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue. Nothing is lost; this resumes automatically once credits are added.")
+            if sid:
+                db.set_source_status(sid, "pending")
+            return "queued"
         if pe is not None and pe.error_type == "SPEND_CAP":
             # the ACCOUNT's usage limit (Anthropic Console), not Neuro Search's budget: nothing retries until the date it names.
             # The job waits (0 attempts, $0) like a budget pause, and the whole app can show one banner instead of N failures.

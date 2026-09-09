@@ -59,13 +59,14 @@ def query(project_id: str, *, q: str | None = None, status: str = "all", strengt
     rows = claims_mod.list_for_project(project_id)
     if status != "superseded":
         rows = [c for c in rows if c["status"] != "superseded"]
+    # area is always attached (not only when filtering by one) so the UI can group the page by area without a
+    # second request — research_view.areas() is $0/deterministic and already runs on every Overview/Areas load.
     area_of: dict[str, str] = {}
-    if area:
-        try:
-            from . import research_view
-            area_of = research_view.areas(project_id)["area_of_claim"]
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        from . import research_view
+        area_of = research_view.areas(project_id)["area_of_claim"]
+    except Exception:  # noqa: BLE001
+        pass
     for c in rows:
         c["plain"] = plain(c)
         c["type_label"] = TYPE_LABEL.get(c.get("claim_type"), c.get("claim_type") or "")

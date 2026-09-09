@@ -327,6 +327,10 @@ def api_usage() -> dict[str, Any]:
     if cap and cap > time.time():
         t["account_limit_until"] = cap
         t["blocked"] = t["blocked"] or f"the Anthropic account's usage limit is reached — access returns {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(cap))}"
+    bcap = float(db.kv_get("providers:billing_until") or 0)
+    if bcap and bcap > time.time():
+        t["billing_blocked_until"] = bcap
+        t["blocked"] = t["blocked"] or "the Anthropic account's credit balance is too low — add credits in Plans & Billing to continue"
     from . import claude_code
     t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
