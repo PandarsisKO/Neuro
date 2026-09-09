@@ -400,7 +400,20 @@
       <div id="paneQuestions" style="display:none"></div>
       <div id="paneWatchouts" style="display:none"></div>
       <div id="paneAreas" style="display:none"></div>
-      <div id="paneClaims" style="display:none"><div id="resClaims"></div></div>
+      <div id="paneClaims" style="display:none">
+        <div class="row" style="gap:6px;margin:2px 0 8px;flex-wrap:wrap">
+          <input id="cwQ" placeholder="Search Claims…" oninput="CW.q=this.value;CW.offset=0;loadClaimsWorkbench()" style="min-width:180px">
+          <select id="cwStatus" onchange="CW.status=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="all">all statuses</option><option value="proposed">not yet decided</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
+          <select id="cwStrength" onchange="CW.strength=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">any evidence level</option><option value="strong">well evidenced</option><option value="developing">building evidence</option><option value="weak">thin evidence</option><option value="unsupported">no evidence yet</option></select>
+          <select id="cwFresh" onchange="CW.freshness=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">still current or not</option><option value="stale">likely outdated</option><option value="needs_refresh">may need a refresh</option><option value="uncertain">unclear if current</option></select>
+          <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" id="cwNeeds" onchange="CW.needs_decision=this.checked;CW.offset=0;loadClaimsWorkbench()" style="width:auto"> needs your decision</label>
+          <select id="cwSort" onchange="CW.sort=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="priority">sort: needs a decision first</option><option value="strength">most evidenced first</option><option value="newest">newest</option><option value="topic">by topic</option></select>
+          <span class="muted" id="cwCount"></span>
+        </div>
+        <div id="cwBulk" style="display:none"></div>
+        <div id="resClaims"></div>
+        <div class="row" id="cwPager" style="margin-top:8px"></div>
+      </div>
       <div id="paneTools" style="display:none">
       <div class="muted">What the project currently <b>believes</b>, how well each belief is evidenced, and what a competent researcher would establish next. Everything here is proposed research state built from your findings at no cost; <b>Accept</b> makes a Claim yours. Strong is not decision-ready: whether a rule applies to <i>your</i> situation is a separate judgement.</div>
       <div class="row" style="margin-top:8px"><button class="small" onclick="refreshResearch(false)">Refresh ($0)</button><button class="small ghost" onclick="refreshResearch(true)" title="One bounded model pass: normalises candidate Claims (qualifiers, type, topic, freshness) and proposes evidence targets you have not named">Normalise Claims (model)</button><button class="small ghost" onclick="evaluateNormalisation()" title="Durable, bounded: ~150 decision-relevant Claims + a stratified sample are normalised and measured (merges, qualifiers kept, topics, tensions, cost) — normalisation has to earn wider use">Evaluate normalisation (≈150)</button><span class="muted" id="resMsgTool"></span></div>
@@ -546,7 +559,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.4';
+const UI_VERSION = '0.45.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -744,7 +757,7 @@ function addMsg(role, text, cites = [], extra = {}) {
   if (role === 'user') d.textContent = text;
   else {
     let h = renderAnswer(text, cites);
-    if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>`).join('') + `</div>`;
+    if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>` + (c.source_id ? ` <a href="#" class="chip" title="See the Claims resting on this source" onclick="whyThisAnswer('${esc(c.source_id)}','${esc(c.timestamp || '')}');return false">🧠 why</a>` : '')).join('') + `</div>`;
     const val = extra.validation || extra.meta || {};
     if (val.warning) h += `<div class="web" style="color:var(--warn)">⚠ ${esc(val.warning)}</div>`;
     else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
@@ -752,7 +765,7 @@ function addMsg(role, text, cites = [], extra = {}) {
     for (const a of extra.actions || []) {
       if (a.type === 'brief_updated') h += `<div class="web">✎ Brief updated: <i>${esc(a.brief)}</i></div>`;
       if (a.type === 'finding_saved') h += `<div class="web">📌 Pinned to findings.</div>`;
-      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings.</div>`;
+      if (a.type === 'gap_noted') h += `<div class="web">⚠ Gap recorded in findings. <button class="small ghost" title="Turns this into an Open question in Research, with the normal project → library → seen → web escalation" onclick="settleGap(${JSON.stringify(a.gap).replace(/"/g, '&quot;')})">Settle this</button></div>`;
       if (a.type === 'fact_recorded') h += `<div class="web">🗂 Recorded ${esc(a.kind)}: <i>${esc(a.content)}</i></div>`;
       if (a.type === 'library_searched') h += `<div class="web">🗄 Checked your global library for “${esc(a.query)}” · ${a.found} owned-but-unattached source${a.found === 1 ? '' : 's'}${a.found ? ': ' + (a.suggestions || []).map(s => `<button class="small" style="margin:2px" onclick="attachFromLibrary('${s.source_id}', this)">Add “${esc((s.title || '').slice(0, 40))}”</button>`).join('') : ''}</div>`;
       if (a.type === 'research_state') h += `<div class="web muted">🧠 Consulted the Knowledge Map · strong ${a.counts?.strong || 0} / developing ${a.counts?.developing || 0} / weak ${a.counts?.weak || 0} · ${a.tensions} open tension${a.tensions === 1 ? '' : 's'} · ${a.targets_open} open target${a.targets_open === 1 ? '' : 's'}</div>`;
@@ -1467,12 +1480,53 @@ function renderResearch(st) {
     const known = t.known_uncaptured ? `<div class="why">${t.known_uncaptured} promising source${t.known_uncaptured === 1 ? '' : 's'} known, not captured — <button class="small" onclick="captureBest('${t.id}', ${Math.min(3, t.known_uncaptured)})" title="Attach if already owned; otherwise capture through the normal path (your browser when the server cannot read it). Never a web search.">Capture best ${Math.min(3, t.known_uncaptured)}</button> <a href="#" onclick="showKnown('${t.id}');return false">see them</a></div>` : '';
     return `<div class="kn">${stTag(t.status === 'satisfied' ? 'strong' : 'missing')}<div><b>${esc(t.question)}</b> <span class="muted">· ${t.sufficiency}${t.origin === 'model' || t.origin === 'tension' ? ' · proposed' : ''}</span><div class="why">Enough = ${esc(t.closure || '')}${t.gap ? ` — <b>gap:</b> ${esc(t.gap)}` : ' — satisfied'}</div>${trail}${known}</div><span style="margin-left:auto;white-space:nowrap"><button class="small" onclick="pursueTarget('${t.id}',false)" title="Project evidence → global library → seen-not-added (reranked against this target) — no web, no model call">Look ($0)</button> <button class="small ghost" onclick="pursueTarget('${t.id}',true)" title="…then a web Discover run for this exact question">+ web</button> <button class="small ghost" onclick="targetStatus('${t.id}','closed_by_user')">Close</button></span></div>`; }).join('')
     : `<div class="muted">No evidence targets yet.</div>`;
-  const aoc = (RES.v || {}).area_of_claim || {};
-  const cs = (st.claims || []).filter(c => c.status !== 'superseded' && (!RES.area || aoc[c.id] === RES.area));   // R2: the area focus filters the workbench too
-  $('#resClaims').innerHTML = (st.claims_total > cs.length ? `<div class="muted">Showing ${cs.length} of ${st.claims_total} Claims (accepted and strongest first).</div>` : '') + (cs.length ? cs.map(c => {
-    const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc((e.title || 'source').slice(0, 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
-    return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}">${stTag(c.strength)}<div><div>${esc(c.text)}</div><div class="why">${esc(c.claim_type.replace('_', ' '))} · ${esc(c.freshness_class.replace('_', ' '))}${c.freshness_status && c.freshness_status !== 'current' && c.freshness_status !== 'age_insensitive' ? ` · <b title="${esc(c.freshness_why || '')}">${esc(c.freshness_status.replace('_', ' '))}</b>` : ''} · ${c.status}${c.normalized ? '' : ' · not yet normalised'} — ${esc(c.strength_why || '')}<br>Readiness: <b>${c.readiness === 'ready' ? 'ready' : 'not ready'}</b> — ${esc(c.readiness_why || '')}</div><div>${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`; }).join('')
-    : '');
+  // Claims itself is rendered by the R7 workbench (loadClaimsWorkbench) — a separate, filtered, paged query over the
+  // FULL claim set, not this bootstrap state's 300-cap. This function still fills the map/tensions/targets above.
+}
+// ---- R7: the Claims workbench — filters, facets, sort, paging, batch accept/reject, one plain-language line per Claim.
+// RESEARCH-TAB.md §5 asked for this when R2 was designed; R2 moved the old flat list under a tab without rebuilding it.
+const CW = { q: '', status: 'all', strength: '', freshness: '', needs_decision: false, sort: 'priority', offset: 0, limit: 30, sel: new Set() };
+function claimCard(c) {
+  const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc((e.title || 'source').slice(0, 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
+  return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div style="flex:1;min-width:0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
+}
+function claimSel(id, on) { if (on) CW.sel.add(id); else CW.sel.delete(id); renderClaimsBulkBar(); }
+function renderClaimsBulkBar() {
+  $('#cwBulk').style.display = CW.sel.size ? '' : 'none';
+  $('#cwBulk').innerHTML = CW.sel.size ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1"><b>${CW.sel.size}</b> selected</span><button class="small" onclick="claimsBulk('accepted')">Accept all</button><button class="small ghost" onclick="claimsBulk('rejected')">Reject all</button><button class="small ghost" onclick="CW.sel.clear();renderClaimsBulkBar();loadClaimsWorkbench()">Clear</button></div>` : '';
+}
+async function claimsBulk(status) {
+  const ids = [...CW.sel];
+  if (!confirm(`${status === 'accepted' ? 'Accept' : 'Reject'} ${ids.length} Claim${ids.length === 1 ? '' : 's'}? You can change any of them back individually afterward.`)) return;
+  const r = await post(`/api/projects/${state.project.id}/claims/bulk-status`, { claim_ids: ids, status });
+  toast(`${r.changed} ${status}${r.skipped ? ` · ${r.skipped} skipped` : ''}`); CW.sel.clear(); renderClaimsBulkBar(); loadClaimsWorkbench();
+}
+async function loadClaimsWorkbench() {
+  const p = new URLSearchParams({ status: CW.status, strength: CW.strength, freshness: CW.freshness, needs_decision: CW.needs_decision, sort: CW.sort, limit: CW.limit, offset: CW.offset });
+  if (CW.q) p.set('q', CW.q); if (RES.area) p.set('area', RES.area);
+  let r; try { r = await api(`/api/projects/${state.project.id}/claims?` + p); } catch (e) { $('#resClaims').innerHTML = '<div class="muted">could not load Claims</div>'; return; }
+  const f = r.facets;
+  $('#cwCount').textContent = `${r.total} match${r.total === 1 ? 'es' : ''} this filter · ${f.needs_decision} need${f.needs_decision === 1 ? 's' : ''} a decision`;
+  $('#resClaims').innerHTML = r.claims.length ? r.claims.map(claimCard).join('') : `<div class="empty">Nothing matches this filter${RES.area ? ' in this area' : ''}.</div>`;
+  const pages = Math.max(1, Math.ceil(r.total / CW.limit));
+  const cur = Math.floor(CW.offset / CW.limit) + 1;
+  $('#cwPager').innerHTML = r.total > CW.limit ? `<button class="small ghost" ${cur <= 1 ? 'disabled' : ''} onclick="CW.offset=Math.max(0,CW.offset-CW.limit);loadClaimsWorkbench()">‹ prev</button><span class="muted">page ${cur} of ${pages}</span><button class="small ghost" ${cur >= pages ? 'disabled' : ''} onclick="CW.offset+=CW.limit;loadClaimsWorkbench()">next ›</button>` : '';
+  renderClaimsBulkBar();
+}
+// "Why this answer" (RESEARCH-TAB.md §5): a chat citation opens the Claims resting on that source, closest locator first.
+async function whyThisAnswer(sourceId, locator) {
+  if (!sourceId) return;
+  $('#dlgBody').innerHTML = '<span class="spin"></span> checking what this source became…'; dlg.showModal();
+  let r; try { r = await api(`/api/projects/${state.project.id}/claims/for-source?source_id=${encodeURIComponent(sourceId)}&locator=${encodeURIComponent(locator || '')}`); } catch (e) { $('#dlgBody').innerHTML = esc(e.message); return; }
+  $('#dlgBody').innerHTML = `<b>Why this answer</b> <span class="muted">· ${r.total} Claim${r.total === 1 ? '' : 's'} rest${r.total === 1 ? 's' : ''} on this source</span>` +
+    (r.claims.length ? r.claims.map(c => `<div class="kn" style="${c.matched_here ? '' : 'opacity:.75'}">${stTag(c.strength)}<div style="flex:1"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.matched_here ? ' · this exact passage' : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted');dlg.close()">Accept</button>` : ''}</span></div>`).join('')
+      : '<div class="muted">This source has not become a Claim yet — it may be too new, or its findings did not carry a proposition worth harvesting.</div>') +
+    `<div class="row" style="margin-top:10px"><button class="small ghost" onclick="dlg.close();showView('research');resPane('claims')">See all Claims</button></div>`;
+}
+// "Settle this" (RESEARCH-TAB.md §5): a chat gap becomes an Evidence Target in one click, through the normal path.
+async function settleGap(gap) {
+  const r = await post(`/api/projects/${state.project.id}/targets`, { question: gap, sufficiency: 'corroborative' });
+  toast(r ? '⏵ added to Open questions' : 'could not add — too short');
 }
 // ---- S3: the source drawer — one place per source (value · findings · Claims · where used · staleness) ----
 async function sourceDrawer(sid) {
@@ -1552,9 +1606,9 @@ async function resLoadState() {
   renderResearch(RES.state); loadEvaluation(); resSay('');
   return RES.state;
 }
-function resPane(name) { RES.pane = name; if (name === 'claims' || name === 'tools') resLoadState().catch(e => resSay(e.message)); renderShell(); }
-function resSetArea(a) { RES.area = (RES.area === a) ? null : a; if (RES.pane === 'overview' || RES.pane === 'areas') RES.pane = 'questions'; renderShell(); if (RES.state) renderResearch(RES.state); }
-function resClearArea() { RES.area = null; renderShell(); if (RES.state) renderResearch(RES.state); }
+function resPane(name) { RES.pane = name; if (name === 'tools') resLoadState().catch(e => resSay(e.message)); if (name === 'claims') { CW.offset = 0; CW.sel.clear(); loadClaimsWorkbench().catch(e => resSay(e.message)); } renderShell(); }
+function resSetArea(a) { RES.area = (RES.area === a) ? null : a; if (RES.pane === 'overview' || RES.pane === 'areas') RES.pane = 'questions'; renderShell(); if (RES.state) renderResearch(RES.state); if (RES.pane === 'claims') loadClaimsWorkbench(); }
+function resClearArea() { RES.area = null; renderShell(); if (RES.state) renderResearch(RES.state); if (RES.pane === 'claims') loadClaimsWorkbench(); }
 function areaChip(a) { return a ? `<span class="chipf ${RES.area === a ? 'on' : ''}" title="Show only this area" onclick="resSetArea(${JSON.stringify(a).replace(/"/g, '&quot;')})">${esc(a)}</span>` : ''; }
 const inArea = x => !RES.area || x.area === RES.area;
 

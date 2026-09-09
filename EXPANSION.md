@@ -1173,3 +1173,52 @@ route and the UI's button both exist. Suite 464; Tier 1 unchanged.
 **Honest limits.** `limit` caps a single call at 200 to keep it synchronous and cheap; a pool larger than that needs a second
 press (the response says how many are left). Ingest jobs still go through the normal ingest pipeline and its own costs
 (transcription, embeddings) — capturing is not $0 the way scoring the pool is.
+
+## R7 — the Claims workbench (the piece R2 never rebuilt) — 0.45.5 (COMPLETE, pending delivery)
+
+Kyle: *"we must be missing some work that I was hoping to accomplish, either in the expansion.md or in the docs in the
+sub folder 'Claude outputs'."* He was right. Reading `RESEARCH-TAB.md` §5 (the original redesign brief) against what
+R2 (0.44.0) actually shipped: the shell built five new panes — Overview, Open questions, Watch-outs, Areas, Research
+tools — and gave Claims its own tab, but the tab itself was never rebuilt. It stayed `knowledge.state()`'s original
+300-of-however-many capped, unfiltered, raw-vocabulary list (`strength`/`readiness`/`freshness_class`/`claim_type` shown
+verbatim), exactly the thing §4 of the same doc diagnosed as the reason the tab overwhelms. On Kyle's larger project
+that's 300 of 6,377 with no way to search, filter, or act on more than one at a time — very likely the reason "I still
+have no clue how to utilize it" outlived the R2 shell that was supposed to fix it.
+
+**Built — the Claims workbench (`claims_view.py`).** A server-side query — `GET /api/projects/{id}/claims` — over the
+**full** claim set (never the 300-cap; that cap exists to keep the map/tensions/targets bootstrap small, not to hide
+the majority of a project's Claims from the one page that's about them): filters compose (status, evidence level,
+still-current-or-not, **needs your decision** — proposed AND strong-or-developing, area, free text), facets, four
+sorts, paging. Every Claim carries one **plain-language line** built server-side (`claims_view.plain`) — "well
+evidenced, may need a refresh — applies to you" instead of `strength=strong, freshness_status=needs_refresh,
+application=established` — so the internals never have to be read to use the page; the raw fields stay underneath for
+anyone (the chat tools, exports) who wants them. **Batch accept/reject** — `POST …/claims/bulk-status` — one verdict
+on many Claims, project-scoped (a claim id from another project is skipped, not silently touched, and reported), one
+`knowledge.refresh` however many were changed. UI: a filter bar, a selection checkbox per card, a bulk-action bar that
+appears the moment something is selected, a pager — the same shape as the S4 findings workbench and the S1 triage
+card, so nothing new to learn.
+
+**Built — "Why this answer" and "Settle this" (§5's "Connect to the work", also never built).** Every chat citation
+with a `source_id` now carries a 🧠 **why** link; `GET …/claims/for-source` returns the Claims that source's evidence
+feeds (closest-locator match first, `matched_here` flagged) so a chat answer's citations open straight into the
+Claims that stand behind them — accept from the dialog, or jump to the full workbench. A chat **gap** (the model's
+existing `gap_noted` action, already recorded as a note) now offers **Settle this**, which is not new machinery: it
+calls the same `POST …/targets` endpoint the manual "Add a target" box has always used, so a gap noticed in
+conversation becomes a real, normally-escalatable Open question with nothing new to keep in sync.
+
+**Gate (tests/test_o2_claims_workbench.py, 5).** `query` filters over the full set (never the cap), facets are counts
+minus their own dimension; `plain()` contains no raw internal token for either a well-evidenced or a stale Claim;
+`bulk_status` is project-scoped (a foreign claim id is skipped, never touched), refreshes exactly once, an empty
+selection calls refresh zero times, a bad status is refused; `for_source` ranks the matching-locator Claim first and
+returns an honest empty list for a source nothing rests on; the API routes exist and the UI wires exactly these
+endpoints and function names; "Settle this" is verified to be the pre-existing `/targets` path, not a parallel one.
+Suite 469; Tier 1 unchanged (34 / 196,951).
+
+**Honest limits.** `plain()` is a translation layer, not a rewrite of the underlying model — `strength_why` and
+`freshness_why` (the actual reasoning) still render as a second line for anyone who wants it; this is deliberately
+"jargon behind an expander" in spirit, expressed as "headline first, detail second" rather than a literal
+click-to-expand, since the detail is one line, not a paragraph. The rename §5 asked for (Strength → Evidence,
+Evidence Target → Open question, etc. as PERMANENT UI labels everywhere, not just here) is only done inside the
+workbench and the "why" dialog — the Research tools pane (the old Knowledge Map / Tensions / Targets lists, kept for
+completeness) still shows raw labels, since renaming a page nobody asked to keep felt lower value than shipping the
+part that was actually missing.

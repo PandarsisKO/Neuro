@@ -77,3 +77,18 @@ One list over skipped sources (status `skipped`, with the recorded relevance and
 - **S5 Known-but-uncaptured pool** — `candidates.pool`, the chip and view, ranking modes, capture through the normal path. (**Kyle's #3**)
 
 Everything reuses existing tables and paths: no new model calls, no new fetch path, no schema beyond two additive columns (`accepted_brief_revision`; a `value_cache` kv per project revision). Research-tab work (R2 shell) is untouched by this mission and consumes S2's value data when it lands.
+
+## 6. Status, 0.45.5 — the whole ladder, checked against what shipped
+
+- D1 length-aware cap + reserve findings — SHIPPED 0.43.0.
+- D2 Read deeper — SHIPPED 0.43.0.
+- D3 under-read detection + the bulk "Read deeper on all N" — SHIPPED 0.43.0.
+- D4 chapter/segment digests — **deliberately deferred** ("later" in §3.6); not queued as a rung.
+- S1 stale triage — SHIPPED 0.40.0; the `legacy_unverified` acceptance bug (a migrated library's accept tier could
+  never empty) fixed 0.45.1; the local ETA and a half-price Message-Batches option added 0.45.3.
+- S2 source value + Sources tab filters/sort — SHIPPED.
+- S3 source drawer — SHIPPED 0.45.0.
+- S4 findings workbench — SHIPPED.
+- S5 known-but-uncaptured pool + "capture the N that fit" — SHIPPED 0.43.0 / 0.45.4.
+
+Every item on this mission's ladder is now built except D4, which was never meant to ship on its own.

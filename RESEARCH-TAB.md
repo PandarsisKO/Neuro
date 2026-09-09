@@ -104,3 +104,21 @@ Auto-resolution that already exists: every refresh re-selects NOVEL / WEAK_CONSE
 ## 8. The shell as built (R2, 0.44.0)
 
 One request per open: `GET /api/projects/{id}/research/overview?full=1&limit=6`. `RES` in `index.html` holds it; `renderShell()` draws the nav and the active pane; `resPane(name)` switches and lazily fetches `/api/projects/{id}/research` for the Claims and Research-tools panes only. Panes and their sources: Overview = `summary` + `next` + `recently_improved` + `areas[:8]`; Open questions = `questions` (open first, settled collapsed); Watch-outs = `watchouts` (drill-down = `underlying`); Areas = `areas` (Focus sets `RES.area`, filtering questions/watch-outs by their `area` and Claims by `area_of_claim`); Claims = the old workbench; Research tools = the old instruments. Verdicts: a question's buttons come from its own `actions` array (endpoint + body + cost + help, rendered generically by `resQAct`), plus Settle → `POST /api/targets/{id}/status closed_by_user`; a watch-out's Resolved / Not important → `POST /api/projects/{id}/tensions/bulk-status` over every `underlying.tension_id`, which is durable (`_upsert_tension` never resets status). What R2 deliberately did NOT do: no new research computation, no model call, no removal of any old list.
+
+## 9. Status, 0.45.5 — what §5 asked for that R2 (0.44.0) never built
+
+Read against §5's original redesign list, checked 2026-09-09 after Kyle asked what was still missing:
+
+- ~~Lead with "Next"~~ — SHIPPED (Overview pane: `next` ranked across open questions + watch-outs).
+- ~~Make the map navigable~~ — SHIPPED (Areas pane's Focus filters questions/watch-outs/Claims by `area`).
+- ~~Hide the instruments~~ — SHIPPED (Research tools pane).
+- **"Claims as a workbench, not a list"** — **NOT built by R2.** §8 above says it plainly and glosses past it: "Claims = the
+  old workbench… unchanged underneath." It stayed `knowledge.state()`'s 300-cap, unfiltered, raw-vocabulary list under
+  a tab. **SHIPPED 0.45.5** (R7, `claims_view.py`): filters/facets/sort/paging over the FULL claim set, batch
+  accept/reject, one plain-language line per Claim. See EXPANSION.md "R7 — the Claims workbench".
+- **"Connect to the work"** (chat's "Why this answer" opening a Claim; "Settle this" turning a chat gap into a target)
+  — **NOT built by R2.** **SHIPPED 0.45.5**: `GET …/claims/for-source` behind a 🧠 why link on every chat citation;
+  "Settle this" on a `gap_noted` chat action reuses the existing `/targets` endpoint.
+- **"Rename in the UI, keep the code"** — partially done: the workbench and the "why" dialog speak plain language; the
+  Research tools pane (the pre-R2 Knowledge Map / Tensions / Targets lists, kept for completeness, not for daily use)
+  still shows the raw internal labels. Not queued — say so if it should be.

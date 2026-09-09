@@ -1830,6 +1830,46 @@ def api_claim_status(claim_id: str, body: ClaimStatusIn) -> dict[str, Any]:
     return out or {}
 
 
+@app.get("/api/projects/{project_id}/claims", dependencies=[Depends(require_auth)])
+def api_claims_query(project_id: str, q: str | None = None, status: str = "all", strength: str | None = None, freshness: str | None = None,
+                     needs_decision: bool = False, topic: str | None = None, area: str | None = None, sort: str = "priority",
+                     limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    """R7: the Claims workbench — composable filters, facets, sort, paging, one plain-language line per Claim — over
+    the FULL claim set, never the 300-cap `knowledge.state()` uses for its bootstrap page."""
+    from . import claims_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return claims_view.query(project_id, q=q, status=status, strength=strength, freshness=freshness, needs_decision=needs_decision,
+                             topic=topic, area=area, sort=sort, limit=limit, offset=offset)
+
+
+class ClaimsBulkIn(BaseModel):
+    claim_ids: list[str]
+    status: str                      # proposed | accepted | rejected
+    application: str | None = None
+
+
+@app.get("/api/projects/{project_id}/claims/for-source", dependencies=[Depends(require_auth)])
+def api_claims_for_source(project_id: str, source_id: str, locator: str | None = None, limit: int = 5) -> dict[str, Any]:
+    """RESEARCH-TAB.md §5's 'Why this answer': the Claims a chat citation's source feeds, closest locator first."""
+    from . import claims_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return claims_view.for_source(project_id, source_id, locator, limit=max(1, min(limit, 20)))
+
+
+@app.post("/api/projects/{project_id}/claims/bulk-status", dependencies=[Depends(require_auth)])
+def api_claims_bulk(project_id: str, body: ClaimsBulkIn) -> dict[str, Any]:
+    """R7: batch accept/reject — one verdict on many Claims, project-scoped, then ONE refresh."""
+    from . import claims_view
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    try:
+        return claims_view.bulk_status(project_id, body.claim_ids, body.status, application=body.application)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 class ClaimRelateIn(BaseModel):
     related_claim_id: str
     relation: str = "CONTRADICTS"
