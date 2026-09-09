@@ -2051,3 +2051,30 @@ priority, buckets instead of lanes for admission, typed and directional work-ste
 declines what it would do badly; paid steals down *into the Batch API* so idle capacity becomes cheap capacity),
 value-based stopping conditions that demote rather than delete, and the four measurements that must come first.
 Nothing in it is built.
+
+---
+
+## 0.49.1 — a button that spends money says so on its face
+
+Kyle, live, looking at the In-progress card: *"I am not sure what the buttons on this progress bar do or what the
+risks/costs are for using it?"*
+
+He was right, and the shape of the mistake is worth naming: the banner said **$0** in plain text, and the three
+buttons beside it — `next 10`, `next 18`, `most valuable first` — were the only things on the card that spend real
+money. The price existed, but only in a hover title and in a confirm dialog that appears *after* you have decided
+to click. On a card whose headline number is zero, an unlabelled button is an invitation to find out what happens.
+
+**Now:** each button carries its own estimated cost and the wait it buys — `⏩ Next 10 · ~$1.15 · saves ~21 min`,
+`⏩ All 18 · ~$2.10 · saves ~37 min`, `⭐ All 18, most valuable first · ~$2.10` — with one plain line above them
+saying what the buttons are for: *pay to skip the wait; same work and same quality, you are only buying time;
+nothing is cancelled or redone; whatever you don't move keeps running here at $0.* The confirm now states the
+cost, the time saved, that the quality is identical, that it counts against today's budget (with the real
+figures), that it cannot be undone once started, and how many jobs stay local.
+
+The per-button estimate is computed in the browser from the **same per-job numbers `jobs.accelerate` charges
+against** — `api_cost` for the money, each job's share of `windows` for the time — so the quoted price and the
+charged price cannot drift apart. No server change; `jobs.backlog` already returned everything needed.
+
+**Gate.** `tests/test_o1_accelerate.py` gains a fourth test: every backlog job carries `api_cost`, `windows` and
+`value`; the totals the estimate divides by are present; the per-job costs sum exactly to the banner's whole-set
+figure; and the UI states the four things a purchase must state before it is made. Suite 525; Tier 1 unchanged.

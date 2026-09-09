@@ -579,7 +579,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.49.0';
+const UI_VERSION = '0.49.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -616,7 +616,7 @@ function setHash(view, conv) { const h = `#p/${state.project.id}/${view}` + (con
 // ================= home =================
 async function loadSpend() {
   try { const u = await api('/api/usage'); const la = u.local_ai || {}; const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '') + (la.profile === 'local' ? ` · ${la.line || ''}${la.split && la.split.calls ? ` · ${la.split.line}` : ''}` : '');
-    const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } return u; } catch (e) { return null; }
+    const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } state.usage = u; return u; } catch (e) { return null; }
 }
 async function goHome() {
   loadSpend();
@@ -1307,19 +1307,48 @@ async function captureManyPool() {
 }
 function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
 // L3: the local provider is slow on purpose — buying speed is an explicit choice, never implied by slowness
+// Kyle, live 2026-09-09: "I am not sure what the buttons on this progress bar do or what the risks/costs are."
+// Fair — they were labelled "next 10" beside a banner that says $0, with the price hidden in a hover title and a
+// confirm dialog. A button that spends money says so on its face. Each one now carries its own estimated cost and
+// the time it buys, computed from the same per-job numbers the purchase itself uses.
+function accelEstimate(b, n, order) {
+  const js = order === 'value' ? [...b.jobs].sort((x, y) => (y.value || 0) - (x.value || 0)) : b.jobs;
+  const pick = js.slice(0, n);
+  const cost = pick.reduce((t, j) => t + (j.api_cost || 0), 0);
+  const w = pick.reduce((t, j) => t + (j.windows || 0), 0);
+  const mins = b.windows && b.local_minutes ? Math.round(b.local_minutes * (w / b.windows)) : null;
+  return { cost, mins, n: pick.length };
+}
+function accelMins(m) { return m == null ? '' : m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; }
 async function loadBacklog() {
   const el = $('#backlog'); if (!el || !state.project) return;
   let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`); } catch (e) { el.innerHTML = ''; return; }
   if (!b.local_queued || !b.local_ready) { el.innerHTML = ''; return; }
-  const pick = b.choices.map(n => `<button class="small ${n === b.choices[0] ? '' : 'ghost'}" onclick="accelerate(${n},'queue')" title="Runs the next ${n} on the Anthropic API instead of waiting for Claude Code">next ${n}</button>`).join('');
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span style="flex:1;min-width:220px">🖥 ${esc(b.line)}. Nothing is stuck — this is Claude Code working through the queue at $0.</span>
-    ${pick}<button class="small ghost" onclick="accelerate(${b.local_queued},'value')" title="The sources that matter most first (in the plan, priority, strong Claims, findings you rated 4–5)">most valuable first</button></div>`;
+  state.backlog = b;
+  const btn = (n, order, label) => {
+    const e = accelEstimate(b, n, order);
+    return `<button class="small ${order === 'value' ? 'ghost' : (n === b.choices[0] ? '' : 'ghost')}" onclick="accelerate(${n},'${order}')" title="Moves ${e.n} queued job${e.n === 1 ? '' : 's'} onto the paid Anthropic API. Same work, same quality — you are buying time, not a different answer. The rest stay on Claude Code at $0.">${label} · ~$${e.cost.toFixed(2)}${e.mins ? ` · saves ~${accelMins(e.mins)}` : ''}</button>`;
+  };
+  const picks = b.choices.map(n => btn(n, 'queue', n >= b.local_queued ? `⏩ All ${n}` : `⏩ Next ${n}`)).join('');
+  el.innerHTML = `<div class="banner" style="display:block">
+    <div>🖥 ${esc(b.line)}. Nothing is stuck — this is Claude Code working through the queue at $0.</div>
+    <div class="muted" style="font-size:12px;margin:6px 0 4px">Optional: pay to skip the wait. These buttons move queued jobs onto the paid API — same work and same quality, you are only buying time. Nothing is cancelled or redone, and whatever you don't move keeps running here at $0.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${picks}${b.local_queued > 1 ? btn(b.local_queued, 'value', `⭐ All ${b.local_queued}, most valuable first`) : ''}</div></div>`;
 }
 async function accelerate(n, order) {
   const b = await api(`/api/projects/${state.project.id}/ai-backlog`);
-  const est = order === 'value' ? b.api_cost : (b.jobs.slice(0, n).reduce((t, j) => t + j.api_cost, 0));
-  if (!confirm(`Run ${n} queued job${n === 1 ? '' : 's'} on the Anthropic API instead of waiting for Claude Code? Estimated cost $${est.toFixed(2)}${order === 'value' ? ' (most valuable sources first)' : ''}. The rest keep running locally at $0.`)) return;
+  const e = accelEstimate(b, n, order);
+  const u = state.usage || {};
+  const budget = u.daily_budget ? `\n• Counts toward today's budget: $${(u.today || 0).toFixed(2)} of $${u.daily_budget.toFixed(2)} used so far.` : '';
+  const left = b.local_queued - e.n;
+  if (!confirm(`Run ${e.n} queued job${e.n === 1 ? '' : 's'} on the paid Anthropic API instead of waiting for Claude Code?`
+    + `\n\n• Estimated cost: about $${e.cost.toFixed(2)}.`
+    + (e.mins ? `\n• Saves about ${accelMins(e.mins)} of waiting.` : '')
+    + `\n• Same work and the same quality — you are buying time, not a different answer.`
+    + (order === 'value' ? `\n• The sources that matter most go first (in the plan, priority, strong Claims, findings you rated 4–5).` : '')
+    + budget
+    + `\n• This cannot be undone once they start.`
+    + (left > 0 ? `\n• The other ${left} keep running on Claude Code at $0.` : ''))) return;
   const r = await post(`/api/projects/${state.project.id}/accelerate`, { n, order });
   toast(`⏩ ${r.moved} moved to the API · est. $${r.api_cost.toFixed(2)}`); loadJobs();
 }

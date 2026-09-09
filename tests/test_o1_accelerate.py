@@ -104,3 +104,26 @@ def test_a_cloud_profile_never_offers_the_dialog(monkeypatch):
     html = UI.read_text()
     assert 'id="backlog"' in html and "loadBacklog()" in html and "accelerate(" in html
     assert "b.local_ready" in html, "the banner must hide itself when the local provider is not the one doing the work"
+
+
+def test_a_button_that_spends_money_says_so_on_its_face():
+    """Kyle, live 2026-09-09: "I am not sure what the buttons on this progress bar do or what the risks/costs are."
+
+    The buttons were labelled "next 10" beside a banner reading $0, with the price hidden in a hover title. The
+    per-button estimate is computed in the browser from the SAME per-job numbers `accelerate` charges against, so
+    this test gates the two things that make that possible: every job carries what the estimate needs, and the
+    totals it divides by are present. If a field here is dropped, the buttons silently lose their price."""
+    p = db.create_project("Accel4", "hosting")
+    _queued(p["id"], 4)
+    b = jobs.backlog(p["id"])
+    for j in b["jobs"]:
+        assert j["api_cost"] >= 0 and j["windows"] >= 1 and "value" in j     # cost, time share, and the ⭐ ordering
+    assert b["windows"] >= 4 and b["local_minutes"] is not None               # the denominators of "saves ~N min"
+    # the per-button sum can never exceed the whole-set figure the banner quotes
+    assert round(sum(j["api_cost"] for j in b["jobs"]), 2) == b["api_cost"]
+
+    html = UI.read_text()
+    assert "function accelEstimate" in html and "accelMins(" in html
+    for must in ("saves ~", "buying time, not a different answer", "cannot be undone", "at $0"):
+        assert must in html, f"the purchase must state {must!r} before it is made"
+    assert "state.usage" in html, "the confirm must be able to quote the real budget, not a guess"
