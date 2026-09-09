@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
-from . import db, ingest, jobs, qa
+from . import db, ingest, jobs, perf, qa
 from .chunking import fmt_ts
 from .config import settings
 from .mcp_server import mcp
@@ -103,6 +103,27 @@ async def lifespan(app: FastAPI):
     jobs.stop_workers()
 
 
+class PerfMiddleware:
+    """Pure-ASGI (R0, SPEED-MISSION.md): time every /api request under its ROUTE TEMPLATE. Keying on the raw
+    path would mint a new counter per project/source id and measure nothing; Starlette fills `scope["route"]`
+    during routing, so it is read after the call rather than before."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or not str(scope.get("path", "")).startswith("/api"):
+            await self.app(scope, receive, send)
+            return
+        t0 = time.perf_counter()
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            route = scope.get("route")
+            key = getattr(route, "path", None) or str(scope.get("path", "?"))
+            perf.record(f"{scope.get('method', 'GET')} {key}", time.perf_counter() - t0)
+
+
 app = FastAPI(title="Neuro Search", lifespan=lifespan)
 mcp_app = mcp.streamable_http_app(
     streamable_http_path="/",
@@ -110,6 +131,7 @@ mcp_app = mcp.streamable_http_app(
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 app.mount("/mcp", mcp_app)
+app.add_middleware(PerfMiddleware)
 app.add_middleware(TokenPathMiddleware)
 # the browser extension calls the API from an extension origin; auth is the Bearer token, so open CORS is fine
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -866,7 +888,18 @@ def api_health() -> dict[str, Any]:
     from . import claude_code
     from . import usage
     h["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split()}
+    h["perf"] = {"slowest": perf.slowest(5), "caches": perf.snapshot()["caches"]}   # R0: in-memory, no query cost
     return h
+
+
+@app.get("/api/perf", dependencies=[Depends(require_auth)])
+def api_perf(days: int = 7) -> dict[str, Any]:
+    """R0 (SPEED-MISSION.md) — the measurement contract the whole speed ladder reports against. Joins this
+    process's in-memory timings (endpoints, caches, time-to-first-token) with queue wait and model latency read
+    from the durable tables, so §A's baseline regenerates itself from live data instead of being a one-off
+    measurement session. Read on demand from the Health console, never polled."""
+    since = time.time() - max(days, 1) * 86400
+    return {**perf.snapshot(), "queue": db.job_timing(since), "models": db.model_timing(since), "window_days": days}
 
 
 @app.post("/api/backup", dependencies=[Depends(require_auth)])

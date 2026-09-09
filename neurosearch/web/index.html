@@ -481,7 +481,8 @@
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><span class="muted" id="healthMsg"></span></div>
+        <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
@@ -577,7 +578,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.45.14';
+const UI_VERSION = '0.46.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1463,10 +1464,29 @@ async function loadHealth() {
       [`${ok(Object.values(h.flags || {}).every(f => f.ok))} Experimental flags`, Object.entries(h.flags || {}).filter(([k]) => k !== 'NEUROSEARCH_FAKE_AI').map(([k, f]) => `${k.replace('NEUROSEARCH_', '').toLowerCase()} ${f.ok ? 'off' : 'ON'} (${f.status})`).join(' · ') || '—'],
       [`${h.release ? (h.release.verdict === 'PASS' ? '✅' : '⚠️') : '⚠️'} Last release check`, h.release ? `${h.release.verdict} · ${h.release.app_version} @ ${h.release.git_sha} · ${h.release.timestamp} · ${h.release.checks} gates` : 'none yet — run: neurosearch release-check'],
       [`${ok(!(h.library || {}).duplicate_fingerprints)} Global Library`, h.library ? `${h.library.sources} sources (${h.library.ready} ready) · ${h.library.shared_by_projects} shared by several projects · ${h.library.acquisitions_avoided} acquisition${h.library.acquisitions_avoided === 1 ? '' : 's'} avoided by reuse · profiles: ${h.library.profiles ? `${h.library.profiles.enriched} enriched, ${h.library.profiles.wanted + h.library.profiles.queued} wanted/queued, ${h.library.profiles.recalls} recalls` : '—'} · ${h.library.candidates_seen || 0} seen, ${h.library.candidates_not_acquired || 0} not acquired (Candidate Index)${h.library.duplicate_fingerprints ? ` · ⚠ ${h.library.duplicate_fingerprints} duplicate content fingerprints` : ''}` : '—'],
+      [`${ok(!((h.perf || {}).slowest || []).some(s => s.p50 > 1))} Slowest endpoints (since restart)`, ((h.perf || {}).slowest || []).length ? (h.perf.slowest.map(s => `${s.key} ${s.p50.toFixed(2)}s p50 / ${s.p90.toFixed(2)}s p90 (${s.n})`).join(' · ') + ' — full picture: Measure speed') : 'nothing measured yet'],
+      ...(Object.keys((h.perf || {}).caches || {}).length ? [[`📈 Cache hit rate`, Object.entries(h.perf.caches).map(([k, c]) => `${k} ${c.rate == null ? '—' : (c.rate * 100).toFixed(0) + '%'} (${c.hit}/${c.hit + c.miss})`).join(' · ')]] : []),
       [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
+}
+async function perfReport() {
+  // R0: the same three tables SPEED-MISSION.md §A was written from, regenerated from live data.
+  const box = $('#perfOut'); box.textContent = 'measuring…';
+  try {
+    const p = await api('/api/perf');
+    const tbl = (title, cols, rows) => rows.length ? `<div style="margin-top:10px"><b>${title}</b><table style="width:100%;border-collapse:collapse;margin-top:4px"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 8px 2px 0;font-weight:600">${c}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map(v => `<td style="padding:2px 8px 2px 0;white-space:nowrap">${esc(String(v))}</td>`).join('')}</tr>`).join('')}</table></div>` : '';
+    const s = n => `${(+n).toFixed(2)}s`;
+    box.innerHTML =
+      tbl(`Endpoints — this process, slowest first`, ['endpoint', 'p50', 'p90', 'max', 'n'],
+        Object.entries(p.timings || {}).slice(0, 12).map(([k, v]) => [k, s(v.p50), s(v.p90), s(v.max), v.n])) +
+      tbl(`Jobs — work vs waiting (last ${p.window_days} days)`, ['kind', 'work p50', 'wait p50', 'waiting', 'n'],
+        (p.queue || []).map(q => [q.kind, s(q.work_p50), s(q.wait_p50), `${Math.round(q.waiting_share * 100)}%`, q.n])) +
+      tbl(`Model calls — task × provider (last ${p.window_days} days)`, ['task', 'provider', 'p50', 'p90', 'n'],
+        (p.models || []).map(m => [m.task, m.provider, s(m.p50), s(m.p90), m.n])) ||
+      '<span class="muted">nothing measured yet — use the app for a minute and press again</span>';
+  } catch (e) { box.textContent = 'could not measure: ' + (e.message || e); }
 }
 async function backupNow() { $('#healthMsg').textContent = 'snapshotting…'; try { await post('/api/backup', {}); $('#healthMsg').textContent = 'verified ✓'; } catch (e) { $('#healthMsg').textContent = 'failed: ' + e.message; } loadHealth(); setTimeout(() => $('#healthMsg').textContent = '', 3000); }
 async function saveBudget() { await post('/api/usage/budget', { daily: +$('#bDaily').value, monthly: +$('#bMonthly').value }); $('#bMsg').textContent = 'Saved ✓'; setTimeout(() => $('#bMsg').textContent = '', 2000); loadBudget(); loadSpend(); }

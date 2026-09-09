@@ -844,6 +844,7 @@ def init_db() -> None:
     conn.commit()
     _migrate_source_analysis(conn)
     _backfill_job_lanes(conn)
+    _resolve_orphan_invocations(conn)
 
 
 def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
@@ -1339,6 +1340,11 @@ def invocation_finish(iid: str, state: str, provider_request_id: str | None = No
                      (state, now(), provider_request_id, (error or None) and error[:500], error_type, returned_model, iid))
 
 
+def get_invocation_state(iid: str) -> str | None:
+    r = connect().execute("SELECT state FROM invocations WHERE id=?", (iid,)).fetchone()
+    return r["state"] if r else None
+
+
 def invocation_attempts(logical_id: str) -> list[dict[str, Any]]:
     return [dict(r) for r in connect().execute("SELECT * FROM invocations WHERE logical_id=? ORDER BY attempt_no", (logical_id,)).fetchall()]
 
@@ -1358,6 +1364,62 @@ def mark_ambiguous_invocations(job_id: str, run_id: str | None, conn: sqlite3.Co
 
 def ambiguous_invocations(limit: int = 100) -> list[dict[str, Any]]:
     return [dict(r) for r in connect().execute("SELECT * FROM invocations WHERE state='outcome_unknown' ORDER BY requested_at DESC LIMIT ?", (limit,)).fetchall()]
+
+
+def _resolve_job_inflight(conn: sqlite3.Connection, job_id: str) -> int:
+    """The job is over; anything it left in flight is OUTCOME_UNKNOWN — never silently 'completed'. Whether the
+    provider actually executed the call is genuinely unknown once the run that owned it is gone, and the ledger
+    has a state for exactly that. `mark_ambiguous_invocations` covered only the lease-expiry path; cancelling or
+    failing a job took a different route and leaked (432 rows on Kyle's live database, every one of them a batch
+    findings call whose job had been cancelled)."""
+    cur = conn.execute("UPDATE invocations SET state='outcome_unknown', completed_at=COALESCE(completed_at, ?) "
+                       "WHERE job_id=? AND state='in_flight'", (now(), job_id))
+    return cur.rowcount or 0
+
+
+def _resolve_orphan_invocations(conn: sqlite3.Connection) -> int:
+    """Startup safety net for the above: any call still in flight whose job already reached a terminal state.
+    Runs unconditionally on every start (like `_backfill_job_lanes`, and for the same reason) so a path nobody
+    thought of still self-heals rather than accumulating silently."""
+    cur = conn.execute("UPDATE invocations SET state='outcome_unknown', completed_at=COALESCE(completed_at, ?) "
+                       "WHERE state='in_flight' AND job_id IN (SELECT id FROM jobs WHERE status IN ('done','failed','cancelled'))",
+                       (now(),))
+    conn.commit()
+    return cur.rowcount or 0
+
+
+def _pctile(vals: list[float], p: float) -> float:
+    return round(sorted(vals)[min(len(vals) - 1, int(len(vals) * p))], 2) if vals else 0.0
+
+
+def job_timing(since: float) -> list[dict[str, Any]]:
+    """R0: per job kind, how long the work took versus how long it WAITED to start — SPEED-MISSION.md §A's
+    central finding (findings jobs: 8.6 s of work behind 479 s of waiting) regenerating itself from live data."""
+    work: dict[str, list[float]] = {}
+    wait: dict[str, list[float]] = {}
+    for r in connect().execute("SELECT kind, finished_at-started_at d, started_at-created_at w FROM jobs "
+                               "WHERE status='done' AND started_at IS NOT NULL AND finished_at IS NOT NULL AND created_at>=?",
+                               (since,)).fetchall():
+        if r["d"] is not None and r["d"] >= 0:
+            work.setdefault(r["kind"], []).append(r["d"])
+        if r["w"] is not None and r["w"] >= 0:
+            wait.setdefault(r["kind"], []).append(r["w"])
+    out = [{"kind": k, "n": len(v), "work_p50": _pctile(v, 0.5), "work_p90": _pctile(v, 0.9),
+            "wait_p50": _pctile(wait.get(k, []), 0.5), "wait_p90": _pctile(wait.get(k, []), 0.9)} for k, v in work.items()]
+    for row in out:
+        row["waiting_share"] = round(row["wait_p50"] / (row["wait_p50"] + row["work_p50"]), 3) if (row["wait_p50"] + row["work_p50"]) else 0.0
+    return sorted(out, key=lambda r: -r["wait_p50"])
+
+
+def model_timing(since: float) -> list[dict[str, Any]]:
+    """R0: per task × provider model latency — the local-vs-API ratio the routing decisions rest on."""
+    g: dict[tuple[str, str], list[float]] = {}
+    for r in connect().execute("SELECT task, provider, completed_at-requested_at d FROM invocations "
+                               "WHERE state='completed' AND completed_at IS NOT NULL AND requested_at>=?", (since,)).fetchall():
+        if r["d"] is not None and r["d"] >= 0:
+            g.setdefault((r["task"] or "?", r["provider"]), []).append(r["d"])
+    return sorted([{"task": t, "provider": p, "n": len(v), "p50": _pctile(v, 0.5), "p90": _pctile(v, 0.9)}
+                   for (t, p), v in g.items()], key=lambda r: -r["p50"])
 
 
 def invocation_counts(since: float | None = None) -> dict[str, int]:
@@ -1742,6 +1804,10 @@ def request_cancel(job_id: str) -> str:
         if r["status"] == "external_pending":
             conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, cancel_requested_at=?, message='cancelled locally — the external result will be discarded', updated_at=? WHERE id=?", (t, t, t, job_id))
             job_event(job_id, "cancelled", conn=conn, was="external_pending")
+            # the batch may still run at the provider — this is the exact path that leaked all 432 rows
+            n = _resolve_job_inflight(conn, job_id)
+            if n:
+                job_event(job_id, "ambiguous_external_execution", conn=conn, resolved=n)
             return "cancelled"
         return r["status"]
 
@@ -1818,6 +1884,9 @@ def finish_job(job_id: str, run_id: str | None, status: str, *, message: str | N
         ok = cur.rowcount == 1
         if ok:
             job_event(job_id, status, run_id=run_id, conn=conn, message=(message or "")[:300])
+            n = _resolve_job_inflight(conn, job_id)      # the run is over: nothing may stay 'in_flight' behind it
+            if n:
+                job_event(job_id, "ambiguous_external_execution", run_id=run_id, conn=conn, resolved=n)
         return ok
 
 

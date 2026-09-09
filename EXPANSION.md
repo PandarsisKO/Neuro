@@ -1562,3 +1562,49 @@ correctly falls back to the API, same as before. It only fixes the specific fail
 calls disagreed about which model they were even asking. It also doesn't change anything about the account-wide
 Anthropic API usage-limit block (`0.45.13`'s "Check now") — that's a separate, real block on the API path; this
 fix is purely about not letting an irrelevant model's limit falsely report the local path as down too.
+
+## SPEED R0 — the timing ledger, and the leak its first reading found — 0.46.0
+
+First rung of `SPEED-MISSION.md`. Every later rung on that ladder claims a number; this is what those
+numbers come from. It is also the rung that proves the mission's own method: the measurement session that
+produced §A was a one-off run against Kyle's live database, and a baseline you cannot regenerate is a
+baseline that silently rots.
+
+**Root cause (of the instrument's absence).** There was no way to answer "what is slow right now" from
+inside the app. Job durations and model latencies were recoverable by hand-querying `jobs` and
+`invocations`; endpoint latency, cache behaviour and time-to-first-token were not recorded anywhere at all.
+
+**Built.** `perf.py` — bounded in-memory rolling samples (`SAMPLES=200` per key), `record`/`timed`/`mark`,
+percentiles, slowest-first `snapshot()`. Deliberately **not** a table: a row per HTTP request would add
+writes to the exact path the mission is trying to unblock (~2,000 queries per `/api/sources` on a 3 s poll,
+background workers already holding SQLite's single write lock), and an instrument that slows what it
+measures is worse than none. `PerfMiddleware` (pure-ASGI, same shape as `TokenPathMiddleware`) times every
+`/api` request under its ROUTE TEMPLATE — `scope["route"]` read *after* the call, since Starlette fills it
+during routing — so `/api/projects/<uuid>/jobs` is one key rather than one key per project. `db.job_timing`
+and `db.model_timing` derive the durable half (work vs wait per kind, latency per task × provider) from
+tables that are written anyway. `GET /api/perf` joins both halves, so §A regenerates itself; the Health
+console gets a slowest-endpoints row, a cache-hit-rate row, and a "📊 Measure speed" button rendering all
+three tables. `perf.mark` exists now so R3 can prove its cache hit rate without new plumbing.
+
+**The leak it found.** R0's first reading surfaced 432 `invocations` stuck in `in_flight` on the live
+database since 2026-09-08 — every one a `findings.extract` batch call whose job had been **cancelled** (426)
+or **failed** (6). `mark_ambiguous_invocations` only ever ran from `recover_expired_leases`, so lease expiry
+was covered and every other terminal path leaked. Fixed at the two real sites (`finish_job`, and the
+`external_pending` branch of `request_cancel` — the exact path that produced all 432) via
+`_resolve_job_inflight`, plus `_resolve_orphan_invocations` running unconditionally at every startup like
+`_backfill_job_lanes`, so any terminal path nobody thought of self-heals instead of accumulating. Resolution
+is to `outcome_unknown`, never `completed`: once the run that owned a call is gone, whether the provider
+executed it is genuinely unknown, and the ledger has a state for exactly that.
+
+**Gate.** New `tests/test_p1_perf.py` (7 tests, sorts after `test_o2`): samples stay capped at `SAMPLES` and
+keep the RECENT window; cache rates and slowest-first ordering; the middleware records one key for three
+different project ids and never lets an id become a key; `/api/perf` joins memory with the durable tables; a
+finished job leaves nothing in flight; cancelling external work resolves its calls; the startup sweep is
+idempotent and **never touches a still-running job's calls**. Uses conftest's session-scoped `client` (the
+MCP mount starts once per process). Suite 487; Tier 1 unchanged.
+
+**Honest limits.** In-memory means the ledger clears on restart — correct for "what is slow right now",
+useless for long-term trends, which is why the durable half reads from `jobs`/`invocations` instead. The
+middleware measures server time only; it cannot see network or render time, so R1/R2 will need their own
+client-side marks. `/api/perf` scans `jobs` and `invocations` over its window, so it is read on demand from
+the Health console and must never be polled.
