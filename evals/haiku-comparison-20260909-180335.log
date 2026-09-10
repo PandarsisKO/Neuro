@@ -1,0 +1,65 @@
+  · expected spend ≈ $2.53, maximum ≈ $3.80 (eval-only budget $20.00 in the temporary database; your real budget is untouched)
+  · preflight ok: claude-haiku-4-5 (10 tokens), claude-sonnet-4-6 (11 tokens)
+  · shared inputs ready: 9 sources, 60 approved findings (197.05s)
+  · [planner · baseline] claude-sonnet-4-6 thinking=disabled
+  · [planner.analysis · baseline] rubric 1.0 (11/11) · structure 1.0 · refs 80 · repaired 0 · truncated 0 · $0.1060 · 111.78s · returned claude-sonnet-4-6
+  · [planner.build · baseline] rubric 1.0 (24/24) · structure 1.0 · refs 44 · repaired 0 · truncated 0 · $0.1538 · 178.25s · returned claude-sonnet-4-6
+  · [planner · candidate] claude-haiku-4-5 thinking=disabled
+planner: output hit max_tokens (7000) — will repair
+planner: repairing malformed/truncated JSON (24577 chars)
+planner: output hit max_tokens (16000) — will repair
+planner: repairing malformed/truncated JSON (58137 chars)
+  · [planner.analysis · candidate] rubric 0.9091 (10/11) · structure 0.875 · refs 60 · repaired 1 · truncated 1 · $0.0440 · 84.78s · returned claude-haiku-4-5-20251001
+  · [planner.build · candidate] rubric 0.9583 (23/24) · structure 0.5 · refs 84 · repaired 1 · truncated 1 · $0.0878 · 173.47s · returned claude-haiku-4-5-20251001
+╭────────────────────────────────────────────────────────────────── Traceback (most recent call last) ──────────────────────────────────────────────────────────────────╮
+│ /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/neurosearch/cli.py:298 in eval_cmd                                                                                │
+│                                                                                                                                                                       │
+│   295 │   │   raise typer.Exit(code=0)                                                                                                                                │
+│   296 │   if migration_compare:                                                                                                                                       │
+│   297 │   │   from . import migration                                                                                                                                 │
+│ ❱ 298 │   │   cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m),                                                             │
+│   299 │   │   │   │   │   │   │   │   │   │   │     baseline_model=baseline_model or migration.BASELINE_MODEL,                                                        │
+│   300 │   │   │   │   │   │   │   │   │   │   │     candidate_model=candidate_model or migration.CANDIDATE_MODEL)                                                     │
+│   301 │   │   typer.echo("")                                                                                                                                          │
+│                                                                                                                                                                       │
+│ /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/neurosearch/migration.py:826 in run_migration_compare                                                             │
+│                                                                                                                                                                       │
+│    823 │   │   │   continue                                                                                                                                           │
+│    824 │   │   saved = _set_arm(["planner.analysis", "planner.build"], model, thinking, effort)                                                                       │
+│    825 │   │   try:                                                                                                                                                   │
+│ ❱  826 │   │   │   metas_p[label] = _arm_meta(label, model, thinking, effort, ["planner.analysis", "planner.build"])                                                  │
+│    827 │   │   │   progress(f"[planner · {label}] {model} thinking={thinking}{'/' + effort if effort else ''}")                                                       │
+│    828 │   │   │   arms_p[label] = run_planner_arm(pid, live, rubric)                                                                                                 │
+│    829 │   │   finally:                                                                                                                                               │
+│                                                                                                                                                                       │
+│ /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/neurosearch/migration.py:281 in _arm_meta                                                                         │
+│                                                                                                                                                                       │
+│    278                                                                                                                                                                │
+│    279 def _arm_meta(label: str, model: str, thinking: str, effort: str | None, tasks: list[str]) -> dict[str, Any]:                                                  │
+│    280 │   from . import contracts                                                                                                                                    │
+│ ❱  281 │   return {"arm": label, "model": model, "thinking": thinking, "effort": effort, "contracts": {t: contracts.contract(t).describe() for t in tasks}}           │
+│    282                                                                                                                                                                │
+│    283                                                                                                                                                                │
+│    284 # ------------------------------------------------------------------ planner arms (analysis + build from one build_plan)                                       │
+│                                                                                                                                                                       │
+│ /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/neurosearch/contracts.py:295 in contract                                                                          │
+│                                                                                                                                                                       │
+│   292 │   if _env(task, "SCHEMA"):                                    # "none" turns structured output off (rollback/experiment); else a registry key                 │
+│   293 │   │   over["schema"] = None if _env(task, "SCHEMA").lower() == "none" else _env(task, "SCHEMA")                                                               │
+│   294 │   c = replace(c, **over) if over else c                                                                                                                       │
+│ ❱ 295 │   validate(c)                                                                                                                                                 │
+│   296 │   return c                                                                                                                                                    │
+│   297                                                                                                                                                                 │
+│   298                                                                                                                                                                 │
+│                                                                                                                                                                       │
+│ /Users/kyleowen/Desktop/2026 - KO Neuro Search REPO/neurosearch/contracts.py:334 in validate                                                                          │
+│                                                                                                                                                                       │
+│   331 │   │   raise ContractError(f"{c.task}: effort only applies with thinking='adaptive'")                                                                          │
+│   332 │   fam = model_family(c.model)                                                                                                                                 │
+│   333 │   if c.provider == "anthropic" and fam == "claude-4" and c.thinking == "adaptive":                                                                            │
+│ ❱ 334 │   │   raise ContractError(f"{c.task}: {c.model} does not support adaptive thinking — use thinking='disabled' or a Claude 5 model")                            │
+│   335 │   if c.provider == "anthropic" and fam == "claude-5" and c.max_output_tokens and c.max_output_tokens < 1024 and c.thinking == "adaptive":                     │
+│   336 │   │   raise ContractError(f"{c.task}: with adaptive thinking max_output_tokens covers thinking + text; {c.max_output_tokens} is too small")                   │
+│   337 │   if c.max_attempts < 1:                                                                                                                                      │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ContractError: planner.analysis: claude-haiku-4-5 does not support adaptive thinking — use thinking='disabled' or a Claude 5 model
