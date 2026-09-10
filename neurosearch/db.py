@@ -3003,14 +3003,45 @@ def add_project_note(project_id: str, content: str, citations: list | None = Non
         return row_to_dict(conn.execute("SELECT * FROM project_notes WHERE id=?", (cur.lastrowid,)).fetchone())  # type: ignore[return-value]
 
 
-def list_project_notes(project_id: str, status: str | None = "approved") -> list[dict[str, Any]]:
-    """Approved notes by default (what exports and the planner use). status=None returns all."""
+def list_project_notes(project_id: str, status: str | None = "approved", limit: int | None = None) -> list[dict[str, Any]]:
+    """Approved notes by default (what exports and the planner use). status=None returns all.
+
+    `limit` exists because this returns FULL note text: on Kyle's business project that is 11,767 notes and about
+    8 MB, and `/api/projects/{id}` was shipping all of it to the browser on every visit to the Findings, Chats,
+    Settings and Plan views (0.60.1). A caller that wants everything still gets everything by leaving it None."""
     if status:
-        rows = connect().execute("SELECT * FROM project_notes WHERE project_id=? AND status=? ORDER BY importance DESC, created_at DESC",
-                                 (project_id, status)).fetchall()
+        q = "SELECT * FROM project_notes WHERE project_id=? AND status=? ORDER BY importance DESC, created_at DESC"
+        args: tuple[Any, ...] = (project_id, status)
     else:
-        rows = connect().execute("SELECT * FROM project_notes WHERE project_id=? ORDER BY created_at DESC", (project_id,)).fetchall()
-    return [row_to_dict(r) for r in rows]  # type: ignore[misc]
+        q = "SELECT * FROM project_notes WHERE project_id=? ORDER BY created_at DESC"
+        args = (project_id,)
+    if limit is not None:
+        q += " LIMIT ?"
+        args = (*args, int(limit))
+    return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
+
+
+def analysis_jobs_queued(project_id: str) -> int:
+    """How many findings jobs for this project are QUEUED rather than running — the ones a first wave can move to
+    the front. Previously the browser derived this by downloading every source in the project (0.60.1)."""
+    n = 0
+    for r in connect().execute("SELECT payload FROM jobs WHERE kind IN ('suggest_findings','suggest_findings_batch') "
+                               "AND status='queued'").fetchall():
+        try:
+            if json.loads(r["payload"]).get("project_id") == project_id:
+                n += 1
+        except ValueError:
+            continue
+    return n
+
+
+def note_counts(project_id: str) -> dict[str, int]:
+    """Counts by status, so a screen can show "1,383 suggested" without downloading 1,383 findings."""
+    rows = connect().execute("SELECT COALESCE(status,'approved') s, COUNT(*) n FROM project_notes WHERE project_id=? "
+                             "GROUP BY s", (project_id,)).fetchall()
+    out = {r["s"]: int(r["n"]) for r in rows}
+    out["total"] = sum(out.values())
+    return out
 
 
 def set_note_status(note_id: int, status: str) -> dict[str, Any] | None:

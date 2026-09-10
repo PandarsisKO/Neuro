@@ -1454,13 +1454,29 @@ def api_bootstrap_decide(project_id: str, body: BootstrapDecideIn) -> dict[str, 
         raise HTTPException(400, str(e)) from e
 
 
+NOTES_INLINE_MAX = 200          # 0.60.1: how many full findings this endpoint will ship without being asked
+
+
 @app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
-def api_project(project_id: str) -> dict[str, Any]:
+def api_project(project_id: str, notes: str | None = None) -> dict[str, Any]:
+    """0.60.1: `notes` and `suggested` are now BOUNDED (`NOTES_INLINE_MAX`) unless `?notes=all`.
+
+    They were not, and this endpoint is fetched by the Findings, Chats, Settings and Plan views — so opening
+    Findings on Kyle's business project downloaded 10,384 approved plus 1,383 suggested findings in full, about
+    8 MB, before it drew anything, which is why the tab looked like it never loaded. `counts` (cheap, exact) is
+    what a screen needs for a number, and the Findings workbench already pages the list server-side. Truncation is
+    never silent: `notes_truncated` says it happened and `counts` says by how much."""
     p = db.get_project(project_id)
     if not p:
         raise HTTPException(404)
-    p["notes"] = db.list_project_notes(project_id)
-    p["suggested"] = db.list_project_notes(project_id, status="suggested")
+    cap = None if notes == "all" else NOTES_INLINE_MAX
+    p["notes"] = db.list_project_notes(project_id, limit=cap)
+    p["suggested"] = db.list_project_notes(project_id, status="suggested", limit=cap)
+    p["counts"] = db.note_counts(project_id)
+    p["notes_inline_max"] = cap
+    p["notes_truncated"] = bool(cap and (p["counts"].get("approved", 0) > cap or p["counts"].get("suggested", 0) > cap))
+    an = db.sources_being_analysed(project_id)
+    p["analysing"] = {"sources": len(an), "queued": db.analysis_jobs_queued(project_id)}
     p["conversations"] = db.list_conversations(project_id)
     p["facts"] = db.list_facts(project_id)
     p["has_plan"] = db.latest_plan(project_id) is not None

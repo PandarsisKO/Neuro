@@ -399,6 +399,7 @@
         <select id="fbSort" onchange="loadWorkbench()" style="width:auto"><option value="importance">sort: importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
         <span class="muted" id="fbCount"></span>
       </div>
+      <div id="fbSrcChip"></div>
       <div id="fbSweep"></div>
       <div id="fbQual"></div>
       <div class="row" id="fbGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
@@ -586,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.60.0';
+const UI_VERSION = '0.60.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1178,7 +1179,7 @@ function srcRowHtml(s) {
       ${completenessLine(s)}
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
       ${s.summary ? `<div class="muted" style="margin-top:4px">${s.legacy_analysis ? `<span class="tag" style="color:var(--warn)" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="showView('findings');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted" style="margin-top:4px">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="openSourceSuggestions('${s.id}','suggested');return false" style="color:var(--warn)">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag" style="color:var(--warn)" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
         ${needsBrowser ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
@@ -1645,7 +1646,7 @@ async function acquireWork(text) {
 async function loadLibrary() {
   const p = new URLSearchParams({ not_in_project: state.project.id, status: 'ready', limit: 500 }); if ($('#libQ').value) p.set('q', $('#libQ').value);
   const rows = await api('/api/sources?' + p);
-  $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}')">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
+  $('#library').innerHTML = rows.map(s => `<div class="row" style="padding:5px 0;border-bottom:1px solid var(--line)"><span style="flex:1">${ICON[s.platform] || '•'} ${esc(s.title)} <span class="muted">${esc(s.channel || '')} ${s.duration ? fmt(s.duration) : ''}</span></span><button class="small" onclick="addFromLibrary('${s.id}', this)">Add</button></div>`).join('') || '<div class="muted">Nothing else in the library.</div>';
 }
 async function loadCandidates() {
   const p = new URLSearchParams({ limit: 60 }); if ($('#candQ').value) p.set('q', $('#candQ').value); if ($('#candState').value) p.set('state', $('#candState').value);
@@ -1839,10 +1840,14 @@ async function loadDiscoveries(keepMsg = false) {
         <div class="dmeta">${KIND[d.kind] || esc(d.kind || '')}${d.fit ? ` · fit <span style="color:var(--warn)">${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? ` · ${esc(d.depth)}` : ''}${d.angle ? ` · <span title="angle / bias">${esc(d.angle)}</span>` : ''}${d.status === 'added' ? ' · <span style="color:var(--ok)">added ✓</span>' : ''}</div>
       </div>
       <div class="dacts">
-        ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false)">＋ Start video</button>` : ''}
-        ${isChan ? `<button class="small" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true)">＋ Channel</button>` : ''}
-        ${searches.length ? `<button class="small" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true)">🔍 Search YouTube</button>` : ''}
-        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small ${d.kind === 'website' || d.kind === 'newsletter' ? 'primary' : ''}" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false)">＋ Add page</button>` : ''}
+        <!-- 0.60.1 (Kyle: "some buttons are blue and some are white - why is that?"): the colour used to depend on
+             d.kind — website and newsletter were primary, a paper or a person was not — which encoded nothing the
+             reader could see and made half the list look disabled. Every row's affirmative action now looks the
+             same, and only the dismiss stays ghost. -->
+        ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false, this)">＋ Start video</button>` : ''}
+        ${isChan ? `<button class="small primary" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true, this)">＋ Channel</button>` : ''}
+        ${searches.length ? `<button class="small primary" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true, this)">🔍 Search YouTube</button>` : ''}
+        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small primary" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false, this)">＋ Add page</button>` : ''}
         ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
       </div>
     </div>
@@ -2239,14 +2244,34 @@ async function runDiscover() {
   btn.disabled = false;
 }
 async function discStatus(id, status) { await post(`/api/discoveries/${id}/status`, { status }); loadDiscoveries(); }
-async function discAdd(id, url, whole) {
+async function discAdd(id, url, whole, btn) {
+  // 0.60.1 (Kyle): "clicking on a button does not give immediate user feedback that something happened". The work
+  // is queued, so there is nothing to show when it completes — what was missing was an acknowledgement that the
+  // click landed. The button says so itself, and is disabled so the same source cannot be queued twice by an
+  // impatient second click.
   if (whole && !confirm('List these videos for review? Nothing is downloaded until you approve the list in Sources.')) return;
-  await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
-  await post(`/api/discoveries/${id}/status`, { status: 'added' });
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ adding…'; }
+  try {
+    await post('/api/ingest', { url, tags: [], project_id: state.project.id, force: false });
+    await post(`/api/discoveries/${id}/status`, { status: 'added' });
+    if (btn) btn.textContent = whole ? 'listed ✓' : 'added ✓';
+    toast(whole ? '🔍 listing them for review — approve the list in Sources' : '⏵ queued — it appears in Sources as it is read');
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+    toast(e.message || e, 'err');
+    return;
+  }
   loadDiscoveries(); loadJobs(); loadSources();
 }
 
-async function addFromLibrary(id) { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadLibrary(); loadSources(); }
+async function addFromLibrary(id, btn) {
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ adding…'; }
+  try { await post(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); if (btn) btn.textContent = 'added ✓'; toast('✓ added to this project — nothing was re-downloaded'); }
+  catch (e) { if (btn) { btn.disabled = false; btn.textContent = label; } return toast(e.message || e, 'err'); }
+  loadLibrary(); loadSources();
+}
 // ================= BOOTSTRAP R3: Starting Research =================
 // What Neuro Search already owns that this project could use. Every row's reason is a PASSAGE the user can click
 // and check — never "highly relevant to your goal", which is what you get when you ask a model to explain a
@@ -2535,28 +2560,53 @@ async function rebuildStale(what, transport = 'interactive') {
   loadStaleness(); loadJobs();
 }
 async function loadNotes() {
+  // 0.60.1 (Kyle: "click it and nothing loads"): this used to fetch /api/projects/{id} — every approved and
+  // suggested finding in full, about 8 MB on his business project — and /api/sources?limit=2000 on top, before
+  // drawing anything. The counts now come from the endpoint's own `counts`, and the Suggested list is the same
+  // server-paged query the workbench below uses. Nothing about what the user can DO here changed.
   loadStaleness();
   const p = await api('/api/projects/' + state.project.id);
-  const notes = p.notes || [], sug = p.suggested || []; $('#nFindings').textContent = notes.length + (sug.length ? ` +${sug.length}` : '');
-  const bySrc = {}; sug.forEach(n => { const k = (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
-  const srcs = await api('/api/sources?project_id=' + state.project.id + '&limit=2000');
-  const analysing = srcs.filter(x => x.analysing).length;
-  // how many are QUEUED rather than running — those are the ones a first wave can move to the front
-  FWAVE.queued = srcs.filter(x => x.analysing && (!x.analysis_job || x.analysis_job.status === 'queued')).length;
+  const c = p.counts || {};
+  const nApproved = c.approved || 0, nSug = c.suggested || 0;
+  $('#nFindings').textContent = nApproved + (nSug ? ` +${nSug}` : '');
+  const analysing = (p.analysing || {}).sources || 0;
+  FWAVE.queued = (p.analysing || {}).queued || 0;
   if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
+  let sug = [], sugTotal = nSug;
+  if (nSug) {
+    try {
+      const r = await api(`/api/projects/${state.project.id}/findings?` + new URLSearchParams({ status: 'suggested', limit: 100, offset: 0, sort: 'importance' }));
+      sug = r.findings || []; sugTotal = r.total != null ? r.total : nSug;
+    } catch (e) { sug = []; }
+  }
+  const bySrc = {}; sug.forEach(n => { const k = n.source_title || (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
   const legacy = sug.filter(n => !n.title).length;
+  const shownIds = sug.map(n => n.id);
   $('#suggestedWrap').innerHTML = (legacy ? `<div class="banner">${legacy} suggestion${legacy === 1 ? ' was' : 's were'} generated by an older version and read as run-on sentences. <a href="#" onclick="suggestNow(true);return false"><b>Re-analyse all</b></a> to regenerate them as clean headlines (takes about a minute).</div>` : '') + (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — each one appears here the moment it finishes.${FWAVE.queued ? ` <button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button>` : ''}</div>` : '') +
-    `<div class="row" style="margin-bottom:8px"><h3 style="margin:0;flex:1">Suggested ${sug.length ? `(${sug.length})` : ''}</h3>
-      ${sug.length ? `<button class="small primary" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'approved')">Approve all</button><button class="small" onclick="bulkNotes(${JSON.stringify(sug.map(n => n.id))},'dismissed')">Dismiss all</button>` : ''}
+    `<div class="row" style="margin-bottom:8px"><h3 style="margin:0;flex:1">Suggested ${sugTotal ? `(${sugTotal})` : ''}</h3>
+      ${sug.length ? `<button class="small primary" title="${sugTotal > sug.length ? `Approve the ${sug.length} shown here (of ${sugTotal})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(shownIds)},'approved')">Approve ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button><button class="small" onclick="bulkNotes(${JSON.stringify(shownIds)},'dismissed')">Dismiss ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button>` : ''}
       <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new…</button><button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button></div>
+    ${sugTotal > sug.length ? `<div class="muted" style="margin-bottom:6px">Showing the ${sug.length} most important of ${sugTotal}. The workbench below pages through the rest — set Show to <b>suggested</b>.</div>` : ''}
     <div class="muted" id="sugMsg"></div>` +
     (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
       list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
       || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
   loadWorkbench();
 }
+// The Sources tab's "N suggested findings waiting for review" link lands HERE, on that source's suggestions —
+// before 0.60.1 it only switched tabs, so it dropped the user into whatever filter the workbench happened to hold
+// (usually `approved`) and looked like a dead end.
+async function openSourceSuggestions(sid, status) {
+  FB.source = sid; FB.offset = 0;
+  showView('findings');
+  const sel = $('#fbStatus'); if (sel) sel.value = status || 'suggested';
+  for (const id of ['fbQ', 'fbImp', 'fbUsed', 'fbStale', 'fbArea']) { const el = $('#' + id); if (el) el.value = ''; }
+  loadWorkbench();
+  setTimeout(() => { const el = $('#notes'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120);
+}
+function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
-const FB = { offset: 0, limit: 100 };
+const FB = { offset: 0, limit: 100, source: null };
 const FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
 function useBadges(n) {
   const u = n.used || {}; const b = [];
@@ -2570,12 +2620,14 @@ function useBadges(n) {
 async function loadWorkbench(reset = true) {
   if (reset) FB.offset = 0;
   const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
+  if (FB.source) p.set('source_id', FB.source);
   for (const [k, id] of [['q', 'fbQ'], ['min_importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
   let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { return; }
   // area facet options (keep the current choice)
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
+  $('#fbSrcChip').innerHTML = FB.source ? `<div class="row muted" style="font-size:12.5px;padding:2px 0"><span style="flex:1">Showing one source only</span><button class="small ghost" onclick="clearFindingSource()">✕ show every source</button></div>` : '';
   $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}` + (f.used ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '');
   // Fire-and-forget, and explicitly swallowed: tonight's banners were shipped without a human able to look at the
   // browser (0.58.10), so a failure in this decoration must not be able to take the findings list down with it.

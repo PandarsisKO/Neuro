@@ -141,6 +141,52 @@ credit for a week while the app told him he had spent a third of what he had.
   runaway detector rather than a budget. `POST /api/usage/spend-settings`.
 Gate `tests/test_s7_local_billing.py`.
 
+## Sharing without the research (0.60.0)
+
+Kyle: *"our chats are really good for depth and citing sources ... but when I want to share with my wife or a
+friend, they will not care about the sources, the names of the people and what they said."* That is a different
+READER, not a shorter answer, so `qa.share_variant` gained `mode=`: `cited` (C0, unchanged, the default — markers
+kept, sources re-attached by the client) and **`plain`** — no markers, no creator or source names, none of the
+research vocabulary (`PLAIN_TELLS`: "according to", "the transcript", "one source"), copied as text alone because
+attaching the source list is the thing it exists to remove. `qa.share_conversation` does the same for a WHOLE chat
+(`conversation_material`: newest turns within `SHARE_CONVERSATION_CHARS`/`_MAX_MESSAGES`, truncation reported, one
+call over what was already written — never a research pass). `POST /api/conversations/{id}/share`; Share ▾ gains
+three plain entries and the chat header a "Share this chat ▾".
+
+**The uncertainty may not be laundered.** Stripping the machinery makes a text message sound settled for free, so
+the original is read with the provenance vocabulary (`HEDGE_RESEARCH`) and the retelling with ordinary words
+(`HEDGE_PLAIN`) — if the first hedged and the second does not, the result says so and points at the cited version.
+Conditions ("only when it is on full standby") are deliberately NOT hedges: a warning that fires either way gets
+ignored. Names, markers and tells are **checked, not merely requested**, with one corrective retry naming what
+leaked; markers are then cut outright, a name can only be reported, because a name cannot be removed from a
+sentence. And the chat prompt now forbids opening praise outright ("great question"), so the preamble is not
+written in the first place — Tier 1 chat totals re-frozen 196,951 → **200,052** (calls unchanged at 34), migration
+chat arm 210,014 → 213,112, the seventh such re-freeze. Gate `tests/test_s10_plain_share.py`.
+
+## Screens that were never re-measured at 12,000 findings (0.60.1)
+
+Kyle: *"when I see 'XYZ suggested findings waiting for review' and click on it, it takes me to findings tab, but
+nothing loads."* Two faults, one symptom, and the same shape as the Sources view before R2 — a payload nobody
+re-measured after the corpus grew.
+
+- **`/api/projects/{id}` returned every finding in full.** Measured on his database: 10,384 approved + 1,383
+  suggested, **~8 MB**, fetched by the Findings, Chats, Settings and Plan views before any of them drew anything.
+  Now bounded by `api.NOTES_INLINE_MAX` (200) with `?notes=all` for a caller that needs everything, plus exact
+  `counts` (`db.note_counts`, one GROUP BY) and `notes_truncated` — truncation is never silent. The Findings view
+  also stopped downloading every source (`limit=2000`) just to count what was being read: `analysing`
+  (`db.sources_being_analysed` + `db.analysis_jobs_queued`) comes from the server.
+- **The yellow link only switched tabs**, landing in whatever filter the workbench held (normally `approved`).
+  `openSourceSuggestions(sid, status)` sets `FB.source` + status, so it lands on that source's suggestions, with a
+  chip to clear it. The Suggested block is now the same server-paged query the workbench uses and says when it is
+  showing a page ("the 100 most important of 1,383") rather than implying it is showing everything.
+
+Also from the same session: **Discover's add buttons all look the same** (the colour used to depend on `d.kind`,
+which encoded nothing a reader could see) and **every add acknowledges the click** — disabled, "⏳ adding…", then
+"added ✓" plus a toast, restored on failure, since the work is queued and there is nothing else to show. And the
+**Sources progress box collapses** to what is actually moving (running, failed, bumped, banners) with one line
+counting the rest — it changes what the box draws, never what the workers do. Gate
+`tests/test_s11_findings_tab.py`.
+
 ## Cost per unit of value (0.59.3)
 
 Kyle, after the overnight run: *"the volume of data is always valuable, just HOW is something we want to keep
