@@ -833,6 +833,10 @@ MIGRATIONS = [
     # written before this column therefore attribute Sonnet-priced dollars to a Haiku row, which is exactly the
     # shape of a wrong per-model verdict — so `cost_value.by_model` refuses to divide where the basis is unknown.
     ("usage", "price_model", "ALTER TABLE usage ADD COLUMN price_model TEXT"),
+    # 0.62.3: when the provider's result arrived, which is the honest date for the spend it carries. `updated_at`
+    # cannot serve — it moves again when the item becomes `materialized`, so by the time the ledger row is written
+    # the collection moment has been overwritten.
+    ("batch_items", "result_at", "ALTER TABLE batch_items ADD COLUMN result_at REAL"),
     # 0.60.2: whether a suggested URL actually resolves. Discover proposes sources from a model's memory, and a
     # remembered address goes stale — Kyle: "discover is routinely suggesting content that has 404 issues".
     ("discoveries", "link_check", "ALTER TABLE discoveries ADD COLUMN link_check TEXT"),
@@ -3814,8 +3818,10 @@ def batch_items_submitted(job_id: str, cohort_no: int, batch_id: str, invocation
 def batch_item_result(batch_id: str, custom_id: str, status: str, raw: Any = None, error: str | None = None) -> None:
     """Persist one provider result the moment it is read: Neuro Search's database is authoritative from here on."""
     with tx() as conn:
-        conn.execute("UPDATE batch_items SET status=?, raw=?, error=?, updated_at=? WHERE batch_id=? AND custom_id=?",
-                     (status, json.dumps(raw, default=str) if raw is not None else None, error, now(), batch_id, custom_id))
+        conn.execute("UPDATE batch_items SET status=?, raw=?, error=?, updated_at=?, result_at=COALESCE(result_at, ?) "
+                     "WHERE batch_id=? AND custom_id=?",
+                     (status, json.dumps(raw, default=str) if raw is not None else None, error, now(), now(),
+                      batch_id, custom_id))
 
 
 def batch_items_mark_unsettled(batch_id: str, reason: str) -> int:

@@ -491,7 +491,11 @@ def materialize_ready(job_id: str, project_id: str) -> dict[str, Any]:
         for i in sorted(wins):                            # window indexes are the source's own (a pre-filter may have dropped some)
             it = wins[i]
             msg = _Msg(it["raw"])
-            usage.record_anthropic(msg, "findings", project_id=project_id, source_id=sid, transport="batch")
+            # 0.62.3: dated when the provider's result arrived, not when we got round to materialising it. Kyle's
+            # recovery of 410 stranded batches booked $23.18 of Sep-9 spend into a 23-minute window on Sep 10 and
+            # tripped the spend-rate ceiling on money that was already gone.
+            usage.record_anthropic(msg, "findings", project_id=project_id, source_id=sid, transport="batch",
+                                   ts=it.get("result_at") or None)
             parsed = providers.structured("findings.extract", msg)                     # same strict path: typed on truncation/refusal/mismatch
             results.append((window_text(it["params"]), parsed))
             model = getattr(msg, "model", None) or model

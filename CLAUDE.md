@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.3)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -217,6 +217,37 @@ the file back. Fixed live: 112 MB → 1.2 MB.
   most recently updated projects, so the first visit after a restart is warm too.
 
 Gate `tests/test_s15_lockup.py`.
+
+## A usage row is dated when the money was spent (0.62.3)
+
+Reconciling Kyle's month against his Anthropic Console, 2026-09-10, produced two anomalies that looked like
+different bugs and were one. His Console billed **$149.25 on Sep 9** and the app recorded **$19.75**. The next day
+the app recorded **$30.23** against a Console figure of **$17.93** — the app claiming MORE than he was charged,
+which no amount of hidden spend can explain.
+
+**1,284 batch rows worth $23.18 were written between 15:49 and 16:12 on Sep 10, 647 of them inside a single
+minute**, for results Anthropic had computed and charged for the day before. `usage.record` stamped `time.time()`,
+so a Message Batch is dated when the app *collects* it. The day the money was spent read low; the day it was
+collected read high; and `usage:rate_blocked_until` fired that afternoon (`rate_at_block` $17.43, peak rolling hour
+$23.30 against a $6 ceiling) **holding paid background work because of money that was already gone.**
+
+- `usage.record` / `record_anthropic` take an explicit **`ts`** — when the spend was incurred. Everything defaults
+  to now, which is right for an interactive call and wrong for a batch.
+- **`batch_items.result_at`** (additive) records when a provider result actually arrived, set the moment the raw
+  result is persisted. `updated_at` cannot serve: it moves again when the item becomes `materialized`, so by the
+  time the ledger row is written the collection moment has been overwritten.
+- **A backdated row never touches the rate gate** (`usage.late_booking`). A rate ceiling is a statement about
+  spending *now*; late news about the past cannot be un-spent by holding work today. It still counts towards the
+  daily, weekly and monthly TOTALS, which is where late news belongs.
+- `reconcile` admits two things it used to hide: **`batch_dating`** says how much batch spend is still dated by
+  collection (rows written before this release cannot be recovered by arithmetic, so the report says so rather than
+  presenting them as clean), and **`mixed_basis`** names a window that rests on two accounting bases — on
+  2026-09-10 the same day held $3.48 of local calls priced as charged beside $96.16 booked as avoided, because
+  `local_is_free()` flipped part-way through it, and the report showed one number.
+
+This is what makes a spend limit mean something: before it, the daily budget, the weekly budget and the hourly
+ceiling all read a column that was wrong in both directions — firing on phantoms, and by the same token able to
+miss a real runaway whose spend arrived late. Gate `tests/test_s18_ledger_dating.py`.
 
 ## A discovery pass paid seven minutes to read a few counts (0.62.1–0.62.2)
 

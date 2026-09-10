@@ -79,10 +79,22 @@ def _price(model: str) -> tuple[float, float]:
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
            searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
            cache_read: int = 0, cache_write: int = 0, transport: str = "interactive", saved: float = 0.0,
-           price_model: str | None = None) -> float:
+           price_model: str | None = None, ts: float | None = None) -> float:
     """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately.
     transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing); transport="local" is
-    the Claude Code provider (cost 0, `saved` = the avoided API spend, passed by the caller)."""
+    the Claude Code provider (cost 0, `saved` = the avoided API spend, passed by the caller).
+
+    **`ts` is when the spend was INCURRED, not when we learned about it (0.62.3).** Everything defaults to now,
+    which is right for an interactive call and wrong for a batch: a Message Batch is billed when Anthropic runs it
+    and only reaches this ledger when `batches.materialize_ready` collects the results, which can be a day later.
+
+    Measured on Kyle's own data, 2026-09-10. His Console billed **$149.25 on Sep 9** and the app recorded $19.75
+    for that day; the next day the app recorded $30.23 against a Console figure of $17.93. Both anomalies are one
+    defect: **1,284 batch rows worth $23.18 were written between 15:49 and 16:12 — 647 of them inside a single
+    minute — for results Anthropic had computed and charged for the previous day.** So the ledger under-reported the
+    day the money was spent and over-reported the day it was collected, and `usage:rate_blocked_until` duly fired
+    (`rate_at_block` $17.43, peak rolling hour $23.30 against a $6 ceiling) holding paid background work because of
+    money spent a day earlier. A ceiling on spend RATE has to be computed from when spending happened."""
     if cost is None:
         if kind == "whisper":
             cost = seconds / 60 * WHISPER_PER_MINUTE
@@ -97,12 +109,21 @@ def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int =
     try:
         with db.tx() as conn:
             conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model or model))
+                         (float(ts) if ts else time.time(), kind, model, input_tokens, output_tokens, seconds, cost,
+                          project_id, source_id, cache_read, cache_write, saved, transport, price_model or model))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
-    if cost:
+    # A backdated row is spend we are only now LEARNING about, so it can never trip a rate ceiling: the rate it
+    # implies already happened, the money is already gone, and holding work now cannot unspend it. The row still
+    # counts towards the daily, weekly and monthly TOTALS, which is where late news belongs.
+    if cost and not late_booking(ts):
         _update_rate_gate()
     return cost
+
+
+def late_booking(ts: float | None, *, window: float = 3600.0) -> bool:
+    """True when `ts` is older than the rate window — i.e. this row is news about the past, not spending now."""
+    return ts is not None and (time.time() - float(ts)) > window
 
 
 # ------------------------------------------------------------------ the spend-RATE ceiling (0.51.0)
@@ -162,7 +183,8 @@ def cost_of(resp: Any) -> float:
     return round((i + cw * CACHE_WRITE_MULT + cr * CACHE_READ_MULT) / 1e6 * pin + o / 1e6 * pout, 6)
 
 
-def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source_id: str | None = None, transport: str = "interactive") -> float:
+def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source_id: str | None = None,
+                     transport: str = "interactive", ts: float | None = None) -> float:
     u = getattr(resp, "usage", None)
     searches = 0
     try:
@@ -199,11 +221,11 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o,
                       project_id=project_id, source_id=source_id, cache_read=cr, cache_write=cw,
                       cost=0.0 if free else priced, saved=priced if free else 0.0, transport="local",
-                      price_model=api_model)
+                      price_model=api_model, ts=ts)
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
-                  cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0), transport=transport)
+                  cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0), transport=transport, ts=ts)
 
 
 def _sum_since(ts: float) -> float:
@@ -223,6 +245,24 @@ def totals() -> dict[str, Any]:
             "daily_budget": budget("daily"), "monthly_budget": budget("monthly"), "weekly_budget": budget("weekly"),
             "week": round(_sum_since((now - timedelta(days=7)).timestamp()), 4),
             "paused": db.kv_get("queue_paused") == "1"}
+
+
+def _batch_dating() -> dict[str, Any]:
+    """How much batch spend is still dated by collection rather than by when it was incurred.
+
+    Rows written before 0.62.3 are stamped with the moment `materialize_ready` ran, so a day's figure can be wrong
+    in both directions and no amount of arithmetic recovers it. This says how much of the ledger is affected instead
+    of quietly presenting it as clean: `undated` is batch spend with no `result_at` behind it."""
+    try:
+        r = db.connect().execute("""SELECT COUNT(*) n, COALESCE(SUM(cost),0) c FROM usage WHERE transport='batch'""").fetchone()
+        items = db.connect().execute("""SELECT SUM(CASE WHEN result_at IS NULL THEN 1 ELSE 0 END) undated,
+                                               COUNT(*) n FROM batch_items WHERE raw IS NOT NULL""").fetchone()
+        return {"batch_rows": int(r["n"] or 0), "batch_dollars": round(float(r["c"] or 0), 2),
+                "results_without_a_date": int(items["undated"] or 0), "results": int(items["n"] or 0),
+                "note": "batch spend recorded before 0.62.3 is dated when it was collected, not when the provider "
+                        "produced it — those days read low and the collection day reads high"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:120]}
 
 
 def reconcile(days: int = 14) -> dict[str, Any]:
@@ -247,9 +287,27 @@ def reconcile(days: int = 14) -> dict[str, Any]:
                                    SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local
                             FROM usage WHERE ts>=?""", (ts,)).fetchone()
         rec, loc = float(r["c"] or 0), float(r["local_saved"] or 0)
-        return {"recorded": round(rec, 2), "local_if_billed": round(loc, 2),
-                "likely_total": round(rec + (loc if billed else 0.0), 2),
-                "calls": int(r["n"] or 0), "local_calls": int(r["n_local"] or 0)}
+        # 0.62.3: two things a single figure was hiding, both found while reconciling Kyle's month against his
+        # Console. (1) `local_is_free()` can flip inside a window, so the same day can hold local rows priced as
+        # charged AND local rows booked free — on 2026-09-10 that was $3.48 charged beside $96.16 booked as avoided,
+        # presented as one number. (2) Batch spend is dated when it was incurred now, so a window can contain rows
+        # BOOKED later than the day they belong to; naming that is the difference between a reconciliation and a
+        # coincidence.
+        mixed = conn.execute("""SELECT SUM(CASE WHEN transport='local' AND cost>0 THEN 1 ELSE 0 END) charged,
+                                       SUM(CASE WHEN transport='local' AND cost=0 AND saved>0 THEN 1 ELSE 0 END) free,
+                                       COALESCE(SUM(CASE WHEN transport='local' AND cost>0 THEN cost ELSE 0 END),0) charged_$
+                                FROM usage WHERE ts>=?""", (ts,)).fetchone()
+        n_charged, n_free = int(mixed["charged"] or 0), int(mixed["free"] or 0)
+        out = {"recorded": round(rec, 2), "local_if_billed": round(loc, 2),
+               "likely_total": round(rec + (loc if billed else 0.0), 2),
+               "calls": int(r["n"] or 0), "local_calls": int(r["n_local"] or 0)}
+        if n_charged and n_free:
+            out["mixed_basis"] = {
+                "local_charged": n_charged, "local_free": n_free,
+                "charged_dollars": round(float(mixed["charged_$"] or 0), 2),
+                "note": f"{n_charged} local calls in this window are priced as charged and {n_free} as free — the "
+                        "billing mode changed part-way through it, so this total rests on two different bases"}
+        return out
 
     per_day = []
     for row in conn.execute("""SELECT date(ts,'unixepoch','localtime') d, COALESCE(SUM(cost),0) c,
@@ -261,8 +319,10 @@ def reconcile(days: int = 14) -> dict[str, Any]:
                         "likely_total": round(rec + (loc if billed else 0.0), 2)})
     return {"billing_mode": mode, "local_is_free": not billed, "note": _cc.billing_note(),
             "month": window(month0), "week": window(week0), "today": window(datetime(now.year, now.month, now.day).timestamp()),
-            "per_day": per_day,
-            "how_to_read": ("`recorded` is what the app booked. `local_if_billed` is what the Claude Code path would "
+            "per_day": per_day, "batch_dating": _batch_dating(),
+            "how_to_read": ("`recorded` is what the app booked, dated when the spend was INCURRED — batch rows carry "
+                            "the day the provider produced them, not the day we collected them (0.62.3). "
+                            "`local_if_billed` is what the Claude Code path would "
                             "cost on the API — money kept if the CLI runs on your subscription, money spent if it "
                             "runs on your API key. `likely_total` is the one to compare against the Anthropic "
                             "Console. Rows written before 0.59.0 always booked local at zero, whichever it was."),
