@@ -141,6 +141,53 @@ credit for a week while the app told him he had spent a third of what he had.
   runaway detector rather than a budget. `POST /api/usage/spend-settings`.
 Gate `tests/test_s7_local_billing.py`.
 
+## Cost per unit of value (0.59.3)
+
+Kyle, after the overnight run: *"the volume of data is always valuable, just HOW is something we want to keep
+checking that we are improving against."* `totals` says how much, `reconcile` says how much was really charged,
+`rate_last_hour` says how fast — none of them says whether the money bought anything, so raising the findings cap
+from 12 to 20 could only be judged on whether the bill went up. `cost_value.py` ($0, deterministic, no model call,
+no network) divides spend by **things the project can use**: a finding written, a finding kept, a finding
+corroborated, a Claim tracked, a Claim normalized, a source read, a chat answer.
+
+Three rules:
+
+- **Spend is attributed by kind, never spread.** `$ per finding` divides the `findings` spend by the findings
+  produced, never the whole bill. Every kind no unit claims is named under `unattributed`, and
+  `attributed + unattributed == total_charged` for the window — the report reconciles against the bill instead of
+  explaining part of it.
+- **Charged, not recorded** (0.59.0): a row costs `cost` plus, when the local path is billed, the `saved` it booked
+  instead. Dividing recorded-only spend by output would have priced every local finding at $0.
+- **A count of zero is not a cost of infinity.** Spend with no output gives `per_unit: None` with the reason;
+  output with no spend gives `0.0`, because a harvested Claim really is free.
+
+**The measurement, from Kyle's own backup (2026-09-10 05:13, whole month):** $326.74 charged — `findings` $164.95,
+**`claims` $114.18 (35% of everything, the second largest line and nobody had looked at it)**, `rank` $24.49,
+`answer` $16.13, `whisper` $1.95, and $4.89 across discover/plan/profile that no unit claims (1.5% unattributed).
+Per unit: **$0.0146 per finding written, $0.0154 per finding kept, $0.0150 per normalized Claim, $0.0219 per source
+read, $0.155 per chat answer.** Per day, cost per kept finding: $0.0054 (Sep 7) → $0.0157 → $0.0168 (Sep 9) →
+**$0.0089 (Sep 10, after the cap raise and the local path)**.
+
+**It found a reporting bug in the ledger before it found anything about the models.** A naive per-model split said
+findings cost **$0.0231 each on Haiku against $0.0071 on Sonnet 5** — Haiku, at a fifth of the token price, three
+times dearer. The cause is `usage.record_anthropic`'s local branch: it writes the model the CLI *returned* into
+`model` and prices the tokens at the **contract's** model, because avoided spend is only meaningful against the
+model that would otherwise have run. All 513 local Haiku findings rows were Sonnet-priced. Printed as a per-model
+verdict that reads as a reason to stop using Haiku, which is the opposite of what the data supports. So:
+`usage.price_model` (new, additive) records the basis from now on, and `cost_value.price_basis` reports, per model
+that did the work, which models' rates produced its dollars — **a row whose basis is foreign or unrecorded carries
+its cost and its count but no `per_unit`, with the reason stated.** A number that cannot be trusted is not rounded
+down, it is withheld.
+
+Also reported: `estimated` — a local row's dollars are priced from tokens, not invoiced, so the share of a window
+resting on that estimate is stated. `by_model` supports only the units whose OUTPUT records its model
+(`project_notes.model`, `project_claims.model`), which is what makes a Haiku-vs-Sonnet decision checkable after the
+fact rather than only in an eval. `findings_quality.corroborated_ids` (cached on the view revision like `review`)
+is the index behind `$ per corroborated finding`; it is opt-in (`include_quality=1`) because it is a ~4 s clustering
+pass. API `GET /api/usage/value[?window=|project_id=|days=|include_quality=]`, `…/value/by-model`, `…/value/trend`,
+`…/value/report`; Health `cost_value` plus a "💵 Cost per unit of value" button in the Health console. Gate
+`tests/test_s9_cost_value.py`.
+
 ## Account walls stop the queue (admission, 0.59.0)
 
 `db.claim_job` consulted the background pause and the rate gate but **not** the account gates, so a walled account

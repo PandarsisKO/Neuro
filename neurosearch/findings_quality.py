@@ -494,3 +494,27 @@ def summary(project_id: str) -> dict[str, Any]:
     out = {k: r[k] for k in ("findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share")}
     out["corroborated"] = {"findings": (r.get("corroborated") or {}).get("findings", 0)}
     return out
+
+
+def corroborated_ids(project_id: str, status: str | None = None) -> set[int]:
+    """Every finding id that another SOURCE independently agrees with, across all statuses by default.
+
+    `review()` reports corroboration as a count and a sample of groups because that is what a workbench banner
+    needs. `cost_value` needs the ids, to ask how many of the findings written in a window turned out to be
+    corroborated — so this is the same pass exposed as an index rather than a list rendered into a payload. Cached
+    on the project's view revision like `review`, so asking both costs one pass."""
+    from . import cache, db as _db, findings_view
+    rev = json.dumps(_db.project_view_revision(project_id), sort_keys=True)
+
+    def compute() -> set[int]:
+        notes = _db.list_project_notes(project_id, status=status)
+        cl = clusters(notes, findings_view.usage_map(project_id))
+        out: set[int] = set()
+        for c in cl:
+            if c["kind"] == "corroborated":
+                out.add(int(c["keeper_id"]))
+                out.update(int(i) for i in c["duplicate_ids"])
+        return out
+
+    return cache.get_or_compute(f"findings_quality:corroborated:{project_id}:{status}", rev, compute,
+                                label="findings_quality")

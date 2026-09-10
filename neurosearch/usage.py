@@ -78,7 +78,8 @@ def _price(model: str) -> tuple[float, float]:
 
 def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int = 0, seconds: float = 0,
            searches: int = 0, project_id: str | None = None, source_id: str | None = None, cost: float | None = None,
-           cache_read: int = 0, cache_write: int = 0, transport: str = "interactive", saved: float = 0.0) -> float:
+           cache_read: int = 0, cache_write: int = 0, transport: str = "interactive", saved: float = 0.0,
+           price_model: str | None = None) -> float:
     """input_tokens are the UNcached input tokens (as the API reports them); cached ones come separately.
     transport="batch" prices model tokens at BATCH_MULT (the discount stacks with cache pricing); transport="local" is
     the Claude Code provider (cost 0, `saved` = the avoided API spend, passed by the caller)."""
@@ -95,8 +96,8 @@ def record(kind: str, model: str, *, input_tokens: int = 0, output_tokens: int =
             saved = full - model_cost * mult
     try:
         with db.tx() as conn:
-            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport))
+            conn.execute("INSERT INTO usage (ts, kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (time.time(), kind, model, input_tokens, output_tokens, seconds, cost, project_id, source_id, cache_read, cache_write, saved, transport, price_model or model))
     except Exception as e:  # noqa: BLE001
         log.warning("usage record failed: %s", e)
     if cost:
@@ -197,7 +198,8 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         free = _cc.local_is_free()
         return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o,
                       project_id=project_id, source_id=source_id, cache_read=cr, cache_write=cw,
-                      cost=0.0 if free else priced, saved=priced if free else 0.0, transport="local")
+                      cost=0.0 if free else priced, saved=priced if free else 0.0, transport="local",
+                      price_model=api_model)
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),

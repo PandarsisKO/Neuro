@@ -237,6 +237,40 @@ def api_usage_reconcile(days: int = 14) -> dict[str, Any]:
     return usage.reconcile(days=max(1, min(days, 90)))
 
 
+@app.get("/api/usage/value", dependencies=[Depends(require_auth)])
+def api_usage_value(window: str = "month", project_id: str | None = None, days: int | None = None,
+                    include_quality: bool = False) -> dict[str, Any]:
+    """0.59.3: dollars per unit of value — per finding, per kept finding, per Claim, per source, per chat answer.
+    Spend is attributed by kind and never spread, so `attributed` + `unattributed` is the whole charged bill."""
+    from . import cost_value
+    if window not in cost_value.WINDOWS:
+        raise HTTPException(400, f"window must be one of {', '.join(cost_value.WINDOWS)}")
+    return cost_value.unit_costs(window, project_id, days=days if days is None else max(1, min(days, 180)),
+                                 include_quality=include_quality)
+
+
+@app.get("/api/usage/value/by-model", dependencies=[Depends(require_auth)])
+def api_usage_value_by_model(unit: str = "finding", window: str = "month",
+                             project_id: str | None = None) -> dict[str, Any]:
+    """The same ratio per model — how a Haiku-versus-Sonnet decision gets checked after the fact."""
+    from . import cost_value
+    return cost_value.by_model(unit, window, project_id)
+
+
+@app.get("/api/usage/value/trend", dependencies=[Depends(require_auth)])
+def api_usage_value_trend(unit: str = "kept_finding", days: int = 14,
+                          project_id: str | None = None) -> dict[str, Any]:
+    from . import cost_value
+    return cost_value.trend(unit, max(2, min(days, 180)), project_id)
+
+
+@app.get("/api/usage/value/report", dependencies=[Depends(require_auth)])
+def api_usage_value_report(project_id: str | None = None, include_quality: bool = False) -> dict[str, Any]:
+    """Three windows, the per-model split and a two-week trend in one request (the spend panel's one call)."""
+    from . import cost_value
+    return cost_value.report(project_id, include_quality=include_quality)
+
+
 @app.post("/api/usage/spend-settings", dependencies=[Depends(require_auth)])
 def api_spend_settings(body: SpendSettingsIn) -> dict[str, Any]:
     """Set the weekly budget (0 = off) and the $/hour rate ceiling. Both were constants; the ceiling's default of

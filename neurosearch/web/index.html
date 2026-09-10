@@ -486,8 +486,9 @@
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><span class="muted" id="healthMsg"></span></div>
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
+        <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
@@ -583,7 +584,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.59.2';
+const UI_VERSION = '0.59.3';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1660,9 +1661,56 @@ async function loadHealth() {
         + ((h.spend.budgets || {}).weekly ? `, $${h.spend.budgets.weekly}/week` : ', no weekly budget set')
         + ` · ceiling $${(h.spend.budgets || {}).rate_per_hour ?? '—'}/hour`
       ], [`${h.spend.local_is_free ? '✅' : '⚠️'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
+      // 0.59.3: how much, per useful thing. "Is it improving?" is a different question from "how much have we spent".
+      ...(h.cost_value && !h.cost_value.error ? [[
+        `${h.cost_value.week_vs_month === 'dearer' ? '⚠️' : '✅'} Cost per kept finding`,
+        (h.cost_value.month.per_kept_finding == null
+          ? 'no findings kept this month yet'
+          : `$${(+h.cost_value.month.per_kept_finding).toFixed(4)} this month (${h.cost_value.month.kept} kept for $${(+h.cost_value.month.cost).toFixed(2)})`
+            + (h.cost_value.week.per_kept_finding == null ? ''
+               : ` · $${(+h.cost_value.week.per_kept_finding).toFixed(4)} over 7 days — ${h.cost_value.week_vs_month}`))
+        + ` · $${(+h.cost_value.total_charged_month).toFixed(2)} charged this month, $${(+h.cost_value.unattributed_month).toFixed(2)} of it on work no unit claims`
+        + ' — full picture: Cost per unit of value'
+      ]] : []),
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
+}
+async function valueReport() {
+  // 0.59.3: the question Kyle asked after the overnight run — "the volume of data is always valuable, just HOW is
+  // something we want to keep checking that we are improving against". Every other spend surface says how much.
+  const box = $('#valueOut'); box.textContent = 'adding it up…';
+  try {
+    const pid = state.project ? state.project.id : null;
+    const r = await api('/api/usage/value/report' + (pid ? `?project_id=${encodeURIComponent(pid)}` : ''));
+    const money = v => v == null ? '—' : '$' + (+v).toFixed(v < 0.1 ? 4 : 2);
+    const tbl = (title, cols, rows, foot) => rows.length ? `<div style="margin-top:10px"><b>${title}</b><table style="width:100%;border-collapse:collapse;margin-top:4px"><tr>${cols.map(c => `<th style="text-align:left;padding:2px 8px 2px 0;font-weight:600">${esc(c)}</th>`).join('')}</tr>${rows.map(rw => `<tr>${rw.map(v => `<td style="padding:2px 8px 2px 0">${esc(String(v))}</td>`).join('')}</tr>`).join('')}</table>${foot ? `<div class="muted" style="margin-top:3px">${esc(foot)}</div>` : ''}</div>` : '';
+    let html = '';
+    for (const w of ['today', 'week', 'month']) {
+      const rep = r.windows[w]; if (!rep) continue;
+      html += tbl(`Per unit of value — ${w === 'week' ? 'last 7 days' : w}`,
+        ['unit', 'spend', 'produced', 'each', 'why not'],
+        rep.rows.map(x => [x.label, money(x.cost), x.count, x.per_unit == null ? '—' : money(x.per_unit),
+                           x.per_unit_unavailable || '']),
+        `${money(rep.total_charged)} charged in total · ${money(rep.attributed)} attributed · `
+        + `${money(rep.unattributed.total)} on work no unit claims (${Object.keys(rep.unattributed.by_kind || {}).join(', ') || 'none'})`
+        + (rep.estimated && rep.estimated.share ? ` · ${Math.round(rep.estimated.share * 100)}% of it estimated from the local path rather than metered` : ''));
+    }
+    for (const [unit, bm] of Object.entries(r.by_model || {})) {
+      if (!bm.supported || !(bm.rows || []).length) continue;
+      html += tbl(`Per ${bm.label}, by model (month)`, ['model', 'spend', 'calls', 'produced', 'each', 'why not'],
+        bm.rows.map(x => [x.model, money(x.cost), x.calls, x.count, x.per_unit == null ? '—' : money(x.per_unit),
+                          x.per_unit_unavailable || '']),
+        bm.verdict || 'not enough models on their own rates to compare');
+    }
+    const tr = r.trend || {};
+    if ((tr.rows || []).length) {
+      html += tbl(`Per ${tr.label}, by day`, ['day', 'spend', 'kept', 'each'],
+        tr.rows.map(x => [x.day, money(x.cost), x.count, x.per_unit == null ? '—' : money(x.per_unit)]));
+    }
+    html += `<div class="muted" style="margin-top:10px">Compare a row against the same row in an earlier window, never against another row.<br>${(r.caveats || []).map(c => '• ' + esc(c)).join('<br>')}</div>`;
+    box.innerHTML = html || '<span class="muted">nothing spent and nothing produced yet</span>';
+  } catch (e) { box.textContent = 'could not add it up: ' + (e.message || e); }
 }
 async function perfReport() {
   // R0: the same three tables SPEED-MISSION.md §A was written from, regenerated from live data.

@@ -824,6 +824,12 @@ MIGRATIONS = [
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
     ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),
     ("project_source_analysis", "prefilter", "ALTER TABLE project_source_analysis ADD COLUMN prefilter TEXT"),
+    # 0.59.3: WHICH MODEL'S RATES PRODUCED THIS ROW'S DOLLARS. Normally the same as `model`, but never for a local
+    # call: `usage.record_anthropic` writes the model the CLI returned into `model` while pricing the tokens at the
+    # CONTRACT's API model (the avoided-spend figure is only meaningful against the model that would have run). Rows
+    # written before this column therefore attribute Sonnet-priced dollars to a Haiku row, which is exactly the
+    # shape of a wrong per-model verdict — so `cost_value.by_model` refuses to divide where the basis is unknown.
+    ("usage", "price_model", "ALTER TABLE usage ADD COLUMN price_model TEXT"),
 ]
 
 
@@ -2507,6 +2513,16 @@ def _spend_health() -> dict[str, Any]:
         return {"error": str(e)[:200]}
 
 
+def _cost_value_health() -> dict[str, Any]:
+    """0.59.3: one line of cost-per-unit-of-value, because "is it getting cheaper per useful thing?" is a different
+    question from "how much have we spent" and the spend section could only answer the second."""
+    try:
+        from . import cost_value
+        return cost_value.headline()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _findings_quality_health() -> dict[str, Any]:
     """F1-F5 counts per project. Each `summary` is cached on that project's view revision, so this is cheap after
     the first call and honest about being a FLOOR on duplicates rather than a ceiling (see findings_quality)."""
@@ -2599,6 +2615,7 @@ def health() -> dict[str, Any]:
             "findings_cap": _findings_cap_health(),
             "findings_quality": _findings_quality_health(),
             "spend": _spend_health(),
+            "cost_value": _cost_value_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "

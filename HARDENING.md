@@ -1061,3 +1061,58 @@ since that list is subtracted from a working environment.
 
 **Expected effect on Kyle's bill:** the local path was 908 calls and $210.55 of the month. If his CLI has a
 subscription login, that goes to zero. The number to watch is whether his Console total now tracks `recorded`.
+
+## 0.59.3 — cost per unit of value, and the per-model number it refused to print
+
+Kyle set the axis: *"the volume of data is always valuable, just HOW is something we want to keep checking that we
+are improving against."* Everything the app measured about money answered a different question — `totals` how
+much, `reconcile` how much was really charged, `rate_last_hour` how fast. So the two decisions actually on the
+table (the findings cap 12 → 20; findings on Haiku) could only be argued on whether the bill rose, which is the
+wrong axis: 40% more spend for twice the output is a good trade and the same spend for nothing is not.
+
+`cost_value.py` divides spend by things the project can use. Measured on his own backup (2026-09-10 05:13,
+month to date, charged = recorded + billed local):
+
+| kind | charged | unit | produced | each |
+|---|---|---|---|---|
+| findings | $164.95 | finding written | 11,286 | **$0.0146** |
+| | | finding kept | 10,715 | **$0.0154** |
+| claims | $114.18 | Claim tracked | 11,469 | $0.0100 |
+| | | Claim normalized | 7,619 | **$0.0150** |
+| rank + whisper + embed | $26.59 | source read | 1,214 | **$0.0219** |
+| answer | $16.13 | chat answer | 104 | **$0.155** |
+| discover + plan + profile | $4.89 | *unattributed* | — | — |
+| **total** | **$326.74** | | | 1.5% unattributed |
+
+Two things worth acting on fell straight out of it. **Claim extraction is 35% of the bill** — $114 for 7,619
+normalized Claims — and nothing in the session had looked at it, because it never appeared as a line anywhere.
+And cost per kept finding by day: $0.0054 (Sep 7) → $0.0157 → $0.0168 (Sep 9) → **$0.0089 (Sep 10)**, the drop
+coinciding with the raised cap and the local path.
+
+**The number it would not print.** A naive per-model split said findings cost **$0.0231 each on Haiku against
+$0.0071 on Sonnet 5**: Haiku, at a fifth of the token price, apparently three times dearer per finding — and
+plausible enough to act on, since Haiku's calls really were the expensive ones ($0.188/call against $0.042). The
+cause was in the ledger, not the model. `usage.record_anthropic`'s local branch writes the model the CLI *returned*
+into `usage.model` and prices the tokens at the **contract's** model, because the avoided-spend figure is only
+meaningful against the model that would otherwise have run. All 513 local Haiku findings rows were Sonnet-5-priced,
+uncached, on ~47k-token windows. Reported as a per-model verdict it argues for exactly the wrong decision.
+
+So the fix is in two parts, and the second is the general rule:
+
+- `usage.price_model` (additive column, defaults to `model`) records which model's rates produced a row's dollars,
+  set to the contract's model on the local path. From 0.59.3 the basis is a fact, not an inference.
+- `cost_value.price_basis` reports, per model that did the work, which models' rates paid for it. **A row whose
+  basis is foreign or unrecorded carries its cost and its count and no `per_unit`, with the reason in the row.**
+  Historical local rows are `unknown` and stay unknown — the contract's model was never stored, and inventing a
+  basis to fill the column would be the same class of error as the $0 local cost.
+
+Same shape as 0.58.6 and 0.58.7: a constant or a ratio computed from real data contradicted a plausible guess, and
+the plausible guess was mine. The difference here is that the wrong number was not a threshold I could re-tune but
+a verdict about a model — so the module withholds it rather than rounding it down.
+
+Also recorded honestly rather than smoothed over: `estimated` (what share of a window's charge is priced from
+tokens on the local path instead of metered by the API), and three counting caveats that can move a ratio in a
+direction worth knowing about — `db.set_note_status` resets `created_at`, so promoting reserve findings shows as
+findings "written" today; corroboration is a corpus property, so a past window's corroborated count can only rise;
+and transcription and embedding rows carry no project, so `$ per source` is a whole-app number and is omitted from
+a per-project report rather than guessed. Gate `tests/test_s9_cost_value.py` (23).
