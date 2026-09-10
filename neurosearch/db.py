@@ -2286,6 +2286,31 @@ def kv_get(key: str) -> str | None:
     return row["value"] if row else None
 
 
+def bump_model_mismatch(task: str, requested: str, actual: str, executed_by: str) -> None:
+    """A provider returned a model the app did not ask for. Counted per task+pair in kv (no schema change) so Health
+    and `doctor` can say it out loud — 0.56.3. Silent substitution is the failure this layer exists to prevent, and
+    the local Claude Code path can do it whatever the contract says."""
+    key = f"model_mismatch:{task}:{requested}>{actual}:{executed_by}"
+    try:
+        n = int(kv_get(key) or 0)
+    except (TypeError, ValueError):
+        n = 0
+    kv_set(key, str(n + 1))
+    kv_set("model_mismatch:last", json.dumps({"task": task, "requested": requested, "actual": actual,
+                                              "executed_by": executed_by, "at": time.time()}))
+
+
+def model_mismatches() -> list[dict[str, Any]]:
+    """Every recorded substitution, newest count first — what Health renders and `doctor` fails on."""
+    out: list[dict[str, Any]] = []
+    for row in connect().execute("SELECT key, value FROM kv WHERE key LIKE 'model_mismatch:%' AND key <> 'model_mismatch:last'").fetchall():
+        body = row["key"].split(":", 1)[1]
+        task, pair, by = (body.rsplit(":", 2) + ["", ""])[:3] if body.count(":") >= 2 else (body, "", "")
+        req, _, act = pair.partition(">")
+        out.append({"task": task, "requested": req, "actual": act, "executed_by": by, "count": int(row["value"] or 0)})
+    return sorted(out, key=lambda r: -r["count"])
+
+
 def kv_set(key: str, value: str | None) -> None:
     with tx() as conn:
         if value is None:
@@ -2469,6 +2494,10 @@ def health() -> dict[str, Any]:
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
             "providers": _provider_health(),
+            "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
+                              "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
+                                      "empty list — the app has no model-substitution path, so any row here is a provider "
+                                      "(usually the local Claude Code CLI) overriding a contract."},
             "flags": _flags_health(),
             "release": _last_release_check(),
             "app_version": __import__("neurosearch").__version__,

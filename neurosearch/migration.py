@@ -315,6 +315,41 @@ def preflight(models: list[str], live: bool) -> dict[str, int | None]:
     return {m: _count_tokens(m, req, live) for m in models}
 
 
+def _force_api_transport() -> tuple[str, Any]:
+    """A model comparison must run on the API. 0.56.3: with `NEUROSEARCH_AI_PROFILE=local` in .env, every
+    `local_capable` task (planner.update, claims.extract, findings.extract, rank.relevance) routed to Claude Code
+    instead — so both arms of planner.update printed `$0.0000 · returned claude-haiku-4-5` no matter which model the
+    arm had set, and the shared inputs every other arm is judged against were written by the local model rather than
+    the production findings contract. The arms were measuring the local CLI's mood, not two models.
+
+    `local` vs `api` is a TRANSPORT choice and this command exists to compare MODELS, so the transport is pinned for
+    the duration rather than left to whatever profile the operator happens to run. Restored by `_restore_transport`."""
+    from . import providers
+    from .config import settings
+    was = settings.ai_profile
+    settings.ai_profile = "cloud"                 # process-wide: `providers.route` returns ("api", "cloud_profile")
+    providers.set_policy("api_only")              # and thread-local, for anything that consults the policy first
+    return was, providers
+
+
+def _restore_transport(was: str, providers: Any) -> None:
+    from .config import settings
+    settings.ai_profile = was
+    providers.set_policy(None)
+
+
+def _assert_arm_model(label: str, task: str, want: str, inv: dict[str, Any]) -> None:
+    """Fail on the FIRST arm that did not run the model it says it ran. Continuing would spend real money building a
+    verdict out of arms that were secretly the same model — the failure mode this whole command exists to detect."""
+    got = (inv or {}).get("returned_model")
+    if not got:
+        return                                     # no invocation recorded (a failed arm reports its own error)
+    if not all(model_matches(want, m) for m in got.split(",") if m.strip()):
+        raise RuntimeError(f"arm {label} of {task} asked for {want!r} but the provider returned {got!r} — "
+                           f"the comparison would be invalid, so nothing further was run. "
+                           f"(transport pinned to the API; check NEUROSEARCH_TASK_MODEL_* and any local override.)")
+
+
 def _arm_meta(label: str, model: str, thinking: str, effort: str | None, tasks: list[str]) -> dict[str, Any]:
     from . import contracts
     return {"arm": label, "model": model, "thinking": thinking, "effort": effort, "contracts": {t: contracts.contract(t).describe() for t in tasks}}
@@ -816,6 +851,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     from . import __version__, findings, planner
     from . import usage as _usage
     rubric = load_rubric()
+    was_profile, _providers = _force_api_transport()
     arms_for = task_arms(baseline_model, candidate_model, skip_adaptive)
     bad_arms = validate_arms(arms_for)
     if bad_arms:
@@ -879,6 +915,8 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
                 _restore_env(saved)
             a = arms_p[label]
             for t in ("planner.analysis", "planner.build"):
+                _assert_arm_model(label, t, model, a["tasks"][t].get("invocations"))
+            for t in ("planner.analysis", "planner.build"):
                 tt = a["tasks"][t]
                 progress(f"[{t} · {label}] rubric {tt['rubric']['score']} ({tt['rubric']['passed']}/{tt['rubric']['total']}) · structure {tt['rubric']['structure']['score']} · refs {tt['evidence_refs']} · "
                          f"repaired {tt['json_repaired']} · truncated {tt['truncated']} · ${tt['cost']:.4f} · {tt['seconds']}s · returned {tt['invocations'].get('returned_model')}")
@@ -914,6 +952,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
                 finally:
                     _restore_env(saved)
                 u = arms_u[label]
+                _assert_arm_model(label, "planner.update", model, u.get("invocations"))
                 progress(f"[planner.update · {label}] {u['n_updates']} updates · new finding addressed {u['addresses_new_finding']} · new fact {u['addresses_new_fact']} · "
                          f"repaired {u['json_repaired']} · ${u['cost']:.4f} · {u['seconds']}s · returned {u['invocations'].get('returned_model')}")
                 save(f"planner.update-{label}.json", u)
@@ -935,6 +974,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
             finally:
                 _restore_env(saved)
             e = arms_e[label]
+            _assert_arm_model(label, "export.synthesis", model, e.get("invocations"))
             progress(f"[export.synthesis · {label}] {e['words']} words · sections {e['sections_present']}/{len(EXPORT_SECTIONS)} · links {e['citation_links']} (invented {e['n_invented_links']}, coverage {e['link_coverage']}) · "
                      f"truncated {e['truncated']} · ${e['usage']['cost']:.4f} · {e['seconds']}s · returned {e['invocations'].get('returned_model')}")
             save(f"export.synthesis-{label}.json", e)
@@ -957,6 +997,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
             finally:
                 _restore_env(saved)
             cl = arms_cl[label]
+            _assert_arm_model(label, "claims.extract", model, cl.get("invocations"))
             if not cl_ids:                                        # remember arm one's INPUT so arm two starts from it
                 cl_ids = [r["id"] for r in cl.get("rows") or []]
                 cl_before = {"claims": {r["id"]: {"text": r["before"], "type": (r.get("type") or ["other", "other"])[0],
@@ -985,6 +1026,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
             finally:
                 _restore_env(saved)
             c = arms_c[label]
+            _assert_arm_model(label, "answer.chat", model, c.get("invocations"))
             progress(f"[answer.chat · {label}] citation validity {c['citation_validity']} · expected source {c['answers_cite_expected_source']} · contradictions {c['contradiction_surfaced']} · gaps {c['gap_detection']} · "
                      f"repairs {c['repair_rounds']} · truncated {c['truncated_answers']} · ${c['usage']['cost']:.4f} · {c['s_per_answer']}s/answer · returned {c['invocations'].get('returned_model')}")
             save(f"answer.chat-{label}.json", c)
@@ -996,6 +1038,8 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
         stage_error = {"error": str(e)[:600], "type": type(e).__name__}
         rep["stage_error"] = stage_error
         log.exception("migration-compare stage failed; writing the partial report")
+        _restore_transport(was_profile, _providers)
+        was_profile, _providers = _force_api_transport()      # the tail still writes the report; keep it consistent
     rep["total_cost"] = _usage_since(t_all, ("answer", "plan", "synthesis", "findings", "embed"))["cost"]
     rep["total_s"] = round(time.time() - t_all, 2)
     rep["summary"] = {t: v["verdict"] for t, v in rep["verdicts"].items()}
@@ -1006,6 +1050,9 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     (d / "comparison.txt").write_text(text)
     rep["text"] = text
     rep["project_id"] = pid
+    rep["transport"] = {"pinned": "api", "operator_profile": was_profile,
+                        "why": "a model comparison cannot route to the local CLI; local is a transport, not a model"}
+    _restore_transport(was_profile, _providers)
     if stage_error:
         raise RuntimeError(f"{stage_error['type']}: {stage_error['error']}\n"
                            f"The arms that finished before this are measured and saved: {d / 'comparison.txt'}")

@@ -123,3 +123,17 @@ Known cosmetic debt: the live Work "Form 1099DIV" title (dehyphenated before the
 ## 5. What "done" means for a rung
 
 A rung is done when: the gate tests pass and are registered in `release.py`; the full suite and Tier 1 pass; the rung log entry in EXPANSION.md states what was built and its honest limits; HARDENING.md records any frozen-number change; CLAUDE.md's map is current; the release-check artifact is committed and the tag moved; and Kyle has been told, in plain language, what to try in the app.
+
+
+## Open debt added 0.56.3 — local Haiku in normal use
+
+The local Claude Code CLI returned `claude-haiku-4-5` for a call pinned to `claude-sonnet-4-6` during the migration
+comparison. `NEUROSEARCH_AI_PROFILE=local` is set in Kyle's `.env`, and `findings.extract`, `claims.extract`,
+`planner.update` and `rank.relevance` are all `local_capable`. So the findings and Claims already in his live
+database may have been produced by Haiku while their provenance recorded Sonnet 5.
+
+0.56.3 counts every mismatch from now on (`db.model_mismatches()`, Health → `model_routing`, a `release-check`
+warning). It does NOT reclassify existing artifacts. Deciding that needs a query over
+`project_source_analysis.routing` in the live database — through the API, never by opening the file — and Kyle's call
+on whether to re-run anything. Do not assume the artifacts are wrong: `routing.actual_model` was always stored, so
+the answer is already in there.

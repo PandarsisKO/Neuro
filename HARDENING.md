@@ -820,3 +820,36 @@ JSON repair, and the repaired `planner.build` lost `this_week`, `open_questions`
 entirely — `structure 0.5`, four sections at 0 items. The plan it produced reads as competent and is missing half its
 scaffolding. n=1, and the planner is held at Sonnet 5 by a `user` reason (Kyle's), so this changes no default; it does
 say that any future Haiku planner arm needs a much larger `max_output_tokens` before its quality can be judged at all.
+
+
+## 0.56.3 — the second live Haiku attempt, and why it was also invalid
+
+Stopped by Kyle mid-run on the evidence below. Spend before the stop: the planner arms on the API (real), everything
+local at $0.
+
+```
+[planner.update · baseline]  9 updates · $0.0000 · 86.93s · returned claude-haiku-4-5-20251001
+[planner.update · candidate] 6 updates · $0.0000 · 41.31s · returned claude-haiku-4-5-20251001
+```
+
+The baseline arm asked for `claude-sonnet-4-6`. Both arms ran Haiku, locally, for free. `.env` carries
+`NEUROSEARCH_AI_PROFILE=local`, so `providers.route` sent every `local_capable` task to Claude Code, and the CLI
+served a model neither arm requested. Three consequences, in increasing order of seriousness:
+
+1. `planner.update` compared one model against itself.
+2. `claims.extract` — the arm the run exists for — is `local_capable` and would have done the same.
+3. `findings.extract` is `local_capable` too, so the **shared frozen inputs** were written by local Haiku while the
+   report recorded them under the production Sonnet 5 contract. 58 approved findings this run against 60 in the
+   previous one is that non-determinism showing.
+
+Fixes: the comparison pins its transport (`_force_api_transport`) and checks every arm's returned model
+(`_assert_arm_model`, fails on the first offender rather than at the verdict).
+
+The wider finding is not about the eval. `providers.routing_for` had recorded `actual_model` since L1 and set
+`fallback_used: False` unconditionally, so a provider returning the wrong model looked exactly like a provider
+returning the right one. The app has no substitution path of its own — every mismatch therefore comes from outside
+it, which is precisely what nobody was watching for. `model_mismatch` on the artifact, a kv counter, a `health()`
+section and a `release-check` warning close that. **Open question for Kyle's live database:** whether
+`findings.extract` and `claims.extract` have been running on local Haiku in normal use while their contracts pinned
+Sonnet 5 — the new counter answers it going forward, but says nothing about work already done. `HANDOFF.md` carries
+this as an open debt.

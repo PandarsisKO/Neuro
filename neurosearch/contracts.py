@@ -304,6 +304,16 @@ class ContractError(ValueError):
     pass
 
 
+def same_model(configured: str, returned: str | None) -> bool:
+    """A returned id is the configured alias or a dated snapshot of it (claude-sonnet-5 → claude-sonnet-5-2026xxxx).
+    Lives here so `providers` can check a routing decision without importing the eval machinery."""
+    if not returned:
+        return True                                  # nothing reported: not evidence of a substitution
+    if configured == "fake" or returned.startswith("fake"):
+        return True
+    return all(r.strip().startswith(configured) for r in returned.split(",") if r.strip())
+
+
 def model_family(model: str) -> str:
     m = model.lower()
     if "sonnet-5" in m or "opus-5" in m or "fable-5" in m or "mythos-5" in m:

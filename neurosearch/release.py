@@ -190,6 +190,13 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     else:
         r.check("local model follows each contract", True,
                 {c.task: c.model_for("local") for c in contracts.all_contracts() if c.local_capable})
+    # 0.56.3: what the contracts ASK for is only half of it — a provider can return something else. The local Claude
+    # Code CLI did exactly that (claude-haiku-4-5 for a call pinned to claude-sonnet-4-6), which is a silent model
+    # substitution arriving from outside the app. `providers.routing_for` now records every one; steady state is none.
+    mm = db.model_mismatches()
+    r.check("no model substitutions recorded", not mm,
+            "; ".join(f"{m['task']}: asked {m['requested']}, {m['executed_by']} returned {m['actual']} ×{m['count']}" for m in mm)
+            or "every provider returned the model the contract requested", warn=True)
     # --- lightweight fake smoke: the deterministic engine works end to end in a temp database (no spend)
     if fake_smoke:
         was_fake, was_dir = settings.fake_ai, settings.data_dir

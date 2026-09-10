@@ -325,6 +325,18 @@ def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
         # a declared, deliberate difference — recorded so it can never be mistaken for the contract's model
         out["local_model"] = requested
         out["api_model"] = c.model
+    # 0.56.3: a provider that returns a model nobody asked for is a SILENT SUBSTITUTION, the one thing this layer
+    # exists to prevent — and the local CLI can do it (it served claude-haiku-4-5 for an arm pinned to
+    # claude-sonnet-4-6, which is how the first live Haiku comparison came to be measuring nothing). Recording the
+    # returned id was never enough: nothing read it. Flag it on the artifact and count it for Health.
+    if actual_model and not C.same_model(requested, str(actual_model)):
+        out["model_mismatch"] = {"requested": requested, "actual": str(actual_model), "executed_by": by}
+        log.warning("model mismatch on %s: asked for %s, %s returned %s", task, requested, by, actual_model)
+        try:
+            from . import db
+            db.bump_model_mismatch(task, requested, str(actual_model), by)
+        except Exception:  # noqa: BLE001 — provenance must never fail the call it describes
+            log.debug("could not record model mismatch", exc_info=True)
     return out
 
 
