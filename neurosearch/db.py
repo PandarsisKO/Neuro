@@ -2462,6 +2462,23 @@ def _provider_health() -> list[dict[str, Any]]:
         return [{"operation": "?", "label": "Provider health", "status": "unknown", "detail": str(e)[:100]}]
 
 
+def _findings_cap_health() -> dict[str, Any]:
+    """F4: how many findings a source is allowed to keep, and whether that is the shipped default. A cap change is
+    the one thing in 0.58.1 with a live behavioural effect, so it is visible rather than buried in a constant."""
+    try:
+        from . import findings
+        now = {"base": findings.CAP_BASE, "per_window": findings.CAP_PER_WINDOW, "max": findings.CAP_MAX}
+        before = findings.CAP_DEFAULTS_BEFORE
+        return {"current": now, "before_0_58_1": before, "raised": now != before,
+                "example_caps": {f"{w} window(s)": findings.cap_for(w) for w in (1, 3, 10, 20)},
+                "revert": "NEUROSEARCH_FINDINGS_CAP_BASE=12 NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8 "
+                          "NEUROSEARCH_FINDINGS_CAP_MAX=120 restores the previous behaviour with no code change",
+                "note": "overflow is kept as `reserve` (never exported, planned on or harvested) and can be promoted "
+                        "per note; raising the cap only ever adds notes and never moves one already stored"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _scholar_health() -> dict[str, Any]:
     """Research catalogues: config only, never a probe. A section that made a network call every time Health opened
     would spend someone else's free service to answer a question config already answers."""
@@ -2511,6 +2528,7 @@ def health() -> dict[str, Any]:
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
             "providers": _provider_health(),
             "scholar": _scholar_health(),
+            "findings_cap": _findings_cap_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "

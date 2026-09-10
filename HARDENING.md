@@ -887,3 +887,35 @@ skip the verify pass entirely.
 
 Gate `tests/test_s2_scholar.py` (31 tests, all against a canned `safe_fetch` — no network anywhere). 633 passed,
 Tier 1 PASS, frozen totals unchanged.
+
+
+## 0.58.1 — changed frozen values (recorded): the findings cap
+
+`findings.CAP_BASE` 12 → **20**, `CAP_PER_WINDOW` 8 → **12**, `CAP_MAX` 120 → **200**, all now env-configurable with
+the old trio kept as `CAP_DEFAULTS_BEFORE`.
+
+**Why the old numbers were not load-bearing.** The cap was doing two jobs. Stopping a book from burying a project in
+900 notes is real and is kept. Quality control is the other, and the cap was never equipped for it: it withheld
+findings *already paid for* (`reserve`) on the basis of source LENGTH, which correlates with nothing about whether a
+finding is any good. 0.58.0 built the check that answers that question, so the cap goes back to one job.
+
+**The measurement that says 12 was too low.** From the live-database audit the same day (see the 0.56.3 entry),
+length-matched to 10–40 minute sources: Haiku wrote 15.6 findings per source, Sonnet 5 wrote 11.3, and the raw 8×
+`reserve` gap (11.5% vs 1.4%) collapsed to 0.6% → 1.1% once source length was controlled. A base of 12 was clipping
+ordinary sources, not only books.
+
+**Why raising it is safe.** `select_findings` is monotone in the cap — a larger cap moves rows from `reserve` into
+`suggested`, never the reverse, and never loses one (`test_raising_the_cap_only_ever_adds`). Nothing already stored
+moves. And it is reversible with no code change:
+`NEUROSEARCH_FINDINGS_CAP_BASE=12 NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8 NEUROSEARCH_FINDINGS_CAP_MAX=120`.
+
+### Three D1 tests re-framed, not deleted
+
+`tests/test_n3_deep_findings.py`: `test_cap_grows_with_length_and_is_bounded`,
+`test_one_window_source_is_exactly_the_old_top_twelve` (renamed `..._the_top_cap_by_importance`) and
+`test_short_source_has_no_reserve_and_unchanged_count` asserted the literals 12 / 20 / 36 / 120. What the D1 rung
+actually froze is the SHAPE — one window is the base, each further window adds the increment, a long source
+saturates at the max, a one-window source is the top-N by importance — and the numbers were incidental to it. The
+tests now assert the shape against the constants, so tuning the cap does not re-break them and a change to the shape
+still does. Tier 1 frozen totals unchanged (the cap governs how many findings are KEPT, not how many calls are
+made); `Tier 1: PASS`.

@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.1)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -62,6 +62,18 @@ never pre-selected; a cluster always keeps one member; and a finding whose only 
 names something checkable is never pre-selected — brevity is not vacuity. API
 `GET /api/projects/{id}/findings/quality[?summary=1|include_used=1]`; UI a 🧽 banner + review dialog in the Findings
 workbench. Gate `tests/test_s3_findings_quality.py`.
+
+**F4 — the cap goes back to one job (0.58.1).** `findings.CAP_BASE/CAP_PER_WINDOW/CAP_MAX` are now env-configurable
+and their defaults are **20 / 12 / 200** (were 12 / 8 / 120, kept as `CAP_DEFAULTS_BEFORE`). The cap had two jobs:
+stopping a book from burying a project (real) and quality control (which it was never equipped for — it withheld
+findings already paid for on the basis of source *length*). F1–F3 answers the quality question, so the cap keeps
+only the first job. Measured justification: length-matched to 10–40 minute sources on Kyle's live corpus, Haiku
+produced 15.6 findings/source against Sonnet 5's 11.3 and the raw 8× reserve gap collapsed to 0.6% → 1.1% once
+length was controlled — the old base of 12 was clipping ordinary sources, not just books. `select_findings` is
+monotone in the cap (a larger cap only moves rows from `reserve` to `suggested`, never the reverse, never loses
+one), so raising it can only add. Reversible with no code change:
+`NEUROSEARCH_FINDINGS_CAP_BASE=12 NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8 NEUROSEARCH_FINDINGS_CAP_MAX=120`.
+Health reports the current cap, whether it was raised, and how to revert (`db.health()["findings_cap"]`).
 
 ## Research catalogues (0.57.0)
 

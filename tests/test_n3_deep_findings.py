@@ -40,14 +40,24 @@ def _f(imp, tag):
 # ---------------------------------------------------------------- the selection rule (pure)
 
 def test_cap_grows_with_length_and_is_bounded():
-    assert findings.cap_for(1) == 12 and findings.cap_for(2) == 20 and findings.cap_for(4) == 36
-    assert findings.cap_for(50) == findings.CAP_MAX == 120
+    """0.58.1 CHANGED the cap defaults (12/8/120 -> 20/12/200) and this test with them, deliberately and recorded in
+    HARDENING.md. It now asserts the SHAPE — one window is the base, each further window adds the increment, a long
+    source saturates at the max — rather than three literals, so tuning the cap does not re-break it. The
+    behaviour the D1 rung actually froze is the shape; the numbers were incidental to it."""
+    assert findings.cap_for(1) == findings.CAP_BASE
+    assert findings.cap_for(2) == findings.CAP_BASE + findings.CAP_PER_WINDOW
+    assert findings.cap_for(4) == findings.CAP_BASE + 3 * findings.CAP_PER_WINDOW
+    assert findings.cap_for(1000) == findings.CAP_MAX
+    assert findings.CAP_BASE > 0 and findings.CAP_PER_WINDOW > 0 and findings.CAP_MAX >= findings.CAP_BASE
 
 
-def test_one_window_source_is_exactly_the_old_top_twelve():
-    ws = [[_f(i % 5 + 1, f"a{i}") for i in range(20)]]
+def test_one_window_source_is_exactly_the_top_cap_by_importance():
+    """Was `test_one_window_source_is_exactly_the_old_top_twelve` — the invariant is "a one-window source is the old
+    top-N by importance", and N is the cap, not the number 12 (0.58.1)."""
+    n = 20 + findings.CAP_BASE
+    ws = [[_f(i % 5 + 1, f"a{i}") for i in range(n)]]
     sug, res = findings.select_findings(ws)
-    assert len(sug) == 12 and len(res) == 8
+    assert len(sug) == findings.CAP_BASE and len(res) == n - findings.CAP_BASE
     assert [f["importance"] for f in sug] == sorted((f["importance"] for f in sug), reverse=True)
     assert min(f["importance"] for f in sug) >= max(f["importance"] for f in res)     # nothing in reserve outranks a suggestion
 
@@ -117,7 +127,8 @@ def test_short_source_has_no_reserve_and_unchanged_count():
     p = db.create_project("Short", "hosting")
     r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks", project_id=p["id"])
     out = findings.suggest_for_source(p["id"], r["source_id"], force=True)
-    assert out["windows"] == 1 and out["cap"] == 12 and out["reserve"] == 0 and out["suggested"] == 2
+    # cap asserted against the constant, not a literal (0.58.1): a two-finding source has no reserve at any cap
+    assert out["windows"] == 1 and out["cap"] == findings.CAP_BASE and out["reserve"] == 0 and out["suggested"] == 2
 
 
 # ---------------------------------------------------------------- D2 Read deeper

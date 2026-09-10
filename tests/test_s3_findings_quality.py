@@ -198,3 +198,61 @@ def test_summary_is_the_counts_only(project):
     s = fq.summary(project)
     assert set(s) == {"findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share"}
     assert "rows" not in s
+
+
+# ------------------------------------------------------------------ F4: the cap, and its reversibility
+
+def test_the_cap_is_higher_than_it_was_and_still_bounded():
+    from neurosearch import findings
+    assert findings.CAP_BASE > findings.CAP_DEFAULTS_BEFORE["base"]
+    assert findings.cap_for(1) == findings.CAP_BASE
+    assert findings.cap_for(1000) == findings.CAP_MAX        # a book still cannot bury a project
+
+
+def test_the_old_cap_is_restorable_from_the_environment_alone(monkeypatch):
+    """The one rung with live behavioural effect ships reversible: three env values return the previous behaviour
+    exactly, with no code change and nothing to redeploy."""
+    import importlib
+    monkeypatch.setenv("NEUROSEARCH_FINDINGS_CAP_BASE", "12")
+    monkeypatch.setenv("NEUROSEARCH_FINDINGS_CAP_PER_WINDOW", "8")
+    monkeypatch.setenv("NEUROSEARCH_FINDINGS_CAP_MAX", "120")
+    from neurosearch import findings
+    f2 = importlib.reload(findings)
+    try:
+        assert (f2.CAP_BASE, f2.CAP_PER_WINDOW, f2.CAP_MAX) == (12, 8, 120)
+        assert [f2.cap_for(w) for w in (1, 3, 10, 20)] == [12, 28, 84, 120]
+    finally:
+        monkeypatch.undo()
+        importlib.reload(f2)
+
+
+def test_a_nonsense_cap_value_falls_back_instead_of_breaking_ingestion(monkeypatch):
+    import importlib
+    from neurosearch import findings
+    for bad in ("", "abc", "0", "-5"):
+        monkeypatch.setenv("NEUROSEARCH_FINDINGS_CAP_BASE", bad)
+        f2 = importlib.reload(findings)
+        assert f2.CAP_BASE == 20, bad
+    monkeypatch.undo()
+    importlib.reload(findings)
+
+
+def test_raising_the_cap_only_ever_adds(monkeypatch):
+    """`select_findings` splits into (suggested, reserve). A larger cap moves rows from reserve into suggested and
+    never the other way, and never loses one."""
+    from neurosearch import findings
+    per_window = [[{"importance": (i * 7 + j) % 5, "text": f"w{i}f{j}"} for j in range(30)] for i in range(3)]
+    small, small_res = findings.select_findings(per_window, cap=12)
+    big, big_res = findings.select_findings(per_window, cap=40)
+    assert len(big) > len(small)
+    assert len(big) + len(big_res) == len(small) + len(small_res)          # nothing lost either way
+    keys = lambda rows: {r["text"] for r in rows}
+    assert keys(small) <= keys(big)                                        # a kept finding is never un-kept
+
+
+def test_health_says_the_cap_changed_and_how_to_put_it_back():
+    db.init_db()
+    h = db.health()["findings_cap"]
+    assert h["raised"] is True
+    assert h["before_0_58_1"] == {"base": 12, "per_window": 8, "max": 120}
+    assert "NEUROSEARCH_FINDINGS_CAP_BASE=12" in h["revert"]

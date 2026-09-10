@@ -23,9 +23,33 @@ WINDOW_CHARS = 60000  # ~15k tokens of transcript per call
 # the model produced and the quote validator accepted is kept: the top `cap_for(windows)` become suggestions, every window
 # contributes at least COVERAGE_FLOOR of its own (the last hour is never crowded out by the first), and the remainder land
 # as `reserve` notes — never exported, never planned on, never harvested into Claims until the user promotes them.
-CAP_BASE = 12
-CAP_PER_WINDOW = 8
-CAP_MAX = 120
+# F4 (0.58.1): the cap is configurable, and its default is higher than it was.
+#
+# The cap was doing two jobs. One is real — stop a book from burying a project in 900 notes. The other was quality
+# control it was never equipped for: it withheld findings ALREADY PAID FOR (`reserve`) on the basis of source
+# length, which correlates with nothing about whether a finding is good. 0.58.0 built the check that actually
+# answers that question (`findings_quality`), so the cap can go back to being only the first job.
+#
+# Measured on Kyle's live corpus 2026-09-10: length-matched to 10-40 minute sources, Haiku produced 15.6 findings
+# per source against Sonnet 5's 11.3, and the raw 8x reserve gap (11.5% vs 1.4%) collapsed to 0.6% -> 1.1% once
+# source length was controlled. In other words the old base of 12 was clipping ordinary sources, not just books.
+#
+# The previous values are the documented fallback: NEUROSEARCH_FINDINGS_CAP_BASE=12,
+# NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8, NEUROSEARCH_FINDINGS_CAP_MAX=120 restores 0.58.0 behaviour exactly, with
+# no code change. Raising a cap can only ever ADD notes; nothing already stored moves or disappears.
+def _cap_env(name: str, default: int) -> int:
+    import os
+    try:
+        v = int(os.environ.get(f"NEUROSEARCH_FINDINGS_{name}", "") or default)
+    except ValueError:
+        return default
+    return v if v > 0 else default
+
+
+CAP_BASE = _cap_env("CAP_BASE", 20)              # was 12
+CAP_PER_WINDOW = _cap_env("CAP_PER_WINDOW", 12)  # was 8
+CAP_MAX = _cap_env("CAP_MAX", 200)               # was 120
+CAP_DEFAULTS_BEFORE = {"base": 12, "per_window": 8, "max": 120}   # what release-check and `doctor` report against
 COVERAGE_FLOOR = 3
 
 
