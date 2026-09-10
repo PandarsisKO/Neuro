@@ -1,0 +1,71 @@
+{
+ "updates": [
+  {
+   "section": "constraints",
+   "previous": "Minimum 10% equity injection required; up to half can be a seller note on full standby",
+   "proposed": "Minimum 15% equity injection required for deals over $500k; seller notes no longer count toward equity injection (even on full standby)",
+   "reason": "New lender guidance indicates a shift: equity requirement has increased from 10% to 15%, and seller notes are no longer credited at major SBA lenders. This eliminates a key lever for reducing cash requirements."
+  },
+  {
+   "section": "approach \u2192 recommended",
+   "previous": "SBA 7(a) with 10% buyer equity (up to half as seller note on full standby) and 80\u201390% SBA loan.",
+   "proposed": "SBA 7(a) with 15% buyer equity (all cash; seller notes no longer credited) and 85% SBA loan. For a buyer with $120k liquid capital, this constrains viable deal size to ~$800k.",
+   "reason": "The seller note strategy (full standby credit toward equity) is no longer viable at this lender. Equity injection is now 15% all-cash, which significantly reduces the deal-size ceiling relative to liquid capital."
+  },
+  {
+   "section": "first_steps \u2192 [action: deal calculator and ceiling setting]",
+   "previous": "Your deal-size ceiling is 10\u201320x your liquid capital (e.g., $75k liquid = $750k\u2013$1M deal).",
+   "proposed": "With $120k in liquid capital and a non-negotiable 15% all-cash equity requirement (no seller note credit), your deal-size ceiling is approximately $800k ($120k \u00f7 0.15). This is ~6.7x your liquid capital, not 10\u201320x.",
+   "reason": "New lender requirement: 15% equity injection with zero seller note credit. This is a hard constraint that binds tighter than the previous 10% assumption with seller note flexibility."
+  },
+  {
+   "section": "costs \u2192 upfront",
+   "previous": "Equity injection (buyer cash, minimum) | $50,000\u2013$100,000 for a $1M deal (5\u201310% depending on seller note)",
+   "proposed": "Equity injection (buyer cash, minimum) | $120,000 required (15% non-negotiable; zero seller note credit). This fixes deal-size ceiling at approximately $800k and exhausts your liquid capital.",
+   "reason": "The equity injection is now 15% all-cash with no seller note offset. Your $120k cash directly determines your maximum deal size at $800k."
+  },
+  {
+   "section": "decisions \u2192 deal-size-ceiling",
+   "previous": "Set ceiling at 10\u201320x your liquid capital after the audit",
+   "proposed": "Set ceiling at $800k hard stop, given 15% equity requirement and zero seller note credit. Do not anchor higher until you confirm whether other SBA lenders accept seller notes.",
+   "reason": "This lender's 15% all-cash-only rule is binding for your $120k capital base. Before committing sourcing effort to larger deal sizes, shop other SBA PLP lenders to see if they still accept seller notes; if they do, you may access larger deals elsewhere."
+  },
+  {
+   "section": "open_questions \u2192 [NEW blocking question]",
+   "previous": "[Not previously addressed]",
+   "proposed": "NEW BLOCKING QUESTION: Are other SBA Preferred Lender Program lenders still accepting seller notes toward equity injection at 10%, or has the industry shifted to 15% all-cash-only across the board? This determines whether your plan must target $800k deals or whether you can shop for lenders with more flexible terms.",
+   "reason": "One major lender now requires 15% with zero seller note credit. If this is standard across SBA lenders, your plan is constrained to $800k. If other lenders are still accepting 10% with seller note credit, you retain flexibility to target larger deals. Must resolve in Phase 1 lender conversations."
+  }
+ ],
+ "n_updates": 6,
+ "raw_updates": 6,
+ "addresses_new_finding": 1,
+ "addresses_new_fact": 1,
+ "well_formed": 1,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 0,
+ "output_chars": 3589,
+ "output_tokens": 4129,
+ "input_tokens": 10,
+ "cache_read": 0,
+ "cost": 0.0,
+ "seconds": 41.31,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-haiku-4-5-20251001"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 10,
+  "output_tokens": 4129,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 20454,
+  "cost": 0.0
+ }
+}
