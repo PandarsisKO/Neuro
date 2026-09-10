@@ -273,8 +273,12 @@ def api_source_yield(project_id: str) -> dict[str, Any]:
         raise HTTPException(404)
     y = candidates.creator_yield(project_id)
     rows = sorted(({"creator": c, **v} for c, v in y.items()), key=lambda r: (-r["findings"], r["creator"]))
+    bar = next((r.get("project_bar") for r in rows if r.get("project_bar") is not None), None)
     return {"creators": len(rows), "rows": rows,
-            "proven_at_per_source": candidates.CREATOR_STRONG_PER_SOURCE,
+            "proven_bar_per_source": bar,
+            "proven_rule": (f"top quartile of this project's own per-source rates — {bar} findings per read source, "
+                            f"over creators with at least {candidates.CREATOR_MIN_SOURCES} read sources"
+                            if bar is not None else "not enough read sources yet to set a bar"),
             "note": "Project-scoped: a finding is an interpretation written against THIS brief, so it never becomes "
                     "a global fact about a channel. Absence is not evidence — a creator with no yield is not "
                     "penalised anywhere, it may simply never have been asked."}

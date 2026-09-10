@@ -280,7 +280,20 @@ def _gap_terms(project_id: str) -> tuple[list[tuple[str, str, set[str]]], set[st
 # authoritative evidence may simply never have been asked for any. Only positive, measured yield adds.
 
 CREATOR_MAX_BONUS = 25
-CREATOR_STRONG_PER_SOURCE = 8.0     # findings per ingested source at which a creator counts as proven for this project
+# CALIBRATED 2026-09-10 against Kyle's live corpus. The first version used an absolute bar (8.0 findings per
+# ingested source) and it does not survive contact with real projects, because findings-per-source is a property of
+# the DOMAIN and of source length, not of a creator's merit:
+#
+#   "buying businesses"  112 creators, per-source median 12.0, p75 19.0, max 48.2  → 8.0 marks nearly everyone
+#   "web app design"      17 creators, per-source median  6.1, p75  9.8, max 13.7  → 8.0 marks only a handful
+#   "real estate"          9 creators, per-source median  9.4, p75 11.0, max 11.4
+#
+# So "proven" is now relative to the PROJECT'S OWN distribution: the top quartile of its creators' per-source rates.
+# That is self-calibrating, always identifies someone (a bar nobody clears is not a useful bar), and says something
+# true in one sentence — "this source gives you more per video than three quarters of your sources do".
+CREATOR_PROVEN_QUANTILE = 0.75       # top quartile of this project's own per-source rates
+CREATOR_MIN_SOURCES = 3              # ...over at least this many read sources, so one lucky video proves nothing
+CREATOR_MIN_FINDINGS = 10
 
 
 def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
@@ -321,7 +334,14 @@ def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
             row["classes"][r["cls"]] = row["classes"].get(r["cls"], 0) + r["n"]
     for c, row in out.items():
         row["per_source"] = round(row["findings"] / row["sources"], 1) if row["sources"] else 0.0
-        row["proven"] = row["per_source"] >= CREATOR_STRONG_PER_SOURCE and row["findings"] >= 10
+    # the bar is this project's own top quartile, computed over creators with enough read sources to mean anything
+    rates = sorted(r["per_source"] for r in out.values()
+                   if r["sources"] >= CREATOR_MIN_SOURCES and r["findings"] >= CREATOR_MIN_FINDINGS)
+    bar = rates[min(len(rates) - 1, int(CREATOR_PROVEN_QUANTILE * len(rates)))] if rates else None
+    for row in out.values():
+        row["proven"] = bool(bar is not None and row["sources"] >= CREATOR_MIN_SOURCES
+                             and row["findings"] >= CREATOR_MIN_FINDINGS and row["per_source"] >= bar)
+        row["project_bar"] = bar
     return out
 
 
@@ -338,7 +358,8 @@ def _creator_term(creator: str | None, stats: dict[str, dict[str, Any]] | None,
     if y["proven"]:
         score += 15
         why.append(f"{creator} has given this project {y['findings']} findings from {y['sources']} source(s) "
-                   f"({y['per_source']} each)")
+                   f"({y['per_source']} each) — top quartile for this project"
+                   + (f", where the bar is {y['project_bar']}" if y.get("project_bar") else ""))
     elif y["findings"] >= 3:
         score += 6
         why.append(f"{creator} has given this project {y['findings']} findings so far")
@@ -444,11 +465,21 @@ def where_to_look(project_id: str, target: dict[str, Any] | None = None, limit: 
             continue
         why = list(why) + [f"{left} known but unread ({(un[creator]['skipped'])} skipped at review, "
                            f"{(un[creator]['candidates'])} seen but never captured)"]
-        rows.append({"creator": creator, "score": score + min(15, left // 10), "untapped": left,
+        # Extrapolating from one or two read sources is how "Acquiring Minds: 1 video read, 24 findings" became a
+        # promise of ~240 findings from the next ten. Below CREATOR_MIN_SOURCES there is no rate to extrapolate
+        # from, so none is offered and the row says why instead.
+        enough = stats["sources"] >= CREATOR_MIN_SOURCES
+        expected = int(round(stats["per_source"] * min(left, 10))) if enough else None
+        if not enough:
+            why.append(f"only {stats['sources']} source(s) of theirs have been read, so there is no reliable rate "
+                       f"to project from yet")
+        # The untapped count is a tie-break, not a reason: a large remainder is not evidence that it is worth
+        # reading, and capping it at +8 keeps measured yield in charge of the order.
+        rows.append({"creator": creator, "score": score + min(8, left // 25), "untapped": left,
                      "read": stats["sources"], "findings": stats["findings"], "claims": stats["claims"],
                      "per_source": stats["per_source"], "proven": stats["proven"],
                      "classes": stats["classes"], "why": why,
-                     "expected_findings": int(round(stats["per_source"] * min(left, 10))),
+                     "expected_findings": expected, "rate_is_reliable": enough,
                      "action": {"label": f"See what is left from {creator}", "method": "GET",
                                 "endpoint": f"/api/projects/{project_id}/pool", "query": {"q": creator, "rank_by": "fit"}}})
     rows.sort(key=lambda r: (-r["score"], -r["untapped"], r["creator"]))
@@ -458,8 +489,10 @@ def where_to_look(project_id: str, target: dict[str, Any] | None = None, limit: 
             "note": ("Ranked by what each master source has already given THIS project and how much of it is still "
                      "unread. A creator with no history is not ranked down — it is simply not recommended, because "
                      "never having supplied something is not evidence that it cannot."),
-            "expected_findings_note": "per_source × the next 10 unread — an extrapolation from this project's own "
-                                      "history with that source, not a promise"}
+            "expected_findings_note": ("per_source × the next 10 unread — an extrapolation from this project's own "
+                                       f"history with that source, not a promise. Null when fewer than "
+                                       f"{CREATOR_MIN_SOURCES} of that source's items have been read, because there "
+                                       f"is no rate to project from.")}
 
 
 def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:

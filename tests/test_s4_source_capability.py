@@ -27,7 +27,8 @@ def proj():
 
 STATS = {
     "Chase AI": {"sources": 12, "findings": 312, "claims": 40, "evidence": 55,
-                 "classes": {"experiential": 30, "expert": 25}, "per_source": 26.0, "proven": True},
+                 "classes": {"experiential": 30, "expert": 25}, "per_source": 26.0, "proven": True,
+                 "project_bar": 19.0},
     "Thin Channel": {"sources": 4, "findings": 2, "claims": 0, "evidence": 0, "classes": {},
                      "per_source": 0.5, "proven": False},
     "Middling": {"sources": 5, "findings": 20, "claims": 0, "evidence": 0, "classes": {},
@@ -42,6 +43,7 @@ def test_a_proven_creator_earns_a_measured_bonus_with_its_numbers():
     assert score == candidates.CREATOR_MAX_BONUS
     joined = " ".join(why)
     assert "312 findings" in joined and "12 source(s)" in joined      # the reason cites the measurement
+    assert "top quartile" in joined                                   # and says what "proven" means
     assert "became tracked Claims" in joined
     assert "experiential evidence before" in joined
 
@@ -166,9 +168,11 @@ def test_where_to_look_needs_both_a_history_and_something_unread(proj):
 
 
 def test_where_to_look_recommends_a_proven_creator_with_unread_material(proj):
-    sid = _src(proj, "Deal structure", "0:01 sellers finance ten percent of the price", "Chase AI")
-    for i in range(12):
-        db.add_project_note(proj, f"A real finding number {i} about seller financing terms", [], source_id=sid)
+    # enough READ sources to clear CREATOR_MIN_SOURCES — one rich video no longer proves a creator (0.58.7)
+    for k in range(candidates.CREATOR_MIN_SOURCES):
+        sid = _src(proj, f"Deal structure {k}", "0:01 sellers finance ten percent of the price", "Chase AI")
+        for i in range(12):
+            db.add_project_note(proj, f"A real finding {k}-{i} about seller financing terms", [], source_id=sid)
     # something known but unread from the same channel
     candidates.remember([{"external_id": f"vid{i}", "url": f"https://example.org/{i}",
                           "title": f"Deal structure part {i}", "creator": "Chase AI"} for i in range(14)],
@@ -177,7 +181,7 @@ def test_where_to_look_recommends_a_proven_creator_with_unread_material(proj):
     assert out["rows"], out
     top = out["rows"][0]
     assert top["creator"] == "Chase AI"
-    assert top["untapped"] == 14 and top["read"] == 1
+    assert top["untapped"] == 14 and top["read"] == candidates.CREATOR_MIN_SOURCES
     assert any("14 known but unread" in w for w in top["why"])
     assert any("findings from" in w for w in top["why"])          # the reason cites the measurement
     assert top["expected_findings"] > 0
@@ -242,3 +246,78 @@ def test_pursue_carries_the_recommendation_without_touching_the_escalation_ladde
     assert "catalogue" not in steps                               # and still no outside request on this path
     assert steps == ["project_evidence", "global_library", "candidate_index", "external"]
     assert "where_to_look" in esc and isinstance(esc["where_to_look"], list)
+
+
+# ------------------------------------------------------------------ calibration: "proven" is relative, not absolute
+
+def test_proven_is_the_projects_own_top_quartile_not_a_fixed_number(proj):
+    """CALIBRATED 2026-09-10 against the live corpus. An absolute bar does not survive contact with real projects:
+    per-source findings is a property of the domain and of source length, not of a creator's merit. Measured
+    per-source medians — "buying businesses" 12.0 (112 creators, max 48.2), "web app design" 6.1, "real estate"
+    9.4 — so a fixed 8.0 marked nearly everyone in one project and almost nobody in another."""
+    from neurosearch import ingest
+    assert not hasattr(candidates, "CREATOR_STRONG_PER_SOURCE"), "the absolute bar is gone"
+    assert candidates.CREATOR_PROVEN_QUANTILE == 0.75
+    # three creators at clearly different rates, each with enough read sources to count
+    plan = {"Prolific": 10, "Middling": 5, "Sparse": 2}
+    for name, per in plan.items():
+        for k in range(candidates.CREATOR_MIN_SOURCES):
+            r = ingest.ingest_text(f"{name} {k}", f"0:01 a transcript for {name} number {k}", project_id=proj)
+            db.connect().execute("UPDATE sources SET channel=? WHERE id=?", (name, r["source_id"]))
+            db.connect().commit()
+            for i in range(per):
+                db.add_project_note(proj, f"{name} finding {k}-{i} naming something specific like {i} percent", [],
+                                    source_id=r["source_id"])
+    y = candidates.creator_yield(proj)
+    assert y["Prolific"]["proven"] is True
+    assert y["Sparse"]["proven"] is False
+    assert y["Prolific"]["project_bar"] == y["Sparse"]["project_bar"]      # one bar, set by the project
+
+
+def test_one_lucky_source_does_not_make_a_creator_proven(proj):
+    from neurosearch import ingest
+    r = ingest.ingest_text("A single very rich source", "0:01 one transcript", project_id=proj)
+    db.connect().execute("UPDATE sources SET channel=? WHERE id=?", ("One Hit", r["source_id"]))
+    db.connect().commit()
+    for i in range(40):
+        db.add_project_note(proj, f"A specific finding {i} with {i} percent in it", [], source_id=r["source_id"])
+    y = candidates.creator_yield(proj)
+    assert y["One Hit"]["sources"] == 1 < candidates.CREATOR_MIN_SOURCES
+    assert y["One Hit"]["proven"] is False
+
+
+def test_no_rate_is_projected_from_one_or_two_read_sources(proj):
+    """Measured on the live corpus: "Acquiring Minds — 1 video read, 24 findings" produced a projection of ~240
+    findings from the next ten. One source is not a rate. Below CREATOR_MIN_SOURCES the row offers no number and
+    says why, which is the difference between an estimate and a guess wearing an estimate's clothes."""
+    sid = _src(proj, "One rich video", "0:01 a single transcript", "One Hit Wonder")
+    for i in range(24):
+        db.add_project_note(proj, f"A specific finding {i} naming {i} percent of something", [], source_id=sid)
+    candidates.remember([{"external_id": f"oh{i}", "url": f"https://example.org/oh{i}",
+                          "title": f"One Hit Wonder video {i}", "creator": "One Hit Wonder"} for i in range(40)],
+                        platform="youtube", project_id=proj, origin={"kind": "exploration"})
+    out = candidates.where_to_look(proj)
+    row = next(r for r in out["rows"] if r["creator"] == "One Hit Wonder")
+    assert row["expected_findings"] is None and row["rate_is_reliable"] is False
+    assert any("no reliable rate" in w for w in row["why"])
+    assert "Null when fewer than" in out["expected_findings_note"]
+
+
+def test_a_big_unread_pile_cannot_outrank_measured_yield(proj):
+    """The untapped count is a tie-break, not a reason — a large remainder is not evidence it is worth reading."""
+    for k in range(candidates.CREATOR_MIN_SOURCES):
+        good = _src(proj, f"Good {k}", "0:01 transcript", "High Yield")
+        for i in range(15):
+            db.add_project_note(proj, f"High yield finding {k}-{i} naming {i} percent", [], source_id=good)
+        meh = _src(proj, f"Meh {k}", "0:01 transcript", "Low Yield")
+        for i in range(3):
+            db.add_project_note(proj, f"Low yield finding {k}-{i} naming {i} percent", [], source_id=meh)
+    candidates.remember([{"external_id": f"hy{i}", "url": f"https://e.org/hy{i}", "title": f"HY {i}",
+                          "creator": "High Yield"} for i in range(10)], platform="youtube", project_id=proj,
+                        origin={"kind": "exploration"})
+    candidates.remember([{"external_id": f"ly{i}", "url": f"https://e.org/ly{i}", "title": f"LY {i}",
+                          "creator": "Low Yield"} for i in range(400)], platform="youtube", project_id=proj,
+                        origin={"kind": "exploration"})
+    out = candidates.where_to_look(proj)
+    order = [r["creator"] for r in out["rows"]]
+    assert order.index("High Yield") < order.index("Low Yield"), order

@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.6)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.7)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -48,6 +48,18 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 hundreds of findings and closed evidence targets scored exactly the same as one from a channel that had never
 yielded anything. With a partial-ingest pattern (60 of 598, plus 107, 93, 398 unstarted) those remainders are
 reservoirs of known character, and the pool was treating them as a flat list of strangers.
+
+**Calibrated 2026-09-10 (0.58.7).** `CREATOR_STRONG_PER_SOURCE = 8.0` was an absolute bar and it does not survive
+real projects, because findings-per-source is a property of the domain and of source length, not of a creator's
+merit: measured per-source medians were 12.0 for "buying businesses" (112 creators, max 48.2), 6.1 for "web app
+design", 9.4 for "real estate" — so 8.0 marked nearly everyone in one project and almost nobody in another.
+`proven` is now the project's OWN top quartile (`CREATOR_PROVEN_QUANTILE` 0.75) over creators with at least
+`CREATOR_MIN_SOURCES` (3) read sources and 10 findings; it self-calibrates, always names someone, and states
+something true in a sentence. On the live corpus that gives 13 of 112 proven, 3 of 17, 1 of 9. Two ranking fixes
+from the same measurement: **no rate is projected from fewer than 3 read sources** (one video with 24 findings was
+producing a promise of ~240 from the next ten — `expected_findings` is now null with the reason given), and the
+untapped-count bonus is capped at +8 as a tie-break, because a large remainder is not evidence that it is worth
+reading.
 
 Two rules keep it honest. **Absence is never evidence** — a creator with no yield gets no penalty anywhere, because
 a channel that never supplied authoritative evidence may simply never have been asked (`CREATOR_MAX_BONUS` is a

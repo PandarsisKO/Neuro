@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.6';
+const UI_VERSION = '0.58.7';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1969,7 +1969,7 @@ async function whereToLook(targetId) {
     ${rows.length ? rows.map(x => `<div class="kn"><div style="flex:1;min-width:0">
         <div><b>${esc(x.creator)}</b> <span class="muted">· ${x.untapped} unread · ${x.read} read · ${x.findings} findings (${x.per_source} per source)</span>${x.proven ? ' <span class="st strong">proven here</span>' : ''}</div>
         ${(x.why || []).map(w => `<div class="why">${esc(w)}</div>`).join('')}
-        <div class="why">Reading the next 10 would be worth roughly ${x.expected_findings} findings — an extrapolation from your own history with this source, not a promise.</div>
+        <div class="why">${x.expected_findings != null ? `Reading the next 10 would be worth roughly ${x.expected_findings} findings — an extrapolation from your own history with this source, not a promise.` : `Too few of this source's items read to project a rate from yet.`}</div>
       </div><button class="small primary" onclick="dlg.close();poolFilter(${JSON.stringify(x.creator).replace(/"/g, '&quot;')})">See what is left</button></div>`).join('')
       : `<div class="empty">Nothing to recommend yet. A source is only suggested once it has both given this project findings AND has material you have not read — ${r.considered || 0} source${r.considered === 1 ? '' : 's'} considered.</div>`}`;
   dlg.showModal();

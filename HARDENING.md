@@ -961,3 +961,32 @@ revision, never a clock.
 (the biggest group is four restatements of the same FICO SBSS pre-screen fact from four videos), and the mechanism
 now exists for when 0.58.1's higher cap increases volume. The number to watch is the duplicate rate as the cap
 takes effect, not the vacuity rate.
+
+
+## 0.58.7 — the capability profile, calibrated (same class of error as 0.58.6)
+
+`CREATOR_STRONG_PER_SOURCE = 8.0` shipped in 0.58.2 as a guess. Measured read-only against the live backup:
+
+| project | creators | per-source median | p75 | max |
+|---|---|---|---|---|
+| I want to start buying businesses… | 112 | 12.0 | 19.0 | 48.2 (Walker Deibel, 771 findings / 16 sources) |
+| Design beautiful and modern web apps… | 17 | 6.1 | 9.8 | 13.7 |
+| Real Estate Investment Strategy | 9 | 9.4 | 11.0 | 11.4 |
+
+An absolute bar of 8.0 therefore marked **nearly all 112** creators "proven" in one project and a handful in
+another — it was measuring the domain, not the source. `proven` is now the project's own top quartile over creators
+with ≥3 read sources and ≥10 findings: 13 of 112, 3 of 17, 1 of 9. Self-calibrating, always identifies someone (a
+bar nobody clears is not a bar), and explainable — "gives you more per video than three quarters of your sources".
+
+Two ranking defects the same measurement exposed:
+
+- **A rate projected from one source.** "Acquiring Minds — 1 video read, 24 findings" was producing *"reading the
+  next 10 would be worth roughly 240 findings"*. `expected_findings` is now null below 3 read sources, with the
+  reason stated in the row.
+- **The unread pile outranking measured yield.** The untapped bonus was up to +15 on a `left // 10` scale, which
+  saturated for every creator with 150+ unread — and many sit at exactly 380 (a listing artefact), so it ordered by
+  noise. Capped at +8 on `left // 25`: a tie-break, not a reason. A large remainder is not evidence it is worth
+  reading.
+
+Gate additions in `tests/test_s4_source_capability.py`: the relative bar, the one-lucky-source case, no projection
+from a thin sample, and yield outranking pile size.
