@@ -2408,3 +2408,43 @@ claims pass against never blocking findings for more than a few minutes. `rank_p
 (`work_p90` 384 s) and does **not** yield yet — it is the next one to do. And the general fix is still the
 scheduler's admission bucket (`SCHEDULER.md` §5): a pool should not be able to fill with long work in the first
 place, rather than each long job having to remember to be polite.
+
+---
+
+## 0.55.1 — one shared way to be polite, and the review stack that hid the queue controls
+
+Two follow-ons from the same evening, both in the path of the next thing Kyle was about to do (start ingesting
+three reviewed channels).
+
+**`jobs.Yield` — the mechanism, not another special case.** 0.55.0 made `extract_claims` hand its worker back, but
+it leaned on `maybe_extract` happening to re-trigger — a re-entry path that exists for claims and for nothing
+else. `rank_proposed` has the same shape (measured `work_p90` **384 s**, and a 398-video channel is five batches
+of eighty at 59–92 s each) and had no way to yield at all. There is now one way: a job raises `jobs.Yield` at a
+safe boundary with its progress already persisted, and `jobs.execute` requeues it **immediately — no delay, no
+attempt counted**, because a yield is neither a failure nor a wait. `claims.extract` was moved onto it too, so
+there is one mechanism rather than two.
+
+The contract a yielding job must keep is written on the exception: *everything done so far is already persisted,
+and re-running must skip it.* For ranking that meant moving persistence inside the batch loop — scores used to be
+written only after every batch finished, so a stop lost paid calls. `_pool` already re-ranks only what is still
+unscored, so resumption needed no new bookkeeping once the writes moved.
+
+**The review stack.** Three review cards (107 + 93 + 398 videos), each with a 320px scrolling list, made a page
+whose In-progress card could not be reached at all: the inner lists swallow the wheel, so "scroll further down"
+never arrives. **The queue controls — including the pause button — were unreachable exactly when the queue was
+busiest.** Verified live: I could not get to it either. Two changes, both small: the In-progress and Starting
+Research cards now sit **above** the review stack (they are what you reach for *while* reviewing, not after), and
+every review card after the first starts folded, showing its title and "20 of 398 selected" with a one-click
+`▸ show`.
+
+**Gate.** New `tests/test_r8_yield_and_review_fold.py` (5): a yield goes straight back to `queued` with no delay,
+no attempt burned, a readable message and a `yielded` job event; ranking stops after `BATCHES_PER_RUN`, **has
+already persisted every completed batch**, resumes onto only the unscored remainder and terminates; a short
+collection never yields at all; the queue card precedes the review stack in the DOM; and cards after the first
+default to folded with their ingest buttons folded away too. `tests/test_r7_claims_yield.py` updated to the shared
+mechanism. Suite 576; Tier 1 unchanged.
+
+**Honest limits.** Two batches and two groups are still judgements rather than measurements. `suggest_findings`
+itself can be long on a book-length source and does not yield — but it is one source, so it self-limits. And the
+general fix remains `SCHEDULER.md` §5: **politeness is still opt-in per job**, which means the next long job
+someone adds will have to remember, exactly as the last three did not.

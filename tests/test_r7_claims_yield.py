@@ -26,7 +26,7 @@ os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 
-from neurosearch import claims, db, evals  # noqa: E402
+from neurosearch import claims, db, evals, jobs  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
 
 
@@ -53,30 +53,37 @@ def _many_candidates(n: int) -> str:
 
 
 def test_the_bulk_pass_stops_after_its_quota_and_says_what_is_left():
+    """0.55.1: it stops by raising the SHARED jobs.Yield, so the requeue is the job runner's business and not a
+    second scheduling path invented here."""
     pid = _many_candidates(claims.GROUPS_PER_RUN * claims.EXTRACT_GROUP + 9)
     before = len(claims.unnormalized(pid))
-    res = claims.run_job({"project_id": pid, "reason": "test"})
-    assert res["calls"] == claims.GROUPS_PER_RUN, "a run must not exceed its quota of model calls"
-    assert res["more"] is True and res["remaining"] > 0
+    with pytest.raises(jobs.Yield) as e:
+        claims.run_job({"project_id": pid, "reason": "test"})
+    assert "paused so other work can run" in str(e.value) and "to go" in str(e.value)
     assert len(claims.unnormalized(pid)) < before, "it still made real progress before yielding"
+
+
+def _run(pid: str, reason: str) -> dict:
+    try:
+        return claims.run_job({"project_id": pid, "reason": reason})
+    except jobs.Yield:
+        return {"more": True}
 
 
 def test_resuming_re_does_nothing_which_is_what_makes_yielding_free():
     pid = _many_candidates(claims.GROUPS_PER_RUN * claims.EXTRACT_GROUP + 9)
-    first = claims.run_job({"project_id": pid, "reason": "one"})
-    second = claims.run_job({"project_id": pid, "reason": "two"})
-    assert second["calls"] <= claims.GROUPS_PER_RUN
-    # the second run normalized DIFFERENT candidates — no group was paid for twice
-    assert second["normalized"] > 0
+    _run(pid, "one")
+    left_after_first = len(claims.unnormalized(pid))
+    _run(pid, "two")
+    assert len(claims.unnormalized(pid)) < left_after_first, "the second run normalized DIFFERENT candidates"
     hashes = [r["extraction_hash"] for r in db.connect().execute(
         "SELECT extraction_hash FROM project_claims WHERE project_id=? AND extraction_hash IS NOT NULL", (pid,)).fetchall()]
     assert len(set(hashes)) >= 2, "each group carries its own extraction hash"
-    # run until it stops asking for more: it must terminate, not loop forever
+    # run until it stops yielding: it must terminate, not loop forever
     for _ in range(20):
-        r = claims.run_job({"project_id": pid, "reason": "again"})
-        if not r.get("more"):
+        if not _run(pid, "again").get("more"):
             break
-    assert not claims.unnormalized(pid) or not r.get("more")
+    assert not claims.unnormalized(pid)
 
 
 def test_the_fast_pass_is_never_interrupted():

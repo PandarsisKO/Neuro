@@ -50,6 +50,23 @@ class Cancelled(RuntimeError):
     """Raised inside a job at a safe boundary after cancellation was requested. Nothing is written after it."""
 
 
+class Yield(Exception):
+    """A long job voluntarily gives its worker back at a safe boundary, with durable progress already written.
+
+    0.55.1. The AI pool is three workers and some jobs work for minutes: `extract_claims` measured p90 843 s and
+    `rank_proposed` 384 s, while `suggest_findings` — 0.95 s of actual work — waited 4,782 s behind them. Lanes
+    cannot fix that, because a lane decides who is claimed NEXT, not who is EVICTED; a running job holds its
+    worker whatever arrives. So a long job has to stand up and leave, and this is the shared way to do it rather
+    than each one inventing its own (0.55.0's claims fix leaned on a re-trigger that happened to exist).
+
+    The contract for a job that raises this: everything done so far is already persisted, and re-running must skip
+    it. Requeued immediately, no delay, no attempt counted — this is not a failure and not a wait."""
+
+    def __init__(self, message: str = "paused so other work can run — continues automatically") -> None:
+        super().__init__(message)
+        self.message = message
+
+
 class SimulatedCrash(BaseException):
     """Test hook: the process 'dies' here. Not an Exception on purpose — no handler in the job may swallow it."""
 
@@ -353,6 +370,10 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .media import RateLimited, rate_limit_status
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
+        if isinstance(e, Yield):
+            db.requeue_job(jid, delay=0, message=e.message)
+            db.job_event(jid, "yielded", run_id=job.get("run_id"), message=e.message)
+            return "queued"
         if isinstance(e, BudgetPaused):
             db.requeue_job(jid, delay=min(e.wait, 3600), message=f"paused: {e}", wait_reason="budget")
             if sid:

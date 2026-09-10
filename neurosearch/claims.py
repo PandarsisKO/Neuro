@@ -970,10 +970,13 @@ def run_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
         progress(0.99, f"updating the research map ({res.get('normalized', 0)} claims written)")
     knowledge.refresh(pid)
     if res.get("more"):
-        # No re-queue here on purpose: `maybe_extract` fires after every findings job and re-creates this pass once
-        # its dedupe key frees, so the remainder resumes on its own without a second scheduling path to keep honest.
-        log.info("claims: yielded the worker after %d group(s), %d candidate(s) still to normalize for %s",
+        # 0.55.1: use the SHARED yield rather than leaning on maybe_extract happening to re-trigger. Everything
+        # this run normalized is already stamped with its extraction_hash, so the requeued job resumes at the
+        # first unfinished group and re-does nothing.
+        from .jobs import Yield
+        log.info("claims: yielding the worker after %d group(s), %d candidate(s) still to normalize for %s",
                  res.get("calls", 0), res.get("remaining", 0), pid[:8])
+        raise Yield(f"normalized {res.get('normalized', 0)} — paused so other work can run, {res.get('remaining', 0)} to go")
     return res
 
 

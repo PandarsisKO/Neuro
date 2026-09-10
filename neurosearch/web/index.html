@@ -159,6 +159,8 @@
   .rv .sc.hi{background:#dcfce7;color:#166534}.rv .sc.mid{background:#fef3c7;color:#92400e}
   [data-theme="dark"] .rv .sc.hi{background:#14532d;color:#bbf7d0}[data-theme="dark"] .rv .sc.mid{background:#78350f;color:#fde68a}
   .rv .list{max-height:320px;overflow:auto;margin-top:6px}
+  .rv.folded .list, .rv.folded .rvfoot{display:none}
+  .rv .rvfold{cursor:pointer;user-select:none;color:var(--muted);font-size:12px;margin-left:6px}
   .fgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:10px;box-shadow:var(--shadow)}
   .fgroup .gh{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
   .fgroup .gh b{color:var(--text);font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -344,9 +346,9 @@
           <div id="discList" style="margin-top:10px"></div>
         </div>
       </div>
-      <div id="reviewWrap"></div>
       <div id="bootCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
+      <div id="reviewWrap"></div>
       <div id="captureCard" class="card" style="display:none;border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
         <div id="srcChips" class="row" style="gap:4px"></div>
@@ -580,7 +582,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.55.0';
+const UI_VERSION = '0.55.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -999,6 +1001,7 @@ function showPane(p) {
   if (p === 'course') loadCoursePane();
 }
 let rvSig = null;
+const RVFOLD = {};      // review card id -> folded? (default: everything after the first)
 const rvUnchecked = {};   // collection id -> Set of source ids the user unticked (survives re-renders)
 const rvFilterText = {};
 const rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
@@ -1009,7 +1012,7 @@ async function loadReviews() {
   const sig = rvs.map(c => c.id + ':' + (c.meta && c.meta.ranked ? 'R' : 'r') + ':' + c.proposed.map(s => s.id + (s.relevance == null ? '' : '=' + s.relevance)).join(',')).join('|');
   if (sig === rvSig) return;
   rvSig = sig;
-  $('#reviewWrap').innerHTML = rvs.map(c => {
+  $('#reviewWrap').innerHTML = rvs.map((c, idx) => {
     const meta = c.meta || {}, want = meta.max_videos || 0, ranked = !!meta.ranked;
     rvData[c.id] = c.proposed;
     const scored = ranked && c.proposed.some(s => s.relevance != null);
@@ -1027,15 +1030,19 @@ async function loadReviews() {
         ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.${meta.rank_note ? ` <span style="color:var(--warn)">${esc(meta.rank_note)}</span>` : ''}</span>
            <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
         : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
-    return `<div class="card rv" style="border-color:var(--warn)" id="rv-${c.id}">
-      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}</b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
+    // Only the FIRST review card is open. Three of them (107 + 93 + 398 videos) stacked to a page whose queue
+    // controls could not be scrolled to at all — the inner lists swallow the wheel, so "further down" was
+    // unreachable. A folded card still shows what it is and how much is selected; opening it is one click.
+    const folded = RVFOLD[c.id] !== undefined ? RVFOLD[c.id] : idx > 0;
+    return `<div class="card rv${folded ? ' folded' : ''}" style="border-color:var(--warn)" id="rv-${c.id}">
+      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}<span class="rvfold" onclick="RVFOLD['${c.id}']=!(RVFOLD['${c.id}'] !== undefined ? RVFOLD['${c.id}'] : ${idx > 0});rvSig=null;loadReviews()">${folded ? '▸ show' : '▾ hide'}</span></b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
       <div style="margin-top:3px;font-size:13px">💵 <span id="rvest-${c.id}">${est}</span></div>
       ${meta.counts ? `<div class="muted" style="margin-top:2px">🗂 ${(meta.counts.already_in_project || 0) + (meta.counts.already_in_library || 0) + (meta.counts.new || 0)} found · <b>${meta.counts.already_in_library || 0}</b> already in your library (reused, not re-downloaded) · <b>${meta.counts.already_in_project || 0}</b> already in this project · <b>${meta.counts.new || 0}</b> new — the estimate below covers only new work</div>` : ''}
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row" style="margin-top:4px">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
       <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
-      <div class="row" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
+      <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }
 const rvData = {};   // collection id -> proposed rows (for live cost estimates)

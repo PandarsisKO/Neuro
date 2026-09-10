@@ -17,6 +17,11 @@ log = logging.getLogger(__name__)
 
 POOL = 400          # never rank more than this many (newest first); keeps the cost bounded
 BATCH = 80
+BATCHES_PER_RUN = 2    # 0.55.1 — then the job hands its worker back (jobs.Yield). A 398-video channel is five
+                       # batches at 59-92 s each: 5-8 minutes holding one of three AI workers while every findings
+                       # job waits. Each batch's scores are persisted as it completes and `_pool` already re-ranks
+                       # only what is still unscored, so stopping between batches costs nothing and resuming
+                       # re-does nothing.
 
 SYSTEM = """You are a research triage assistant scoring a list of videos for relevance BEFORE they are downloaded.
 You only see each video's title, a snippet of its description, its length and view count — judge from that.
@@ -109,6 +114,15 @@ def _line(i: int, s: dict[str, Any]) -> str:
     return " ".join(bits)
 
 
+def _prov(project: dict[str, Any]) -> dict[str, Any]:
+    from . import contracts, providers
+    return {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model,
+            "provider": "fake" if providers.fake() else "anthropic",
+            "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1",
+            "brief_revision": db.brief_revision(project),
+            "routing": providers.routing_json("rank.relevance", getattr(providers.last_response(), "model", None))}
+
+
 def _pool(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     rows.sort(key=lambda r: r.get("created_at") or 0)      # listing order (newest first for channels)
     pool, rest = rows[:POOL], rows[POOL:]
@@ -156,8 +170,13 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     pool, rest = _pool(rows)
     head = _head(project, want)
     scored: dict[str, tuple[int, str]] = {}
+    persisted: set[str] = set()
     failed_batches = repaired_batches = batches = 0
+    yielding = False
     for b in range(0, len(pool), BATCH):
+        if batches >= BATCHES_PER_RUN and b < len(pool):
+            yielding = True                                 # durable progress is already written: leave
+            break
         batches += 1
         batch = pool[b:b + BATCH]
         done_now = min(b + BATCH, len(pool))
@@ -182,14 +201,25 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
                 continue
             if 0 <= i < len(batch):
                 scored[batch[i]["id"]] = (sc, str(it.get("why") or "")[:80])
+        # persist THIS batch before going round again, so yielding (or dying) never loses a paid call
+        bprov = _prov(project)
+        with db.batch():
+            for s_ in batch:
+                if s_["id"] in scored:
+                    sc, why = scored[s_["id"]]
+                    db.set_relevance(s_["id"], sc, why, project_id=project_id, input_hash=input_hash(project, s_), **bprov)
+                    persisted.add(s_["id"])
         if progress:                                       # the bar moves when a batch is actually scored, not when one starts
             progress(min(0.99, done_now / len(pool)), f"ranked {len(scored)} of {len(pool)}")
+    if yielding:
+        from .jobs import Yield
+        raise Yield(f"ranked {len(persisted)} of {len(pool)} — paused so other work can run, continues automatically")
     from . import contracts, providers
-    prov = {"model": "fake" if providers.fake() else contracts.contract("rank.relevance").model, "provider": "fake" if providers.fake() else "anthropic",
-            "prompt_version": prompt_version(), "schema_version": schema_version() or "rank-v1", "brief_revision": db.brief_revision(project),
-            "routing": providers.routing_json("rank.relevance", getattr(providers.last_response(), "model", None))}
+    prov = _prov(project)
     with db.batch():
         for s in pool:
+            if s["id"] in persisted:
+                continue                                    # already written by its own batch
             if s["id"] in scored:
                 sc, why = scored[s["id"]]
                 db.set_relevance(s["id"], sc, why, project_id=project_id, input_hash=input_hash(project, s), **prov)
