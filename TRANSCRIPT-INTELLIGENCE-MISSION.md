@@ -3,6 +3,14 @@
 *Filed 2026-09-10 against Kyle's brief on two connected goals: better organisation of research state, and cheaper
 cumulative understanding of source material. Written after measuring his live corpus, not from the brief alone.*
 
+
+> **Sibling mission (filed 2026-09-10, not started):** `EXTERNAL-AI-ACCESS-MISSION.md` — letting ChatGPT/Claude use
+> Neuro Search as a shared project intelligence layer, with per-identity project ACLs, a Project Inbox for material
+> sent in from outside, and a hard boundary between external evidence, user decisions and AI-generated material.
+> It shares this mission's cost rule ("never pay twice to rediscover something Neuro Search already learned") and
+> depends on project state being cheap to assemble, which is what 0.62.2 and 0.61.4/0.62.0 made true.
+
+
 **Revision 2 (same day), after Kyle's review.** He found five errors and three misjudgements in revision 1, and
 they are corrected in place rather than quietly overwritten, because two of them were the same class of mistake
 this project keeps making — reading a measurement as if it answered a question it never asked.
