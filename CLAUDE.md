@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.3)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -59,6 +59,14 @@ aggregation is a separate decision needing its own argument. The wanted-evidence
 open targets (`preferred_classes`), so "it has supplied experiential evidence before, which is what this question
 needs" is a measurement, not a similarity. API `GET /api/projects/{id}/source-yield`. Gate
 `tests/test_s4_source_capability.py`. Rest of the rung: `SOURCE-CAPABILITY-RUNG.md`.
+
+**C2 — where to look (0.58.3).** `candidates.where_to_look(project_id, target)` answers the question gap analysis
+never could: not *what is missing* but *where to go for it*. `untapped_by_creator` counts what the project knows of
+each master source but has not read (skipped at the cutoff + Candidate Index rows); a creator is only recommended
+when it has **both** a yield history here **and** something unread — a proven channel with nothing left is not a
+place to look, and an untapped channel with no history is just a list. Every reason cites a number ("312 findings
+from 12 sources", "14 known but unread"), `expected_findings` is an explicit extrapolation from this project's own
+history with that source, and the action points at the existing pool filtered to that creator. It is DB-only, so it runs on `pursue(external=False)` where the UI promises no *web search* — but it is **not a step**: `escalation.steps` is the LADDER (project evidence → library → candidates → external), every entry is somewhere the app actually looked, and `research_view`'s `already_checked` renders straight from it. A recommendation is not a search, so it rides alongside as `escalation.where_to_look`. Putting it in `steps` broke the frozen G5 gate and would have reported advice as a check. API `GET /api/projects/{id}/where-to-look[?target_id=]`.
 
 ## Findings quality — the trash filter (F1–F3, 0.58.0)
 

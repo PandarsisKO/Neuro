@@ -389,6 +389,79 @@ def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab
     return max(0, min(100, score)), best, why
 
 
+def untapped_by_creator(project_id: str) -> dict[str, dict[str, Any]]:
+    """channel → how much of that master source this project knows about but has NOT read: sources skipped at the
+    ingest cutoff, plus Candidate Index rows. $0, counts only."""
+    conn = db.connect()
+    out: dict[str, dict[str, Any]] = {}
+
+    def bump(name: str | None, key: str) -> None:
+        n = (name or "").strip()
+        if not n:
+            return
+        row = out.setdefault(n, {"skipped": 0, "candidates": 0})
+        row[key] += 1
+
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+    for srow in db.list_sources(status="skipped", limit=100000):
+        if srow["id"] in ids:
+            bump(srow.get("channel"), "skipped")
+    for c in list_for_project(project_id, limit=100000):
+        if c.get("state") in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
+            bump(c.get("creator"), "candidates")
+    for row in out.values():
+        row["untapped"] = row["skipped"] + row["candidates"]
+    return out
+
+
+def where_to_look(project_id: str, target: dict[str, Any] | None = None, limit: int = 5) -> dict[str, Any]:
+    """C2 (0.58.3). Gap analysis used to start every search from nothing. This answers the question Kyle actually
+    asked for — *where* should I look to close this gap — from what the project has already measured about each
+    master source, and it is $0 with no model call and no network.
+
+    A row is only offered when the creator has BOTH a yield history in this project and something left unread: a
+    proven channel with nothing untapped is not a place to look, and an untapped channel with no history is just a
+    list. Every reason cites a number. Absence stays not-evidence: nothing is ranked DOWN for having no history, it
+    simply is not offered as a recommendation."""
+    y = creator_yield(project_id)
+    un = untapped_by_creator(project_id)
+    want: set[str] = set()
+    if target:
+        pc = target.get("preferred_classes")
+        if isinstance(pc, str):
+            try:
+                pc = json.loads(pc)
+            except ValueError:
+                pc = [pc]
+        want = {c for c in (pc or []) if isinstance(c, str)}
+    rows: list[dict[str, Any]] = []
+    for creator, stats in y.items():
+        left = (un.get(creator) or {}).get("untapped", 0)
+        if not stats.get("findings") or not left:
+            continue
+        score, why = _creator_term(creator, y, want)
+        if not score:
+            continue
+        why = list(why) + [f"{left} known but unread ({(un[creator]['skipped'])} skipped at review, "
+                           f"{(un[creator]['candidates'])} seen but never captured)"]
+        rows.append({"creator": creator, "score": score + min(15, left // 10), "untapped": left,
+                     "read": stats["sources"], "findings": stats["findings"], "claims": stats["claims"],
+                     "per_source": stats["per_source"], "proven": stats["proven"],
+                     "classes": stats["classes"], "why": why,
+                     "expected_findings": int(round(stats["per_source"] * min(left, 10))),
+                     "action": {"label": f"See what is left from {creator}", "method": "GET",
+                                "endpoint": f"/api/projects/{project_id}/pool", "query": {"q": creator, "rank_by": "fit"}}})
+    rows.sort(key=lambda r: (-r["score"], -r["untapped"], r["creator"]))
+    return {"rows": rows[:max(1, limit)], "considered": len(y), "with_untapped": len(rows),
+            "question": (target or {}).get("question"),
+            "wanted_classes": sorted(want),
+            "note": ("Ranked by what each master source has already given THIS project and how much of it is still "
+                     "unread. A creator with no history is not ranked down — it is simply not recommended, because "
+                     "never having supplied something is not evidence that it cannot."),
+            "expected_findings_note": "per_source × the next 10 unread — an extrapolation from this project's own "
+                                      "history with that source, not a promise"}
+
+
 def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
     """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
     why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web."""

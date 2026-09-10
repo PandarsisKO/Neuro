@@ -222,6 +222,15 @@ def pursue(target_id: str, *, external: bool = False, resurface: bool = True) ->
                   "candidates": [{"id": r["id"], "title": r.get("title"), "state": r.get("state"), "target_score": r["target_score"], "evidence_class": r.get("evidence_class"), "resurfaced": r.get("resurfaced")} for r in ranked[:8]]})
     for r in ranked[:8]:                                                   # B3: the gap remembers what could fill it (durable, not a JSON trail)
         candidates.link(r["id"], pid, "evidence_target", target_id, relevance=int(round(100 * float(r["target_score"]))), why=f"matches the open question: {q[:120]}")
+    # Where to look, from what this project has already measured about each master source (C2, 0.58.3). $0 and
+    # database-only, so it is safe here where `pursue(external=False)` promises no WEB SEARCH.
+    #
+    # It is deliberately NOT a step. `steps` is the escalation LADDER — project evidence → global library →
+    # candidate index → external — and every entry in it is somewhere the app actually looked; `already_checked` in
+    # the Research tab is rendered straight from it. This searched nothing: it reads what the earlier steps and the
+    # project's history already know and recommends a place for the USER to look next. Adding it to the ladder both
+    # broke the frozen G5 acceptance gate and would have told Kyle a recommendation was a search. It rides alongside.
+    look = candidates.where_to_look(pid, tg, limit=5)
     # 4 — research catalogues: $0 and no model call, but it IS a request to an outside service, so it belongs on the
     # external path only. `pursue(external=False)` is the escalation the UI labels "Search my existing research …
     # No web search", and the G5 acceptance gate freezes it as network-free; a free call is still a call. When the
@@ -239,7 +248,9 @@ def pursue(target_id: str, *, external: bool = False, resurface: bool = True) ->
         job = db.create_job("discover", {"project_id": pid, "refine": q, "mode": "web_first"})
         ext.update(run=True, job_id=job["id"])
     steps.append(ext)
-    rec = {"at": time.time(), "steps": steps}
+    rec = {"at": time.time(), "steps": steps,
+           "where_to_look": [{k: r[k] for k in ("creator", "untapped", "read", "findings", "per_source", "why", "action")}
+                             for r in look["rows"]]}
     with db.tx() as conn:
         conn.execute("UPDATE project_evidence_targets SET last_escalation=?, updated_at=? WHERE id=?", (json.dumps(rec), time.time(), target_id))
     db.kv_bump("research:targets_pursued")

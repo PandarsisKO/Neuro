@@ -249,6 +249,20 @@ def api_scholar_search(project_id: str, body: ScholarSearchIn) -> dict[str, Any]
             "records": [{k: v for k, v in r.items()} for r in recs]}
 
 
+@app.get("/api/projects/{project_id}/where-to-look", dependencies=[Depends(require_auth)])
+def api_where_to_look(project_id: str, target_id: str | None = None, limit: int = 5) -> dict[str, Any]:
+    """C2: which master sources to read more of to close a gap, ranked by what each has already given THIS project
+    and how much of it is still unread. $0, no model, no network. Pass `target_id` to weight by the evidence class
+    that question needs."""
+    from . import candidates, knowledge
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    tg = knowledge.get_target(target_id) if target_id else None
+    if target_id and not tg:
+        raise HTTPException(404, "no such evidence target")
+    return candidates.where_to_look(project_id, tg, limit=max(1, min(limit, 25)))
+
+
 @app.get("/api/projects/{project_id}/source-yield", dependencies=[Depends(require_auth)])
 def api_source_yield(project_id: str) -> dict[str, Any]:
     """C1: what each master source (channel / site / creator) has actually given THIS project — ingested sources,

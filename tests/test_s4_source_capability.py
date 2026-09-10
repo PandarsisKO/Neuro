@@ -142,3 +142,103 @@ def test_yield_does_not_leak_across_projects(proj):
     db.add_project_note(oid, "A finding that belongs to the OTHER project", [], source_id=r["source_id"])
     y = candidates.creator_yield(proj)
     assert y.get("Shared Channel", {}).get("findings", 0) == 0
+
+
+# ------------------------------------------------------------------ C2: where to look
+
+def _src(proj, title, text, channel):
+    from neurosearch import ingest
+    r = ingest.ingest_text(title, text, project_id=proj)
+    db.connect().execute("UPDATE sources SET channel=? WHERE id=?", (channel, r["source_id"]))
+    db.connect().commit()
+    return r["source_id"]
+
+
+def test_where_to_look_needs_both_a_history_and_something_unread(proj):
+    """A proven channel with nothing left is not a place to look, and an untapped channel with no history is just a
+    list. Only the intersection is a recommendation."""
+    sid = _src(proj, "Read already", "0:01 sellers finance ten percent of the price", "Proven But Exhausted")
+    for i in range(12):
+        db.add_project_note(proj, f"A real finding number {i} about seller financing terms", [], source_id=sid)
+    out = candidates.where_to_look(proj)
+    assert out["rows"] == []                       # history, but nothing untapped
+    assert out["considered"] >= 1
+
+
+def test_where_to_look_recommends_a_proven_creator_with_unread_material(proj):
+    sid = _src(proj, "Deal structure", "0:01 sellers finance ten percent of the price", "Chase AI")
+    for i in range(12):
+        db.add_project_note(proj, f"A real finding number {i} about seller financing terms", [], source_id=sid)
+    # something known but unread from the same channel
+    candidates.remember([{"external_id": f"vid{i}", "url": f"https://example.org/{i}",
+                          "title": f"Deal structure part {i}", "creator": "Chase AI"} for i in range(14)],
+                        platform="youtube", project_id=proj, origin={"kind": "exploration"})
+    out = candidates.where_to_look(proj)
+    assert out["rows"], out
+    top = out["rows"][0]
+    assert top["creator"] == "Chase AI"
+    assert top["untapped"] == 14 and top["read"] == 1
+    assert any("14 known but unread" in w for w in top["why"])
+    assert any("findings from" in w for w in top["why"])          # the reason cites the measurement
+    assert top["expected_findings"] > 0
+    assert top["action"]["query"]["q"] == "Chase AI"              # and it points at the pool, filtered
+
+
+def test_a_creator_with_no_history_is_not_recommended_and_not_penalised(proj):
+    candidates.remember([{"external_id": "u1", "url": "https://example.org/u1", "title": "Unknown channel video",
+                          "creator": "Never Yielded"}], platform="youtube", project_id=proj,
+                        origin={"kind": "exploration"})
+    out = candidates.where_to_look(proj)
+    assert all(r["creator"] != "Never Yielded" for r in out["rows"])
+    assert "not evidence that it cannot" in out["note"]           # the reason is stated, not implied
+
+
+def test_the_wanted_evidence_class_changes_the_ranking(proj):
+    a = _src(proj, "Experiential source", "0:01 owners report a hard first year", "Experience Channel")
+    b = _src(proj, "Expert source", "0:01 the statute imposes a two year lookback", "Expert Channel")
+    for i in range(12):
+        db.add_project_note(proj, f"A real finding number {i} from the experiential channel", [], source_id=a)
+        db.add_project_note(proj, f"A real finding number {i} from the expert channel", [], source_id=b)
+    for name in ("Experience Channel", "Expert Channel"):
+        candidates.remember([{"external_id": f"{name}-{i}", "url": f"https://example.org/{name}{i}",
+                              "title": f"{name} video {i}", "creator": name} for i in range(12)],
+                            platform="youtube", project_id=proj, origin={"kind": "exploration"})
+    # give the experiential channel a Claim with an experiential evidence class
+    from neurosearch import claims as claims_mod
+    claim = claims_mod.add_claim(proj, "Owners report a hard first year", claim_type="experiential")
+    cid = claim["id"] if isinstance(claim, dict) else claim
+    db.connect().execute("INSERT INTO claim_evidence (claim_id, source_id, evidence_class, created_at) VALUES (?,?,?,?)",
+                         (cid, a, "experiential", 1.0))
+    db.connect().commit()
+    out = candidates.where_to_look(proj, {"question": "How do owners describe year one?",
+                                          "preferred_classes": ["experiential"]})
+    assert out["wanted_classes"] == ["experiential"]
+    assert out["rows"][0]["creator"] == "Experience Channel"
+    assert any("experiential evidence before" in w for w in out["rows"][0]["why"])
+
+
+def test_where_to_look_makes_no_model_call_and_no_network(proj, monkeypatch):
+    from neurosearch import providers, safe_fetch
+    def boom(*a, **k):
+        raise AssertionError("where_to_look must be free and offline")
+    monkeypatch.setattr(providers, "invoke", boom)
+    monkeypatch.setattr(providers, "invoke_structured", boom)
+    monkeypatch.setattr(safe_fetch, "safe_fetch", boom)
+    candidates.where_to_look(proj)
+
+
+def test_pursue_carries_the_recommendation_without_touching_the_escalation_ladder(proj):
+    """`steps` is the escalation LADDER and every entry is somewhere the app actually looked — the Research tab
+    renders `already_checked` straight from it, and the G5 acceptance gate freezes its sequence. `where_to_look`
+    searched nothing; it recommends where the USER should look. So it rides alongside the ladder, never in it.
+    The first version of this put it in `steps` and broke both gates, which were right."""
+    from neurosearch import knowledge
+    tg = knowledge.add_target(proj, "How do owners describe year one?", preferred_classes=["experiential"],
+                              origin="user")
+    r = knowledge.pursue(tg["id"], external=False)
+    esc = r["escalation"]
+    steps = [s["step"] for s in esc["steps"]]
+    assert [s for s in steps if s.startswith("where")] == []      # not a rung of the ladder
+    assert "catalogue" not in steps                               # and still no outside request on this path
+    assert steps == ["project_evidence", "global_library", "candidate_index", "external"]
+    assert "where_to_look" in esc and isinstance(esc["where_to_look"], list)
