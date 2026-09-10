@@ -103,6 +103,20 @@ def queries_for(project: dict[str, Any]) -> list[str]:
     return picked
 
 
+# 0.60.5 — a stored judgement has to know what made it.
+#
+# 0.60.2 changed how library recall decides relevance (two-letter terms count, the query's rarest word must appear,
+# `strong` needs one passage rather than three), and it worked: on Kyle's corpus the same query went from 66
+# matches to 25 and from 8 "strong" to 1. But the suggestions on his screen had been WRITTEN by the old matcher and
+# were still there afterwards — the Airbnb video was still offered as the project's strong match, pre-ticked, an
+# hour after the fix shipped. A recall change is a change to a stored opinion, and the opinion has to carry its
+# provenance the same way every AI artifact in this codebase already does.
+#
+# Bump this string whenever the matcher's decisions change. Rows from an older version are reported as stale and
+# never pre-ticked; they are not deleted, because the user may already have decided on them.
+SCAN_VERSION = "recall-2"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor)
+
+
 def _band(hit: dict[str, Any]) -> str:
     """0.60.2: `strong` now needs ONE passage that clears the bar, not a union across three.
 
@@ -170,7 +184,7 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
         rows.append({"object_kind": "source", "object_id": h["source_id"], "band": h["band"], "score": h["score"],
                      "why": json.dumps({"passages": h["passages"], "terms": h["terms"], "coverage": h["coverage"]}),
                      "origin": json.dumps({"queries": h["queries"]})})
-    db.upsert_project_reuse(project_id, rows, brev)
+    db.upsert_project_reuse(project_id, rows, brev, scan_version=SCAN_VERSION)
 
     projects = related_projects(project_id, hits)
     if progress:
@@ -234,7 +248,9 @@ def state(project_id: str) -> dict[str, Any]:
              "platform": src.get("platform"), "url": src.get("url"), "published_at": src.get("published_at"),
              "duration": src.get("duration"), "state": r["state"], "band": r["band"], "score": r["score"],
              "coverage": why.get("coverage") or 0.0, "passages": why.get("passages") or [],
-             "terms": why.get("terms") or [], "queries": origin.get("queries") or []}
+             "terms": why.get("terms") or [], "queries": origin.get("queries") or [],
+             "scan_version": r.get("scan_version"),
+             "from_old_matcher": (r.get("scan_version") or "recall-1") != SCAN_VERSION}
         h["why"] = _why(h)
         hits.append(h)
     run = db.last_bootstrap_run(project_id)
@@ -244,7 +260,13 @@ def state(project_id: str) -> dict[str, Any]:
                        "dismissed": sum(1 for h in hits if h["state"] == "dismissed"),
                        "strong": sum(1 for h in live if h["band"] == "strong"),
                        "possible": sum(1 for h in live if h["band"] == "possible")},
-            "stale": bool(run and run.get("brief_revision") and run["brief_revision"] != db.brief_revision(project_id))}
+            "stale": bool(run and run.get("brief_revision") and run["brief_revision"] != db.brief_revision(project_id)),
+            "scan_version": SCAN_VERSION,
+            "matcher_stale": any(h["from_old_matcher"] for h in live),
+            "matcher_note": ("These were matched before the library search was fixed (0.60.2): two-letter words "
+                             "like \"ux\" were being dropped, and a source could match by mentioning different "
+                             "words in three unrelated passages. Scan again to re-judge them — it is free."
+                             if any(h["from_old_matcher"] for h in live) else None)}
 
 
 def decide(project_id: str, source_ids: list[str], decision: str) -> dict[str, Any]:

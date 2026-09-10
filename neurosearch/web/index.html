@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.60.4';
+const UI_VERSION = '0.60.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2309,12 +2309,12 @@ function bootWhy(h) {
 function bootRow(h) {
   const open = BOOT.open.has(h.source_id);
   return `<div class="job" style="flex-wrap:wrap;align-items:flex-start">
-    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' ? 'checked' : ''} style="margin-top:5px">
+    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="margin-top:5px">
     <div style="flex:1;min-width:0">
       <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted" style="font-size:12px">· ${esc(h.channel)}</span>` : ''}</div>
       ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
     </div>
-    <span class="tag" title="${h.band === 'strong' ? 'matched more than one part of your goal, or its passages cover most of it' : 'matched, but less of your goal'}">${h.band === 'strong' ? 'strong' : 'possible'}</span>
+    <span class="tag" title="${h.band === 'strong' ? 'matched more than one part of your goal, and one passage covers most of it' : 'matched, but less of your goal'}">${h.band === 'strong' ? 'strong' : 'possible'}</span>${h.from_old_matcher ? `<span class="tag" style="color:var(--warn)" title="Judged by the library matcher as it was before 0.60.2. Scan again to re-judge it — free.">older matcher</span>` : ''}
     <button class="small ghost" onclick="BOOT.open.has('${h.source_id}') ? BOOT.open.delete('${h.source_id}') : BOOT.open.add('${h.source_id}'); renderBoot();">${open ? 'Hide why' : 'Why'}</button>
   </div>`;
 }
@@ -2342,6 +2342,7 @@ function renderBoot() {
   el.innerHTML = `<b>Neuro Search already found research you have</b>
     <div class="muted" style="margin-top:4px">${c.strong} strong match${c.strong === 1 ? '' : 'es'}${c.possible ? ` · ${c.possible} more may be useful` : ''}${run.scope ? ` · searched ${run.scope} source${run.scope === 1 ? '' : 's'} outside this project` : ''}${run.found > run.shown ? ` · showing the best ${run.shown} of ${run.found}` : ''}. Nothing is downloaded or transcribed again — these are sources you already own.</div>
     ${b.stale ? `<div class="banner" style="margin:8px 0">The goal changed since this scan. <button class="small" onclick="rescanBoot()">Scan again</button></div>` : ''}
+    ${b.matcher_stale ? `<div class="banner" style="margin:8px 0">${esc(b.matcher_note || '')} <button class="small primary" onclick="rescanBoot()">Scan again — free</button></div>` : ''}
     ${projs.length ? `<div class="muted" style="font-size:12px;margin-top:8px">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
     <div style="margin-top:8px">${shown.map(bootRow).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap">

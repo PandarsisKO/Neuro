@@ -256,3 +256,57 @@ def test_a_dead_link_is_not_offered_as_something_to_add():
     assert "Add the site instead" in ui
     assert "that address is gone" in ui
     assert "the page is probably there" in ui       # a 403 keeps its link
+
+
+# ------------------------------------------------------------------ a stored judgement knows what made it (0.60.5)
+
+def test_a_suggestion_records_which_matcher_made_it(lib):
+    """Seen on Kyle's actual screen an hour after 0.60.2 shipped: the Airbnb video was still offered as the
+    project's one STRONG match, still pre-ticked. The recall fix changed how judgements are made; it could not
+    change judgements already stored. So a stored opinion now carries its provenance, exactly as every AI artifact
+    in this codebase already does."""
+    p = db.create_project("matcher", brief="b")
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "s1", "band": "strong", "score": 1.0,
+                                       "why": "{}", "origin": "{}"}], "rev1", scan_version="recall-1")
+    st = bootstrap.state(p["id"])
+    assert st["scan_version"] == bootstrap.SCAN_VERSION
+    assert st["matcher_stale"] is True
+    assert st["sources"][0]["from_old_matcher"] is True
+    assert "two-letter" in st["matcher_note"] and "free" in st["matcher_note"]
+
+
+def test_a_row_with_no_version_at_all_counts_as_the_old_one(lib):
+    """Every row written before 0.60.5 has a NULL there, and every one of them was made by the old matcher."""
+    p = db.create_project("matcher2", brief="b")
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "s1", "band": "possible",
+                                       "score": 0.1, "why": "{}", "origin": "{}"}], "rev1")
+    assert bootstrap.state(p["id"])["sources"][0]["from_old_matcher"] is True
+
+
+def test_a_fresh_row_is_not_stale(lib):
+    p = db.create_project("matcher3", brief="b")
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "s1", "band": "strong", "score": 1.0,
+                                       "why": "{}", "origin": "{}"}], "rev1",
+                            scan_version=bootstrap.SCAN_VERSION)
+    st = bootstrap.state(p["id"])
+    assert st["matcher_stale"] is False and st["matcher_note"] is None
+
+
+def test_an_old_suggestion_is_never_pre_ticked():
+    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "neurosearch", "web", "index.html"), encoding="utf-8").read()
+    assert "h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''" in ui
+    assert "older matcher" in ui
+    assert "Scan again — free" in ui
+
+
+def test_the_scan_stamps_the_current_version(lib, monkeypatch):
+    """And a scan re-judges: the row is replaced, not appended to."""
+    p = db.create_project("matcher4", brief="b")
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "s1", "band": "strong", "score": 1.0,
+                                       "why": "{}", "origin": "{}"}], "rev1", scan_version="recall-1")
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "s1", "band": "possible", "score": 0.2,
+                                       "why": "{}", "origin": "{}"}], "rev1",
+                            scan_version=bootstrap.SCAN_VERSION)
+    rows = db.list_project_reuse(p["id"])
+    assert len(rows) == 1 and rows[0]["scan_version"] == bootstrap.SCAN_VERSION and rows[0]["band"] == "possible"

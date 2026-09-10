@@ -840,6 +840,10 @@ MIGRATIONS = [
     # `chunks.embedding` — a BLOB on the row, never a second table.
     ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
     ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
+    # 0.60.5: which MATCHER produced this suggestion. 0.60.2 changed how library recall decides relevance, and the
+    # rows already stored were produced by the old one — so Kyle's screen still offered an Airbnb video as a strong
+    # match for AI UI/UX work after the fix shipped. A stored judgement has to know what made it.
+    ("project_reuse", "scan_version", "ALTER TABLE project_reuse ADD COLUMN scan_version TEXT"),
 ]
 
 
@@ -2977,7 +2981,8 @@ def add_project_sources(project_id: str, source_ids: list[str]) -> None:
 
 # ------------------------------------------------------------------ Mission BOOTSTRAP (R2): reuse suggestions
 
-def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revision_: str | None = None) -> int:
+def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revision_: str | None = None,
+                         scan_version: str | None = None) -> int:
     """Store this scan's suggestions. A row the user has already decided on (attached/dismissed) keeps its state —
     a re-scan may refresh why it matched, but it never un-decides the user."""
     if not rows:
@@ -2987,13 +2992,14 @@ def upsert_project_reuse(project_id: str, rows: list[dict[str, Any]], brief_revi
     with conn:
         for r in rows:
             conn.execute(
-                """INSERT INTO project_reuse (project_id, object_kind, object_id, state, band, score, why, origin, brief_revision, created_at, updated_at)
-                   VALUES (?,?,?, 'suggested', ?,?,?,?,?,?,?)
+                """INSERT INTO project_reuse (project_id, object_kind, object_id, state, band, score, why, origin, brief_revision, scan_version, created_at, updated_at)
+                   VALUES (?,?,?, 'suggested', ?,?,?,?,?,?,?,?)
                    ON CONFLICT(project_id, object_kind, object_id) DO UPDATE SET
                      band=excluded.band, score=excluded.score, why=excluded.why, origin=excluded.origin,
-                     brief_revision=excluded.brief_revision, updated_at=excluded.updated_at""",
+                     brief_revision=excluded.brief_revision, scan_version=excluded.scan_version,
+                     updated_at=excluded.updated_at""",
                 (project_id, r["object_kind"], r["object_id"], r.get("band"), r.get("score"), r.get("why"),
-                 r.get("origin"), brief_revision_, t, t))
+                 r.get("origin"), brief_revision_, scan_version, t, t))
     return len(rows)
 
 
