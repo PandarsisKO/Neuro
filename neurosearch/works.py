@@ -487,6 +487,27 @@ def find_copy(text: str, project_id: str | None = None, *, external: bool = Fals
         out.update(access="candidate", candidate_ids=[m["candidate_id"] for m in cands], next="acquire")
         return out
     out.update(access="unavailable", next="acquire" if i.get("url") else "discover", url=i.get("url"))
+    # A DOI is the one identifier a free catalogue can turn into an obtainable copy, so try that before falling back
+    # to a paid Discover job. This is the "resolved identity, unresolved access" outcome finally getting a way out.
+    if i.get("scheme") == "doi" and i.get("value"):   # extract_identifiers labels a DOI scheme="doi", kind="paper"
+        from . import scholar
+        try:
+            rec = scholar.resolve_doi(str(i["value"]))
+        except Exception as e:  # noqa: BLE001 — a catalogue outage must never change the resolution outcome
+            log.info("scholar could not resolve %s: %s", i.get("value"), e)
+            rec = None
+        if rec:
+            out["catalogue"] = {"provider": rec["provider"], "title": rec["title"], "venue": rec["venue"],
+                                "year": rec["year"], "doi": rec["doi"], "url": rec["url"],
+                                "oa_pdf_url": rec["oa_pdf_url"], "oa_status": rec["oa_status"]}
+            if rec["oa_pdf_url"]:
+                out.update(access="open_access", next="acquire", url=rec["oa_pdf_url"],
+                           note="an open-access full text exists — acquiring it goes through the ordinary document path")
+                if project_id:
+                    out["queued"] = scholar.acquire(rec, project_id)
+                return out
+            out["note"] = ("the identity is confirmed by the catalogue but no open-access copy was found — "
+                           "a library or publisher copy is needed")
     if external and project_id:
         job = db.create_job("discover", {"project_id": project_id, "refine": f"obtain {w['title']}" + (f" {i['version']}" if i.get("version") else ""), "mode": "web_first"})
         out["job_id"] = job["id"]

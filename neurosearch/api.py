@@ -216,6 +216,39 @@ def api_candidates(project_id: str, q: str | None = None, state: str | None = No
     return {"items": items, "counts": candidates.counts(project_id)}
 
 
+class ScholarSearchIn(BaseModel):
+    query: str
+    limit: int = 10
+    open_access_only: bool = False
+    remember: bool = True
+
+
+@app.get("/api/scholar/status", dependencies=[Depends(require_auth)])
+def api_scholar_status() -> dict[str, Any]:
+    """Which research catalogues are usable and why — config only, no network, no spend."""
+    from . import scholar
+    return {"providers": scholar.available(), "ready": scholar.ready_providers(),
+            "note": "Crossref needs no account (an email in NEUROSEARCH_SCHOLAR_EMAIL earns the higher polite-pool "
+                    "limits); OpenAlex has required a free key in OPENALEX_API_KEY since 2026-02-13."}
+
+
+@app.post("/api/projects/{project_id}/scholar/search", dependencies=[Depends(require_auth)])
+def api_scholar_search(project_id: str, body: ScholarSearchIn) -> dict[str, Any]:
+    """Search Crossref/OpenAlex directly. $0 and no model call. Results are remembered as candidates (seen, not
+    acquired) unless `remember` is false — nothing is attached to the project and nothing becomes evidence."""
+    from . import scholar
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    try:
+        recs = scholar.search(body.query, limit=max(1, min(body.limit, scholar.MAX_ROWS)),
+                              open_access_only=body.open_access_only)
+    except scholar.ScholarUnavailable as e:
+        raise HTTPException(503, f"{e.provider}: {e.reason}" + (f" — {e.detail}" if e.detail else "")) from e
+    ids = scholar.to_candidates(recs, project_id, origin={"kind": "user_query", "query": body.query}) if body.remember else []
+    return {"found": len(recs), "open_access": sum(1 for r in recs if r["oa_pdf_url"]), "candidate_ids": ids,
+            "records": [{k: v for k, v in r.items()} for r in recs]}
+
+
 @app.get("/api/projects/{project_id}/pool", dependencies=[Depends(require_auth)])
 def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
     """S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan."""

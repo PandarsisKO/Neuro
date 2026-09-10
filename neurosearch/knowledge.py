@@ -222,9 +222,19 @@ def pursue(target_id: str, *, external: bool = False, resurface: bool = True) ->
                   "candidates": [{"id": r["id"], "title": r.get("title"), "state": r.get("state"), "target_score": r["target_score"], "evidence_class": r.get("evidence_class"), "resurfaced": r.get("resurfaced")} for r in ranked[:8]]})
     for r in ranked[:8]:                                                   # B3: the gap remembers what could fill it (durable, not a JSON trail)
         candidates.link(r["id"], pid, "evidence_target", target_id, relevance=int(round(100 * float(r["target_score"]))), why=f"matches the open question: {q[:120]}")
-    # 4 — external discovery, only on request
-    ext: dict[str, Any] = {"step": "external", "run": False}
+    # 4 — research catalogues: $0 and no model call, but it IS a request to an outside service, so it belongs on the
+    # external path only. `pursue(external=False)` is the escalation the UI labels "Search my existing research …
+    # No web search", and the G5 acceptance gate freezes it as network-free; a free call is still a call. When the
+    # user does ask to look outside, the catalogue runs FIRST, because a Crossref query either answers the
+    # question's evidence need for nothing or proves this is not a literature question — either way before a paid
+    # Discover job. Only targets declaring an expert/authoritative class are queried.
     closure_ok = assess_target(target_id)
+    if external:
+        from . import scholar
+        sch = scholar.for_target(tg, pid, limit=8)
+        steps.append({"step": "catalogue", **sch})
+    # 5 — external discovery, only on request
+    ext: dict[str, Any] = {"step": "external", "run": False}
     if external and (closure_ok or {}).get("status") == "open":
         job = db.create_job("discover", {"project_id": pid, "refine": q, "mode": "web_first"})
         ext.update(run=True, job_id=job["id"])

@@ -76,7 +76,58 @@ def _items(raw: list[Any]) -> list[dict[str, Any]]:
     return items
 
 
-MODES = ("library_first", "library_only", "web_first", "web_only")
+# ------------------------------------------------------------------ catalogue pass (scholar.py, $0, no model call)
+
+SCHOLAR_MAX = 6                    # a supplement to Discover, never a takeover of it
+SCHOLAR_HINT = re.compile(r"\b(paper|papers|study|studies|research|literature|journal|peer[- ]reviewed|"
+                          r"meta[- ]analys[ei]s|trial|preprint|doi|academic|scholar(?:ly)?|citation|evidence base)\b", re.I)
+
+
+def scholar_wanted(refine: str | None, research: dict[str, Any]) -> tuple[bool, str]:
+    """A catalogue query is worth a free request when the USER asked for literature, or when an open evidence target
+    already declares that it needs expert/authoritative evidence. It is deliberately NOT run for every project: a
+    corpus of YouTube channels about editing workflow gets nothing from Crossref, and adding unrelated papers to that
+    review card is exactly the noise the user asked to avoid."""
+    from . import scholar
+    if refine and SCHOLAR_HINT.search(refine):
+        return True, "you asked for research literature"
+    for t in (research.get("targets") or [])[:12]:
+        if scholar.target_wants_literature(t):
+            return True, f"an open question needs expert or authoritative evidence: {str(t.get('question'))[:80]}"
+    return False, ""
+
+
+def scholar_pass(project: dict[str, Any], refine: str | None, research: dict[str, Any],
+                 progress: Any = None) -> dict[str, Any]:
+    """Real records from Crossref/OpenAlex. Nothing here needs `discover.verify`: a catalogue record exists by
+    construction, which is the whole reason this pass is cheaper than the model pass it supplements."""
+    from . import scholar
+    wanted, why_run = scholar_wanted(refine, research)
+    if not wanted:
+        return {"run": False, "why": "no request for literature and no open question asking for expert evidence"}
+    if not scholar.ready_providers():
+        a = scholar.available()
+        return {"run": False, "why": "no catalogue is configured", "detail": {k: v["why"] for k, v in a.items()}}
+    query = _clean_query(refine or db.project_steering(project) or project.get("name") or "")
+    if progress:
+        progress(0.08, "asking the research catalogues (free)…")
+    try:
+        recs = scholar.search(query, limit=SCHOLAR_MAX)
+    except scholar.ScholarUnavailable as e:
+        return {"run": False, "why": f"catalogue unavailable ({e.reason})", "detail": e.detail}
+    return {"run": True, "why_run": why_run, "query": query, "found": len(recs),
+            "open_access": sum(1 for r in recs if r["oa_pdf_url"]),
+            "items": scholar.to_discoveries(recs), "records": recs,
+            "providers": sorted({r["provider"] for r in recs})}
+
+
+def _clean_query(text: str) -> str:
+    """The brief is prose; a catalogue wants terms. Keep it short — a 600-character goal matches nothing."""
+    t = re.sub(r"\s+", " ", str(text or "")).strip()
+    return t[:240]
+
+
+MODES = ("library_first", "library_only", "web_first", "web_only", "scholar_only")
 # Conservative on purpose (G4 has no Claim/Evidence sufficiency model yet — that is G5): Library-first skips the web
 # pass only when several owned sources match STRONGLY with more than one passage each, and even then it says the library
 # "appears to cover this well" and offers Web first. Strong relevance is not proof that the project's evidence needs are met.
@@ -127,6 +178,22 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
             log.warning("profile batch not queued: %s", e)
     strong = [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2
               and s.get("coverage", 0) >= library.STRONG_COVERAGE]
+    sch = scholar_pass(project, refine, research, progress) if mode != "library_only" else {"run": False, "why": "library_only"}
+    sch_saved: list[dict[str, Any]] = []
+    if sch.get("run") and sch.get("items"):
+        # real records, so they are saved as verified discoveries and never handed to `discover.verify`
+        sch_saved = db.add_discoveries(project_id, sch["items"], note=f"from research catalogues ({', '.join(sch['providers'])}) — {sch['why_run']}",
+                                       refine=refine, provenance={"model": None, "prompt_version": "scholar-catalogue",
+                                                                  "routing": json.dumps({"executed_by": "catalogue", "providers": sch["providers"]})})
+        from . import scholar as _scholar
+        _scholar.to_candidates(sch["records"], project_id, origin={"kind": "discovery", "query": sch["query"]})
+        if progress:
+            progress(0.12, f"{len(sch_saved)} real papers from the catalogues ({sch['open_access']} with free full text)")
+    if mode == "scholar_only":
+        return {"added": len(sch_saved), "verified": len(sch_saved), "extra": 0, "items": sch_saved, "library": lib,
+                "mode": mode, "research": research, "scholar": {k: v for k, v in sch.items() if k != "records"},
+                "note": sch.get("why") if not sch.get("run") else
+                        f"{len(sch_saved)} records from {', '.join(sch.get('providers') or [])} — every one exists, so none needed verifying."}
     if mode == "library_only" or (mode == "library_first" and not refine and len(strong) >= LIBRARY_ENOUGH):
         note = ("Library only — no web search was run." if mode == "library_only" else
                 f"Your library appears to cover this well ({len(strong)} owned sources match strongly, not yet in this project) — the web search was skipped. "
@@ -181,8 +248,10 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
 
     # ---- pass 2: verify + top up (few searches, short output) ----
     fixed, added = 0, 0
+    scholar_meta = {k: v for k, v in sch.items() if k != "records"}
     if not verify:
-        return {"added": len(saved), "verified": 0, "extra": 0, "note": str(data.get("note") or ""), "items": saved, "quick_only": True, "library": lib, "mode": mode, "research": research}
+        return {"added": len(saved) + len(sch_saved), "verified": len(sch_saved), "extra": 0, "note": str(data.get("note") or ""),
+                "items": sch_saved + saved, "quick_only": True, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta}
     try:
         shortlist = [{"name": d["name"], "kind": d["kind"], "url": d.get("url") or ""} for d in saved]
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]
@@ -212,4 +281,9 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     except Exception as e:  # noqa: BLE001
         log.warning("discover verification pass failed (shortlist kept): %s", e)
     note = str(data.get("note") or "")
-    return {"added": len(saved), "verified": fixed, "extra": added, "note": note, "items": saved, "library": lib, "mode": mode, "research": research}
+    if sch_saved:
+        note = (note + " " if note else "") + (f"{len(sch_saved)} of these came from research catalogues and did not need verifying "
+                                               f"({sch.get('open_access', 0)} have free full text).")
+    # catalogue records first: they are real by construction, where the model's suggestions are checked claims about reality
+    return {"added": len(saved) + len(sch_saved), "verified": fixed + len(sch_saved), "extra": added, "note": note,
+            "items": sch_saved + saved, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta}

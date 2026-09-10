@@ -2462,6 +2462,18 @@ def _provider_health() -> list[dict[str, Any]]:
         return [{"operation": "?", "label": "Provider health", "status": "unknown", "detail": str(e)[:100]}]
 
 
+def _scholar_health() -> dict[str, Any]:
+    """Research catalogues: config only, never a probe. A section that made a network call every time Health opened
+    would spend someone else's free service to answer a question config already answers."""
+    try:
+        from . import scholar
+        return {"providers": scholar.available(), "ready": scholar.ready_providers(),
+                "note": "Crossref and OpenAlex are $0 metadata sources; a record is a candidate, never evidence, "
+                        "and only an open-access PDF becomes a source"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def health() -> dict[str, Any]:
     """What the health view needs: database, backups, queue, evidence validators, disk."""
     import shutil as _sh
@@ -2498,6 +2510,7 @@ def health() -> dict[str, Any]:
                                    "fallbacks": ev["schema_fallbacks"], "unrecovered": ev["schema_failures"], "truncated": ev["output_truncated"],
                                    "refused": ev["output_refused"], "steady_state": "all zero"},
             "providers": _provider_health(),
+            "scholar": _scholar_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "

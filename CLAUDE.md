@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.56.5)
+# Neuro Search — architecture map for Claude Code (current state, 0.57.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -38,6 +38,38 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 | AI tasks | `sources_value.py` (S2 $0 value spine: findings/Claims/plan/chat/priority → `value_score`, `matters` rule, label; S3 `digest`/`used_in` = the source drawer's one request), `findings_view.py` (S4 $0 findings query: filters/facets/sort/paging, use badges, low-value sweep), `claims_view.py` (R7 $0 Claims workbench: filters/facets/sort/paging over the full claim set, `plain()` one-line translation, batch accept/reject, `for_source` = chat's "Why this answer"), `community.py` (G7 community evidence, $0), `works.py` (G6 canonical works, $0), `claims.py` + `knowledge.py` (G5 research state), `library.py` (G4 profiles + recall), `findings.py` (+`prefilter.py`, off), `relevance.py`, `qa.py`, `planner.py` (V1, production) / `planner_v3.py` (off), `discover.py`, `export.py`, `search.py` (+`rerank.py`, off), `evidence.py`, `staleness.py` | findings/relevance write project-relative artifacts to `project_source_analysis` with `input_hash` + provenance; `qa.chat_system_blocks` builds the chat prompt in cache order (stable prefix → breakpoints → `PROJECT_STATE_BLOCK`); `search` = FTS + embeddings + RRF; `evidence` validates quotes/citations/plan evidence at runtime → Health; `staleness.assess/rebuild/triage/accept` = CURRENT / STALE / current_accepted / REBUILDING with cost estimates; S1 triage tiers rebuild_matters · rebuild_transcript · accept · retry_failed (`accepted_hash` on the analysis row) |
 | Surfaces | `api.py`, `web/index.html` (`UI_VERSION`), `mcp_server.py`, `cli.py`, `extension/` | endpoints are plain `def` (threadpool); projects are the unit (chats, sources, findings, plan, settings, Health); extension = course import, "Send this page", Instagram session |
 | Proofs | `evals.py`, `retrieval_eval.py`, `prefilter_eval.py`, `cache_layout.py`, `migration.py`, `closeout.py`, `batch_smoke.py`, `release.py` | `neurosearch eval` (Tier 1 on the frozen Golden Project `tests/fixtures/golden/`, `--ranking`, `--findings-compare`, `--migration-compare`, `--retrieval [--rerank]`, `--prefilter`, `--cache-layout`); `neurosearch closeout` (Mission F); `neurosearch batch-smoke --live` (the one tiny paid adapter check); `neurosearch doctor` (fast diagnostic); `neurosearch release-check` (heavyweight deterministic gate → `evals/release/`) |
+
+## Research catalogues (0.57.0)
+
+`scholar.py` ($0, **no model call anywhere**) is Crossref + OpenAlex behind one record shape. It exists because
+`discover` proposes sources from a model's memory and then PAYS `discover.verify` (web-search tool) to check they
+are real — a catalogue record is real by construction, so this pass makes Discover **cheaper**, not dearer.
+`search`/`resolve_doi` go through `safe_fetch` like everything else (no client library, no second boundary);
+`available()` is config only and never probes, so Health cannot spend someone else's free service.
+**Credentials:** Crossref needs no account (`NEUROSEARCH_SCHOLAR_EMAIL` only earns the polite pool: 10 req/s single,
+3 req/s list, since 2025-12-01); **OpenAlex has REQUIRED a free key since 2026-02-13** (`OPENALEX_API_KEY`; the
+`mailto` parameter and the polite pool were retired for credits — unkeyed callers get 100 credits then HTTP 409), so
+without it `ready_providers()` returns Crossref alone rather than failing mid-query. Semantic Scholar is
+deliberately NOT implemented (overlaps OpenAlex, unauthenticated search fails in practice, a key buys 1 req/s).
+
+**A record is metadata, never evidence.** Records become `candidates` (seen, not acquired — `url` is the OA PDF when
+one exists so an Acquire click has something to ingest, `canonical_url` is always the DOI as identity) or
+`discoveries` (`kind="paper"`, `verified_by=<provider>`, `fit` 4 with free full text / 3 without — never a confident
+score invented from a relevance rank). Only `best_oa_location.pdf_url` / `open_access.oa_url` becomes a source, via
+the ordinary `ingest_url` document path. Three wires:
+- **Discover** — `scholar_pass` runs before the model pass and its results skip `discover.verify` entirely. It is
+  gated by `scholar_wanted`: the user asked for literature (`SCHOLAR_HINT`) **or** an open evidence target declares
+  `expert`/`authoritative` in `preferred_classes`. A corpus of YouTube channels about editing workflow gets nothing
+  from Crossref, so it is not queried — that gate is the feature. New mode `scholar_only` needs no Anthropic key.
+- **Gap** — `knowledge.pursue` gains a free `catalogue` step BEFORE the paid external Discover job
+  (`scholar.for_target`), and only for targets that want literature; every hit is `candidates.link`ed to the target.
+- **Ingestion / identity** — `works.find_copy` resolves a `scheme="doi"` identifier through the catalogue, so the
+  long-standing *"resolved identity, unresolved access"* outcome can become `access="open_access"` with a queued
+  ingest. A catalogue outage never changes the resolution outcome. `resources.classify` was NOT touched: a DOI
+  already routed to `resolve`, which is the rule (extend, never duplicate) honoured by doing nothing.
+
+API `GET /api/scholar/status`, `POST /api/projects/{id}/scholar/search`; Health `scholar`. Gate
+`tests/test_s2_scholar.py` (28, all against a canned `safe_fetch` — no network).
 
 ## Universal resource input (G2, 0.26.0)
 

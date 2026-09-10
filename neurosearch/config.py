@@ -30,6 +30,11 @@ class Settings:
     # Reddit's official API (0.32.2): a 'script' app's client id/secret, app-only OAuth (read-only public data). Reddit refuses
     # every non-browser client since 2026-06-30, so without these the app cannot search subreddits; threads still arrive
     # through the browser extension ("Send this page" on a thread).
+    # Scholarly catalogues (scholar.py). The email is Crossref's `mailto` — no account, it only earns the polite
+    # pool's higher limits. OpenAlex has REQUIRED a free key since 2026-02-13 (unkeyed callers get 100 credits then
+    # HTTP 409), so without it `scholar.available()` reports OpenAlex off rather than failing mid-query.
+    scholar_email: str | None = field(default_factory=lambda: _env("NEUROSEARCH_SCHOLAR_EMAIL"))
+    openalex_api_key: str | None = field(default_factory=lambda: _env("OPENALEX_API_KEY"))
     reddit_client_id: str | None = field(default_factory=lambda: _env("REDDIT_CLIENT_ID"))
     reddit_client_secret: str | None = field(default_factory=lambda: _env("REDDIT_CLIENT_SECRET"))
     answer_model: str = field(default_factory=lambda: _env("NEUROSEARCH_ANSWER_MODEL", "claude-sonnet-4-6"))

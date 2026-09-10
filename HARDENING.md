@@ -853,3 +853,37 @@ section and a `release-check` warning close that. **Open question for Kyle's liv
 `findings.extract` and `claims.extract` have been running on local Haiku in normal use while their contracts pinned
 Sonnet 5 — the new counter answers it going forward, but says nothing about work already done. `HANDOFF.md` carries
 this as an open debt.
+
+
+## 0.57.0 — research catalogues (Crossref + OpenAlex)
+
+Added on Kyle's request after a friend sent a list of scholarly APIs. Two things in that list were out of date and
+one was a trap:
+
+- **OpenAlex is no longer keyless.** Since 2026-02-13 a free key is required; the `mailto` parameter and the polite
+  pool were retired for credit-based limits, and an unkeyed caller gets 100 credits and then HTTP 409. So
+  `available()` reports it off without a key instead of discovering this mid-query.
+- **Semantic Scholar's "no key needed" is theoretical.** Independent measurement (2026-08) found the unauthenticated
+  pool returning 0/6 successes on `/paper/search` and 1/6 on `/paper/batch`; the advertised 1,000 req/s is shared
+  across every anonymous caller on earth. A key buys a guaranteed 1 req/s. Not implemented: it overlaps OpenAlex
+  almost entirely and would be the slowest path for the least new coverage.
+- **Scopus / Web of Science** are subscription-only. Skipped.
+
+The build is cost-NEGATIVE for Discover: `discover` proposes sources from a model's memory and then pays
+`discover.verify` (web-search tool) to check they exist. A catalogue record exists by construction, so those results
+skip the verify pass entirely.
+
+### Two mistakes caught by the frozen gates
+
+1. **The catalogue step was put on the internal escalation path.** `pursue(external=False)` is what the UI labels
+   *"Search my existing research … No web search"*, and `tests/test_k6_claims.py::test_g5_acceptance_gate_end_to_end`
+   freezes that sequence as network-free. A free request is still a request, so the step moved to the external path,
+   where it runs *before* the paid Discover job. The frozen assertion was preserved, not edited — it was right.
+2. **A recorded-but-skipped step was reported to the user as checked.** `research_view.questions` listed the raw
+   word `catalogue` in `already_checked` even for questions the catalogue was never queried for. The existing
+   `external` filter was generalised to every optional step, and the label map gained a plain-language entry. The
+   escalation record still keeps skipped steps with their reason — that is diagnostics; `already_checked` is a claim
+   to the user, and it now only claims what happened.
+
+Gate `tests/test_s2_scholar.py` (31 tests, all against a canned `safe_fetch` — no network anywhere). 633 passed,
+Tier 1 PASS, frozen totals unchanged.

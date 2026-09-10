@@ -389,8 +389,16 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
                 + (KNOWN_SOURCES_BONUS if known else 0) + (RECENT_BONUS if now - (t.get("updated_at") or 0) < RECENT_DAYS * 86400 else 0)
         current = (f"Evidence so far: {c['strength']} — {c.get('strength_why') or ''}".strip(" —") if c else "No Claim yet holds this; the question is open from the brief or a tension.")
         gap = t.get("gap") or ("satisfied" if t["status"] == "satisfied" else "not yet looked at")
-        already = [{"project_evidence": "This project", "global_library": "Your library", "candidate_index": "Previously seen sources", "external": "The web"}.get(s, s) for s in looked
-                   if not (s == "external" and not any(x.get("run") for x in esc if x.get("step") == "external"))]
+        # A step that was RECORDED but did not run must never be reported as checked — the escalation record keeps
+        # skipped steps (with the reason) for diagnostics, and this list is what the user reads. 0.57.0 generalised
+        # the rule from `external` alone to every optional step, because the new `catalogue` step is skipped for any
+        # question that does not ask for expert or authoritative evidence.
+        OPTIONAL = ("external", "catalogue")
+        ran = {x.get("step") for x in esc if x.get("run")}
+        already = [{"project_evidence": "This project", "global_library": "Your library",
+                    "candidate_index": "Previously seen sources", "external": "The web",
+                    "catalogue": "Research catalogues"}.get(s, s)
+                   for s in looked if not (s in OPTIONAL and s not in ran)]
         actions = [{"label": "Search my existing research", "endpoint": f"/api/targets/{t['id']}/pursue", "body": {"external": False}, "cost": "$0",
                     "help": "Checks this project, your global library, and previously seen sources. No web search."}]
         if known:
