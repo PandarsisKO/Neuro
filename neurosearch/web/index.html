@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.9';
+const UI_VERSION = '0.58.10';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2430,7 +2430,10 @@ async function loadWorkbench(reset = true) {
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
   $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}` + (f.used ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '');
-  loadQuality(st);
+  // Fire-and-forget, and explicitly swallowed: tonight's banners were shipped without a human able to look at the
+  // browser (0.58.10), so a failure in this decoration must not be able to take the findings list down with it.
+  try { const q = loadQuality(st); if (q && q.catch) q.catch(() => { const el = $('#fbQual'); if (el) el.innerHTML = ''; }); }
+  catch (e) { const el = $('#fbQual'); if (el) el.innerHTML = ''; }
   const sw = r.low_value_sweep || {};
   $('#fbSweep').innerHTML = sw.count && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
   const rows = r.findings || [];
@@ -2485,7 +2488,7 @@ async function openPromotable() {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { return toast('could not load them'); }
   $('#dlgBody').innerHTML = `<h3 style="margin:0 0 4px">Withheld findings worth keeping</h3>
     <p class="muted" style="margin:0 0 10px">${esc(r.note)}</p>
-    ${r.rows.map(x => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px"><input type="checkbox" class="pchk" value="${x.id}" checked>
+    ${(r.rows || []).map(x => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px"><input type="checkbox" class="pchk" value="${x.id}" checked>
       <span style="flex:1">${esc((x.content || '').slice(0, 260))}<br><span class="muted" style="font-size:11px">${esc(x.why)}${x.importance ? ` · rated ${x.importance}/5` : ''}</span></span></label>`).join('')}
     <div class="row" style="margin-top:12px;gap:8px"><button class="small primary" onclick="promoteReserve([...document.querySelectorAll('.pchk:checked')].map(c=>+c.value))">Approve the ticked ones</button></div>`;
   dlg.showModal();
@@ -2501,7 +2504,7 @@ async function openQuality(st) {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400&status=${st}`); } catch (e) { return toast('could not load the review'); }
   QUAL = r;
   const groups = {};
-  for (const row of r.rows) { const k = row.flags[0]; (groups[k] = groups[k] || []).push(row); }
+  for (const row of (r.rows || [])) { const k = (row.flags || ['no_specifics'])[0]; (groups[k] = groups[k] || []).push(row); }
   const order = ['duplicate', 'generic_only', 'no_specifics', 'echoes_title', 'too_short'];
   const keepOf = id => (r.rows.find(x => x.id === id) || {}).content;
   const body = `<h3 style="margin:0 0 4px">Tidy up findings</h3>
