@@ -137,3 +137,18 @@ warning). It does NOT reclassify existing artifacts. Deciding that needs a query
 `project_source_analysis.routing` in the live database — through the API, never by opening the file — and Kyle's call
 on whether to re-run anything. Do not assume the artifacts are wrong: `routing.actual_model` was always stored, so
 the answer is already in there.
+
+
+## Next rung, filed 2026-09-10 by Kyle — the field map (FIELD-MAP-RUNG.md)
+
+0.57.0's catalogue work answers questions the project already formulated. Kyle's observation is that the harder gap
+is the opposite direction: one review article or book tells you WHICH QUESTIONS EXIST — including the ones you had no
+vocabulary for. Every gap mechanism in the app today (pursue, research_view.questions, candidates.pool, discover,
+MISSING_PERSPECTIVE) is a reflection of the corpus, so none can produce a question whose words are not already
+somewhere in the project. That is a structural hole, not a tuning problem, and a catalogue is the only thing here
+that can see past it.
+
+Read FIELD-MAP-RUNG.md before starting: it carries the shape, the $0 constraint, the four things that would be wrong
+to build (letting a catalogue write research state; running it for projects with no literature behind them;
+presenting an academic taxonomy as the project's real gaps; making it a paid pass), and the open question to settle
+by measurement first — reference-list clusters versus the reviews' own headings.
