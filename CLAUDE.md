@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.8)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.9)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,42 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Retiring a direction (0.62.9)
+
+Kyle: *"I want to bulk remove some content that we are no longer pursuing in the large project but I dont know how.
+we need to essentially get rid of ALL CPA and laundromat specific content."* He had abandoned two candidate
+industries and the app had no way to say so — the only tool was removing sources one at a time, which at 64 sources
+is tedious and, on its own, **wrong**.
+
+`retire.py` ($0, no model, no network), and the measurement changed the design twice before a line was written:
+
+- **A keyword sweep is not safe.** Matching "cpa"/"accounting firm" on his project selects 43 sources — including
+  *How To Acquire Your First Business With $0 (FREE COURSE)*, *Best Boring Businesses to Buy in 2026*, his own
+  *Gio Kyle and Zach first coaching call* and his own acquisition notes, because general acquisition training uses
+  accounting firms as an example industry. **So retirement is by CHANNEL or explicit source id, never by keyword.**
+  A channel is a publisher's whole body of work, which is the unit that corresponds to "a direction we explored":
+  Laundromat Resource 25 sources / 1,059 findings, Jason On Firms Podcast 7 / 74 — against LYFE Accounting 13 / 448
+  and Sherman My CPA Coach 16 / 429, which are general small-business tax knowledge and were KEPT.
+- **Removing sources does not remove what was derived from them.** `db.remove_project_sources` is a membership
+  marker by design (0.34.2), so on his two sets it would have left **1,775 findings** attached to sources no longer
+  in the project and **2,509 Claims with no evidence inside it at all** — a research state asserting things nothing
+  in the project supports. So retiring is three coordinated steps, and `preview` reports the claim count *before*
+  anything happens, because "44 sources" is not enough for an informed decision and "1,664 Claims lose all their
+  evidence" is.
+
+**Nothing is deleted, ever.** Sources keep their place in the global library (another project can still use them —
+there is a test), findings are `dismissed`, Claims are `rejected` with `application` carrying the reason, and
+`claim_evidence` rows are untouched so the decision can be explained and undone. The reason is also written to
+`project_facts` as a `rejected` decision, because *"we are no longer pursuing X"* is exactly the durable project
+state the research layer is for. Bulk SQL rather than a loop over `claims.set_status` — that calls `assess()` per
+Claim, and 2,509 assessments is the pass that cost 431 s in a request (0.62.2) — so the statuses are set in one
+statement each and the research state is re-derived by the queued `refresh_research` job. It counts as a HUMAN
+decision under 0.62.8's rule, so it drops the research caches rather than being served stale.
+
+API `GET /api/projects/{id}/retire/channels`, `POST …/retire/preview`, `POST …/retire`; UI a "🧹 Retire a
+direction" card in project Settings that lists every channel with its sources, hours and findings, previews the
+consequence, and needs a reason in the user's own words. Gate `tests/test_s23_retire.py`.
 
 ## A read may be a moment old; your own verdict may not (0.62.8)
 

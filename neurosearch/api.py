@@ -1745,6 +1745,49 @@ def api_settle_batch(job_id: str) -> dict[str, Any]:
     return batches.settle(job_id)
 
 
+class RetireIn(BaseModel):
+    channels: list[str] = []
+    source_ids: list[str] = []
+    reason: str = ""
+    dismiss_findings: bool = True
+    reject_claims: bool = True
+
+
+@app.get("/api/projects/{project_id}/retire/channels", dependencies=[Depends(require_auth)])
+def api_retire_channels(project_id: str) -> dict[str, Any]:
+    """Every channel in the project with what it contributed — the menu for retiring a direction ($0)."""
+    from . import retire
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return {"channels": retire.channels(project_id)}
+
+
+@app.post("/api/projects/{project_id}/retire/preview", dependencies=[Depends(require_auth)])
+def api_retire_preview(project_id: str, body: RetireIn) -> dict[str, Any]:
+    """What retiring this selection would do. Changes nothing."""
+    from . import retire
+    try:
+        return retire.preview(project_id, channels=body.channels, source_ids=body.source_ids)
+    except KeyError:
+        raise HTTPException(404) from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@app.post("/api/projects/{project_id}/retire", dependencies=[Depends(require_auth)])
+def api_retire(project_id: str, body: RetireIn) -> dict[str, Any]:
+    """Retire a direction: the sources leave the project, their findings are dismissed, Claims left with no evidence
+    are rejected with the reason recorded, and the decision is stored as project state. Nothing is deleted."""
+    from . import retire
+    try:
+        return retire.apply(project_id, channels=body.channels, source_ids=body.source_ids, reason=body.reason,
+                            dismiss_findings=body.dismiss_findings, reject_claims=body.reject_claims)
+    except KeyError:
+        raise HTTPException(404) from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
 @app.post("/api/batches/settle-all", dependencies=[Depends(require_auth)])
 def api_settle_all(background: bool = True) -> dict[str, Any]:
     """Collect every finished batch. Queued by default (0.62.7): materialising a cohort is a full findings write per

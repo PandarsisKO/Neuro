@@ -494,6 +494,14 @@
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
         <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
+      <div class="card"><b>🧹 Retire a direction</b>
+        <div class="muted">Stopped pursuing something? Retire the channels that covered it. The sources leave this project (they stay in your library), their findings are dismissed, and Claims left with no evidence are rejected with the reason recorded. Nothing is deleted.</div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="loadRetireChannels()">Show channels in this project</button>
+          <input id="retReason" placeholder="why, in your words — recorded as a project decision" style="flex:1;min-width:240px">
+        </div>
+        <div id="retList" style="margin-top:8px;font-size:12.5px;max-height:320px;overflow:auto"></div>
+        <div id="retPreview" style="margin-top:8px;font-size:12.5px"></div>
+      </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
         <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
     </div>
@@ -588,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.8';
+const UI_VERSION = '0.62.9';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2951,6 +2959,46 @@ async function saveProject() {
   state.project = p; $('#wsName').textContent = p.name; $('#wsFoot').textContent = (p.brief || '').slice(0, 140); $('#saveMsg').textContent = 'Saved ✓'; setTimeout(() => $('#saveMsg').textContent = '', 2000);
   STALE.left = 0; await loadStaleness();
   if (STALE.data && STALE.data.anything_stale) toast(`Saved. ${STALE.data.stale_sources ? STALE.data.stale_sources + ' source analyses' : ''}${STALE.data.stale_sources && STALE.data.plan.status === 'stale' ? ' and ' : ''}${STALE.data.plan.status === 'stale' ? 'the Master Plan' : ''} now reflect an older brief — nothing is re-run until you ask (see Findings / Plan).`);
+}
+// 0.62.9 — Kyle: "I want to bulk remove some content that we are no longer pursuing but I dont know how." By
+// CHANNEL, never by keyword: a keyword sweep on his project selected his own coaching notes and his core training,
+// because general acquisition material uses the industries he dropped as examples.
+let RET = { channels: [], picked: new Set() };
+async function loadRetireChannels() {
+  const box = $('#retList'); box.textContent = 'reading the project…';
+  try {
+    const r = await api(`/api/projects/${state.project.id}/retire/channels`);
+    RET = { channels: r.channels || [], picked: new Set() };
+    box.innerHTML = RET.channels.map(c => `<label class="row" style="gap:6px;padding:2px 0">
+      <input type="checkbox" onchange="retToggle(${JSON.stringify(c.channel).replace(/"/g, '&quot;')}, this.checked)">
+      <span style="flex:1">${esc(c.channel)}</span>
+      <span class="muted">${c.sources} source${c.sources === 1 ? '' : 's'} · ${c.hours} h · ${c.findings} findings</span></label>`).join('')
+      || '<div class="muted">no channels</div>';
+  } catch (e) { box.textContent = 'could not read: ' + (e.message || e); }
+}
+function retToggle(ch, on) { on ? RET.picked.add(ch) : RET.picked.delete(ch); retPreview(); }
+async function retPreview() {
+  const box = $('#retPreview');
+  if (!RET.picked.size) { box.innerHTML = ''; return; }
+  box.textContent = 'working out what that would do…';
+  try {
+    const r = await post(`/api/projects/${state.project.id}/retire/preview`, { channels: [...RET.picked] });
+    box.innerHTML = `<div class="banner"><b>${r.sources} sources (${r.hours} h) would leave this project.</b>
+      <div style="margin-top:4px">${r.findings} findings dismissed · <b>${r.claims_losing_all_evidence}</b> Claims would lose every piece of evidence the project still holds and are rejected · ${r.claims_partly_affected} keep some evidence and are re-assessed.</div>
+      <div class="muted" style="margin-top:4px">Reversible: ${esc(r.reversible)}</div>
+      <div style="margin-top:6px"><button class="small danger" onclick="retApply()">Retire these ${r.sources} sources</button></div></div>`;
+  } catch (e) { box.textContent = 'could not preview: ' + (e.message || e); }
+}
+async function retApply() {
+  const reason = ($('#retReason').value || '').trim();
+  if (!confirm(`Retire ${RET.picked.size} channel(s) from this project? Sources stay in your library and this is reversible.`)) return;
+  const box = $('#retPreview'); box.textContent = 'retiring…';
+  try {
+    const r = await post(`/api/projects/${state.project.id}/retire`, { channels: [...RET.picked], reason });
+    box.innerHTML = `<div class="banner"><b>Done.</b> ${r.sources_removed} sources left the project, ${r.findings_dismissed} findings dismissed, ${r.claims_rejected} Claims rejected. Recorded as a project decision.</div>`;
+    RET.picked = new Set();
+    loadRetireChannels(); loadSources(); loadJobs();
+  } catch (e) { box.textContent = 'could not retire: ' + (e.message || e); }
 }
 async function deleteProject() { if (!confirm('Delete this project, its chats and findings?')) return; await del('/api/projects/' + state.project.id); location.hash = ''; goHome(); }
 
