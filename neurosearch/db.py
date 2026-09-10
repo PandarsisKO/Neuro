@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -695,7 +696,7 @@ CREATE TABLE IF NOT EXISTS project_reuse (
     project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     object_kind    TEXT NOT NULL,                        -- source
     object_id      TEXT NOT NULL,
-    state          TEXT NOT NULL DEFAULT 'suggested',    -- suggested | attached | dismissed
+    state          TEXT NOT NULL DEFAULT 'suggested',    -- suggested | attached | dismissed | retired (0.61.0: a re-scan no longer makes it)
     band           TEXT,                                 -- strong | possible
     score          REAL,
     why            TEXT,                                 -- JSON {passages, terms, coverage} — the matched passages, never an adjective
@@ -887,6 +888,10 @@ def init_db() -> None:
     _migrate_source_analysis(conn)
     _backfill_job_lanes(conn)
     _resolve_orphan_invocations(conn)
+    try:
+        backfill_failure_classes()           # 0.61.0: the failures already on the books become distinguishable too
+    except Exception as e:  # noqa: BLE001 — never let a cosmetic backfill stop the app from starting
+        logging.getLogger(__name__).warning("failure-class backfill skipped: %s", e)
 
 
 def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
@@ -1077,8 +1082,64 @@ def replace_chunks(source_id: str, chunks: list[dict]) -> None:
 
 
 def set_source_status(source_id: str, status: str, error: str | None = None) -> None:
+    """0.61.0: a failure is CLASSIFIED as it is recorded.
+
+    Kyle's project holds 14 failed sources and every one of them had `error_class` NULL, so a deleted video, an
+    Instagram carousel with no video track, a Reddit 403 and a network timeout were all indistinguishable — which
+    means the ones that will never work could not be told apart from the ones worth retrying, and none of them
+    could be filtered or retired. The classification is derived from the error text (deterministic, no model), and
+    `browser_solvable:*` — set deliberately by `acquire` — is never overwritten."""
+    cls = failure_class(error) if status == "failed" else None
     with tx() as conn:
-        conn.execute("UPDATE sources SET status=?, error=?, updated_at=? WHERE id=?", (status, error, now(), source_id))
+        if cls:
+            conn.execute("UPDATE sources SET status=?, error=?, error_class=CASE WHEN error_class LIKE 'browser_solvable:%' "
+                         "THEN error_class ELSE ? END, updated_at=? WHERE id=?", (status, error, cls, now(), source_id))
+        else:
+            conn.execute("UPDATE sources SET status=?, error=?, updated_at=? WHERE id=?", (status, error, now(), source_id))
+
+
+# Deterministic, ordered most-specific first. `permanent` says a retry cannot help — that is the distinction the
+# Sources view needs in order to offer "retire these" rather than "retry all".
+FAILURE_CLASSES: tuple[tuple[str, str, bool], ...] = (
+    ("no_media", r"has no video|images/carousel|nothing to transcribe|no audio", True),
+    ("unavailable", r"not available|video unavailable|has been removed|private video|deleted", True),
+    # 404 before 403/401: "HTTP 404 — nothing at that address" is gone for good, where a 403 may not be.
+    ("not_found", r"http (error )?404|404: not found|no longer exists|nothing at that address", True),
+    ("login_wall", r"sign in to confirm|login required|members[- ]only|requires authentication", False),
+    ("blocked", r"http (error )?40[13]|refused the listing|forbidden|blocked", False),
+    ("empty_transcript", r"transcript came back empty|no transcript|captions? (are )?disabled", False),
+    ("timed_out", r"timed out|timeout|connection stalled", False),
+    ("extractor", r"Unable to extract|Unable to download webpage|unsupported url", False),
+    ("cancelled", r"^cancelled", False),
+    ("uploaded_file", r"uploaded file, not a link", True),
+)
+
+
+def failure_class(error: str | None) -> str | None:
+    if not error:
+        return None
+    low = str(error).lower()
+    for name, pattern, _permanent in FAILURE_CLASSES:
+        if re.search(pattern.lower(), low):
+            return name
+    return "other"
+
+
+def failure_is_permanent(cls: str | None) -> bool:
+    return any(name == cls and permanent for name, _p, permanent in FAILURE_CLASSES)
+
+
+def failure_summary() -> dict[str, Any]:
+    """What failed and whether a retry could ever help — for the Sources view and Health."""
+    rows = connect().execute("SELECT COALESCE(error_class,'(unclassified)') c, COUNT(*) n, "
+                             "MAX(substr(COALESCE(error,''),1,120)) example FROM sources WHERE status='failed' "
+                             "GROUP BY c ORDER BY n DESC").fetchall()
+    out = [{"class": r["c"], "count": int(r["n"]), "example": r["example"],
+            "permanent": failure_is_permanent(r["c"])} for r in rows]
+    return {"classes": out, "failed": sum(r["count"] for r in out),
+            "permanent": sum(r["count"] for r in out if r["permanent"]),
+            "note": ("`permanent` means a retry cannot help — a deleted video, a carousel with no video track, an "
+                     "address that no longer exists. Those are worth retiring; the rest are worth retrying.")}
 
 
 def delete_source(source_id: str) -> dict[str, int]:
@@ -2221,6 +2282,13 @@ def finish_job(job_id: str, run_id: str | None, status: str, *, message: str | N
 
 def update_job(job_id: str, *, progress: float | None = None, message: str | None = None,
                status: str | None = None, result: dict | None = None) -> None:
+    """0.61.0: a progress update NEVER touches a job that has already finished.
+
+    Four of Kyle's failed jobs showed `[download] Finished downloading playlist: Mark J Kohler` as their error.
+    The real reason was in `job_events` all along — "metadata fetch timed out after 4 min" — and had been written
+    correctly. What overwrote it was yt-dlp: the metadata fetch timed out, the job failed, and the download it had
+    started went on running and called the progress hook afterwards, over the top of the terminal message. A
+    diagnosis that a later callback can erase is not a diagnosis."""
     sets, args = [], []
     if progress is not None:
         sets.append("progress=?"); args.append(progress)
@@ -2239,8 +2307,14 @@ def update_job(job_id: str, *, progress: float | None = None, message: str | Non
     if not sets:
         return
     sets.append("updated_at=?"); args.append(now())
+    where = "id=?"
+    args_tail: list[Any] = [job_id]
+    if status is None:
+        # not a deliberate status change: this is progress, and progress on a finished job is late news
+        where += f" AND status NOT IN ({','.join('?' for _ in JOB_TERMINAL)})"
+        args_tail += list(JOB_TERMINAL)
     with tx() as conn:
-        conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id=?", (*args, job_id))
+        conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE {where}", (*args, *args_tail))
 
 
 def skip_queued_siblings(collection_id: str, reason: str) -> int:
@@ -2608,6 +2682,29 @@ def _cost_value_health() -> dict[str, Any]:
         return {"error": str(e)[:200]}
 
 
+def backfill_failure_classes() -> int:
+    """Classify failures recorded before 0.61.0. Idempotent, touches only unclassified failed rows, and never
+    changes a status — the rows were already failed and stay failed; they just become distinguishable."""
+    n = 0
+    rows = connect().execute("SELECT id, error FROM sources WHERE status='failed' AND (error_class IS NULL OR error_class='')").fetchall()
+    for r in rows:
+        cls = failure_class(r["error"])
+        if cls:
+            with tx() as conn:
+                conn.execute("UPDATE sources SET error_class=? WHERE id=?", (cls, r["id"]))
+            n += 1
+    if n:
+        logging.getLogger(__name__).info("classified %d previously unclassified source failures", n)
+    return n
+
+
+def _failures_health() -> dict[str, Any]:
+    try:
+        return failure_summary()
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _batches_health() -> dict[str, Any]:
     """0.60.3: provider batches nobody collected. On Kyle's data one cancelled job had left 426 items at
     `submitted` for two days — requests Anthropic may have billed and findings that were never written. Derived, so
@@ -2717,6 +2814,7 @@ def health() -> dict[str, Any]:
             "spend": _spend_health(),
             "cost_value": _cost_value_health(),
             "batches": _batches_health(),
+            "failures": _failures_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "
@@ -3010,6 +3108,24 @@ def list_project_reuse(project_id: str, object_kind: str = "source", state: str 
         q += " AND state=?"
         args.append(state)
     return [dict(r) for r in connect().execute(q + " ORDER BY (band='strong') DESC, score DESC", args).fetchall()]
+
+
+def retire_project_reuse(project_id: str, keep_object_ids: list[str], object_kind: str = "source") -> int:
+    """Retire the SUGGESTED rows this scan did not reproduce (0.61.0).
+
+    A suggested row's only author is the scan, so a scan that no longer makes the suggestion may withdraw it. Rows
+    the user decided on — attached or dismissed — are never touched, and the row is kept in a `retired` state
+    rather than deleted, so "5 earlier suggestions no longer match" is still an answerable question."""
+    keep = set(keep_object_ids or [])
+    with tx() as conn:
+        rows = conn.execute("SELECT object_id FROM project_reuse WHERE project_id=? AND object_kind=? AND state='suggested'",
+                            (project_id, object_kind)).fetchall()
+        gone = [r["object_id"] for r in rows if r["object_id"] not in keep]
+        if not gone:
+            return 0
+        conn.execute(f"UPDATE project_reuse SET state='retired', updated_at=? WHERE project_id=? AND object_kind=? "
+                     f"AND object_id IN ({','.join('?' for _ in gone)})", (now(), project_id, object_kind, *gone))
+        return len(gone)
 
 
 def set_project_reuse_state(project_id: str, object_ids: list[str], state: str, object_kind: str = "source") -> int:

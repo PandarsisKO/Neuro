@@ -310,3 +310,13 @@ def test_the_scan_stamps_the_current_version(lib, monkeypatch):
                             scan_version=bootstrap.SCAN_VERSION)
     rows = db.list_project_reuse(p["id"])
     assert len(rows) == 1 and rows[0]["scan_version"] == bootstrap.SCAN_VERSION and rows[0]["band"] == "possible"
+
+
+def test_the_link_check_never_touches_the_network_in_tests(lib, monkeypatch):
+    """It made a Tier 1 test flaky by timing. A deterministic suite must not depend on DNS."""
+    from neurosearch.config import settings as _s
+    monkeypatch.setattr(_s, "fake_ai", True)
+    called = {"n": 0}
+    monkeypatch.setattr(safe_fetch, "safe_fetch", lambda *a, **k: called.__setitem__("n", called["n"] + 1))
+    out = discover.check_links([{"id": 1, "url": "https://example.com/x"}])
+    assert out["checked"] == 0 and called["n"] == 0 and "fake provider" in out["skipped"]

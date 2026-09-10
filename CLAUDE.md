@@ -141,6 +141,55 @@ credit for a week while the app told him he had spent a third of what he had.
   runaway detector rather than a budget. `POST /api/usage/spend-settings`.
 Gate `tests/test_s7_local_billing.py`.
 
+## The fix pass (0.61.0)
+
+Nine faults, every one found by measuring Kyle's live data or by looking at his actual screen rather than by
+reading the code.
+
+**A clause made only of generic words could produce a "strong" match.** 0.60.2 fixed the matcher and the Airbnb
+video came back anyway. His goal splits into six clauses whose most distinctive words are `auditing` (15 sources),
+`cognitive` (16), `reusable` (28), `architecture` (38) — and then `improving` (85) and `designing` (125). Every bad
+match comes from the last two, and no matcher can help: a video about Airbnb income genuinely does discuss
+improving and designing things. Rarity cannot separate them either — `improving` is in 6.9% of the library, `ux` in
+5.2%. So the fault is in the QUERY. `bootstrap.query_strength` marks a search weak when **every** word in it is
+common (`library.query_anchor` now reports `too_common`, an absolute judgement that needs no distribution) or when
+its rarest word is above the median of the goal's own searches (`WEAK_QUERY_QUANTILE`, relative, so 85 sources is
+generic in a 1,229-source library and distinctive in a 90-source one). A hit that matched only weak searches can
+never be `strong`, is tagged `generic match`, and is held back from the card behind "show them anyway" — never
+deleted. A word too RARE to anchor on is the opposite of generic and is never caught by this.
+
+**A re-scan could not take a suggestion away.** `upsert_project_reuse` only inserted or updated, so a row the fixed
+matcher no longer produces stayed on the card for ever. `db.retire_project_reuse` retires the `suggested` rows a
+scan did not reproduce — a suggested row's only author is the scan, so a scan that no longer makes it may withdraw
+it; rows the USER decided on are never touched, and `retired` keeps the row so the count stays explainable.
+
+**A progress callback erased a terminal failure message.** Four failed jobs read `[download] Finished downloading
+playlist: Mark J Kohler`; the real reason ("metadata fetch timed out after 4 min") was in `job_events` all along.
+yt-dlp went on downloading after the job had failed and reported over the top of it. `db.update_job` now refuses to
+touch a job in `JOB_TERMINAL` unless a status is being set deliberately, and `jobs.run_job` clears the progress
+hook in its `finally`. **A diagnosis a later callback can erase is not a diagnosis.**
+
+**The Master Plan could not build** — see the HARDENING.md entry: `ALL_SUCCESS` over 199 ingest jobs became
+`ALL_TERMINAL` (changed frozen decision, with its gate rewritten and its reasoning recorded).
+
+**14 failed sources, every one unclassified.** A deleted video, a carousel with no video track, a 403 and a network
+timeout were indistinguishable, so the hopeless could not be told from the retryable. `db.FAILURE_CLASSES` (ordered,
+deterministic, no model) classifies as the failure is recorded, `failure_is_permanent` is the distinction the UI
+needs to offer "retire" rather than "retry all", `backfill_failure_classes` runs once at start for rows already on
+the books, and `browser_solvable:*` — owned by `acquire` — is never overwritten. Health carries the split.
+
+**A warning banner that said zero:** "⚠ 0 sources analysed against older inputs · 15 re-analysing". The headline is
+now built from what is actually non-zero, and the garbled "Three answers, not one bill" line is gone.
+
+**The Findings tab re-ran five whole-project passes every four seconds** while any source was being read
+(`/findings`, `/findings/quality`, `/staleness`, `/staleness/triage`, the project row). It now asks the 13 ms
+`/tick` "did anything change?" first — the machinery the Sources view has had since 0.46.2 — and still reconciles
+fully every `RECONCILE_EVERY` ticks.
+
+**`discover.check_links` no longer runs under the fake provider.** It was the one thing in the app that reached the
+real network from a deterministic test, and it duly made a Tier 1 test flaky by timing rather than by logic.
+Gate `tests/test_s14_fix_pass.py`.
+
 ## Library recall: the rare word decides (0.60.2)
 
 Kyle, testing a new AI-UI/UX project against a library built mostly from business and real-estate research: *"it

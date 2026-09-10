@@ -216,10 +216,19 @@ def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str
             for sid in targets:                                       # one job per source: independent, resumable, individually current
                 jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}))
     if "plan" in what and a["plan"]["status"] == STALE:
-        # dependency barrier: the plan must not be built until the research it depends on is current again. If a
-        # findings job fails, the plan job fails with it instead of quietly planning over stale evidence.
+        # Dependency barrier: the plan must not be built until the research it depends on has settled. It waits for
+        # every upstream job to REACH A CONCLUSION, not for every one to succeed (0.61.0).
+        #
+        # ALL_SUCCESS was the original choice, so that a failed findings job could not let the planner quietly plan
+        # over stale evidence. Measured on Kyle's project it does something worse: 11 of 199 upstream jobs had
+        # succeeded, so the plan refused to build at all and reported "not run". On a 199-source project some
+        # ingest will always fail — a deleted video, an Instagram carousel, a 403 — and a plan that needs a perfect
+        # run is a plan that never runs. ALL_TERMINAL keeps the barrier (nothing plans over work still in flight)
+        # while letting the planner do what it is for: plan from the evidence that exists. The plan already records
+        # the snapshot it was built from, so what was missing stays visible.
         upstream = [j["id"] for j in jobs] + [j["id"] for j in live_findings_jobs(project_id)]
-        jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"}, blocked_by=upstream or None))
+        jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"},
+                                  blocked_by=upstream or None, dependency_policy="ALL_TERMINAL"))
     return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"], "transport": transport}
 
 

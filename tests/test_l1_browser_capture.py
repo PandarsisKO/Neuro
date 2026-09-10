@@ -155,7 +155,11 @@ def test_non_browser_solvable_failure_stays_failed(monkeypatch):
     assert st == "failed" and db.get_job(job["id"])["status"] == "failed"
     assert not acquire.pending_captures()
     src = [s for s in db.list_sources(limit=100) if "missing-page" in (s["url"] or "")]
-    assert src and src[0]["status"] == "failed" and src[0]["error_class"] is None      # the page path sets error text; not a browser case
+    # 0.61.0: failures are classified now, so what this gate actually protects is stated directly — this is not a
+    # browser case, whatever else it is, so nothing may mark it browser_solvable and the extension must not see it.
+    assert src and src[0]["status"] == "failed"
+    assert not str(src[0]["error_class"] or "").startswith("browser_solvable")
+    assert src[0]["error_class"] == "not_found"
     # a document adapter never asks for the browser even on 403
     f = acquire.AcquisitionFailure("x", adapter="document", cls="blocked")
     assert f.browser_solvable is False and f.error_class == "blocked"

@@ -117,6 +117,69 @@ def queries_for(project: dict[str, Any]) -> list[str]:
 SCAN_VERSION = "recall-2"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor)
 
 
+# 0.61.0 — A CLAUSE MADE ONLY OF GENERIC WORDS CANNOT DISCRIMINATE, AND MUST NOT PRODUCE A "STRONG" MATCH.
+#
+# 0.60.2 fixed the matcher and the Airbnb video came back anyway. Measured on Kyle's live corpus (1,229 sources
+# with chunks), his goal splits into six clauses, and their most distinctive words are:
+#
+#     "when auditing an existing one"                       auditing      15 sources
+#     "reducing cognitive load"                             cognitive     16
+#     "A reusable product-design framework for evaluating"  reusable      28
+#     "It should include guidance for information architecture"  architecture  38
+#     "improving complex web applications"                  improving     85
+#     "…useful both when designing a new application"       designing    125
+#
+# The bad matches all come from the last two. Those clauses are made entirely of generic English — a video about
+# Airbnb income really does talk about improving things and designing things — so no matcher working on those words
+# can tell a UX source from a business source. And rarity alone cannot separate them from a real anchor: `improving`
+# is in 6.9% of the library, `ux` in 5.2%. Nearly the same number, opposite usefulness.
+#
+# So the fault is in the QUERY, not in the matcher, and the fix belongs here: a query whose rarest word is in the
+# upper half of THIS GOAL'S OWN rarity spread cannot separate topics, so it may contribute a `possible` match and
+# never a `strong` one, and a source that matched nothing else is held back from the card with the reason stated.
+# Relative to the goal, not an absolute cut — the same self-calibrating shape as `CREATOR_PROVEN_QUANTILE`, and for
+# the same reason: 85 sources is generic in a 1,229-source library and distinctive in a 90-source one.
+WEAK_QUERY_QUANTILE = 0.5        # a query is weak if its rarest term is rarer than fewer than half the others'
+MIN_QUERIES_TO_RANK = 3          # with one or two queries there is no distribution to compare against
+
+
+def query_strength(queries: list[str]) -> dict[str, Any]:
+    """Which of these queries can actually separate one topic from another, judged against each other.
+
+    Returns `rarity` (query -> how many sources hold its rarest known word), `weak` (the queries that cannot
+    discriminate) and the cut, so the decision is inspectable rather than a hidden constant."""
+    rarity: dict[str, int | None] = {}
+    too_common: list[str] = []
+    for q in queries:
+        a = library.query_anchor(_content_tokens(q))
+        if a.get("term"):
+            rarity[q] = a.get("sources")
+        else:
+            rarity[q] = None
+            # the one no-anchor case that condemns the QUERY: every word in it is everywhere. The other cases
+            # ("appears in too few sources", "too few terms") mean the opposite — a very rare word — and must not
+            # be treated as generic.
+            if a.get("too_common"):
+                too_common.append(q)
+    known = [n for n in rarity.values() if n]
+    weak = list(too_common)
+    cut = None
+    if len(known) >= MIN_QUERIES_TO_RANK:
+        import statistics
+        cut = statistics.median(known)
+        weak += [q for q, n in rarity.items() if n is not None and n > cut]
+    note = ""
+    if too_common:
+        note = (f"{len(too_common)} of these searches are made only of words most of your library uses, so they "
+                "cannot tell one subject from another")
+    if cut is not None:
+        note = ((note + "; ") if note else "") + (
+            f"a search whose rarest word appears in more than {int(cut)} of your sources is generic for this goal, "
+            "so it can suggest but never call something a strong match")
+    return {"rarity": rarity, "weak": sorted(set(weak)), "cut": cut, "too_common": too_common,
+            "note": note or "too few searches to tell a distinctive one from a generic one"}
+
+
 def _band(hit: dict[str, Any]) -> str:
     """0.60.2: `strong` now needs ONE passage that clears the bar, not a union across three.
 
@@ -127,6 +190,9 @@ def _band(hit: dict[str, Any]) -> str:
     passage = hit.get("passage_coverage")
     strong_passage = passage is None or passage >= STRONG_COVERAGE     # None = an older row without the measure
     if not strong_passage:
+        return "possible"
+    # 0.61.0: and it has to have matched a query that could tell topics apart
+    if hit.get("distinctive_queries") is not None and not hit["distinctive_queries"]:
         return "possible"
     return "strong" if (len(hit["queries"]) >= STRONG_QUERIES or hit["coverage"] >= STRONG_COVERAGE) else "possible"
 
@@ -144,6 +210,8 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
         return {"queries": [], "sources": [], "projects": [], "found": 0, "scope": 0,
                 "note": "Tell Neuro Search a little more about the goal and it can search your library for it."}
 
+    strength = query_strength(qs)
+    weak_qs = set(strength["weak"])
     merged: dict[str, dict[str, Any]] = {}
     scope = 0
     for i, q in enumerate(qs):
@@ -160,12 +228,15 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
             m = merged.setdefault(s["source_id"], {
                 "source_id": s["source_id"], "title": s.get("title"), "channel": s.get("channel"),
                 "platform": s.get("platform"), "url": s.get("url"), "published_at": s.get("published_at"),
-                "score": 0.0, "coverage": 0.0, "passage_coverage": 0.0, "queries": [], "passages": [], "terms": [],
+                "score": 0.0, "coverage": 0.0, "passage_coverage": 0.0, "queries": [], "distinctive_queries": [],
+                "passages": [], "terms": [],
             })
             m["score"] = round(max(m["score"], s["score"]), 4)
             m["coverage"] = max(m["coverage"], s.get("coverage") or 0.0)
             m["passage_coverage"] = max(m["passage_coverage"], s.get("passage_coverage") or 0.0)
             m["queries"].append(q)
+            if q not in weak_qs:
+                m["distinctive_queries"].append(q)
             m["terms"] = sorted(set(m["terms"]) | set(s.get("covered_terms") or []))
             for c in (s.get("chunks") or [])[:2]:
                 if len(m["passages"]) < 4 and not any(p["chunk_id"] == c["chunk_id"] for p in m["passages"]):
@@ -180,18 +251,32 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
     rows = []
     for h in hits:
         h["band"] = _band(h)
+        h["weak_query_only"] = bool(h["queries"]) and not h["distinctive_queries"]
         h["why"] = _why(h)
         rows.append({"object_kind": "source", "object_id": h["source_id"], "band": h["band"], "score": h["score"],
-                     "why": json.dumps({"passages": h["passages"], "terms": h["terms"], "coverage": h["coverage"]}),
+                     "why": json.dumps({"passages": h["passages"], "terms": h["terms"], "coverage": h["coverage"],
+                                        "weak_query_only": h["weak_query_only"],
+                                        "distinctive_queries": h["distinctive_queries"]}),
                      "origin": json.dumps({"queries": h["queries"]})})
     db.upsert_project_reuse(project_id, rows, brev, scan_version=SCAN_VERSION)
+    # 0.61.0 — a re-scan has to be able to take a suggestion AWAY.
+    #
+    # `upsert` only ever inserted or updated, so a row the new matcher no longer produces stayed on the card for
+    # ever: after 0.60.2 shipped, Kyle's screen still offered sources the fixed matcher would never have suggested,
+    # and re-scanning could not remove them. A `suggested` row has exactly one author — the scan — so a scan that
+    # does not reproduce it is entitled to retire it. Rows the USER decided on (attached or dismissed) are never
+    # touched, and retiring keeps the row rather than deleting it, so the count stays explainable.
+    retired = db.retire_project_reuse(project_id, [h["source_id"] for h in hits])
 
     projects = related_projects(project_id, hits)
     if progress:
         progress(0.98, "done")
-    summary = {"queries": qs, "scope": scope, "found": total_found, "shown": len(hits),
+    summary = {"queries": qs, "scope": scope, "found": total_found, "shown": len(hits), "retired": retired,
                "strong": sum(1 for h in hits if h["band"] == "strong"),
                "possible": sum(1 for h in hits if h["band"] == "possible"),
+               "weak_query_only": sum(1 for h in hits if h["weak_query_only"]),
+               "query_strength": {"cut": strength["cut"], "weak": strength["weak"], "note": strength["note"],
+                                  "rarity": strength["rarity"]},
                "projects": [{k: p[k] for k in ("project_id", "name", "relevant", "total")} for p in projects]}
     db.record_bootstrap_run(project_id, summary, brev)
     return {**summary, "sources": hits, "projects": projects}
@@ -248,6 +333,7 @@ def state(project_id: str) -> dict[str, Any]:
              "platform": src.get("platform"), "url": src.get("url"), "published_at": src.get("published_at"),
              "duration": src.get("duration"), "state": r["state"], "band": r["band"], "score": r["score"],
              "coverage": why.get("coverage") or 0.0, "passages": why.get("passages") or [],
+             "weak_query_only": bool(why.get("weak_query_only")),
              "terms": why.get("terms") or [], "queries": origin.get("queries") or [],
              "scan_version": r.get("scan_version"),
              "from_old_matcher": (r.get("scan_version") or "recall-1") != SCAN_VERSION}
@@ -258,6 +344,8 @@ def state(project_id: str) -> dict[str, Any]:
     return {"run": run, "sources": hits, "projects": related_projects(project_id, live),
             "counts": {"suggested": len(live), "attached": sum(1 for h in hits if h["state"] == "attached"),
                        "dismissed": sum(1 for h in hits if h["state"] == "dismissed"),
+                       "retired": sum(1 for h in hits if h["state"] == "retired"),
+                       "weak_query_only": sum(1 for h in live if h["weak_query_only"]),
                        "strong": sum(1 for h in live if h["band"] == "strong"),
                        "possible": sum(1 for h in live if h["band"] == "possible")},
             "stale": bool(run and run.get("brief_revision") and run["brief_revision"] != db.brief_revision(project_id)),

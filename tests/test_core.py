@@ -1220,8 +1220,17 @@ def test_legacy_analysis_is_never_current(tmp_path, monkeypatch):
 
 
 def test_plan_rebuild_waits_for_research(isolated_db, monkeypatch):
-    """Dependency barrier: the plan job cannot be claimed until every findings rebuild it depends on is done, and it
-    fails (rather than planning over stale evidence) if one of them fails or is cancelled."""
+    """Dependency barrier: the plan job cannot be claimed until every findings rebuild it depends on has SETTLED.
+
+    CHANGED DECISION (0.61.0, recorded in HARDENING.md). This gate used to assert the plan FAILED if any upstream
+    rebuild failed, so that it could never plan over stale evidence. Measured on Kyle's live project that turned
+    out to be the worse failure: 11 of 199 upstream jobs had succeeded, so the plan refused to build at all and
+    reported "not run". On a project of that size some ingest always fails — a deleted video, an Instagram
+    carousel, a 403 — and a plan that requires a perfect run is a plan that never runs.
+    `ALL_TERMINAL` keeps the barrier that matters (nothing plans over work still in flight) and lets the planner do
+    what it is for: plan from the evidence that exists. The protection the old policy gave is not lost — a source
+    whose re-read failed is still stale, so `staleness.assess` reports the new plan as resting on stale evidence
+    the moment it is built, and the plan's own snapshot records what it was built from."""
     from neurosearch import evals, findings, planner, staleness
     from neurosearch.config import settings
     monkeypatch.setattr(settings, "fake_ai", True)
@@ -1237,11 +1246,17 @@ def test_plan_rebuild_waits_for_research(isolated_db, monkeypatch):
     assert staleness.assess(pid)["plan"]["note"] == "waiting for research to finish re-analysing"
     # nothing claimable of kind build_plan while upstream is queued
     assert real_claim(("build_plan",)) is None
-    # finish one dependency, fail the other → the plan job is failed at claim time, never run
+    # finish one dependency, fail the other → the plan now RUNS, from the evidence that exists
     db.update_job(dep_ids[0], status="done"); db.update_job(dep_ids[1], status="failed", message="error: boom")
-    assert real_claim(("build_plan",)) is None
-    pj = db.get_job(plan_job["id"])
-    assert pj["status"] == "failed" and "upstream job" in pj["message"]
+    claimed = real_claim(("build_plan",))
+    assert claimed and claimed["id"] == plan_job["id"] and db.get_job(plan_job["id"])["status"] == "running"
+    assert plan_job["dependency_policy"] == "ALL_TERMINAL"
+    # The protection the old ALL_SUCCESS policy gave is not lost: the plan is now REBUILDING (it was claimed), and
+    # the source whose re-read failed is still stale, so the plan it produces is reported as resting on stale
+    # evidence the moment it lands. "Nothing plans over work still in flight" was always the barrier that mattered.
+    a = staleness.assess(pid)
+    assert a["plan"]["status"] == "rebuilding"
+    db.update_job(plan_job["id"], status="failed", message="error: boom")     # let it settle for the rest of the test
     a = staleness.assess(pid)
     assert a["plan"]["status"] == "stale" and any("last rebuild failed" in x for x in a["plan"]["reasons"])
     # happy path: all deps done → claimable

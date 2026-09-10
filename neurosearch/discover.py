@@ -184,8 +184,14 @@ def check_link(url: str, *, try_root: bool = True) -> dict[str, Any]:
 
 def check_links(rows: list[dict[str, Any]], *, progress: Any = None) -> dict[str, Any]:
     """Check every saved discovery's URL and record the answer on the row. $0, bounded, and it never changes a URL
-    — a suggestion is offered, so a real address that merely looks odd is never thrown away by a machine."""
+    — a suggestion is offered, so a real address that merely looks odd is never thrown away by a machine.
+
+    Skipped under the fake provider (0.61.0): this was the one thing in the app that reached the real network from
+    a deterministic test, and it duly made a Tier 1 test flaky by timing rather than by logic. A suite that fails
+    for a reason outside the code teaches people to re-run it instead of reading it."""
     from concurrent.futures import ThreadPoolExecutor
+    if settings.fake_ai:
+        return {"checked": 0, "dead": 0, "by_status": {}, "skipped": "fake provider — no network in tests"}
     todo = [(d["id"], d.get("url") or "") for d in rows if (d.get("url") or "").startswith("http")][:LINK_MAX]
     if not todo:
         return {"checked": 0, "dead": 0, "by_status": {}}

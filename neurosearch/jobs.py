@@ -442,6 +442,12 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         db.finish_job(jid, run_id, "failed", message=f"error: {e}")
         return "failed"
     finally:
+        # 0.61.0: and the hook itself is cleared, so work this job abandoned (a yt-dlp download that outlived a
+        # timed-out metadata fetch) has nowhere left to report to.
+        try:
+            media.set_progress_hook(None)
+        except Exception:  # noqa: BLE001
+            pass
         with _running_lock:
             _running.pop(jid, None)
         _current.job_id = _current.run_id = None

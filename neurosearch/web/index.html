@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.60.5';
+const UI_VERSION = '0.61.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -861,6 +861,8 @@ function shareMenu(btn) {
   bar.appendChild(m);
   setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
 }
+// 0.61.0: which failure classes a retry can never help with (mirrors db.FAILURE_CLASSES).
+const PERMANENT_FAILURES = new Set(['no_media', 'unavailable', 'not_found', 'uploaded_file']);
 const SHARE_CACHE = {};
 async function toClipboard(txt) {
   try { await navigator.clipboard.writeText(txt); }
@@ -1174,7 +1176,7 @@ function srcRowHtml(s) {
     <div style="flex:1;min-width:0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
-      ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}</div>` : ''}
+      ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}${s.error_class && !s.error_class.startsWith('browser_solvable') ? ` <span class="tag" title="${PERMANENT_FAILURES.has(s.error_class) ? 'A retry cannot help with this one — the material is gone or has no audio. Remove it from the project when you are ready.' : 'This one could work on another try.'}">${PERMANENT_FAILURES.has(s.error_class) ? 'will not work' : 'retryable'} · ${esc(s.error_class.replace(/_/g, ' '))}</span>` : ''}</div>` : ''}
       ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag" style="color:${s.pool_potential.score >= 40 ? 'var(--ok)' : 'var(--muted)'}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : ''}
       ${completenessLine(s)}
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
@@ -2314,7 +2316,7 @@ function bootRow(h) {
       <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted" style="font-size:12px">· ${esc(h.channel)}</span>` : ''}</div>
       ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
     </div>
-    <span class="tag" title="${h.band === 'strong' ? 'matched more than one part of your goal, and one passage covers most of it' : 'matched, but less of your goal'}">${h.band === 'strong' ? 'strong' : 'possible'}</span>${h.from_old_matcher ? `<span class="tag" style="color:var(--warn)" title="Judged by the library matcher as it was before 0.60.2. Scan again to re-judge it — free.">older matcher</span>` : ''}
+    <span class="tag" title="${h.band === 'strong' ? 'matched more than one part of your goal, and one passage covers most of it' : 'matched, but less of your goal'}">${h.band === 'strong' ? 'strong' : 'possible'}</span>${h.from_old_matcher ? `<span class="tag" style="color:var(--warn)" title="Judged by the library matcher as it was before 0.60.2. Scan again to re-judge it — free.">older matcher</span>` : ''}${h.weak_query_only ? `<span class="tag" style="color:var(--warn)" title="It matched only the generic words in your goal, not anything specific to the subject.">generic match</span>` : ''}
     <button class="small ghost" onclick="BOOT.open.has('${h.source_id}') ? BOOT.open.delete('${h.source_id}') : BOOT.open.add('${h.source_id}'); renderBoot();">${open ? 'Hide why' : 'Why'}</button>
   </div>`;
 }
@@ -2336,13 +2338,18 @@ function renderBoot() {
       `<div class="row" style="margin-top:8px"><button class="small ghost" onclick="rescanBoot()">🔄 Scan my library again</button></div>`;
     return;
   }
-  const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
+  // 0.61.0: a source that only matched a clause made of generic words is held back — it is a real match to words
+  // your goal happens to contain, not to the subject. Available under "Show all", never silently deleted.
+  const weakOnly = live.filter(h => h.weak_query_only);
+  const useful = live.filter(h => !h.weak_query_only);
+  const shown = BOOT.showAll ? live : useful.filter(h => h.band === 'strong').concat(useful.filter(h => h.band !== 'strong').slice(0, 5));
   const projs = (b.projects || []).slice(0, 4);
   el.style.display = '';
   el.innerHTML = `<b>Neuro Search already found research you have</b>
     <div class="muted" style="margin-top:4px">${c.strong} strong match${c.strong === 1 ? '' : 'es'}${c.possible ? ` · ${c.possible} more may be useful` : ''}${run.scope ? ` · searched ${run.scope} source${run.scope === 1 ? '' : 's'} outside this project` : ''}${run.found > run.shown ? ` · showing the best ${run.shown} of ${run.found}` : ''}. Nothing is downloaded or transcribed again — these are sources you already own.</div>
     ${b.stale ? `<div class="banner" style="margin:8px 0">The goal changed since this scan. <button class="small" onclick="rescanBoot()">Scan again</button></div>` : ''}
     ${b.matcher_stale ? `<div class="banner" style="margin:8px 0">${esc(b.matcher_note || '')} <button class="small primary" onclick="rescanBoot()">Scan again — free</button></div>` : ''}
+    ${weakOnly.length && !BOOT.showAll ? `<div class="muted" style="font-size:12px;margin-top:6px">${weakOnly.length} more matched only the generic parts of your goal (words like "improving" or "designing" that most of your library uses) — <a href="#" onclick="BOOT.showAll=true;renderBoot();return false">show them anyway</a>.</div>` : ''}
     ${projs.length ? `<div class="muted" style="font-size:12px;margin-top:8px">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
     <div style="margin-top:8px">${shown.map(bootRow).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap">
@@ -2521,8 +2528,14 @@ async function renderTriageCard(elId) {
   const rebuildBtns = (x, key) => `<button class="small ${key === 'rebuild_transcript' ? 'primary' : ''}" title="${t.local ? 'Runs on Claude Code in the background — $0, but slow' : 'Runs on the API'}" onclick="rebuildTier('${key}')">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, key, 'Rebuild')}`;
   const acceptBtns = x => `<button class="small" onclick="acceptTier('accept')">Accept ${x.count} as still usable</button> <button class="small ghost" onclick="rebuildTier('accept')" title="Re-read them anyway">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, 'accept', 'Rebuild')}`;
   const retryBtns = x => `<button class="small" onclick="rebuildTier('retry_failed')">Retry ${x.count} · ${esc(x.cost_line)}</button>${fastBtn(x, 'retry_failed', 'Retry')}`;
-  el.innerHTML = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${t.stale_total} source${t.stale_total === 1 ? '' : 's'} analysed against older inputs</b>${t.accepted ? ` <span class="muted">· ${t.accepted} accepted as still usable</span>` : ''}${reb.length ? ` <span class="muted">· ${reb.length} re-analysing</span>` : ''}
-    <div class="muted">Their findings stay readable and usable. Three answers, not one bill — nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
+  // 0.61.0: a warning that says ZERO is worse than no warning. This card appears whenever anything is
+  // re-analysing, so the headline has to be built from what is actually non-zero — Kyle's screen read
+  // "⚠ 0 sources analysed against older inputs · 15 re-analysing", which is a scary way to say "working".
+  const head = t.stale_total
+    ? `⚠ ${t.stale_total} source${t.stale_total === 1 ? '' : 's'} analysed against older inputs`
+    : (reb.length ? `⟳ Re-analysing ${reb.length} source${reb.length === 1 ? '' : 's'}` : 'Source analysis');
+  el.innerHTML = `<div class="card" style="border-color:var(--${t.stale_total ? 'warn' : 'line'})"><b>${head}</b>${t.accepted ? ` <span class="muted">· ${t.accepted} accepted as still usable</span>` : ''}${t.stale_total && reb.length ? ` <span class="muted">· ${reb.length} re-analysing</span>` : ''}
+    <div class="muted">${t.stale_total ? 'Their findings stay readable and usable. ' : ''}Every option below shows both prices — hours on Claude Code, or dollars on the API — and nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
     ${row('rebuild_matters', 'stale AND carrying weight', x => rebuildBtns(x, 'rebuild_matters'))}
     ${row('rebuild_transcript', 'whose transcript changed', x => rebuildBtns(x, 'rebuild_transcript'))}
     ${row('retry_failed', 'whose last rebuild failed', retryBtns)}
@@ -2583,6 +2596,28 @@ async function rebuildStale(what, transport = 'interactive') {
   toast(`${r.queued} job${r.queued === 1 ? '' : 's'} queued${transport === 'batch' ? ' in the background (up to 24 hours; each source becomes current as it completes)' : ''} · est. $${(+est).toFixed(2)}${transport === 'batch' ? ' model cost' : ''}${r.budget.fits ? '' : ' · will pause when the daily budget is reached and resume tomorrow'}`);
   loadStaleness(); loadJobs();
 }
+// 0.61.0 — the Findings tab was re-running five whole-project passes every four seconds.
+//
+// Seen in Kyle's own browser: while sources are being read, `loadNotes` re-ran on a 4 s timer and each pass
+// fetched /findings, /findings/quality, /staleness, /staleness/triage and the project row — several of which walk
+// every note in the project. The Sources view solved this in 0.46.2 with a 13 ms "did anything change?" request
+// (`/tick`); Findings never got it. The revision covers notes, sources, jobs and research, which is everything
+// this tab draws, so an unchanged revision means there is nothing to redraw. A full reconcile still runs every
+// RECONCILE_EVERY ticks, so a fingerprint that ever missed a change self-corrects within a minute.
+let notesRev = null, notesTicks = 0;
+async function notesTick() {
+  if (state.view !== 'findings' || !state.project) return;
+  let t;
+  try { t = await api(`/api/projects/${state.project.id}/tick`); } catch (e) { scheduleNotesTick(); return; }
+  const rev = JSON.stringify(t.rev);
+  notesTicks++;
+  if (rev !== notesRev || notesTicks >= RECONCILE_EVERY) { notesTicks = 0; await loadNotes(); }
+  else scheduleNotesTick();
+}
+function scheduleNotesTick() {
+  clearTimeout(window._notesTimer);
+  window._notesTimer = setTimeout(notesTick, 4000);
+}
 async function loadNotes() {
   // 0.60.1 (Kyle: "click it and nothing loads"): this used to fetch /api/projects/{id} — every approved and
   // suggested finding in full, about 8 MB on his business project — and /api/sources?limit=2000 on top, before
@@ -2595,7 +2630,9 @@ async function loadNotes() {
   $('#nFindings').textContent = nApproved + (nSug ? ` +${nSug}` : '');
   const analysing = (p.analysing || {}).sources || 0;
   FWAVE.queued = (p.analysing || {}).queued || 0;
-  if (analysing) setTimeout(() => { if (state.view === 'findings') loadNotes(); }, 4000);
+  notesRev = JSON.stringify((await api(`/api/projects/${state.project.id}/tick`).catch(() => ({}))).rev || null);
+  clearTimeout(window._notesTimer);
+  if (analysing) scheduleNotesTick();
   let sug = [], sugTotal = nSug;
   if (nSug) {
     try {

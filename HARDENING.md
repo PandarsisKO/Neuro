@@ -1122,3 +1122,26 @@ direction worth knowing about — `db.set_note_status` resets `created_at`, so p
 findings "written" today; corroboration is a corpus property, so a past window's corroborated count can only rise;
 and transcription and embedding rows carry no project, so `$ per source` is a whole-app number and is omitted from
 a per-project report rather than guessed. Gate `tests/test_s9_cost_value.py` (23).
+
+
+## 0.61.0 — changed frozen decision (recorded): the plan builds from the evidence that exists
+
+`staleness.rebuild` created the `build_plan` job with `dependency_policy="ALL_SUCCESS"`, and
+`tests/test_core.py::test_plan_rebuild_waits_for_research` froze the consequence: if any findings rebuild failed,
+the plan job failed with it, "instead of quietly planning over stale evidence". That was the right instinct and the
+wrong policy.
+
+Measured on Kyle's live project, 2026-09-10: **`build_plan` failed with "not run — 11/199 upstream jobs
+succeeded"**. On a 199-source project something always fails — a deleted video, an Instagram carousel with no video
+track, a Reddit 403 — so a plan that requires a perfect run is a plan that never runs. The failure mode the old
+policy prevented (planning over stale evidence) is *reported* rather than prevented by the new one, and the
+reporting already existed: a source whose re-read failed is still stale, so `staleness.assess` marks the new plan
+as resting on stale evidence the moment it lands, and the plan's own snapshot records what it was built from.
+
+Policy is now `ALL_TERMINAL`: the barrier that matters — nothing plans over work still in flight — is kept, and the
+planner is allowed to do what it is for. The gate was updated with the reasoning rather than deleted, and it now
+asserts the new chain end to end (claimed → rebuilding → stale-with-reason once it settles).
+
+Also in this pass, and worth recording because a frozen gate caught it: `db.failure_class`'s `not_found` pattern
+matched "HTTP Error 404" but not "HTTP 404 — nothing at that address", so a live 404 classified as `other`. My own
+parametrised test used the wording that happened to match; `test_l1_browser_capture` used the wording that did not.

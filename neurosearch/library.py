@@ -301,7 +301,10 @@ def query_anchor(terms: set[str]) -> dict[str, Any]:
     total = max(1, db.sources_with_chunks())
     term = min(known, key=lambda t: (known[t], t))
     if known[term] / total > ANCHOR_MAX_DF_SHARE:
-        return {"term": None, "reason": f"even the rarest word ('{term}') is in most of the library", "df": known}
+        # `too_common` is the one no-anchor case that says something about the QUERY rather than about the library:
+        # every word in it is everywhere, so it cannot separate topics at all (bootstrap.query_strength reads this).
+        return {"term": None, "too_common": True, "rarest": term, "sources": known[term],
+                "reason": f"even the rarest word ('{term}') is in most of the library", "df": known}
     if known[term] < ANCHOR_MIN_SOURCES:
         return {"term": None, "reason": f"'{term}' appears in too few sources to separate one topic from another",
                 "df": known}
