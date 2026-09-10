@@ -13,3 +13,5 @@ Plan: `OVERNIGHT-MISSION.md`. Spend so far: **$0.00** (no paid call is possible 
 | 22:02 | **C1** | shipped **0.58.2** `568c31c`, tag `v0.58.2`. `creator_yield` + a master-source term in `candidates._potential`, project-scoped per the G4 split. 670 tests, Tier 1 PASS, release-check PASS. |
 | 22:13 | **C2** | shipped **0.58.3** `72397ef`, tag `v0.58.3`. `where_to_look` + `untapped_by_creator`, on `pursue`'s result rather than its ladder. 676 tests, Tier 1 PASS, release-check PASS. |
 | 22:23 | **C3** | shipped **0.58.4** `49ed50a`, tag `v0.58.4`. "Where to look" button in Research; `release-check` now runs `node --check` over the UI's 247 KB of inline JS and asserts UI_VERSION. 684 tests, Tier 1 PASS, release-check PASS. |
+| 22:30 | **S0 + D1** | written up, **not shipped** — `SCHEDULER-ADMISSION.md` (restructures `claim_job`, your queue is live) and `FINDINGS-YIELD-DEBT.md` (needs your call: staging table vs the batch path). |
+| 22:33 | **F5** | shipped **0.58.5** `603f998`, tag `v0.58.5`. `reserve` findings worth promoting — not vacuous and not repeats of what you approved. 690 tests, Tier 1 PASS, release-check PASS. |
