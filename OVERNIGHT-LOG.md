@@ -39,3 +39,34 @@ to take the list down with it. `git checkout v0.57.0` reverts the whole night if
 The findings cap went from 12 to 20 per source (env-reversible). Sources ingested from now on keep more. Watch the
 duplicate share in Health → `findings_quality` as that takes effect — that number is the honest signal for whether
 the higher cap is buying you findings or noise.
+
+---
+
+## 04:36–05:00 — the money question, answered properly
+
+Kyle said Anthropic was charging him far more than the app admitted. My first read of his ledger said $112 for the
+week and I implied his ~$300 figure was wrong. **He was right and I was wrong.** His Console: **$312.40** month to
+date.
+
+| | |
+|---|---|
+| app ledger, month to date | $111.96 |
+| local Claude Code path, booked as `saved` | $210.55 |
+| **sum** | **$322.51** |
+| Anthropic Console | **$312.40** |
+
+Within 3%. L1 booked every local call at `cost=0` because it assumed the CLI runs on a subscription, and nothing
+ever checked. His CLI is on an API key, so those were real charges — invisible to the daily budget, the monthly
+budget, the rate ceiling and Health simultaneously, because all four read `cost`.
+
+**Shipped 0.59.0** `868765c`, tag `v0.59.0`, release-check PASS, 733 tests:
+- local calls priced as spend unless provably free (`unknown` counts as billed);
+- `usage.reconcile()` — recorded vs likely charged, by day/week/month, without rewriting history;
+- a **weekly** budget and a **settable** rate ceiling ($6/hr default ≈ $1,000/week);
+- account walls now stop the queue instead of being rediscovered job by job (624 + 48 refusals measured);
+- duplicates split: one source repeating itself is redundancy; several sources agreeing is **corroboration**, and
+  it is protected, never swept, and sorts first in the promote list.
+
+**Two things for Kyle:** check `echo $ANTHROPIC_API_KEY` in the shell that starts Neuro Search — if it is set, run
+`claude login` to move the local path onto the subscription and it becomes genuinely free. Or set
+`NEUROSEARCH_AI_PROFILE=cloud` to turn local off and make all spend visible.
