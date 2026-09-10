@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.3';
+const UI_VERSION = '0.58.4';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1952,8 +1952,37 @@ function qCard(q, i) {
     ${(q.already_checked || []).length ? `<div class="why">Already looked in: ${q.already_checked.map(esc).join(' · ')}</div>` : ''}
     ${q.known_uncaptured ? `<div class="why">${q.known_uncaptured} promising source${q.known_uncaptured === 1 ? '' : 's'} known but not captured — <a href="#" onclick="showKnown('${q.id}');return false">see them</a></div>` : ''}
     <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">${acts}
+      <button class="small ghost" title="Which sources you already partly own are worth reading more of, ranked by what each has already given this project" onclick="whereToLook('${q.id}')">Where to look · $0</button>
       <button class="small ghost" title="Close it — you do not need this question answered" onclick="resQClose(${i})">Settle · not needed</button></div>
   </div></div>`;
+}
+
+// C2/C3 (0.58.3): gap analysis used to start every search from nothing. This shows which master sources are worth
+// reading more of, ranked by what each has ALREADY given this project, with the numbers behind every line.
+async function whereToLook(targetId) {
+  let r; try { r = await api(`/api/projects/${state.project.id}/where-to-look?limit=8` + (targetId ? `&target_id=${encodeURIComponent(targetId)}` : '')); }
+  catch (e) { return toast('could not work out where to look'); }
+  const rows = r.rows || [];
+  $('#dlgBody').innerHTML = `<h3 style="margin:0 0 4px">Where to look</h3>
+    ${r.question ? `<div class="why" style="margin-bottom:6px">For: ${esc(r.question)}${(r.wanted_classes || []).length ? ` · needs ${r.wanted_classes.map(esc).join(', ')} evidence` : ''}</div>` : ''}
+    <p class="muted" style="margin:0 0 10px">${esc(r.note)}</p>
+    ${rows.length ? rows.map(x => `<div class="kn"><div style="flex:1;min-width:0">
+        <div><b>${esc(x.creator)}</b> <span class="muted">· ${x.untapped} unread · ${x.read} read · ${x.findings} findings (${x.per_source} per source)</span>${x.proven ? ' <span class="st strong">proven here</span>' : ''}</div>
+        ${(x.why || []).map(w => `<div class="why">${esc(w)}</div>`).join('')}
+        <div class="why">Reading the next 10 would be worth roughly ${x.expected_findings} findings — an extrapolation from your own history with this source, not a promise.</div>
+      </div><button class="small primary" onclick="dlg.close();poolFilter(${JSON.stringify(x.creator).replace(/"/g, '&quot;')})">See what is left</button></div>`).join('')
+      : `<div class="empty">Nothing to recommend yet. A source is only suggested once it has both given this project findings AND has material you have not read — ${r.considered || 0} source${r.considered === 1 ? '' : 's'} considered.</div>`}`;
+  dlg.showModal();
+}
+// The pool already filters on creator (`q` matches title + creator + reasons), so this reuses the existing view
+// rather than adding a second one: Sources → 🔎 Known, not captured, filtered to that creator, ranked by fit.
+function poolFilter(creator) {
+  try {
+    state.srcFilter = 'pool'; POOL.rank = 'fit'; POOL.kind = 'all';
+    showView('sources');
+    $('#srcQ').value = creator;
+    loadSources();
+  } catch (e) { toast(`open Sources → 🔎 Known, not captured and search for ${creator}`); }
 }
 
 function areaCard(a) {

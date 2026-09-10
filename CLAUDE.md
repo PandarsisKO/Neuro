@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.3)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.4)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -66,7 +66,17 @@ each master source but has not read (skipped at the cutoff + Candidate Index row
 when it has **both** a yield history here **and** something unread — a proven channel with nothing left is not a
 place to look, and an untapped channel with no history is just a list. Every reason cites a number ("312 findings
 from 12 sources", "14 known but unread"), `expected_findings` is an explicit extrapolation from this project's own
-history with that source, and the action points at the existing pool filtered to that creator. It is DB-only, so it runs on `pursue(external=False)` where the UI promises no *web search* — but it is **not a step**: `escalation.steps` is the LADDER (project evidence → library → candidates → external), every entry is somewhere the app actually looked, and `research_view`'s `already_checked` renders straight from it. A recommendation is not a search, so it rides alongside as `escalation.where_to_look`. Putting it in `steps` broke the frozen G5 gate and would have reported advice as a check. API `GET /api/projects/{id}/where-to-look[?target_id=]`.
+history with that source, and the action points at the existing pool filtered to that creator. It is DB-only, so it runs on `pursue(external=False)` where the UI promises no *web search* — but it is **not a step**: `escalation.steps` is the LADDER (project evidence → library → candidates → external), every entry is somewhere the app actually looked, and `research_view`'s `already_checked` renders straight from it. A recommendation is not a search, so it rides alongside as `escalation.where_to_look`. Putting it in `steps` broke the frozen G5 gate and would have reported advice as a check. API `GET /api/projects/{id}/where-to-look[?target_id=]`. **C3 (0.58.4):** a "Where to look · $0" button on every
+open question in the Research tab opens the ranked list and jumps straight into the existing
+Sources → 🔎 Known, not captured view filtered to that creator (`poolFilter`) — the pool's `q` already matches
+creator, so no second surface was added.
+
+**The UI has a syntax gate now (0.58.4).** `web/index.html` is ~295 KB with ~247 KB of inline JavaScript and no
+build step, so a stray brace shipped silently and surfaced as a blank panel in the browser; nothing checked it.
+`release_check` now extracts the inline script and runs `node --check`, and also asserts `UI_VERSION` equals the
+package version (the third leg of the delivery ritual, previously only checked by eye). It WARNS rather than fails
+where no JavaScript engine exists — a missing `node` is a fact about the machine, and a gate that fails for that
+reason teaches people to ignore gates. Gate `tests/test_s5_ui_syntax.py`.
 
 ## Findings quality — the trash filter (F1–F3, 0.58.0)
 

@@ -340,6 +340,30 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         r.check("contracts valid", True)
     except Exception as e:  # noqa: BLE001
         r.check("schemas/contracts", False, str(e)[:200])
+    # 0.58.3: the single-file UI is ~247 KB of inline JavaScript with no build step, so a stray brace shipped
+    # silently and surfaced as a blank panel in the browser. release-check never looked at it until now.
+    try:
+        import re as _re
+        import shutil as _sh
+        import subprocess as _sp
+        import tempfile as _tf
+        html = (Path(__file__).resolve().parent / "web" / "index.html").read_text()
+        js = "\n".join(_re.findall(r"<script(?![^>]*src=)[^>]*>(.*?)</script>", html, _re.S))
+        node = _sh.which("node") or _sh.which("nodejs")
+        ui_v = (_re.search(r"const UI_VERSION = '([^']+)'", html) or [None, None])[1]
+        if ui_v != __version__:
+            r.check("web/index.html UI_VERSION matches the package", False, f"{ui_v} != {__version__}")
+        elif not node:
+            r.check("web/index.html parses", True, "skipped — no JavaScript engine on this machine", warn=True)
+        else:
+            with _tf.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(js)
+                jp = f.name
+            out = _sp.run([node, "--check", jp], capture_output=True, text=True, timeout=90)
+            r.check("web/index.html parses", out.returncode == 0,
+                    (out.stderr or "")[:300] or f"{len(js)} chars of inline JS, UI_VERSION {ui_v}")
+    except Exception as e:  # noqa: BLE001
+        r.check("web/index.html parses", False, str(e)[:200])
     was_fake, was_dir = settings.fake_ai, settings.data_dir
     settings.fake_ai = True
     try:
