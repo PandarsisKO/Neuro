@@ -406,7 +406,21 @@ def set_status(claim_id: str, status: str, *, application: str | None = None) ->
     with db.tx() as conn:
         conn.execute("UPDATE project_claims SET status=?, application=COALESCE(?, application), updated_at=? WHERE id=?", (status, application, time.time(), claim_id))
     assess(claim_id)
-    return get(claim_id)
+    out = get(claim_id)
+    _user_changed(out.get("project_id") if out else None)
+    return out
+
+
+def _user_changed(project_id: str | None) -> None:
+    """0.62.8: a person's verdict must show on their next read, even while background harvest churns the research
+    revision and the read surfaces are serving stale values."""
+    if not project_id:
+        return
+    try:
+        from . import research_view
+        research_view.user_changed(project_id)
+    except Exception:  # noqa: BLE001 — a cache drop must never fail a recorded decision
+        pass
 
 
 # ---------------------------------------------------------------- harvest ($0 candidates)

@@ -378,4 +378,24 @@ def test_research_overview_is_cached_on_the_research_revision():
                          "VALUES ('rt1',?,'CONTRADICTION','d','open','high',?,?)", (p["id"], db.now(), db.now()))
     db.connect().commit()
     research_view.overview(p["id"])
-    assert perf.snapshot()["caches"]["research_overview"]["miss"] == misses + 1   # research moved → recomputed
+    # CHANGED 0.62.8 (recorded in HARDENING.md): this asserted EXACTLY one further miss. The pass is now
+    # stale-while-revalidating, so a changed revision records the request's own miss AND the background refresh's
+    # miss — two marks, and still exactly ONE computation (`get_stale_ok` marks, then `_refresh_later` calls
+    # `get_or_compute`, which marks and computes). The rung's claim is unchanged and is what is asserted below:
+    # the answer is not rebuilt for every look. Why it had to change: measured on Kyle's project mid-harvest, the
+    # revision was moving four times a second, so a strict key meant a 33 s recompute on every read.
+    after_change = perf.snapshot()["caches"]["research_overview"]["miss"]
+    assert after_change > misses                                        # research moved → recomputed
+    # While the background refresh is in flight every read is genuinely a miss (the stored revision does not match
+    # yet), and that is honest accounting rather than repeated work — one thread computes, guarded by `_running`.
+    # The rung's claim is about the settled state, so wait for it and then assert it.
+    import time as _t
+    for _ in range(50):
+        if research_view.overview(p["id"]).get("as_of_current"):
+            break
+        _t.sleep(0.1)
+    settled = perf.snapshot()["caches"]["research_overview"]["miss"]
+    for _ in range(3):
+        research_view.overview(p["id"])
+    assert perf.snapshot()["caches"]["research_overview"]["miss"] == settled, \
+        "a settled, unchanged project must not recompute per request"

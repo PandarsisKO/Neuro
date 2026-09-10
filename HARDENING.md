@@ -1201,3 +1201,38 @@ anything else in the process touched the queue — a worker pool outliving an ea
 `accelerate_options` and `accelerate`. The observed failure was `22 == 30 - 7`. It now asserts the CONSERVATION law
 it was really about (`moved + remaining == the queue as measured`), which is both stable and the stronger claim.
 Two consecutive release-checks pass.
+
+## 0.62.8 — a changed frozen decision: research reads are stale-while-revalidating, by AUTHOR not by age
+
+**What changed.** `research_view.overview` and `research_view.areas` were strictly keyed on
+`db.project_research_revision`. They now serve the previous answer immediately with `as_of_current` / `recomputing`
+beside it and refresh in one background thread. Two gates moved with it, both recorded here:
+
+- `test_p1_perf::test_research_overview_is_cached_on_the_research_revision` asserted EXACTLY one further miss after
+  a change. A changed revision now records the request's own miss AND the background refresh's miss — two marks,
+  still exactly ONE computation (`get_stale_ok` marks, `_refresh_later` calls `get_or_compute`, which marks and
+  computes). While a refresh is in flight, every read is genuinely a miss; that is honest accounting, not repeated
+  work. The rung's claim — not rebuilt for every look — is now asserted against the SETTLED state.
+- `test_n8_research_shell::test_one_request_carries_every_pane` was already updated in 0.62.7 for the bounded
+  payload; unchanged here.
+
+**Why.** Measured on Kyle's project **with the job queue idle**, immediately after 3,314 findings were approved at
+his request: `research/overview?full=1` **38.7 s cold and 33.4 s WARM**, `/research` 75.5 s / 63.1 s, the Claims
+workbench 14.8 s / 47.9 s. Sampling the research revision every 2.5 s explained all of it at once — the claim count
+was moving **15,792 → 15,800 → 15,811**, about four a second, because `harvest` was turning those findings into
+Claims. A strict key means every read recomputes for as long as bulk work runs, and the pass costs tens of seconds
+at 15,800 Claims. Third surface to learn the 0.61.2 lesson.
+
+**The correction that matters, and it came from the gates.** Blanket stale tolerance broke
+`test_attention_is_what_needs_the_user_not_the_claim_count` and
+`test_one_verdict_clears_a_whole_watch_out_and_dismissal_is_durable`, and they were RIGHT to break: a person who has
+just dismissed a watch-out is looking at the screen, and serving the answer from before their own click is not "a
+moment old", it is wrong. So the rule is by **author**, not by age — background churn may be served stale, a
+recorded human decision may not. `research_view.user_changed(project_id)` drops the entries and is called from
+`claims.set_status`, `knowledge.set_target_status` and `knowledge.set_tension_status`. A failure to drop the cache
+can never fail the decision itself (the status is the durable thing; the cache is not), and there is a test for
+that.
+
+**Not fixed, and named:** the areas/overview pass itself still costs tens of seconds at 15,800 Claims, and
+`knowledge.state` (75 s) and `claims_view.query` (48 s) have no cache of their own — they only benefit indirectly
+because both call `areas()`. Making the pass cheap is a separate rung; how fast Claims accumulate is Kyle's call.

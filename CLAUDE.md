@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.7)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.8)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,40 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A read may be a moment old; your own verdict may not (0.62.8)
+
+The clean re-measurement Kyle asked for, **with the job queue idle** — and it found one cause behind four slow
+surfaces:
+
+```
+research/overview?full=1     38.7 s cold   33.4 s WARM
+/research (full state)       75.5 s cold   63.1 s warm
+claims workbench (100)       14.8 s cold   47.9 s warm
+findings (100)               55.1 s cold    1.7 s warm
+```
+
+Sampling `db.project_research_revision` every 2.5 s explained all of it at once: the claim count was moving
+**15,792 → 15,800 → 15,811** — about four a second — because `harvest` was turning the 3,314 findings Kyle had just
+had approved into Claims. Legitimate $0 work with no model call, but a strictly revision-keyed cache recomputes on
+every read for as long as it runs, and the areas/overview pass costs tens of seconds at 15,800 Claims. The third
+surface to learn 0.61.2's lesson: **a cache whose key changes faster than its value can be computed is not a
+cache.** (The 55 s on findings was a genuine cold build after a restart; warm is 1.7 s, and its decorations were
+already stale-tolerant.)
+
+**Then the gates corrected the fix, which is the part worth keeping.** Making the read stale-tolerant broke two
+frozen tests about a person dismissing a watch-out and accepting a Claim — and they were right to break. Serving
+someone the answer from before their own click is not "a moment old", it is wrong.
+
+So the rule is by **AUTHOR, not by age**: background churn is served stale with `as_of_current: False` and
+`recomputing: True` beside it; a recorded human decision drops the entry, so the next read recomputes.
+`research_view.user_changed` is that lever, called from `claims.set_status`, `knowledge.set_target_status` and
+`knowledge.set_tension_status` — and a failure to drop the cache can never fail the decision, because the status is
+the durable thing and the cache is not.
+
+**Named, not fixed:** the pass itself is still tens of seconds at 15,800 Claims, and `knowledge.state` (75 s) and
+`claims_view.query` (48 s) have no cache of their own — they benefit only because both call `areas()`. Making the
+pass cheap is a separate rung. Gate `tests/test_s22_stale_research.py`.
 
 ## A 5.9 MB request, and two passes that ran inside one (0.62.7)
 

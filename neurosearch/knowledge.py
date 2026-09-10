@@ -97,7 +97,9 @@ def set_target_status(target_id: str, status: str) -> dict[str, Any] | None:
         raise ValueError("bad status")
     with db.tx() as c:
         c.execute("UPDATE project_evidence_targets SET status=?, updated_at=? WHERE id=?", (status, time.time(), target_id))
-    return get_target(target_id)
+    tg = get_target(target_id)
+    claims._user_changed(tg.get("project_id") if tg else None)          # 0.62.8: their own decision, not churn
+    return tg
 
 
 def _claim_for_target(tg: dict[str, Any]) -> dict[str, Any] | None:
@@ -292,8 +294,10 @@ def list_tensions(project_id: str, status: str | None = "open") -> list[dict[str
 def set_tension_status(tension_id: str, status: str) -> None:
     if status not in ("open", "resolved", "dismissed"):
         raise ValueError("bad status")
+    pid = (db.connect().execute("SELECT project_id FROM research_tensions WHERE id=?", (tension_id,)).fetchone() or {})
     with db.tx() as c:
         c.execute("UPDATE research_tensions SET status=?, updated_at=? WHERE id=?", (status, time.time(), tension_id))
+    claims._user_changed(pid["project_id"] if pid else None)            # 0.62.8: their own decision, not churn
 
 
 ECHO_OVERLAP = 0.3       # Jaccard

@@ -151,9 +151,8 @@ def areas(project_id: str, data: dict[str, Any] | None = None) -> dict[str, Any]
     Caching does not make it cheap, it makes it paid ONCE per actual change instead of once per request; making it
     cheap is a separate rung, and reducing how fast Claims accumulate is Kyle's call."""
     if data is None:
-        from . import cache
-        return cache.get_or_compute(f"research_areas:{project_id}", db.project_research_revision(project_id),
-                                    lambda: _areas_uncached(project_id, None), label="research_areas")
+        return _stale_ok(f"research_areas:{project_id}", db.project_research_revision(project_id),
+                         lambda: _areas_uncached(project_id, None), label="research_areas")
     return _areas_uncached(project_id, data)
 
 
@@ -422,11 +421,52 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
 QUESTIONS_INLINE_MAX = 200      # how many open questions the shell carries; the rest are paged (0.62.7)
 
 
+def user_changed(project_id: str) -> int:
+    """A user's own decision must be visible on their next read (0.62.8).
+
+    `_stale_ok` lets a read ride on the previous answer while background work churns the research revision — which
+    is right for churn and WRONG for a person who just dismissed a watch-out or accepted a Claim and is looking at
+    the screen. Two frozen gates caught exactly that
+    (`test_attention_is_what_needs_the_user_not_the_claim_count`,
+    `test_one_verdict_clears_a_whole_watch_out_and_dismissal_is_durable`) and they were right to.
+
+    So the rule is by AUTHOR, not by age: harvest and assessment may be served stale, a human's verdict may not.
+    Every path that records a person's decision drops these entries, so the next read recomputes."""
+    from . import cache
+    return (cache.invalidate(f"research_overview:{project_id}")
+            + cache.invalidate(f"research_areas:{project_id}"))
+
+
+def _stale_ok(key: str, revision: str, compute, *, label: str):
+    """Serve the previous answer at once and refresh behind the screen (0.62.8).
+
+    **Measured on Kyle's project with the queue otherwise idle**, right after 3,314 findings were approved at his
+    request: `research/overview?full=1` took **38.7 s cold and 33.4 s WARM**, `/research` 75.5 s / 63.1 s, the
+    Claims workbench 14.8 s / 47.9 s. Sampling `db.project_research_revision` every 2.5 s explained all of it at
+    once — the claim count was moving **15,792 → 15,800 → 15,811**, about four a second, because `harvest` was
+    turning those newly approved findings into Claims. Legitimate $0 work; but a strict revision key means every
+    read recomputes while it runs, and the pass costs tens of seconds.
+
+    So this is the third surface to learn the 0.61.2 lesson: **a cache whose key changes faster than its value can
+    be computed is not a cache.** A research overview computed a minute ago is a true statement about a minute ago;
+    a 33-second wait is not a better answer, it is the same answer late. `as_of_current` says which the caller has.
+
+    Nothing is fabricated and nothing goes permanently stale: the value returned was computed by this app, one
+    background thread brings it forward, and a caller that must have the current state can still call the
+    uncached pass directly."""
+    from . import cache
+    got = cache.get_stale_ok(key, revision, compute, label=label, warm=True)
+    val = got["value"]
+    if isinstance(val, dict):
+        val = {**val, "as_of_current": got["current"], "recomputing": got["pending"]}
+    return val
+
+
 def overview(project_id: str, limit: int = 5, full: bool = False, area_map: bool = False) -> dict[str, Any]:
     from . import cache
-    return cache.get_or_compute(f"research_overview:{project_id}:{limit}:{int(full)}:{int(area_map)}",
-                                db.project_research_revision(project_id),
-                                lambda: _overview_uncached(project_id, limit, full, area_map), label="research_overview")
+    return _stale_ok(f"research_overview:{project_id}:{limit}:{int(full)}:{int(area_map)}",
+                     db.project_research_revision(project_id),
+                     lambda: _overview_uncached(project_id, limit, full, area_map), label="research_overview")
 
 
 def _overview_uncached(project_id: str, limit: int = 5, full: bool = False, area_map: bool = False) -> dict[str, Any]:
