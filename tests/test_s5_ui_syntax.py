@@ -55,3 +55,17 @@ def test_tonights_handlers_exist(fn):
     fails only when a human clicks it."""
     html = INDEX.read_text()
     assert re.search(rf"(async )?function {fn}\b", html), f"{fn} is referenced but not defined"
+
+
+@pytest.mark.parametrize("fn", ["accelerateOption", "loadBacklog"])
+def test_the_accelerate_handlers_exist(fn):
+    html = INDEX.read_text()
+    assert re.search(rf"(async )?function {fn}\b", html), f"{fn} is referenced but not defined"
+
+
+def test_the_backlog_banner_no_longer_offers_a_count_plus_sort():
+    """0.59.2: the dialog renders server-computed OPTIONS, each a distinct set with its own price. The old
+    `btn(n, order, ...)` pairing is what allowed "next N" and "all N, most valuable first" to buy the same thing."""
+    html = INDEX.read_text()
+    assert "accelerateOption(" in html
+    assert "most valuable first`" not in html, "the old count+sort button is still being rendered"

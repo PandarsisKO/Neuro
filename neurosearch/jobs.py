@@ -687,16 +687,98 @@ def backlog(project_id: str | None = None) -> dict[str, Any]:
             "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready else None,
             "local_eta": staleness._hm(minutes) if ready and local else None,
             "api_cost": round(sum(i["api_cost"] for i in local), 2), "profile": settings.ai_profile, "local_ready": ready,
+            "options": accelerate_options(project_id, local),
+            "pools": _pool_shape(len(local), len(api_side)),
             "choices": [n for n in (10, 25) if n < len(local)] + ([len(local)] if local else []),
             "line": (f"{len(local)} job{'s' if len(local) != 1 else ''} waiting on Claude Code · about {staleness._hm(minutes)} · the same work on the API ≈ ${sum(i['api_cost'] for i in local):.2f}"
                      if local and ready else f"{len(local)} AI job{'s' if len(local) != 1 else ''} queued" if local else "nothing waiting")}
 
 
-def accelerate(project_id: str | None, n: int = 10, order: str = "queue") -> dict[str, Any]:
+def _pool_shape(n_local: int, n_api: int) -> dict[str, Any]:
+    """Why a long queue can feel serialised (0.59.2). Kyle: "it feels like we are not doing the api and background
+    at the same time." He is right, and it is structural rather than a stall: `start_workers` partitions the AI
+    workers by execution policy — the local pool claims `LOCAL_POLICIES`, the api pool claims `API_POLICIES` — and
+    ordinary findings work is created `local_preferred`. So the API worker is idle BY CONSTRUCTION whenever the
+    backlog is ordinary work, however long that backlog is. Accelerating is the only thing that gives it anything to
+    do, which is a defensible design (it never spends without being asked) but it was never SAID anywhere."""
+    local_workers = max(1, settings.local_ai_workers) if settings.ai_profile == "local" else 0
+    return {"local_workers": local_workers, "api_workers": 1 if settings.ai_profile == "local" else 0,
+            "local_queued": n_local, "api_queued": n_api,
+            "api_idle_by_construction": bool(local_workers and n_local and not n_api),
+            "why": ("Ordinary AI work is created `local_preferred`, and the API worker only claims `api_requested` / "
+                    "`api_only`. So it cannot help with this backlog until you move some of it across — that is what "
+                    "accelerating does, and it is the only thing that spends money here.")}
+
+
+# --- accelerate options: each a DIFFERENT set, each with its own reason and price (0.59.2) ------------------------
+#
+# Kyle: "two of the spend options are identical and worthless ... the 'most valuable first' option and the 'do all'
+# option are the same, making 'most valuable' pointless."  He was exactly right and for two compounding reasons:
+#   1. `order="value"` SORTS the set it is given, so with n = every queued job the sort changes nothing at all;
+#   2. the value came from `sources_value.compute(project_id)`, which is empty when no project is in scope — so on a
+#      subset the ordering was frequently a no-op too, and two buttons quietly did identical work.
+# An option is now a SET with a stated criterion and its own cost, and identical sets are collapsed so the dialog can
+# never again offer the same purchase twice under two names.
+
+ACCEL_SUBSET_MAX = 25
+
+
+def accelerate_options(project_id: str | None, local: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """The genuinely distinct purchases available, cheapest first. Never two names for one set."""
+    if local is None:
+        local = [i for i in backlog(project_id)["jobs"]]
+    if not local:
+        return []
+    opts: list[dict[str, Any]] = []
+
+    def add(key: str, label: str, why: str, picked: list[dict[str, Any]]) -> None:
+        if not picked:
+            return
+        ids = sorted(j["id"] for j in picked)
+        for o in opts:
+            if o["job_ids"] == ids:          # same set, different name — the exact bug being fixed
+                return
+        opts.append({"key": key, "label": label, "why": why, "n": len(ids), "job_ids": ids,
+                     "api_cost": round(sum(j["api_cost"] for j in picked), 2)})
+
+    # 1. answers something you are waiting on — the same two signals Kyle chose for claim triage
+    targeted = [j for j in local if j.get("value", 0) > 0 or j.get("lane") == "priority"]
+    add("waiting_on", f"The {len(targeted)} tied to work you are waiting on",
+        "Jobs on a priority source, or whose source already earned a value score in this project.", targeted[:ACCEL_SUBSET_MAX])
+    # 2. the most valuable, as a bounded subset — meaningful only because it is a subset
+    if len(local) > 5:
+        by_value = sorted(local, key=lambda j: (-j.get("value", 0), j["id"]))[:min(ACCEL_SUBSET_MAX, max(5, len(local) // 4))]
+        add("most_valuable", f"The {len(by_value)} most valuable",
+            "Highest value score first — what these sources have already given this project.", by_value)
+    # 3. the quickest wins: fewest windows, so the most jobs cleared per dollar
+    if len(local) > 5:
+        cheap = sorted(local, key=lambda j: (j["windows"], j["id"]))[:min(ACCEL_SUBSET_MAX, max(5, len(local) // 4))]
+        add("cheapest", f"The {len(cheap)} cheapest to finish",
+            "Fewest windows to read, so the most jobs cleared per dollar.", cheap)
+    # 4. everything
+    add("all", f"All {len(local)}", "The whole backlog moves to the API.", local)
+    opts.sort(key=lambda o: (o["api_cost"], o["n"]))
+    return opts
+
+
+def accelerate(project_id: str | None, n: int = 10, order: str = "queue", option: str | None = None) -> dict[str, Any]:
     """Move the next N queued local jobs onto the API pool — the user's explicit purchase of speed, never implied by
     slowness. Marks them `api_requested`; the api_ai worker claims them. Returns what it moved and the estimate."""
     b = backlog(project_id)
     jobs_ = b["jobs"]
+    if option:
+        # 0.59.2: an option names a SET, computed and priced by `accelerate_options`, so what is bought is exactly
+        # what the button said it would be — no re-derivation, no drift between the estimate and the purchase.
+        chosen = next((o for o in b.get("options") or [] if o["key"] == option), None)
+        if chosen is None:
+            raise ValueError(f"unknown accelerate option {option!r}")
+        ids = set(chosen["job_ids"])
+        picked = [j for j in jobs_ if j["id"] in ids]
+        for j in picked:
+            db.set_job_policy(j["id"], "api_requested")
+        return {"moved": len(picked), "job_ids": [j["id"] for j in picked],
+                "api_cost": round(sum(j["api_cost"] for j in picked), 2),
+                "option": option, "label": chosen["label"], "remaining": len(jobs_) - len(picked)}
     if order == "value":
         jobs_ = sorted(jobs_, key=lambda j: (-j["value"], j["id"]))
     picked = jobs_[:max(0, n)]

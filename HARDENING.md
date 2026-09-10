@@ -1033,3 +1033,31 @@ direction.
 **And the corrected F5 answer:** of 541 withheld findings, 1 duplicates something approved. The cap really did
 withhold different facts rather than restatements, so promoting them is close to free value — with the paraphrase
 caveat attached.
+
+
+## 0.59.1 — the cause: Neuro Search was handing its own API key to the Claude Code CLI
+
+0.59.0 measured the symptom ($210.55 of "free" local calls inside a $312.40 month the app reported as $111.96) and
+made local calls count as spend. This is the cause, and it is one line.
+
+`config.py` calls `load_dotenv()`, which copies every entry in `.env` — including `ANTHROPIC_API_KEY` — into
+`os.environ`. `claude_code._run` then built the subprocess environment as *everything except `NEUROSEARCH_*`* and
+handed it to the `claude` binary. The CLI prefers an API key when it is given one, so **every local call was billed
+to the API account, and `claude login` could not have fixed it — the app overrode the login on every invocation.**
+
+`_run` now subtracts `CLI_CREDENTIAL_VARS` (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_API_KEY`,
+`ANTHROPIC_ADMIN_KEY`). The CLI falls back to its own stored auth, which is the subscription. If there is no login
+the CLI errors, `_run` raises `LocalUnavailable`, and `providers.route` falls back to the API — where the call is
+recorded as real spend. The failure mode is *visible and paid*, never *hidden and paid*.
+
+`billing_mode()` changed with it: a key in our own environment no longer implies anything about who pays, so the
+default is `subscription` and the verification is empirical rather than inferred — Health shows `recorded` beside
+`likely charged`, and the Console should track `recorded` from now on. `NEUROSEARCH_LOCAL_BILLING` still overrides,
+and `unknown` still counts as billed.
+
+Gate: `test_the_cli_never_receives_an_api_key` asserts on the environment the subprocess is actually given (every
+credential absent, `PATH` intact), plus a guard that every name in `CLI_CREDENTIAL_VARS` is really a credential,
+since that list is subtracted from a working environment.
+
+**Expected effect on Kyle's bill:** the local path was 908 calls and $210.55 of the month. If his CLI has a
+subscription login, that goes to zero. The number to watch is whether his Console total now tracks `recorded`.

@@ -1744,6 +1744,7 @@ def api_ai_backlog(project_id: str) -> dict[str, Any]:
 class AccelerateIn(BaseModel):
     n: int = 10
     order: str = "queue"      # queue (oldest first) | value (the sources that matter most first)
+    option: str | None = None      # 0.59.2: name a SET from backlog()['options'] instead of a count+order
 
 
 @app.post("/api/projects/{project_id}/accelerate", dependencies=[Depends(require_auth)])
@@ -1751,6 +1752,11 @@ def api_accelerate(project_id: str, body: AccelerateIn) -> dict[str, Any]:
     """L3: buy speed on purpose — move the next N queued local jobs onto the API pool. Never implied by slowness."""
     if not db.get_project(project_id):
         raise HTTPException(404)
+    if body.option:
+        try:
+            return jobs.accelerate(project_id, option=body.option)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
     if body.order not in ("queue", "value"):
         raise HTTPException(400, "order must be queue or value")
     return jobs.accelerate(project_id, n=max(1, min(body.n, 500)), order=body.order)

@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.59.0';
+const UI_VERSION = '0.59.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1352,11 +1352,35 @@ async function loadBacklog() {
     const e = accelEstimate(b, n, order);
     return `<button class="small ${order === 'value' ? 'ghost' : (n === b.choices[0] ? '' : 'ghost')}" onclick="accelerate(${n},'${order}')" title="Moves ${e.n} queued job${e.n === 1 ? '' : 's'} onto the paid Anthropic API. Same work, same quality — you are buying time, not a different answer. The rest stay on Claude Code at $0.">${label} · ~$${e.cost.toFixed(2)}${e.mins ? ` · saves ~${accelMins(e.mins)}` : ''}</button>`;
   };
-  const picks = b.choices.map(n => btn(n, 'queue', n >= b.local_queued ? `⏩ All ${n}` : `⏩ Next ${n}`)).join('');
+  // 0.59.2: one button per genuinely DIFFERENT set, each with its own criterion and its own price. The old dialog
+  // offered "next N" alongside "all N, most valuable first" — and when N was everything, sorting bought the same
+  // thing twice under two names. The server now computes the sets and collapses duplicates, so the UI just renders
+  // whatever distinct purchases actually exist.
+  const opts = b.options || [];
+  const picks = opts.map((o, i) => `<button class="small ${i === 0 ? '' : 'ghost'}" onclick="accelerateOption('${o.key}')" title="${esc(o.why)} Same work, same quality — you are buying time, not a different answer. Whatever you don't move keeps running on Claude Code at $0.">⏩ ${esc(o.label)} · ~$${o.api_cost.toFixed(2)}</button>`).join('');
+  const pools = b.pools || {};
   el.innerHTML = `<div class="banner" style="display:block">
     <div>🖥 ${esc(b.line)}. Nothing is stuck — this is Claude Code working through the queue at $0.</div>
-    <div class="muted" style="font-size:12px;margin:6px 0 4px">Optional: pay to skip the wait. These buttons move queued jobs onto the paid API — same work and same quality, you are only buying time. Nothing is cancelled or redone, and whatever you don't move keeps running here at $0.</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">${picks}${b.local_queued > 1 ? btn(b.local_queued, 'value', `⭐ All ${b.local_queued}, most valuable first`) : ''}</div></div>`;
+    ${pools.api_idle_by_construction ? `<div class="muted" style="font-size:12px;margin:6px 0 0">${pools.local_workers} local worker${pools.local_workers === 1 ? '' : 's'} on ${pools.local_queued} job${pools.local_queued === 1 ? '' : 's'}; the API worker is idle and <b>cannot help with this backlog</b> until you move some of it across. ${esc(pools.why)}</div>` : ''}
+    <div class="muted" style="font-size:12px;margin:6px 0 4px">Optional: pay to skip the wait. Each button below moves a different set of jobs onto the paid API — same work and same quality. Nothing is cancelled or redone.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${picks || '<span class="muted">nothing worth moving</span>'}</div></div>`;
+}
+// 0.59.2: buy exactly the set the button named — the server priced it, so the confirmation cannot drift from it.
+async function accelerateOption(key) {
+  const b = await api(`/api/projects/${state.project.id}/ai-backlog`);
+  const o = (b.options || []).find(x => x.key === key);
+  if (!o) return toast('that option is no longer available — the queue changed');
+  const u = state.usage || {};
+  const budget = u.daily_budget ? `\n• Counts toward today's budget: $${(u.today || 0).toFixed(2)} of $${u.daily_budget.toFixed(2)} used so far.` : '';
+  if (!confirm(`${o.label} — run ${o.n} job${o.n === 1 ? '' : 's'} on the paid Anthropic API instead of waiting for Claude Code?`
+    + `\n\n• ${o.why}`
+    + `\n• Estimated cost: about $${o.api_cost.toFixed(2)}.`
+    + `\n• Same work and the same quality — you are buying time, not a different answer.`
+    + `\n• The other ${b.local_queued - o.n} job${b.local_queued - o.n === 1 ? '' : 's'} keep running on Claude Code at $0.`
+    + budget)) return;
+  const r = await post(`/api/projects/${state.project.id}/accelerate`, { option: key });
+  toast(`⏩ ${r.moved} job${r.moved === 1 ? '' : 's'} moved to the API · ~$${(r.api_cost || 0).toFixed(2)}`);
+  loadJobs(); loadBacklog();
 }
 async function accelerate(n, order) {
   const b = await api(`/api/projects/${state.project.id}/ai-backlog`);

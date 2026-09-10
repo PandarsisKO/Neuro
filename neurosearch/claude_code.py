@@ -145,6 +145,10 @@ def _has(flag: str) -> bool:
 
 BILLING_SUBSCRIPTION, BILLING_API_KEY, BILLING_UNKNOWN = "subscription", "api_key", "unknown"
 
+# Credentials that would make the CLI bill an API account instead of using the user's subscription login. `_run`
+# removes these from the subprocess environment (0.59.1); anything added here must also be safe to remove.
+CLI_CREDENTIAL_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_API_KEY", "ANTHROPIC_ADMIN_KEY")
+
 
 def billing_mode() -> str:
     """Who pays for a Claude Code call: the user's subscription, or their API account.
@@ -162,8 +166,10 @@ def billing_mode() -> str:
     override = (os.environ.get("NEUROSEARCH_LOCAL_BILLING") or "").strip().lower()
     if override in (BILLING_SUBSCRIPTION, BILLING_API_KEY, BILLING_UNKNOWN):
         return override
-    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
-        return BILLING_API_KEY
+    # Since 0.59.1 `_run` strips every credential in CLI_CREDENTIAL_VARS from the subprocess environment, so the CLI
+    # uses its own stored login (a subscription) and the presence of a key in OUR environment no longer decides who
+    # pays. The remaining honest check is empirical, not a guess: `usage.reconcile()` reports `recorded` beside
+    # `likely_total`, and if the Anthropic Console tracks `recorded` from here on, local really is free.
     return BILLING_SUBSCRIPTION
 
 
@@ -175,11 +181,12 @@ def local_is_free() -> bool:
 def billing_note() -> str:
     m = billing_mode()
     if m == BILLING_API_KEY:
-        return ("ANTHROPIC_API_KEY is set in this environment, so the Claude Code CLI bills your API account: local "
-                "calls are NOT free and are counted as spend. Run `claude login` (or unset that key for the shell "
-                "that starts Neuro Search) to use your subscription instead.")
+        return ("local calls are being counted as spend (NEUROSEARCH_LOCAL_BILLING=api_key). Until 0.59.1 the app "
+                "passed your ANTHROPIC_API_KEY to the Claude Code CLI, which is why they were billed.")
     if m == BILLING_SUBSCRIPTION:
-        return "no ANTHROPIC_API_KEY in this environment, so Claude Code uses your subscription and local calls are free."
+        return ("your API key is no longer passed to the Claude Code CLI (0.59.1), so it uses its own login and "
+                "local calls are free. Verify it rather than trust it: Health shows `recorded` beside "
+                "`likely charged`, and from now on the Anthropic Console should track `recorded`.")
     return "cannot tell who pays for local calls, so they are counted as spend — set NEUROSEARCH_LOCAL_BILLING to say."
 
 
@@ -342,7 +349,19 @@ def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, 
         cmd += list(CLI["allowed_none"])
     if native_schema:
         cmd += [CLI["json_schema"], json.dumps(schema)]
-    env = {k: v for k, v in os.environ.items() if not k.startswith("NEUROSEARCH_")}
+    # 0.59.1 — DO NOT HAND THE CLI AN API KEY.
+    #
+    # `config.load_dotenv()` copies everything in .env into os.environ, and this line used to pass the whole
+    # environment to the subprocess. So ANTHROPIC_API_KEY went to the Claude Code CLI on every call, the CLI used it
+    # in preference to the user's subscription login, and every "free, local" call was billed to the API account.
+    # Measured on Kyle's data: $210.55 of local calls booked at cost 0 inside a $312.40 month, which the app reported
+    # as $111.96. `claude login` could not fix it — the app overrode the login on every invocation.
+    #
+    # Stripping the credentials makes the CLI fall back to its own stored auth, which is the subscription. If there
+    # is no login, the CLI errors, `_run` raises LocalUnavailable and `providers.route` falls back to the API — where
+    # the call is recorded as real spend. So the failure mode is "visible and paid", never "hidden and paid".
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("NEUROSEARCH_") and k not in CLI_CREDENTIAL_VARS}
     env["CLAUDE_CODE_NO_TELEMETRY"] = env.get("CLAUDE_CODE_NO_TELEMETRY", "1")
     t0 = time.time()
     try:

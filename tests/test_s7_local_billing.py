@@ -52,13 +52,15 @@ def test_no_api_key_means_the_subscription_pays():
     assert cc.local_is_free() is True
 
 
-def test_an_api_key_in_the_environment_means_the_api_pays(monkeypatch):
-    """The CLI uses ANTHROPIC_API_KEY when it is present in the environment it inherits. That is the whole signal,
-    it costs nothing to read, and it is what was never read."""
+def test_a_key_in_our_environment_no_longer_decides_who_pays(monkeypatch):
+    """0.59.1 CHANGED this. The first version of `billing_mode` read ANTHROPIC_API_KEY from our own environment,
+    because the app was passing it to the CLI. Now `_run` strips it, so the CLI uses its own login and a key sitting
+    in our process says nothing about who pays. The honest check became empirical: `usage.reconcile()` reports
+    `recorded` beside `likely_total`, and the Console should track `recorded` from here on."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
-    assert cc.billing_mode() == cc.BILLING_API_KEY
-    assert cc.local_is_free() is False
-    assert "claude login" in cc.billing_note()
+    assert cc.billing_mode() == cc.BILLING_SUBSCRIPTION
+    assert cc.local_is_free() is True
+    assert "no longer passed" in cc.billing_note()
 
 
 @pytest.mark.parametrize("mode", [cc.BILLING_SUBSCRIPTION, cc.BILLING_API_KEY, cc.BILLING_UNKNOWN])
@@ -88,7 +90,7 @@ def test_a_subscription_call_is_free_and_records_what_it_avoided():
 
 
 def test_an_api_key_call_is_recorded_as_real_spend(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
+    monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_API_KEY)
     r = _record()
     assert r["transport"] == "local"                 # provenance is kept: it still ran locally
     assert r["cost"] > 0 and r["saved"] == 0.0       # ...but it is money, not savings
@@ -96,9 +98,8 @@ def test_an_api_key_call_is_recorded_as_real_spend(monkeypatch):
 
 def test_cost_and_saved_can_never_double_count(monkeypatch):
     """Exactly one of the two is ever non-zero, so `recorded + local_if_billed` is a sum and not an overcount."""
-    for key in (None, "sk-ant-whatever"):
-        if key:
-            monkeypatch.setenv("ANTHROPIC_API_KEY", key)
+    for mode in (cc.BILLING_SUBSCRIPTION, cc.BILLING_API_KEY):
+        monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", mode)
         r = _record()
         assert (r["cost"] > 0) != (r["saved"] > 0), r
 
@@ -106,7 +107,7 @@ def test_cost_and_saved_can_never_double_count(monkeypatch):
 def test_a_billed_local_call_reaches_the_budget_and_the_rate_ceiling(monkeypatch):
     """The reason this mattered: `totals()`, `check()` and the rate gate all read `cost`. Booking local at zero took
     it out of every one of them at once."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
+    monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_API_KEY)
     before = usage.totals()["today"]
     _record()
     assert usage.totals()["today"] > before          # the budget can see it now
@@ -116,7 +117,7 @@ def test_a_billed_local_call_reaches_the_budget_and_the_rate_ceiling(monkeypatch
 # ------------------------------------------------------------------ reconciliation
 
 def test_reconcile_reports_both_numbers_and_says_how_to_read_them(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
+    monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_API_KEY)
     _record()
     r = usage.reconcile()
     assert r["billing_mode"] == cc.BILLING_API_KEY and r["local_is_free"] is False
@@ -153,7 +154,7 @@ def test_the_rate_ceiling_is_settable_because_the_default_is_not_a_budget():
 def test_a_weekly_budget_exists_because_that_is_how_he_thinks(monkeypatch):
     """Kyle measures this in weeks — "nearly $300 in one week" — and the app only had daily and monthly."""
     assert usage.budget("weekly") == 0.0                               # off unless set
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-whatever")
+    monkeypatch.setenv("NEUROSEARCH_LOCAL_BILLING", cc.BILLING_API_KEY)
     _record()
     spent = usage.totals()["week"]
     assert spent > 0
@@ -171,3 +172,59 @@ def test_health_shows_the_gap():
     h = db.health()["spend"]
     assert "billing_mode" in h and "how_to_read" in h
     assert set(h["month"]) >= {"recorded", "local_if_billed", "likely_total"}
+
+
+# ------------------------------------------------------------------ 0.59.1: the app must not hand the CLI a key
+
+def test_the_cli_never_receives_an_api_key(monkeypatch, tmp_path):
+    """The actual bug. `config.load_dotenv()` copies .env into os.environ, and `_run` passed the whole environment
+    to the subprocess — so ANTHROPIC_API_KEY reached the Claude Code CLI on every call and the CLI billed the API
+    account in preference to the user's subscription login. `claude login` could not fix it: the app overrode the
+    login every time. This asserts on the environment the subprocess is actually given."""
+    seen = {}
+
+    class _Done:
+        returncode = 0
+        stdout = '{"result": "ok"}'
+        stderr = ""
+
+    def fake_run(cmd, **kw):
+        seen.update(kw.get("env") or {})
+        return _Done()
+
+    for var in cc.CLI_CREDENTIAL_VARS:
+        monkeypatch.setenv(var, f"secret-{var}")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")            # something innocuous that MUST survive
+    monkeypatch.setattr(cc.subprocess, "run", fake_run)
+    monkeypatch.setattr(cc, "binary", lambda: "/usr/bin/true")
+    try:
+        cc._run("hello", system=None, model=None, timeout=5, schema=None)
+    except Exception:
+        pass                                               # the parse may fail; the environment is what is on trial
+    assert seen, "the subprocess was never given an environment"
+    for var in cc.CLI_CREDENTIAL_VARS:
+        assert var not in seen, f"{var} was handed to the CLI"
+    assert seen.get("PATH") == "/usr/bin:/bin"             # ...and nothing else was thrown away
+    assert not any(k.startswith("NEUROSEARCH_") for k in seen)
+
+
+def test_every_stripped_variable_is_a_credential():
+    """A guard on the guard: this list is subtracted from the CLI's environment, so an accidental entry would break
+    local inference rather than protect it."""
+    for var in cc.CLI_CREDENTIAL_VARS:
+        assert "KEY" in var or "TOKEN" in var, var
+
+
+def test_a_missing_subscription_fails_visibly_rather_than_silently_billing(monkeypatch):
+    """The failure mode after the fix: no CLI login means the CLI errors, `_run` raises LocalUnavailable and
+    `providers.route` falls back to the API — where the call is recorded as real spend. Visible and paid beats
+    hidden and paid."""
+    class _Fail:
+        returncode = 1
+        stdout = ""
+        stderr = "Invalid API key · Please run /login"
+
+    monkeypatch.setattr(cc.subprocess, "run", lambda cmd, **kw: _Fail())
+    monkeypatch.setattr(cc, "binary", lambda: "/usr/bin/true")
+    with pytest.raises((cc.LocalUnavailable, cc.LocalLimit)):
+        cc._run("hello", system=None, model=None, timeout=5, schema=None)

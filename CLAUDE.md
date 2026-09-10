@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.59.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.59.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -90,6 +90,25 @@ package version (the third leg of the delivery ritual, previously only checked b
 where no JavaScript engine exists — a missing `node` is a fact about the machine, and a gate that fails for that
 reason teaches people to ignore gates. Gate `tests/test_s5_ui_syntax.py`.
 
+## Accelerate: one button per distinct purchase (0.59.2)
+
+Kyle: *"two of the spend options are identical and worthless — 'most valuable first' and 'do all' are the same."*
+True, twice over: `order="value"` SORTS the set it is given, so with n = the whole queue the sort changed nothing;
+and the value came from `sources_value.compute(project_id)`, which is empty with no project in scope, so even a
+subset was often ordered by a column of zeros. `jobs.accelerate_options()` now returns SETS — `waiting_on` (a
+priority source or a source with a value score, the same two signals `claims.triage` uses), `most_valuable`,
+`cheapest` (fewest windows = most jobs cleared per dollar), `all` — each with its criterion and its own price,
+**cheapest first, with identical sets collapsed** so the same purchase can never appear twice under two names. Under
+six queued jobs, only `all` is offered. `accelerate(option=)` buys exactly the set that was priced, with no
+re-derivation, so the confirmation cannot drift from the button.
+
+**Why a long queue feels serialised** (`backlog()["pools"]`): `start_workers` partitions the AI workers by execution
+policy — the local pool claims `LOCAL_POLICIES`, the api pool claims `API_POLICIES` — and ordinary findings work is
+created `local_preferred`. So **the API worker is idle by construction** whenever the backlog is ordinary work,
+however long it is, and accelerating is the only thing that gives it anything to claim. That is a defensible design
+(it never spends without being asked) but it was never stated anywhere, which is why the queue read as a stall.
+The banner now says it. Gate `tests/test_s8_accelerate_options.py`.
+
 ## Spend: local is free only when we can show it is (0.59.0)
 
 **The measurement.** 2026-09-10, from Kyle's own data: app ledger **$111.96** month-to-date, local Claude Code path
@@ -99,9 +118,18 @@ subscription — nothing ever checked. Those were real charges, and being booked
 daily budget, the monthly budget, `SPEND_RATE_CEILING` and Health simultaneously (all four read `cost`). He topped up
 credit for a week while the app told him he had spent a third of what he had.
 
-- `claude_code.billing_mode()` → `subscription` | `api_key` | `unknown`, from whether `ANTHROPIC_API_KEY` is in the
-  environment the CLI inherits (free, no network); `NEUROSEARCH_LOCAL_BILLING` overrides. **`unknown` is treated as
-  BILLED** — assuming free is the specific error that hid $200, and `claude_code.local_is_free()` is the only gate.
+- **THE CAUSE (0.59.1): the app was handing its own API key to the CLI.** `config.load_dotenv()` copies `.env` into
+  `os.environ`, and `claude_code._run` passed the whole environment to the subprocess — so `ANTHROPIC_API_KEY`
+  reached the Claude Code CLI on every call and the CLI used it in preference to the user's subscription login.
+  `claude login` could not fix it; the app overrode the login every invocation. `_run` now subtracts
+  `CLI_CREDENTIAL_VARS` from the subprocess environment. With no CLI login the CLI errors, `_run` raises
+  `LocalUnavailable` and `providers.route` falls back to the API where the call is RECORDED — visible and paid
+  instead of hidden and paid.
+- `claude_code.billing_mode()` → `subscription` | `api_key` | `unknown`; `NEUROSEARCH_LOCAL_BILLING` overrides.
+  Since the key is no longer passed, a key in our own environment says nothing about who pays, so the default is
+  `subscription` and the check became EMPIRICAL: `reconcile()` shows `recorded` beside `likely_total`, and the
+  Console should track `recorded` from here on. **`unknown` is still treated as BILLED** — assuming free is the
+  specific error that hid $200, and `claude_code.local_is_free()` is the only gate.
 - `usage.record_anthropic` prices a local call as real `cost` unless it is free, in which case it stays `cost=0` with
   `saved`. Exactly one of the two is ever non-zero, so `recorded + local_if_billed` never double-counts.
 - `usage.reconcile(days)` reports `recorded` / `local_if_billed` / `likely_total` for today, the week, the month and
