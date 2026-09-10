@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.4';
+const UI_VERSION = '0.58.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2461,6 +2461,7 @@ async function loadWorkbenchSource(sid) { const p = new URLSearchParams({ limit:
 let QUAL = null;
 async function loadQuality(st) {
   const el = $('#fbQual'); if (!el) return;
+  if (st === 'reserve') return loadPromotable(el);
   if (st !== 'approved') { el.innerHTML = ''; return; }
   let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1`); } catch (e) { el.innerHTML = ''; return; }
   if (!s || !s.flagged) { el.innerHTML = ''; return; }
@@ -2468,6 +2469,30 @@ async function loadQuality(st) {
   if (s.duplicates) bits.push(`${s.duplicates} repeat${s.duplicates === 1 ? '' : 's'} of findings you already have`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
   el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected because your plan, chats or Claims use them` : ''}.</span><button class="small" onclick="openQuality()">Review</button></div>`;
+}
+// F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
+// The filter can now say which of them are not repeats of something approved and do name something specific.
+async function loadPromotable(el) {
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { el.innerHTML = ''; return; }
+  if (!r.reserve) { el.innerHTML = ''; return; }
+  const sk = Object.entries(r.skipped || {}).map(([k, v]) => `${v} ${k === 'already_covered' ? 'already covered by an approved finding' : (r.rules ? '' : '') + k.replace(/_/g, ' ')}`).join(' · ');
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">📥 ${r.promotable} of ${r.reserve} withheld findings look worth keeping${sk ? ` · skipping ${esc(sk)}` : ''}.</span>` +
+    (r.promotable ? `<button class="small" onclick="openPromotable()">Review</button><button class="small primary" onclick="promoteReserve(${JSON.stringify(r.rows.map(x => x.id))})">Approve all ${r.promotable}</button>` : '') + `</div>`;
+}
+async function openPromotable() {
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { return toast('could not load them'); }
+  $('#dlgBody').innerHTML = `<h3 style="margin:0 0 4px">Withheld findings worth keeping</h3>
+    <p class="muted" style="margin:0 0 10px">${esc(r.note)}</p>
+    ${r.rows.map(x => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px"><input type="checkbox" class="pchk" value="${x.id}" checked>
+      <span style="flex:1">${esc((x.content || '').slice(0, 260))}<br><span class="muted" style="font-size:11px">${esc(x.why)}${x.importance ? ` · rated ${x.importance}/5` : ''}</span></span></label>`).join('')}
+    <div class="row" style="margin-top:12px;gap:8px"><button class="small primary" onclick="promoteReserve([...document.querySelectorAll('.pchk:checked')].map(c=>+c.value))">Approve the ticked ones</button></div>`;
+  dlg.showModal();
+}
+async function promoteReserve(ids) {
+  if (!ids || !ids.length) return toast('nothing ticked');
+  await post('/api/notes/bulk-status', { note_ids: ids, status: 'approved' });
+  try { dlg.close(); } catch (e) { /* the banner path has no dialog open */ }
+  toast(`${ids.length} approved`); loadNotes();
 }
 async function openQuality() {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400`); } catch (e) { return toast('could not load the review'); }

@@ -271,6 +271,67 @@ def review(project_id: str, *, status: str | None = "approved", limit: int = 300
     }
 
 
+def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
+    """F5 — which withheld `reserve` findings are worth having after all.
+
+    `reserve` is the overflow the length-aware cap declined to suggest: findings the user ALREADY PAID FOR that are
+    never exported, planned on or harvested until promoted. Kyle's objective is more findings that are not trash, so
+    the interesting question is not "raise the cap" (0.58.1 did that, for future sources) but "of what was already
+    withheld, which would I actually want?" — and now there is a check that can answer it.
+
+    A reserve finding is promotable when it is not vacuous AND not a near-duplicate of something already approved.
+    That second test is the one that matters and is why this cannot just be "promote all": clustering runs across
+    BOTH statuses, so a reserve note restating an approved one is skipped rather than promoted into a duplicate.
+    Nothing is promoted here — the caller sweeps through `POST /api/notes/bulk-status`, as everywhere else."""
+    from . import findings_view
+    approved = db.list_project_notes(project_id, status="approved")
+    reserve = db.list_project_notes(project_id, status="reserve")
+    if not reserve:
+        return {"reserve": 0, "promotable": 0, "rows": [], "skipped": {},
+                "note": "no withheld findings — nothing was over the cap on this project"}
+    usage = findings_view.usage_map(project_id)
+    titles: dict[str, str] = {}
+    for sid in {str(n.get("source_id")) for n in (approved + reserve) if n.get("source_id")}:
+        srow = db.get_source(sid)
+        if srow:
+            titles[sid] = srow.get("title") or ""
+    approved_ids = {n["id"] for n in approved}
+    # cluster ACROSS statuses: a reserve finding that repeats an approved one is not a gain
+    cl = clusters(approved + reserve, usage)
+    covered: dict[int, int] = {}
+    for c in cl:
+        members = set(c["duplicate_ids"]) | {c["keeper_id"]}
+        anchor_id = next((m for m in members if m in approved_ids), None)
+        if anchor_id is None:
+            continue
+        for m in members:
+            if m not in approved_ids:
+                covered[m] = anchor_id
+    rows: list[dict[str, Any]] = []
+    skipped = {"already_covered": 0, **{f: 0 for f in FLAGS if f != "duplicate"}}
+    for n in reserve:
+        if n["id"] in covered:
+            skipped["already_covered"] += 1
+            continue
+        fl = vacuity(n, titles.get(str(n.get("source_id"))))
+        if fl == ["too_short"] and _has_specific(n.get("content") or ""):
+            fl = []                                   # brevity is not vacuity (same rule as `review`)
+        if fl:
+            for f in fl:
+                skipped[f] = skipped.get(f, 0) + 1
+            continue
+        rows.append({"id": n["id"], "content": n.get("content"), "title": n.get("title"),
+                     "source_id": n.get("source_id"), "importance": n.get("importance"),
+                     "why": "not a repeat of anything you have approved, and it names something specific"})
+    rows.sort(key=lambda r: (-int(r["importance"] or 0), r["id"]))
+    return {"reserve": len(reserve), "promotable": len(rows), "rows": rows[:max(1, min(limit, 1000))],
+            "skipped": {k: v for k, v in skipped.items() if v},
+            "note": ("These were withheld by the cap, not judged — you already paid for them. Listed here are the "
+                     "ones that are not repeats of findings you have already approved and that name something "
+                     "specific. Nothing is promoted until you press the button."),
+            "action": {"method": "POST", "endpoint": "/api/notes/bulk-status", "body": {"status": "approved"}}}
+
+
 def summary(project_id: str) -> dict[str, Any]:
     """The counts only — cheap enough for a chip in the Findings header."""
     r = review(project_id, limit=1)

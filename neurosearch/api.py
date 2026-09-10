@@ -2521,6 +2521,17 @@ class BulkNotesIn(BaseModel):
     status: str
 
 
+@app.get("/api/projects/{project_id}/findings/reserve-promotable", dependencies=[Depends(require_auth)])
+def api_reserve_promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
+    """F5: of the findings the cap withheld as `reserve` — already paid for, never exported or planned on — which
+    are not repeats of something already approved and do name something specific. $0. Promotes nothing; the caller
+    sweeps through POST /api/notes/bulk-status."""
+    from . import findings_quality
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return findings_quality.promotable(project_id, limit=max(1, min(limit, 1000)))
+
+
 @app.get("/api/projects/{project_id}/findings/quality", dependencies=[Depends(require_auth)])
 def api_findings_quality(project_id: str, status: str | None = "approved", limit: int = 300,
                          include_used: bool = False, summary: bool = False) -> dict[str, Any]:

@@ -137,23 +137,3 @@ warning). It does NOT reclassify existing artifacts. Deciding that needs a query
 `project_source_analysis.routing` in the live database — through the API, never by opening the file — and Kyle's call
 on whether to re-run anything. Do not assume the artifacts are wrong: `routing.actual_model` was always stored, so
 the answer is already in there.
-
-
-## Two rungs deliberately NOT shipped overnight 2026-09-10 — both need a person watching
-
-**SCHEDULER-ADMISSION.md (S0).** The through-line of 2026-09-09's three fires: the app has no notion of ADMISSION —
-a decision, taken before a job is claimed, about whether the system can afford to run it right now in money, worker
-slots and fairness between projects. Lanes are an ORDER and cannot evict; `Yield` is voluntary and stateless. The
-doc proposes buckets with concurrency ceilings (replacing the background-pause and rate-gate SQL fragments with one
-mechanism), then per-project share, then the projected-rate test replacing the post-hoc gate. Not shipped because
-it restructures `db.claim_job`, the query every worker runs, and a bug there does not degrade gracefully. First
-slice and its exit test are named in the doc. It carries an honest caveat: ceilings make a single-project day LOOK
-slower, so demo it on a two-project workload.
-
-**FINDINGS-YIELD-DEBT.md (D1).** `suggest_findings` still holds a worker for every window of a book. The `Yield`
-pattern that fixed claims and ranking does not transfer: findings accumulate in memory and `materialize` applies
-the cap ACROSS all windows, so yielding mid-source either discards paid calls or writes a cap computed from a third
-of the evidence. Three options, with a recommendation to ASK Kyle first: stage raw window results in an additive
-table and resume, or send long sources down the existing `batches` path (which holds no worker at all and costs 50%
-less, but turns minutes into hours). The second is arguably the designed answer and is a product decision, not an
-implementation one.

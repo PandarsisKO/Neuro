@@ -256,3 +256,61 @@ def test_health_says_the_cap_changed_and_how_to_put_it_back():
     assert h["raised"] is True
     assert h["before_0_58_1"] == {"base": 12, "per_window": 8, "max": 120}
     assert "NEUROSEARCH_FINDINGS_CAP_BASE=12" in h["revert"]
+
+
+# ------------------------------------------------------------------ F5: what the cap withheld, minus the trash
+
+def _reserve(project, text, imp=3, source_id=None):
+    n = db.add_project_note(project, text, [], source_id=source_id)
+    db.set_note_status(n["id"], "reserve")
+    return n["id"]
+
+
+def test_a_project_with_no_reserve_says_so(project):
+    r = fq.promotable(project)
+    assert r["reserve"] == 0 and r["rows"] == []
+    assert "nothing was over the cap" in r["note"]
+
+
+def test_a_solid_withheld_finding_is_offered(project):
+    nid = _reserve(project, "He charges a 50% deposit before the first edit and bills the rest on delivery")
+    r = fq.promotable(project)
+    assert r["promotable"] == 1 and r["rows"][0]["id"] == nid
+    assert "not a repeat" in r["rows"][0]["why"]
+
+
+def test_a_vacuous_withheld_finding_is_not_offered(project):
+    _reserve(project, "The video discusses the importance of consistency")
+    r = fq.promotable(project)
+    assert r["promotable"] == 0
+    assert sum(r["skipped"].values()) >= 1
+
+
+def test_a_withheld_finding_that_repeats_an_approved_one_is_not_offered(project):
+    """The test that stops "promote all" from being the same thing: a reserve finding restating an approved one is
+    not a gain, it is a duplicate, and clustering therefore has to run across BOTH statuses."""
+    db.add_project_note(project, "Sellers typically finance ten percent of the purchase price via a seller note", [])
+    dupe = _reserve(project, "Sellers usually finance ten percent of the purchase price with a seller note")
+    fresh = _reserve(project, "The SBA requires two years of tax returns for an acquisition loan")
+    r = fq.promotable(project)
+    ids = [x["id"] for x in r["rows"]]
+    assert fresh in ids and dupe not in ids
+    assert r["skipped"]["already_covered"] == 1
+
+
+def test_promotable_promotes_nothing_by_itself(project):
+    nid = _reserve(project, "He charges a 50% deposit before the first edit and bills the rest on delivery")
+    fq.promotable(project)
+    assert db.list_project_notes(project, status="reserve")[0]["id"] == nid       # still withheld
+    assert db.list_project_notes(project, status="approved") == []
+    assert fq.promotable(project)["action"]["endpoint"] == "/api/notes/bulk-status"
+
+
+def test_promotable_makes_no_model_call(project, monkeypatch):
+    from neurosearch import providers
+    def boom(*a, **k):
+        raise AssertionError("F5 must be free")
+    monkeypatch.setattr(providers, "invoke", boom)
+    monkeypatch.setattr(providers, "invoke_structured", boom)
+    _reserve(project, "He charges a 50% deposit before the first edit and bills the rest on delivery")
+    assert fq.promotable(project)["promotable"] == 1

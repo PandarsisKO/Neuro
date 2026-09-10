@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.4)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.5)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -113,6 +113,14 @@ monotone in the cap (a larger cap only moves rows from `reserve` to `suggested`,
 one), so raising it can only add. Reversible with no code change:
 `NEUROSEARCH_FINDINGS_CAP_BASE=12 NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8 NEUROSEARCH_FINDINGS_CAP_MAX=120`.
 Health reports the current cap, whether it was raised, and how to revert (`db.health()["findings_cap"]`).
+
+**F5 — what the cap already withheld (0.58.5).** F4 raises the cap for FUTURE sources; `findings_quality.promotable`
+answers the other half — of the `reserve` findings already paid for and withheld, which would you actually want? A
+reserve note is offered when it is not vacuous **and** not a near-duplicate of something already approved, and that
+second test is why this is not "promote all": `clusters` runs across BOTH statuses, so a reserve note restating an
+approved one is skipped rather than promoted into a duplicate. Promotes nothing itself — the sweep is
+`POST /api/notes/bulk-status`. API `GET /api/projects/{id}/findings/reserve-promotable`; UI a 📥 banner (with
+Approve-all) that replaces the 🧽 banner while the workbench is showing `reserve`.
 
 ## Research catalogues (0.57.0)
 
