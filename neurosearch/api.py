@@ -150,17 +150,31 @@ def _runtime_error(_r: Request, exc: RuntimeError) -> JSONResponse:
 
 # ---------------------------------------------------------------- web ui
 
+# 0.60.4 — THE UI WAS BEING CACHED, AND IT HID EVERY UI FIX.
+#
+# Found by looking at Kyle's actual browser for the first time in a fortnight: the app reported **v0.53.1** in the
+# corner while the server was running 0.60.3, and a hard reload fixed it. The single-file UI is served here with no
+# `Cache-Control`, no `ETag` and no `Last-Modified`, so the browser was free to keep its own copy — and it did, for
+# days. That explains complaints that landed after the fix had shipped: the two identical accelerate buttons
+# (fixed in 0.59.2) and the wall of queued jobs (0.60.0) were both on his screen this morning because his screen
+# was weeks old. `uvicorn --reload` restarts the server; nothing was telling the browser.
+#
+# A 300 KB local document costs nothing to re-fetch, and a stale interface costs a day of misdirected debugging.
+NO_STORE = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> Any:
     if not _token_ok(_request_token(request)):
-        return HTMLResponse((WEB_DIR / "login.html").read_text())
-    return HTMLResponse((WEB_DIR / "index.html").read_text())
+        return HTMLResponse((WEB_DIR / "login.html").read_text(), headers=NO_STORE)
+    return HTMLResponse((WEB_DIR / "index.html").read_text(), headers=NO_STORE)
 
 
 @app.post("/login")
 def login(token: str = Form(...)) -> Any:
     if not _token_ok(token):
-        return HTMLResponse((WEB_DIR / "login.html").read_text().replace("<!--ERR-->", "<p class=err>Wrong token.</p>"), status_code=401)
+        return HTMLResponse((WEB_DIR / "login.html").read_text().replace("<!--ERR-->", "<p class=err>Wrong token.</p>"),
+                            status_code=401, headers=NO_STORE)
     resp = RedirectResponse("/", status_code=303)
     resp.set_cookie("ns_token", token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 365)
     return resp

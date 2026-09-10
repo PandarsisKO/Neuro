@@ -246,3 +246,19 @@ def test_a_closed_record_still_becomes_a_candidate_with_the_reason(fresh):
     rows = db.connect().execute("SELECT description FROM candidates").fetchall()
     assert rows and "metadata only" in rows[0]["description"]
     assert "browser extension" in rows[0]["description"]
+
+
+# ------------------------------------------------------------------ the UI must not be cached (0.60.4)
+
+def test_the_ui_is_served_no_store():
+    """Found by looking at Kyle's real browser: it reported v0.53.1 while the server ran 0.60.3, and a hard reload
+    fixed it. The single-file UI was served with no Cache-Control, no ETag and no Last-Modified, so the browser
+    kept its own copy for days — which means complaints kept arriving about faults that had already been fixed
+    (the identical accelerate buttons, 0.59.2; the wall of queued jobs, 0.60.0). `uvicorn --reload` restarts the
+    server; nothing was telling the browser."""
+    from neurosearch import api
+    assert "no-store" in api.NO_STORE["Cache-Control"]
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "neurosearch", "api.py"), encoding="utf-8").read()
+    body = src[src.index("def index(request: Request)"):src.index("@app.post(\"/login\")")]
+    assert body.count("headers=NO_STORE") == 2          # the app and the login page both
