@@ -159,7 +159,8 @@ def test_a_batch_the_provider_no_longer_has_stops_pretending(fresh, monkeypatch)
 def test_health_reports_the_gap_and_clears_itself(fresh, monkeypatch):
     jid = _abandoned()
     h = db.health()["batches"]
-    assert h["unsettled"] == 1 and h["items"] == 3 and "paid for" in h["note"]
+    assert h["unsettled"] == 1 and h["items"] == 3
+    assert h["awaiting_collection"] == 3 and "nobody has collected" in h["note"]
     with db.tx() as conn:
         conn.execute("UPDATE batch_items SET status='materialized' WHERE job_id=?", (jid,))
     assert db.health()["batches"]["unsettled"] == 0
@@ -262,3 +263,78 @@ def test_the_ui_is_served_no_store():
                             "neurosearch", "api.py"), encoding="utf-8").read()
     body = src[src.index("def index(request: Request)"):src.index("@app.post(\"/login\")")]
     assert body.count("headers=NO_STORE") == 2          # the app and the login page both
+
+
+# ------------------------------------------------------------------ collected but never written (0.61.1)
+
+def _mixed(project_id="p1"):
+    """The shape Kyle's abandoned batch actually settled into: one source fully collected, one half-collected
+    because the provider cancelled its other window, one already written."""
+    job = db.create_job("suggest_findings_batch", {"project_id": project_id, "source_ids": ["whole", "half"]})
+    jid = job["id"] if isinstance(job, dict) else job
+    with db.tx() as conn:
+        conn.execute("UPDATE jobs SET status='cancelled', external_provider='anthropic_batch', external_handle=?, "
+                     "finished_at=? WHERE id=?", (HANDLE, 1.0, jid))
+        rows = [("whole", 0, "succeeded"), ("whole", 1, "succeeded"),
+                ("half", 0, "succeeded"), ("half", 1, "canceled"),
+                ("done", 0, "materialized")]
+        for i, (sid, w, st) in enumerate(rows):
+            conn.execute("INSERT INTO batch_items (job_id, batch_id, custom_id, task, project_id, source_id, "
+                         "window_index, params, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         (jid, HANDLE, f"c{i}", "findings.extract", project_id, sid, w, "{}", st, 1.0, 1.0))
+    return jid
+
+
+def test_a_collected_result_nobody_wrote_still_counts_as_unsettled(fresh):
+    """Counting only `submitted` declared the batch finished while 79 paid-for results had gone nowhere."""
+    _mixed()
+    rows = batches.unsettled()
+    assert len(rows) == 1
+    assert rows[0]["awaiting_collection"] == 0
+    assert rows[0]["collected_not_written"] == 3
+    h = db.health()["batches"]
+    assert h["collected_not_written"] == 3 and "never written" in h["note"]
+
+
+def test_the_sources_that_cannot_be_assembled_are_named(fresh):
+    """`materialize_ready` is right to refuse half a source — but the refusal was silent, so the paid-for half
+    vanished from view. Naming them is what lets someone decide to re-read."""
+    jid = _mixed()
+    stuck = batches.stuck_sources(jid)
+    assert [s["source_id"] for s in stuck] == ["half"]
+    assert stuck[0]["collected"] == 1 and stuck[0]["lost"] == 1
+    assert "cannot be assembled" in stuck[0]["why"]
+
+
+def test_a_fully_collected_source_is_not_called_stuck(fresh):
+    jid = _mixed()
+    assert "whole" not in [s["source_id"] for s in batches.stuck_sources(jid)]
+
+
+def test_collecting_is_logged_before_writing(fresh, monkeypatch):
+    """The first live settle collected 410 results and wrote 331 sources, then materialisation raised — and the
+    whole outcome disappeared into an exception handler with nothing in job_events. Collecting is the irreversible
+    half, so it is recorded whatever happens next."""
+    jid = _abandoned()
+
+    class Counts:
+        processing, succeeded, errored, canceled, expired = 0, 2, 0, 0, 0
+
+    class B:
+        processing_status = "ended"
+        request_counts = Counts()
+
+    monkeypatch.setattr(batches.AnthropicBatch, "_client", classmethod(lambda cls: type("C", (), {
+        "messages": type("M", (), {"batches": type("BB", (), {"retrieve": staticmethod(lambda h: B())})()})()})()))
+    monkeypatch.setattr(batches.AnthropicBatch, "persist_results",
+                        classmethod(lambda cls, h, results=None: {"succeeded": 2, "errored": 0, "expired": 0, "canceled": 0}))
+
+    def boom(job_id, project_id):
+        raise RuntimeError("materialisation exploded")
+
+    monkeypatch.setattr(batches, "materialize_ready", boom)
+    out = batches.settle(jid)
+    assert out["settled"] is True and out["counts"]["succeeded"] == 2
+    assert out["error"] and "exploded" in out["error"] and "raised" in out["note"]
+    kinds = [e["event_type"] for e in db.job_events(jid)]
+    assert "batch_settled" in kinds and "batch_materialised" in kinds

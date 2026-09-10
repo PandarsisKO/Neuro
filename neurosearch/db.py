@@ -2712,10 +2712,16 @@ def _batches_health() -> dict[str, Any]:
     try:
         from . import batches
         rows = batches.unsettled()
+        awaiting = sum(r.get("awaiting_collection", 0) for r in rows)
+        unwritten = sum(r.get("collected_not_written", 0) for r in rows)
         return {"unsettled": len(rows), "items": sum(r["items"] for r in rows), "rows": rows[:8],
-                "note": ("A cancelled or failed batch can still have completed requests at the provider. Settling "
-                         "one is free and collects whatever was paid for; nothing is lost by waiting, but nothing "
-                         "arrives either." if rows else "every provider batch has been collected")}
+                "awaiting_collection": awaiting, "collected_not_written": unwritten,
+                "note": (("Two different states. " if awaiting and unwritten else "") +
+                         (f"{awaiting} request(s) nobody has collected yet — settling is free. " if awaiting else "") +
+                         (f"{unwritten} result(s) were collected and never written, because the other windows of "
+                          "their source were cancelled at the provider: half a source is not a reading of it, so "
+                          "re-read those sources if you want them. " if unwritten else "")
+                         if rows else "every provider batch has been collected and written")}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)[:200]}
 

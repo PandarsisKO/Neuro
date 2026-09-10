@@ -544,11 +544,21 @@ def cohort_summary(job_id: str) -> dict[str, Any]:
 # persist whatever succeeded, materialise it into the project it was always for, and mark the rest with a reason so
 # nothing sits at "submitted" for ever. It is idempotent and free: retrieving a batch costs nothing.
 def unsettled() -> list[dict[str, Any]]:
-    """Finished jobs whose provider batch still has items nobody ever collected."""
+    """Finished jobs whose provider batch has work that was paid for and never written.
+
+    TWO states, not one (0.61.1). `submitted` means nobody has collected the result yet. `succeeded` means the
+    result was collected and the finding was still never written — which happens when a source's OTHER windows were
+    cancelled, because `materialize_ready` only writes a source whose every window came back. Kyle's abandoned
+    batch settled into exactly that shape: of 426 requests, 410 succeeded, 331 were written, **79 are still sitting
+    there collected and unwritten**, and 15 were cancelled at the provider. Counting only `submitted` declared that
+    batch finished while 79 paid-for results had gone nowhere."""
     rows = db.connect().execute(
-        "SELECT j.id, j.kind, j.status, j.external_handle, j.payload, j.finished_at, COUNT(b.id) items "
+        "SELECT j.id, j.kind, j.status, j.external_handle, j.payload, j.finished_at, "
+        "       SUM(CASE WHEN b.status='submitted' THEN 1 ELSE 0 END) awaiting_collection, "
+        "       SUM(CASE WHEN b.status='succeeded' THEN 1 ELSE 0 END) collected_not_written, "
+        "       COUNT(b.id) items "
         "FROM jobs j JOIN batch_items b ON b.job_id = j.id "
-        "WHERE j.status IN ('cancelled','failed','done') AND b.status='submitted' "
+        "WHERE j.status IN ('cancelled','failed','done') AND b.status IN ('submitted','succeeded') "
         "AND j.external_handle IS NOT NULL GROUP BY j.id ORDER BY j.finished_at DESC").fetchall()
     out = []
     for r in rows:
@@ -562,8 +572,31 @@ def unsettled() -> list[dict[str, Any]]:
         prog = db.kv_get(f"batch:progress:{handle}")
         out.append({"job_id": r["id"], "kind": r["kind"], "status": r["status"], "handle": handle,
                     "project_id": pl.get("project_id"), "items": int(r["items"]),
+                    "awaiting_collection": int(r["awaiting_collection"] or 0),
+                    "collected_not_written": int(r["collected_not_written"] or 0),
                     "finished_at": r["finished_at"],
                     "last_seen_counts": json.loads(prog) if prog else None})
+    return out
+
+
+def stuck_sources(job_id: str) -> list[dict[str, Any]]:
+    """Sources in this batch whose results cannot be assembled: some window succeeded and another did not.
+
+    `materialize_ready` is right to refuse them — half a source's windows is not a reading of the source — but the
+    refusal was silent, so the paid-for half simply vanished from view. Naming them is what lets someone decide:
+    re-read the source (it costs again) or accept the partial (a separate decision, not this function's)."""
+    rows = db.connect().execute(
+        "SELECT source_id, "
+        "       SUM(status='succeeded') ok, SUM(status='materialized') done, "
+        "       SUM(status IN ('canceled','errored','expired')) lost, COUNT(*) windows "
+        "FROM batch_items WHERE job_id=? GROUP BY source_id", (job_id,)).fetchall()
+    out = []
+    for r in rows:
+        if int(r["ok"] or 0) and int(r["lost"] or 0):
+            out.append({"source_id": r["source_id"], "collected": int(r["ok"]), "lost": int(r["lost"]),
+                        "windows": int(r["windows"]),
+                        "why": (f"{r['ok']} of {r['windows']} windows came back and {r['lost']} did not, so the "
+                                "source cannot be assembled from this batch")})
     return out
 
 
@@ -595,12 +628,31 @@ def settle(job_id: str) -> dict[str, Any]:
         return {"settled": False, "still_processing": True, "counts": seen,
                 "note": "the provider is still working through this batch — come back and settle it later"}
     got = AnthropicBatch.persist_results(handle)
-    harvested = materialize_ready(job_id, project_id) if project_id else {"materialized": 0}
-    db.job_event(job_id, "batch_settled", handle=handle, counts=got, materialized=harvested.get("materialized", 0))
+    # The event is written BEFORE materialising (0.61.1). The first live settle collected 410 results and wrote 331
+    # sources' findings, then something raised inside materialisation — so the whole outcome went into an exception
+    # handler and `job_events` recorded nothing at all. Collecting is the irreversible half; it gets its own line
+    # in the log whatever happens next.
+    db.job_event(job_id, "batch_settled", handle=handle, counts=got, provider_counts=seen)
+    harvested: dict[str, Any] = {"materialized": 0}
+    error = None
+    try:
+        if project_id:
+            harvested = materialize_ready(job_id, project_id)
+    except Exception as e:  # noqa: BLE001 — the results are already saved; writing them is a separate step
+        error = str(e)[:200]
+        log.warning("settle %s: results collected but materialisation failed: %s", handle, e)
+    stuck = stuck_sources(job_id)
+    db.job_event(job_id, "batch_materialised", handle=handle, materialized=harvested.get("materialized", 0),
+                 stuck=len(stuck), error=error)
+    note = (f"{got.get('succeeded', 0)} request(s) had completed and were collected; "
+            f"{harvested.get('materialized', 0)} source(s) gained their findings")
+    if stuck:
+        note += (f"; {len(stuck)} source(s) cannot be assembled because some of their windows were cancelled at "
+                 "the provider — re-read those sources if you want them")
+    if error:
+        note += f"; writing them raised: {error}"
     return {"settled": True, "counts": got, "provider_counts": seen,
-            "materialized": harvested.get("materialized", 0),
-            "note": (f"{got.get('succeeded', 0)} request(s) had completed and were collected; "
-                     f"{harvested.get('materialized', 0)} source(s) gained their findings")}
+            "materialized": harvested.get("materialized", 0), "stuck": stuck, "error": error, "note": note}
 
 
 def settle_all(limit: int = 10) -> dict[str, Any]:

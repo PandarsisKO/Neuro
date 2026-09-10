@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.61.0';
+const UI_VERSION = '0.61.1';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1714,8 +1714,8 @@ async function loadHealth() {
       ], [`${h.spend.local_is_free ? '✅' : '⚠️'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
       // 0.60.3: a cancelled batch's completed requests were paid for. Collecting them is free.
       ...(h.batches && !h.batches.error && h.batches.unsettled ? [[
-        `⚠️ Provider batches not collected`,
-        `${h.batches.unsettled} batch${h.batches.unsettled === 1 ? '' : 'es'} with ${h.batches.items} request${h.batches.items === 1 ? '' : 's'} nobody collected — a cancelled batch still ran at the provider, so this is work that was paid for and never written. Settling is free.`
+        `⚠️ Provider batches: work paid for and not written`,
+        `${h.batches.unsettled} batch${h.batches.unsettled === 1 ? '' : 'es'} · ${h.batches.awaiting_collection || 0} request${(h.batches.awaiting_collection || 0) === 1 ? '' : 's'} not collected · ${h.batches.collected_not_written || 0} collected but never written. ${h.batches.note}`
       ]] : []),
       // 0.59.3: how much, per useful thing. "Is it improving?" is a different question from "how much have we spent".
       ...(h.cost_value && !h.cost_value.error ? [[
