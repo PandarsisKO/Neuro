@@ -132,8 +132,8 @@ def _base() -> dict[str, InferenceContract]:
         # C0 Portable Answers (0.35.1): a shorter version of a FINISHED answer — never a new research pass; only the answer's own
         # citation markers may appear; evidence warnings are re-attached by the caller, never rewritten by the model
         InferenceContract("answer.share", "anthropic", CHEAP, max_output_tokens=1200, max_attempts=2, backoff=(1.0,), interactive=True,
-                          reversible=True, gate="markers ⊆ the original's (strays removed and reported)",
-                          notes="short/medium rewrite of a finished answer for sharing; markers ⊆ the original's"),
+                          reversible=True, gate="cited: markers ⊆ the original's (strays removed and reported); plain: no markers, no creator/source names, no research vocabulary, and lost uncertainty reported",
+                          notes="short/medium/long rewrite of a finished answer OR of a whole conversation, for sharing; two audiences (cited | plain, 0.60.0) — never a new research pass"),
         # migrated E2.2 (0.18.0-e2.3): 4.6-vs-5 comparison on the Golden findings workload passed — thinking explicitly off,
         # same prompt (findings-18b5db69), same output budget; baseline + comparison artifacts kept under evals/
         InferenceContract("findings.extract", "anthropic", FINDINGS_MODEL, local_capable=True, reversible=False,

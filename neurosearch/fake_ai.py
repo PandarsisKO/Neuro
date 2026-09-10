@@ -566,12 +566,31 @@ class _Msgs:
             return _Blk(stop_reason="end_turn", model="fake-claude", content=[_Blk(type="text", text=text, citations=None)],
                         usage=_Blk(input_tokens=_tokens(system + user), output_tokens=_tokens(text), cache_read_input_tokens=0, cache_creation_input_tokens=0, server_tool_use=None))
         if task == "answer.share":
-            body = user.split("ORIGINAL ANSWER:", 1)[-1].split("SOURCES (the only markers", 1)[0].strip()
-            sents = re.split(r"(?<=[.!?])\s+", body)
-            n = 2 if "2–3 sentences" in user else 5
-            text = " ".join(sents[:n]).strip()
-            if os.environ.get("NEUROSEARCH_FAKE_SHARE_STRAY") == "1":
-                text += " Also see [97]."
+            plain = "someone OUTSIDE the research" in system
+            body = user.split("ORIGINAL ANSWER:", 1)[-1].split("THE CONVERSATION:", 1)[-1]
+            body = body.split("SOURCES (the only markers", 1)[0].split("NAMES YOU MAY NOT USE", 1)[0]
+            body = body.split("Your previous attempt broke the rules", 1)[0].strip()
+            n = 2 if "2–3 sentences" in user else (5 if "4–6 sentences" in user else 9)
+            if plain:
+                # 0.60.0: the fake plain path drops the markers, as the real prompt asks, and obeys a correction on
+                # the second call — so the retry that exists to recover a leak is exercised rather than assumed.
+                corrected = "Your previous attempt broke the rules" in user
+                clean = re.sub(r" ?\[\d{1,2}\]", "", body)
+                text = " ".join(re.split(r"(?<=[.!?])\s+", clean)[:n]).strip()
+                leak = os.environ.get("NEUROSEARCH_FAKE_PLAIN_LEAK", "")
+                if leak and not corrected:
+                    if leak == "name":
+                        names = re.findall(r"^- (.+)$", user, re.M)
+                        text += f" {names[0]} explained it well." if names else " Codie Sanchez explained it well."
+                    elif leak == "tell":
+                        text += " According to the transcript, that is the rule."
+                    elif leak == "marker":
+                        text += " See [3]."
+            else:
+                sents = re.split(r"(?<=[.!?])\s+", body)
+                text = " ".join(sents[:n]).strip()
+                if os.environ.get("NEUROSEARCH_FAKE_SHARE_STRAY") == "1":
+                    text += " Also see [97]."
         elif task == "discover.verify":
             text = json.dumps(DISCOVER_VERIFY)
         elif task == "discover.quick":

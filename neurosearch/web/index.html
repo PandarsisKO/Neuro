@@ -253,6 +253,8 @@
       <div id="chatHead">
         <div class="title" id="chatTitle">New chat</div>
         <button class="small ghost" onclick="renameChat()">Rename</button>
+        <div style="position:relative"><button class="small ghost" title="Retell this whole chat as one readable piece — for someone who wants to know what came out of it, not where it came from" onclick="shareChatMenu(this)">↗ Share this chat ▾</button></div>
+        <span class="muted" id="shareChatMsg" style="font-size:12px"></span>
         <button class="small ghost danger" onclick="deleteChat()">Delete</button>
       </div>
       <div id="chat"></div>
@@ -584,7 +586,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.59.3';
+const UI_VERSION = '0.60.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -849,26 +851,72 @@ function copyMenu(btn) {
 function shareMenu(btn) {
   const bar = btn.parentElement; const open = bar.querySelector('.menu'); if (open) { open.remove(); return; }
   const m = document.createElement('div'); m.className = 'menu';
-  m.innerHTML = [['short', 'Short version + sources (2–3 sentences)'], ['medium', 'Medium version + sources (one paragraph)'], ['full', 'Full answer + sources']]
-    .map(([k, l]) => `<button onclick="shareMsg(this,'${k}')">${l}</button>`).join('');
+  // 0.60.0: two audiences, not four lengths. The cited variants are for someone who may want to go and check;
+  // the plain ones are for someone who just wants to know the thing (no markers, no names, no research voice).
+  m.innerHTML = [['short|cited', 'Short + sources (2–3 sentences)'], ['medium|cited', 'Medium + sources (one paragraph)'], ['full|cited', 'Full answer + sources'],
+                 ['sep', ''],
+                 ['short|plain', '👥 Plain, short — no sources or names'], ['medium|plain', '👥 Plain, one paragraph'], ['long|plain', '👥 Plain, a few paragraphs']]
+    .map(([k, l]) => k === 'sep' ? '<div style="border-top:1px solid var(--line);margin:4px 0"></div>' : `<button onclick="shareMsg(this,'${k}')">${l}</button>`).join('');
   bar.appendChild(m);
   setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
 }
 const SHARE_CACHE = {};
-async function shareMsg(btn, length) {
+async function toClipboard(txt) {
+  try { await navigator.clipboard.writeText(txt); }
+  catch (e) { const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+}
+async function shareMsg(btn, spec) {
+  const [length, mode] = spec.split('|');
   const d = btn.closest('.msg'); const menu = d.querySelector('.menu'); if (menu) menu.remove();
   const s = d.querySelector('.copied');
   if (length === 'full') return copyMsg(btn, 'sources');
-  const key = (d.dataset.text || '').slice(0, 200) + '|' + length;
+  const key = (d.dataset.text || '').slice(0, 200) + '|' + spec;
   try {
-    if (s) s.textContent = 'writing the ' + length + ' version…';
+    if (s) s.textContent = mode === 'plain' ? 'writing the plain version…' : 'writing the ' + length + ' version…';
     let v = SHARE_CACHE[key];
-    if (!v) { v = await post('/api/share', { text: d.dataset.text || '', citations: JSON.parse(d.dataset.cites || '[]'), length, project_id: state.project && state.project.id }); SHARE_CACHE[key] = v; }
-    const orig = d.dataset.text; d.dataset.text = v.text;
-    const out = exportMsg(d, 'sources'); d.dataset.text = orig;
-    try { await navigator.clipboard.writeText(out); } catch (e) { const t = document.createElement('textarea'); t.value = out; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
-    if (s) { s.textContent = `Copied ${length} version with ${(v.markers || []).length} source${(v.markers || []).length === 1 ? '' : 's'}` + (v.warning ? ' · ' + v.warning : ''); setTimeout(() => s.textContent = '', 4000); }
+    if (!v) { v = await post('/api/share', { text: d.dataset.text || '', citations: JSON.parse(d.dataset.cites || '[]'), length, mode, project_id: state.project && state.project.id }); SHARE_CACHE[key] = v; }
+    // A plain version is copied as TEXT ONLY — attaching the source list is the thing it exists to remove. The
+    // uncertainty is not dropped with it: it is carried inside the prose, and the server says so when it is not.
+    let out;
+    if (mode === 'plain') { out = v.text; }
+    else { const orig = d.dataset.text; d.dataset.text = v.text; out = exportMsg(d, 'sources'); d.dataset.text = orig; }
+    await toClipboard(out);
+    if (s) {
+      s.textContent = (mode === 'plain'
+        ? 'Copied the plain version — no sources or names'
+        : `Copied ${length} version with ${(v.markers || []).length} source${(v.markers || []).length === 1 ? '' : 's'}`)
+        + (v.warning ? ' · ⚠ ' + v.warning : '');
+      setTimeout(() => s.textContent = '', v.warning ? 9000 : 4000);
+    }
   } catch (e) { if (s) s.textContent = 'could not write the version: ' + e.message; }
+}
+// 0.60.0: the same thing for a whole chat. Kyle wants to send someone what came out of a conversation, not the
+// back-and-forth — so this is one call over what was already written, never a new research pass.
+async function shareChatMenu(btn) {
+  const bar = btn.parentElement; const open = bar.querySelector('.menu'); if (open) { open.remove(); return; }
+  const m = document.createElement('div'); m.className = 'menu';
+  m.innerHTML = [['long|plain', '👥 Plain retelling (a few paragraphs)'], ['medium|plain', '👥 Plain, one paragraph'], ['long|cited', 'With sources (a few paragraphs)']]
+    .map(([k, l]) => `<button onclick="shareChat(this,'${k}')">${l}</button>`).join('');
+  bar.appendChild(m);
+  setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h); } }), 0);
+}
+async function shareChat(btn, spec) {
+  const [length, mode] = spec.split('|');
+  const menu = btn.closest('.menu'); if (menu) menu.remove();
+  if (!state.conv) return toast('open a chat first', 'err');
+  const s = $('#shareChatMsg');
+  try {
+    if (s) s.textContent = 'reading the chat back…';
+    const v = await post(`/api/conversations/${state.conv}/share`, { length, mode });
+    await toClipboard(v.text);
+    const cov = v.covered || {};
+    if (s) {
+      s.textContent = `Copied — ${cov.messages || 0} message${cov.messages === 1 ? '' : 's'} retold`
+        + (mode === 'plain' ? ', no sources or names' : ' with sources')
+        + (v.warning ? ' · ⚠ ' + v.warning : '');
+      setTimeout(() => s.textContent = '', v.warning ? 12000 : 5000);
+    }
+  } catch (e) { if (s) s.textContent = 'could not retell the chat: ' + (e.message || e); }
 }
 async function copyMsg(btn, mode) {
   const d = btn.closest('.msg'); const out = exportMsg(d, mode); const n = JSON.parse(d.dataset.cites || '[]').length;
@@ -2306,6 +2354,12 @@ function liveTag(j) {
   return ` <span class="muted" title="the worker reported progress this recently — this is what tells you it is alive" style="font-size:11px">· alive ${q < 5 ? 'just now' : q + 's ago'}</span>`;
 }
 let pollFails = 0;
+const JOBSBOX = { expanded: (() => { try { return localStorage.getItem('ns_jobsbox') === 'all'; } catch (e) { return false; } })() };
+function toggleJobsBox() {
+  JOBSBOX.expanded = !JOBSBOX.expanded;
+  try { localStorage.setItem('ns_jobsbox', JOBSBOX.expanded ? 'all' : 'hot'); } catch (e) {}
+  loadJobs();
+}
 async function loadJobs() {
   clearTimeout(jobsTimer);
   let js;
@@ -2324,6 +2378,11 @@ async function loadJobs() {
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span style="color:var(--bad)">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
+  // 0.60.0 (Kyle): with 300+ queued the box was a wall. Collapsed it shows what is ACTUALLY moving — anything
+  // running, anything that failed, and the banners — with one line counting the rest; expanded it is unchanged.
+  // The queue itself is not touched: this is what the box draws, not what the workers do.
+  const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling'
+    || (j.state || j.status) === 'external_pending' || j.bumped;
   const st = await api('/api/stats'); const u = await loadSpend();
   $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
@@ -2333,7 +2392,12 @@ async function loadJobs() {
   const rt = u && u.rate ? u.rate : null;
   const rateBit = rt ? ` · <span title="spend in the last hour · the ceiling that holds paid background work is $${rt.ceiling.toFixed(2)}/h" style="${rt.blocked ? 'color:var(--warn);font-weight:600' : rt.rate > rt.ceiling * 0.6 ? 'color:var(--warn)' : ''}">$${rt.rate.toFixed(2)}/h</span>` : '';
   if (rt && rt.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Spending hit $${(rt.at_block || rt.rate).toFixed(2)} in an hour (ceiling $${rt.ceiling.toFixed(2)}/h) — paid background work is held until ${new Date(rt.until * 1000).toLocaleTimeString()}. Your chats, ingests and local work keep running. Nothing is lost.` }, progress: 0, message: '', _budget: true, _rate: true });
-  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + show.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">🔄 Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
+  const hot = show.filter(isHot), cold = show.filter(j => !isHot(j));
+  const drawn = JOBSBOX.expanded ? show : hot;
+  const coldCounts = {};
+  cold.forEach(j => { const k = STATE_LABEL[j.state || j.status] || j.status; coldCounts[k] = (coldCounts[k] || 0) + 1; });
+  const coldLine = cold.length ? `<div class="row muted" style="font-size:12.5px;padding:2px 0 6px"><span style="flex:1">${Object.entries(coldCounts).map(([k, n]) => `${n} ${esc(k)}`).join(' · ')}${JOBSBOX.expanded ? '' : ' — not shown'}</span><button class="small ghost" onclick="toggleJobsBox()">${JOBSBOX.expanded ? '▴ Show only what is running' : `▾ Show all ${show.length}`}</button></div>` : '';
+  $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted" style="flex:1">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">🔄 Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
     <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted" style="flex:1">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">🔄 Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" onclick="cancelJob('${j.id}')">✕</button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" onclick="dismissJob('${j.id}')">✕</button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);

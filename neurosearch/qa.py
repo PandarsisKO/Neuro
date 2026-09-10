@@ -42,6 +42,10 @@ Rules:
   say it was corrected and by whom. A "self-described" professional context is unverified — say so if you rely on it.
 - Be concise and useful. Use prose; short bullet lists only when comparing several items. Keep ordinary answers to
   a few paragraphs; reserve long multi-section answers for questions that genuinely need them.
+- Open with the answer. Never open by praising or characterising the question ("great question", "that's an
+  important question", "good catch"), never announce what you are about to do, and never tell the user their
+  question is interesting, smart or the right one to ask. Say the thing. Praise costs the reader a sentence every
+  time and it is not information.
 - Gap detection: when the excerpts only partly cover the question, end with one short line starting with
   "Gap:" naming what is missing and the most useful next step (e.g. a kind of source to add, a speaker or
   channel to look for, or that a web search would help). Call note_gap with the same text. Skip this when the
@@ -888,16 +892,157 @@ SHARE_SYSTEM = ("You rewrite a FINISHED research answer to a requested length fo
                 "the statements they support and use ONLY markers that appear in the original; drop sections rather than invent bridges; "
                 "keep hedges (\"uncertain\", \"one source\", \"corrected in thread\") wherever the original hedges; write plain prose, no headings, no preamble. "
                 "Output the rewritten answer only.")
+
+# 0.60.0 — the PLAIN audience. Kyle: "our chats are really good for depth and citing sources ... but when I want to
+# share with my wife or a friend, they will not care about the sources, the names of the people and what they said."
+#
+# This is a different reader, not a shorter answer. The cited variants are written for someone who may want to go
+# and check; a plain one is written for someone who wants to know the thing. So the citation markers go, the
+# creators' names go, and the research vocabulary that gives an answer its provenance ("according to", "the
+# transcript", "one source") goes with them — but the UNCERTAINTY stays, expressed as an ordinary sentence instead
+# of a banner. That is the one thing this rewrite may not quietly drop: a text message that sounds settled when the
+# evidence is not is worse than no text message, and it is exactly what removing the machinery makes easy.
+PLAIN_SYSTEM = ("You retell a finished research answer for someone OUTSIDE the research: a friend or family member who wants to "
+                "know what was learned and has no interest in where it came from.\n\nRules:\n"
+                "- Say only what the original says. Never add a fact, number, name or piece of advice that is not in it.\n"
+                "- No citation markers of any kind ([3], (3), footnotes). No source titles. No channel, podcast, video, book or "
+                "document names. No people's names at all — not the speakers, not the authors, not experts quoted.\n"
+                "- No research vocabulary: never write \"according to\", \"one source\", \"the transcript\", \"the video\", "
+                "\"the podcast\", \"the excerpt\", \"the data shows\", \"experts say\", \"studies\". State the substance as "
+                "what is the case.\n"
+                "- KEEP the uncertainty. Where the original hedges, was corrected, rests on a single account or says something is "
+                "disputed, say so in ordinary words: \"this part isn't settled\", \"people disagree about\", \"this one's worth "
+                "checking\". Never make the answer sound more certain than the original.\n"
+                "- No preamble, no praise, no headings, no bullet lists, no sign-off. No \"here's a summary\". Start with the thing "
+                "itself.\n"
+                "- Write the way a person explains something they have just read: warm, direct, ordinary words, short sentences. "
+                "Explain a term the first time you need it rather than assuming it.\n\n"
+                "Output the retelling only.")
+
 SHARE_LENGTHS = {"short": "2–3 sentences: the conclusion and the single most important qualifier.",
-                 "medium": "one paragraph of 4–6 sentences: the conclusion, the key supporting points, and the main caveat."}
+                 "medium": "one paragraph of 4–6 sentences: the conclusion, the key supporting points, and the main caveat.",
+                 "long": "three to five short paragraphs: what the question was, what the answer turned out to be, and what is still open."}
+SHARE_MODES = ("cited", "plain")
+SHARE_CONVERSATION_CHARS = 60000     # ~15k tokens of conversation; the newest turns are kept when a chat is longer
+SHARE_CONVERSATION_MAX_MESSAGES = 60
+
+# Phrases that give a retelling away as a research artifact. Checked, not merely requested: a rule in a prompt is a
+# hope, and this one is cheap to verify.
+PLAIN_TELLS = ("according to", "one source", "the transcript", "the transcripts", "the video", "the videos",
+               "the podcast", "the excerpt", "the excerpts", "the source", "the sources", "the document",
+               "experts say", "the data shows", "in the interview", "the speaker", "the author says")
+# Being unsure has two vocabularies, and the whole point of this rewrite is to move between them. A research
+# answer hedges by attribution and provenance ("one source", "corrected in thread", "disputes"); a plain retelling
+# hedges the way a person does ("this isn't settled", "people disagree"). So the original is read with one list and
+# the retelling with both — and deliberately NOT with conditions like "only when", which are structure rather than
+# doubt and would fire the warning on answers that lost nothing. A warning that cries wolf gets ignored, and this
+# one has to be believed.
+HEDGE_RESEARCH = ("disput", "disagree", "conflict", "uncertain", "unclear", "not confirmed", "unverified",
+                  "corrected", "one source", "single source", "one account", "gap:", "not settled", "questionable",
+                  "no current", "some say", "anecdot")
+HEDGE_PLAIN = ("isn't settled", "is not settled", "not settled", "unclear", "uncertain", "disagree", "disput",
+               "worth checking", "might", "may ", "could ", "seems", "appears", "some people", "not sure",
+               "no clear", "depends", "varies", "only one", "unverified", "corrected", "questionable", "not certain")
 
 
-def share_variant(text: str, citations: list[dict[str, Any]], length: str, *, project_id: str | None = None) -> dict[str, Any]:
-    """A shorter version of a finished answer. The model sees the answer and its numbered sources; the result is checked so
-    that no citation marker outside the original survives (an unknown marker is removed, and the check is reported)."""
+def _plain_forbidden(citations: list[dict[str, Any]]) -> list[str]:
+    """The names a plain retelling must not contain: every creator and every source title behind the answer.
+
+    Deliberately drawn from the citations rather than guessed with a name detector — an institution the answer is
+    ABOUT ("the SBA", "Delaware") is substance and must survive, while the channel that said it is provenance."""
+    out: list[str] = []
+    for c in citations or []:
+        for field in ("channel", "creator", "author", "title"):
+            v = str(c.get(field) or "").strip()
+            if len(v) >= 4:
+                out.append(v)
+    seen: set[str] = set()
+    return [v for v in out if not (v.lower() in seen or seen.add(v.lower()))]
+
+
+def _plain_leaks(text: str, forbidden: list[str]) -> dict[str, list[str]]:
+    low = (text or "").lower()
+    return {"names": [f for f in forbidden if f.lower() in low],
+            "markers": sorted({m for m in re.findall(r"\[(\d{1,2})\]", text or "")}),
+            "tells": [t for t in PLAIN_TELLS if t in low]}
+
+
+def _hedged(text: str, *, research: bool = False) -> bool:
+    """Did this text express doubt? `research=True` reads the provenance vocabulary a finished answer uses; the
+    default reads the ordinary words a retelling is asked for (and the research ones too, since a plain version
+    saying "people disagree" has kept the doubt whichever list the phrase came from)."""
+    low = (text or "").lower()
+    words = HEDGE_PLAIN + (HEDGE_RESEARCH if research else ())
+    return any(h in low for h in words)
+
+
+def _share_call(system: str, user: str, project_id: str | None) -> str:
+    from . import providers, usage
+    resp = providers.invoke("answer.share", system=system, messages=[{"role": "user", "content": user}])
+    usage.record_anthropic(resp, "answer", project_id=project_id)
+    return "".join(getattr(b, "text", "") for b in getattr(resp, "content", []) if getattr(b, "type", "") == "text").strip()
+
+
+def _plain_variant(source_text: str, citations: list[dict[str, Any]], length: str, *, label: str,
+                   project_id: str | None = None) -> dict[str, Any]:
+    """One call, and at most ONE corrective retry naming what leaked. The retry exists because the two things this
+    rewrite is FOR — losing the names and losing the markers — are the two things a model does by habit anyway, and
+    a second cheap call is a better answer than handing back a version Kyle has to edit by hand."""
+    forbidden = _plain_forbidden(citations)
+    base = (f"Requested length: {SHARE_LENGTHS[length]}\n\n{label}:\n{source_text}")
+    if forbidden:
+        base += ("\n\nNAMES YOU MAY NOT USE (these are where the answer came from, not what it is about):\n"
+                 + "\n".join(f"- {f}" for f in forbidden[:40]))
+    out = _share_call(PLAIN_SYSTEM, base, project_id)
+    leaks = _plain_leaks(out, forbidden)
+    retried = False
+    if leaks["names"] or leaks["markers"] or leaks["tells"]:
+        retried = True
+        again = base + "\n\nYour previous attempt broke the rules. Remove these exactly and rewrite:\n"
+        if leaks["names"]:
+            again += "- names/titles used: " + ", ".join(leaks["names"][:10]) + "\n"
+        if leaks["markers"]:
+            again += "- citation markers used: " + ", ".join(f"[{m}]" for m in leaks["markers"][:10]) + "\n"
+        if leaks["tells"]:
+            again += "- research phrases used: " + ", ".join(leaks["tells"][:10]) + "\n"
+        again += "Say the same things without them."
+        second = _share_call(PLAIN_SYSTEM, again, project_id)
+        if second:
+            second_leaks = _plain_leaks(second, forbidden)
+            if sum(len(v) for v in second_leaks.values()) <= sum(len(v) for v in leaks.values()):
+                out, leaks = second, second_leaks
+    # markers are the one thing that can be removed safely by hand; a name cannot be cut out of a sentence
+    if leaks["markers"]:
+        out = re.sub(r" ?\[(\d{1,2})\]", "", out)
+        leaks["markers"] = []
+    warnings = []
+    if leaks["names"]:
+        warnings.append("still mentions " + ", ".join(leaks["names"][:3]) + " — worth a glance before you send it")
+    if leaks["tells"]:
+        warnings.append("still reads like research in places (" + ", ".join(leaks["tells"][:3]) + ")")
+    if _hedged(source_text, research=True) and not _hedged(out):
+        warnings.append("the original was careful about something and this version reads as settled — send the "
+                        "cited version instead if that matters")
+    return {"text": out, "length": length, "mode": "plain", "markers": [], "removed_markers": [],
+            "leaks": leaks, "retried": retried, "sources_attached": False,
+            "warning": " · ".join(warnings) or None}
+
+
+def share_variant(text: str, citations: list[dict[str, Any]], length: str, *, mode: str = "cited",
+                  project_id: str | None = None) -> dict[str, Any]:
+    """A shorter version of a finished answer. `mode="cited"` (the default, C0) keeps the original's numbered
+    markers and the client re-attaches the sources; `mode="plain"` (0.60.0) is written for someone outside the
+    research — no markers, no names, no research vocabulary, and the uncertainty carried as ordinary language.
+
+    The cited path is checked so that no citation marker outside the original survives (an unknown marker is
+    removed, and the check is reported); the plain path is checked for the things it exists to remove."""
     from . import providers, usage
     if length not in SHARE_LENGTHS:
-        raise ValueError("length must be short or medium")
+        raise ValueError("length must be one of " + ", ".join(SHARE_LENGTHS))
+    if mode not in SHARE_MODES:
+        raise ValueError("mode must be one of " + ", ".join(SHARE_MODES))
+    if mode == "plain":
+        return _plain_variant(text, citations, length, label="ORIGINAL ANSWER", project_id=project_id)
     have = sorted({int(n) for n in re.findall(r"\[(\d{1,2})\]", text or "")})
     srcs = "\n".join(f"[{c.get('n')}] {c.get('title') or 'source'}" + (f" — {c.get('timestamp')}" if c.get("timestamp") else "") for c in citations if c.get("n") is not None)
     user = f"Requested length: {SHARE_LENGTHS[length]}\n\nORIGINAL ANSWER:\n{text}\n\nSOURCES (the only markers you may use):\n{srcs or '(none)'}"
@@ -908,5 +1053,64 @@ def share_variant(text: str, citations: list[dict[str, Any]], length: str, *, pr
     stray = [n for n in used if n not in have]
     if stray:
         out = re.sub(r" ?\[(\d{1,2})\]", lambda m: "" if int(m.group(1)) in stray else m.group(0), out)
-    return {"text": out, "length": length, "markers": [n for n in used if n in have], "removed_markers": stray,
+    return {"text": out, "length": length, "mode": "cited", "markers": [n for n in used if n in have],
+            "removed_markers": stray, "sources_attached": True,
             "warning": "the rewrite cited a source the original did not; those markers were removed" if stray else None}
+
+
+def conversation_material(conversation_id: str) -> dict[str, Any]:
+    """The chat, as material for a retelling: the questions asked and the answers given, newest turns kept when the
+    thread is longer than one call can hold. Truncation is REPORTED, never silent — a summary that quietly covers
+    half a conversation is the kind of thing someone forwards."""
+    # get_messages returns the LAST `limit` messages oldest-first, which is the window a retelling wants: a long
+    # thread's ending is where its conclusions are.
+    msgs = db.get_messages(conversation_id, limit=SHARE_CONVERSATION_MAX_MESSAGES * 2)
+    kept: list[dict[str, Any]] = []
+    total = 0
+    cites: list[dict[str, Any]] = []
+    for m in reversed(msgs):
+        if m.get("role") not in ("user", "assistant"):
+            continue
+        body = str(m.get("content") or "").strip()
+        if not body:
+            continue
+        if len(kept) >= SHARE_CONVERSATION_MAX_MESSAGES or total + len(body) > SHARE_CONVERSATION_CHARS:
+            break
+        total += len(body)
+        kept.append(m)
+        try:
+            cites.extend(json.loads(m.get("citations") or "[]"))
+        except (ValueError, TypeError):
+            pass
+    kept.reverse()
+    lines = []
+    for m in kept:
+        who = "QUESTION" if m["role"] == "user" else "ANSWER"
+        lines.append(f"{who}: {str(m.get('content') or '').strip()}")
+    considered = db.count_messages(conversation_id)
+    return {"text": "\n\n".join(lines), "citations": cites, "messages": len(kept), "of_messages": considered,
+            "truncated": len(kept) < considered, "chars": total}
+
+
+def share_conversation(conversation_id: str, length: str = "long", *, mode: str = "plain",
+                       project_id: str | None = None) -> dict[str, Any]:
+    """Retell a whole chat as one readable piece (0.60.0). One model call over what was already written — never a
+    new research pass, never a retrieval — so it can only restate what the conversation established."""
+    if length not in SHARE_LENGTHS:
+        raise ValueError("length must be one of " + ", ".join(SHARE_LENGTHS))
+    if mode not in SHARE_MODES:
+        raise ValueError("mode must be one of " + ", ".join(SHARE_MODES))
+    mat = conversation_material(conversation_id)
+    if not mat["text"].strip():
+        raise ValueError("this chat has nothing to retell yet")
+    if mode == "plain":
+        out = _plain_variant(mat["text"], mat["citations"], length, label="THE CONVERSATION", project_id=project_id)
+    else:
+        out = share_variant(mat["text"], mat["citations"], length, mode="cited", project_id=project_id)
+    out["conversation_id"] = conversation_id
+    out["covered"] = {"messages": mat["messages"], "of_messages": mat["of_messages"], "truncated": mat["truncated"]}
+    if mat["truncated"]:
+        note = f"covers the most recent {mat['messages']} of {mat['of_messages']} messages"
+        out["warning"] = f"{out['warning']} · {note}" if out.get("warning") else note
+    return out
+

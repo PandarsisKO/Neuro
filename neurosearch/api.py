@@ -730,7 +730,13 @@ class ShareIn(BaseModel):
     text: str
     citations: list[dict[str, Any]] = []
     length: str = "short"
+    mode: str = "cited"
     project_id: str | None = None
+
+
+class ShareConversationIn(BaseModel):
+    length: str = "long"
+    mode: str = "plain"
 
 
 @app.post("/api/share", dependencies=[Depends(require_auth)])
@@ -742,7 +748,20 @@ def api_share(body: ShareIn) -> dict[str, Any]:
         raise HTTPException(400, "nothing to share")
     usage.guard()
     try:
-        return qa.share_variant(body.text, body.citations, body.length, project_id=body.project_id)
+        return qa.share_variant(body.text, body.citations, body.length, mode=body.mode, project_id=body.project_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/conversations/{conversation_id}/share", dependencies=[Depends(require_auth)])
+def api_share_conversation(conversation_id: str, body: ShareConversationIn) -> dict[str, Any]:
+    """0.60.0: retell a whole chat as one readable piece — by default in PLAIN mode, for someone outside the
+    research. One model call over what the conversation already established; never a new research pass."""
+    from . import db, qa, usage
+    usage.guard()
+    try:
+        return qa.share_conversation(conversation_id, body.length, mode=body.mode,
+                                     project_id=db.conversation_project(conversation_id))
     except ValueError as e:
         raise HTTPException(400, str(e))
 

@@ -3343,6 +3343,18 @@ def get_messages(conversation_id: str, limit: int = 20) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in reversed(rows)]  # type: ignore[misc]
 
 
+def count_messages(conversation_id: str) -> int:
+    """0.60.0: how many messages a conversation really has, so a retelling can say what share of it it covers."""
+    r = connect().execute("SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND role IN ('user','assistant') "
+                          "AND TRIM(content) <> ''", (conversation_id,)).fetchone()
+    return int(r["n"] or 0)
+
+
+def conversation_project(conversation_id: str) -> str | None:
+    r = connect().execute("SELECT project_id FROM conversations WHERE id=?", (conversation_id,)).fetchone()
+    return r["project_id"] if r else None
+
+
 def list_conversations(project_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
     if project_id:
         rows = connect().execute(
