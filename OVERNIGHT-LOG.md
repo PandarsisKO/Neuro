@@ -8,3 +8,4 @@ Plan: `OVERNIGHT-MISSION.md`. Spend so far: **$0.00** (no paid call is possible 
 | time PDT | rung | outcome |
 |---|---|---|
 | 21:15 | — | mission and ladder locked, starting F1 |
+| 21:45 | **F1+F2+F3** | shipped **0.58.0** `0d8a2a8`, tag `v0.58.0`. `findings_quality.py` + review dialog. 653 tests, Tier 1 PASS, release-check PASS. Read-only: nothing changes a finding but your own sweep. |
