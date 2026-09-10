@@ -2677,17 +2677,20 @@ def api_reserve_promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
 
 @app.get("/api/projects/{project_id}/findings/quality", dependencies=[Depends(require_auth)])
 def api_findings_quality(project_id: str, status: str | None = "approved", limit: int = 300,
-                         include_used: bool = False, summary: bool = False) -> dict[str, Any]:
+                         include_used: bool = False, summary: bool = False,
+                         stale_ok: bool = False) -> dict[str, Any]:
     """F1/F2: the $0 trash review — near-duplicates and vacuous findings, with the reason for each and the finding
     to keep instead. Read-only: nothing is dismissed, hidden or reordered. Sweeping is the existing
     POST /api/notes/bulk-status path, so the user's judgement remains the only thing that changes a status."""
     from . import findings_quality
     if not db.get_project(project_id):
         raise HTTPException(404)
+    # 0.61.2: the summary (a chip and a banner) never blocks — it takes the previous answer and refreshes behind
+    # the request. The full review, which the user opened deliberately, still waits for a current answer.
     if summary:
         return findings_quality.summary(project_id)
     return findings_quality.review(project_id, status=status, limit=max(1, min(limit, 1000)),
-                                   include_used=include_used)
+                                   include_used=include_used, stale_ok=stale_ok)
 
 
 @app.post("/api/notes/bulk-status", dependencies=[Depends(require_auth)])

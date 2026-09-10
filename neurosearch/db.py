@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import json
+import os
 import re
 import sqlite3
 import threading
@@ -721,6 +722,7 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA journal_size_limit={WAL_LIMIT_BYTES}")   # 0.61.2: give the log file back after a checkpoint
         _local.conn = conn
     return conn
 
@@ -2698,6 +2700,23 @@ def backfill_failure_classes() -> int:
     return n
 
 
+def _storage_health() -> dict[str, Any]:
+    """0.61.2: the database and its write-ahead log, in megabytes, because a 112 MB log that never checkpointed
+    was the reason every read had become slow and nothing in the app said so."""
+    try:
+        from . import cache
+        wal = wal_bytes()
+        return {"db_mb": round(os.path.getsize(str(settings.db_path)) / 1e6, 1) if os.path.exists(str(settings.db_path)) else 0,
+                "wal_mb": round(wal / 1e6, 1), "wal_threshold_mb": round(WAL_CHECKPOINT_AT / 1e6, 1),
+                "wal_over_threshold": wal > WAL_CHECKPOINT_AT,
+                "cache_entries": cache.size(), "cache_refreshing": cache.refreshing(),
+                "note": ("The log is checkpointed every couple of minutes. It only grows past the threshold when a "
+                         "long-running read keeps an older snapshot alive, which is worth knowing about."
+                         if wal > WAL_CHECKPOINT_AT else "the write-ahead log is being checkpointed normally")}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _failures_health() -> dict[str, Any]:
     try:
         return failure_summary()
@@ -2821,6 +2840,7 @@ def health() -> dict[str, Any]:
             "cost_value": _cost_value_health(),
             "batches": _batches_health(),
             "failures": _failures_health(),
+            "storage": _storage_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "
@@ -3244,6 +3264,48 @@ def list_project_notes(project_id: str, status: str | None = "approved", limit: 
         q += " LIMIT ?"
         args = (*args, int(limit))
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
+
+
+# 0.61.2 — THE WRITE-AHEAD LOG WAS 112 MB AND NEVER SHRANK.
+#
+# Measured on Kyle's machine while the app was unresponsive: `data/neurosearch.db` 627 MB and
+# `data/neurosearch.db-wal` **111.8 MB**, static — not growing, not shrinking. SQLite auto-checkpoints at
+# `wal_autocheckpoint` (1000 pages ≈ 4 MB) but only when no reader holds an older snapshot, and this app keeps a
+# long-lived connection per thread while several threads run multi-second derived-state passes. So the checkpoint
+# was starved and every read had to walk a 112 MB log. `journal_size_limit` was -1, meaning the file is never
+# truncated even after a successful checkpoint.
+WAL_LIMIT_BYTES = 64 * 1024 * 1024        # truncate the log back to this after a checkpoint
+WAL_CHECKPOINT_AT = 32 * 1024 * 1024      # above this, force a checkpoint at the next quiet moment
+
+
+def wal_bytes() -> int:
+    try:
+        return int(os.path.getsize(str(settings.db_path) + "-wal"))
+    except OSError:
+        return 0
+
+
+def checkpoint_wal(force: bool = False) -> dict[str, Any]:
+    """TRUNCATE the write-ahead log when it has grown past `WAL_CHECKPOINT_AT`.
+
+    TRUNCATE (not PASSIVE) because the point is to give the file back: a passive checkpoint leaves 112 MB of
+    already-copied log on disk. It can fail while a reader holds an old snapshot, which is not an error — it just
+    means try again later, so this reports rather than raises."""
+    before = wal_bytes()
+    if not force and before < WAL_CHECKPOINT_AT:
+        return {"checkpointed": False, "wal_bytes": before, "why": "below the threshold"}
+    try:
+        conn = connect()
+        conn.execute(f"PRAGMA journal_size_limit={WAL_LIMIT_BYTES}")
+        row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        after = wal_bytes()
+        ok = bool(row is not None and int(row[0]) == 0)
+        if ok:
+            logging.getLogger(__name__).info("WAL checkpointed: %.1f MB -> %.1f MB", before / 1e6, after / 1e6)
+        return {"checkpointed": ok, "wal_bytes": after, "was": before,
+                "why": None if ok else "a reader still holds an older snapshot — it will be retried"}
+    except Exception as e:  # noqa: BLE001 — a housekeeping step must never break a request
+        return {"checkpointed": False, "wal_bytes": before, "why": str(e)[:160]}
 
 
 def chunk_count() -> int:

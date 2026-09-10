@@ -197,8 +197,14 @@ def test_summary_is_the_counts_only(project):
     db.add_project_note(project, "It covers the importance of things", [])
     s = fq.summary(project)
     assert set(s) == {"findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share",
-                      "corroborated"}      # 0.59.0: the banner needs the corroboration count too
+                      "corroborated",      # 0.59.0: the banner needs the corroboration count too
+                      # 0.61.2: and it needs to know whether the counts are current. This pass takes 11.5 s on
+                      # a 12,800-finding project, so the summary now takes the previous answer and refreshes
+                      # behind the request — a banner that cannot say "a moment ago" would be claiming to be
+                      # current when it is not.
+                      "as_of_current", "recomputing"}
     assert "rows" not in s
+    assert s["as_of_current"] is True and s["recomputing"] is False
 
 
 # ------------------------------------------------------------------ F4: the cap, and its reversibility

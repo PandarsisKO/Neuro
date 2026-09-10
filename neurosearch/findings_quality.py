@@ -291,14 +291,31 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
 # ------------------------------------------------------------------ the review surface
 
 def review(project_id: str, *, status: str | None = "approved", limit: int = 300,
-           include_used: bool = False) -> dict[str, Any]:
-    """Cached on the project's view revision (never a clock, per `cache.py`): the underlying pass is ~3.8 s on a
-    10,000-finding project, and the Findings workbench asks for the summary on every load."""
+           include_used: bool = False, stale_ok: bool = False) -> dict[str, Any]:
+    """Cached on the project's view revision (never a clock, per `cache.py`).
+
+    `stale_ok` is how the workbench should ask (0.61.2). Measured on Kyle's live project while the app was locked
+    up for him: this pass takes **11.5 s over 12,805 findings** — it was 3.8 s at 10,000, so it grows faster than
+    the corpus — and the revision it caches on moves every time a finding lands, which during a findings run is
+    constantly. A cache whose key changes faster than its value can be computed is not a cache, and the Findings
+    tab was asking for eleven seconds of CPU in a single-process server on every visit.
+    With `stale_ok` the previous answer comes back immediately, one background thread refreshes it, and the result
+    says `as_of_current: False` so the screen can admit it is a moment behind rather than implying it is current.
+    A duplicate count that is thirty seconds old is worth having; a locked application is not."""
     from . import cache, db as _db
     rev = json.dumps(_db.project_view_revision(project_id), sort_keys=True)
     key = f"findings_quality:{project_id}:{status}:{limit}:{int(include_used)}"
-    return cache.get_or_compute(key, rev, lambda: _review(project_id, status=status, limit=limit,
-                                                          include_used=include_used), label="findings_quality")
+
+    def compute() -> dict[str, Any]:
+        return _review(project_id, status=status, limit=limit, include_used=include_used)
+
+    if not stale_ok:
+        return cache.get_or_compute(key, rev, compute, label="findings_quality")
+    got = cache.get_stale_ok(key, rev, compute, label="findings_quality")
+    out = dict(got["value"] or {})
+    out["as_of_current"] = bool(got["current"])
+    out["recomputing"] = bool(got["pending"])
+    return out
 
 
 def _review(project_id: str, *, status: str | None = "approved", limit: int = 300,
@@ -488,11 +505,17 @@ def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
             "action": {"method": "POST", "endpoint": "/api/notes/bulk-status", "body": {"status": "approved"}}}
 
 
-def summary(project_id: str) -> dict[str, Any]:
-    """The counts only — cheap enough for a chip in the Findings header."""
-    r = review(project_id, limit=1)
+def summary(project_id: str, stale_ok: bool = True) -> dict[str, Any]:
+    """The counts only — a chip in the Findings header, and the one place that must never block a screen, so it
+    takes the previous answer by default (0.61.2)."""
+    r = review(project_id, limit=1, stale_ok=stale_ok)
+    if not r:
+        return {"findings": 0, "pending": True,
+                "note": "the duplicate check has not run for this project yet — it will appear shortly"}
     out = {k: r[k] for k in ("findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share")}
     out["corroborated"] = {"findings": (r.get("corroborated") or {}).get("findings", 0)}
+    out["as_of_current"] = r.get("as_of_current", True)
+    out["recomputing"] = r.get("recomputing", False)
     return out
 
 

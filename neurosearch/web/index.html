@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.61.1';
+const UI_VERSION = '0.61.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2723,12 +2723,15 @@ async function loadWorkbenchSource(sid) { const p = new URLSearchParams({ limit:
 // other status change goes through — there is no second door.
 let QUAL = null;
 async function loadQuality(st) {
+  // 0.61.2: the summary asks for the previous answer and refreshes behind the request — on a 12,800-finding
+  // project this pass takes 11.5 s, and it was being asked for on every visit to the tab.
   const el = $('#fbQual'); if (!el) return;
   if (st === 'reserve') return loadPromotable(el);
   // 0.58.9: `suggested` is where the filter helps MOST — before a finding is approved rather than after — and the
   // pile grows now that 0.58.1 raised the cap. Same surface, same door, one extra status.
   if (st !== 'approved' && st !== 'suggested') { el.innerHTML = ''; return; }
   let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1&status=${st}`); } catch (e) { el.innerHTML = ''; return; }
+  if (s && s.pending) { el.innerHTML = `<div class="banner muted" style="font-size:12.5px">🧽 Checking these for repeats — the result appears here shortly.</div>`; return; }
   if (!s || !s.flagged) { el.innerHTML = ''; return; }
   const bits = [];
   // 0.59.0, Kyle: "even duplicate data is useful somehow". Right — and this app already agrees: claims.assess
@@ -2737,7 +2740,7 @@ async function loadQuality(st) {
   if (s.duplicates) bits.push(`${s.duplicates} the same source said twice`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
   const corr = (s.corroborated || {}).findings || 0;
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.${s.as_of_current === false ? ' <span class="muted">Counted a moment ago; refreshing.</span>' : ''}</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
 // The filter can now say which of them are not repeats of something approved and do name something specific.
@@ -2763,7 +2766,7 @@ async function promoteReserve(ids) {
   try { dlg.close(); } catch (e) { /* the banner path has no dialog open */ }
   toast(`${ids.length} approved`); loadNotes();
 }
-async function openQuality(st) {
+async function openQuality(st) {   // opened deliberately: this one waits for a current answer
   st = st || $('#fbStatus').value || 'approved';
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400&status=${st}`); } catch (e) { return toast('could not load the review'); }
   QUAL = r;

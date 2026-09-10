@@ -550,10 +550,31 @@ def start_workers(n: int | None = None) -> None:
         t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
         t.start()
         _threads.append(t)
-    for target, name in ((_backup_loop, "ns-backup"), (_lease_loop, "ns-lease"), (_recovery_loop, "ns-recovery"), (_external_loop, "ns-external")):
+    for target, name in ((_backup_loop, "ns-backup"), (_lease_loop, "ns-lease"), (_recovery_loop, "ns-recovery"),
+                         (_external_loop, "ns-external"), (_housekeeping_loop, "ns-housekeeping")):
         t = threading.Thread(target=target, daemon=True, name=name)
         t.start()
         _threads.append(t)
+
+
+def _housekeeping_loop(every: float = 120.0) -> None:
+    """0.61.2: keep the write-ahead log from becoming the slowest thing in the app.
+
+    Measured on Kyle's machine while it was unresponsive: a 111.8 MB WAL beside a 627 MB database, static —
+    SQLite's own auto-checkpoint had been starved for days because this app keeps a long-lived connection per
+    thread and several of those threads run multi-second derived-state passes, so there was always an older
+    snapshot in the way. A checkpoint that cannot run is not an error; it is a thing to try again shortly, which
+    is exactly what a loop is for."""
+    while not _stop.is_set():
+        _stop.wait(every)
+        if _stop.is_set():
+            break
+        try:
+            r = db.checkpoint_wal()
+            if r.get("checkpointed"):
+                log.info("housekeeping: WAL %.1f MB -> %.1f MB", (r.get("was") or 0) / 1e6, r["wal_bytes"] / 1e6)
+        except Exception as e:  # noqa: BLE001
+            log.warning("housekeeping skipped: %s", e)
 
 
 def _backup_loop(every: float = 3600.0) -> None:
