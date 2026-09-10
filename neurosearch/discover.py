@@ -255,19 +255,32 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         raise ValueError(f"unknown discover mode {mode!r}")
     # G5: Discover leads with research STATE — Claims are harvested ($0) and open Evidence Targets steer the passes
     research: dict[str, Any] = {}
+    _t_research = time.perf_counter()
     try:
         from . import claims, knowledge
-        claims.ensure(project_id)
+        # 0.62.2: `claims.ensure` here cost 431.6 s of the 432 s a library-only Discover took on Kyle's project —
+        # harvesting 17,119 notes, assessing 4,331 Claims and rebuilding the whole knowledge map so that a
+        # discovery pass could read some counts and open questions. Steering needs a RECENT map, not a current one.
+        cheap = claims.ensure_cheap(project_id)
         st = knowledge.state(project_id)
-        research = {"counts": st["map"]["counts"], "nodes": st["map"]["nodes"][:12], "tensions": st["tensions"][:6],
-                    "targets": [t for t in st["targets"] if t["status"] == "open"][:8], "summary": knowledge.summary_text(project_id)}
+        research = {"counts": cheap["map"]["counts"], "nodes": cheap["map"]["nodes"][:12], "tensions": st["tensions"][:6],
+                    "targets": [t for t in st["targets"] if t["status"] == "open"][:8], "summary": knowledge.summary_text(project_id),
+                    "as_of": "current" if cheap.get("computed") else "a moment ago",
+                    "refresh_queued": cheap.get("queued")}
     except Exception as e:  # noqa: BLE001
         log.warning("research state unavailable for discover: %s", e)
+    try:
+        from . import perf as _perf
+        _perf.record("discover.research_state", max(0.0, time.perf_counter() - _t_research))
+    except Exception:  # noqa: BLE001
+        pass
     lib: dict[str, Any] = {"suggestions": [], "query": None}
     if mode != "web_only":
         if progress:
             progress(0.05, "checking what your library already covers…")
-        lib = library.recall(project_id, _library_query(project, refine), limit=8, reason=f"discover: {refine or project.get('name')}")
+        from . import perf
+        with perf.timed("discover.library"):
+            lib = library.recall(project_id, _library_query(project, refine), limit=8, reason=f"discover: {refine or project.get('name')}")
         try:
             library.maybe_queue_batch()                                   # opportunistic: only if enough wanted profiles piled up
         except Exception as e:  # noqa: BLE001

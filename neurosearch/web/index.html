@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.0';
+const UI_VERSION = '0.62.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2390,6 +2390,7 @@ function jobLabel(j) {
   if (j.kind === 'refresh_skipped_metadata') return 'refreshing skipped info · ' + what;
   if (j.kind === 'bootstrap_scan') return 'searching research you already have';
   if (j.kind === 'extract_claims') return j.payload?.evaluation ? 'checking claim quality' : 'finding claims to track';
+  if (j.kind === 'refresh_research') return 'bringing the research state up to date';
   return what || j.kind;
 }
 async function rateResume() {

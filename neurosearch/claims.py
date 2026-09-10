@@ -1106,6 +1106,60 @@ def evaluation_report(project_id: str) -> dict[str, Any] | None:
     return json.loads(raw) if raw else None
 
 
+HARVEST_INLINE_MAX = 400      # new notes harvested inside a request; the rest is queued (0.62.2)
+
+
+def ensure_cheap(project_id: str) -> dict[str, Any]:
+    """What a caller that only needs to STEER should use: never recompute the research state inside the request.
+
+    **Measured on Kyle's live project, 2026-09-10.** A library-only Discover — no model call, no web request, no
+    dollars — took 195 s against a UI that advertises about ten seconds, and 432 s on the run right after 3,314
+    findings were approved. Staged timing put it beyond argument:
+
+        discover.research_state   431.6 s
+        discover.library            0.9 s   (the recall itself, warm)
+        recall.search               6.9 s   p50 cold
+        everything else             milliseconds
+
+    So the pass Kyle blamed, and that I half-blamed, costs under a second. The seven minutes were `claims.ensure`
+    running ahead of it: harvest over 17,119 notes, then every one of 4,331 Claims assessed (twice, see above),
+    then the whole knowledge map, tension detection and every evidence target — all so a discovery pass could read
+    a handful of counts and open questions to steer itself.
+
+    A pass worth having is not worth having in a request — the third time that sentence has been the fix this week.
+    Steering does not need a current map, only a recent one, so this reads what exists and queues the refresh."""
+    from . import knowledge
+    nodes = db.connect().execute("SELECT COUNT(*) n FROM project_knowledge_nodes WHERE project_id=?",
+                                 (project_id,)).fetchone()["n"]
+    if not nodes:
+        # nothing to steer by at all: the first pass on a project pays once, and it is small by definition
+        return {"computed": True, **ensure(project_id)}
+    queued = maybe_refresh(project_id)
+    return {"computed": False, "queued": queued, "map": knowledge.state_map(project_id)}
+
+
+def maybe_refresh(project_id: str) -> str | None:
+    """Queue the research refresh `ensure` would have run, deduped per project, on the cheap lane. Returns the job
+    id, or None when one is already waiting — a second request must never queue a second copy of the same pass."""
+    try:
+        job = db.create_job("refresh_research", {"project_id": project_id}, lane="low",
+                            dedupe_key=f"refresh_research:{project_id}", execution_policy="local_only")
+        return job["id"]
+    except Exception as e:  # noqa: BLE001 — steering must never fail because a queue write did
+        log.warning("research refresh not queued: %s", e)
+        return None
+
+
+def run_refresh_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
+    pid = payload["project_id"]
+    if progress:
+        progress(0.1, "bringing the research state up to date…")
+    out = ensure(pid)
+    if progress:
+        progress(1.0, f"{out.get('harvested', 0)} new claims harvested")
+    return {"project_id": pid, "harvested": out.get("harvested", 0)}
+
+
 def ensure(project_id: str, allow_model: bool = False) -> dict[str, Any]:
     """What Chat/Discover call before they need Claims: harvest ($0) + assess ($0) + refresh the map ($0); optionally an
     inline extraction when the caller may spend (bounded by EXTRACT_MAX_INLINE)."""
@@ -1126,7 +1180,9 @@ def ensure(project_id: str, allow_model: bool = False) -> dict[str, Any]:
                 out["extracted"] = {"error": str(e)[:200]}
         elif cands:
             out["extracted"] = {"job": maybe_extract(project_id, "ensure", force=True)}
-    assess_project(project_id)
+    # `knowledge.refresh` opens with `claims.assess_project` itself, so calling it here assessed every Claim in the
+    # project TWICE per `ensure` — 8,662 assessments on Kyle's project instead of 4,331, for identical results.
+    # Measured 2026-09-10 while finding why a library-only Discover took 195 s (0.62.2).
     out["map"] = knowledge.refresh(project_id)
     return out
 

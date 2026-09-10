@@ -532,6 +532,23 @@ def capture_best(project_id: str, target_id: str, n: int = 3) -> dict[str, Any]:
     return {"target_id": target_id, "started": started}
 
 
+def state_map(project_id: str) -> dict[str, Any]:
+    """Nodes and their counts as they stand, with NO recompute — the steering view (0.62.2). `state()` falls back to
+    `refresh()` when a project has no nodes yet; a caller that only needs to steer must never trigger that, because
+    on a large project it is a seven-minute pass (see `claims.ensure_cheap`)."""
+    nodes = [dict(r) for r in db.connect().execute(
+        "SELECT * FROM project_knowledge_nodes WHERE project_id=? ORDER BY updated_at", (project_id,)).fetchall()]
+    for n in nodes:
+        for key in ("evidence_classes", "missing_perspectives"):
+            try:
+                n[key] = json.loads(n[key] or "[]")
+            except ValueError:
+                pass
+    order = {"strong": 0, "developing": 1, "weak": 2, "missing": 3}
+    nodes.sort(key=lambda n: (order.get(n["state"], 9), n["topic"]))
+    return {"nodes": nodes, "counts": {s: sum(1 for n in nodes if n["state"] == s) for s in NODE_STATES}}
+
+
 def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]:
     """Everything the Research view / Chat / Discover need, $0. Claims are capped (accepted and strong first) so a
     thousand-finding project returns a page, not a dump; `claims_total` carries the real count."""

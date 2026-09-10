@@ -427,18 +427,26 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
     """Which sources the user ALREADY OWNS could answer `query`? Chunk-level retrieval first (nothing averaged away),
     then baseline/enriched profile term hits as ranking signal + explanation. Returns suggestions with provenance;
     marks the top unenriched hits as `wanted` (lazy enrichment) without ever waiting for it."""
+    from . import perf
     from .search import search
     q = (query or "").strip()
-    scope = library_scope(project_id)
+    with perf.timed("recall.scope"):
+        scope = library_scope(project_id)
     if not q or not scope:
         return {"query": q, "suggestions": [], "scope": len(scope), "enrichment": {"wanted": 0}}
-    hits = search(q, limit=RECALL_CHUNKS, source_ids=scope, per_source_cap=PER_SOURCE_CHUNKS, reserve=0)
+    # 0.62.1: the whole pass is staged in the timing ledger. Kyle measured a library-only Discover at **195 s**
+    # with no model call, no web request and no dollars, against a UI that advertises about ten seconds — and the
+    # only honest way to find that is to time the stages rather than reason about which one looks expensive.
+    with perf.timed("recall.search"):
+        hits = search(q, limit=RECALL_CHUNKS, source_ids=scope, per_source_cap=PER_SOURCE_CHUNKS, reserve=0)
     qt = _tokens(q)
-    anchor = query_anchor(qt)
+    with perf.timed("recall.anchor"):
+        anchor = query_anchor(qt)
     # 0.62.0: aboutness, not presence. `anchored` is the set of sources that mention the anchor at least
     # ANCHOR_MIN_MENTIONS times; a single mention is reported separately so the reason can say which it was.
-    mention_counts = source_mentions(anchor["term"]) if anchor.get("term") else {}
-    chunks_per = _chunks_per_source(list(mention_counts)) if mention_counts else {}
+    with perf.timed("recall.mentions"):
+        mention_counts = source_mentions(anchor["term"]) if anchor.get("term") else {}
+        chunks_per = _chunks_per_source(list(mention_counts)) if mention_counts else {}
     anchored = {sid for sid, n in mention_counts.items()
                 if n >= ANCHOR_MIN_MENTIONS or chunks_per.get(sid, 0) < ANCHOR_MENTION_MIN_CHUNKS}
     rejected = {"no_anchor_term": 0, "anchor_mentioned_once": 0, "low_coverage": 0, "low_score": 0}
@@ -449,11 +457,14 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
         d["chunk_score"] += h["score"]
         d["chunks"].append({"chunk_id": h["chunk_id"], "timestamp": h["timestamp"], "link": h["link"], "text": h["text"][:280], "score": h["score"]})
     out = []
+    profile_s = 0.0
     for sid, d in by_src.items():
         if d["chunk_score"] < MIN_SCORE:
             rejected["low_score"] += 1
             continue
+        _t0 = time.perf_counter()
         p = profile(sid) or {}
+        profile_s += time.perf_counter() - _t0
         b = p.get("baseline") or {}
         e = p.get("enriched")
         term_hits = sorted(qt & set(b.get("terms") or []))
@@ -500,11 +511,13 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
                     "evidence_class": (e or {}).get("evidence_class"), "temporal_character": (e or {}).get("temporal_character"),
                     "profile_summary": (e or {}).get("summary"), "enriched": bool(e), "enriched_status": p.get("enriched_status", "none"),
                     "source_revision": p.get("source_revision"), "in_library": True, "in_project": False, "attach": {"endpoint": f"/api/projects/{project_id}/members", "source_ids": [sid]} if project_id else None})
+    perf.record("recall.profiles", profile_s)
     out.sort(key=lambda x: -x["score"])
     out = out[:limit]
     wanted = 0
     if want_enrichment:
-        wanted = want([s["source_id"] for s in out if not s["enriched"]], reason or f"library recall: {q[:120]}", project_id)
+        with perf.timed("recall.want_enrichment"):
+            wanted = want([s["source_id"] for s in out if not s["enriched"]], reason or f"library recall: {q[:120]}", project_id)
     try:
         db.kv_bump("library:recalls")
         if out:

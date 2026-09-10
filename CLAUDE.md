@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -217,6 +217,38 @@ the file back. Fixed live: 112 MB → 1.2 MB.
   most recently updated projects, so the first visit after a restart is warm too.
 
 Gate `tests/test_s15_lockup.py`.
+
+## A discovery pass paid seven minutes to read a few counts (0.62.1–0.62.2)
+
+Kyle: *"the search took much longer than the ~10 seconds advertised."* It took **195 s**, and **432 s** on the run
+right after 3,314 findings were approved — for a library-only Discover with no model call, no web request and no
+dollars. He assumed the library pass. So did I. 0.62.1 added stage timing to `library.recall` and `discover` rather
+than reasoning about which stage looked expensive, and it settled the question:
+
+```
+discover.research_state   431.6 s
+discover.library            0.9 s     ← the pass we both blamed, warm
+recall.search               6.9 s     p50, cold
+recall.mentions/anchor/profiles/scope   milliseconds
+```
+
+The seven minutes were `claims.ensure` running BEFORE any discovering: `harvest` over 17,119 notes, every one of
+4,331 Claims assessed, then the whole knowledge map, tension detection, community synthesis and every evidence
+target — so that a discovery pass could read some counts and a list of open questions to steer itself.
+
+- **Half of it was arithmetic.** `ensure` called `assess_project` and then `knowledge.refresh`, which opens by
+  calling `assess_project` itself. Every Claim in the project was assessed **twice per call** — 8,662 times instead
+  of 4,331 — for identical results.
+- **`claims.ensure_cheap`** is what a caller that only STEERS should use: it reads the map that exists
+  (`knowledge.state_map`, no recompute — `state()` falls back to `refresh()` when a project has no nodes, and a
+  steering caller must never trigger that) and queues the real pass as a **`refresh_research`** job on the `low`
+  lane, deduped per project so a second request cannot queue a second copy. A project with no map at all still
+  pays once, because there is nothing to steer by and the pass is small by definition.
+- Discover's reply says how current its steering was (`research.as_of`) instead of implying it is live.
+
+**A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
+(0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
+optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
 
 ## "Modern CPA" returned house-flipping videos (0.62.0)
 
