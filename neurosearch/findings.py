@@ -382,6 +382,26 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         raise RuntimeError("source has no transcript")
     if is_current(project, source_id, depth=depth) and not force:
         return _skipped(project_id, source_id, src)
+    # 0.62.6 — WORK IN FLIGHT IS STILL WORK. `is_current` reads the analysis row, so a batch that has been submitted
+    # (and charged) but not yet collected is invisible to it, and the ordinary queue reads the source again. Measured:
+    # 166 sources re-read on 2026-09-10 for $22.67, every one of them a local pass at midday followed by the batch
+    # pass that settled a cohort submitted two days earlier, at identical revisions.
+    #
+    # This holds even under `force`, because the hash is what makes it safe: a stale rebuild, a brief edit or a deep
+    # read all change `input_hash`, so none of them match and none of them are blocked. A match means the answer to
+    # exactly this question has already been paid for and is on its way.
+    ih = input_hash(project, source_id, depth=depth)
+    cov = db.batch_coverage(source_id, ih)
+    if cov["covered"]:
+        out = _skipped(project_id, source_id, src)
+        out["skipped"] = "a batch already covers these exact inputs"
+        out["skipped_reason"] = "batch_in_flight"
+        out["batch"] = cov
+        out["note"] = (f"already bought: {cov['items']} window(s) of this exact analysis are in a batch "
+                       f"({cov['waiting']} still with the provider, {cov['collected']} collected and waiting to be "
+                       f"written). Re-reading it now would pay twice for the same answer.")
+        log.info("findings skipped for %s: batch already covers these inputs (%s)", source_id, cov)
+        return out
     head = _head(project, src)
     windows = _windows(segs, src["platform"], source_id, window_chars=DEEP_WINDOW_CHARS if depth == "deep" else WINDOW_CHARS)
     from .jobs import check_cancel, crash_point

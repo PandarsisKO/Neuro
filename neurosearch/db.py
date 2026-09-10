@@ -3791,6 +3791,32 @@ def batch_items_add(job_id: str, cohort_no: int, items: list[dict[str, Any]]) ->
                            json.dumps(it["params"]), "planned", t, t) for it in items])
 
 
+def batch_coverage(source_id: str, input_hash: str) -> dict[str, Any]:
+    """Is there batch work ALREADY BOUGHT for exactly these inputs, still waiting to be collected? (0.62.6)
+
+    `findings.batch_requests` builds a `custom_id` of `fw-<source12>-<window>-<inputhash12>`, so the question is
+    answerable from the item table with no new state: the same inputs always produce the same ids.
+
+    **Measured on Kyle's database, 2026-09-10.** 166 sources were analysed TWICE that day at a cost of $22.67, and
+    every pair had the same shape: a `local` pass around midday, then a `batch` pass between 15:50 and 16:12 — the
+    window in which 410 stranded batches were recovered and settled. Same `brief_revision`, same `facts_revision`,
+    same source revision: nothing had changed, so nothing needed re-reading. The batch had been submitted (and
+    charged) on Sep 8–9, its results sat uncollected, and in the meantime the ordinary queue read the same sources
+    again because `is_current` only ever consulted the analysis ROW. Work in flight was invisible to it.
+
+    Returns `{"covered": bool, "items": n, "waiting": n, "collected": n, "batch_ids": [...]}` — `waiting` is
+    submitted and not yet back, `collected` is a result already persisted here but not yet materialised. Either
+    means the money is spent and the answer is coming."""
+    like = f"fw-{source_id[:12]}-%-{input_hash[:12]}"
+    rows = connect().execute(
+        "SELECT status, batch_id FROM batch_items WHERE custom_id LIKE ? AND status IN ('submitted','succeeded')",
+        (like,)).fetchall()
+    waiting = sum(1 for r in rows if r["status"] == "submitted")
+    collected = sum(1 for r in rows if r["status"] == "succeeded")
+    return {"covered": bool(rows), "items": len(rows), "waiting": waiting, "collected": collected,
+            "batch_ids": sorted({r["batch_id"] for r in rows if r["batch_id"]})}
+
+
 def batch_items(job_id: str, cohort_no: int | None = None, status: str | None = None) -> list[dict[str, Any]]:
     q, args = "SELECT * FROM batch_items WHERE job_id=?", [job_id]
     if cohort_no is not None:

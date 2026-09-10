@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.5)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.6)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,50 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Work in flight is still work (0.62.6)
+
+Chasing the last big spend lever, and it was not where I said it was. Two claims of mine died to arithmetic before
+the real defect appeared — recorded because both were the kind of thing that reads as obvious:
+
+**"Prompt caching on the batch findings path is broken and fixing it is the biggest remaining saving."** Wrong.
+Today's batch findings reconstruct exactly against the ledger ($23.18): **uncached input 57.5%, output 29.4%, cache
+writes 12.8%, cache reads 0.3%** — 10,376 uncached input and 1,061 output tokens per call. Turning caching OFF on
+that path would cost **$0.03 more**, not less: the 25% premium on 1,855 cache-write tokens per call almost exactly
+equals the 90% saved on 540 read tokens. The 5-minute ephemeral cache cannot help a batch that runs for hours, and
+the numbers say it also cannot hurt. Input is the transcript and output is the findings — both are the work.
+
+**"71% of findings spend is repeat analysis, so most of it is waste."** Half wrong, and the half that was right is
+not waste. 589 of 1,173 sources have been analysed 2–6 times; the first pass over everything cost $107.50 and the
+later passes $258.95. But of the 11,154 findings those later passes produced, **91% are genuinely new** at the same
+0.35 similarity threshold `findings_quality` uses, and only 9% restate an earlier finding. The cap raise (0.58.1)
+and brief edits genuinely produce more from material already ingested, at $0.026 per new finding — the normal rate.
+That makes the findings cap a policy dial for Kyle, not a defect for me.
+
+**The real defect was in the residue.** 166 sources were analysed twice *on 2026-09-10 alone*, for **$22.67**, and
+every pair had one shape:
+
+```
+Copy of Acquisition Ace Deal Calculator
+   pass: 13:28 → 13:30    4 windows   $1.768   [local]
+   pass: 15:50 → 16:12   12 windows   $1.510   [batch]
+   brief_rev d4da9549…  facts_rev 5fb2f4bc…   identical across both
+```
+
+15:50–16:12 is when 410 stranded batch cohorts were recovered and settled. Those were submitted, and charged, on
+Sep 8–9; the results sat uncollected; and meanwhile the ordinary queue read the same sources again — because
+`findings.is_current` only ever consulted the analysis ROW. **Work that had been bought but not yet collected was
+invisible to the check whose entire job is to stop paying twice.**
+
+`db.batch_coverage(source_id, input_hash)` answers it with no new state: `findings.batch_requests` already builds a
+`custom_id` of `fw-<source12>-<window>-<inputhash12>`, so the same inputs always produce the same ids, and
+`submitted` (with the provider) or `succeeded` (persisted here, not yet written) both mean the money is spent.
+`suggest_for_source` skips with the reason stated in plain words.
+
+**The hash is what makes the guard safe rather than blunt, and it holds even under `force`.** A stale rebuild, a
+brief edit and a deep read all change `input_hash`, so none of them match and none are blocked; a match means the
+answer to exactly this question is already paid for and on its way. A gate on the id FORMAT needs a test that fails
+if the format moves, so there is one. Gate `tests/test_s20_no_double_read.py`.
 
 ## The rung Discover never had: seen, and never read (0.62.5)
 
