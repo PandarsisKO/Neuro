@@ -125,11 +125,21 @@ def _shingles(toks: list[str]) -> set[tuple[str, ...]]:
     return {tuple(toks[i:i + SHINGLE]) for i in range(len(toks) - SHINGLE + 1)}
 
 
+# Spelled-out quantities are just as specific as digits, and findings are prose: "Sellers finance ten percent of
+# the purchase price via a seller note" was being flagged `no_specifics` for want of a numeral (0.59.0).
+NUMBER_WORDS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+                "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand",
+                "million", "billion", "half", "third", "quarter", "double", "triple", "percent", "percentage"}
+
+
 def _has_specific(text: str) -> bool:
-    """A number, a quoted phrase, a percentage or price, or a capitalised word that is not merely sentence-initial.
-    This is the single strongest vacuity signal: a finding that names nothing cannot be checked against its source."""
+    """A number (digits OR words), a quoted phrase, a percentage or price, or a capitalised word that is not merely
+    sentence-initial. The strongest vacuity signal: a finding that names nothing cannot be checked against its
+    source."""
     t = text or ""
     if re.search(r"\d", t) or '"' in t or "“" in t or "'" in t:
+        return True
+    if set(_words(t)) & NUMBER_WORDS:
         return True
     # capitalised tokens after the first word (proper nouns, product names, acronyms)
     tokens = re.findall(r"\b[\w’'-]+\b", t)
@@ -256,12 +266,25 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
         if len(members) < 2:
             continue
         keep = _keeper(members, usage)
+        srcs = sorted({str(m.get("source_id")) for m in members if m.get("source_id")})
+        # 0.59.0, Kyle: "even duplicate data is useful somehow". He is right, and this app already says so —
+        # `claims.assess` treats independent sources agreeing as its STRONGEST evidence signal (corroborative
+        # sufficiency), and `claim_evidence` tracks independence by creator and lineage precisely to count it.
+        #
+        # So a cluster means two opposite things depending on where its members came from:
+        #   · one source, said twice  -> REDUNDANT. The same video repeating itself adds nothing.
+        #   · several sources agreeing -> CORROBORATED. That is evidence, and the largest cluster in Kyle's corpus
+        #     is one SBA pre-screening fact stated by FOUR different creators. Sweeping it would delete the
+        #     strongest thing the project knows about that fact.
+        # Before this, both were flagged `duplicate` and offered for dismissal, which inverted the value of the
+        # second case. Only redundancy is ever proposed for a sweep.
+        kind = "redundant" if len(srcs) <= 1 else "corroborated"
         out.append({"keeper_id": keep,
                     "keeper": next(m["content"] for m in members if m["id"] == keep),
                     "duplicate_ids": sorted(m["id"] for m in members if m["id"] != keep),
-                    "size": len(members),
-                    "sources": sorted({str(m.get("source_id")) for m in members if m.get("source_id")})})
-    out.sort(key=lambda c: (-c["size"], c["keeper_id"]))
+                    "size": len(members), "sources": srcs, "kind": kind,
+                    "n_sources": len(srcs)})
+    out.sort(key=lambda c: (0 if c["kind"] == "redundant" else 1, -c["size"], c["keeper_id"]))
     return out
 
 
@@ -296,9 +319,14 @@ def _review(project_id: str, *, status: str | None = "approved", limit: int = 30
 
     cl = clusters(notes, usage)
     dup_of: dict[int, int] = {}
+    corroborated: dict[int, dict[str, Any]] = {}
     for c in cl:
-        for d in c["duplicate_ids"]:
-            dup_of[d] = c["keeper_id"]
+        if c["kind"] == "redundant":
+            for d in c["duplicate_ids"]:
+                dup_of[d] = c["keeper_id"]
+        else:
+            for m in [c["keeper_id"], *c["duplicate_ids"]]:
+                corroborated[m] = {"n_sources": c["n_sources"], "size": c["size"], "keeper_id": c["keeper_id"]}
 
     flagged: list[dict[str, Any]] = []
     counts: dict[str, int] = {f: 0 for f in FLAGS}
@@ -311,11 +339,17 @@ def _review(project_id: str, *, status: str | None = "approved", limit: int = 30
             fl.insert(0, "duplicate")
         if not fl:
             continue
+        # protection 0: a finding several independent sources agree on is evidence, not filler. It is never
+        # pre-selected, whatever else it trips, because a batch sweep must not be able to delete corroboration.
+        corr = corroborated.get(n["id"])
         for f in fl:
             counts[f] = counts.get(f, 0) + 1
         # protection 1: anything the project has leaned on is not trash, whatever it reads like
         protected = None
-        if used:
+        if corr:
+            protected = (f"{corr['n_sources']} independent sources say this — that is corroboration, which is the "
+                         f"strongest evidence signal this app has")
+        elif used:
             bits = [f"used in {u['plan']} plan step(s)" if u.get("plan") else "",
                     f"cited in {u['chat']} chat answer(s)" if u.get("chat") else "",
                     f"backs a {u['claim']} Claim" if u.get("claim") else ""]
@@ -345,8 +379,17 @@ def _review(project_id: str, *, status: str | None = "approved", limit: int = 30
     return {
         "project_id": project_id, "findings": total,
         "flagged": len(flagged), "shown": len(shown), "rows": shown,
-        "clusters": cl[:60], "cluster_count": len(cl),
+        "clusters": [c for c in cl if c["kind"] == "redundant"][:60],
+        "cluster_count": sum(1 for c in cl if c["kind"] == "redundant"),
         "duplicates": len(dup_of), "protected": protected_n,
+        # reported as a POSITIVE, in its own right: what several independent sources agree on
+        "corroborated": {"findings": len(corroborated),
+                         "groups": [{"n_sources": c["n_sources"], "size": c["size"], "keeper": c["keeper"],
+                                     "ids": [c["keeper_id"], *c["duplicate_ids"]]}
+                                    for c in cl if c["kind"] == "corroborated"][:40],
+                         "note": ("Several independent sources saying the same thing is corroboration, not "
+                                  "duplication — `claims.assess` counts exactly this as corroborative sufficiency. "
+                                  "None of these is ever offered for dismissal.")},
         "counts": counts,
         "share": round(len(flagged) / total, 4) if total else 0.0,
         "note": ("Nothing here has been changed. A finding already used in a plan, a chat answer or a Claim is never "
@@ -390,32 +433,52 @@ def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
     # cluster ACROSS statuses: a reserve finding that repeats an approved one is not a gain
     cl = clusters(approved + reserve, usage)
     covered: dict[int, int] = {}
+    corroborates: dict[int, dict[str, Any]] = {}
     for c in cl:
         members = set(c["duplicate_ids"]) | {c["keeper_id"]}
         anchor_id = next((m for m in members if m in approved_ids), None)
         if anchor_id is None:
             continue
         for m in members:
-            if m not in approved_ids:
-                covered[m] = anchor_id
+            if m in approved_ids:
+                continue
+            if c["kind"] == "redundant":
+                covered[m] = anchor_id          # the same source said it twice — nothing gained by promoting it
+            else:
+                # 0.59.0: a withheld finding that says what an approved finding says, from a DIFFERENT source, is
+                # corroboration. Promoting it is the point, not the mistake — it is how a Claim gets from one
+                # source to independently supported.
+                corroborates[m] = {"of": anchor_id, "n_sources": c["n_sources"]}
     rows: list[dict[str, Any]] = []
     skipped = {"already_covered": 0, **{f: 0 for f in FLAGS if f != "duplicate"}}
     for n in reserve:
         if n["id"] in covered:
             skipped["already_covered"] += 1
             continue
+        corr = corroborates.get(n["id"])
         fl = vacuity(n, titles.get(str(n.get("source_id"))))
         if fl == ["too_short"] and _has_specific(n.get("content") or ""):
             fl = []                                   # brevity is not vacuity (same rule as `review`)
+        if fl and corr:
+            # Corroboration outranks a vacuity flag here for the same reason it outranks a duplicate flag: if
+            # another source independently says this, the sentence is carrying a real proposition whatever its
+            # wording scores. `review` already protects these; the promote path must not quietly drop them.
+            fl = []
         if fl:
             for f in fl:
                 skipped[f] = skipped.get(f, 0) + 1
             continue
         rows.append({"id": n["id"], "content": n.get("content"), "title": n.get("title"),
                      "source_id": n.get("source_id"), "importance": n.get("importance"),
-                     "why": "not a repeat of anything you have approved, and it names something specific"})
-    rows.sort(key=lambda r: (-int(r["importance"] or 0), r["id"]))
+                     "corroborates": corr["of"] if corr else None,
+                     "why": (f"a different source saying what an approved finding says — that is corroboration, "
+                             f"and promoting it is how a Claim becomes independently supported"
+                             if corr else
+                             "not a repeat of anything you have approved, and it names something specific")})
+    # corroborating findings first: they are the ones that change what the project can claim
+    rows.sort(key=lambda r: (0 if r.get("corroborates") else 1, -int(r["importance"] or 0), r["id"]))
     return {"reserve": len(reserve), "promotable": len(rows), "rows": rows[:max(1, min(limit, 1000))],
+            "corroborating": sum(1 for r in rows if r.get("corroborates")),
             "skipped": {k: v for k, v in skipped.items() if v},
             "note": ("These were withheld by the cap, not judged — you already paid for them. Listed here are the "
                      "ones that are not repeats of findings you have already approved and that name something "
@@ -428,4 +491,6 @@ def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
 def summary(project_id: str) -> dict[str, Any]:
     """The counts only — cheap enough for a chip in the Findings header."""
     r = review(project_id, limit=1)
-    return {k: r[k] for k in ("findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share")}
+    out = {k: r[k] for k in ("findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share")}
+    out["corroborated"] = {"findings": (r.get("corroborated") or {}).get("findings", 0)}
+    return out

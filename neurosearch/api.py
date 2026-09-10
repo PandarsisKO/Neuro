@@ -223,6 +223,34 @@ class ScholarSearchIn(BaseModel):
     remember: bool = True
 
 
+class SpendSettingsIn(BaseModel):
+    weekly_budget: float | None = None
+    rate_per_hour: float | None = None
+
+
+@app.get("/api/usage/reconcile", dependencies=[Depends(require_auth)])
+def api_usage_reconcile(days: int = 14) -> dict[str, Any]:
+    """0.59.0: what the app recorded vs what the account was most likely charged. The two differ by the local
+    Claude Code path, which was booked at cost 0 on the assumption it runs on a subscription — an assumption nothing
+    ever checked, and which hid about $200 of a $312 month."""
+    from . import usage
+    return usage.reconcile(days=max(1, min(days, 90)))
+
+
+@app.post("/api/usage/spend-settings", dependencies=[Depends(require_auth)])
+def api_spend_settings(body: SpendSettingsIn) -> dict[str, Any]:
+    """Set the weekly budget (0 = off) and the $/hour rate ceiling. Both were constants; the ceiling's default of
+    $6/hour is about $1,000 a week, which is not a budget, it is a runaway detector."""
+    from . import usage
+    if body.weekly_budget is not None:
+        db.kv_set("weekly_budget", str(max(0.0, float(body.weekly_budget))))
+    if body.rate_per_hour is not None:
+        v = float(body.rate_per_hour)
+        db.kv_set("spend_rate_ceiling", str(v) if v > 0 else None)
+    return {"weekly_budget": usage.budget("weekly"), "rate_per_hour": usage.rate_ceiling(),
+            "default_rate_per_hour": usage.SPEND_RATE_CEILING}
+
+
 @app.get("/api/scholar/status", dependencies=[Depends(require_auth)])
 def api_scholar_status() -> dict[str, Any]:
     """Which research catalogues are usable and why — config only, no network, no spend."""

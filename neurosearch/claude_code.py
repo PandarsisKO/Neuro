@@ -141,6 +141,48 @@ def _has(flag: str) -> bool:
     return (flag in caps["flags"]) if caps.get("help") else True     # no help text → send the documented flags and let the CLI complain
 
 
+# ------------------------------------------------------------------ who pays for a local call (0.59.0)
+
+BILLING_SUBSCRIPTION, BILLING_API_KEY, BILLING_UNKNOWN = "subscription", "api_key", "unknown"
+
+
+def billing_mode() -> str:
+    """Who pays for a Claude Code call: the user's subscription, or their API account.
+
+    This exists because L1 asserted "local = subscription = free" and nothing ever checked. Measured on Kyle's
+    account 2026-09-10: the app recorded $111.96 of spend for the month while the local path logged $210.55 as
+    `saved`, and his Console said $312.40 — the two sum to within 3%. Every local call was a real API charge that
+    no budget, no rate ceiling and no Health panel could see.
+
+    The signal is cheap and needs no network: the Claude Code CLI uses `ANTHROPIC_API_KEY` when it is present in the
+    environment it inherits, and the subscription otherwise. `NEUROSEARCH_LOCAL_BILLING` overrides it for anyone
+    whose setup this heuristic reads wrongly.
+
+    UNKNOWN IS TREATED AS BILLED by every caller. Assuming free is the mistake that hid $200."""
+    override = (os.environ.get("NEUROSEARCH_LOCAL_BILLING") or "").strip().lower()
+    if override in (BILLING_SUBSCRIPTION, BILLING_API_KEY, BILLING_UNKNOWN):
+        return override
+    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
+        return BILLING_API_KEY
+    return BILLING_SUBSCRIPTION
+
+
+def local_is_free() -> bool:
+    """True only when a local call is genuinely free. Anything else — including not knowing — is spend."""
+    return billing_mode() == BILLING_SUBSCRIPTION
+
+
+def billing_note() -> str:
+    m = billing_mode()
+    if m == BILLING_API_KEY:
+        return ("ANTHROPIC_API_KEY is set in this environment, so the Claude Code CLI bills your API account: local "
+                "calls are NOT free and are counted as spend. Run `claude login` (or unset that key for the shell "
+                "that starts Neuro Search) to use your subscription instead.")
+    if m == BILLING_SUBSCRIPTION:
+        return "no ANTHROPIC_API_KEY in this environment, so Claude Code uses your subscription and local calls are free."
+    return "cannot tell who pays for local calls, so they are counted as spend — set NEUROSEARCH_LOCAL_BILLING to say."
+
+
 def health(force: bool = False, wait: bool = True) -> dict[str, Any]:
     """ready · not_installed · not_signed_in · usage_limit · error · disabled (cloud profile) · checking. Cached HEALTH_TTL seconds.
     The probe is one tiny prompt (it does spend a few subscription tokens), run only when the profile is local. wait=False

@@ -132,7 +132,7 @@ def _update_rate_gate() -> None:
     """Maintained by `record` so the gate costs one aggregate per paid call and nothing at claim time."""
     try:
         rate = rate_last_hour()
-        if rate > SPEND_RATE_CEILING:
+        if rate > rate_ceiling():
             db.kv_set("usage:rate_blocked_until", str(time.time() + RATE_COOLOFF_S))
             db.kv_set("usage:rate_at_block", str(rate))
     except Exception:  # noqa: BLE001
@@ -143,7 +143,7 @@ def rate_gate() -> dict[str, Any]:
     """Is paid background work held right now, and why — in the user's terms."""
     until = float(db.kv_get("usage:rate_blocked_until") or 0)
     blocked = until > time.time()
-    return {"ceiling": SPEND_RATE_CEILING, "rate": rate_last_hour(), "blocked": blocked,
+    return {"ceiling": rate_ceiling(), "default_ceiling": SPEND_RATE_CEILING, "rate": rate_last_hour(), "blocked": blocked,
             "until": until if blocked else None, "at_block": float(db.kv_get("usage:rate_at_block") or 0) if blocked else None}
 
 
@@ -181,8 +181,23 @@ def record_anthropic(resp: Any, kind: str, project_id: str | None = None, source
         pin, pout = _price(api_model)
         i, o = int(getattr(u, "input_tokens", 0) or 0), int(getattr(u, "output_tokens", 0) or 0)
         cr, cw = int(getattr(u, "cache_read_input_tokens", 0) or 0), int(getattr(u, "cache_creation_input_tokens", 0) or 0)
-        return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o, project_id=project_id, source_id=source_id,
-                      cache_read=cr, cache_write=cw, cost=0.0, saved=(i + cr + cw) / 1e6 * pin + o / 1e6 * pout, transport="local")
+        priced = (i + cr + cw) / 1e6 * pin + o / 1e6 * pout
+        # 0.59.0 — A LOCAL CALL IS FREE ONLY WHEN WE CAN SHOW IT IS.
+        #
+        # L1 recorded every Claude Code call as cost 0 with `saved` = what the API would have charged, on the
+        # assumption that the CLI runs on the user's subscription. Nothing checked. Measured on Kyle's account:
+        # app ledger $111.96 for the month, local `saved` $210.55, his Anthropic Console $312.40 — the first two sum
+        # to within 3% of the third. Those calls were real charges, and because they were booked at cost 0 they were
+        # invisible to the daily budget, the monthly budget, the spend-rate ceiling and Health. He topped up credit
+        # for a week wondering where it went, and the app kept telling him he had spent a third of what he had.
+        #
+        # So: subscription -> free, as before. API key or UNKNOWN -> priced as spend. Unknown counts as billed
+        # because assuming free is the error that hid $200, and a wrong bill is recoverable where a hidden one is not.
+        from . import claude_code as _cc
+        free = _cc.local_is_free()
+        return record(kind, str(getattr(resp, "model", "claude-code")), input_tokens=i, output_tokens=o,
+                      project_id=project_id, source_id=source_id, cache_read=cr, cache_write=cw,
+                      cost=0.0 if free else priced, saved=priced if free else 0.0, transport="local")
     return record(kind, getattr(resp, "model", settings.answer_model), input_tokens=int(getattr(u, "input_tokens", 0) or 0),
                   output_tokens=int(getattr(u, "output_tokens", 0) or 0), searches=searches, project_id=project_id, source_id=source_id,
                   cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
@@ -203,7 +218,54 @@ def totals() -> dict[str, Any]:
     saved = db.connect().execute("SELECT COALESCE(SUM(saved),0) s, COALESCE(SUM(cache_read),0) r FROM usage WHERE ts>=?", (month0,)).fetchone()
     return {"today": round(_sum_since(day0), 4), "month": round(_sum_since(month0), 4), "month_by_kind": by_kind,
             "month_saved": round(float(saved["s"] or 0), 4), "month_cached_tokens": int(saved["r"] or 0),
-            "daily_budget": budget("daily"), "monthly_budget": budget("monthly"), "paused": db.kv_get("queue_paused") == "1"}
+            "daily_budget": budget("daily"), "monthly_budget": budget("monthly"), "weekly_budget": budget("weekly"),
+            "week": round(_sum_since((now - timedelta(days=7)).timestamp()), 4),
+            "paused": db.kv_get("queue_paused") == "1"}
+
+
+def reconcile(days: int = 14) -> dict[str, Any]:
+    """What the app has recorded, versus what the account was most likely charged (0.59.0).
+
+    The two differ by the local path. Rows written before this release booked Claude Code calls at cost 0 with the
+    avoided spend in `saved`; if the CLI was billing an API key, that `saved` figure was really spend. This does not
+    rewrite history — it reports both numbers side by side so a month that looked like $112 can be recognised as
+    $312 without anyone having to reconstruct it by hand."""
+    from . import claude_code as _cc
+    conn = db.connect()
+    now = datetime.now()
+    month0 = datetime(now.year, now.month, 1).timestamp()
+    week0 = (now - timedelta(days=7)).timestamp()
+    mode = _cc.billing_mode()
+    billed = not _cc.local_is_free()
+
+    def window(ts: float) -> dict[str, Any]:
+        r = conn.execute("""SELECT COALESCE(SUM(cost),0) c,
+                                   COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) local_saved,
+                                   COUNT(*) n,
+                                   SUM(CASE WHEN transport='local' THEN 1 ELSE 0 END) n_local
+                            FROM usage WHERE ts>=?""", (ts,)).fetchone()
+        rec, loc = float(r["c"] or 0), float(r["local_saved"] or 0)
+        return {"recorded": round(rec, 2), "local_if_billed": round(loc, 2),
+                "likely_total": round(rec + (loc if billed else 0.0), 2),
+                "calls": int(r["n"] or 0), "local_calls": int(r["n_local"] or 0)}
+
+    per_day = []
+    for row in conn.execute("""SELECT date(ts,'unixepoch','localtime') d, COALESCE(SUM(cost),0) c,
+                                      COALESCE(SUM(CASE WHEN transport='local' THEN saved ELSE 0 END),0) ls
+                               FROM usage WHERE ts>=? GROUP BY d ORDER BY d DESC""",
+                            ((now - timedelta(days=days)).timestamp(),)):
+        rec, loc = float(row["c"] or 0), float(row["ls"] or 0)
+        per_day.append({"day": row["d"], "recorded": round(rec, 2), "local_if_billed": round(loc, 2),
+                        "likely_total": round(rec + (loc if billed else 0.0), 2)})
+    return {"billing_mode": mode, "local_is_free": not billed, "note": _cc.billing_note(),
+            "month": window(month0), "week": window(week0), "today": window(datetime(now.year, now.month, now.day).timestamp()),
+            "per_day": per_day,
+            "how_to_read": ("`recorded` is what the app booked. `local_if_billed` is what the Claude Code path would "
+                            "cost on the API — money kept if the CLI runs on your subscription, money spent if it "
+                            "runs on your API key. `likely_total` is the one to compare against the Anthropic "
+                            "Console. Rows written before 0.59.0 always booked local at zero, whichever it was."),
+            "budgets": {"daily": budget("daily"), "monthly": budget("monthly"), "weekly": budget("weekly"),
+                        "rate_per_hour": rate_ceiling()}}
 
 
 def budget(which: str) -> float:
@@ -213,7 +275,23 @@ def budget(which: str) -> float:
             return float(v)
         except ValueError:
             pass
+    if which == "weekly":
+        return 0.0        # off unless set: Kyle thinks in weeks ("$300 in one week"), so the app can too
     return settings.daily_budget if which == "daily" else settings.monthly_budget
+
+
+def rate_ceiling() -> float:
+    """Dollars per rolling hour. Settable (0.59.0) because the shipped default was chosen against a runaway, not
+    against a budget: $6/hour is about $1,000 a week, and Kyle's tolerance is nearer $100-300."""
+    v = db.kv_get("spend_rate_ceiling")
+    if v is not None:
+        try:
+            f = float(v)
+            if f > 0:
+                return f
+        except ValueError:
+            pass
+    return SPEND_RATE_CEILING
 
 
 def check(estimate: float = 0.0) -> tuple[bool, str, float]:
@@ -225,6 +303,12 @@ def check(estimate: float = 0.0) -> tuple[bool, str, float]:
     if t["daily_budget"] > 0 and t["today"] + estimate >= t["daily_budget"]:
         tomorrow = datetime(now.year, now.month, now.day) + timedelta(days=1)
         return False, f"daily budget reached (${t['today']:.2f} of ${t['daily_budget']:.2f}) — resumes at midnight or raise it in Settings", max(60, (tomorrow - now).total_seconds())
+    wb = budget("weekly")
+    if wb > 0:
+        w = _sum_since((now - timedelta(days=7)).timestamp())
+        if w + estimate >= wb:
+            return False, (f"weekly budget reached (${w:.2f} of ${wb:.2f} in the last 7 days) — raise it in Settings "
+                           f"or wait for the rolling window to clear"), 3600
     if t["monthly_budget"] > 0 and t["month"] + estimate >= t["monthly_budget"]:
         nm = (datetime(now.year, now.month, 1) + timedelta(days=32)).replace(day=1)
         return False, f"monthly budget reached (${t['month']:.2f} of ${t['monthly_budget']:.2f}) — raise it in Settings to continue", max(60, (nm - now).total_seconds())
@@ -289,7 +373,9 @@ def estimate_findings(n_chars: int, batch: bool = False) -> float:
 
 
 def avoided_this_month() -> float:
-    """L1: what the local provider's calls would have cost on the API this month (the `saved` column of transport='local' rows)."""
+    """L1: what the local provider's calls would have cost on the API this month (the `saved` column of
+    transport='local' rows). 0.59.0: this is ZERO unless Claude Code is billing a subscription — when the CLI runs on
+    an API key those same calls are booked as real cost instead, so `saved` and `cost` can never double-count."""
     now = datetime.now()
     month0 = datetime(now.year, now.month, 1).timestamp()
     row = db.connect().execute("SELECT COALESCE(SUM(saved),0) s FROM usage WHERE ts>=? AND transport='local'", (month0,)).fetchone()

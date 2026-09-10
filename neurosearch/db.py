@@ -1429,6 +1429,19 @@ def project_research_revision(project_id: str) -> str:
 ACCOUNT_GATES = ("providers:billing_until", "providers:spend_cap_until")
 
 
+def account_gate_active() -> tuple[str, float] | None:
+    """(gate, until) when the ACCOUNT itself is walled and the wall has not expired, else None. Read by `claim_job`
+    (0.59.0) so a capped account stops the queue instead of being discovered one job at a time."""
+    for g in ACCOUNT_GATES:
+        try:
+            until = float(kv_get(g) or 0)
+        except (TypeError, ValueError):
+            continue
+        if until > now():
+            return (g, until)
+    return None
+
+
 def clear_account_gates() -> list[str]:
     """Drop the ACCOUNT-level blocks the app is holding. Returns the ones that were actually set.
 
@@ -1731,6 +1744,19 @@ def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[
 BACKGROUND_LANES = ("slow", "low")
 BACKGROUND_KINDS = ("extract_claims",)        # paused whatever lane they are on (0.51.0 — see claim_job)
 RATE_HELD_POLICIES = ("api_requested", "api_only")   # held while the spend-rate ceiling is tripped     # speculative work: bulk claim passes, caption recovery, metadata backfill
+# 0.59.0 — ADMISSION FOR THE ACCOUNT WALLS. Measured on Kyle's live database: 624 `BILLING` attempts on 2026-09-09
+# and 48 `SPEND_CAP` attempts inside 13 minutes on 2026-09-10. Every one was refused by Anthropic in ~0.4 s and cost
+# nothing, but `claim_job` never consulted the account gates, so a walled account did not stop the queue — it walked
+# the queue THROUGH the wall, claiming each paid job in turn, parking it with a 30-day delay, and claiming the next.
+#
+# The damage is not money, it is three other things: worker slots that free/local work could have used; a Jobs panel
+# that reads as a catastrophe when the truth is "the account is capped"; and hundreds of ledger rows that make real
+# spend impossible to see — they are why the first read of this ledger looked like it was undercounting cost.
+#
+# `jobs.execute` already parks each job correctly with the right banner and the parsed return date. This is the
+# missing half: while a gate is live, do not CLAIM work that can only run on the API. Local and free work continues,
+# which matters because `NEUROSEARCH_AI_PROFILE=local` means most findings work has somewhere else to go.
+ACCOUNT_HELD_POLICIES = ("api_requested", "api_only")
 
 
 def background_paused() -> bool:
@@ -1793,6 +1819,12 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
             if BACKGROUND_KINDS:
                 q += f" AND kind NOT IN ({','.join('?' for _ in BACKGROUND_KINDS)})"
                 args += list(BACKGROUND_KINDS)
+        if account_gate_active():
+            # The ACCOUNT is walled (no credit, or the Console's own usage limit). Nothing that must use the API can
+            # succeed, so nothing that must use the API is claimed. Unlike the rate ceiling this holds `api_only`
+            # too: there is no cheaper way for that work to run, and claiming it only produces another 0.4 s refusal.
+            q += f" AND execution_policy NOT IN ({','.join('?' for _ in ACCOUNT_HELD_POLICIES)})"
+            args += list(ACCOUNT_HELD_POLICIES)
         if float(kv_get("usage:rate_blocked_until") or 0) > now():
             # The spend-RATE ceiling (usage.SPEND_RATE_CEILING). Holds paid background only: jobs whose execution
             # policy forces the API, and claim extraction. Chat, ingestion, transcription and every local job are
@@ -2462,6 +2494,19 @@ def _provider_health() -> list[dict[str, Any]]:
         return [{"operation": "?", "label": "Provider health", "status": "unknown", "detail": str(e)[:100]}]
 
 
+def _spend_health() -> dict[str, Any]:
+    """0.59.0: the reconciliation, in Health, because the gap between recorded and actual spend is exactly the kind
+    of thing that has to be visible on the page a user opens when they wonder where the money went."""
+    try:
+        from . import usage
+        r = usage.reconcile(days=7)
+        return {"billing_mode": r["billing_mode"], "local_is_free": r["local_is_free"], "note": r["note"],
+                "today": r["today"], "week": r["week"], "month": r["month"], "budgets": r["budgets"],
+                "how_to_read": r["how_to_read"]}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _findings_quality_health() -> dict[str, Any]:
     """F1-F5 counts per project. Each `summary` is cached on that project's view revision, so this is cheap after
     the first call and honest about being a FLOOR on duplicates rather than a ceiling (see findings_quality)."""
@@ -2553,6 +2598,7 @@ def health() -> dict[str, Any]:
             "scholar": _scholar_health(),
             "findings_cap": _findings_cap_health(),
             "findings_quality": _findings_quality_health(),
+            "spend": _spend_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "

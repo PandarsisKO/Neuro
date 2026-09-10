@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.10)
+# Neuro Search — architecture map for Claude Code (current state, 0.59.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -90,6 +90,40 @@ package version (the third leg of the delivery ritual, previously only checked b
 where no JavaScript engine exists — a missing `node` is a fact about the machine, and a gate that fails for that
 reason teaches people to ignore gates. Gate `tests/test_s5_ui_syntax.py`.
 
+## Spend: local is free only when we can show it is (0.59.0)
+
+**The measurement.** 2026-09-10, from Kyle's own data: app ledger **$111.96** month-to-date, local Claude Code path
+booked as `saved` **$210.55**, his Anthropic Console **$312.40**. The first two sum to within 3% of the third. L1
+recorded every local call as `cost=0` with the avoided spend in `saved`, on the assumption the CLI runs on a
+subscription — nothing ever checked. Those were real charges, and being booked at zero made them invisible to the
+daily budget, the monthly budget, `SPEND_RATE_CEILING` and Health simultaneously (all four read `cost`). He topped up
+credit for a week while the app told him he had spent a third of what he had.
+
+- `claude_code.billing_mode()` → `subscription` | `api_key` | `unknown`, from whether `ANTHROPIC_API_KEY` is in the
+  environment the CLI inherits (free, no network); `NEUROSEARCH_LOCAL_BILLING` overrides. **`unknown` is treated as
+  BILLED** — assuming free is the specific error that hid $200, and `claude_code.local_is_free()` is the only gate.
+- `usage.record_anthropic` prices a local call as real `cost` unless it is free, in which case it stays `cost=0` with
+  `saved`. Exactly one of the two is ever non-zero, so `recorded + local_if_billed` never double-counts.
+- `usage.reconcile(days)` reports `recorded` / `local_if_billed` / `likely_total` for today, the week, the month and
+  per day — history is NOT rewritten, both numbers sit side by side so a month that looked like $112 can be
+  recognised as $312. `GET /api/usage/reconcile`; Health `spend`; `release-check` warns when the profile is local and
+  billing is not a subscription.
+- **A weekly budget exists** (`weekly_budget`, rolling 7 days, off unless set) because Kyle measures this in weeks,
+  and **`usage.rate_ceiling()` is settable** (`spend_rate_ceiling`): the $6/hour default is ~$1,000/week, which is a
+  runaway detector rather than a budget. `POST /api/usage/spend-settings`.
+Gate `tests/test_s7_local_billing.py`.
+
+## Account walls stop the queue (admission, 0.59.0)
+
+`db.claim_job` consulted the background pause and the rate gate but **not** the account gates, so a walled account
+did not stop the queue — it walked the queue through the wall: claim a paid job, get refused in 0.4 s, park it for
+30 days, claim the next. Measured: **624 `BILLING` attempts on 2026-09-09 and 48 `SPEND_CAP` attempts inside 13
+minutes on 2026-09-10.** Free, but it consumed worker slots free work could have used, made the Jobs panel read as a
+catastrophe when the truth was "the account is capped", and buried the real spend rows in hundreds of refusals.
+`db.account_gate_active()` + `ACCOUNT_HELD_POLICIES` (`api_requested`, `api_only` — unlike the rate ceiling this
+holds `api_only` too, because nothing on the API can succeed); local and free work continues. A corrupt gate value
+fails OPEN. Smallest useful slice of `SCHEDULER-ADMISSION.md`. Gate `tests/test_s6_account_admission.py`.
+
 ## Findings quality — the trash filter (F1–F3, 0.58.0)
 
 `findings_quality.py` ($0, deterministic, **no model call, no network**) is the mechanism Kyle's objective
@@ -138,6 +172,16 @@ monotone in the cap (a larger cap only moves rows from `reserve` to `suggested`,
 one), so raising it can only add. Reversible with no code change:
 `NEUROSEARCH_FINDINGS_CAP_BASE=12 NEUROSEARCH_FINDINGS_CAP_PER_WINDOW=8 NEUROSEARCH_FINDINGS_CAP_MAX=120`.
 Health reports the current cap, whether it was raised, and how to revert (`db.health()["findings_cap"]`).
+
+**Duplicates are not all waste (0.59.0).** Kyle: *"even duplicate data is useful somehow."* Correct, and the app
+already said so — `claims.assess` counts independent sources agreeing as **corroborative sufficiency**. So a cluster
+means two opposite things: one source repeating itself is `redundant` (sweepable), several sources agreeing is
+`corroborated` — evidence, never offered for dismissal, protected ahead of every other rule, and reported as a
+positive (`review()["corroborated"]`). The largest cluster in Kyle's corpus is one SBA pre-screening fact from FOUR
+creators; the first version offered all four for the bin. In `promotable()` this inverts the old rule outright: a
+withheld finding that restates an approved one **from a different source** is the most valuable thing in the reserve
+pile, sorts first, and corroboration outranks a vacuity flag. `NUMBER_WORDS` also fixed a real false positive —
+"finance ten percent of the purchase price" was `no_specifics` for want of a numeral.
 
 **F5 — what the cap already withheld (0.58.5).** F4 raises the cap for FUTURE sources; `findings_quality.promotable`
 answers the other half — of the `reserve` findings already paid for and withheld, which would you actually want? A

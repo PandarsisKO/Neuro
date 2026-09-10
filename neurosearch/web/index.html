@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.10';
+const UI_VERSION = '0.59.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1625,6 +1625,17 @@ async function loadHealth() {
       [`${ok(!((h.perf || {}).slowest || []).some(s => s.p50 > 1))} Slowest endpoints (since restart)`, ((h.perf || {}).slowest || []).length ? (h.perf.slowest.map(s => `${s.key} ${s.p50.toFixed(2)}s p50 / ${s.p90.toFixed(2)}s p90 (${s.n})`).join(' · ') + ' — full picture: Measure speed') : 'nothing measured yet'],
       ...(Object.keys((h.perf || {}).caches || {}).length ? [[`📈 Cache hit rate`, Object.entries(h.perf.caches).map(([k, c]) => `${k} ${c.rate == null ? '—' : (c.rate * 100).toFixed(0) + '%'} (${c.hit}/${c.hit + c.miss})`).join(' · ')]] : []),
       [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
+      // 0.59.0: the recorded-vs-actual spend gap belongs on the page you open when you wonder where the money went.
+      ...(h.spend ? [[
+        `${h.spend.local_is_free ? '✅' : '⚠️'} Spend (recorded vs likely charged)`,
+        `today $${(h.spend.today || {}).likely_total ?? 0} · 7 days $${(h.spend.week || {}).likely_total ?? 0} · month $${(h.spend.month || {}).likely_total ?? 0}`
+        + (h.spend.local_is_free
+            ? ` · local path free (${(h.spend.month || {}).local_calls || 0} calls, $${(h.spend.month || {}).local_if_billed ?? 0} avoided)`
+            : ` — of the month, $${(h.spend.month || {}).recorded ?? 0} was recorded and $${(h.spend.month || {}).local_if_billed ?? 0} came from the local Claude Code path, which is NOT free here`)
+        + ` · budgets: $${(h.spend.budgets || {}).daily ?? '—'}/day, $${(h.spend.budgets || {}).monthly ?? '—'}/month`
+        + ((h.spend.budgets || {}).weekly ? `, $${h.spend.budgets.weekly}/week` : ', no weekly budget set')
+        + ` · ceiling $${(h.spend.budgets || {}).rate_per_hour ?? '—'}/hour`
+      ], [`${h.spend.local_is_free ? '✅' : '⚠️'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
     ];
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
@@ -2471,9 +2482,13 @@ async function loadQuality(st) {
   let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1&status=${st}`); } catch (e) { el.innerHTML = ''; return; }
   if (!s || !s.flagged) { el.innerHTML = ''; return; }
   const bits = [];
-  if (s.duplicates) bits.push(`${s.duplicates} repeat${s.duplicates === 1 ? '' : 's'} of findings you already have`);
+  // 0.59.0, Kyle: "even duplicate data is useful somehow". Right — and this app already agrees: claims.assess
+  // counts independent sources agreeing as corroborative sufficiency. So a repeat WITHIN one source is redundancy,
+  // and the same fact from several sources is evidence. Only the first is offered for a sweep.
+  if (s.duplicates) bits.push(`${s.duplicates} the same source said twice`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected because your plan, chats or Claims use them` : ''}.</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
+  const corr = (s.corroborated || {}).findings || 0;
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
 // The filter can now say which of them are not repeats of something approved and do name something specific.

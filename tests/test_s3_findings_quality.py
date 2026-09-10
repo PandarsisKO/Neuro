@@ -196,7 +196,8 @@ def test_the_surface_publishes_its_own_thresholds_and_rules(project):
 def test_summary_is_the_counts_only(project):
     db.add_project_note(project, "It covers the importance of things", [])
     s = fq.summary(project)
-    assert set(s) == {"findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share"}
+    assert set(s) == {"findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share",
+                      "corroborated"}      # 0.59.0: the banner needs the corroboration count too
     assert "rows" not in s
 
 
@@ -399,3 +400,58 @@ def test_health_reports_the_filter_per_project_and_says_it_is_a_floor():
     assert any(r["project"] == "Health quality" for r in h["projects"])
     assert h["thresholds"]["set_jaccard"] == fq.SET_JACCARD
     assert "FLOOR, not a ceiling" in h["note"]
+
+
+# ------------------------------------------------------------------ 0.59.0: duplicates are not all waste
+
+def test_the_same_source_saying_it_twice_is_redundant_and_sweepable():
+    notes = [_n(1, "Sellers typically finance ten percent of the purchase price via a seller note", src="same"),
+             _n(2, "Sellers usually finance ten percent of the purchase price with a seller note", src="same")]
+    cl = fq.clusters(notes, {})
+    assert len(cl) == 1 and cl[0]["kind"] == "redundant" and cl[0]["n_sources"] == 1
+
+
+def test_several_sources_agreeing_is_corroboration_and_is_never_swept(project):
+    """Kyle: "even duplicate data is useful somehow." He is right, and the app already says so — `claims.assess`
+    counts independent sources agreeing as corroborative sufficiency, and `claim_evidence` tracks independence by
+    creator and lineage to do it. The largest cluster in his corpus is one SBA pre-screening fact stated by FOUR
+    different creators; the first version of this filter offered all four for dismissal."""
+    from neurosearch import ingest
+    ids = []
+    for k in range(3):
+        r = ingest.ingest_text(f"Source {k}", f"0:01 transcript {k}", project_id=project)
+        ids.append(db.add_project_note(
+            project, "Sellers typically finance ten percent of the purchase price via a seller note",
+            [], source_id=r["source_id"])["id"])
+    cl = fq.clusters(db.list_project_notes(project, status="approved"), {})
+    corr = [c for c in cl if c["kind"] == "corroborated"]
+    assert corr and corr[0]["n_sources"] == 3
+    r = fq.review(project)
+    # not offered for dismissal, and reported as a positive in its own right
+    assert all("duplicate" not in row["flags"] for row in r["rows"])
+    assert r["corroborated"]["findings"] == 3
+    assert r["duplicates"] == 0
+    assert "corroboration, not" in r["corroborated"]["note"]
+    for row in fq.review(project, include_used=True)["rows"]:
+        if row["id"] in ids:
+            assert row["pre_select"] is False and "independent sources" in (row["protected"] or "")
+
+
+def test_a_withheld_finding_that_corroborates_an_approved_one_is_worth_promoting(project):
+    """This inverts F5's original rule. A reserve finding restating an approved one FROM ANOTHER SOURCE is how a
+    Claim gets from single-source to independently supported — it is the most valuable thing in the reserve pile,
+    not the thing to skip."""
+    from neurosearch import ingest
+    a = ingest.ingest_text("Approved source", "0:01 one", project_id=project)
+    b = ingest.ingest_text("Reserve source", "0:01 two", project_id=project)
+    db.add_project_note(project, "Sellers typically finance ten percent of the purchase price via a seller note",
+                        [], source_id=a["source_id"])
+    n = db.add_project_note(project, "Sellers usually finance ten percent of the purchase price with a seller note",
+                            [], source_id=b["source_id"])
+    db.set_note_status(n["id"], "reserve")
+    r = fq.promotable(project)
+    row = next(x for x in r["rows"] if x["id"] == n["id"])
+    assert row["corroborates"] is not None
+    assert "corroboration" in row["why"]
+    assert r["corroborating"] >= 1
+    assert r["rows"][0]["id"] == n["id"]            # and it sorts first

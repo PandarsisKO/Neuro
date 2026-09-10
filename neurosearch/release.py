@@ -193,6 +193,21 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     # 0.56.3: what the contracts ASK for is only half of it — a provider can return something else. The local Claude
     # Code CLI did exactly that (claude-haiku-4-5 for a call pinned to claude-sonnet-4-6), which is a silent model
     # substitution arriving from outside the app. `providers.routing_for` now records every one; steady state is none.
+    # 0.59.0: whoever pays for a local call decides whether "local-first" saves money or hides it.
+    try:
+        from . import claude_code as _cc
+        from . import usage as _u
+        mode = _cc.billing_mode()
+        if settings.ai_profile == "local" and mode != _cc.BILLING_SUBSCRIPTION:
+            rec = _u.reconcile(days=7)
+            r.check("local calls are free (Claude Code on a subscription)", False,
+                    f"billing_mode={mode} — {_cc.billing_note()} Last 7 days: ${rec['week']['recorded']:.2f} recorded, "
+                    f"${rec['week']['local_if_billed']:.2f} on the local path, "
+                    f"${rec['week']['likely_total']:.2f} likely charged.", warn=True)
+        else:
+            r.check("local billing understood", True, f"{mode} — {_cc.billing_note()}")
+    except Exception as e:  # noqa: BLE001
+        r.check("local billing understood", False, str(e)[:200], warn=True)
     mm = db.model_mismatches()
     r.check("no model substitutions recorded", not mm,
             "; ".join(f"{m['task']}: asked {m['requested']}, {m['executed_by']} returned {m['actual']} ×{m['count']}" for m in mm)
