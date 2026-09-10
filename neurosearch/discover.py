@@ -304,6 +304,20 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
                               "shown_anyway": len(lib.get("suggestions") or [])}
         for s_ in lib.get("suggestions") or []:
             s_["generic_match"] = True
+    # 0.62.5 — THE RUNG THAT WAS MISSING. Kyle's ladder, in his words: things we chose not to ingest but have seen,
+    # then the web. `knowledge.pursue` has climbed it since G5; Discover went library → catalogues → web. The seen
+    # pool is 10,319 candidates + 558 skipped sources against a library scope of 387.
+    seen: dict[str, Any] = {"items": [], "counts": {"candidates": 0, "skipped": 0}}
+    if mode != "web_only":
+        from . import candidates as _cand
+        from . import perf as _perf
+        try:
+            with _perf.timed("discover.seen"):
+                seen = _cand.seen_for_query(project_id, refine or _library_query(project, None))
+        except Exception as e:  # noqa: BLE001 — a rung that fails must not take the ladder down
+            log.warning("seen-but-not-read pass skipped: %s", e)
+        if progress and seen.get("items"):
+            progress(0.08, f"{seen['total']} already-seen sources match — none of them cost anything to find")
     strong = [] if (lib_vague or owned.get("saturated")) else [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2
               and s.get("coverage", 0) >= library.STRONG_COVERAGE]
     sch = scholar_pass(project, refine, research, progress) if mode != "library_only" else {"run": False, "why": "library_only"}
@@ -318,7 +332,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         if progress:
             progress(0.12, f"{len(sch_saved)} real papers from the catalogues ({sch['open_access']} with free full text)")
     if mode == "scholar_only":
-        return {"added": len(sch_saved), "verified": len(sch_saved), "extra": 0, "items": sch_saved, "library": lib,
+        return {"added": len(sch_saved), "verified": len(sch_saved), "extra": 0, "items": sch_saved, "library": lib, "seen": seen,
                 "mode": mode, "research": research, "scholar": {k: v for k, v in sch.items() if k != "records"},
                 "note": sch.get("why") if not sch.get("run") else
                         f"{len(sch_saved)} records from {', '.join(sch.get('providers') or [])} — every one exists, so none needed verifying."}
@@ -327,7 +341,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
                 f"Your library appears to cover this well ({len(strong)} owned sources match strongly, not yet in this project) — the web search was skipped. "
                 "This is about relevance, not proof that your evidence needs are met: use 'Web first' to search anyway.")
         open_targets = len(research.get("targets") or [])
-        return {"added": 0, "verified": 0, "extra": 0, "note": note, "items": [], "library": lib, "mode": mode, "web_skipped": True, "research": research,
+        return {"added": 0, "verified": 0, "extra": 0, "note": note, "items": [], "library": lib, "seen": seen, "mode": mode, "web_skipped": True, "research": research,
                 "coverage_note": (f"library relevance only — {open_targets} evidence target(s) remain open in the Knowledge Map" if open_targets else "library relevance only; no open evidence targets")}
 
     providers.require_anthropic()
@@ -379,7 +393,7 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     scholar_meta = {k: v for k, v in sch.items() if k != "records"}
     if not verify:
         return {"added": len(saved) + len(sch_saved), "verified": len(sch_saved), "extra": 0, "note": str(data.get("note") or ""),
-                "items": sch_saved + saved, "quick_only": True, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta}
+                "items": sch_saved + saved, "quick_only": True, "library": lib, "seen": seen, "mode": mode, "research": research, "scholar": scholar_meta}
     try:
         shortlist = [{"name": d["name"], "kind": d["kind"], "url": d.get("url") or ""} for d in saved]
         msgs: list[dict[str, Any]] = [{"role": "user", "content": brief + "\n\nSHORTLIST TO CHECK:\n" + json.dumps(shortlist, ensure_ascii=False)}]
@@ -421,5 +435,5 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
                                                f"({sch.get('open_access', 0)} have free full text).")
     # catalogue records first: they are real by construction, where the model's suggestions are checked claims about reality
     return {"added": len(saved) + len(sch_saved), "verified": fixed + len(sch_saved), "extra": added, "note": note,
-            "items": sch_saved + saved, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta,
+            "items": sch_saved + saved, "library": lib, "seen": seen, "mode": mode, "research": research, "scholar": scholar_meta,
             "links": links}

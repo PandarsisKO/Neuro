@@ -344,6 +344,7 @@
           <div class="row" style="margin-top:8px"><select id="discMode" style="width:auto" title="Where to look"><option value="library_first">Library first</option><option value="library_only">Library only ($0)</option><option value="web_first">Web first</option><option value="web_only">Web only</option></select><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
           <div class="muted" id="discMsg" style="margin-top:6px"></div>
           <div id="discResearch" style="margin-top:10px"></div>
+          <div id="discSeen" style="margin-top:10px"></div>
           <div id="discLibrary" style="margin-top:10px"></div>
           <div id="discList" style="margin-top:10px"></div>
         </div>
@@ -587,7 +588,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.4';
+const UI_VERSION = '0.62.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1826,6 +1827,32 @@ async function recheckAccount() {
   loadSpend(); loadJobs();
 }
 // ---- G4: "Evidence already in your library" — suggestions with provenance; nothing is attached until you click Add
+// 0.62.5 — the rung between "what you own" and "the web": sources the app has SEEN and never read (ranked-but-
+// skipped videos, the ingest cutoff, everything exploration enumerated). Kyle's own ordering.
+function renderSeen(seen) {
+  const box = $('#discSeen'); if (!box) return;
+  if (!seen || !(seen.items || []).length) { box.innerHTML = seen && seen.note ? `<div class="muted">👁 ${esc(seen.note)}</div>` : ''; return; }
+  const c = seen.counts || {};
+  box.innerHTML = `<div class="card" style="border-color:var(--ok)"><b>👁 Already seen, never read</b>
+    <span class="muted">(${seen.total} match “${esc(seen.searched || seen.query || '')}” · ${c.candidates || 0} from exploration, ${c.skipped || 0} skipped at the cutoff · $0 to find, and you can read any of them)</span>
+    ${seen.items.map(i => `<div style="padding:6px 0;border-top:1px solid var(--line)"><div class="row"><span style="flex:1"><b>${esc(i.title)}</b>
+      <span class="muted">${esc(i.creator || i.platform || '')}${i.published_at ? ' · ' + esc(i.published_at) : ''} · ${esc(i.why_known)}</span></span>
+      <span class="muted" style="font-size:12px;margin-right:6px">potential ${i.potential}</span>
+      <button class="small primary" onclick="captureSeen('${i.kind}','${i.id}', this)">Read this</button></div>
+      ${(i.why || []).length ? `<div class="muted" style="font-size:12.5px">${esc((i.why || []).slice(0, 3).join(' · '))}${i.fits ? ' · fits: ' + esc(i.fits) : ''}</div>` : ''}</div>`).join('')}
+    </div>`;
+}
+async function captureSeen(kind, id, btn) {
+  // Same acknowledgement discipline as discAdd (0.60.1): the work is queued, so the click itself has to say so.
+  const was = btn.textContent; btn.disabled = true; btn.textContent = '⏳ queueing…';
+  try {
+    if (kind === 'skipped') await post(`/api/sources/${id}/retry`, {});
+    else await post(`/api/candidates/${id}/acquire`, { project_id: state.project.id });
+    btn.textContent = 'queued ✓';
+    toast('⏵ queued for reading — it appears in Sources as it is read');
+    loadJobs(); loadSources();
+  } catch (e) { btn.disabled = false; btn.textContent = was; toast(e.message || e, 'err'); }
+}
 function renderLibrarySuggestions(lib) {
   const box = $('#discLibrary'); if (!lib) { box.innerHTML = ''; return; }
   const items = lib.suggestions || [];
@@ -2263,7 +2290,7 @@ async function runDiscover() {
       for (;;) {
         await new Promise(res => setTimeout(res, 2500));
         const j = await api(`/api/jobs/${r.job_id}`);
-        if (j.status === 'done') { const res = j.result || {}; $('#discMsg').textContent = (res.note || '') + (res.added === 0 && !res.web_skipped ? ' (nothing new beyond what was already suggested)' : ''); renderLibrarySuggestions(res.library); renderResearchHeader(res.research); break; }
+        if (j.status === 'done') { const res = j.result || {}; $('#discMsg').textContent = (res.note || '') + (res.added === 0 && !res.web_skipped ? ' (nothing new beyond what was already suggested)' : ''); renderSeen(res.seen); renderLibrarySuggestions(res.library); renderResearchHeader(res.research); break; }
         if (j.status === 'failed') { $('#discMsg').textContent = 'error: ' + (j.message || 'discover failed'); break; }
         tick(j.message);
         if ((j.progress || 0) >= 0.45) loadDiscoveries(true);   // first take is in — show it while links are verified

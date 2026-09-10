@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.4)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.5)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,43 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The rung Discover never had: seen, and never read (0.62.5)
+
+Kyle, after four releases of me fixing the matcher: *"what I wanted was to search for content we chose not to
+ingest but that the app has seen at some point, like videos that were ranked but not chosen for transcription. if
+we do not find things there, then web, youtube, social media, academic papers etc."*
+
+That ladder already existed — `knowledge.pursue` has climbed project → library → candidates → external since G5.
+**Discover went library → catalogues → web and skipped the candidates rung entirely.** Measured on his live
+database, the rung it skipped is an order of magnitude larger than the one it was searching:
+
+```
+seen and never ingested   10,319 candidates + 558 sources skipped at the cutoff
+library scope (searched)     387 sources outside the project
+```
+
+| query | in the seen pool | what is actually in there |
+|---|---|---|
+| quality of earnings | 1 | an Acquisition Lab Quality-of-Earnings advisor |
+| due diligence | 19 | business-acquisition interviews, all of them |
+| sba | 43 | Ben Kelly, Acquiring Minds |
+| cpa | 13 + 8 skipped | Hector Garcia CPA, LYFE Accounting, Matt Bontrager |
+
+Against which the library pass offered six short-term-rental tax videos. **The material he wanted was in the
+database the whole time, one table away from the one being searched** — and four releases of matcher work could
+never have found it, because it was never in the pool being matched.
+
+`candidates.seen_for_query` adds no data model (G3: extend, never duplicate). `candidates.search` is the metadata
+FTS; `_potential` is the existing $0 scan that ranks an uncaptured item against THIS project's open questions,
+vocabulary and creator yield; sources skipped at the ingest cutoff are searched in the same pass because to a user
+they are the same thing. The subject word decides what is searched — a title is a few words long, so ANDing every
+query term finds nothing, and 0.62.0's anchor already knows which word names the subject.
+
+**Project grounding enters as RANKING, never as a filter.** That is the distinction 0.62.4's failed experiment
+missed: everything found stays findable, and the project decides the order. UI: an "👁 Already seen, never read"
+block above the library block, each row with what it is, why it is known, its potential score and a "Read this"
+button that queues the existing acquire path. Gate `tests/test_s19_seen_rung.py`.
 
 ## Your library is exhausted on this subject, and the card said the opposite (0.62.4)
 

@@ -495,6 +495,87 @@ def where_to_look(project_id: str, target: dict[str, Any] | None = None, limit: 
                                        f"is no rate to project from.")}
 
 
+SEEN_LIMIT = 12               # what a Discover rung shows before the web is worth trying (0.62.5)
+
+
+def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict[str, Any]:
+    """The rung Discover never had: sources this app has ALREADY SEEN and chose not to read.
+
+    Kyle: *"what I wanted was to search for content we chose not to ingest but that the app has seen at some point,
+    like videos that were ranked but not chosen for transcription. if we do not find things there, then web,
+    youtube, social media, academic papers etc."* `knowledge.pursue` has climbed exactly that ladder since G5
+    (project → library → candidates → external); **Discover went library → catalogues → web and skipped the
+    candidates rung entirely.**
+
+    Measured on his live database, 2026-09-10 — the reservoir is an order of magnitude larger than the library
+    scope it was searching instead (10,319 seen-and-never-ingested candidates plus 558 sources skipped at the
+    cutoff, against 387 library sources outside the project):
+
+        query                  seen, never ingested   what is in there
+        quality of earnings     1                     an Acquisition Lab Quality-of-Earnings advisor
+        due diligence          19                     all business-acquisition interviews
+        sba                    43                     Ben Kelly, Acquiring Minds
+        cpa                    13 + 8 skipped         Hector Garcia CPA, LYFE Accounting, Matt Bontrager
+
+    Against which the library pass offered six short-term-rental tax videos. The material he wanted was in the
+    database the whole time, one table away from the one being searched.
+
+    Two existing mechanisms, no new data model (G3's rule: extend, never duplicate). `search` is the metadata FTS
+    over candidates; `_potential` is the $0 scan that ranks an uncaptured item against THIS project's open
+    questions, vocabulary and creator yield — which is also where project grounding legitimately enters, since it
+    ranks rather than filters. Skipped sources are searched in the same pass because to a user they are the same
+    thing: something the app saw and did not read."""
+    from . import library
+    q = (query or "").strip()
+    if not q:
+        return {"query": q, "items": [], "counts": {"candidates": 0, "skipped": 0}, "searched": None}
+    # The anchor is the word that names the subject (0.62.0). A two-word search whose terms are ANDed finds almost
+    # nothing in metadata as short as a title, so the subject word is what is searched, and the rest ranks.
+    terms = library._tokens(q)
+    anchor = library.query_anchor(terms)
+    searched = anchor.get("term") or (sorted(terms)[0] if terms else q)
+    qs, vocab = _gap_terms(project_id)
+    cy = creator_yield(project_id)
+    items: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for c in search(project_id, searched, limit=limit * 6):
+        if c.get("source_id") or c.get("state") in ("dismissed", "acquired"):
+            continue
+        if c["id"] in seen_ids:
+            continue
+        seen_ids.add(c["id"])
+        score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"),
+                                     [], creator=c.get("creator"), creator_stats=cy)
+        items.append({"kind": "candidate", "id": c["id"], "title": c.get("title") or c["url"], "url": c["url"],
+                      "creator": c.get("creator"), "published_at": c.get("published_at"), "platform": c["platform"],
+                      "duration": c.get("duration"), "potential": score, "fits": fit, "why": why,
+                      "why_known": "seen but never read",
+                      "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire",
+                                              "body": {"project_id": project_id}, "label": "Read this"},
+                                  "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss",
+                                              "body": {"project_id": project_id}, "label": "Not for this project"}}})
+    like = f"%{searched.lower()}%"
+    for s_ in db.connect().execute(
+            "SELECT id, url, title, description, channel, platform, published_at, duration FROM sources "
+            "WHERE status='skipped' AND (lower(title) LIKE ? OR lower(COALESCE(description,'')) LIKE ?) LIMIT ?",
+            (like, like, limit * 4)):
+        score, fit, why = _potential(s_["title"] or "", s_["description"] or "", qs, vocab, None, [],
+                                     creator=s_["channel"], creator_stats=cy)
+        items.append({"kind": "skipped", "id": s_["id"], "title": s_["title"] or s_["url"], "url": s_["url"],
+                      "creator": s_["channel"], "published_at": s_["published_at"], "platform": s_["platform"],
+                      "duration": s_["duration"], "potential": score, "fits": fit, "why": why,
+                      "why_known": "skipped at the ingest cutoff",
+                      "actions": {"capture": {"method": "POST", "endpoint": f"/api/sources/{s_['id']}/retry",
+                                              "label": "Read it anyway"}}})
+    items.sort(key=lambda i: (-i["potential"], i["title"]))
+    counts = {"candidates": sum(1 for i in items if i["kind"] == "candidate"),
+              "skipped": sum(1 for i in items if i["kind"] == "skipped")}
+    return {"query": q, "searched": searched, "items": items[:limit], "total": len(items), "counts": counts,
+            "note": (f"{len(items)} sources this app has already seen and never read mention \"{searched}\" "
+                     f"({counts['candidates']} from exploration, {counts['skipped']} skipped at the cutoff)")
+                    if items else f"nothing the app has seen but not read mentions \"{searched}\""}
+
+
 def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
     """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
     why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web."""
