@@ -790,3 +790,33 @@ Token counts per task are first-class in that file, so the tokenizer change show
 ## 0.38.0 — L1 local provider: what is and is not frozen
 
 Tier 1 totals (34 / 196,951 etc.) are per task and prompt, not per provider, and remain frozen; the fake local provider answers with the same fixture outputs. The ledger's `saved` on `transport='local'` rows ("avoided spend") is NEW and UNFROZEN — informational, priced at the contract's API model. The default profile is cloud, so no live behaviour changed at 0.38.0. Not yet recorded: the CLI model each task actually ran on and its timings (first live run on the Mac), and Golden-Project quality with the local provider (run `neurosearch eval` under `NEUROSEARCH_AI_PROFILE=local`, unfrozen).
+
+
+## 0.56.2 — changed assertion (recorded)
+
+`tests/test_r9_claims_arm.py::test_the_candidate_model_actually_reaches_this_command`
+`len(arms["planner"]) == 3` → `== 2` for a **Haiku** candidate, plus a new `== 3` assertion for a Sonnet 5 candidate.
+
+The old assertion was wrong, not merely outdated: with `candidate="claude-haiku-4-5"` it asserted the existence of a
+`candidate-adaptive` arm that `contracts.validate` refuses on sight (adaptive thinking is Claude 5 only). It passed
+because `task_arms` built the arm unconditionally and nothing constructed its contract until the live run reached it —
+which is precisely how the first live Haiku comparison died after paying for two planner arms. Three arms is a fact
+about the candidate model, so the test now asserts it against both kinds of candidate.
+
+Live evidence bought before that crash (kept — the per-arm JSON survived at
+`evals/migration-compare/20260909-180341-b9dc1d0/`): baseline `claude-sonnet-4-6` vs candidate `claude-haiku-4-5` on
+the planner, $0.39 total.
+
+| | rubric | structure | refs | repaired | truncated | cost | s |
+|---|---|---|---|---|---|---|---|
+| planner.analysis · sonnet-4-6 | 1.0 (11/11) | 1.0 | 80 | 0 | 0 | $0.1060 | 111.8 |
+| planner.analysis · haiku-4-5 | 0.909 (10/11) | 0.875 | 60 | 1 | 1 | $0.0440 | 84.8 |
+| planner.build · sonnet-4-6 | 1.0 (24/24) | 1.0 | 44 | 0 | 0 | $0.1538 | 178.3 |
+| planner.build · haiku-4-5 | 0.958 (23/24) | **0.5** | 84 | 1 | 1 | $0.0878 | 173.5 |
+
+Haiku is ~2.4× cheaper and ~1.3× faster, and its rubric score is within tolerance (`RUBRIC_TOLERANCE` 0.10) on both
+tasks. The failure is STRUCTURAL, not judgemental: both Haiku passes hit `max_tokens` (7,000 then 16,000) and needed
+JSON repair, and the repaired `planner.build` lost `this_week`, `open_questions`, `refine_questions` and `gotchas`
+entirely — `structure 0.5`, four sections at 0 items. The plan it produced reads as competent and is missing half its
+scaffolding. n=1, and the planner is held at Sonnet 5 by a `user` reason (Kyle's), so this changes no default; it does
+say that any future Haiku planner arm needs a much larger `max_output_tokens` before its quality can be judged at all.

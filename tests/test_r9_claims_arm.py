@@ -50,7 +50,12 @@ def test_the_candidate_model_actually_reaches_this_command():
         models = {m for _, m, _, _ in a}
         assert models == {"claude-sonnet-5", "claude-haiku-4-5"}, task
         assert {lbl for lbl, *_ in a} <= {migration.SLOT_BASE, migration.SLOT_CAND, migration.SLOT_ADAPT}
-    assert "claims.extract" in arms and len(arms["planner"]) == 3
+    assert "claims.extract" in arms
+    # 0.56.2 CHANGED this assertion: it used to read `len(arms["planner"]) == 3` with Haiku as the candidate, which
+    # asserted the very arm that cannot run — a `candidate-adaptive` arm on a Claude 4 model. The arm count follows
+    # the candidate's capability; three arms is the Claude 5 case (see tests/test_s1_arm_preflight.py).
+    assert len(arms["planner"]) == 2                                            # haiku candidate: no adaptive arm
+    assert len(migration.task_arms("claude-sonnet-4-6", "claude-sonnet-5")["planner"]) == 3
     assert len(migration.task_arms("a", "b", skip_adaptive=True)["planner"]) == 2
     # the slots are positions, not model names — the model is recorded in the arm's meta
     assert migration.SLOT_BASE == "baseline" and migration.SLOT_CAND == "candidate"

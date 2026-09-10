@@ -45,19 +45,58 @@ ARM_ADAPT = ("candidate-adaptive", CANDIDATE_MODEL, "adaptive", "medium")
 SLOT_BASE, SLOT_CAND, SLOT_ADAPT = "baseline", "candidate", "candidate-adaptive"
 
 
+def supports_adaptive(model: str) -> bool:
+    """Only Claude 5 models take adaptive thinking (`contracts.validate` refuses the pairing outright)."""
+    from . import contracts
+    return contracts.model_family(model) == "claude-5"
+
+
 def task_arms(baseline: str = BASELINE_MODEL, candidate: str = CANDIDATE_MODEL, skip_adaptive: bool = False) -> dict[str, list[tuple[str, str, str, str | None]]]:
+    """The arms each task runs. 0.56.2: the adaptive planner arm is dropped when the CANDIDATE cannot run adaptive
+    thinking, instead of being built and then blowing up inside the loop. `--candidate-model claude-haiku-4-5` built
+    a `candidate-adaptive` arm that `contracts.validate` rejects on sight; the ContractError landed after the two
+    real planner arms had already been paid for, so $0.39 of completed measurement went in the bin with it. An arm
+    that cannot possibly run is a fact about the models, knowable for free before the first call."""
     base = (SLOT_BASE, baseline, "disabled", None)
     cand = (SLOT_CAND, candidate, "disabled", None)
     arms: dict[str, list[tuple[str, str, str, str | None]]] = {t: [base, cand] for t in TASK_ARMS}
-    if not skip_adaptive and "planner" in arms:
+    if not skip_adaptive and "planner" in arms and supports_adaptive(candidate):
         arms["planner"] = [base, cand, (SLOT_ADAPT, candidate, "adaptive", "medium")]
     return arms
+
+
+def validate_arms(arms_for: dict[str, list[tuple[str, str, str, str | None]]]) -> list[str]:
+    """Build every arm's contract before anything is spent and return the ones that will not validate. This is the
+    arm-level twin of `preflight`: an unknown model id fails there, an impossible model/thinking pairing fails here,
+    and both fail free."""
+    from . import contracts
+    bad: list[str] = []
+    for task, arms in arms_for.items():
+        tasks = TASK_CONTRACTS.get(task, [task])
+        for label, model, thinking, effort in arms:
+            saved = _set_arm(tasks, model, thinking, effort)
+            try:
+                for t in tasks:
+                    try:
+                        contracts.contract(t)
+                    except Exception as e:  # noqa: BLE001
+                        bad.append(f"{t} · arm {label} ({model}, thinking={thinking}{'/' + effort if effort else ''}): {e}")
+            finally:
+                _restore_env(saved)
+    return bad
 TASK_ARMS: dict[str, list[tuple[str, str, str, str | None]]] = {
     "planner": [ARM_BASE, ARM_DIS, ARM_ADAPT],
     "planner.update": [ARM_BASE, ARM_DIS],
     "export.synthesis": [ARM_BASE, ARM_DIS],
     "answer.chat": [ARM_BASE, ARM_DIS],
     "claims.extract": [ARM_BASE, ARM_DIS],
+}
+TASK_CONTRACTS: dict[str, list[str]] = {      # which contracts an arm of this task actually re-points (mirrors the _set_arm calls below)
+    "planner": ["planner.analysis", "planner.build"],
+    "planner.update": ["planner.update"],
+    "export.synthesis": ["export.synthesis"],
+    "answer.chat": ["answer.chat", "answer.repair"],
+    "claims.extract": ["claims.extract"],
 }
 # tolerances (n=1 runs): a candidate may not fall further than this below the baseline on the decision metrics
 RUBRIC_TOLERANCE = 0.10          # ~2 rubric checks of ~24
@@ -778,6 +817,11 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     from . import usage as _usage
     rubric = load_rubric()
     arms_for = task_arms(baseline_model, candidate_model, skip_adaptive)
+    bad_arms = validate_arms(arms_for)
+    if bad_arms:
+        raise RuntimeError("these arms cannot run (checked before any spending, nothing was charged):\n  - " + "\n  - ".join(bad_arms))
+    if not skip_adaptive and not supports_adaptive(candidate_model):
+        progress(f"adaptive planner arm skipped: {candidate_model} does not support adaptive thinking")
     spend = expected_spend(arms_for)
     progress(f"expected spend ≈ ${spend['estimate']:.2f}, maximum ≈ ${spend['maximum']:.2f} (eval-only budget ${spend['budget']:.2f} in the temporary database; your real budget is untouched)")
     db.kv_set("daily_budget", str(spend["budget"]))
@@ -814,135 +858,144 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
         f = d / name
         f.write_text(json.dumps(obj, indent=1, default=str)); rep["files"].append(str(f))
 
-    # ---- planner: analysis + build (3 arms)
-    arms_p: dict[str, dict[str, Any]] = {}
-    metas_p: dict[str, dict[str, Any]] = {}
-    base_plan: dict[str, Any] | None = None
-    for label, model, thinking, effort in arms_for["planner"]:
-        if skip_adaptive and thinking == "adaptive":
-            continue
-        saved = _set_arm(["planner.analysis", "planner.build"], model, thinking, effort)
-        try:
-            metas_p[label] = _arm_meta(label, model, thinking, effort, ["planner.analysis", "planner.build"])
-            progress(f"[planner · {label}] {model} thinking={thinking}{'/' + effort if effort else ''}")
-            arms_p[label] = run_planner_arm(pid, live, rubric)
-        finally:
-            _restore_env(saved)
-        a = arms_p[label]
-        for t in ("planner.analysis", "planner.build"):
-            tt = a["tasks"][t]
-            progress(f"[{t} · {label}] rubric {tt['rubric']['score']} ({tt['rubric']['passed']}/{tt['rubric']['total']}) · structure {tt['rubric']['structure']['score']} · refs {tt['evidence_refs']} · "
-                     f"repaired {tt['json_repaired']} · truncated {tt['truncated']} · ${tt['cost']:.4f} · {tt['seconds']}s · returned {tt['invocations'].get('returned_model')}")
-        if label == SLOT_BASE:
-            base_plan = {"plan": a["plan"], "analysis": a["analysis"]}
-        save(f"planner-{label}.json", {k: v for k, v in a.items()})
-        _restore_state(pid, mark)
-    rep["arms"]["planner"] = {k: {"meta": metas_p[k], **{kk: vv for kk, vv in v.items() if kk not in ("plan", "analysis")}} for k, v in arms_p.items()}
-    for t in ("planner.analysis", "planner.build"):
-        rep["verdicts"][t] = planner_verdict(t, arms_p, metas_p)
-
-    # ---- planner.update (2 arms): the 4.6 plan is the frozen current plan; one new finding + one new fact arrive after it
-    arms_u: dict[str, dict[str, Any]] = {}
-    metas_u: dict[str, dict[str, Any]] = {}
-    if base_plan and base_plan["plan"]:
-        frozen = dict(base_plan["plan"])
-        if base_plan["analysis"]:
-            frozen["analysis"] = base_plan["analysis"]
-        yt = ids.get("yt01")
-        src = db.get_source(yt) if yt else None
-        for label, model, thinking, effort in arms_for["planner.update"]:
-            db.save_plan(pid, json.loads(json.dumps(frozen)), db.project_snapshot(pid))
-            time.sleep(0.02)
-            cite = [{"n": 1, "source_id": yt, "title": src["title"], "channel": src.get("channel"), "url": src["url"], "link": src["url"],
-                     "timestamp": "0:12", "start": 12, "end": 12, "platform": src["platform"], "snippet": "ten percent equity injection"}] if src else []
-            db.add_project_note(pid, UPDATE_FINDING + " [1]", cite)
-            db.add_fact(pid, UPDATE_FACT[0], UPDATE_FACT[1])
-            saved = _set_arm(["planner.update"], model, thinking, effort)
+    # 0.56.2: a stage that dies must not take the completed stages with it. The Haiku run lost two paid planner
+    # arms to a ContractError raised while setting up a third — the per-arm JSON files survived on disk but the
+    # comparison report was never written, so nothing said what the $0.39 had already measured.
+    stage_error: dict[str, Any] | None = None
+    try:
+        # ---- planner: analysis + build (3 arms)
+        arms_p: dict[str, dict[str, Any]] = {}
+        metas_p: dict[str, dict[str, Any]] = {}
+        base_plan: dict[str, Any] | None = None
+        for label, model, thinking, effort in arms_for["planner"]:
+            if skip_adaptive and thinking == "adaptive":
+                continue
+            saved = _set_arm(["planner.analysis", "planner.build"], model, thinking, effort)
             try:
-                metas_u[label] = _arm_meta(label, model, thinking, effort, ["planner.update"])
-                progress(f"[planner.update · {label}] {model} thinking={thinking}")
-                arms_u[label] = run_update_arm(pid, live)
+                metas_p[label] = _arm_meta(label, model, thinking, effort, ["planner.analysis", "planner.build"])
+                progress(f"[planner · {label}] {model} thinking={thinking}{'/' + effort if effort else ''}")
+                arms_p[label] = run_planner_arm(pid, live, rubric)
             finally:
                 _restore_env(saved)
-            u = arms_u[label]
-            progress(f"[planner.update · {label}] {u['n_updates']} updates · new finding addressed {u['addresses_new_finding']} · new fact {u['addresses_new_fact']} · "
-                     f"repaired {u['json_repaired']} · ${u['cost']:.4f} · {u['seconds']}s · returned {u['invocations'].get('returned_model')}")
-            save(f"planner.update-{label}.json", u)
+            a = arms_p[label]
+            for t in ("planner.analysis", "planner.build"):
+                tt = a["tasks"][t]
+                progress(f"[{t} · {label}] rubric {tt['rubric']['score']} ({tt['rubric']['passed']}/{tt['rubric']['total']}) · structure {tt['rubric']['structure']['score']} · refs {tt['evidence_refs']} · "
+                         f"repaired {tt['json_repaired']} · truncated {tt['truncated']} · ${tt['cost']:.4f} · {tt['seconds']}s · returned {tt['invocations'].get('returned_model')}")
+            if label == SLOT_BASE:
+                base_plan = {"plan": a["plan"], "analysis": a["analysis"]}
+            save(f"planner-{label}.json", {k: v for k, v in a.items()})
             _restore_state(pid, mark)
-        rep["arms"]["planner.update"] = {k: {"meta": metas_u[k], **v} for k, v in arms_u.items()}
-        rep["verdicts"]["planner.update"] = update_verdict(arms_u, metas_u)
-    else:
-        rep["verdicts"]["planner.update"] = {"task": "planner.update", "verdict": "FAIL", "headline": "FAIL — no baseline plan to update (4.6 build failed)", "fails": ["no baseline plan"], "caveats": [], "notes": []}
+        rep["arms"]["planner"] = {k: {"meta": metas_p[k], **{kk: vv for kk, vv in v.items() if kk not in ("plan", "analysis")}} for k, v in arms_p.items()}
+        for t in ("planner.analysis", "planner.build"):
+            rep["verdicts"][t] = planner_verdict(t, arms_p, metas_p)
 
-    # ---- export.synthesis (2 arms)
-    arms_e: dict[str, dict[str, Any]] = {}
-    metas_e: dict[str, dict[str, Any]] = {}
-    for label, model, thinking, effort in arms_for["export.synthesis"]:
-        saved = _set_arm(["export.synthesis"], model, thinking, effort)
-        try:
-            metas_e[label] = _arm_meta(label, model, thinking, effort, ["export.synthesis"])
-            progress(f"[export.synthesis · {label}] {model} thinking={thinking}")
-            arms_e[label] = run_export_arm(pid, live)
-        finally:
-            _restore_env(saved)
-        e = arms_e[label]
-        progress(f"[export.synthesis · {label}] {e['words']} words · sections {e['sections_present']}/{len(EXPORT_SECTIONS)} · links {e['citation_links']} (invented {e['n_invented_links']}, coverage {e['link_coverage']}) · "
-                 f"truncated {e['truncated']} · ${e['usage']['cost']:.4f} · {e['seconds']}s · returned {e['invocations'].get('returned_model')}")
-        save(f"export.synthesis-{label}.json", e)
-        (d / f"export.synthesis-{label}.md").write_text(e["text"])
-        _restore_state(pid, mark)
-    rep["arms"]["export.synthesis"] = {k: {"meta": metas_e[k], **{kk: vv for kk, vv in v.items() if kk != "text"}} for k, v in arms_e.items()}
-    rep["verdicts"]["export.synthesis"] = export_verdict(arms_e, metas_e)
+        # ---- planner.update (2 arms): the 4.6 plan is the frozen current plan; one new finding + one new fact arrive after it
+        arms_u: dict[str, dict[str, Any]] = {}
+        metas_u: dict[str, dict[str, Any]] = {}
+        if base_plan and base_plan["plan"]:
+            frozen = dict(base_plan["plan"])
+            if base_plan["analysis"]:
+                frozen["analysis"] = base_plan["analysis"]
+            yt = ids.get("yt01")
+            src = db.get_source(yt) if yt else None
+            for label, model, thinking, effort in arms_for["planner.update"]:
+                db.save_plan(pid, json.loads(json.dumps(frozen)), db.project_snapshot(pid))
+                time.sleep(0.02)
+                cite = [{"n": 1, "source_id": yt, "title": src["title"], "channel": src.get("channel"), "url": src["url"], "link": src["url"],
+                         "timestamp": "0:12", "start": 12, "end": 12, "platform": src["platform"], "snippet": "ten percent equity injection"}] if src else []
+                db.add_project_note(pid, UPDATE_FINDING + " [1]", cite)
+                db.add_fact(pid, UPDATE_FACT[0], UPDATE_FACT[1])
+                saved = _set_arm(["planner.update"], model, thinking, effort)
+                try:
+                    metas_u[label] = _arm_meta(label, model, thinking, effort, ["planner.update"])
+                    progress(f"[planner.update · {label}] {model} thinking={thinking}")
+                    arms_u[label] = run_update_arm(pid, live)
+                finally:
+                    _restore_env(saved)
+                u = arms_u[label]
+                progress(f"[planner.update · {label}] {u['n_updates']} updates · new finding addressed {u['addresses_new_finding']} · new fact {u['addresses_new_fact']} · "
+                         f"repaired {u['json_repaired']} · ${u['cost']:.4f} · {u['seconds']}s · returned {u['invocations'].get('returned_model')}")
+                save(f"planner.update-{label}.json", u)
+                _restore_state(pid, mark)
+            rep["arms"]["planner.update"] = {k: {"meta": metas_u[k], **v} for k, v in arms_u.items()}
+            rep["verdicts"]["planner.update"] = update_verdict(arms_u, metas_u)
+        else:
+            rep["verdicts"]["planner.update"] = {"task": "planner.update", "verdict": "FAIL", "headline": "FAIL — no baseline plan to update (4.6 build failed)", "fails": ["no baseline plan"], "caveats": [], "notes": []}
 
-    # ---- claims.extract (2 arms) — the most expensive HELD task; this is the arm that pays its `irreversible` debt
-    arms_cl: dict[str, dict[str, Any]] = {}
-    metas_cl: dict[str, dict[str, Any]] = {}
-    cl_before: dict[str, Any] = {}
-    cl_ids: list[str] = []
-    for label, model, thinking, effort in arms_for["claims.extract"]:
-        saved = _set_arm(["claims.extract"], model, thinking, effort)
-        try:
-            metas_cl[label] = _arm_meta(label, model, thinking, effort, ["claims.extract"])
-            progress(f"[claims.extract · {label}] {model} thinking={thinking}")
-            arms_cl[label] = run_claims_arm(pid, live)
-        finally:
-            _restore_env(saved)
-        cl = arms_cl[label]
-        if not cl_ids:                                        # remember arm one's INPUT so arm two starts from it
-            cl_ids = [r["id"] for r in cl.get("rows") or []]
-            cl_before = {"claims": {r["id"]: {"text": r["before"], "type": (r.get("type") or ["other", "other"])[0],
-                                              "topic": (r.get("topic") or [None, None])[0],
-                                              "freshness": (r.get("freshness") or ["slow_changing", "slow_changing"])[0]}
-                                    for r in cl.get("rows") or []}}
-        progress(f"[claims.extract · {label}] cohort {cl['cohort']} · normalized {cl['normalized']} · qualifiers {cl['qualifier_rate']:.0%} · "
-                 f"hedges kept {cl['hedge_rate']:.0%} · over-generalized {cl['n_over_generalized']} · merges {cl['merged']} · "
-                 f"${cl['usage']['cost']:.4f} · {cl['seconds']}s · returned {cl['invocations'].get('returned_model')}")
-        save(f"claims.extract-{label}.json", {k: v for k, v in cl.items() if not k.startswith("_")})
-        _reset_normalization(pid, cl_ids, cl_before)
-        _restore_state(pid, mark)
-    rep["arms"]["claims.extract"] = {k: {"meta": metas_cl[k], **{kk: vv for kk, vv in v.items() if kk not in ("rows", "_before")}}
-                                     for k, v in arms_cl.items()}
-    rep["verdicts"]["claims.extract"] = claims_verdict(arms_cl, metas_cl)
+        # ---- export.synthesis (2 arms)
+        arms_e: dict[str, dict[str, Any]] = {}
+        metas_e: dict[str, dict[str, Any]] = {}
+        for label, model, thinking, effort in arms_for["export.synthesis"]:
+            saved = _set_arm(["export.synthesis"], model, thinking, effort)
+            try:
+                metas_e[label] = _arm_meta(label, model, thinking, effort, ["export.synthesis"])
+                progress(f"[export.synthesis · {label}] {model} thinking={thinking}")
+                arms_e[label] = run_export_arm(pid, live)
+            finally:
+                _restore_env(saved)
+            e = arms_e[label]
+            progress(f"[export.synthesis · {label}] {e['words']} words · sections {e['sections_present']}/{len(EXPORT_SECTIONS)} · links {e['citation_links']} (invented {e['n_invented_links']}, coverage {e['link_coverage']}) · "
+                     f"truncated {e['truncated']} · ${e['usage']['cost']:.4f} · {e['seconds']}s · returned {e['invocations'].get('returned_model')}")
+            save(f"export.synthesis-{label}.json", e)
+            (d / f"export.synthesis-{label}.md").write_text(e["text"])
+            _restore_state(pid, mark)
+        rep["arms"]["export.synthesis"] = {k: {"meta": metas_e[k], **{kk: vv for kk, vv in v.items() if kk != "text"}} for k, v in arms_e.items()}
+        rep["verdicts"]["export.synthesis"] = export_verdict(arms_e, metas_e)
 
-    # ---- answer.chat + answer.repair (2 arms)
-    arms_c: dict[str, dict[str, Any]] = {}
-    metas_c: dict[str, dict[str, Any]] = {}
-    for label, model, thinking, effort in arms_for["answer.chat"]:
-        saved = _set_arm(["answer.chat", "answer.repair"], model, thinking, effort)
-        try:
-            metas_c[label] = _arm_meta(label, model, thinking, effort, ["answer.chat", "answer.repair"])
-            progress(f"[answer.chat · {label}] {model} thinking={thinking}")
-            arms_c[label] = run_chat_arm(pid, ids, man, live, progress)
-        finally:
-            _restore_env(saved)
-        c = arms_c[label]
-        progress(f"[answer.chat · {label}] citation validity {c['citation_validity']} · expected source {c['answers_cite_expected_source']} · contradictions {c['contradiction_surfaced']} · gaps {c['gap_detection']} · "
-                 f"repairs {c['repair_rounds']} · truncated {c['truncated_answers']} · ${c['usage']['cost']:.4f} · {c['s_per_answer']}s/answer · returned {c['invocations'].get('returned_model')}")
-        save(f"answer.chat-{label}.json", c)
-        _restore_state(pid, mark)
-    rep["arms"]["answer.chat"] = {k: {"meta": metas_c[k], **{kk: vv for kk, vv in v.items() if kk != "per_question"}} for k, v in arms_c.items()}
-    rep["verdicts"]["answer.chat"], rep["verdicts"]["answer.repair"] = chat_verdict(arms_c, metas_c)
+        # ---- claims.extract (2 arms) — the most expensive HELD task; this is the arm that pays its `irreversible` debt
+        arms_cl: dict[str, dict[str, Any]] = {}
+        metas_cl: dict[str, dict[str, Any]] = {}
+        cl_before: dict[str, Any] = {}
+        cl_ids: list[str] = []
+        for label, model, thinking, effort in arms_for["claims.extract"]:
+            saved = _set_arm(["claims.extract"], model, thinking, effort)
+            try:
+                metas_cl[label] = _arm_meta(label, model, thinking, effort, ["claims.extract"])
+                progress(f"[claims.extract · {label}] {model} thinking={thinking}")
+                arms_cl[label] = run_claims_arm(pid, live)
+            finally:
+                _restore_env(saved)
+            cl = arms_cl[label]
+            if not cl_ids:                                        # remember arm one's INPUT so arm two starts from it
+                cl_ids = [r["id"] for r in cl.get("rows") or []]
+                cl_before = {"claims": {r["id"]: {"text": r["before"], "type": (r.get("type") or ["other", "other"])[0],
+                                                  "topic": (r.get("topic") or [None, None])[0],
+                                                  "freshness": (r.get("freshness") or ["slow_changing", "slow_changing"])[0]}
+                                        for r in cl.get("rows") or []}}
+            progress(f"[claims.extract · {label}] cohort {cl['cohort']} · normalized {cl['normalized']} · qualifiers {cl['qualifier_rate']:.0%} · "
+                     f"hedges kept {cl['hedge_rate']:.0%} · over-generalized {cl['n_over_generalized']} · merges {cl['merged']} · "
+                     f"${cl['usage']['cost']:.4f} · {cl['seconds']}s · returned {cl['invocations'].get('returned_model')}")
+            save(f"claims.extract-{label}.json", {k: v for k, v in cl.items() if not k.startswith("_")})
+            _reset_normalization(pid, cl_ids, cl_before)
+            _restore_state(pid, mark)
+        rep["arms"]["claims.extract"] = {k: {"meta": metas_cl[k], **{kk: vv for kk, vv in v.items() if kk not in ("rows", "_before")}}
+                                         for k, v in arms_cl.items()}
+        rep["verdicts"]["claims.extract"] = claims_verdict(arms_cl, metas_cl)
 
+        # ---- answer.chat + answer.repair (2 arms)
+        arms_c: dict[str, dict[str, Any]] = {}
+        metas_c: dict[str, dict[str, Any]] = {}
+        for label, model, thinking, effort in arms_for["answer.chat"]:
+            saved = _set_arm(["answer.chat", "answer.repair"], model, thinking, effort)
+            try:
+                metas_c[label] = _arm_meta(label, model, thinking, effort, ["answer.chat", "answer.repair"])
+                progress(f"[answer.chat · {label}] {model} thinking={thinking}")
+                arms_c[label] = run_chat_arm(pid, ids, man, live, progress)
+            finally:
+                _restore_env(saved)
+            c = arms_c[label]
+            progress(f"[answer.chat · {label}] citation validity {c['citation_validity']} · expected source {c['answers_cite_expected_source']} · contradictions {c['contradiction_surfaced']} · gaps {c['gap_detection']} · "
+                     f"repairs {c['repair_rounds']} · truncated {c['truncated_answers']} · ${c['usage']['cost']:.4f} · {c['s_per_answer']}s/answer · returned {c['invocations'].get('returned_model')}")
+            save(f"answer.chat-{label}.json", c)
+            _restore_state(pid, mark)
+        rep["arms"]["answer.chat"] = {k: {"meta": metas_c[k], **{kk: vv for kk, vv in v.items() if kk != "per_question"}} for k, v in arms_c.items()}
+        rep["verdicts"]["answer.chat"], rep["verdicts"]["answer.repair"] = chat_verdict(arms_c, metas_c)
+
+    except Exception as e:  # noqa: BLE001
+        stage_error = {"error": str(e)[:600], "type": type(e).__name__}
+        rep["stage_error"] = stage_error
+        log.exception("migration-compare stage failed; writing the partial report")
     rep["total_cost"] = _usage_since(t_all, ("answer", "plan", "synthesis", "findings", "embed"))["cost"]
     rep["total_s"] = round(time.time() - t_all, 2)
     rep["summary"] = {t: v["verdict"] for t, v in rep["verdicts"].items()}
@@ -953,6 +1006,9 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     (d / "comparison.txt").write_text(text)
     rep["text"] = text
     rep["project_id"] = pid
+    if stage_error:
+        raise RuntimeError(f"{stage_error['type']}: {stage_error['error']}\n"
+                           f"The arms that finished before this are measured and saved: {d / 'comparison.txt'}")
     return rep
 
 
