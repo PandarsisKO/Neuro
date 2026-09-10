@@ -2109,7 +2109,9 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
             monkeypatch.delenv(f"NEUROSEARCH_TASK_{w}_{t}", raising=False)
     out = tmp_path / "evals"
     rep = migration.run_migration_compare(live=False, out_dir=out, progress=lambda m: None)
-    assert set(rep["summary"]) == {"planner.analysis", "planner.build", "planner.update", "export.synthesis", "answer.chat", "answer.repair"}
+    # 0.56.0 added the claims.extract arm — the only held task that lacked a comparison harness
+    assert set(rep["summary"]) == {"planner.analysis", "planner.build", "planner.update", "export.synthesis",
+                                   "answer.chat", "answer.repair", "claims.extract"}
     assert all(v != "FAIL" for v in rep["summary"].values()), rep["summary"]
     assert set(rep["excluded"]) == {"discover.quick", "discover.verify"}
     p = rep["arms"]["planner"]

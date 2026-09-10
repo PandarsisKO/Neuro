@@ -2448,3 +2448,57 @@ mechanism. Suite 576; Tier 1 unchanged.
 itself can be long on a book-length source and does not yield — but it is one source, so it self-limits. And the
 general fix remains `SCHEDULER.md` §5: **politeness is still opt-in per job**, which means the next long job
 someone adds will have to remember, exactly as the last three did not.
+
+---
+
+## 0.56.0 — the arm that can pay `claims.extract`'s debt
+
+Under the model decision engine, `claims.extract` is held at Sonnet 5 for the reason `irreversible` — which the
+engine explicitly labels a **debt**, meaning *we have not compared it*. It is also the most expensive held task:
+**$33.03 of a $103.51 month**. This release builds the comparison that settles it.
+
+**The useful discovery while building it: five of the six held tasks already had a harness.** `findings.extract`
+has `--findings-compare`; `rank.relevance` has `--ranking-compare`; chat, repair and the whole planner family are
+covered by `--migration-compare`. Only claim normalization had none. The measurement infrastructure was **one arm
+short of complete, not three** — so the earlier estimate of "build three arms" was wrong in a useful direction.
+
+**The arm invents no rubric.** `claims.run_evaluation` already measures exactly what normalization is *for* —
+qualifiers preserved, hedges kept, over-generalizations, merges, type changes — because that is the bounded
+evaluation the rung had to pass to earn adoption in the first place (G5.1). Judging a candidate model by the
+product's own definition of good is the whole point: a rubric written alongside a candidate is a rubric written to
+flatter it.
+
+`run_claims_arm` runs that evaluation under each arm's model over a 40-claim cohort; `claims_verdict` fails the
+candidate if it preserves fewer qualifiers, over-generalizes more, or drops more hedges. **Cost and latency are
+caveats, never verdicts** — a gate tests that a candidate 20× cheaper and 13× faster with worse qualifier
+preservation still fails.
+
+`_reset_normalization` puts the cohort back to *candidates* between arms, restoring the **input** text rather than
+leaving the first model's output in place — otherwise arm two would grade arm one's work and report a flattering
+nothing-changed.
+
+**Cost of the whole comparison: $3.26 expected, $4.89 maximum** — for a run that settles a $33/month question and
+converts the engine's largest debt into either evidence or a confirmed hold. **Not run yet: it spends real money
+and that is Kyle's call.** The command is:
+
+```
+neurosearch eval --migration-compare --live --candidate-model claude-haiku-4-5
+```
+
+**A leak the new arm exposed, fixed properly.** `migration.py` promises *"every arm sees identical frozen
+inputs … project state is restored between arms so nothing one arm wrote leaks into the next"*, and `_restore_state`
+did not restore the **research state**. `run_evaluation` harvests claims and refreshes the Knowledge Map, the chat
+prompt carries that state, and the chat arm's frozen input total moved 210,014 → 220,887 the moment a claims arm
+ran before it. The temptation was to reorder the arms; the fix is that the invariant must hold **whatever order
+the arms run in**, so `_restore_state` now also clears claims, claim evidence, evidence targets, tensions and
+knowledge nodes created after the mark.
+
+**Gate.** New `tests/test_r9_claims_arm.py` (6): the arm is wired into the one command with its own cost line and
+the total stays under $6; the verdict fails on lost qualifiers *and shows both percentages rather than a word*;
+it fails on over-generalization and on dropped hedges; **being cheaper and faster never buys a pass**; an equal
+candidate passes and still changes no production default by itself; and the reset between arms restores the
+original claim text, not the normalized output. Suite 582; Tier 1 unchanged.
+
+**Honest limits.** One cohort of 40 on one project is n=1 — enough to catch a model that mangles qualifiers, not
+enough to rank two good models finely. The arm measures normalization quality only; whether Haiku proposes *worse
+evidence targets* is not scored, and that is the other half of what `claims.extract` does.

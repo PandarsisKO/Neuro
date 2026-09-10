@@ -40,6 +40,7 @@ TASK_ARMS: dict[str, list[tuple[str, str, str, str | None]]] = {
     "planner.update": [ARM_BASE, ARM_DIS],
     "export.synthesis": [ARM_BASE, ARM_DIS],
     "answer.chat": [ARM_BASE, ARM_DIS],
+    "claims.extract": [ARM_BASE, ARM_DIS],
 }
 # tolerances (n=1 runs): a candidate may not fall further than this below the baseline on the decision metrics
 RUBRIC_TOLERANCE = 0.10          # ~2 rubric checks of ~24
@@ -47,10 +48,13 @@ RUBRIC_WIN = 0.10                # adaptive must beat disabled by at least this 
 GROUNDING_TOLERANCE = 0.10
 EXPORT_COVERAGE_TOLERANCE = 0.20
 CHAT_SOURCE_TOLERANCE = 0.10
+CLAIMS_QUALIFIER_TOLERANCE = 0.10   # normalization exists to KEEP qualifiers; losing them is the failure mode
+CLAIMS_EVAL_BUDGET = 40             # claims in the comparison cohort (claims.EVAL_BUDGET is 150 — too dear for an arm)
 EVAL_BUDGET_FLOOR = 20.0         # eval-only daily budget written into the temporary database (never the real one)
 
 # spend model per arm, from the frozen 0.17.3 live baseline (Sonnet 4.6 list price) — used only to print the expected maximum
-_BASE_COST = {"answer.chat": 0.84, "planner": 0.27, "planner.update": 0.06, "export.synthesis": 0.06, "findings.extract": 0.20, "embed": 0.02}
+_BASE_COST = {"answer.chat": 0.84, "planner": 0.27, "planner.update": 0.06, "export.synthesis": 0.06, "findings.extract": 0.20, "embed": 0.02,
+              "claims.extract": 0.18}   # CLAIMS_EVAL_BUDGET candidates in groups of EXTRACT_GROUP, one structured call each
 _SONNET5_FACTOR = 1.3 * (2.0 / 3.0)    # +30% tokens at two thirds of the price
 _ADAPTIVE_EXTRA = 0.20                 # thinking tokens on the two planner passes, generous
 _SAFETY = 1.5
@@ -185,8 +189,21 @@ def _state_mark() -> float:
 
 def _restore_state(pid: str, mark: float) -> None:
     """Delete everything an arm wrote to the project after `mark` (eval database only): plans (+items/updates by cascade),
-    notes, facts, conversations. Sources, segments, analyses and the invocation ledger are left alone."""
+    notes, facts, conversations, and — since 0.56.0 — the research state (claims, their evidence, evidence targets,
+    tensions, knowledge nodes). Sources, segments, analyses and the invocation ledger are left alone.
+
+    The research state was added because the claims arm exposed the gap the hard way: `claims.run_evaluation`
+    harvests claims and refreshes the Knowledge Map, and the chat prompt carries that state, so the chat arm's
+    frozen input total moved from 210,014 to 220,887 the moment a claims arm ran before it. That is precisely the
+    leak this function exists to prevent — 'every arm sees identical frozen inputs' has to hold whatever order the
+    arms run in, not only in the order they happened to be written."""
     with db.tx() as conn:
+        conn.execute("DELETE FROM claim_evidence WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND created_at>?)", (pid, mark))
+        conn.execute("DELETE FROM claim_evidence_notes WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND created_at>?)", (pid, mark))
+        conn.execute("DELETE FROM project_evidence_targets WHERE project_id=? AND created_at>?", (pid, mark))
+        conn.execute("DELETE FROM research_tensions WHERE project_id=? AND created_at>?", (pid, mark))
+        conn.execute("DELETE FROM project_knowledge_nodes WHERE project_id=?", (pid,))
+        conn.execute("DELETE FROM project_claims WHERE project_id=? AND created_at>?", (pid, mark))
         conn.execute("DELETE FROM plan_items WHERE plan_id IN (SELECT id FROM plans WHERE project_id=? AND created_at>?)", (pid, mark))
         conn.execute("DELETE FROM plan_updates WHERE plan_id IN (SELECT id FROM plans WHERE project_id=? AND created_at>?)", (pid, mark))
         conn.execute("DELETE FROM plans WHERE project_id=? AND created_at>?", (pid, mark))
@@ -370,6 +387,83 @@ def run_export_arm(pid: str, live: bool) -> dict[str, Any]:
             "truncated": int(bool(c.get("truncated"))), "empty": int(bool(c.get("empty"))), "fallback_used": int("Set ANTHROPIC_API_KEY" in text),
             "seconds": seconds, "invocations": _invocations_since(usage_from, "export.synthesis"), "usage": _usage_since(usage_from, ("synthesis",)),
             "text": text}
+
+
+# ------------------------------------------------------------------ claims arm (claims.extract)
+#
+# 0.56.0. `claims.extract` is the most expensive HELD task under the model decision engine ($33.03 of a $103.51
+# month) and its justification is `irreversible` — a debt, meaning "we have not compared it". This is the arm that
+# pays the debt.
+#
+# It invents no rubric. `claims.run_evaluation` already measures exactly what normalization is FOR — qualifiers
+# preserved, hedges kept, over-generalizations, merges, type changes — because that is the bounded evaluation the
+# rung had to pass to earn adoption in the first place. Reusing it means the comparison is judged by the product's
+# own definition of good rather than by one written to make a model look right.
+
+def _reset_normalization(pid: str, ids: list[str], before: dict[str, Any]) -> None:
+    """Put the cohort back to candidates so the next arm actually spends on the SAME claims. Text and type are
+    restored from the snapshot the evaluation took, so arm two starts from arm one's input, not its output."""
+    with db.tx() as conn:
+        for cid in ids:
+            b = (before.get("claims") or {}).get(cid)
+            if not b:
+                continue
+            conn.execute("UPDATE project_claims SET normalized=0, extraction_hash=NULL, text=?, claim_type=?, topic=?, "
+                         "freshness_class=?, status=CASE WHEN status='superseded' THEN 'proposed' ELSE status END, superseded_by=NULL WHERE id=?",
+                         (b["text"], b["type"], b["topic"], b["freshness"], cid))
+    db.kv_set(f"claims:eval:{pid}", None)
+    db.kv_set(f"claims:eval:{pid}:pending", None)
+
+
+def run_claims_arm(pid: str, live: bool) -> dict[str, Any]:
+    from . import claims
+    usage_from = time.time()
+    t0 = time.time()
+    rep = claims.run_evaluation(pid, budget=CLAIMS_EVAL_BUDGET)
+    seconds = round(time.time() - t0, 2)
+    full = claims.evaluation_report(pid) or {}
+    hedged, kept = int(rep.get("hedged_before") or 0), int(rep.get("hedges_kept") or 0)
+    cohort = int((rep.get("cohort") or {}).get("size") or 0)
+    return {"cohort": cohort, "normalized": rep.get("normalized", 0), "calls": rep.get("calls", 0),
+            "qualifiers_present": rep.get("qualifiers_present", 0),
+            "qualifier_rate": round(int(rep.get("qualifiers_present") or 0) / max(1, cohort), 4),
+            "hedged_before": hedged, "hedges_kept": kept,
+            "hedge_rate": round(kept / hedged, 4) if hedged else 1.0,
+            "over_generalized": [o["id"] for o in (rep.get("over_generalized") or [])],
+            "n_over_generalized": len(rep.get("over_generalized") or []),
+            "merged": rep.get("merged", 0), "type_changes": rep.get("type_changes", 0),
+            "targets_proposed": rep.get("targets_proposed", 0), "seconds": seconds,
+            "invocations": _invocations_since(usage_from, "claims.extract"), "usage": _usage_since(usage_from, ("claims",)),
+            "_before": (full or {}).get("_before") or {}, "rows": (full or {}).get("rows") or []}
+
+
+def claims_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    b, d = arms[ARM_BASE[0]], arms[ARM_DIS[0]]
+    fails: list[str] = []
+    caveats: list[str] = []
+    notes: list[str] = []
+    if d["qualifier_rate"] < b["qualifier_rate"] - CLAIMS_QUALIFIER_TOLERANCE:
+        fails.append(f"qualifiers preserved on {d['qualifier_rate']:.0%} of the cohort vs {b['qualifier_rate']:.0%} — "
+                     "normalization exists to keep them; dropping them is how a claim quietly becomes wrong")
+    if d["n_over_generalized"] > b["n_over_generalized"]:
+        fails.append(f"{d['n_over_generalized']} over-generalized claims vs {b['n_over_generalized']} "
+                     f"({', '.join(d['over_generalized'][:3])})")
+    if d["hedge_rate"] < b["hedge_rate"] - CLAIMS_QUALIFIER_TOLERANCE:
+        fails.append(f"hedges kept on {d['hedge_rate']:.0%} of hedged claims vs {b['hedge_rate']:.0%} — a dropped hedge is a stronger claim than the evidence supports")
+    if d["normalized"] < b["normalized"]:
+        caveats.append(f"normalized {d['normalized']} of {d['cohort']} vs {b['normalized']} — fewer claims processed for the same cohort")
+    if d["merged"] != b["merged"]:
+        notes.append(f"merges: {b['merged']} → {d['merged']} (a different merge count is not by itself better or worse)")
+    if d["targets_proposed"] != b["targets_proposed"]:
+        notes.append(f"evidence targets proposed: {b['targets_proposed']} → {d['targets_proposed']}")
+    _cost_latency(b, d, caveats, cost_key="cost", secs_key="seconds")
+    _model_gate("claims.extract", metas[ARM_DIS[0]], d["invocations"], fails, ARM_DIS[0])
+    _model_gate("claims.extract", metas[ARM_BASE[0]], b["invocations"], fails, ARM_BASE[0])
+    return _finish("claims.extract", metas[ARM_BASE[0]]["model"], metas[ARM_DIS[0]]["model"], fails, caveats, notes,
+                   {"qualifier_rate": [b["qualifier_rate"], d["qualifier_rate"]],
+                    "hedge_rate": [b["hedge_rate"], d["hedge_rate"]],
+                    "over_generalized": [b["n_over_generalized"], d["n_over_generalized"]],
+                    "normalized": [b["normalized"], d["normalized"]], "cohort": b["cohort"]})
 
 
 # ------------------------------------------------------------------ chat arm (answer.chat + answer.repair)
@@ -779,6 +873,36 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
         _restore_state(pid, mark)
     rep["arms"]["export.synthesis"] = {k: {"meta": metas_e[k], **{kk: vv for kk, vv in v.items() if kk != "text"}} for k, v in arms_e.items()}
     rep["verdicts"]["export.synthesis"] = export_verdict(arms_e, metas_e)
+
+    # ---- claims.extract (2 arms) — the most expensive HELD task; this is the arm that pays its `irreversible` debt
+    arms_cl: dict[str, dict[str, Any]] = {}
+    metas_cl: dict[str, dict[str, Any]] = {}
+    cl_before: dict[str, Any] = {}
+    cl_ids: list[str] = []
+    for label, model, thinking, effort in TASK_ARMS["claims.extract"]:
+        saved = _set_arm(["claims.extract"], model, thinking, effort)
+        try:
+            metas_cl[label] = _arm_meta(label, model, thinking, effort, ["claims.extract"])
+            progress(f"[claims.extract · {label}] {model} thinking={thinking}")
+            arms_cl[label] = run_claims_arm(pid, live)
+        finally:
+            _restore_env(saved)
+        cl = arms_cl[label]
+        if not cl_ids:                                        # remember arm one's INPUT so arm two starts from it
+            cl_ids = [r["id"] for r in cl.get("rows") or []]
+            cl_before = {"claims": {r["id"]: {"text": r["before"], "type": (r.get("type") or ["other", "other"])[0],
+                                              "topic": (r.get("topic") or [None, None])[0],
+                                              "freshness": (r.get("freshness") or ["slow_changing", "slow_changing"])[0]}
+                                    for r in cl.get("rows") or []}}
+        progress(f"[claims.extract · {label}] cohort {cl['cohort']} · normalized {cl['normalized']} · qualifiers {cl['qualifier_rate']:.0%} · "
+                 f"hedges kept {cl['hedge_rate']:.0%} · over-generalized {cl['n_over_generalized']} · merges {cl['merged']} · "
+                 f"${cl['usage']['cost']:.4f} · {cl['seconds']}s · returned {cl['invocations'].get('returned_model')}")
+        save(f"claims.extract-{label}.json", {k: v for k, v in cl.items() if not k.startswith("_")})
+        _reset_normalization(pid, cl_ids, cl_before)
+        _restore_state(pid, mark)
+    rep["arms"]["claims.extract"] = {k: {"meta": metas_cl[k], **{kk: vv for kk, vv in v.items() if kk not in ("rows", "_before")}}
+                                     for k, v in arms_cl.items()}
+    rep["verdicts"]["claims.extract"] = claims_verdict(arms_cl, metas_cl)
 
     # ---- answer.chat + answer.repair (2 arms)
     arms_c: dict[str, dict[str, Any]] = {}
