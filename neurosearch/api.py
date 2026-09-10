@@ -249,6 +249,23 @@ def api_scholar_search(project_id: str, body: ScholarSearchIn) -> dict[str, Any]
             "records": [{k: v for k, v in r.items()} for r in recs]}
 
 
+@app.get("/api/projects/{project_id}/source-yield", dependencies=[Depends(require_auth)])
+def api_source_yield(project_id: str) -> dict[str, Any]:
+    """C1: what each master source (channel / site / creator) has actually given THIS project — ingested sources,
+    findings, findings that became Claims, evidence rows and the evidence classes supplied. $0, derived on read,
+    project-scoped by design (G4 forbids building a GLOBAL source profile from project findings)."""
+    from . import candidates
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    y = candidates.creator_yield(project_id)
+    rows = sorted(({"creator": c, **v} for c, v in y.items()), key=lambda r: (-r["findings"], r["creator"]))
+    return {"creators": len(rows), "rows": rows,
+            "proven_at_per_source": candidates.CREATOR_STRONG_PER_SOURCE,
+            "note": "Project-scoped: a finding is an interpretation written against THIS brief, so it never becomes "
+                    "a global fact about a channel. Absence is not evidence — a creator with no yield is not "
+                    "penalised anywhere, it may simply never have been asked."}
+
+
 @app.get("/api/projects/{project_id}/pool", dependencies=[Depends(require_auth)])
 def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
     """S5: the known-but-uncaptured pool — skipped (pre-cutoff) sources + Candidate Index rows, ranked by a $0 potential scan."""

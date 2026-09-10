@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.1)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -38,6 +38,27 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 | AI tasks | `sources_value.py` (S2 $0 value spine: findings/Claims/plan/chat/priority → `value_score`, `matters` rule, label; S3 `digest`/`used_in` = the source drawer's one request), `findings_view.py` (S4 $0 findings query: filters/facets/sort/paging, use badges, low-value sweep), `claims_view.py` (R7 $0 Claims workbench: filters/facets/sort/paging over the full claim set, `plain()` one-line translation, batch accept/reject, `for_source` = chat's "Why this answer"), `community.py` (G7 community evidence, $0), `works.py` (G6 canonical works, $0), `claims.py` + `knowledge.py` (G5 research state), `library.py` (G4 profiles + recall), `findings.py` (+`prefilter.py`, off), `relevance.py`, `qa.py`, `planner.py` (V1, production) / `planner_v3.py` (off), `discover.py`, `export.py`, `search.py` (+`rerank.py`, off), `evidence.py`, `staleness.py` | findings/relevance write project-relative artifacts to `project_source_analysis` with `input_hash` + provenance; `qa.chat_system_blocks` builds the chat prompt in cache order (stable prefix → breakpoints → `PROJECT_STATE_BLOCK`); `search` = FTS + embeddings + RRF; `evidence` validates quotes/citations/plan evidence at runtime → Health; `staleness.assess/rebuild/triage/accept` = CURRENT / STALE / current_accepted / REBUILDING with cost estimates; S1 triage tiers rebuild_matters · rebuild_transcript · accept · retry_failed (`accepted_hash` on the analysis row) |
 | Surfaces | `api.py`, `web/index.html` (`UI_VERSION`), `mcp_server.py`, `cli.py`, `extension/` | endpoints are plain `def` (threadpool); projects are the unit (chats, sources, findings, plan, settings, Health); extension = course import, "Send this page", Instagram session |
 | Proofs | `evals.py`, `retrieval_eval.py`, `prefilter_eval.py`, `cache_layout.py`, `migration.py`, `closeout.py`, `batch_smoke.py`, `release.py` | `neurosearch eval` (Tier 1 on the frozen Golden Project `tests/fixtures/golden/`, `--ranking`, `--findings-compare`, `--migration-compare`, `--retrieval [--rerank]`, `--prefilter`, `--cache-layout`); `neurosearch closeout` (Mission F); `neurosearch batch-smoke --live` (the one tiny paid adapter check); `neurosearch doctor` (fast diagnostic); `neurosearch release-check` (heavyweight deterministic gate → `evals/release/`) |
+
+## Source capability — what a master source has given us (C1, 0.58.2)
+
+`candidates.creator_yield(project_id)` ($0, derived on read, no schema change, no model) → channel → `sources`,
+`findings`, `claims`, `evidence`, `classes`, `per_source`, `proven`. `candidates._potential` gained a
+`_creator_term`: before this it scored a known-but-uncaptured item out of 100 from the words in its own title and
+600 characters of description and **nothing else**, so a video from a channel whose sixty siblings had produced
+hundreds of findings and closed evidence targets scored exactly the same as one from a channel that had never
+yielded anything. With a partial-ingest pattern (60 of 598, plus 107, 93, 398 unstarted) those remainders are
+reservoirs of known character, and the pool was treating them as a flat list of strangers.
+
+Two rules keep it honest. **Absence is never evidence** — a creator with no yield gets no penalty anywhere, because
+a channel that never supplied authoritative evidence may simply never have been asked (`CREATOR_MAX_BONUS` is a
+bonus only, capped at 25 so it cannot dominate the word signals). And the profile is **project-scoped**: G4 forbids
+building a *global* Source Profile from project findings, and a yield profile is by construction built from project
+findings, so it stays inside the project that produced it exactly as `project_reuse` does — a finding is an
+interpretation written against one brief and does not become a fact about a channel by being averaged. Cross-project
+aggregation is a separate decision needing its own argument. The wanted-evidence-class bonus reads the project's own
+open targets (`preferred_classes`), so "it has supplied experiential evidence before, which is what this question
+needs" is a measurement, not a similarity. API `GET /api/projects/{id}/source-yield`. Gate
+`tests/test_s4_source_capability.py`. Rest of the rung: `SOURCE-CAPABILITY-RUNG.md`.
 
 ## Findings quality — the trash filter (F1–F3, 0.58.0)
 

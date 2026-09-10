@@ -262,8 +262,102 @@ def _gap_terms(project_id: str) -> tuple[list[tuple[str, str, set[str]]], set[st
     return qs, vocab
 
 
-def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str]) -> tuple[int, str | None, list[str]]:
-    """A quick $0 scan: 0–100 potential, the best fit (an open question / weak area), and the reasons — from words only."""
+# ------------------------------------------------------------------ C1: what a master source has actually given us
+
+# 0.58.2. `_potential` scored a known-but-uncaptured source out of 100 from the words in its own title and 600
+# characters of description — and nothing else. So a video from a channel whose sixty siblings already produced
+# hundreds of findings, closed evidence targets and supplied this project's only experiential evidence scored
+# exactly the same as a video from a channel that has never yielded anything. The measurement existed in the
+# database and nothing consulted it. With Kyle's partial-ingest pattern (60 of 598, plus 107, 93 and 398 unstarted)
+# those remainders are reservoirs of KNOWN character being treated as a flat list of strangers.
+#
+# Scope, per SOURCE-CAPABILITY-RUNG.md and the G4 rule it has to respect: this is **project-scoped yield**, not a
+# global source profile. G4 forbids building a global profile from project findings, and a yield profile is by
+# construction built from project findings — so it stays inside the project that produced it, exactly as
+# `project_reuse` does for Bootstrap. Nothing here is written anywhere; it is derived on read.
+#
+# Absence is never evidence: a creator with no yield gets NO penalty, because a channel that has never supplied
+# authoritative evidence may simply never have been asked for any. Only positive, measured yield adds.
+
+CREATOR_MAX_BONUS = 25
+CREATOR_STRONG_PER_SOURCE = 8.0     # findings per ingested source at which a creator counts as proven for this project
+
+
+def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
+    """channel → what it has given THIS project: ingested sources, findings, findings that became Claims, evidence
+    rows, and the evidence classes it has actually supplied. $0, derived on read, no model, no schema change."""
+    conn = db.connect()
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+    if not ids:
+        return {}
+    chan: dict[str, str] = {}
+    for sid in ids:
+        s = db.get_source(sid)
+        if s and (s.get("channel") or "").strip():
+            chan[sid] = s["channel"].strip()
+    if not chan:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for c in set(chan.values()):
+        out[c] = {"sources": 0, "findings": 0, "claims": 0, "evidence": 0, "classes": {}}
+    for sid, c in chan.items():
+        out[c]["sources"] += 1
+    ph = ",".join("?" * len(chan))
+    args = list(chan)
+    for r in conn.execute(f"SELECT source_id, COUNT(*) n FROM project_notes WHERE project_id=? AND source_id IN ({ph}) GROUP BY source_id",
+                          (project_id, *args)).fetchall():
+        out[chan[r["source_id"]]]["findings"] += r["n"]
+    for r in conn.execute(f"""SELECT n.source_id sid, COUNT(*) n FROM project_claims c JOIN project_notes n ON n.id=c.origin_note_id
+                              WHERE c.project_id=? AND n.source_id IN ({ph}) GROUP BY n.source_id""",
+                          (project_id, *args)).fetchall():
+        out[chan[r["sid"]]]["claims"] += r["n"]
+    for r in conn.execute(f"""SELECT e.source_id sid, e.evidence_class cls, COUNT(*) n FROM claim_evidence e
+                              JOIN project_claims c ON c.id=e.claim_id
+                              WHERE c.project_id=? AND e.source_id IN ({ph}) GROUP BY e.source_id, e.evidence_class""",
+                          (project_id, *args)).fetchall():
+        row = out[chan[r["sid"]]]
+        row["evidence"] += r["n"]
+        if r["cls"]:
+            row["classes"][r["cls"]] = row["classes"].get(r["cls"], 0) + r["n"]
+    for c, row in out.items():
+        row["per_source"] = round(row["findings"] / row["sources"], 1) if row["sources"] else 0.0
+        row["proven"] = row["per_source"] >= CREATOR_STRONG_PER_SOURCE and row["findings"] >= 10
+    return out
+
+
+def _creator_term(creator: str | None, stats: dict[str, dict[str, Any]] | None,
+                  want_classes: set[str] | None = None) -> tuple[int, list[str]]:
+    """The bonus this item earns from what its master source has already given the project, and the measured reason.
+    Never negative — see the note above on absence."""
+    if not creator or not stats:
+        return 0, []
+    y = stats.get(creator.strip())
+    if not y or not y.get("findings"):
+        return 0, []
+    score, why = 0, []
+    if y["proven"]:
+        score += 15
+        why.append(f"{creator} has given this project {y['findings']} findings from {y['sources']} source(s) "
+                   f"({y['per_source']} each)")
+    elif y["findings"] >= 3:
+        score += 6
+        why.append(f"{creator} has given this project {y['findings']} findings so far")
+    if y.get("claims"):
+        score += 5
+        why.append(f"{y['claims']} of them became tracked Claims")
+    if want_classes and y.get("classes"):
+        hit = sorted(set(want_classes) & set(y["classes"]))
+        if hit:
+            score += 8
+            why.append(f"it has supplied {', '.join(hit)} evidence before, which is what this question needs")
+    return min(CREATOR_MAX_BONUS, score), why
+
+
+def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str],
+               creator: str | None = None, creator_stats: dict[str, dict[str, Any]] | None = None,
+               want_classes: set[str] | None = None) -> tuple[int, str | None, list[str]]:
+    """A quick $0 scan: 0–100 potential, the best fit (an open question / weak area), and the reasons. Words, plus
+    (0.58.2) what this item's MASTER SOURCE has already given the project — see `creator_yield`."""
     t = _toks(title + " " + (desc or "")[:600])
     best, best_s = None, 0.0
     for qid, label, qt in qs:
@@ -289,6 +383,9 @@ def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab
         score += 10; why.append("reads as timeless (how-to / principles)")
     elif dated and not ever:
         score -= 10; why.append("reads as dated (news / rates / a year)")
+    cscore, cwhy = _creator_term(creator, creator_stats, want_classes)
+    score += cscore
+    why += cwhy
     return max(0, min(100, score)), best, why
 
 
@@ -298,6 +395,20 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
     conn = db.connect()
     qs, vocab = _gap_terms(project_id)
     prio_creators = {(db.get_source(sid) or {}).get("channel") for sid in db.priority_source_ids(project_id)} - {None, ""}
+    cy = creator_yield(project_id)                       # 0.58.2: what each master source has already given us
+    want_classes: set[str] = set()                       # the evidence classes this project's open questions ask for
+    try:
+        from . import knowledge
+        for t in knowledge.list_targets(project_id, status="open"):
+            pc = t.get("preferred_classes")
+            if isinstance(pc, str):
+                try:
+                    pc = json.loads(pc)
+                except ValueError:
+                    pc = [pc]
+            want_classes |= {c for c in (pc or []) if isinstance(c, str)}
+    except Exception:  # noqa: BLE001 — the creator term is a bonus, never a prerequisite
+        pass
     items: list[dict[str, Any]] = []
     if kind in ("all", "skipped"):
         rel = db.project_analysis(project_id, "relevance")
@@ -306,7 +417,8 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             if s["id"] not in ids:
                 continue
             r = rel.get(s["id"]) or {}
-            score, fit, why = _potential(s.get("title") or "", s.get("description") or "", qs, vocab, r.get("relevance"), [])
+            score, fit, why = _potential(s.get("title") or "", s.get("description") or "", qs, vocab, r.get("relevance"), [],
+                                         creator=s.get("channel"), creator_stats=cy, want_classes=want_classes)
             items.append({"kind": "skipped", "id": s["id"], "title": s.get("title") or s["url"], "url": s["url"], "creator": s.get("channel"), "published_at": s.get("published_at"),
                           "duration": s.get("duration"), "platform": s["platform"], "why_known": s.get("error") or "skipped at review", "relevance": r.get("relevance"),
                           "relevance_why": r.get("relevance_why"), "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (s.get("channel") in prio_creators),
@@ -320,7 +432,8 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
         for c in list_for_project(project_id, limit=100000):
             if c.get("state") not in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
                 continue
-            score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"), links.get(c["id"], []))
+            score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"), links.get(c["id"], []),
+                                         creator=c.get("creator"), creator_stats=cy, want_classes=want_classes)
             origin = c.get("origin") or {}
             known = ("found for an open question" if links.get(c["id"]) else f"seen in {origin.get('kind', 'exploration')}{(' of ' + str(origin.get('title'))) if origin.get('title') else ''}")
             if c.get("reason"):
