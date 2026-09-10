@@ -179,3 +179,35 @@ def test_the_mismatch_report_survives_a_database_that_does_not_exist_yet():
     finally:
         settings.data_dir = was
         db._local.conn = None
+
+
+# ------------------------------------------------------------------ S4: the other two comparisons had the same hole
+
+def test_findings_and_ranking_compare_also_pin_the_transport():
+    """findings.extract and rank.relevance are both local_capable, so --findings-compare and --ranking-compare had
+    the identical defect --migration-compare did: both arms routed to the local CLI and neither ran the model it was
+    given. These are the two commands that would decide Haiku for findings, so the hole mattered most here."""
+    from neurosearch import evals, providers
+    from neurosearch.config import settings
+    was = settings.ai_profile
+    try:
+        settings.ai_profile = "local"
+        saved, prov = evals.pin_api_transport()
+        assert settings.ai_profile == "cloud" and providers.current_policy() == "api_only"
+        for task in ("findings.extract", "rank.relevance"):
+            assert providers.route(task)[0] == "api", task
+        evals.unpin_api_transport(saved, prov)
+        assert settings.ai_profile == "local"
+    finally:
+        settings.ai_profile = was
+        providers.set_policy(None)
+
+
+def test_arm_model_ok_refuses_a_substituted_arm():
+    import pytest
+
+    from neurosearch import evals
+    evals.arm_model_ok("claude-haiku-4-5", "claude-haiku-4-5-20251001")     # dated snapshot is fine
+    evals.arm_model_ok("claude-sonnet-5", None)                             # nothing reported: not evidence
+    with pytest.raises(RuntimeError):
+        evals.arm_model_ok("claude-sonnet-5", "claude-haiku-4-5-20251001")

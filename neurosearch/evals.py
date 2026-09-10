@@ -739,6 +739,7 @@ def run_ranking_compare(root: Path = GOLDEN, live: bool = False, baseline_model:
     from . import __version__
     keys = {"NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE": None, "NEUROSEARCH_TASK_THINKING_RANK_RELEVANCE": None, "NEUROSEARCH_TASK_EFFORT_RANK_RELEVANCE": None}
     saved = {k: os.environ.get(k) for k in keys}
+    was_profile, _prov = pin_api_transport()
     reps: dict[str, dict[str, Any]] = {}
     try:
         for label, model in (("baseline", baseline_model), ("candidate", candidate_model)):
@@ -748,7 +749,9 @@ def run_ranking_compare(root: Path = GOLDEN, live: bool = False, baseline_model:
             progress(f"[{label}] {model} · thinking disabled")
             reps[label] = run_ranking(root, live=live, progress=lambda m: progress("   " + m))
             progress(f"[{label}] NDCG@20 {reps[label]['quality']['ndcg_at_20']} · P@10 {reps[label]['quality']['precision_at_10']} · ${reps[label]['economics']['cost']:.4f} · {reps[label]['performance']['rank_s']}s · returned {reps[label].get('returned_model')}")
+            arm_model_ok(model, reps[label].get("returned_model"))
     finally:
+        unpin_api_transport(was_profile, _prov)
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -1085,6 +1088,33 @@ def format_findings_comparison(cmp: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def pin_api_transport() -> tuple[str, Any]:
+    """0.56.5: `--findings-compare` and `--ranking-compare` had the same hole `--migration-compare` did. With
+    `NEUROSEARCH_AI_PROFILE=local`, `findings.extract` and `rank.relevance` are both `local_capable`, so BOTH arms
+    routed to the local Claude Code CLI — which serves whichever model it likes (measured: 500 of 2,377 live
+    artifacts came back Haiku against a Sonnet 5 contract, interleaved call by call). Two arms on one unpredictable
+    model is not a comparison. local vs api is a TRANSPORT; these commands compare MODELS."""
+    from . import providers
+    from .config import settings
+    was = settings.ai_profile
+    settings.ai_profile = "cloud"
+    providers.set_policy("api_only")
+    return was, providers
+
+
+def unpin_api_transport(was: str, providers: Any) -> None:
+    from .config import settings
+    settings.ai_profile = was
+    providers.set_policy(None)
+
+
+def arm_model_ok(want: str, returned: str | None) -> None:
+    """Raise on an arm that did not run the model it claims — before the next arm is paid for."""
+    if returned and not model_matches(want, returned):
+        raise RuntimeError(f"arm asked for {want!r} but the provider returned {returned!r} — the comparison would be "
+                           f"invalid, so nothing further was run.")
+
+
 def run_findings_compare(root: Path = GOLDEN, live: bool = False, baseline_model: str = BASELINE_MODEL, candidate_model: str = CANDIDATE_MODEL,
                          out_dir: Path = Path("evals"), progress: Any = print) -> dict[str, Any]:
     """One command for E2.2: ingest the Golden Project once, run the findings workload with the baseline model and then
@@ -1095,6 +1125,7 @@ def run_findings_compare(root: Path = GOLDEN, live: bool = False, baseline_model
     from . import __version__
     keys = ("NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT", "NEUROSEARCH_TASK_THINKING_FINDINGS_EXTRACT", "NEUROSEARCH_TASK_EFFORT_FINDINGS_EXTRACT")
     saved = {k: os.environ.get(k) for k in keys}
+    was_profile, _prov = pin_api_transport()
     t0 = time.time()
     g = load_golden(root)
     pid, ids, man = g["project_id"], g["sources"], g["manifest"]
@@ -1110,7 +1141,9 @@ def run_findings_compare(root: Path = GOLDEN, live: bool = False, baseline_model
             q = reps[label]["quality"]
             progress(f"[{label}] evidence recall {q['golden_evidence_recall']} · quote validity {q['finding_quote_validity']} · {q['findings_suggested']} findings ({q['findings_rejected']} rejected) · "
                      f"incomplete {q['incomplete_outputs']} · ${reps[label]['economics']['cost']:.4f} · {reps[label]['performance']['findings_s']}s · returned {reps[label].get('returned_model')}")
+            arm_model_ok(model, reps[label].get("returned_model"))
     finally:
+        unpin_api_transport(was_profile, _prov)
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
