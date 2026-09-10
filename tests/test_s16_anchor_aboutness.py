@@ -47,6 +47,18 @@ def lib(tmp_path, monkeypatch):
     db._local.conn = None
 
 
+@pytest.fixture(autouse=True)
+def _no_jobs_left_behind():
+    """Tests here queue real jobs (`refresh_research` from a steering call). A worker pool started by ANOTHER module
+    can claim one afterwards and run it against whatever database is current by then, which is how a queued job from
+    this module made an unrelated embedding test fail. So nothing queued survives a test in this file."""
+    yield
+    try:
+        with db.tx() as conn:
+            conn.execute("UPDATE jobs SET status='cancelled' WHERE status IN ('queued','running')")
+    except Exception:  # noqa: BLE001
+        pass
+
 def _source(sid, title, chunks, channel="ch"):
     with db.tx() as conn:
         conn.execute("INSERT INTO sources (id, platform, external_id, url, title, channel, status, created_at, updated_at) "
@@ -163,3 +175,64 @@ def test_discover_calls_a_vague_search_vague_and_still_shows_the_hits(lib, monke
     vq = out["library"].get("vague_query")
     assert vq and "generic modifier" in vq["why"]
     assert all(s.get("generic_match") for s in out["library"]["suggestions"])
+
+
+# ------------------------------------------------------------------ saturation (0.62.4)
+
+def test_a_project_that_owns_the_subject_is_told_so(lib):
+    """Kyle, after the anchor fix: *"discover search still is useless."* Measured on his project, and it was not a
+    ranking failure — the pool was leftovers:
+
+        term                 in library   already in this project   outside
+        cpa                        130          115  (88%)              15
+        sba                        212          191  (90%)              21
+        quality of earnings         27           25  (93%)               2
+        addbacks                     7            7 (100%)               0
+
+    Library recall can only offer what the project does not have, so on its own subject this project has almost
+    nothing left — 8 sources with two or more mentions of "cpa", seven about short-term rentals. Meanwhile the card
+    said "no new acquisition needed", which is a false claim about the dregs."""
+    p = db.create_project("owns", brief="buying businesses")
+    owned = ["o1", "o2", "o3", "o4"]
+    for sid in owned:
+        _source(sid, f"CPA talk {sid}", ["the cpa models the deal", "cpa fees", "your cpa and the bank"])
+        db.add_project_sources(p["id"], [sid])
+    _source("left", "One left over", ["a cpa for rentals", "cpa again", "rental tax"])
+    _filler()
+    cov = library.coverage_of(p["id"], "cpa")
+    assert cov["in_library"] == 5 and cov["in_project"] == 4 and cov["outside"] == 1
+    assert cov["saturated"] is True
+    assert "web search" in cov["note"] and "search inside the project" in cov["note"]
+
+
+def test_a_thin_project_is_not_called_saturated(lib):
+    p = db.create_project("thin", brief="b")
+    for sid in ("a", "b", "c", "d"):
+        _source(sid, f"CPA {sid}", ["cpa one", "cpa two", "cpa three"])
+    db.add_project_sources(p["id"], ["a"])
+    _filler()
+    cov = library.coverage_of(p["id"], "cpa")
+    assert cov["saturated"] is False and cov["in_project"] == 1 and cov["outside"] == 3
+
+
+def test_recall_reports_coverage_beside_its_suggestions(lib):
+    _source("s1", "CPA deep dive", ["the cpa models addbacks", "cpa fees", "your cpa and the bank", "cpa letters"])
+    _source("s2", "Addbacks", ["addbacks and the cpa", "more addbacks", "cpa notes"])
+    _filler()
+    r = library.recall(None, "cpa addbacks")
+    assert r["owned"]["term"] == r["anchor"]["term"]        # coverage is reported for the term that decided the match
+    assert r["owned"]["in_library"] == 2 and r["owned"]["saturated"] is False
+
+
+def test_saturation_never_suppresses_the_web_search(lib):
+    """Saturation is the REASON to search the web, so it must not count as the library covering the request."""
+    from neurosearch import discover
+    p = db.create_project("sat", brief="b")
+    for sid in ("o1", "o2", "o3"):
+        _source(sid, f"CPA {sid}", ["cpa one", "cpa two", "cpa three"])
+        db.add_project_sources(p["id"], [sid])
+    _source("left", "Leftover", ["a cpa mention", "cpa twice", "unrelated"])
+    _filler()
+    out = discover.discover(p["id"], refine="cpa fees", count=1, verify=False, mode="library_only")
+    assert out["library"]["saturated"]["saturated"] is True
+    assert out["web_skipped"] is True and "Library only" in out["note"]      # mode said library_only, not saturation

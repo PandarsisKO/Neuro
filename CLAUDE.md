@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.3)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.4)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,39 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Your library is exhausted on this subject, and the card said the opposite (0.62.4)
+
+Kyle, after the anchor fix landed and every result was on-topic for the word: *"discover search still is useless."*
+He was right, and it was not a ranking failure. The six results were all real-estate tax videos in a
+business-acquisition project. Measured on his live data:
+
+| term | in library | already in THIS project | outside it |
+|---|---|---|---|
+| cpa | 130 | **115 (88%)** | 15 |
+| sba | 212 | 191 (90%) | 21 |
+| quality of earnings | 27 | 25 (93%) | 2 |
+| addbacks | 7 | **7 (100%)** | 0 |
+
+Library recall can only offer what the project does NOT have (Invariant D), so on its own subject this project has
+a pool of leftovers: 8 sources mention "cpa" twice or more outside it, seven of them about short-term rentals. The
+list was not a bad ranking of a good pool — **it was nearly the whole pool.** And the card was headed *"In your
+library — no new acquisition needed"*, which is a false claim about the dregs, and is what made it read as useless
+rather than merely thin.
+
+`library.coverage_of(project_id, term)` reports it and `recall` returns it as `owned`: how many sources discuss the
+term, how many this project already holds, how many are left. Above `OWNED_SATURATED_SHARE` (0.6) it says so in
+plain words — the subject is already absorbed, the web is where anything new will come from, and the useful move is
+to search inside the project rather than acquire more. The header becomes "What is left in your library", and
+saturation **never suppresses the web search**: it is the reason to run it.
+
+**Two measured ideas were discarded on the way.** Concatenating the refine text with the project brief is what
+0.50.0 already proved wrong (a long query raises the coverage denominator until good passages fall below
+`MIN_COVERAGE`). And scoring candidates by overlap with a project-vocabulary model built from term *lift* over its
+own sources produced `gov, moneywise, university, smith, kenny, sweatpants` — channel names and noise, and it
+separated nothing: all eight candidates scored 0 or 1 of 18. The one-line cause of the off-domain results is still
+`_library_query`'s `if refine: return refine`, which throws the project away; the honest fix for that is not a
+longer query, and it remains open.
 
 ## "Modern CPA" returned house-flipping videos (0.62.0)
 

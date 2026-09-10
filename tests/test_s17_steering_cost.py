@@ -45,6 +45,18 @@ def fresh(tmp_path, monkeypatch):
     db._local.conn = None
 
 
+@pytest.fixture(autouse=True)
+def _no_jobs_left_behind():
+    """Tests here queue real jobs (`refresh_research` from a steering call). A worker pool started by ANOTHER module
+    can claim one afterwards and run it against whatever database is current by then, which is how a queued job from
+    this module made an unrelated embedding test fail. So nothing queued survives a test in this file."""
+    yield
+    try:
+        with db.tx() as conn:
+            conn.execute("UPDATE jobs SET status='cancelled' WHERE status IN ('queued','running')")
+    except Exception:  # noqa: BLE001
+        pass
+
 def _project_with_a_node():
     p = db.create_project("steer", brief="buying businesses")
     with db.tx() as conn:

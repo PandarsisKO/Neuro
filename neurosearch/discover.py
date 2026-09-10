@@ -292,13 +292,19 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
     # nothing is hidden, but they no longer count as `strong` and cannot suppress the web search below.
     lib_anchor = (lib.get("anchor") or {})
     lib_vague = bool(lib_anchor.get("all_generic") or lib_anchor.get("too_common"))
+    # 0.62.4: a project that already holds most of the library's coverage of the subject has an empty library pass by
+    # construction, and "no new acquisition needed" is then a false claim about the leftovers. Saturation never
+    # suppresses the web search — it is the reason to run it.
+    owned = lib.get("owned") or {}
+    if owned.get("saturated"):
+        lib["saturated"] = owned
     if lib_vague:
         lib["vague_query"] = {"why": lib_anchor.get("reason") or "this search cannot separate one topic from another",
                               "advice": "name the subject rather than describing it — one specific noun beats an adjective",
                               "shown_anyway": len(lib.get("suggestions") or [])}
         for s_ in lib.get("suggestions") or []:
             s_["generic_match"] = True
-    strong = [] if lib_vague else [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2
+    strong = [] if (lib_vague or owned.get("saturated")) else [s for s in lib["suggestions"] if s["score"] >= LIBRARY_STRONG * library.MIN_SCORE and len(s.get("chunks") or []) >= 2
               and s.get("coverage", 0) >= library.STRONG_COVERAGE]
     sch = scholar_pass(project, refine, research, progress) if mode != "library_only" else {"run": False, "why": "library_only"}
     sch_saved: list[dict[str, Any]] = []

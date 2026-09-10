@@ -413,6 +413,53 @@ def query_anchor(terms: set[str]) -> dict[str, Any]:
             "df": known_for_report}
 
 
+OWNED_SATURATED_SHARE = 0.6         # the project already holds this much of the library's coverage → say so (0.62.4)
+
+
+def coverage_of(project_id: str | None, term: str | None) -> dict[str, Any]:
+    """How much of the library's coverage of `term` this project ALREADY HOLDS.
+
+    **Measured on Kyle's project, 2026-09-10, after he said the fixed search was still useless.** The six results
+    were all real-estate tax videos in a business-acquisition project, and the reason was not ranking:
+
+        term                 in library   already in this project   outside
+        cpa                        130          115  (88%)              15
+        sba                        212          191  (90%)              21
+        quality of earnings         27           25  (93%)               2
+        addbacks                     7            7 (100%)               0
+
+    Library-first recall can only offer what the project does NOT have, so for its own subject matter this project
+    has a pool of leftovers — 8 sources with two or more mentions of "cpa", 7 of them about short-term rentals.
+    The list was not a bad ranking of a good pool; it was nearly the whole pool. Meanwhile the card said **"In your
+    library — no new acquisition needed"**, which is a false statement about the dregs and is what made it useless
+    rather than merely thin.
+
+    Saturation is a real answer, and the cheapest one in the app: it says the subject is already absorbed, that the
+    web is where anything new will come from, and that the useful move is to search inside the project rather than
+    acquire more. It needs no model and no new data — `sources_with_term` is already cached on the library
+    revision."""
+    if not term:
+        return {"term": None}
+    have = sources_with_term(term)
+    if not have:
+        return {"term": term, "in_library": 0, "in_project": 0, "outside": 0, "saturated": False,
+                "note": f"nothing in your library mentions \"{term}\""}
+    mine = set(db.project_source_ids(project_id, ready_only=False)) if project_id else set()
+    inside = len(have & mine)
+    outside = len(have) - inside
+    share = inside / len(have)
+    out = {"term": term, "in_library": len(have), "in_project": inside, "outside": outside,
+           "share_owned": round(share, 3), "saturated": share >= OWNED_SATURATED_SHARE and project_id is not None}
+    if out["saturated"]:
+        out["note"] = (f"{len(have)} sources in your library discuss \"{term}\" and this project already has "
+                       f"{inside} of them — {share:.0%}. Only {outside} are left outside it, so a web search is "
+                       f"where anything new will come from; to use what you already own, search inside the project.")
+    else:
+        out["note"] = (f"{len(have)} sources in your library discuss \"{term}\"; this project has {inside}, "
+                       f"leaving {outside} it does not.")
+    return out
+
+
 def library_scope(project_id: str | None) -> list[str]:
     """Library Candidates (Invariant D): ready sources NOT in the project. They can be suggested, never used, until attached."""
     conn = db.connect()
@@ -525,6 +572,7 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
     except Exception:  # noqa: BLE001
         pass
     return {"query": q, "suggestions": out, "scope": len(scope), "anchor": anchor, "rejected": rejected,
+            "owned": coverage_of(project_id, anchor.get("term") or (sorted(qt)[0] if qt else None)),
             "note": (f"{rejected['no_anchor_term']} near-miss source(s) were left out because they never say "
                      f"\"{anchor['term']}\"" if anchor.get("term") and rejected["no_anchor_term"] else None),
             "enrichment": {"wanted": wanted, "pending": pending_count()}}

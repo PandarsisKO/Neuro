@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.3';
+const UI_VERSION = '0.62.4';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1830,10 +1830,12 @@ function renderLibrarySuggestions(lib) {
   const box = $('#discLibrary'); if (!lib) { box.innerHTML = ''; return; }
   const items = lib.suggestions || [];
   // 0.62.0: a search the library cannot answer says so, above the hits, instead of presenting them as answers.
+  const sat = lib.saturated;
+  const satBox = sat ? `<div class="banner" style="margin-bottom:6px"><b>📚 You already own this subject</b> — ${esc(sat.note)}</div>` : '';
   const vg = lib.vague_query;
   const vgBox = vg ? `<div class="banner" style="margin-bottom:6px"><b>⚠ This search is too vague to match on</b> — ${esc(vg.why)}. ${esc(vg.advice)}. The ${vg.shown_anyway} closest things you own are listed below and tagged as generic matches; nothing was skipped.</div>` : '';
-  if (!items.length) { box.innerHTML = vgBox + `<div class="muted">🗄 Nothing relevant found in your library outside this project (${lib.scope || 0} sources checked at no cost).</div>`; return; }
-  box.innerHTML = vgBox + `<div class="card" style="border-color:${vg ? 'var(--warn)' : 'var(--ok)'}"><b>🗄 ${vg ? 'Closest things in your library' : 'In your library — no new acquisition needed'}</b> <span class="muted">(${items.length} of ${lib.scope} sources outside this project matched${lib.anchor && lib.anchor.term ? ` on “${esc(lib.anchor.term)}”` : ''}; ranked by matching passages, then profile)</span>
+  if (!items.length) { box.innerHTML = satBox + vgBox + `<div class="muted">🗄 Nothing relevant found in your library outside this project (${lib.scope || 0} sources checked at no cost).</div>`; return; }
+  box.innerHTML = satBox + vgBox + `<div class="card" style="border-color:${vg || sat ? 'var(--warn)' : 'var(--ok)'}"><b>🗄 ${vg ? 'Closest things in your library' : sat ? 'What is left in your library' : 'In your library — no new acquisition needed'}</b> <span class="muted">(${items.length} of ${lib.scope} sources outside this project matched${lib.anchor && lib.anchor.term ? ` on “${esc(lib.anchor.term)}”` : ''}; ranked by matching passages, then profile)</span>
     ${items.map(s => `<div style="padding:6px 0;border-top:1px solid var(--line)"><div class="row"><span style="flex:1"><b>${esc(s.title || s.url)}</b> <span class="muted">${esc(s.channel || s.platform || '')}${s.published_at ? ' · ' + s.published_at : ''}</span></span>${s.generic_match ? '<span class="muted" style="font-size:12px;margin-right:6px" title="Matched only words that do not name a subject">generic match</span>' : ''}<button class="small ${s.generic_match ? '' : 'primary'}" onclick="attachFromLibrary('${s.source_id}', this)">Add to project</button></div>
       <div class="muted" style="font-size:12.5px">${esc(s.why.join(' · '))}${s.authority_signals && s.authority_signals.length ? ' · ' + s.authority_signals.map(a => esc(a.value)).slice(0, 3).join(', ') : ''}${s.evidence_class ? ' · ' + esc(s.evidence_class) : ''}${s.enriched ? '' : ' · <span title="Profile not yet enriched — recall still works from passages and metadata">baseline profile</span>'}</div>
       ${s.profile_summary ? `<div class="muted" style="font-size:12.5px">${esc(s.profile_summary)}</div>` : ''}
