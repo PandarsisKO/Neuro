@@ -98,11 +98,18 @@ def test_an_unknown_option_is_refused_rather_than_guessed(queued):
 
 
 def test_accelerating_leaves_the_rest_on_the_local_pool(queued):
+    # The invariant is a CONSERVATION law — everything the queue held is either moved to the API or still local —
+    # so it is read from the same measurement rather than from the fixture's count of 30 (0.62.7). Hard-coding the
+    # total made this test fail whenever anything else touched the queue in the same process: a worker pool
+    # outliving an earlier module can claim a job between `accelerate_options` and `accelerate`, and the run that
+    # caught it reported `22 == 30 - 7`. A conservation check is the thing worth asserting anyway.
+    before = len(jobs.backlog(None)["jobs"])
     opts = {o["key"]: o for o in jobs.accelerate_options(None)}
     if "most_valuable" not in opts:
         pytest.skip("no subset option for this queue shape")
     out = jobs.accelerate(None, option="most_valuable")
-    assert out["remaining"] == 30 - out["moved"]
+    assert out["moved"] >= 1
+    assert out["moved"] + out["remaining"] == before
     left = [j for j in jobs.backlog(None)["jobs"]]
     assert len(left) == out["remaining"]                      # still local, still $0
 

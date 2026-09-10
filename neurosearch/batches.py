@@ -659,6 +659,47 @@ def settle(job_id: str) -> dict[str, Any]:
             "materialized": harvested.get("materialized", 0), "stuck": stuck, "error": error, "note": note}
 
 
+def settle_all_job(limit: int = 25) -> str | None:
+    """Queue the settlement instead of doing it in the request (0.62.7).
+
+    `settle_all` materialises every unsettled cohort, and materialising one is a full findings write per source —
+    validation, quote checking, note insertion. Recovering Kyle's 410 stranded cohorts took **minutes** inside a
+    single HTTP request, on a single-process server, while it also wrote 1,284 ledger rows and 2,065 findings. The
+    same sentence as three other fixes this week: a pass worth having is not worth having in a request.
+
+    Deduped per app (there is one queue), on the `priority` lane because the results are already paid for and every
+    hour they sit uncollected is an hour of work the app might redo — which 0.62.6 now prevents, but collecting is
+    still the point. `local_only` because settlement makes no model call at all: the answers are already in hand."""
+    if not unsettled():
+        return None
+    try:
+        job = db.create_job("settle_batches", {"limit": limit}, lane="priority",
+                            dedupe_key="settle_batches", execution_policy="local_only")
+        return job["id"]
+    except Exception as e:  # noqa: BLE001
+        log.warning("settle-all not queued: %s", e)
+        return None
+
+
+def run_settle_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
+    limit = int(payload.get("limit") or 25)
+    todo = unsettled()[:limit]
+    if progress:
+        progress(0.05, f"collecting {len(todo)} finished batch(es) — already paid for")
+    out = []
+    for i, u in enumerate(todo):
+        if progress:
+            progress(0.05 + 0.9 * (i / max(1, len(todo))), f"writing batch {i + 1}/{len(todo)}")
+        try:
+            out.append({"job_id": u["job_id"], **settle(u["job_id"])})
+        except Exception as e:  # noqa: BLE001
+            out.append({"job_id": u["job_id"], "settled": False, "why": str(e)[:160]})
+    n = sum(int(r.get("materialized") or 0) for r in out)
+    if progress:
+        progress(1.0, f"{n} source(s) written from finished batches")
+    return {"attempted": len(out), "materialized": n, "results": out}
+
+
 def settle_all(limit: int = 10) -> dict[str, Any]:
     out = []
     for u in unsettled()[:limit]:

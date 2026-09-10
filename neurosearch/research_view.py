@@ -419,14 +419,17 @@ def questions(project_id: str, data: dict[str, Any] | None = None, area_map: dic
 
 # ---------------------------------------------------------------- the overview
 
-def overview(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
+QUESTIONS_INLINE_MAX = 200      # how many open questions the shell carries; the rest are paged (0.62.7)
+
+
+def overview(project_id: str, limit: int = 5, full: bool = False, area_map: bool = False) -> dict[str, Any]:
     from . import cache
-    return cache.get_or_compute(f"research_overview:{project_id}:{limit}:{int(full)}",
+    return cache.get_or_compute(f"research_overview:{project_id}:{limit}:{int(full)}:{int(area_map)}",
                                 db.project_research_revision(project_id),
-                                lambda: _overview_uncached(project_id, limit, full), label="research_overview")
+                                lambda: _overview_uncached(project_id, limit, full, area_map), label="research_overview")
 
 
-def _overview_uncached(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
+def _overview_uncached(project_id: str, limit: int = 5, full: bool = False, area_map: bool = False) -> dict[str, Any]:
     """R3. `full=True` also returns the complete `questions` and `watchouts` lists computed in the SAME pass — the shell
     (R2) renders every pane from one request instead of paying for `_load()` four times."""
     d = _load(project_id)
@@ -458,7 +461,26 @@ def _overview_uncached(project_id: str, limit: int = 5, full: bool = False) -> d
     out = {"summary": summary, "next": nxt, "recently_improved": improved[:6], "attention": min(attention, 99), "attention_capped": attention > 99,
            "areas": ar["areas"][:12], "empty": not d["claims"]}
     if full:
-        out.update({"questions": qs, "watchouts": ws, "areas": ar["areas"], "area_of_claim": ar["area_of_claim"], "area_of_topic": ar["area_of_topic"]})
+        # 0.62.7 — MEASURED ON KYLE'S PROJECT: `overview?full=1` shipped **5,858 KB in 23.7 s**, and the shape says
+        # exactly where it went — `questions` 4,802 KB over **2,703 targets** (2,667 of them open, so filtering by
+        # status saves nothing), and `area_of_claim` 854 KB over 15,499 claims. Inside a question, `actions` alone is
+        # 1,311 KB. The third instance of the same defect: a list nobody re-measured after the corpus grew (the
+        # findings payload was 8 MB before 0.60.1, the sources list 4.6 MB before 0.46.3).
+        #
+        # `area_of_claim` is dropped outright because **the UI never reads it** — zero references in index.html; it
+        # is an internal index `areas()` builds for its own use, and `claims_view.query` already carries a per-row
+        # `area` for the rows on screen. It stays available behind `area_map=True` for any caller that wants it.
+        #
+        # `questions` is BOUNDED, never filtered: the order is the same score the Overview's "next" uses, so the
+        # first page is the part a human would read first, and `questions_total` / `questions_truncated` say plainly
+        # that there is more. The full list stays at `GET …/research/questions`, which the Questions pane pages
+        # through — truncation is never silent, and no question becomes unreachable.
+        head = sorted(qs, key=lambda q: (0 if q["status"] == "open" else 1, -q["score"]))[:QUESTIONS_INLINE_MAX]
+        out.update({"questions": head, "questions_total": len(qs), "questions_open": len(open_q),
+                    "questions_truncated": len(qs) > len(head),
+                    "watchouts": ws, "areas": ar["areas"], "area_of_topic": ar["area_of_topic"]})
+        if area_map:
+            out["area_of_claim"] = ar["area_of_claim"]
     return out
 
 

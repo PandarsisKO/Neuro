@@ -55,10 +55,22 @@ def test_one_request_carries_every_pane(monkeypatch):
     before = _calls()
     full = rv.overview(pid, full=True)
     assert _calls() == before, "the shell's request is a $0 surface"
-    # the same lists the separate endpoints return — one pass instead of four
-    assert full["questions"] == rv.questions(pid) and full["watchouts"] == rv.watchouts(pid)
+    # the same lists the separate endpoints return — one pass instead of four.
+    #
+    # CHANGED 0.62.7 (recorded in HARDENING.md): this asserted byte-equality with `rv.questions(pid)` and carried
+    # `area_of_claim`. Measured on Kyle's project, that made the shell's one request **5,858 KB in 23.7 s** —
+    # `questions` 4,802 KB over 2,703 targets, `area_of_claim` 854 KB over 15,499 claims. The RUNG's intent is one
+    # pass instead of four, and that is intact; what is no longer promised is that the pass returns everything at
+    # once. `questions` is bounded (in the same order, with the total and a truncation flag beside it) and the full
+    # list is paged from the endpoint; `area_of_claim` is opt-in because nothing in the UI reads it.
+    qs_all = rv.questions(pid)
+    assert full["questions"] == sorted(qs_all, key=lambda q: (0 if q["status"] == "open" else 1, -q["score"]))[:rv.QUESTIONS_INLINE_MAX]
+    assert full["questions_total"] == len(qs_all) and full["questions_truncated"] is (len(qs_all) > rv.QUESTIONS_INLINE_MAX)
+    assert full["watchouts"] == rv.watchouts(pid)
     ar = rv.areas(pid)
-    assert full["areas"] == ar["areas"] and full["area_of_claim"] == ar["area_of_claim"] and full["area_of_topic"] == ar["area_of_topic"]
+    assert full["areas"] == ar["areas"] and full["area_of_topic"] == ar["area_of_topic"]
+    assert "area_of_claim" not in full                                   # opt-in only
+    assert rv.overview(pid, full=True, area_map=True)["area_of_claim"] == ar["area_of_claim"]
     # and everything the panes need is in it
     assert {"summary", "next", "recently_improved", "attention", "areas", "empty"} <= set(full)
     assert full["areas"] and full["questions"] and full["watchouts"]

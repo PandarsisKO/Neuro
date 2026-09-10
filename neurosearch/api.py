@@ -1746,9 +1746,18 @@ def api_settle_batch(job_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/batches/settle-all", dependencies=[Depends(require_auth)])
-def api_settle_all() -> dict[str, Any]:
+def api_settle_all(background: bool = True) -> dict[str, Any]:
+    """Collect every finished batch. Queued by default (0.62.7): materialising a cohort is a full findings write per
+    source, and Kyle's 410 recovered cohorts took minutes inside one request. `background=false` keeps the old
+    synchronous behaviour for the CLI and for tests."""
     from . import batches
-    return batches.settle_all()
+    if not background:
+        return batches.settle_all()
+    jid = batches.settle_all_job()
+    if not jid:
+        return {"queued": False, "note": "nothing is waiting to be collected", "attempted": 0, "materialized": 0}
+    return {"queued": True, "job_id": jid, "status": "queued",
+            "note": "collecting them in the background — the Jobs panel shows progress; the results are already paid for"}
 
 
 @app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
@@ -2238,24 +2247,36 @@ async def api_research_refresh(project_id: str, body: ResearchRefreshIn) -> dict
 
 
 @app.get("/api/projects/{project_id}/research/overview", dependencies=[Depends(require_auth)])
-def api_research_overview(project_id: str, limit: int = 5, full: bool = False) -> dict[str, Any]:
+def api_research_overview(project_id: str, limit: int = 5, full: bool = False, area_map: bool = False) -> dict[str, Any]:
     """R1/R3/R5/R6 ($0, deterministic): the decision-first view — summary, the ranked 'next' list (questions + watch-outs),
     recently improved, the sidebar attention count, and the Research Areas."""
     from . import research_view
     if not db.get_project(project_id):
         raise HTTPException(404)
-    return research_view.overview(project_id, limit=max(1, min(limit, 20)), full=full)
+    return research_view.overview(project_id, limit=max(1, min(limit, 20)), full=full, area_map=area_map)
 
 
 @app.get("/api/projects/{project_id}/research/questions", dependencies=[Depends(require_auth)])
-def api_research_questions(project_id: str, status: str | None = None) -> dict[str, Any]:
+def api_research_questions(project_id: str, status: str | None = None, area: str | None = None,
+                           limit: int = 200, offset: int = 0) -> dict[str, Any]:
+    """The full open-question list, paged (0.62.7). The shell's `overview?full=1` carries only the first
+    `QUESTIONS_INLINE_MAX` of these — on Kyle's project there are 2,703, so the whole list was 4.8 MB of a 5.9 MB
+    payload. Ordered the same way (open first, then by score) so a page boundary is not a change of subject."""
     from . import research_view
     if not db.get_project(project_id):
         raise HTTPException(404)
     qs = research_view.questions(project_id)
     if status:
         qs = [q for q in qs if q["status"] == status]
-    return {"total": len(qs), "questions": qs}
+    if area:
+        ar = research_view.areas(project_id)
+        aoc = ar["area_of_claim"]
+        qs = [q for q in qs if (aoc.get(q.get("claim_id") or "") or "") == area]
+    qs = sorted(qs, key=lambda q: (0 if q["status"] == "open" else 1, -q["score"]))
+    limit = max(1, min(limit, research_view.QUESTIONS_INLINE_MAX * 5))
+    page = qs[offset:offset + limit]
+    return {"total": len(qs), "offset": offset, "limit": limit, "returned": len(page),
+            "truncated": offset + len(page) < len(qs), "questions": page}
 
 
 @app.get("/api/projects/{project_id}/research/watchouts", dependencies=[Depends(require_auth)])

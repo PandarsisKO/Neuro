@@ -45,6 +45,19 @@ def fresh(tmp_path, monkeypatch):
     db._local.conn = None
 
 
+@pytest.fixture(autouse=True)
+def _no_jobs_left_behind():
+    """This module creates real `suggest_findings_batch` rows to hang batch_items off. A worker pool outliving
+    another module can claim a leftover, in whatever database is current by then — which is how a queued job from
+    one module made an unrelated test fail earlier today."""
+    yield
+    try:
+        with db.tx() as conn:
+            conn.execute("UPDATE jobs SET status='cancelled' WHERE status IN ('queued','running')")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _source(sid="s1"):
     with db.tx() as conn:
         conn.execute("INSERT INTO sources (id, platform, external_id, url, title, status, created_at, updated_at) "

@@ -588,7 +588,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.6';
+const UI_VERSION = '0.62.7';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1738,10 +1738,16 @@ async function settleBatches() {
   const b = $('#settleBtn'); const m = $('#healthMsg');
   b.disabled = true; const was = b.textContent; b.textContent = '⏳ collecting…';
   try {
+    // 0.62.7: this used to run the whole settlement inside the request. Recovering 410 stranded cohorts took
+    // minutes and blocked everything else in a single-process server, so it queues and the Jobs panel shows it.
     const r = await post('/api/batches/settle-all', {});
-    const still = (r.results || []).filter(x => x.still_processing).length;
-    m.textContent = `${r.materialized || 0} source(s) gained findings from ${r.attempted} batch(es)`
-      + (still ? ` · ${still} still processing at the provider — try again later` : '');
+    if (r.queued) { m.textContent = r.note; loadJobs(); }
+    else if (r.attempted === 0) { m.textContent = r.note || 'nothing is waiting to be collected'; }
+    else {
+      const still = (r.results || []).filter(x => x.still_processing).length;
+      m.textContent = `${r.materialized || 0} source(s) gained findings from ${r.attempted} batch(es)`
+        + (still ? ` · ${still} still processing at the provider — try again later` : '');
+    }
     loadHealth();
   } catch (e) { m.textContent = 'could not collect: ' + (e.message || e); }
   b.disabled = false; b.textContent = was;
@@ -2075,7 +2081,14 @@ async function resLoadState() {
   return RES.state;
 }
 function resPane(name) { RES.pane = name; if (name === 'tools') resLoadState().catch(e => resSay(e.message)); if (name === 'claims') { CW.offset = 0; CW.sel.clear(); loadClaimsWorkbench().catch(e => resSay(e.message)); } renderShell(); }
-function resSetArea(a) { RES.area = (RES.area === a) ? null : a; if (RES.pane === 'overview' || RES.pane === 'areas') RES.pane = 'questions'; renderShell(); if (RES.state) renderResearch(RES.state); if (RES.pane === 'claims') loadClaimsWorkbench(); }
+async function resSetArea(a) {
+  RES.area = (RES.area === a) ? null : a;
+  if (RES.pane === 'overview' || RES.pane === 'areas') RES.pane = 'questions';
+  renderShell();                                   // draw immediately from what is already loaded
+  if (RES.area && RES.v && RES.v.questions_truncated) { await resAreaQuestions(RES.area); renderShell(); }
+  if (RES.state) renderResearch(RES.state);
+  if (RES.pane === 'claims') loadClaimsWorkbench();
+}
 function resClearArea() { RES.area = null; renderShell(); if (RES.state) renderResearch(RES.state); if (RES.pane === 'claims') loadClaimsWorkbench(); }
 function areaChip(a) { return a ? `<span class="chipf ${RES.area === a ? 'on' : ''}" title="Show only this area" onclick="resSetArea(${JSON.stringify(a).replace(/"/g, '&quot;')})">${esc(a)}</span>` : ''; }
 const inArea = x => !RES.area || x.area === RES.area;
@@ -2185,13 +2198,39 @@ function areaCard(a) {
     </div><button class="small ghost" onclick="resSetArea(${JSON.stringify(a.name).replace(/"/g, '&quot;')})">${RES.area === a.name ? '✕ clear' : 'Focus'}</button></div>`;
 }
 
+// 0.62.7: this pane rendered EVERY open question as a full card. On Kyle's project that is 2,667 of them, from a
+// 4.8 MB slice of a 5.9 MB payload — the same defect the Sources list had before 0.46.3 and the Findings list
+// before 0.60.1. The shell now carries the most important 200 and the rest are fetched a page at a time, in the
+// same order, so a page boundary is never a change of subject.
 function renderQuestionsPane() {
   const open = RES.qs.filter(q => q.status === 'open' && inArea(q)), rest = RES.qs.filter(q => q.status !== 'open' && inArea(q));
+  const total = RES.v.questions_open != null ? RES.v.questions_open : open.length;
+  const more = RES.qs.length < (RES.v.questions_total || 0) && !RES.area;
   $('#paneQuestions').innerHTML =
     `<div class="muted">What is not settled yet, in plain language: what would settle it, what the evidence says now, what is missing, and where to look — cheapest first. Nothing here spends money unless the button says so.</div>
-     <h3 style="margin-top:12px">Open (${open.length})</h3>
+     <h3 style="margin-top:12px">Open (${open.length}${total > open.length ? ` of ${total}` : ''})</h3>
+     ${total > open.length ? `<div class="muted" style="font-size:12.5px;margin-bottom:6px">Showing the ${open.length} most important. ${RES.area ? '' : 'Nothing is hidden — load more below.'}</div>` : ''}
      ${open.length ? open.map(q => qCard(q, RES.qs.indexOf(q))).join('') : `<div class="empty">No open questions${RES.area ? ' in this area' : ''}.</div>`}
+     ${more ? `<div style="margin-top:10px"><button class="small" onclick="resMoreQuestions(this)">Load the next 200 of ${RES.v.questions_total}</button></div>` : ''}
      ${rest.length ? `<h3 style="margin-top:14px">Settled (${rest.length})</h3>` + rest.slice(0, 30).map(q => `<div class="kn"><span class="st strong">settled</span><div><div>${esc(q.headline || q.question)}</div><div class="why">${esc(q.current)}</div></div></div>`).join('') : ''}`;
+}
+async function resMoreQuestions(btn) {
+  const was = btn.textContent; btn.disabled = true; btn.textContent = 'loading…';
+  try {
+    const r = await api(`/api/projects/${state.project.id}/research/questions?offset=${RES.qs.length}&limit=200`);
+    const have = new Set(RES.qs.map(q => q.id));
+    RES.qs = RES.qs.concat((r.questions || []).filter(q => !have.has(q.id)));   // ids, not indexes: qCard uses index into RES.qs
+    renderShell();
+  } catch (e) { btn.disabled = false; btn.textContent = was; toast(e.message || e, 'err'); }
+}
+async function resAreaQuestions(area) {
+  // Focusing an area must not be answered from a truncated list, or an area with nothing in the first page reads
+  // as empty when it is not.
+  try {
+    const r = await api(`/api/projects/${state.project.id}/research/questions?limit=200&area=${encodeURIComponent(area)}`);
+    const have = new Set(RES.qs.map(q => q.id));
+    RES.qs = RES.qs.concat((r.questions || []).filter(q => !have.has(q.id)));
+  } catch (e) { /* the inline page still renders; this only adds to it */ }
 }
 
 function renderWatchoutsPane() {
@@ -2420,6 +2459,7 @@ function jobLabel(j) {
   if (j.kind === 'bootstrap_scan') return 'searching research you already have';
   if (j.kind === 'extract_claims') return j.payload?.evaluation ? 'checking claim quality' : 'finding claims to track';
   if (j.kind === 'refresh_research') return 'bringing the research state up to date';
+  if (j.kind === 'settle_batches') return 'collecting finished batches (already paid for)';
   return what || j.kind;
 }
 async function rateResume() {

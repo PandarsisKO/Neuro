@@ -1172,3 +1172,32 @@ excluded from anchor CHOICE only. No counting statistic in the measured data sep
 "cpa" (130): equal rarity, equally often in titles, and mentions-per-source prefers "cpa" but prefers "designing"
 (in 41% of the library) over both. It belongs in the assumption ledger, and it is the first entry that should go
 there when that mechanism is built.
+
+## 0.62.7 — a changed frozen decision: the R2 shell no longer promises the whole list in one request
+
+**What changed.** `test_n8_research_shell::test_one_request_carries_every_pane` asserted byte-equality between the
+shell's payload and what the separate endpoints return, including the full `questions` list and `area_of_claim`.
+The shell now carries the first `research_view.QUESTIONS_INLINE_MAX` (200) questions in the same order, with
+`questions_total` and `questions_truncated` beside them, and `area_of_claim` only when `area_map=True`.
+
+**Why.** Measured through Kyle's browser on his 17,119-finding project, 2026-09-10: `overview?full=1` served
+**5,858 KB in 23.7 s**. By key — `questions` **4,802 KB over 2,703 targets** (2,667 open, so filtering by status
+saves nothing), `area_of_claim` **854 KB over 15,499 claims**, watch-outs 146 KB, everything else ~60 KB. Inside a
+question, `actions` alone is 1,311 KB across the list.
+
+**What the rung actually promised.** R2's intent is ONE pass instead of four — `_load()` is the expensive part and
+it still runs once. What is no longer promised is that the single pass returns every row. That distinction is the
+whole change: the pass is shared, the payload is bounded, the full list is paged from
+`GET …/research/questions?offset=&limit=&area=` in the same order, and focusing an area re-fetches for that area so
+an area whose questions sit past the page boundary cannot read as empty.
+
+`area_of_claim` was dropped rather than bounded because **nothing in the UI reads it** — zero occurrences in
+`web/index.html`. It is an index `areas()` builds for its own use, and `claims_view.query` already carries a
+per-row `area` for the rows on screen.
+
+**Also recorded: a flaky gate made deterministic, not skipped.** `test_s8_accelerate_options::
+test_accelerating_leaves_the_rest_on_the_local_pool` hard-coded the queue total at 30, so it failed whenever
+anything else in the process touched the queue — a worker pool outliving an earlier module can claim a job between
+`accelerate_options` and `accelerate`. The observed failure was `22 == 30 - 7`. It now asserts the CONSERVATION law
+it was really about (`moved + remaining == the queue as measured`), which is both stable and the stronger claim.
+Two consecutive release-checks pass.

@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.6)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.7)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,37 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A 5.9 MB request, and two passes that ran inside one (0.62.7)
+
+**Measured through Kyle's browser, 17,119 findings:** the Research tab loads from a single request, and that request
+had grown to **5,858 KB served in 23.7 s**. By key: `questions` **4,802 KB over 2,703 targets** (2,667 of them open,
+so filtering by status saves nothing) · `area_of_claim` **854 KB over 15,499 claims** · watch-outs 146 KB ·
+everything else ~60 KB. Inside one question, `actions` alone accounts for 1,311 KB across the list.
+
+Third instance of one defect — **a list nobody re-measured after the corpus grew** (findings were 8 MB before
+0.60.1, the sources list 4.6 MB before 0.46.3) — and the two keys needed different answers:
+
+- **`area_of_claim` is dropped outright.** Grep `web/index.html` for it: zero hits. It is an index `areas()` builds
+  for its own use, and `claims_view.query` already carries a per-row `area` for the rows on screen. Still available
+  behind `area_map=1`.
+- **`questions` is bounded, never filtered** — `QUESTIONS_INLINE_MAX` 200, in the same order the Overview's `next`
+  list uses, with `questions_total` and `questions_truncated` beside it. The full list pages from
+  `GET …/research/questions?offset=&limit=&area=`, and **focusing an area re-fetches for that area**, because an
+  area whose questions all sit past the page boundary must not read as empty. The Questions pane also stopped
+  rendering every open question as a card — 2,667 cards, the same DOM problem 0.46.3 fixed for Sources.
+- The R2 frozen gate asserted byte-equality with the separate endpoints; it is updated with its reasoning recorded
+  in HARDENING.md. R2 promised ONE pass instead of four, and that is intact — what is no longer promised is that
+  the pass returns every row.
+
+**And `settle_all` stopped running inside the request.** Materialising a cohort is a full findings write per source
+— validation, quote checking, note insertion — and recovering Kyle's 410 stranded cohorts took minutes on a
+single-process server while writing 1,284 ledger rows. `POST /api/batches/settle-all` now queues a `settle_batches`
+job (priority lane, `local_only` because settlement makes no model call — the answers are already in hand), deduped
+so a second click cannot start a second settlement, with `background=false` kept for the CLI. Fourth time this week
+the fix has been the same sentence.
+
+Gate `tests/test_s21_payload_and_settle.py`.
 
 ## Work in flight is still work (0.62.6)
 

@@ -38,7 +38,7 @@ _running_lock = threading.Lock()
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
-RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research")
+RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research", "settle_batches")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
@@ -288,6 +288,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "extract_claims":
         from . import claims
         return claims.run_job(payload, progress)
+    if kind == "settle_batches":
+        from . import batches
+        return batches.run_settle_job(payload, progress)
     if kind == "refresh_research":
         from . import claims
         return claims.run_refresh_job(payload, progress)
