@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.61.4';
+const UI_VERSION = '0.62.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1829,9 +1829,12 @@ async function recheckAccount() {
 function renderLibrarySuggestions(lib) {
   const box = $('#discLibrary'); if (!lib) { box.innerHTML = ''; return; }
   const items = lib.suggestions || [];
-  if (!items.length) { box.innerHTML = `<div class="muted">🗄 Nothing relevant found in your library outside this project (${lib.scope || 0} sources checked at no cost).</div>`; return; }
-  box.innerHTML = `<div class="card" style="border-color:var(--ok)"><b>🗄 In your library — no new acquisition needed</b> <span class="muted">(${items.length} of ${lib.scope} sources outside this project matched; ranked by matching passages, then profile)</span>
-    ${items.map(s => `<div style="padding:6px 0;border-top:1px solid var(--line)"><div class="row"><span style="flex:1"><b>${esc(s.title || s.url)}</b> <span class="muted">${esc(s.channel || s.platform || '')}${s.published_at ? ' · ' + s.published_at : ''}</span></span><button class="small primary" onclick="attachFromLibrary('${s.source_id}', this)">Add to project</button></div>
+  // 0.62.0: a search the library cannot answer says so, above the hits, instead of presenting them as answers.
+  const vg = lib.vague_query;
+  const vgBox = vg ? `<div class="banner" style="margin-bottom:6px"><b>⚠ This search is too vague to match on</b> — ${esc(vg.why)}. ${esc(vg.advice)}. The ${vg.shown_anyway} closest things you own are listed below and tagged as generic matches; nothing was skipped.</div>` : '';
+  if (!items.length) { box.innerHTML = vgBox + `<div class="muted">🗄 Nothing relevant found in your library outside this project (${lib.scope || 0} sources checked at no cost).</div>`; return; }
+  box.innerHTML = vgBox + `<div class="card" style="border-color:${vg ? 'var(--warn)' : 'var(--ok)'}"><b>🗄 ${vg ? 'Closest things in your library' : 'In your library — no new acquisition needed'}</b> <span class="muted">(${items.length} of ${lib.scope} sources outside this project matched${lib.anchor && lib.anchor.term ? ` on “${esc(lib.anchor.term)}”` : ''}; ranked by matching passages, then profile)</span>
+    ${items.map(s => `<div style="padding:6px 0;border-top:1px solid var(--line)"><div class="row"><span style="flex:1"><b>${esc(s.title || s.url)}</b> <span class="muted">${esc(s.channel || s.platform || '')}${s.published_at ? ' · ' + s.published_at : ''}</span></span>${s.generic_match ? '<span class="muted" style="font-size:12px;margin-right:6px" title="Matched only words that do not name a subject">generic match</span>' : ''}<button class="small ${s.generic_match ? '' : 'primary'}" onclick="attachFromLibrary('${s.source_id}', this)">Add to project</button></div>
       <div class="muted" style="font-size:12.5px">${esc(s.why.join(' · '))}${s.authority_signals && s.authority_signals.length ? ' · ' + s.authority_signals.map(a => esc(a.value)).slice(0, 3).join(', ') : ''}${s.evidence_class ? ' · ' + esc(s.evidence_class) : ''}${s.enriched ? '' : ' · <span title="Profile not yet enriched — recall still works from passages and metadata">baseline profile</span>'}</div>
       ${s.profile_summary ? `<div class="muted" style="font-size:12.5px">${esc(s.profile_summary)}</div>` : ''}
       ${s.chunks && s.chunks[0] ? `<div style="font-size:12.5px;margin-top:2px">“${esc(s.chunks[0].text.slice(0, 220))}” <a class="muted" href="${esc(s.chunks[0].link)}" target="_blank">@ ${esc(s.chunks[0].timestamp)}</a></div>` : ''}</div>`).join('')}
@@ -2689,13 +2692,18 @@ async function loadWorkbench(reset = true) {
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
   $('#fbSrcChip').innerHTML = FB.source ? `<div class="row muted" style="font-size:12.5px;padding:2px 0"><span style="flex:1">Showing one source only</span><button class="small ghost" onclick="clearFindingSource()">✕ show every source</button></div>` : '';
-  $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}` + (f.used ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '');
+  const bg = r.badges || {};
+  // 0.61.5: use/staleness/area come from a cache that is deliberately allowed to lag the rows, so the counts say
+  // when they are lagging instead of reading as current. An unknown count is never printed as zero.
+  $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}`
+    + (f.used && bg.known ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '')
+    + (bg.note ? ` · ${bg.note}` : '');
   // Fire-and-forget, and explicitly swallowed: tonight's banners were shipped without a human able to look at the
   // browser (0.58.10), so a failure in this decoration must not be able to take the findings list down with it.
   try { const q = loadQuality(st); if (q && q.catch) q.catch(() => { const el = $('#fbQual'); if (el) el.innerHTML = ''; }); }
   catch (e) { const el = $('#fbQual'); if (el) el.innerHTML = ''; }
   const sw = r.low_value_sweep || {};
-  $('#fbSweep').innerHTML = sw.count && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
+  $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
   const rows = r.findings || [];
   const bySrc = []; const idx = {};
   for (const n of rows) { const k = n.source_title || 'Pinned from chat'; if (!(k in idx)) { idx[k] = bySrc.length; bySrc.push([k, n.source_id, []]); } bySrc[idx[k]][2].push(n); }

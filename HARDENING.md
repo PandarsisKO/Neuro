@@ -1145,3 +1145,30 @@ asserts the new chain end to end (claimed → rebuilding → stale-with-reason o
 Also in this pass, and worth recording because a frozen gate caught it: `db.failure_class`'s `not_found` pattern
 matched "HTTP Error 404" but not "HTTP 404 — nothing at that address", so a live 404 classified as `other`. My own
 parametrised test used the wording that happened to match; `test_l1_browser_capture` used the wording that did not.
+
+## 0.62.0 — a changed frozen decision: `ANCHOR_MAX_DF_SHARE` 0.5 → 0.25, and a new bar beside it
+
+**What changed.** `library.ANCHOR_MAX_DF_SHARE` was 0.5 and is now 0.25, and the judgement it used to make alone is
+now split in two: `ANCHOR_TOO_COMMON_SHARE` 0.5 keeps the original absolute claim ("in MOST of the library"), while
+0.25 is the new calibrated bar and applies only once the library holds `ANCHOR_SHARE_MIN_LIBRARY` (40) sources.
+
+**Why.** Measured on Kyle's live library, 2026-09-10, 1,229 sources with chunks. At 0.5 the rule would anchor on
+"accountant" — a word in **49.6%** of his sources. The share distribution of the words actually involved in his
+searches: accountant 49.6% · designing 40.8% · improving 26.6% · seller 25.6% · complex 20.9% · workflows 14.3% ·
+auditing 11.6% · cpa 10.6% · modern 10.4% · ui 10.2% · franchise 8.5% · enterprise 8.0% · bookkeeping 6.7% · ux
+5.9% · laundromat 5.3% · reusable 2.4% · cognitive 1.7%. Every word that names a subject sits at or below a quarter
+of the library; everything above it is vocabulary the whole corpus shares. That is where the line falls in the data,
+and it is a judgement about what a corpus-wide word can tell you — not a figure tuned until one query behaved.
+
+**Why the split.** The first attempt guarded the single bar behind a minimum library size, which also disabled the
+`too_common` verdict for small libraries — and `too_common` is a judgement about the QUERY, not a calibration: 9
+sources out of 11 really is most of a library. The frozen 0.61.0 gate
+(`test_s14_fix_pass::test_a_query_of_generic_words_is_marked_weak`) caught it on an 11-source fixture. Recorded
+because it is the second time a guard written to protect small fixtures has switched off a judgement that was
+correct at that scale.
+
+**Not frozen, and labelled as such:** `GENERIC_MODIFIERS` is an assumption — a written list of modifier words
+excluded from anchor CHOICE only. No counting statistic in the measured data separates "modern" (128 sources) from
+"cpa" (130): equal rarity, equally often in titles, and mentions-per-source prefers "cpa" but prefers "designing"
+(in 41% of the library) over both. It belongs in the assumption ledger, and it is the first entry that should go
+there when that mechanism is built.

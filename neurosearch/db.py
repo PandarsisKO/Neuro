@@ -1629,6 +1629,26 @@ def count_active_jobs() -> int:
     return connect().execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running','external_pending')").fetchone()[0]
 
 
+def project_notes_revision(project_id: str) -> str:
+    """The fingerprint of a project's findings ALONE — count, newest, and a count per status (0.61.5).
+
+    `project_view_revision` is the Sources fingerprint and its `sources`/`jobs` components are global on purpose,
+    which makes it wrong as a key for anything expensive: during an ingest run it moves whenever any job anywhere
+    moves. The findings list depends on `project_notes` and nothing else. `project_notes` has no `updated_at`, so
+    the per-status counts stand in for one — approving, dismissing or reserving a finding moves this string, and a
+    job heartbeat does not.
+
+    Every status is counted, not just approved and suggested: a finding moving between two statuses the caller is
+    not currently showing still changes the page it belongs on."""
+    c = connect()
+    parts = c.execute(
+        "SELECT COUNT(*), COALESCE(MAX(created_at),0) FROM project_notes WHERE project_id=?", (project_id,)).fetchone()
+    by_status = c.execute(
+        "SELECT status, COUNT(*) FROM project_notes WHERE project_id=? GROUP BY status ORDER BY status", (project_id,)).fetchall()
+    tail = ",".join(f"{r[0]}={r[1]}" for r in by_status)
+    return f"{parts[0]}:{parts[1]}:{tail}"
+
+
 def project_view_revision(project_id: str) -> dict[str, str]:
     """R2: the cheap fingerprint of everything the Sources view renders — measured at ~6 ms against the 440 ms the
     view itself costs, which is what lets a 3 s poll ask "did anything change?" instead of rebuilding the answer.

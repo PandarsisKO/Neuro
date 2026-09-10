@@ -159,7 +159,9 @@ def query_strength(queries: list[str]) -> dict[str, Any]:
             # the one no-anchor case that condemns the QUERY: every word in it is everywhere. The other cases
             # ("appears in too few sources", "too few terms") mean the opposite — a very rare word — and must not
             # be treated as generic.
-            if a.get("too_common"):
+            # `all_generic` (0.62.0) is the same verdict by another route: every word in the search is a modifier,
+            # so it names no subject. Both mean "this query cannot discriminate"; neither means "a rare word".
+            if a.get("too_common") or a.get("all_generic"):
                 too_common.append(q)
     known = [n for n in rarity.values() if n]
     weak = list(too_common)

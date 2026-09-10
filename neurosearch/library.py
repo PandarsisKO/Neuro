@@ -80,6 +80,39 @@ ANCHOR_MAX_DF_SHARE = 0.5           # if even the rarest term is in half the lib
 #     relevance. (This is what made the rule reject every hit in the nine-source test fixture.)
 ANCHOR_MAX_TERMS = 8
 ANCHOR_MIN_SOURCES = 2
+ANCHOR_MIN_MENTIONS = 2             # one mention in a whole transcript is a passing remark, not a topic (0.62.0)
+ANCHOR_MENTION_MIN_CHUNKS = 3       # ...but one mention in a SHORT source is its whole content, so the rule waits
+ANCHOR_SHARE_MIN_LIBRARY = 40       # a proportion of a handful of sources is not a proportion
+
+# Measured on Kyle's 1,229-source library, 2026-09-10, after "Modern CPA" returned eight house-flipping and
+# web-design videos. Two defects, and the second is not a statistics problem at all.
+#
+# ANCHOR_MAX_DF_SHARE was 0.5, which would have anchored happily on "accountant" — a word in 49.6% of his
+# library. The measured distribution: accountant 49.6%, designing 40.8%, improving 26.6%, seller 25.6%,
+# complex 20.9%, workflows 14.3%, auditing 11.6%, cpa 10.6%, modern 10.4%, ui 10.2%, franchise 8.5%,
+# enterprise 8.0%, bookkeeping 6.7%, ux 5.9%, laundromat 5.3%, reusable 2.4%, cognitive 1.7%. Everything that
+# names a topic sits at or below a quarter of the library; everything above it is vocabulary the whole corpus
+# shares. 0.25 is where that line falls, and it is a judgement about what a corpus-wide word can tell you, not a
+# figure tuned until one query behaved.
+#
+# GENERIC_MODIFIERS is the harder half, and honesty demands it be a list rather than a threshold. "modern" is in
+# 128 of his sources and "cpa" in 130, so RARITY CHOSE THE USELESS WORD BY A MARGIN OF TWO SOURCES. Nothing
+# countable separates them: they are equally often in titles (2 each), and mentions-per-source prefers "cpa"
+# (2.35 vs 1.66) but prefers "designing" (6.54) over both, so that measure is a coincidence here, not a rule.
+# What actually distinguishes them is that "modern" is a modifier — it attaches to any topic in any field and
+# denotes none. That is a linguistic fact a frequency count cannot discover, so it is written down where a human
+# can read and correct it. These words are excluded from ANCHOR CHOICE ONLY: they still match, still score, still
+# count towards coverage. And they are only skipped when the query has another content word left — if a search is
+# nothing but modifiers, the honest answer is that it is too vague, not that it has no anchor.
+ANCHOR_TOO_COMMON_SHARE = 0.5       # "in MOST of the library" — absolute, true of 9 sources in 11, never guarded
+ANCHOR_MAX_DF_SHARE = 0.25          # "too common to be distinctive" — a calibration, so it waits for a real library
+GENERIC_MODIFIERS = frozenset({
+    "modern", "best", "new", "newest", "latest", "top", "good", "great", "better", "simple", "easy", "quick",
+    "fast", "advanced", "basic", "ultimate", "complete", "full", "professional", "proper", "real", "true",
+    "smart", "powerful", "effective", "efficient", "useful", "helpful", "popular", "common", "typical",
+    "current", "recent", "old", "traditional", "classic", "big", "small", "large", "huge", "cheap", "free",
+    "expensive", "important", "essential", "key", "main", "major", "minor", "general", "overall", "successful",
+})
 BATCH_MIN = 8                       # wanted profiles that trigger an opportunistic batch
 INTERACTIVE_MAX = 3                 # profiles enriched inline when a query needs them right now
 PROFILE_CHARS = 14000               # text sample sent for enrichment (head + topic chunks)
@@ -281,6 +314,50 @@ def sources_with_term(term: str, source_ids: list[str] | None = None) -> set[str
     return set(hit) if source_ids is None else {s for s in hit if s in set(source_ids)}
 
 
+def _chunks_per_source(source_ids: list[str]) -> dict[str, int]:
+    """How long each source is, in chunks. The mention floor is a statement about a long transcript: a source with
+    two chunks that says the anchor once has said it in half of everything it contains."""
+    if not source_ids:
+        return {}
+    out: dict[str, int] = {}
+    try:
+        for i in range(0, len(source_ids), 400):
+            part = source_ids[i:i + 400]
+            q = "SELECT source_id sid, COUNT(*) n FROM chunks WHERE source_id IN (%s) GROUP BY sid" % ",".join("?" * len(part))
+            for r in db.connect().execute(q, part):
+                out[r["sid"]] = int(r["n"] or 0)
+    except Exception:  # noqa: BLE001
+        return {}
+    return out
+
+
+def source_mentions(term: str) -> dict[str, int]:
+    """source id → how many CHUNKS of it contain `term`. The aboutness measure `sources_with_term` cannot give.
+
+    Measured (0.62.0): 66% of the sources containing "modern" contain it in exactly ONE chunk of an entire
+    transcript, against 44% for "cpa". Requiring the anchor twice took precision on Kyle's "Modern CPA" search
+    from 35% to 62% **with no loss of recall at all** — every on-target source mentions its own subject more than
+    once. A word said once in three hours is a passing remark."""
+    from . import cache
+    rev = str(db.library_revision())
+
+    def compute() -> dict[str, int]:
+        out: dict[str, int] = {}
+        try:
+            q = term.replace('"', " ").strip()
+            if not q:
+                return out
+            for r in db.connect().execute(
+                    "SELECT c.source_id sid FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                    "WHERE chunks_fts MATCH ?", (f'"{q}"',)):
+                out[r["sid"]] = out.get(r["sid"], 0) + 1
+        except Exception:  # noqa: BLE001
+            return {}
+        return out
+
+    return dict(cache.get_or_compute(f"library:mentions:{term}", rev, compute, label="library_df"))
+
+
 def query_anchor(terms: set[str]) -> dict[str, Any]:
     """The query's most distinctive term — the one whose absence means the match is about something else.
 
@@ -299,18 +376,41 @@ def query_anchor(terms: set[str]) -> dict[str, Any]:
     if not known:
         return {"term": None, "reason": "none of these words appear anywhere in the library", "df": present}
     total = max(1, db.sources_with_chunks())
-    term = min(known, key=lambda t: (known[t], t))
-    if known[term] / total > ANCHOR_MAX_DF_SHARE:
-        # `too_common` is the one no-anchor case that says something about the QUERY rather than about the library:
-        # every word in it is everywhere, so it cannot separate topics at all (bootstrap.query_strength reads this).
-        return {"term": None, "too_common": True, "rarest": term, "sources": known[term],
+    # Modifiers are set aside before the rarest word is chosen, but only while a content word survives: a search
+    # made entirely of modifiers gets the vague-query answer below, not an anchor picked from among them.
+    content = {t: n for t, n in known.items() if t not in GENERIC_MODIFIERS}
+    skipped = sorted(set(known) - set(content))
+    if not content:
+        return {"term": None, "all_generic": True, "skipped": skipped, "df": known,
+                "reason": "every word in this search is a generic modifier ("
+                          + ", ".join(skipped[:4]) + "), so none of them names a subject"}
+    term = min(content, key=lambda t: (content[t], t))
+    known_for_report, known = known, content
+    # `too_common` is the no-anchor case that says something about the QUERY rather than about the library: every
+    # word in it is everywhere, so it cannot separate topics at all (bootstrap.query_strength reads this). There are
+    # two bars, and the distinction matters. "In MOST of the library" is an absolute judgement — 9 sources out of 11
+    # really is most — so it holds at any size. The tighter quarter-of-the-library bar is a CALIBRATION against a
+    # measured distribution, so it waits for a library large enough for a proportion to mean anything; guarding it
+    # is what stops a rule from firing on a handful of sources, and 0.62.0's first attempt guarded BOTH bars and so
+    # silently switched off the generic-query judgement in small libraries.
+    share = known[term] / total
+    if share > ANCHOR_TOO_COMMON_SHARE:
+        return {"term": None, "too_common": True, "rarest": term, "sources": known[term], "share": round(share, 4),
                 "reason": f"even the rarest word ('{term}') is in most of the library", "df": known}
+    if total >= ANCHOR_SHARE_MIN_LIBRARY and share > ANCHOR_MAX_DF_SHARE:
+        return {"term": None, "too_common": True, "rarest": term, "sources": known[term], "share": round(share, 4),
+                "reason": f"even the rarest word ('{term}') is in more than a quarter of your library "
+                          f"({known[term]} of {total} sources), which cannot tell one subject from another",
+                "df": known}
     if known[term] < ANCHOR_MIN_SOURCES:
         return {"term": None, "reason": f"'{term}' appears in too few sources to separate one topic from another",
                 "df": known}
     return {"term": term, "sources": known[term], "of_sources": total, "share": round(known[term] / total, 4),
-            "reason": f"'{term}' is the rarest word in this search, so a match that never says it is about something else",
-            "df": known}
+            "skipped_generic": skipped, "min_mentions": ANCHOR_MIN_MENTIONS,
+            "reason": f"'{term}' is the rarest word in this search that names a subject, so a match that never says "
+                      f"it is about something else"
+                      + (f" (ignored as generic: {', '.join(skipped[:3])})" if skipped else ""),
+            "df": known_for_report}
 
 
 def library_scope(project_id: str | None) -> list[str]:
@@ -335,8 +435,13 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
     hits = search(q, limit=RECALL_CHUNKS, source_ids=scope, per_source_cap=PER_SOURCE_CHUNKS, reserve=0)
     qt = _tokens(q)
     anchor = query_anchor(qt)
-    anchored = sources_with_term(anchor["term"]) if anchor.get("term") else set()
-    rejected = {"no_anchor_term": 0, "low_coverage": 0, "low_score": 0}
+    # 0.62.0: aboutness, not presence. `anchored` is the set of sources that mention the anchor at least
+    # ANCHOR_MIN_MENTIONS times; a single mention is reported separately so the reason can say which it was.
+    mention_counts = source_mentions(anchor["term"]) if anchor.get("term") else {}
+    chunks_per = _chunks_per_source(list(mention_counts)) if mention_counts else {}
+    anchored = {sid for sid, n in mention_counts.items()
+                if n >= ANCHOR_MIN_MENTIONS or chunks_per.get(sid, 0) < ANCHOR_MENTION_MIN_CHUNKS}
+    rejected = {"no_anchor_term": 0, "anchor_mentioned_once": 0, "low_coverage": 0, "low_score": 0}
     by_src: dict[str, dict[str, Any]] = {}
     for h in hits:
         d = by_src.setdefault(h["source_id"], {"source_id": h["source_id"], "chunk_score": 0.0, "chunks": [], "title": h["title"], "channel": h.get("channel"),
@@ -373,13 +478,15 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
         # words of a four-word query is enough, which is how a video about Airbnb income became a "strong" match
         # for enterprise UX work. IDF weighting was measured first and rejected none of them.
         d["anchor_term"] = anchor.get("term")
+        d["anchor_mentions"] = mention_counts.get(sid, 0)
         if anchor.get("term") and sid not in anchored:
-            rejected["no_anchor_term"] += 1
+            rejected["anchor_mentioned_once" if mention_counts.get(sid) else "no_anchor_term"] += 1
             continue
         why: list[str] = [f"{len(d['chunks'])} matching passage(s); best at {d['chunks'][0]['timestamp']}",
                           f"passages cover {len(covered)} of {len(qt)} query terms ({', '.join(covered[:6])})"]
         if anchor.get("term"):
-            why.append(f"the source says \"{anchor['term']}\" — the most distinctive word in this search")
+            why.append(f"says \"{anchor['term']}\" {d['anchor_mentions']}× — the most distinctive word in this "
+                       f"search that names a subject")
         bonus = 0.0
         if title_hits:
             bonus += 0.004 * len(title_hits); why.append("title/creator mentions " + ", ".join(title_hits[:4]))

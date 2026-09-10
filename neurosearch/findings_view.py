@@ -24,26 +24,29 @@ def _tokens(s: str) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9][a-z0-9'-]+", (s or "").lower()) if len(w) > 2]
 
 
-def decorated(project_id: str) -> list[dict[str, Any]]:
-    """Every note in the project, with the four derived fields the workbench filters and sorts on, cached on the
-    project's view revision (0.61.3).
+def rows_only(project_id: str) -> list[dict[str, Any]]:
+    """Every note in the project with its citations parsed, cached on the NOTES revision alone (0.61.5).
 
-    Measured on Kyle's live project (16,962 notes): `/findings` took **23.2 s cold and 4.3 s warm**, and it was
-    doing the same work on every request — loading every row with its full text, parsing every citations blob, and
-    (until 0.61.2) rebuilding the usage map, the staleness map and the research areas each time. Filtering and
-    sorting 17,000 dicts in memory costs milliseconds; ASSEMBLING them is the whole bill. So it is assembled once
-    per revision, and a revision only moves when the project actually changes.
+    Measured through Kyle's browser on the 16,962-note project: `/findings` 23.2 s cold, 4.3 s warm at 0.61.3,
+    and 9.3 s / 19.9 s at 0.61.4 while six ingest jobs were running. 0.61.4 cached the whole assembly on
+    `db.project_view_revision`, which is the Sources fingerprint: it includes a GLOBAL jobs component, so during a
+    run it moves whenever any job anywhere does, and an assembly that costs seconds was being retired before it
+    could be reused. The same failure as the quality pass, one layer along — a cache whose key changes faster than
+    its value can be computed is not a cache.
 
-    Deliberately `get_or_compute`, not the stale-tolerant variant: a page of findings must never show a status the
-    user just changed. The cost of being current is now paid once per change instead of once per request."""
+    So the assembly is split by what it actually depends on. The rows themselves depend on `project_notes` and
+    nothing else, and that revision moves only when a finding lands or a status changes — which is exactly when
+    the list must change. The derived badges live in `decorations()` below.
+
+    Never mutated by a caller: `query` merges into copies, because this list is shared by every request that hits
+    the same revision."""
     from . import cache
-    rev = json.dumps(db.project_view_revision(project_id), sort_keys=True)
-    return cache.get_or_compute(f"findings_rows:{project_id}", rev, lambda: _decorate(project_id),
-                                label="findings_rows")
+    rev = db.project_notes_revision(project_id)
+    return cache.get_or_compute(f"findings_plain:{project_id}", rev, lambda: _rows_only(project_id),
+                                label="findings_plain")
 
 
-def _decorate(project_id: str) -> list[dict[str, Any]]:
-    from . import staleness
+def _rows_only(project_id: str) -> list[dict[str, Any]]:
     rows = [dict(r) for r in db.connect().execute(
         "SELECT * FROM project_notes WHERE project_id=? ORDER BY importance DESC, created_at DESC",
         (project_id,)).fetchall()]
@@ -52,6 +55,37 @@ def _decorate(project_id: str) -> list[dict[str, Any]]:
             r["citations"] = json.loads(r["citations"] or "[]")
         except ValueError:
             r["citations"] = []
+        c0 = (r["citations"] or [{}])[0] if r["citations"] else {}
+        r["source_title"] = c0.get("title") or "Pinned from chat"
+    return rows
+
+
+def decorations(project_id: str, *, block: bool = False) -> dict[str, Any]:
+    """The three derived maps the workbench decorates rows with — plan/chat/Claim use, source staleness, and the
+    research area a finding sits in — cached on the full view revision because that is what they genuinely depend on.
+
+    `block=False` (the default for an ordinary page of findings) returns the previous maps at once with
+    `current: False`, or nothing at all on a cold project, and never computes in the request. That is safe in a way
+    the rows are not: a badge saying a finding has not been used yet may be a moment out of date, whereas a finding
+    whose status the user just changed may not be. `block=True` is used when the user filters or sorts ON one of
+    these dimensions — then they have asked for it and it is worth waiting for."""
+    from . import cache
+    rev = json.dumps(db.project_view_revision(project_id), sort_keys=True)
+    key = f"findings_decor:{project_id}"
+    if block:
+        maps = cache.get_or_compute(key, rev, lambda: _decorations(project_id), label="findings_decor")
+        return {"maps": maps, "current": True, "pending": False}
+    # warm=True deliberately: with NOTHING cached there is no badge to show and an empty map would read as "this
+    # finding has never been used", which is a false statement rather than a slow one. So a cold project pays for
+    # the pass once; every later request takes the previous maps immediately and refreshes behind the screen. The
+    # failure this avoids is not the cold cost, it is recomputing on every request because the view revision keeps
+    # moving while sources are being read.
+    got = cache.get_stale_ok(key, rev, lambda: _decorations(project_id), label="findings_decor", warm=True)
+    return {"maps": got["value"], "current": bool(got["current"]), "pending": got["value"] is None}
+
+
+def _decorations(project_id: str) -> dict[str, Any]:
+    from . import staleness
     um = usage_map(project_id)
     try:
         st = {x["source_id"]: x["status"] for x in staleness.assess(project_id)["sources"]}
@@ -60,22 +94,42 @@ def _decorate(project_id: str) -> list[dict[str, Any]]:
     area_of: dict[int, str] = {}
     try:
         from . import research_view
-        ar = research_view.areas(project_id)
-        claim_area = ar["area_of_claim"]
+        claim_area = research_view.areas(project_id)["area_of_claim"]
         for r in db.connect().execute("SELECT id, origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,)).fetchall():
             if r["id"] in claim_area:
                 area_of[r["origin_note_id"]] = claim_area[r["id"]]
     except Exception:  # noqa: BLE001
         pass
+    return {"used": um, "stale": st, "area": area_of}
+
+
+def _merge(rows: list[dict[str, Any]], maps: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Copies, never the cached rows. An unknown badge is `None`, never a confident zero — `used.known` says which."""
+    um = (maps or {}).get("used") or {}
+    st = (maps or {}).get("stale") or {}
+    ar = (maps or {}).get("area") or {}
+    known = maps is not None
+    out = []
     for r in rows:
         u = um.get(r["id"]) or {"plan": 0, "chat": 0, "claim": None}
-        r["used"] = {"plan": u["plan"], "chat": u["chat"], "claim": u["claim"], "claim_counts": bool(u.get("claim_counts")),
-                     "never": not (u["plan"] or u["chat"] or u.get("claim_counts"))}
-        r["source_stale"] = st.get(r.get("source_id") or "") in ("stale", "legacy_unverified")
-        r["area"] = area_of.get(r["id"])
-        c0 = (r["citations"] or [{}])[0] if r["citations"] else {}
-        r["source_title"] = c0.get("title") or "Pinned from chat"
-    return rows
+        out.append({**r,
+                    "used": {"plan": u["plan"], "chat": u["chat"], "claim": u["claim"],
+                             "claim_counts": bool(u.get("claim_counts")),
+                             "never": known and not (u["plan"] or u["chat"] or u.get("claim_counts")),
+                             "known": known},
+                    "source_stale": st.get(r.get("source_id") or "") in ("stale", "legacy_unverified"),
+                    "area": ar.get(r["id"])})
+    return out
+
+
+def decorated(project_id: str) -> list[dict[str, Any]]:
+    """Rows with every badge resolved, computing whatever is missing. The background warmer and any caller that
+    needs the full picture uses this; a page of findings does not."""
+    return _merge(rows_only(project_id), decorations(project_id, block=True)["maps"])
+
+
+def _decorate(project_id: str) -> list[dict[str, Any]]:
+    return _merge(_rows_only(project_id), _decorations(project_id))
 
 
 def usage_map(project_id: str) -> dict[int, dict[str, Any]]:
@@ -162,7 +216,9 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
 def query(project_id: str, *, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
           used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance", limit: int = 100, offset: int = 0) -> dict[str, Any]:
     limit = max(1, min(limit, PAGE_MAX))
-    rows = decorated(project_id)
+    needs_decorations = bool(used or stale or area) or sort == "used"
+    dec = decorations(project_id, block=needs_decorations)
+    rows = _merge(rows_only(project_id), dec["maps"])
     qtoks = set(_tokens(q or ""))
 
     def passes(r: dict[str, Any], skip: str | None = None) -> bool:
@@ -206,8 +262,12 @@ def query(project_id: str, *, q: str | None = None, status: str | None = "approv
     page = matched[offset:offset + limit]
     low = [r for r in rows if r["status"] == "approved" and int(r.get("importance") or 0) <= LOW_IMPORTANCE and r["used"]["never"]]
     return {"total": len(matched), "offset": offset, "limit": limit, "findings": page,
+            "badges": {"known": dec["maps"] is not None, "current": dec["current"], "pending": dec["pending"],
+                       "note": "" if dec["current"] else ("use, staleness and area are still being counted"
+                                                          if dec["pending"] else "use, staleness and area are from a moment ago")},
             "facets": {"status": dict(facets["status"]), "importance": {str(k): v for k, v in sorted(facets["importance"].items(), reverse=True)},
                        "used": dict(facets["used"]), "stale": dict(facets["stale"]), "area": dict(facets["area"].most_common(30)),
                        "source": [{"source_id": k[0], "title": k[1], "n": v} for k, v in facets["source"].most_common(40)]},
-            "low_value_sweep": {"count": len(low), "note_ids": [r["id"] for r in low][:2000],
-                                "line": f"{len(low)} approved findings at importance ≤ {LOW_IMPORTANCE} were never used by the plan, a chat or a Claim" if low else ""}}
+            "low_value_sweep": {"count": len(low), "note_ids": [r["id"] for r in low][:2000], "pending": dec["pending"],
+                                "line": "" if dec["pending"] or not low else
+                                        f"{len(low)} approved findings at importance ≤ {LOW_IMPORTANCE} were never used by the plan, a chat or a Claim"}}

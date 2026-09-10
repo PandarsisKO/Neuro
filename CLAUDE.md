@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.61.4)
+# Neuro Search — architecture map for Claude Code (current state, 0.62.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -217,6 +217,72 @@ the file back. Fixed live: 112 MB → 1.2 MB.
   most recently updated projects, so the first visit after a restart is warm too.
 
 Gate `tests/test_s15_lockup.py`.
+
+## "Modern CPA" returned house-flipping videos (0.62.0)
+
+Kyle: *"discover feature still isnt working ... NONE of the results are valuable to the search at all."* Every one
+of the eight results matched the word **modern**, and the app said so in its own explanation line. Measured on his
+live library (1,229 sources with chunks): **"modern" is in 128 sources, "cpa" in 130** — so the anchor rule, which
+picks the query's rarest word, decided what his search was about **by a margin of two sources**, and picked the word
+that names nothing.
+
+Scored against a target set (sources mentioning CPA 3+ times or in the title — 45 of them):
+
+| rule | returns | on target | precision | recall |
+|---|---|---|---|---|
+| shipped (anchor "modern") | 128 | 3 | **2%** | 7% |
+| require every query term | 11 | 3 | 27% | 7% |
+| anchor "cpa", any mention | 130 | 45 | 35% | 100% |
+| **anchor "cpa", ≥2 mentions** | 73 | 45 | **62%** | **100%** |
+
+- **The obvious fix was measured first and rejected again.** Requiring all terms looks four times better than what
+  shipped and throws away 93% of the right answers. Same lesson as 0.58.6/0.58.7/0.59.3/0.60.2.
+- **`ANCHOR_MIN_MENTIONS` = 2 — aboutness, not presence.** 66% of the sources containing "modern" contain it in
+  exactly ONE chunk of a whole transcript, against 44% for "cpa". Requiring the anchor twice is +27 points of
+  precision **at no cost in recall**: every on-target source mentions its own subject more than once.
+  `source_mentions` is the per-source count (cached on the library revision like `sources_with_term`), and
+  `ANCHOR_MENTION_MIN_CHUNKS` = 3 turns the floor OFF for a short source, where one mention is a large share of
+  everything it contains.
+- **`GENERIC_MODIFIERS` is a list, not a threshold, and that is the honest form.** Nothing countable separates
+  "modern" from "cpa" here: equal rarity, equally often in titles (2 each), and mentions-per-source prefers "cpa"
+  (2.35 v 1.66) but prefers **"designing"** (6.54, in 41% of the library) over both — a coincidence, not a rule. The
+  real difference is that "modern" is a modifier: it attaches to any topic in any field and denotes none. Used for
+  anchor CHOICE only — these words still match, still score, still count towards coverage — and skipped only while
+  another content word survives, so a search made entirely of modifiers gets `all_generic` and the vague-query
+  answer instead of an anchor picked from among them. This is an **assumption**, not a measurement, and belongs in
+  the assumption ledger.
+- **Two share bars, because they are two different claims.** `ANCHOR_TOO_COMMON_SHARE` 0.5 ("in MOST of the
+  library") is absolute — 9 sources in 11 really is most — so it is never guarded. `ANCHOR_MAX_DF_SHARE` 0.25 (was
+  0.5) is a CALIBRATION against the measured distribution (accountant 49.6%, designing 40.8%, improving 26.6%,
+  seller 25.6%, complex 20.9% · workflows 14.3%, auditing 11.6%, cpa 10.6%, ui 10.2%, ux 5.9%, laundromat 5.3%,
+  reusable 2.4% — everything that names a topic sits at or below a quarter), so it waits for
+  `ANCHOR_SHARE_MIN_LIBRARY` 40 sources. 0.62.0's first attempt guarded BOTH and silently switched off the
+  generic-query judgement in small libraries; the frozen 0.61.0 gate caught it.
+- **Discover finally has the weak-query judgement.** It was built in 0.61.0 and lived only in the project-bootstrap
+  scan, which is why Discover answered a vague search with eight confident rows. A vague search now says so above
+  the results, every hit is tagged `generic match`, none can be `strong`, and none can suppress the web search —
+  nothing is hidden, it is labelled. `bootstrap.query_strength` treats `all_generic` exactly like `too_common`.
+
+Gate `tests/test_s16_anchor_aboutness.py`.
+
+## The Findings workbench assembles its rows once (0.61.4–0.62.0)
+
+`/findings` measured **23.2 s cold / 4.3 s warm** on the 16,962-note project after the lock-up work, then **9.3 s /
+19.9 s** at 0.61.4 — *warm slower than cold*, because 0.61.4 cached the whole assembly on `db.project_view_revision`,
+which is the SOURCES fingerprint and carries a global `jobs` component: during a run it moves whenever any job
+anywhere does, so an assembly costing seconds was retired before it could be reused. The quality-pass failure one
+layer along, and the same sentence applies — a cache whose key changes faster than its value can be computed is not
+a cache.
+
+Split by what each part actually depends on. `findings_view.rows_only` (the notes with their citations parsed) is
+keyed on the new **`db.project_notes_revision`** — count, newest, and a count per status, which moves when a finding
+lands or a status changes and *not* on a job heartbeat. `findings_view.decorations` (plan/chat/Claim use, source
+staleness, research area) stays on the full view revision, because that is what it genuinely depends on, and is
+stale-tolerant: a badge a moment out of date is honest, a status the user just changed is not. It blocks only when
+the user filters or sorts ON one of those dimensions — then they have asked for it. `warm=True` on a cold project is
+deliberate: an empty map would read as "never used", which is a false statement rather than a slow one. The reply
+carries `badges.known/current/pending` and the workbench prints "still being counted" or "from a moment ago" rather
+than an unknown as a zero.
 
 ## Library recall: the rare word decides (0.60.2)
 

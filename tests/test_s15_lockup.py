@@ -275,19 +275,19 @@ def test_the_workbench_assembles_its_rows_once_per_revision():
     p = db.create_project("rows", brief="b")
     _notes(p["id"], 30)
     calls: list[str] = []
-    real = findings_view._decorate
+    real = findings_view._rows_only
 
     def counted(pid):
         calls.append(pid)
         return real(pid)
 
-    findings_view._decorate = counted
+    findings_view._rows_only = counted
     try:
         first = findings_view.query(p["id"], status="approved")
         second = findings_view.query(p["id"], status="approved", q="specific")
         third = findings_view.query(p["id"], status="approved", sort="oldest")
     finally:
-        findings_view._decorate = real
+        findings_view._rows_only = real
     assert len(calls) == 1                                  # three different queries, one assembly
     assert first["total"] == 30 and third["total"] == 30
     assert second["total"] >= 1
