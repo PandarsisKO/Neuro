@@ -200,8 +200,8 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
              prefilter: bool = typer.Option(False, "--prefilter", help="H1: run the findings window pre-filter on the labeled window fixture (golden + tests/fixtures/golden/prefilter) and report recall, false negatives, nugget reachability, drop rate, tokens avoided, filter cost, net savings and leverage; whole-window and sampled modes"),
              cache_layout: bool = typer.Option(False, "--cache-layout", help="Rung G: measure the prompt-cache layout under the fake's provider-faithful cache simulation (findings, multi-turn project chat with state changes, new conversation, planner); free, changes nothing"),
              migration_compare: bool = typer.Option(False, "--migration-compare", help="E2.3: every remaining task (chat+repair, export, planner.update; planner.analysis/build with a 5-adaptive arm) 4.6 vs Sonnet 5 on identical frozen inputs, one verdict per task; changes nothing"),
-             baseline_model: str = typer.Option(None, "--baseline-model", help="Baseline model for --ranking-compare (default claude-sonnet-4-6)"),
-             candidate_model: str = typer.Option(None, "--candidate-model", help="Candidate model for --ranking-compare (default claude-sonnet-5)")) -> None:
+             baseline_model: str = typer.Option(None, "--baseline-model", help="Baseline model for --ranking-compare, --findings-compare and --migration-compare (default claude-sonnet-4-6)"),
+             candidate_model: str = typer.Option(None, "--candidate-model", help="Candidate model for --ranking-compare, --findings-compare and --migration-compare (default claude-sonnet-5)")) -> None:
     """Run the Golden Project through the whole pipeline and report quality, tokens, cost and latency (Tier 1 gates).
     With --ranking, run the dedicated rank.relevance fixture instead (independent of ingest/findings)."""
     import os
@@ -295,7 +295,9 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
         raise typer.Exit(code=0)
     if migration_compare:
         from . import migration
-        cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m))
+        cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m),
+                                              baseline_model=baseline_model or migration.BASELINE_MODEL,
+                                              candidate_model=candidate_model or migration.CANDIDATE_MODEL)
         typer.echo("")
         typer.echo(cmp["text"])
         if out:

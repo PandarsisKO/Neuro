@@ -40,6 +40,28 @@ def _fresh(tmp_path, monkeypatch):
     db._local.conn = None
 
 
+def test_the_candidate_model_actually_reaches_this_command():
+    """0.56.1. `--candidate-model` was wired to --ranking-compare and --findings-compare and silently did NOTHING
+    for --migration-compare, which hardcoded 4.6-vs-Sonnet-5 through TASK_ARMS. Pointing the command at Haiku
+    would have spent real money re-answering a question already settled. The arm labels were literally "4.6" and
+    "5-disabled", which is exactly why nobody noticed: they read like a configuration when they were a constant."""
+    arms = migration.task_arms("claude-sonnet-5", "claude-haiku-4-5")
+    for task, a in arms.items():
+        models = {m for _, m, _, _ in a}
+        assert models == {"claude-sonnet-5", "claude-haiku-4-5"}, task
+        assert {lbl for lbl, *_ in a} <= {migration.SLOT_BASE, migration.SLOT_CAND, migration.SLOT_ADAPT}
+    assert "claims.extract" in arms and len(arms["planner"]) == 3
+    assert len(migration.task_arms("a", "b", skip_adaptive=True)["planner"]) == 2
+    # the slots are positions, not model names — the model is recorded in the arm's meta
+    assert migration.SLOT_BASE == "baseline" and migration.SLOT_CAND == "candidate"
+
+
+def test_the_estimate_follows_the_models_actually_chosen():
+    sonnet = migration.expected_spend(migration.task_arms())["estimate"]
+    haiku = migration.expected_spend(migration.task_arms("claude-sonnet-5", "claude-haiku-4-5"))["estimate"]
+    assert haiku < sonnet, "a Haiku comparison must be quoted cheaper than a Sonnet one"
+
+
 def test_the_arm_is_wired_into_the_one_command_with_its_own_cost_line():
     assert "claims.extract" in migration.TASK_ARMS
     spend = migration.expected_spend()
@@ -56,8 +78,8 @@ def test_the_verdict_fails_when_qualifiers_are_lost():
             "invocations": {"returned_model": migration.BASELINE_MODEL}}
     cand = {**base, "qualifier_rate": 0.5, "usage": {"cost": 0.05},
             "invocations": {"returned_model": migration.CANDIDATE_MODEL}}
-    metas = {"4.6": {"model": migration.BASELINE_MODEL}, "5-disabled": {"model": migration.CANDIDATE_MODEL}}
-    v = migration.claims_verdict({"4.6": base, "5-disabled": cand}, metas)
+    metas = {migration.SLOT_BASE: {"model": migration.BASELINE_MODEL}, migration.SLOT_CAND: {"model": migration.CANDIDATE_MODEL}}
+    v = migration.claims_verdict({migration.SLOT_BASE: base, migration.SLOT_CAND: cand}, metas)
     assert v["verdict"] == "FAIL" and any("qualifiers preserved" in f for f in v["fails"])
     assert "50%" in v["fails"][0] and "90%" in v["fails"][0], "the verdict must show both numbers, not just a word"
 
@@ -66,12 +88,12 @@ def test_the_verdict_fails_on_over_generalization_and_on_dropped_hedges():
     base = {"qualifier_rate": 0.9, "hedge_rate": 0.9, "n_over_generalized": 1, "over_generalized": ["a"], "normalized": 40,
             "cohort": 40, "merged": 2, "targets_proposed": 3, "seconds": 10.0, "usage": {"cost": 0.18},
             "invocations": {"returned_model": migration.BASELINE_MODEL}}
-    metas = {"4.6": {"model": migration.BASELINE_MODEL}, "5-disabled": {"model": migration.CANDIDATE_MODEL}}
+    metas = {migration.SLOT_BASE: {"model": migration.BASELINE_MODEL}, migration.SLOT_CAND: {"model": migration.CANDIDATE_MODEL}}
     over = {**base, "n_over_generalized": 5, "over_generalized": ["a", "b", "c", "d", "e"],
             "invocations": {"returned_model": migration.CANDIDATE_MODEL}}
-    assert migration.claims_verdict({"4.6": base, "5-disabled": over}, metas)["verdict"] == "FAIL"
+    assert migration.claims_verdict({migration.SLOT_BASE: base, migration.SLOT_CAND: over}, metas)["verdict"] == "FAIL"
     hedge = {**base, "hedge_rate": 0.4, "invocations": {"returned_model": migration.CANDIDATE_MODEL}}
-    v = migration.claims_verdict({"4.6": base, "5-disabled": hedge}, metas)
+    v = migration.claims_verdict({migration.SLOT_BASE: base, migration.SLOT_CAND: hedge}, metas)
     assert v["verdict"] == "FAIL" and any("hedge" in f for f in v["fails"])
 
 
@@ -82,8 +104,8 @@ def test_being_cheaper_and_faster_never_buys_a_pass():
             "invocations": {"returned_model": migration.BASELINE_MODEL}}
     cand = {**base, "qualifier_rate": 0.4, "seconds": 3.0, "usage": {"cost": 0.02},
             "invocations": {"returned_model": migration.CANDIDATE_MODEL}}
-    metas = {"4.6": {"model": migration.BASELINE_MODEL}, "5-disabled": {"model": migration.CANDIDATE_MODEL}}
-    v = migration.claims_verdict({"4.6": base, "5-disabled": cand}, metas)
+    metas = {migration.SLOT_BASE: {"model": migration.BASELINE_MODEL}, migration.SLOT_CAND: {"model": migration.CANDIDATE_MODEL}}
+    v = migration.claims_verdict({migration.SLOT_BASE: base, migration.SLOT_CAND: cand}, metas)
     assert v["verdict"] == "FAIL", "20x cheaper and 13x faster, and still a fail — quality decides"
 
 
@@ -93,8 +115,8 @@ def test_an_equal_candidate_passes_and_the_saving_is_reported():
             "invocations": {"returned_model": migration.BASELINE_MODEL}}
     cand = {**base, "usage": {"cost": 0.20}, "seconds": 20.0,
             "invocations": {"returned_model": migration.CANDIDATE_MODEL}}
-    metas = {"4.6": {"model": migration.BASELINE_MODEL}, "5-disabled": {"model": migration.CANDIDATE_MODEL}}
-    v = migration.claims_verdict({"4.6": base, "5-disabled": cand}, metas)
+    metas = {migration.SLOT_BASE: {"model": migration.BASELINE_MODEL}, migration.SLOT_CAND: {"model": migration.CANDIDATE_MODEL}}
+    v = migration.claims_verdict({migration.SLOT_BASE: base, migration.SLOT_CAND: cand}, metas)
     assert v["verdict"] in ("PASS", "PASS WITH CAVEAT") and not v["fails"]
     assert v["production_default_changed"] is False, "a comparison changes nothing by itself — a human moves the contract"
 

@@ -32,9 +32,26 @@ from .evals import (BASELINE_MODEL, CANDIDATE_MODEL, COST_TOLERANCE, GOLDEN, LAT
 log = logging.getLogger(__name__)
 
 RUBRIC = GOLDEN / "planner_rubric.json"
-ARM_BASE = ("4.6", BASELINE_MODEL, "disabled", None)
-ARM_DIS = ("5-disabled", CANDIDATE_MODEL, "disabled", None)
-ARM_ADAPT = ("5-adaptive-medium", CANDIDATE_MODEL, "adaptive", "medium")
+# 0.56.1: the arms are BUILT from the two models rather than hardcoded, because `--candidate-model` reached
+# `--ranking-compare` and `--findings-compare` but silently did nothing here — pointing this command at Haiku
+# would have spent real money re-answering the 4.6-vs-Sonnet-5 question instead.
+ARM_BASE = ("baseline", BASELINE_MODEL, "disabled", None)
+ARM_DIS = ("candidate", CANDIDATE_MODEL, "disabled", None)
+ARM_ADAPT = ("candidate-adaptive", CANDIDATE_MODEL, "adaptive", "medium")
+
+
+# The slots are arm POSITIONS, not model names: which model filled one is recorded in that arm's meta. They used
+# to be literally "4.6" and "5-disabled", which is why nobody noticed the candidate model could not be changed.
+SLOT_BASE, SLOT_CAND, SLOT_ADAPT = "baseline", "candidate", "candidate-adaptive"
+
+
+def task_arms(baseline: str = BASELINE_MODEL, candidate: str = CANDIDATE_MODEL, skip_adaptive: bool = False) -> dict[str, list[tuple[str, str, str, str | None]]]:
+    base = (SLOT_BASE, baseline, "disabled", None)
+    cand = (SLOT_CAND, candidate, "disabled", None)
+    arms: dict[str, list[tuple[str, str, str, str | None]]] = {t: [base, cand] for t in TASK_ARMS}
+    if not skip_adaptive and "planner" in arms:
+        arms["planner"] = [base, cand, (SLOT_ADAPT, candidate, "adaptive", "medium")]
+    return arms
 TASK_ARMS: dict[str, list[tuple[str, str, str, str | None]]] = {
     "planner": [ARM_BASE, ARM_DIS, ARM_ADAPT],
     "planner.update": [ARM_BASE, ARM_DIS],
@@ -56,15 +73,16 @@ EVAL_BUDGET_FLOOR = 20.0         # eval-only daily budget written into the tempo
 _BASE_COST = {"answer.chat": 0.84, "planner": 0.27, "planner.update": 0.06, "export.synthesis": 0.06, "findings.extract": 0.20, "embed": 0.02,
               "claims.extract": 0.18}   # CLAIMS_EVAL_BUDGET candidates in groups of EXTRACT_GROUP, one structured call each
 _SONNET5_FACTOR = 1.3 * (2.0 / 3.0)    # +30% tokens at two thirds of the price
+_MODEL_FACTOR = {"claude-sonnet-4-6": 1.0, "claude-sonnet-5": _SONNET5_FACTOR, "claude-haiku-4-5": 1.3 / 3.0}   # vs 4.6 at $3/$15
 _ADAPTIVE_EXTRA = 0.20                 # thinking tokens on the two planner passes, generous
 _SAFETY = 1.5
 
 
-def expected_spend() -> dict[str, Any]:
+def expected_spend(arms_for: dict[str, list[tuple[str, str, str, str | None]]] | None = None) -> dict[str, Any]:
     items = {"findings.extract (once, production Sonnet 5)": _BASE_COST["findings.extract"] * _SONNET5_FACTOR, "embeddings (once)": _BASE_COST["embed"]}
-    for task, arms in TASK_ARMS.items():
+    for task, arms in (arms_for or TASK_ARMS).items():
         for label, model, thinking, effort in arms:
-            c = _BASE_COST[task] * (1.0 if model == BASELINE_MODEL else _SONNET5_FACTOR) + (_ADAPTIVE_EXTRA if thinking == "adaptive" else 0.0)
+            c = _BASE_COST[task] * _MODEL_FACTOR.get(model, _SONNET5_FACTOR) + (_ADAPTIVE_EXTRA if thinking == "adaptive" else 0.0)
             items[f"{task} · {label}"] = c
     est = sum(items.values())
     return {"items": {k: round(v, 3) for k, v in items.items()}, "estimate": round(est, 2), "maximum": round(est * _SAFETY, 2),
@@ -438,7 +456,7 @@ def run_claims_arm(pid: str, live: bool) -> dict[str, Any]:
 
 
 def claims_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    b, d = arms[ARM_BASE[0]], arms[ARM_DIS[0]]
+    b, d = arms[SLOT_BASE], arms[SLOT_CAND]
     fails: list[str] = []
     caveats: list[str] = []
     notes: list[str] = []
@@ -457,9 +475,9 @@ def claims_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, A
     if d["targets_proposed"] != b["targets_proposed"]:
         notes.append(f"evidence targets proposed: {b['targets_proposed']} → {d['targets_proposed']}")
     _cost_latency(b, d, caveats, cost_key="cost", secs_key="seconds")
-    _model_gate("claims.extract", metas[ARM_DIS[0]], d["invocations"], fails, ARM_DIS[0])
-    _model_gate("claims.extract", metas[ARM_BASE[0]], b["invocations"], fails, ARM_BASE[0])
-    return _finish("claims.extract", metas[ARM_BASE[0]]["model"], metas[ARM_DIS[0]]["model"], fails, caveats, notes,
+    _model_gate("claims.extract", metas[SLOT_CAND], d["invocations"], fails, SLOT_CAND)
+    _model_gate("claims.extract", metas[SLOT_BASE], b["invocations"], fails, SLOT_BASE)
+    return _finish("claims.extract", metas[SLOT_BASE]["model"], metas[SLOT_CAND]["model"], fails, caveats, notes,
                    {"qualifier_rate": [b["qualifier_rate"], d["qualifier_rate"]],
                     "hedge_rate": [b["hedge_rate"], d["hedge_rate"]],
                     "over_generalized": [b["n_over_generalized"], d["n_over_generalized"]],
@@ -561,7 +579,7 @@ def _finish(task: str, base_model: str, cand_model: str, fails: list[str], cavea
 
 def planner_verdict(task: str, arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Per planner task (analysis or build). Gates on the disabled arm vs 4.6; then decides whether adaptive earns its keep."""
-    b, d, a = arms["4.6"], arms["5-disabled"], arms.get("5-adaptive-medium")
+    b, d, a = arms[SLOT_BASE], arms[SLOT_CAND], arms.get(SLOT_ADAPT)
     bt, dt = b["tasks"][task], d["tasks"][task]
     fails: list[str] = []
     caveats: list[str] = []
@@ -584,8 +602,8 @@ def planner_verdict(task: str, arms: dict[str, dict[str, Any]], metas: dict[str,
         fails.append(f"invented evidence ids rose {b['plan_evidence_dangling_raw']} → {d['plan_evidence_dangling_raw']} (analysis+plan, before removal)")
     elif task == "planner.build" and d["plan_evidence_dangling_raw"] > b["plan_evidence_dangling_raw"]:
         caveats.append(f"invented evidence ids rose {b['plan_evidence_dangling_raw']} → {d['plan_evidence_dangling_raw']} (removed by the validator)")
-    _model_gate(task, metas["5-disabled"], dt["invocations"], fails, "5-disabled")
-    _model_gate(task, metas["4.6"], bt["invocations"], fails, "4.6")
+    _model_gate(task, metas[SLOT_CAND], dt["invocations"], fails, SLOT_CAND)
+    _model_gate(task, metas[SLOT_BASE], bt["invocations"], fails, SLOT_BASE)
     br, dr = bt["rubric"]["score"], dt["rubric"]["score"]
     if dr < br - RUBRIC_TOLERANCE - 1e-9:
         fails.append(f"rubric fell beyond tolerance: {br} → {dr} (lost: {', '.join(sorted(set(dt['rubric']['failed']) - set(bt['rubric']['failed'])))})")
@@ -609,7 +627,7 @@ def planner_verdict(task: str, arms: dict[str, dict[str, Any]], metas: dict[str,
         a_fails: list[str] = []
         if a.get("error") or not at["present"] or at["truncated"] or at["parse_failed"] or at["dangling_after_removal"]:
             a_fails.append("adaptive arm failed a validity gate (" + ", ".join(k for k in ("error", "truncated", "parse_failed") if a.get(k) or at.get(k)) + ")")
-        _model_gate(task, metas["5-adaptive-medium"], at["invocations"], a_fails, "5-adaptive-medium")
+        _model_gate(task, metas[SLOT_ADAPT], at["invocations"], a_fails, SLOT_ADAPT)
         gain = round(at["rubric"]["score"] - dr, 4)
         struct_gain = round(at["rubric"]["structure"]["score"] - ds, 4)
         removed = [k for k in ("json_repaired", "truncated") if dt[k] and not at[k]]
@@ -629,20 +647,20 @@ def planner_verdict(task: str, arms: dict[str, dict[str, Any]], metas: dict[str,
         adaptive.update({"thinking_tokens_est": at["thinking_tokens_est"], "cost": at["cost"], "seconds": at["seconds"], "rubric": at["rubric"]["score"], "failed_checks": at["rubric"]["failed"]})
         notes.append(f"adaptive/medium: rubric {at['rubric']['score']} vs disabled {dr}; ~{at['thinking_tokens_est']:,} thinking tokens; ${at['cost']:.4f} vs ${dt['cost']:.4f}; {at['seconds']}s vs {dt['seconds']}s")
     notes.append("single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise")
-    cand = metas["5-disabled"]["model"]
-    out = _finish(task, metas["4.6"]["model"], cand, fails, caveats, notes, {"adaptive": adaptive})
+    cand = metas[SLOT_CAND]["model"]
+    out = _finish(task, metas[SLOT_BASE]["model"], cand, fails, caveats, notes, {"adaptive": adaptive})
     if out["verdict"] != "FAIL" and adaptive.get("recommended"):
         out["headline"] = out["headline"].replace(f"migrate {task} to {cand}", f"migrate {task} to {cand} with ADAPTIVE thinking (medium)") if out["verdict"] == "PASS" else out["headline"] + " (adaptive/medium recommended over disabled)"
         out["recommended_setting"] = {"model": cand, "thinking": "adaptive", "effort": "medium"}
     elif out["verdict"] != "FAIL":
         out["recommended_setting"] = {"model": cand, "thinking": "disabled", "effort": None}
     else:
-        out["recommended_setting"] = {"model": metas["4.6"]["model"], "thinking": "disabled", "effort": None}
+        out["recommended_setting"] = {"model": metas[SLOT_BASE]["model"], "thinking": "disabled", "effort": None}
     return out
 
 
 def update_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    b, d = arms["4.6"], arms["5-disabled"]
+    b, d = arms[SLOT_BASE], arms[SLOT_CAND]
     fails: list[str] = []
     caveats: list[str] = []
     notes: list[str] = []
@@ -650,8 +668,8 @@ def update_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, A
         fails.append("update output truncated or unparsable")
     if d["json_repaired"] and not b["json_repaired"]:
         fails.append("update JSON needed fence/prose stripping (baseline did not)")
-    _model_gate("planner.update", metas["5-disabled"], d["invocations"], fails, "5-disabled")
-    _model_gate("planner.update", metas["4.6"], b["invocations"], fails, "4.6")
+    _model_gate("planner.update", metas[SLOT_CAND], d["invocations"], fails, SLOT_CAND)
+    _model_gate("planner.update", metas[SLOT_BASE], b["invocations"], fails, SLOT_BASE)
     if b["addresses_new_finding"] and not d["addresses_new_finding"]:
         fails.append("the candidate did not propose an update for the new lender finding (15% injection / seller note) that the baseline caught")
     if b["addresses_new_fact"] and not d["addresses_new_fact"]:
@@ -665,11 +683,11 @@ def update_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, A
     notes.append(f"updates proposed: {b['n_updates']} → {d['n_updates']}")
     _cost_latency(b, d, caveats)
     notes.append("single run per arm (n=1)")
-    return _finish("planner.update", metas["4.6"]["model"], metas["5-disabled"]["model"], fails, caveats, notes)
+    return _finish("planner.update", metas[SLOT_BASE]["model"], metas[SLOT_CAND]["model"], fails, caveats, notes)
 
 
 def export_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    b, d = arms["4.6"], arms["5-disabled"]
+    b, d = arms[SLOT_BASE], arms[SLOT_CAND]
     fails: list[str] = []
     caveats: list[str] = []
     notes: list[str] = []
@@ -679,8 +697,8 @@ def export_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, A
         fails.append("required sections missing: " + ", ".join(d["sections_missing"]))
     if d["truncated"] or d["empty"] or d["fallback_used"]:
         fails.append("synthesis truncated, empty or fell back to the placeholder")
-    _model_gate("export.synthesis", metas["5-disabled"], d["invocations"], fails, "5-disabled")
-    _model_gate("export.synthesis", metas["4.6"], b["invocations"], fails, "4.6")
+    _model_gate("export.synthesis", metas[SLOT_CAND], d["invocations"], fails, SLOT_CAND)
+    _model_gate("export.synthesis", metas[SLOT_BASE], b["invocations"], fails, SLOT_BASE)
     if d["link_coverage"] < b["link_coverage"] - EXPORT_COVERAGE_TOLERANCE - 1e-9:
         fails.append(f"far fewer of the given citations preserved: {b['link_coverage']} → {d['link_coverage']}")
     elif d["link_coverage"] < b["link_coverage"]:
@@ -690,11 +708,11 @@ def export_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, A
     _cost_latency(b, d, caveats)
     notes.append(f"words {b['words']} → {d['words']}; citation links {b['citation_links']} → {d['citation_links']} of {d['given_links']} given")
     notes.append("single run per arm (n=1)")
-    return _finish("export.synthesis", metas["4.6"]["model"], metas["5-disabled"]["model"], fails, caveats, notes)
+    return _finish("export.synthesis", metas[SLOT_BASE]["model"], metas[SLOT_CAND]["model"], fails, caveats, notes)
 
 
 def chat_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
-    b, d = arms["4.6"], arms["5-disabled"]
+    b, d = arms[SLOT_BASE], arms[SLOT_CAND]
     fails: list[str] = []
     caveats: list[str] = []
     notes: list[str] = []
@@ -704,8 +722,8 @@ def chat_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any
         fails.append(f"citation validity {d['citation_validity']} — {d['answers_with_unrepaired_invalid_citations']} answer(s) kept an invalid citation after repair")
     if d["truncated_answers"]:
         fails.append(f"{d['truncated_answers']} incomplete answer(s) (max_tokens)")
-    _model_gate("answer.chat", metas["5-disabled"], d["invocations"], fails, "5-disabled")
-    _model_gate("answer.chat", metas["4.6"], b["invocations"], fails, "4.6")
+    _model_gate("answer.chat", metas[SLOT_CAND], d["invocations"], fails, SLOT_CAND)
+    _model_gate("answer.chat", metas[SLOT_BASE], b["invocations"], fails, SLOT_BASE)
     if d["answers_cite_expected_source"] < b["answers_cite_expected_source"] - CHAT_SOURCE_TOLERANCE - 1e-9:
         fails.append(f"cites-expected-source fell beyond tolerance: {b['answers_cite_expected_source']} → {d['answers_cite_expected_source']}")
     elif d["answers_cite_expected_source"] < b["answers_cite_expected_source"]:
@@ -730,7 +748,7 @@ def chat_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any
     _cost_latency(b, d, caveats, secs_key="s_per_answer")
     notes.append(f"answers {b['answers']} → {d['answers']}; mean length {b['mean_answer_chars']} → {d['mean_answer_chars']} chars (wording differences are not failures)")
     notes.append("single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise")
-    chat = _finish("answer.chat", metas["4.6"]["model"], metas["5-disabled"]["model"], fails, caveats, notes)
+    chat = _finish("answer.chat", metas[SLOT_BASE]["model"], metas[SLOT_CAND]["model"], fails, caveats, notes)
     # answer.repair: judged on repair behaviour, migrates alongside chat
     r_fails: list[str] = []
     r_caveats: list[str] = []
@@ -739,13 +757,13 @@ def chat_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any
         r_fails.append("answer.chat failed; repair migrates only alongside chat")
     if d["repair_rounds"] and d["repairs_succeeded"] < d["repair_rounds"]:
         r_fails.append(f"{d['repair_rounds'] - d['repairs_succeeded']} of {d['repair_rounds']} repair round(s) still cited nonexistent excerpts")
-    _model_gate("answer.repair", metas["5-disabled"], d["repair_invocations"], r_fails, "5-disabled")
+    _model_gate("answer.repair", metas[SLOT_CAND], d["repair_invocations"], r_fails, SLOT_CAND)
     if not d["repair_rounds"] and not b["repair_rounds"]:
         r_caveats.append("no repair round was triggered on either arm — repair behaviour is unexercised; it shares chat's prompt family and contract, so it migrates with chat")
     elif not d["repair_rounds"]:
         r_notes.append(f"candidate needed no repair rounds (baseline {b['repair_rounds']})")
     r_notes.append(f"repair rounds {b['repair_rounds']} → {d['repair_rounds']}, succeeded {b['repairs_succeeded']} → {d['repairs_succeeded']}")
-    repair = _finish("answer.repair", metas["4.6"]["model"], metas["5-disabled"]["model"], r_fails, r_caveats, r_notes)
+    repair = _finish("answer.repair", metas[SLOT_BASE]["model"], metas[SLOT_CAND]["model"], r_fails, r_caveats, r_notes)
     if chat["verdict"] == "PASS_WITH_CAVEAT" and repair["verdict"] == "PASS":
         repair["verdict"], repair["headline"] = "PASS_WITH_CAVEAT", "PASS WITH CAVEAT — migrate answer.repair alongside answer.chat (see chat's caveats)"
     return chat, repair
@@ -754,15 +772,17 @@ def chat_verdict(arms: dict[str, dict[str, Any]], metas: dict[str, dict[str, Any
 # ------------------------------------------------------------------ the run
 
 def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path = Path("evals"), progress: Any = print,
-                          skip_adaptive: bool = False) -> dict[str, Any]:
+                          skip_adaptive: bool = False, baseline_model: str = BASELINE_MODEL,
+                          candidate_model: str = CANDIDATE_MODEL) -> dict[str, Any]:
     from . import __version__, findings, planner
     from . import usage as _usage
     rubric = load_rubric()
-    spend = expected_spend()
+    arms_for = task_arms(baseline_model, candidate_model, skip_adaptive)
+    spend = expected_spend(arms_for)
     progress(f"expected spend ≈ ${spend['estimate']:.2f}, maximum ≈ ${spend['maximum']:.2f} (eval-only budget ${spend['budget']:.2f} in the temporary database; your real budget is untouched)")
     db.kv_set("daily_budget", str(spend["budget"]))
     db.kv_set("monthly_budget", str(spend["budget"]))
-    models = sorted({m for arms in TASK_ARMS.values() for _, m, _, _ in arms})
+    models = sorted({m for arms in arms_for.values() for _, m, _, _ in arms})
     pf = preflight(models, live)
     progress("preflight ok: " + ", ".join(f"{m} ({n} tokens)" for m, n in pf.items()))
     t_all = time.time()
@@ -798,7 +818,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     arms_p: dict[str, dict[str, Any]] = {}
     metas_p: dict[str, dict[str, Any]] = {}
     base_plan: dict[str, Any] | None = None
-    for label, model, thinking, effort in TASK_ARMS["planner"]:
+    for label, model, thinking, effort in arms_for["planner"]:
         if skip_adaptive and thinking == "adaptive":
             continue
         saved = _set_arm(["planner.analysis", "planner.build"], model, thinking, effort)
@@ -813,7 +833,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
             tt = a["tasks"][t]
             progress(f"[{t} · {label}] rubric {tt['rubric']['score']} ({tt['rubric']['passed']}/{tt['rubric']['total']}) · structure {tt['rubric']['structure']['score']} · refs {tt['evidence_refs']} · "
                      f"repaired {tt['json_repaired']} · truncated {tt['truncated']} · ${tt['cost']:.4f} · {tt['seconds']}s · returned {tt['invocations'].get('returned_model')}")
-        if label == "4.6":
+        if label == SLOT_BASE:
             base_plan = {"plan": a["plan"], "analysis": a["analysis"]}
         save(f"planner-{label}.json", {k: v for k, v in a.items()})
         _restore_state(pid, mark)
@@ -830,7 +850,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
             frozen["analysis"] = base_plan["analysis"]
         yt = ids.get("yt01")
         src = db.get_source(yt) if yt else None
-        for label, model, thinking, effort in TASK_ARMS["planner.update"]:
+        for label, model, thinking, effort in arms_for["planner.update"]:
             db.save_plan(pid, json.loads(json.dumps(frozen)), db.project_snapshot(pid))
             time.sleep(0.02)
             cite = [{"n": 1, "source_id": yt, "title": src["title"], "channel": src.get("channel"), "url": src["url"], "link": src["url"],
@@ -857,7 +877,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     # ---- export.synthesis (2 arms)
     arms_e: dict[str, dict[str, Any]] = {}
     metas_e: dict[str, dict[str, Any]] = {}
-    for label, model, thinking, effort in TASK_ARMS["export.synthesis"]:
+    for label, model, thinking, effort in arms_for["export.synthesis"]:
         saved = _set_arm(["export.synthesis"], model, thinking, effort)
         try:
             metas_e[label] = _arm_meta(label, model, thinking, effort, ["export.synthesis"])
@@ -879,7 +899,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     metas_cl: dict[str, dict[str, Any]] = {}
     cl_before: dict[str, Any] = {}
     cl_ids: list[str] = []
-    for label, model, thinking, effort in TASK_ARMS["claims.extract"]:
+    for label, model, thinking, effort in arms_for["claims.extract"]:
         saved = _set_arm(["claims.extract"], model, thinking, effort)
         try:
             metas_cl[label] = _arm_meta(label, model, thinking, effort, ["claims.extract"])
@@ -907,7 +927,7 @@ def run_migration_compare(root: Path = GOLDEN, live: bool = False, out_dir: Path
     # ---- answer.chat + answer.repair (2 arms)
     arms_c: dict[str, dict[str, Any]] = {}
     metas_c: dict[str, dict[str, Any]] = {}
-    for label, model, thinking, effort in TASK_ARMS["answer.chat"]:
+    for label, model, thinking, effort in arms_for["answer.chat"]:
         saved = _set_arm(["answer.chat", "answer.repair"], model, thinking, effort)
         try:
             metas_c[label] = _arm_meta(label, model, thinking, effort, ["answer.chat", "answer.repair"])

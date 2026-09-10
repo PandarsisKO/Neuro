@@ -2502,3 +2502,35 @@ original claim text, not the normalized output. Suite 582; Tier 1 unchanged.
 **Honest limits.** One cohort of 40 on one project is n=1 — enough to catch a model that mangles qualifiers, not
 enough to rank two good models finely. The arm measures normalization quality only; whether Haiku proposes *worse
 evidence targets* is not scored, and that is the other half of what `claims.extract` does.
+
+---
+
+## 0.56.1 — `--candidate-model` did nothing here, and would have burned the run
+
+Kyle, before spending: *"what does running it do? and what does it cost?"* Answering that precisely caught the
+bug, which is the best argument for the question.
+
+**`--candidate-model` was wired to `--ranking-compare` and `--findings-compare` and silently ignored by
+`--migration-compare`.** That command built its arms from the module constant `TASK_ARMS`, hardcoded to
+4.6-vs-Sonnet-5. So the command shipped one release earlier —
+`eval --migration-compare --live --candidate-model claude-haiku-4-5` — would have spent real money re-answering a
+question **already settled tonight**, and reported a confident verdict about the wrong pair of models.
+
+**Why it hid so well: the arm labels were `"4.6"` and `"5-disabled"`.** They read like configuration and were a
+constant, and 22 call sites indexed results by those literals. The labels are now **slots** — `baseline`,
+`candidate`, `candidate-adaptive` — which are positions, not model names; which model filled a slot was always
+recorded in that arm's meta. `task_arms(baseline, candidate, skip_adaptive)` builds the arms, and
+`run_migration_compare` takes both models and passes them through from the CLI.
+
+`expected_spend` now prices the models actually chosen (`_MODEL_FACTOR`) rather than assuming the candidate is
+Sonnet 5. **A Haiku comparison is $2.34 expected / $3.51 maximum**, cheaper than the $3.26 quoted for the Sonnet
+pair, because half the arms run on a third of the price.
+
+**Gate.** `tests/test_r9_claims_arm.py` gains two (8 total): the candidate model actually reaches every task's
+arms and the slots are model-independent; and the estimate falls when the candidate is cheaper. `test_core`'s
+migration-compare test now indexes by slot rather than by model name — the change that would have caught this
+originally. Suite 584; Tier 1 unchanged.
+
+**Honest limits.** `_MODEL_FACTOR` is a price ratio, not a measurement: it assumes Haiku emits roughly the token
+volume Sonnet 5 does. If Haiku is chattier the run costs more than quoted — still under the eval-only budget cap
+written into the temporary database, which is what actually stops a runaway.

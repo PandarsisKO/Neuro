@@ -2035,23 +2035,23 @@ def test_migration_verdict_rules():
         for k, v in kw.items():
             a["tasks"]["planner.build"][k] = v
         return a
-    metas = {"4.6": {"arm": "4.6", "model": "claude-sonnet-4-6"}, "5-disabled": {"arm": "5-disabled", "model": "claude-sonnet-5"}, "5-adaptive-medium": {"arm": "5-adaptive-medium", "model": "claude-sonnet-5"}}
-    arms = {"4.6": arm(0.7, 0.7, inv46), "5-disabled": arm(0.7, 0.7), "5-adaptive-medium": arm(0.7, 0.72)}
+    metas = {M.SLOT_BASE: {"arm": M.SLOT_BASE, "model": "claude-sonnet-4-6"}, M.SLOT_CAND: {"arm": M.SLOT_CAND, "model": "claude-sonnet-5"}, M.SLOT_ADAPT: {"arm": M.SLOT_ADAPT, "model": "claude-sonnet-5"}}
+    arms = {M.SLOT_BASE: arm(0.7, 0.7, inv46), M.SLOT_CAND: arm(0.7, 0.7), M.SLOT_ADAPT: arm(0.7, 0.72)}
     v = M.planner_verdict("planner.build", arms, metas)
     assert v["verdict"] == "PASS" and not v["adaptive"]["recommended"] and v["recommended_setting"]["thinking"] == "disabled"
-    arms["5-adaptive-medium"] = arm(0.7, 0.85)
+    arms[M.SLOT_ADAPT] = arm(0.7, 0.85)
     v = M.planner_verdict("planner.build", arms, metas)
     assert v["adaptive"]["recommended"] and v["recommended_setting"] == {"model": "claude-sonnet-5", "thinking": "adaptive", "effort": "medium"} and "ADAPTIVE" in v["headline"]
-    arms["5-adaptive-medium"] = arm(0.7, 0.7, truncated=1)                        # adaptive fails a validity gate → never recommended
+    arms[M.SLOT_ADAPT] = arm(0.7, 0.7, truncated=1)                        # adaptive fails a validity gate → never recommended
     assert not M.planner_verdict("planner.build", arms, metas)["adaptive"]["recommended"]
-    arms["5-disabled"] = arm(0.7, 0.55)                                          # disabled arm regresses the rubric → FAIL keeps 4.6
+    arms[M.SLOT_CAND] = arm(0.7, 0.55)                                          # disabled arm regresses the rubric → FAIL keeps 4.6
     v = M.planner_verdict("planner.build", arms, metas)
     assert v["verdict"] == "FAIL" and v["recommended_setting"]["model"] == "claude-sonnet-4-6"
-    arms["5-disabled"] = arm(0.7, 0.65)                                          # within tolerance → caveat
+    arms[M.SLOT_CAND] = arm(0.7, 0.65)                                          # within tolerance → caveat
     assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "PASS_WITH_CAVEAT"
-    arms["5-disabled"] = arm(0.7, 0.7, json_repaired=1)                           # JSON repair the baseline did not need → FAIL
+    arms[M.SLOT_CAND] = arm(0.7, 0.7, json_repaired=1)                           # JSON repair the baseline did not need → FAIL
     assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "FAIL"
-    arms["5-disabled"] = arm(0.7, 0.7, returned=inv46)                            # wrong returned model → FAIL
+    arms[M.SLOT_CAND] = arm(0.7, 0.7, returned=inv46)                            # wrong returned model → FAIL
     assert M.planner_verdict("planner.build", arms, metas)["verdict"] == "FAIL"
     # chat
     chat = {"answers": 34, "failed_answers": 0, "citation_validity": 1.0, "answers_cite_expected_source": 0.9, "contradiction_surfaced": 1.0, "contradiction_questions": 3,
@@ -2059,42 +2059,42 @@ def test_migration_verdict_rules():
             "truncated_answers": 0, "tool_rounds": 2, "tool_calls": 2, "mean_answer_chars": 500, "s_per_answer": 6.0, "seconds": 200.0,
             "invocations": dict(inv46), "repair_invocations": dict(inv46), "usage": {"cost": 0.8}}
     c5 = copy.deepcopy(chat); c5["invocations"] = dict(inv); c5["repair_invocations"] = dict(inv)
-    cm = {"4.6": metas["4.6"], "5-disabled": metas["5-disabled"]}
-    ch, rp = M.chat_verdict({"4.6": chat, "5-disabled": c5}, cm)
+    cm = {M.SLOT_BASE: metas[M.SLOT_BASE], M.SLOT_CAND: metas[M.SLOT_CAND]}
+    ch, rp = M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c5}, cm)
     assert ch["verdict"] == "PASS" and rp["verdict"] == "PASS"
     c = copy.deepcopy(c5); c["contradiction_surfaced"] = 0.6667
-    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "PASS_WITH_CAVEAT"
+    assert M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)[0]["verdict"] == "PASS_WITH_CAVEAT"
     c = copy.deepcopy(c5); c["contradiction_surfaced"] = 0.3333
-    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    assert M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)[0]["verdict"] == "FAIL"
     c = copy.deepcopy(c5); c["citation_validity"] = 0.98; c["answers_with_unrepaired_invalid_citations"] = 1
-    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    assert M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)[0]["verdict"] == "FAIL"
     c = copy.deepcopy(c5); c["truncated_answers"] = 1
-    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "FAIL"
+    assert M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)[0]["verdict"] == "FAIL"
     c = copy.deepcopy(c5); c["repair_rounds"] = 2; c["repairs_succeeded"] = 1
-    ch, rp = M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)
+    ch, rp = M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)
     assert ch["verdict"] == "PASS_WITH_CAVEAT" and rp["verdict"] == "FAIL"
     c = copy.deepcopy(c5); c["mean_answer_chars"] = 900; c["usage"]["cost"] = 0.7            # wording/length differences are not failures
-    assert M.chat_verdict({"4.6": chat, "5-disabled": c}, cm)[0]["verdict"] == "PASS"
+    assert M.chat_verdict({M.SLOT_BASE: chat, M.SLOT_CAND: c}, cm)[0]["verdict"] == "PASS"
     # export
     ex = {"words": 1200, "sections_present": 6, "sections_missing": [], "citation_links": 30, "given_links": 33, "link_coverage": 0.9, "n_invented_links": 0, "invented_links": [],
           "truncated": 0, "empty": 0, "fallback_used": 0, "seconds": 20.0, "invocations": dict(inv46), "usage": {"cost": 0.05}}
     e5 = copy.deepcopy(ex); e5["invocations"] = dict(inv)
-    assert M.export_verdict({"4.6": ex, "5-disabled": e5}, cm)["verdict"] == "PASS"
+    assert M.export_verdict({M.SLOT_BASE: ex, M.SLOT_CAND: e5}, cm)["verdict"] == "PASS"
     e = copy.deepcopy(e5); e["n_invented_links"] = 1; e["invented_links"] = ["https://x"]
-    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "FAIL"
+    assert M.export_verdict({M.SLOT_BASE: ex, M.SLOT_CAND: e}, cm)["verdict"] == "FAIL"
     e = copy.deepcopy(e5); e["sections_missing"] = ["Open questions"]
-    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "FAIL"
+    assert M.export_verdict({M.SLOT_BASE: ex, M.SLOT_CAND: e}, cm)["verdict"] == "FAIL"
     e = copy.deepcopy(e5); e["link_coverage"] = 0.8
-    assert M.export_verdict({"4.6": ex, "5-disabled": e}, cm)["verdict"] == "PASS_WITH_CAVEAT"
+    assert M.export_verdict({M.SLOT_BASE: ex, M.SLOT_CAND: e}, cm)["verdict"] == "PASS_WITH_CAVEAT"
     # update
     up = {"n_updates": 2, "addresses_new_finding": 1, "addresses_new_fact": 1, "well_formed": 1, "json_repaired": 0, "truncated": 0, "parse_failed": 0, "seconds": 10.0,
           "invocations": dict(inv46), "usage": {"cost": 0.03}}
     u5 = copy.deepcopy(up); u5["invocations"] = dict(inv)
-    assert M.update_verdict({"4.6": up, "5-disabled": u5}, cm)["verdict"] == "PASS"
+    assert M.update_verdict({M.SLOT_BASE: up, M.SLOT_CAND: u5}, cm)["verdict"] == "PASS"
     u = copy.deepcopy(u5); u["addresses_new_finding"] = 0
-    assert M.update_verdict({"4.6": up, "5-disabled": u}, cm)["verdict"] == "FAIL"
+    assert M.update_verdict({M.SLOT_BASE: up, M.SLOT_CAND: u}, cm)["verdict"] == "FAIL"
     u = copy.deepcopy(u5); u["addresses_new_fact"] = 0
-    assert M.update_verdict({"4.6": up, "5-disabled": u}, cm)["verdict"] == "PASS_WITH_CAVEAT"
+    assert M.update_verdict({M.SLOT_BASE: up, M.SLOT_CAND: u}, cm)["verdict"] == "PASS_WITH_CAVEAT"
 
 
 def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
@@ -2115,10 +2115,10 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
     assert all(v != "FAIL" for v in rep["summary"].values()), rep["summary"]
     assert set(rep["excluded"]) == {"discover.quick", "discover.verify"}
     p = rep["arms"]["planner"]
-    assert set(p) == {"4.6", "5-disabled", "5-adaptive-medium"}
-    assert p["4.6"]["meta"]["contracts"]["planner.build"]["model"] == "claude-sonnet-4-6" and p["5-disabled"]["meta"]["contracts"]["planner.build"]["thinking"] == "disabled"
-    assert p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"] | {} == p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]
-    assert p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]["thinking"] == "adaptive" and p["5-adaptive-medium"]["meta"]["contracts"]["planner.analysis"]["effort"] == "medium"
+    # 0.56.1: arm keys are SLOTS (positions), not model names — which is what let the candidate model be changed
+    assert set(p) == {migration.SLOT_BASE, migration.SLOT_CAND, migration.SLOT_ADAPT}
+    assert p[migration.SLOT_BASE]["meta"]["contracts"]["planner.build"]["model"] == "claude-sonnet-4-6" and p[migration.SLOT_CAND]["meta"]["contracts"]["planner.build"]["thinking"] == "disabled"
+    assert p[migration.SLOT_ADAPT]["meta"]["contracts"]["planner.analysis"]["thinking"] == "adaptive" and p[migration.SLOT_ADAPT]["meta"]["contracts"]["planner.analysis"]["effort"] == "medium"
     # identical inputs: the same fake sees the same prompt in every arm (same input tokens, same rubric)
     for t in ("planner.analysis", "planner.build"):
         toks = {k: v["tasks"][t]["input_tokens"] + v["tasks"][t]["cache_read"] + v["tasks"][t]["cache_write"] for k, v in p.items()}
@@ -2127,12 +2127,12 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
         assert not rep["verdicts"][t]["adaptive"]["recommended"] and rep["verdicts"][t]["recommended_setting"]["thinking"] == "disabled"
     c = rep["arms"]["answer.chat"]
     tot = lambda u: u["input_tokens"] + u["cache_read_tokens"] + u["cache_write_tokens"]  # noqa: E731
-    assert tot(c["4.6"]["usage"]) == tot(c["5-disabled"]["usage"]) == CHAT_ARM_INPUT_TOTAL and c["4.6"]["answers"] == 34
-    assert c["4.6"]["citation_validity"] == 1.0 and c["4.6"]["truncated_answers"] == 0
+    assert tot(c[migration.SLOT_BASE]["usage"]) == tot(c[migration.SLOT_CAND]["usage"]) == CHAT_ARM_INPUT_TOTAL and c[migration.SLOT_BASE]["answers"] == 34
+    assert c[migration.SLOT_BASE]["citation_validity"] == 1.0 and c[migration.SLOT_BASE]["truncated_answers"] == 0
     e = rep["arms"]["export.synthesis"]
-    assert e["4.6"]["sections_present"] == 6 and e["4.6"]["n_invented_links"] == 0 and e["4.6"]["link_coverage"] == 1.0 and e["4.6"]["usage"]["input_tokens"] == e["5-disabled"]["usage"]["input_tokens"]
+    assert e[migration.SLOT_BASE]["sections_present"] == 6 and e[migration.SLOT_BASE]["n_invented_links"] == 0 and e[migration.SLOT_BASE]["link_coverage"] == 1.0 and e[migration.SLOT_BASE]["usage"]["input_tokens"] == e[migration.SLOT_CAND]["usage"]["input_tokens"]
     u = rep["arms"]["planner.update"]
-    assert u["4.6"]["input_tokens"] == u["5-disabled"]["input_tokens"] and u["4.6"]["well_formed"] == 1
+    assert u[migration.SLOT_BASE]["input_tokens"] == u[migration.SLOT_CAND]["input_tokens"] and u[migration.SLOT_BASE]["well_formed"] == 1
     # state restored: no plans, no leftover notes/facts beyond the shared approved findings
     pid = rep["project_id"]
     assert db.latest_plan(pid) is None and not db.list_facts(pid)
@@ -2142,8 +2142,10 @@ def test_migration_compare_one_command(isolated_db, monkeypatch, tmp_path):
     assert contracts.contract("answer.chat").model == contracts.HELD_MODEL and contracts.contract("planner.build").model == contracts.HELD_MODEL
     assert rep["spend_estimate"]["maximum"] > rep["spend_estimate"]["estimate"] > 1.0 and db.kv_get("daily_budget") == str(rep["spend_estimate"]["budget"])
     names = {pathlib.Path(f).name for f in rep["files"]}
-    assert {"planner-4.6.json", "planner-5-disabled.json", "planner-5-adaptive-medium.json", "planner.update-4.6.json", "planner.update-5-disabled.json",
-            "export.synthesis-4.6.json", "export.synthesis-5-disabled.json", "answer.chat-4.6.json", "answer.chat-5-disabled.json", "comparison.json", "comparison.txt"} <= names
+    B, C, A = migration.SLOT_BASE, migration.SLOT_CAND, migration.SLOT_ADAPT
+    assert {f"planner-{B}.json", f"planner-{C}.json", f"planner-{A}.json", f"planner.update-{B}.json", f"planner.update-{C}.json",
+            f"export.synthesis-{B}.json", f"export.synthesis-{C}.json", f"answer.chat-{B}.json", f"answer.chat-{C}.json",
+            f"claims.extract-{B}.json", f"claims.extract-{C}.json", "comparison.json", "comparison.txt"} <= names
     assert "RECOMMENDATIONS (nothing was changed" in rep["text"] and "== answer.repair" in rep["text"] and "expected spend" in rep["text"]
     assert all(v.get("production_default_changed") is False for v in rep["verdicts"].values())
 
