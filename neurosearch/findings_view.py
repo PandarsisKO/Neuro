@@ -24,6 +24,60 @@ def _tokens(s: str) -> list[str]:
     return [w for w in re.findall(r"[a-z0-9][a-z0-9'-]+", (s or "").lower()) if len(w) > 2]
 
 
+def decorated(project_id: str) -> list[dict[str, Any]]:
+    """Every note in the project, with the four derived fields the workbench filters and sorts on, cached on the
+    project's view revision (0.61.3).
+
+    Measured on Kyle's live project (16,962 notes): `/findings` took **23.2 s cold and 4.3 s warm**, and it was
+    doing the same work on every request — loading every row with its full text, parsing every citations blob, and
+    (until 0.61.2) rebuilding the usage map, the staleness map and the research areas each time. Filtering and
+    sorting 17,000 dicts in memory costs milliseconds; ASSEMBLING them is the whole bill. So it is assembled once
+    per revision, and a revision only moves when the project actually changes.
+
+    Deliberately `get_or_compute`, not the stale-tolerant variant: a page of findings must never show a status the
+    user just changed. The cost of being current is now paid once per change instead of once per request."""
+    from . import cache
+    rev = json.dumps(db.project_view_revision(project_id), sort_keys=True)
+    return cache.get_or_compute(f"findings_rows:{project_id}", rev, lambda: _decorate(project_id),
+                                label="findings_rows")
+
+
+def _decorate(project_id: str) -> list[dict[str, Any]]:
+    from . import staleness
+    rows = [dict(r) for r in db.connect().execute(
+        "SELECT * FROM project_notes WHERE project_id=? ORDER BY importance DESC, created_at DESC",
+        (project_id,)).fetchall()]
+    for r in rows:
+        try:
+            r["citations"] = json.loads(r["citations"] or "[]")
+        except ValueError:
+            r["citations"] = []
+    um = usage_map(project_id)
+    try:
+        st = {x["source_id"]: x["status"] for x in staleness.assess(project_id)["sources"]}
+    except Exception:  # noqa: BLE001
+        st = {}
+    area_of: dict[int, str] = {}
+    try:
+        from . import research_view
+        ar = research_view.areas(project_id)
+        claim_area = ar["area_of_claim"]
+        for r in db.connect().execute("SELECT id, origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,)).fetchall():
+            if r["id"] in claim_area:
+                area_of[r["origin_note_id"]] = claim_area[r["id"]]
+    except Exception:  # noqa: BLE001
+        pass
+    for r in rows:
+        u = um.get(r["id"]) or {"plan": 0, "chat": 0, "claim": None}
+        r["used"] = {"plan": u["plan"], "chat": u["chat"], "claim": u["claim"], "claim_counts": bool(u.get("claim_counts")),
+                     "never": not (u["plan"] or u["chat"] or u.get("claim_counts"))}
+        r["source_stale"] = st.get(r.get("source_id") or "") in ("stale", "legacy_unverified")
+        r["area"] = area_of.get(r["id"])
+        c0 = (r["citations"] or [{}])[0] if r["citations"] else {}
+        r["source_title"] = c0.get("title") or "Pinned from chat"
+    return rows
+
+
 def usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     """note id → {plan: n, chat: n, claim: strength|None}. Plan use = a plan evidence entry citing the note's source at the
     note's locator (or, lacking a locator match, the same source); chat use = an assistant citation of the same source and
@@ -107,39 +161,8 @@ def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
 
 def query(project_id: str, *, q: str | None = None, status: str | None = "approved", min_importance: int | None = None, source_id: str | None = None,
           used: str | None = None, stale: str | None = None, area: str | None = None, sort: str = "importance", limit: int = 100, offset: int = 0) -> dict[str, Any]:
-    from . import staleness
     limit = max(1, min(limit, PAGE_MAX))
-    rows = [dict(r) for r in db.connect().execute("SELECT * FROM project_notes WHERE project_id=? ORDER BY importance DESC, created_at DESC", (project_id,)).fetchall()]
-    for r in rows:
-        try:
-            r["citations"] = json.loads(r["citations"] or "[]")
-        except ValueError:
-            r["citations"] = []
-    um = usage_map(project_id)
-    try:
-        st = {x["source_id"]: x["status"] for x in staleness.assess(project_id)["sources"]}
-    except Exception:  # noqa: BLE001
-        st = {}
-    area_of: dict[int, str] = {}
-    try:
-        from . import research_view
-        ar = research_view.areas(project_id)
-        claim_area = ar["area_of_claim"]
-        for r in db.connect().execute("SELECT id, origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,)).fetchall():
-            if r["id"] in claim_area:
-                area_of[r["origin_note_id"]] = claim_area[r["id"]]
-    except Exception:  # noqa: BLE001
-        pass
-    titles = {}
-    for r in rows:
-        u = um.get(r["id"]) or {"plan": 0, "chat": 0, "claim": None}
-        r["used"] = {"plan": u["plan"], "chat": u["chat"], "claim": u["claim"], "claim_counts": bool(u.get("claim_counts")),
-                     "never": not (u["plan"] or u["chat"] or u.get("claim_counts"))}
-        r["source_stale"] = st.get(r.get("source_id") or "") in ("stale", "legacy_unverified")
-        r["area"] = area_of.get(r["id"])
-        c0 = (r["citations"] or [{}])[0] if r["citations"] else {}
-        r["source_title"] = c0.get("title") or "Pinned from chat"
-        titles[r.get("source_id") or ""] = r["source_title"]
+    rows = decorated(project_id)
     qtoks = set(_tokens(q or ""))
 
     def passes(r: dict[str, Any], skip: str | None = None) -> bool:

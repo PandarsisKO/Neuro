@@ -263,3 +263,47 @@ def test_housekeeping_runs_on_its_own_loop():
                             "neurosearch", "jobs.py"), encoding="utf-8").read()
     assert "_housekeeping_loop" in src and '"ns-housekeeping"' in src
     assert "db.checkpoint_wal()" in src
+
+
+# ------------------------------------------------------------------ the workbench assembles its rows once (0.61.4)
+
+def test_the_workbench_assembles_its_rows_once_per_revision():
+    """`/findings` measured 23.2 s cold and 4.3 s warm on the 16,962-note project, and every request repeated the
+    same assembly: every row loaded with its full text, every citations blob parsed, every derived field rebuilt.
+    Filtering and sorting the dicts is milliseconds; assembling them is the bill."""
+    from neurosearch import findings_view
+    p = db.create_project("rows", brief="b")
+    _notes(p["id"], 30)
+    calls: list[str] = []
+    real = findings_view._decorate
+
+    def counted(pid):
+        calls.append(pid)
+        return real(pid)
+
+    findings_view._decorate = counted
+    try:
+        first = findings_view.query(p["id"], status="approved")
+        second = findings_view.query(p["id"], status="approved", q="specific")
+        third = findings_view.query(p["id"], status="approved", sort="oldest")
+    finally:
+        findings_view._decorate = real
+    assert len(calls) == 1                                  # three different queries, one assembly
+    assert first["total"] == 30 and third["total"] == 30
+    assert second["total"] >= 1
+
+
+def test_a_new_finding_retires_the_assembly():
+    """Deliberately not stale-tolerant: a page of findings must never show a status the user just changed."""
+    from neurosearch import findings_view
+    p = db.create_project("rows2", brief="b")
+    _notes(p["id"], 5)
+    assert findings_view.query(p["id"], status="approved")["total"] == 5
+    _notes(p["id"], 3)
+    assert findings_view.query(p["id"], status="approved")["total"] == 8
+
+
+def test_the_background_loop_warms_the_workbench_too():
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "neurosearch", "jobs.py"), encoding="utf-8").read()
+    assert "findings_view.decorated" in src and "research_view.areas" in src

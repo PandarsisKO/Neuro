@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.59.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.61.4)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -189,6 +189,34 @@ fully every `RECONCILE_EVERY` ticks.
 **`discover.check_links` no longer runs under the fake provider.** It was the one thing in the app that reached the
 real network from a deterministic test, and it duly made a Tier 1 test flaky by timing rather than by logic.
 Gate `tests/test_s14_fix_pass.py`.
+
+## The lock-up: a pass worth having is not worth having in a request (0.61.2–0.61.4)
+
+Kyle: *"the app is locked up or failing to load for me. very slow right now."* Measured on his machine while it was
+unresponsive rather than guessed, against the 16,962-note project: `/findings/quality?summary=1` **11.5 s**,
+`/findings` **2.0 s**, and until 0.61.0 the tab re-asked every four seconds. Beside a 627 MB database sat a
+**111.8 MB write-ahead log**, static — SQLite auto-checkpoints at ~4 MB but only when no reader holds an older
+snapshot, and this app keeps a long-lived connection per thread while several threads run multi-second passes, so
+the checkpoint had been starved for days; `journal_size_limit` was -1, so even a successful checkpoint never gave
+the file back. Fixed live: 112 MB → 1.2 MB.
+
+- **`cache.py` gained single flight and stale-while-revalidate.** Every concurrent miss on the same key used to run
+  its own copy of the 11.5 s pass. `get_or_compute` now computes once per (key, revision) and the rest wait;
+  `get_stale_ok` returns the previous value at once with `current: False` and refreshes in a background thread. A
+  cache whose key moves faster than its value can be computed is not a cache, so `findings_quality.summary`
+  defaults to `warm=False` and an uncomputed project SAYS so (`{"pending": True}`) instead of blocking a screen.
+- **`db.WAL_LIMIT_BYTES` / `checkpoint_wal()`** with `journal_size_limit` set on every connection, run by a
+  `_housekeeping_loop` every 120 s; Health `storage` reports `wal_mb` and whether it is over the threshold.
+- **0.61.4 — the workbench assembles its rows once.** `/findings` measured **23.2 s cold, 4.3 s warm** after the
+  quality pass was fixed, and the remaining cost was `findings_view.query` re-assembling every note on every
+  request: every row loaded with its full text, every citations blob parsed, every derived field rebuilt.
+  `findings_view.decorated(project_id)` caches the assembly on `db.project_view_revision` — deliberately
+  `get_or_compute`, not the stale-tolerant variant, because a page of findings must never show a status the user
+  just changed. Filtering and sorting 17,000 dicts costs milliseconds; assembling them was the whole bill. The
+  housekeeping loop warms `research_view.areas`, `findings_view.decorated` and `findings_quality.summary` for the 8
+  most recently updated projects, so the first visit after a restart is warm too.
+
+Gate `tests/test_s15_lockup.py`.
 
 ## Library recall: the rare word decides (0.60.2)
 

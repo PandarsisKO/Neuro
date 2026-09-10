@@ -579,21 +579,25 @@ def _housekeeping_loop(every: float = 120.0) -> None:
 
 
 def _warm_quality() -> None:
-    """Compute the duplicate check for each project HERE, in the background, so no screen ever waits for it.
+    """Compute the expensive derived state for each project HERE, in the background, so no screen waits for it.
 
-    0.61.2 made the summary serve the previous answer, which fixed every visit except the first after a restart —
-    and that one still cost 9.8 s and dragged everything else with it. The pass is worth having and it is not
-    worth having in a request, so the request never computes it (`warm=False`) and this loop does."""
+    0.61.2 made the duplicate summary serve the previous answer, which fixed every visit except the first after a
+    restart — and that one still cost 9.8 s and dragged everything else with it. Re-measured after it: `/findings`
+    was **23.2 s cold** on the 17,000-note project, because a cold request was also building the research areas
+    from 13,000 Claims. All three passes are worth having and none is worth having in a request."""
     try:
-        from . import findings_quality
+        from . import findings_quality, findings_view, research_view
         for row in db.connect().execute("SELECT id FROM projects ORDER BY updated_at DESC LIMIT 8").fetchall():
-            for status in ("approved", "suggested"):
+            pid = row["id"]
+            for what, fn in (("areas", lambda: research_view.areas(pid)),
+                             ("rows", lambda: findings_view.decorated(pid)),
+                             ("quality", lambda: findings_quality.summary(pid, warm=True))):
                 try:
-                    findings_quality.summary(row["id"], warm=True)     # cached under the current revision
+                    fn()                          # each is cached under the project's current revision
                 except Exception as e:  # noqa: BLE001
-                    log.debug("quality warm skipped for %s/%s: %s", row["id"][:8], status, e)
+                    log.debug("warm %s skipped for %s: %s", what, pid[:8], e)
     except Exception as e:  # noqa: BLE001
-        log.warning("quality warm-up skipped: %s", e)
+        log.warning("warm-up skipped: %s", e)
 
 
 def _backup_loop(every: float = 3600.0) -> None:
