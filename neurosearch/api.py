@@ -2490,6 +2490,21 @@ class BulkNotesIn(BaseModel):
     status: str
 
 
+@app.get("/api/projects/{project_id}/findings/quality", dependencies=[Depends(require_auth)])
+def api_findings_quality(project_id: str, status: str | None = "approved", limit: int = 300,
+                         include_used: bool = False, summary: bool = False) -> dict[str, Any]:
+    """F1/F2: the $0 trash review — near-duplicates and vacuous findings, with the reason for each and the finding
+    to keep instead. Read-only: nothing is dismissed, hidden or reordered. Sweeping is the existing
+    POST /api/notes/bulk-status path, so the user's judgement remains the only thing that changes a status."""
+    from . import findings_quality
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if summary:
+        return findings_quality.summary(project_id)
+    return findings_quality.review(project_id, status=status, limit=max(1, min(limit, 1000)),
+                                   include_used=include_used)
+
+
 @app.post("/api/notes/bulk-status", dependencies=[Depends(require_auth)])
 def api_notes_bulk(body: BulkNotesIn) -> dict[str, Any]:
     for nid in body.note_ids:

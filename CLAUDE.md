@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.57.0)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -38,6 +38,30 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 | AI tasks | `sources_value.py` (S2 $0 value spine: findings/Claims/plan/chat/priority → `value_score`, `matters` rule, label; S3 `digest`/`used_in` = the source drawer's one request), `findings_view.py` (S4 $0 findings query: filters/facets/sort/paging, use badges, low-value sweep), `claims_view.py` (R7 $0 Claims workbench: filters/facets/sort/paging over the full claim set, `plain()` one-line translation, batch accept/reject, `for_source` = chat's "Why this answer"), `community.py` (G7 community evidence, $0), `works.py` (G6 canonical works, $0), `claims.py` + `knowledge.py` (G5 research state), `library.py` (G4 profiles + recall), `findings.py` (+`prefilter.py`, off), `relevance.py`, `qa.py`, `planner.py` (V1, production) / `planner_v3.py` (off), `discover.py`, `export.py`, `search.py` (+`rerank.py`, off), `evidence.py`, `staleness.py` | findings/relevance write project-relative artifacts to `project_source_analysis` with `input_hash` + provenance; `qa.chat_system_blocks` builds the chat prompt in cache order (stable prefix → breakpoints → `PROJECT_STATE_BLOCK`); `search` = FTS + embeddings + RRF; `evidence` validates quotes/citations/plan evidence at runtime → Health; `staleness.assess/rebuild/triage/accept` = CURRENT / STALE / current_accepted / REBUILDING with cost estimates; S1 triage tiers rebuild_matters · rebuild_transcript · accept · retry_failed (`accepted_hash` on the analysis row) |
 | Surfaces | `api.py`, `web/index.html` (`UI_VERSION`), `mcp_server.py`, `cli.py`, `extension/` | endpoints are plain `def` (threadpool); projects are the unit (chats, sources, findings, plan, settings, Health); extension = course import, "Send this page", Instagram session |
 | Proofs | `evals.py`, `retrieval_eval.py`, `prefilter_eval.py`, `cache_layout.py`, `migration.py`, `closeout.py`, `batch_smoke.py`, `release.py` | `neurosearch eval` (Tier 1 on the frozen Golden Project `tests/fixtures/golden/`, `--ranking`, `--findings-compare`, `--migration-compare`, `--retrieval [--rerank]`, `--prefilter`, `--cache-layout`); `neurosearch closeout` (Mission F); `neurosearch batch-smoke --live` (the one tiny paid adapter check); `neurosearch doctor` (fast diagnostic); `neurosearch release-check` (heavyweight deterministic gate → `evals/release/`) |
+
+## Findings quality — the trash filter (F1–F3, 0.58.0)
+
+`findings_quality.py` ($0, deterministic, **no model call, no network**) is the mechanism Kyle's objective
+(*"as many findings as possible provided they aren't trash"*) needed and the app did not have: on 2026-09-10 his
+live database held 13,480 findings, 12,614 auto-approved and **twelve** ever dismissed, with nothing anywhere
+checking whether a finding was vacuous or a restatement of one already held. The length-aware cap in `findings.py`
+was the only thing standing between him and noise, and it withholds findings already paid for (`reserve`) on the
+basis of source length — a proxy for quality that knows nothing about quality. This module is the real check the
+cap was standing in for, which is what makes relaxing the cap (F4) safe.
+
+`vacuity(note, source_title)` → named rules (`no_specifics` · `too_short` · `echoes_title` · `generic_only`);
+`clusters(notes, usage)` → union-find over content-word 3-gram Jaccard (`NEAR_JACCARD`) and near-containment
+(`CONTAIN_RATIO`), each group naming a **keeper** and its duplicates. Lexical, not semantic, on purpose: findings
+have no embeddings (only chunks do), so a semantic pass means an embedding call per finding — real money on 13,480
+rows for a filter whose job is to save money. `NEAR_JACCARD` is where a measured semantic comparison would land.
+
+**There is no quality score, and nothing is ever changed.** `review()` returns a list to sweep; the only door to a
+status is the existing `POST /api/notes/bulk-status`. Four protections: a finding used in a plan step, a chat answer
+or a Claim is **never listed** (`findings_view.usage_map`); one rated 4+ or already judged by hand is listed but
+never pre-selected; a cluster always keeps one member; and a finding whose only complaint is length while it still
+names something checkable is never pre-selected — brevity is not vacuity. API
+`GET /api/projects/{id}/findings/quality[?summary=1|include_used=1]`; UI a 🧽 banner + review dialog in the Findings
+workbench. Gate `tests/test_s3_findings_quality.py`.
 
 ## Research catalogues (0.57.0)
 

@@ -398,6 +398,7 @@
         <span class="muted" id="fbCount"></span>
       </div>
       <div id="fbSweep"></div>
+      <div id="fbQual"></div>
       <div class="row" id="fbGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
         <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
         <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
@@ -582,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.57.0';
+const UI_VERSION = '0.58.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2400,6 +2401,7 @@ async function loadWorkbench(reset = true) {
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
   $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}` + (f.used ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '');
+  loadQuality(st);
   const sw = r.low_value_sweep || {};
   $('#fbSweep').innerHTML = sw.count && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
   const rows = r.findings || [];
@@ -2424,6 +2426,48 @@ async function loadWorkbench(reset = true) {
   $('#fbPager').innerHTML = pages > 1 ? `<button class="small ghost" ${FB.offset === 0 ? 'disabled' : ''} onclick="FB.offset=Math.max(0,FB.offset-FB.limit);loadWorkbench(false)">‹ prev</button><span class="muted" style="margin:0 8px">${Math.floor(FB.offset / FB.limit) + 1} / ${pages}</span><button class="small ghost" ${FB.offset + FB.limit >= r.total ? 'disabled' : ''} onclick="FB.offset+=FB.limit;loadWorkbench(false)">next ›</button>` : '';
 }
 async function loadWorkbenchSource(sid) { const p = new URLSearchParams({ limit: 200, status: 'all', source_id: sid }); const r = await api(`/api/projects/${state.project.id}/findings?` + p); $('#fbCount').textContent = `${r.total} from this source (all statuses)`; $('#notes').innerHTML = (r.findings || []).map(n => findingCard({ ...n, _badges: useBadges(n) }, `<span class="muted" style="font-size:11px">${esc(n.status)}</span>`)).join(''); $('#fbPager').innerHTML = `<button class="small ghost" onclick="loadWorkbench()">‹ back to all</button>`; }
+// F3 (0.58.0): the trash review. Near-duplicates and vacuous findings, each with its reason and the finding that
+// survives. Read-only until the user presses the button, and the button is the same /api/notes/bulk-status every
+// other status change goes through — there is no second door.
+let QUAL = null;
+async function loadQuality(st) {
+  const el = $('#fbQual'); if (!el) return;
+  if (st !== 'approved') { el.innerHTML = ''; return; }
+  let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1`); } catch (e) { el.innerHTML = ''; return; }
+  if (!s || !s.flagged) { el.innerHTML = ''; return; }
+  const bits = [];
+  if (s.duplicates) bits.push(`${s.duplicates} repeat${s.duplicates === 1 ? '' : 's'} of findings you already have`);
+  const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected because your plan, chats or Claims use them` : ''}.</span><button class="small" onclick="openQuality()">Review</button></div>`;
+}
+async function openQuality() {
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400`); } catch (e) { return toast('could not load the review'); }
+  QUAL = r;
+  const groups = {};
+  for (const row of r.rows) { const k = row.flags[0]; (groups[k] = groups[k] || []).push(row); }
+  const order = ['duplicate', 'generic_only', 'no_specifics', 'echoes_title', 'too_short'];
+  const keepOf = id => (r.rows.find(x => x.id === id) || {}).content;
+  const body = `<h3 style="margin:0 0 4px">Tidy up findings</h3>
+    <p class="muted" style="margin:0 0 10px">${esc(r.note)}</p>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">${r.findings} findings · ${r.flagged} flagged${r.protected ? ` · ${r.protected} protected` : ''}</div>
+    ${order.filter(k => groups[k]).map(k => `<details class="fgroup" open><summary class="gh"><b>${esc(r.rules[k])}</b><span>${groups[k].length}</span></summary>
+      ${groups[k].map(row => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px">
+        <input type="checkbox" class="qchk" value="${row.id}" ${row.pre_select ? 'checked' : ''} ${row.protected ? 'disabled' : ''}>
+        <span style="flex:1"><span>${esc((row.content || '').slice(0, 260))}</span>
+        ${row.keep_instead ? `<br><span class="muted" style="font-size:11px">keeping instead: ${esc((keepOf(row.keep_instead) || '').slice(0, 160) || '#' + row.keep_instead)}</span>` : ''}
+        ${row.protected ? `<br><span class="muted" style="font-size:11px">🔒 ${esc(row.protected)}</span>` : ''}</span></label>`).join('')}
+    </details>`).join('')}
+    <div class="row" style="margin-top:12px;gap:8px"><button class="small danger" onclick="sweepQuality()">Dismiss the ticked ones</button>
+      <button class="small ghost" onclick="document.querySelectorAll('.qchk:not([disabled])').forEach(c=>c.checked=false)">Untick all</button></div>`;
+  $('#dlgBody').innerHTML = body; dlg.showModal();
+}
+async function sweepQuality() {
+  const ids = [...document.querySelectorAll('.qchk:checked')].map(c => +c.value);
+  if (!ids.length) return toast('nothing ticked');
+  if (!confirm(`Dismiss ${ids.length} finding${ids.length === 1 ? '' : 's'}? They stay retrievable under status "dismissed", and nothing your plan, chats or Claims use is in this list.`)) return;
+  await post('/api/notes/bulk-status', { note_ids: ids, status: 'dismissed' });
+  dlg.close(); toast(`${ids.length} dismissed`); loadNotes();
+}
 async function sweepLow(ids) { if (!confirm(`Dismiss ${ids.length} approved findings rated ≤ 2 that nothing ever used? They stay retrievable under status "dismissed".`)) return; await post('/api/notes/bulk-status', { note_ids: ids, status: 'dismissed' }); toast(`${ids.length} dismissed`); loadNotes(); }
 const ATTRIB = /^(?:(?:the\s+)?(?:speaker|host|he|she|they|[A-Z][\w'.-]+(?:\s[A-Z][\w'.-]+)?)\s+(?:says|said|states|stated|recommends|recommended|advises|advised|suggests|suggested|argues|argued|notes|noted|explains|explained|emphasi[sz]es|claims|believes|thinks)\s+(?:that\s+)?)/i;
 function splitFinding(n) {
