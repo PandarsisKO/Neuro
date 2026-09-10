@@ -2303,7 +2303,11 @@ def bump_model_mismatch(task: str, requested: str, actual: str, executed_by: str
 def model_mismatches() -> list[dict[str, Any]]:
     """Every recorded substitution, newest count first — what Health renders and `doctor` fails on."""
     out: list[dict[str, Any]] = []
-    for row in connect().execute("SELECT key, value FROM kv WHERE key LIKE 'model_mismatch:%' AND key <> 'model_mismatch:last'").fetchall():
+    try:
+        rows = connect().execute("SELECT key, value FROM kv WHERE key LIKE 'model_mismatch:%' AND key <> 'model_mismatch:last'").fetchall()
+    except sqlite3.OperationalError:
+        return out            # `doctor` runs before init_db on a fresh install: no kv table means no history to report
+    for row in rows:
         body = row["key"].split(":", 1)[1]
         task, pair, by = (body.rsplit(":", 2) + ["", ""])[:3] if body.count(":") >= 2 else (body, "", "")
         req, _, act = pair.partition(">")

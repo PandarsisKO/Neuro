@@ -161,3 +161,21 @@ def test_the_contracts_own_model_is_never_flagged():
     assert "model_mismatch" not in r
     r2 = providers.routing_for("claims.extract", want + "-20260101")       # dated snapshot of the same alias
     assert "model_mismatch" not in r2
+
+
+def test_the_mismatch_report_survives_a_database_that_does_not_exist_yet():
+    """`doctor` runs before init_db on a fresh install — the first version of this check crashed there with
+    `no such table: kv`, which would have made the diagnostic tool unusable on a new machine."""
+    import pathlib
+    import tempfile
+
+    from neurosearch import db
+    from neurosearch.config import settings
+    was = settings.data_dir
+    try:
+        settings.data_dir = pathlib.Path(tempfile.mkdtemp(prefix="ns_nodb_"))
+        db._local.conn = None
+        assert db.model_mismatches() == []
+    finally:
+        settings.data_dir = was
+        db._local.conn = None
