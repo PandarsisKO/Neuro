@@ -12,3 +12,4 @@ Plan: `OVERNIGHT-MISSION.md`. Spend so far: **$0.00** (no paid call is possible 
 | 21:55 | **F4** | shipped **0.58.1** `3df0976`, tag `v0.58.1`. Cap 12/8/120 → **20/12/200**, env-reversible; 3 D1 tests re-framed to the shape, recorded in HARDENING.md. 658 tests, Tier 1 PASS (frozen totals unchanged), release-check PASS. |
 | 22:02 | **C1** | shipped **0.58.2** `568c31c`, tag `v0.58.2`. `creator_yield` + a master-source term in `candidates._potential`, project-scoped per the G4 split. 670 tests, Tier 1 PASS, release-check PASS. |
 | 22:13 | **C2** | shipped **0.58.3** `72397ef`, tag `v0.58.3`. `where_to_look` + `untapped_by_creator`, on `pursue`'s result rather than its ladder. 676 tests, Tier 1 PASS, release-check PASS. |
+| 22:23 | **C3** | shipped **0.58.4** `49ed50a`, tag `v0.58.4`. "Where to look" button in Research; `release-check` now runs `node --check` over the UI's 247 KB of inline JS and asserts UI_VERSION. 684 tests, Tier 1 PASS, release-check PASS. |
