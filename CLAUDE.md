@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.5)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.6)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -90,7 +90,16 @@ cap was standing in for, which is what makes relaxing the cap (F4) safe.
 
 `vacuity(note, source_title)` → named rules (`no_specifics` · `too_short` · `echoes_title` · `generic_only`);
 `clusters(notes, usage)` → union-find over content-word 3-gram Jaccard (`NEAR_JACCARD`) and near-containment
-(`CONTAIN_RATIO`), each group naming a **keeper** and its duplicates. Lexical, not semantic, on purpose: findings
+(`CONTAIN_RATIO`), each group naming a **keeper** and its duplicates. **Calibrated against the live corpus (0.58.6), and it found two bugs in the shipped guesses:** `CLUSTER_MAX = 400`
+compared only a project's first 400 findings, so a 10,380-finding project containing byte-identical duplicates
+reported ZERO — replaced by blocking on rare content words (`BLOCK_DF_SHARE` 2%, `BLOCK_MIN_NOTES` 600 below which
+everything is compared); and `NEAR_JACCARD` 0.62 → **0.35**, measured by sampling the similarity bands (0.35–0.45
+are all true duplicates, 0.25–0.35 is mixed). `PAIR_BUDGET` 400k → 8M because at 400k the pass logged itself as
+partial. Result on the real corpus: **192 duplicates in 169 groups, 1.8%, in 3.8 s** — so `review()` is cached on
+`db.project_view_revision`. The vacuity rate is 0.03% and that is CORRECT: his findings are specific, and the trash
+problem was never filler. Evidence and the band table are in HARDENING.md.
+
+Lexical, not semantic, on purpose: findings
 have no embeddings (only chunks do), so a semantic pass means an embedding call per finding — real money on 13,480
 rows for a filter whose job is to save money. `NEAR_JACCARD` is where a measured semantic comparison would land.
 

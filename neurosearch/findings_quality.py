@@ -38,11 +38,34 @@ from . import db
 log = logging.getLogger(__name__)
 
 # ---- duplicate detection ------------------------------------------------------------------------
-SHINGLE = 3                  # content-word 3-grams: short enough for a 184-character median finding
-NEAR_JACCARD = 0.62          # shingle overlap at which two findings say the same thing in the same words
-CONTAIN_RATIO = 0.85         # ...or one finding's content words are almost wholly inside another's
+# CALIBRATED 2026-09-10 against Kyle's live corpus (10,380 approved findings in one project, read-only from the
+# app's own hourly backup). The first version shipped two guesses and both were wrong:
+#
+#  · NEAR_JACCARD 0.62 caught 18 pairs in 10,380 notes. Sampling the bands showed 0.45-0.62 and 0.35-0.45 are ALL
+#    genuine duplicates (the same proposition reworded), while 0.25-0.35 is mixed — "high-risk industries get worse
+#    credit access" and "the six-digit industry code affects loan approval" share vocabulary and say different
+#    things. So the boundary sits at 0.35, measured, not at 0.62, assumed.
+#  · CLUSTER_MAX 400 compared only the first 400 findings of a project, which found ZERO duplicates on a corpus that
+#    demonstrably contains hundreds — including two byte-identical pairs. A cap that silently makes the feature
+#    useless at the only scale that matters is worse than no feature. Replaced by blocking.
+#
+# Blocking: pairs are only considered when they share a RARE content word (document frequency at or below
+# BLOCK_DF_SHARE of the project's findings), which is how the whole corpus can be compared instead of a prefix of it.
+SHINGLE = 3                  # content-word 3-grams: short enough for a 189-character median finding
+NEAR_JACCARD = 0.35          # measured boundary between "the same proposition reworded" and "the same topic"
+CONTAIN_RATIO = 0.85         # ...or one finding's content words are almost wholly inside another's. Kept: it catches
+                             # real duplicates Jaccard misses (a shorter restatement of a longer finding, J as low
+                             # as 0.12) and sampled at high precision.
 MIN_SHINGLE_TOKENS = 6       # below this a finding has too few content words for shingles to mean anything
-CLUSTER_MAX = 400            # never compare more than this many findings pairwise in one group
+BLOCK_MIN_NOTES = 600        # below this, compare every pair (600^2/2 is ~180k comparisons, trivial) — blocking on
+                             # a small set excludes everything, because with five findings every word is "common"
+BLOCK_DF_SHARE = 0.02        # a word in more than 2% of a project's findings is too common to block on
+BLOCK_MAX = 400              # ignore a blocking word that would pair more than this many findings
+PAIR_BUDGET = 8_000_000      # measured: Kyle's 10,380-finding project needs ~4M comparisons and converges at 192
+                             # duplicates in 169 groups. At 400k it found 78 and logged that it was partial, which
+                             # is the kind of quiet half-answer this codebase is supposed to refuse. 8M costs 3.8 s,
+                             # which is why `review` is cached on the project's view revision rather than recomputed
+                             # per request.
 
 # ---- vacuity ------------------------------------------------------------------------------------
 SHORT_CONTENT_TOKENS = 5     # content words, after stop words: fewer than this says almost nothing
@@ -141,7 +164,7 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
     which `vacuity` reports separately, and shingle overlap on three words means nothing."""
     usage = usage or {}
     eligible = []
-    for n in notes[:CLUSTER_MAX]:
+    for n in notes:
         toks = content_words(n.get("content") or "")
         if len(toks) >= MIN_SHINGLE_TOKENS:
             eligible.append((n, set(toks), _shingles(toks)))
@@ -158,21 +181,56 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
         if ra != rb:
             parent[max(ra, rb)] = min(ra, rb)
 
-    for i in range(len(eligible)):
-        ni, si, gi = eligible[i]
-        for j in range(i + 1, len(eligible)):
-            nj, sj, gj = eligible[j]
-            inter = len(gi & gj)
-            if inter:
-                jac = inter / len(gi | gj)
-                if jac >= NEAR_JACCARD:
-                    union(ni["id"], nj["id"]); continue
-            small, big = (si, sj) if len(si) <= len(sj) else (sj, si)
-            if small and len(small & big) / len(small) >= CONTAIN_RATIO:
-                union(ni["id"], nj["id"])
+    by_tok: dict[int, tuple[set[str], set[tuple[str, ...]]]] = {n["id"]: (si, gi) for n, si, gi in eligible}
+    all_ids = sorted(by_tok)
+    if len(eligible) < BLOCK_MIN_NOTES:
+        # small project: compare everything. One block containing every finding does exactly that, and keeps a
+        # single code path below rather than two that can drift apart.
+        blocks: dict[str, list[int]] = {"*": all_ids}
+    else:
+        # --- blocking: only compare findings that share a RARE word, so the whole project is covered rather than a
+        # prefix of it. This is what replaced CLUSTER_MAX.
+        df: dict[str, int] = {}
+        for _, si, _ in eligible:
+            for w in si:
+                df[w] = df.get(w, 0) + 1
+        cap = max(3, int(BLOCK_DF_SHARE * len(eligible)))
+        blocks = defaultdict(list)
+        for n, si, _ in eligible:
+            for w in si:
+                if df[w] <= cap:
+                    blocks[w].append(n["id"])
+    seen: set[tuple[int, int]] = set()
+    compared = 0
+    for w, ids in blocks.items():
+        if len(ids) < 2 or (w != "*" and len(ids) > BLOCK_MAX):
+            continue
+        ids = sorted(ids)
+        for x in range(len(ids)):
+            for y in range(x + 1, len(ids)):
+                key = (ids[x], ids[y])
+                if key in seen:
+                    continue
+                seen.add(key)
+                compared += 1
+                if compared > PAIR_BUDGET:
+                    log.warning("findings_quality: pair budget reached (%d) — duplicate detection is partial", PAIR_BUDGET)
+                    break
+                si, gi = by_tok[ids[x]]
+                sj, gj = by_tok[ids[y]]
+                inter = len(gi & gj)
+                if inter and inter / len(gi | gj) >= NEAR_JACCARD:
+                    union(ids[x], ids[y]); continue
+                small, big = (si, sj) if len(si) <= len(sj) else (sj, si)
+                if small and len(small & big) / len(small) >= CONTAIN_RATIO:
+                    union(ids[x], ids[y])
+            if compared > PAIR_BUDGET:
+                break
+        if compared > PAIR_BUDGET:
+            break
 
     by_root: dict[int, list[dict[str, Any]]] = defaultdict(list)
-    by_id = {n["id"]: n for n, _, _ in eligible}
+    by_id: dict[int, dict[str, Any]] = {n["id"]: n for n, _, _ in eligible}
     for nid in parent:
         by_root[find(nid)].append(by_id[nid])
     out = []
@@ -193,6 +251,17 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
 
 def review(project_id: str, *, status: str | None = "approved", limit: int = 300,
            include_used: bool = False) -> dict[str, Any]:
+    """Cached on the project's view revision (never a clock, per `cache.py`): the underlying pass is ~3.8 s on a
+    10,000-finding project, and the Findings workbench asks for the summary on every load."""
+    from . import cache, db as _db
+    rev = json.dumps(_db.project_view_revision(project_id), sort_keys=True)
+    key = f"findings_quality:{project_id}:{status}:{limit}:{int(include_used)}"
+    return cache.get_or_compute(key, rev, lambda: _review(project_id, status=status, limit=limit,
+                                                          include_used=include_used), label="findings_quality")
+
+
+def _review(project_id: str, *, status: str | None = "approved", limit: int = 300,
+            include_used: bool = False) -> dict[str, Any]:
     """One $0 pass: what looks like trash, why, and what to keep instead. Nothing is changed.
 
     `flagged` rows carry `flags` (rule names), `why` (the same in plain language), `pre_select` (safe to sweep in a

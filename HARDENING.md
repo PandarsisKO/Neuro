@@ -919,3 +919,45 @@ saturates at the max, a one-window source is the top-N by importance — and the
 tests now assert the shape against the constants, so tuning the cap does not re-break them and a change to the shape
 still does. Tier 1 frozen totals unchanged (the cap governs how many findings are KEPT, not how many calls are
 made); `Tier 1: PASS`.
+
+
+## 0.58.6 — the trash filter, calibrated against the live corpus (and two bugs only real data could find)
+
+F1 shipped in 0.58.0 with two guessed constants. Both were wrong, and the suite could not tell, because a fixture
+with three findings exercises neither. Measured read-only from the app's own hourly backup
+(`data/backups/neurosearch-20260909-2229.db`) — the live database was never opened.
+
+**Finding 1: the filter found essentially nothing.** 4 of 12,614 approved findings vacuity-flagged (0.03%), 0
+duplicates. The vacuity result turned out to be CORRECT — sampling twelve findings at random shows Kyle's are
+specific and substantive (median 189 characters, e.g. *"Total project cost includes not just the purchase price but
+working capital and SBA/due diligence fees, so the 10% is calculated on that combined figure"*). There is no filler
+to catch. That is worth knowing on its own: the trash problem was never vacuous findings.
+
+**Finding 2: `CLUSTER_MAX = 400` made duplicate detection useless at the only scale that matters.** It compared the
+first 400 findings of a project. The 10,380-finding project contains, demonstrably, hundreds of duplicates —
+including two byte-identical pairs — and the filter reported zero. Replaced by blocking: pairs are only considered
+when they share a content word whose document frequency is at or below `BLOCK_DF_SHARE` (2%) of the project, with
+one code path and a small-project escape (`BLOCK_MIN_NOTES` 600, below which everything is compared, because with
+five findings every word looks common).
+
+**Finding 3: `NEAR_JACCARD = 0.62` was far too strict.** Distribution over ~13k candidate pairs: median 0.031,
+p95 0.152, p99 0.348. Sampling the bands:
+
+| jaccard band | pairs | what the samples are |
+|---|---|---|
+| ≥ 0.62 | 18 | duplicates |
+| 0.45–0.62 | 48 | duplicates |
+| 0.35–0.45 | 67 | duplicates — "up from $1.25 million" vs "Increased from $1.25 million"; two orderings of the same passive-loss rule |
+| 0.25–0.35 | 151 | **mixed** — "high-risk industries get worse credit access" vs "the six-digit industry code affects loan approval" share vocabulary and say different things |
+| containment ≥ 0.85, jaccard < 0.45 | 90 | duplicates, incl. a jaccard of 0.12 (a short restatement of a long finding) |
+
+So the boundary is **0.35**, measured; `CONTAIN_RATIO` 0.85 is kept because it catches real duplicates Jaccard
+misses. `PAIR_BUDGET` raised 400k → 8M: at 400k the pass logged that it was partial and returned 78 duplicates,
+which is exactly the quiet half-answer this codebase refuses. It converges at **192 duplicates in 169 groups
+(1.8% of the project), in 3.8 s**, so `review()` is now cached on `db.project_view_revision` per `cache.py` —
+revision, never a clock.
+
+**What Kyle should take from this:** his findings are not full of trash. 1.8% are genuine repeats worth clearing
+(the biggest group is four restatements of the same FICO SBSS pre-screen fact from four videos), and the mechanism
+now exists for when 0.58.1's higher cap increases volume. The number to watch is the duplicate rate as the cap
+takes effect, not the vacuity rate.

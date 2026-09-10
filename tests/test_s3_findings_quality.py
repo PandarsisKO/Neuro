@@ -314,3 +314,35 @@ def test_promotable_makes_no_model_call(project, monkeypatch):
     monkeypatch.setattr(providers, "invoke_structured", boom)
     _reserve(project, "He charges a 50% deposit before the first edit and bills the rest on delivery")
     assert fq.promotable(project)["promotable"] == 1
+
+
+# ------------------------------------------------------------------ calibration: measured against the live corpus
+
+def test_the_thresholds_are_the_calibrated_ones():
+    """Recorded so a future tweak is a deliberate act. Measured 2026-09-10 against 10,380 real approved findings:
+    jaccard 0.45-0.62 and 0.35-0.45 are all genuine duplicates, 0.25-0.35 is mixed, so the boundary is 0.35. The
+    shipped guess of 0.62 found 18 pairs in that corpus; 0.35 plus containment finds 192 in 169 groups."""
+    assert fq.NEAR_JACCARD == 0.35
+    assert fq.CONTAIN_RATIO == 0.85
+    assert fq.PAIR_BUDGET >= 8_000_000          # 400k left detection partial on a real project, and said so
+
+
+def test_clustering_covers_the_whole_project_not_a_prefix():
+    """The bug real data found: the first version compared only the first 400 findings (CLUSTER_MAX), so a corpus
+    containing hundreds of duplicates — including byte-identical pairs — reported zero. A duplicate at the END of a
+    large project must be found."""
+    assert not hasattr(fq, "CLUSTER_MAX"), "the prefix cap is gone; blocking replaced it"
+    filler = [_n(i, f"Filler finding number {i} about an entirely unrelated subject {i} of its own", src=str(i))
+              for i in range(1, 900)]
+    pair = [_n(9001, "Sellers typically finance ten percent of the purchase price via a seller note", src="x"),
+            _n(9002, "Sellers usually finance ten percent of the purchase price with a seller note", src="y")]
+    cl = fq.clusters(filler + pair, {})           # the pair is at the very end, well past any 400-item prefix
+    ids = {i for c in cl for i in [c["keeper_id"], *c["duplicate_ids"]]}
+    assert {9001, 9002} <= ids
+
+
+def test_blocking_turns_on_above_the_threshold_and_still_finds_the_pair():
+    assert fq.BLOCK_MIN_NOTES == 600
+    small = [_n(1, "Sellers typically finance ten percent of the purchase price via a seller note"),
+             _n(2, "Sellers usually finance ten percent of the purchase price with a seller note", src="b")]
+    assert len(fq.clusters(small, {})) == 1       # below the threshold: every pair compared
