@@ -141,6 +141,52 @@ credit for a week while the app told him he had spent a third of what he had.
   runaway detector rather than a budget. `POST /api/usage/spend-settings`.
 Gate `tests/test_s7_local_billing.py`.
 
+## Library recall: the rare word decides (0.60.2)
+
+Kyle, testing a new AI-UI/UX project against a library built mostly from business and real-estate research: *"it
+clearly is pulling bad data ... is this searching against the global library? global library is useful but only if
+its utilizing the projects criteria/brief/tags/chat."* The Starting-Research card offered **"How To Make $3,000/mo
+From Airbnb With $0"** as the project's one **strong** match, pre-ticked. Three faults, all measured on his own
+library (1,219 sources with chunks, the query he actually typed):
+
+- **`library._tokens` required three characters, so "ux" was never a query term.** The UI's own line said "2 of 3
+  query terms" — the query had silently become "enterprise complex workflows". Two-letter words are the domain
+  anchors of whole fields (ux, ui, ai, qa, 3d). Now two characters, must contain a letter (so "2026" is not a
+  topic), and `bootstrap._content_tokens` delegates to it so the two cannot drift apart.
+- **Coverage counted the UNION of the best three passages**, so a source could cover a query by mentioning
+  different words in three unrelated places: 44 of the 63 passing sources did so only that way. `recall` now also
+  reports `passage_coverage` (the best single passage), and `bootstrap._band` requires it for **`strong`** — the
+  band that gets pre-ticked, so the one that misleads.
+- **Every term counted the same**, so matching the two most generic words was enough. `query_anchor` picks the
+  query's rarest term — counted in SOURCES via `sources_with_term` (one long video repeating a word must not make
+  it common) — and a source that never says it anywhere is not suggested, with the count reported
+  (`rejected.no_anchor_term`) and the reason in plain words.
+
+**The obvious fix was measured first and does nothing.** IDF-weighting the terms rejects **none** of the 63: his
+query's words have similar rarity (idf enterprise 2.62, ux 2.95, complex 1.80, workflows 2.79). The anchor rule
+takes 66 → 25 and `strong` 8 → 1 (Pencil & Paper, a UX design studio), rejecting Alex Hormozi ×4, a laundromat
+podcast, "How AI is breaking the SaaS business model" and "If I Wanted to Become a Millionaire in 2026". Same
+lesson as 0.58.6/0.58.7/0.59.3: the plausible fix was mine, and the data said otherwise.
+
+Two guards, both of which turn the rule OFF (so neither can invent a false negative), and both structural
+judgements rather than calibrations: `ANCHOR_MAX_TERMS` 8 — a whole brief is prose, not a phrase, and its rarest
+word is incidental (`bootstrap._clauses` already splits a goal for the same reason); and `ANCHOR_MIN_SOURCES` 2 — a
+word only one source uses cannot separate topics, and requiring it made the rule reject every hit in the
+nine-source test fixture. The anchor is checked against the **whole source**, not the three retrieved passages: a
+source can be about your distinctive term without using it in the chunks that happened to score highest, which is
+a property of retrieval, not of the source. **Tags now feed the scan** (`queries_for`) — the cheapest of the
+project signals he named, and simply never read. Chat and research state are a separate decision. Gate
+`tests/test_s12_recall_precision.py`.
+
+**Suggested links are checked for free (same release).** *"discover is routinely suggesting content that has 404
+issues"* — with `https://37signals.com/blog` failing in the queue after he pressed Add. A URL from Discover's first
+pass is a *remembered* address, and the paid `discover.verify` is a model with a search tool being asked whether a
+list is fine, which it says more readily than it should. `discover.check_link` / `check_links` ($0, bounded, same
+`safe_fetch` boundary, 4 threads, `LINK_MAX` 24) records the answer on the row (`discoveries.link_check`), and on a
+404 tries the site root once and OFFERS it — never substitutes it, because a machine must not rewrite a URL a
+model proposed. A dead row loses its Add button and says "that address is gone"; a **403 keeps its link** and says
+the page is probably there, because a server refusing us is not a missing page.
+
 ## Sharing without the research (0.60.0)
 
 Kyle: *"our chats are really good for depth and citing sources ... but when I want to share with my wife or a

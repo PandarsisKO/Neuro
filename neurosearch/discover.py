@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any
+from urllib.parse import urlparse
 
 from . import db
 from .config import settings
@@ -119,6 +121,94 @@ def scholar_pass(project: dict[str, Any], refine: str | None, research: dict[str
             "open_access": sum(1 for r in recs if r["oa_pdf_url"]),
             "items": scholar.to_discoveries(recs), "records": recs,
             "providers": sorted({r["provider"] for r in recs})}
+
+
+# ------------------------------------------------------------------ do the suggested links exist? ($0, 0.60.2)
+#
+# Kyle: *"discover is routinely suggesting content that has 404 issues. we need to be able to check against that
+# instead of giving URLs that are broken"* — with a screenshot of `https://37signals.com/blog` failing 404 after he
+# pressed Add. Both halves of that are worth naming. Discover's first pass proposes sources from the model's own
+# memory, so a URL it returns is a REMEMBERED address: it was probably right once, and blogs move. The paid
+# `discover.verify` pass is supposed to catch this, but it is a model with a web-search tool being asked to check a
+# list — it does not have to actually fetch anything, and it says a link is fine more readily than it should.
+#
+# So the check is done here instead, for nothing: one bounded request per URL through the same boundary every other
+# fetch uses. A dead address is then a FACT on the row rather than a failed job the user discovers by clicking. And
+# on a 404 the site root is tried once, because "the blog moved" is the common case and the root is nearly always
+# where it moved to — offered as a suggestion, never substituted silently.
+LINK_MAX = 24                      # URLs checked per run: the shortlist plus a couple of start_with links each
+LINK_DEADLINE_S = 8.0              # per URL
+LINK_STATUSES = ("ok", "not_found", "blocked", "unreachable", "refused", "skipped")
+
+
+def _origin(url: str) -> str | None:
+    try:
+        u = urlparse(url)
+        return f"{u.scheme}://{u.netloc}/" if u.scheme and u.netloc else None
+    except ValueError:
+        return None
+
+
+def check_link(url: str, *, try_root: bool = True) -> dict[str, Any]:
+    """Does this address exist? `status` is one of LINK_STATUSES; `http` is the code when there was one.
+
+    A HEAD would be cheaper but is refused or lied about by enough servers to be worse than useless, so this is a
+    GET whose body is thrown away. `blocked` is deliberately distinct from `not_found`: a 403 usually means the
+    page is there and the server dislikes us, which is a reason to hand the user the link, not to hide it."""
+    from . import safe_fetch as sf
+    if not url or not re.match(r"^https?://", url):
+        return {"status": "skipped", "reason": "not a web address"}
+    try:
+        res = sf.safe_fetch(url, content_class="html", deadline_s=LINK_DEADLINE_S)
+        code = int(getattr(res, "status", 0) or 0)
+        out: dict[str, Any] = {"status": "ok", "http": code, "final_url": getattr(res, "url", url)}
+        if code in (404, 410):
+            out["status"] = "not_found"
+        elif code in (401, 402, 403, 407, 429) or code >= 500:
+            out["status"] = "blocked"
+        elif code >= 400:
+            out["status"] = "blocked"
+        if out["status"] == "not_found" and try_root:
+            root = _origin(url)
+            if root and root.rstrip("/") != url.rstrip("/"):
+                r2 = check_link(root, try_root=False)
+                if r2.get("status") == "ok":
+                    out["suggested_url"] = root
+                    out["suggested_why"] = "that address is gone, but the site itself is up"
+        return out
+    except sf.FetchBlocked as e:
+        return {"status": "refused", "reason": e.reason, "detail": str(e)[:160]}
+    except Exception as e:  # noqa: BLE001 — a link check must never fail a discover run
+        return {"status": "unreachable", "detail": str(e)[:160]}
+
+
+def check_links(rows: list[dict[str, Any]], *, progress: Any = None) -> dict[str, Any]:
+    """Check every saved discovery's URL and record the answer on the row. $0, bounded, and it never changes a URL
+    — a suggestion is offered, so a real address that merely looks odd is never thrown away by a machine."""
+    from concurrent.futures import ThreadPoolExecutor
+    todo = [(d["id"], d.get("url") or "") for d in rows if (d.get("url") or "").startswith("http")][:LINK_MAX]
+    if not todo:
+        return {"checked": 0, "dead": 0, "by_status": {}}
+    if progress:
+        progress(0.9, f"checking {len(todo)} link{'' if len(todo) == 1 else 's'} actually resolve — free")
+    results: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for (did, url), res in zip(todo, pool.map(lambda u: check_link(u[1]), todo)):
+            results[did] = {**res, "url": url, "checked_at": time.time()}
+    by_status: dict[str, int] = {}
+    for did, res in results.items():
+        by_status[res["status"]] = by_status.get(res["status"], 0) + 1
+        try:
+            db.update_discovery(did, link_check=res)
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record the link check for discovery %s: %s", did, e)
+    for d in rows:
+        if d["id"] in results:
+            d["link_check"] = results[d["id"]]
+    dead = sum(n for st, n in by_status.items() if st in ("not_found", "unreachable"))
+    return {"checked": len(todo), "dead": dead, "by_status": by_status,
+            "note": (f"{dead} of {len(todo)} suggested addresses did not resolve — they are marked rather than "
+                     "offered as something to add") if dead else None}
 
 
 def _clean_query(text: str) -> str:
@@ -280,10 +370,18 @@ def discover(project_id: str, refine: str | None = None, count: int = 10,
         saved = saved + extra
     except Exception as e:  # noqa: BLE001
         log.warning("discover verification pass failed (shortlist kept): %s", e)
+    links = {"checked": 0, "dead": 0, "by_status": {}}
+    try:
+        links = check_links(saved, progress=progress)
+    except Exception as e:  # noqa: BLE001 — a free check must never cost the run
+        log.warning("link check skipped: %s", e)
     note = str(data.get("note") or "")
+    if links.get("note"):
+        note = (note + " " if note else "") + links["note"] + "."
     if sch_saved:
         note = (note + " " if note else "") + (f"{len(sch_saved)} of these came from research catalogues and did not need verifying "
                                                f"({sch.get('open_access', 0)} have free full text).")
     # catalogue records first: they are real by construction, where the model's suggestions are checked claims about reality
     return {"added": len(saved) + len(sch_saved), "verified": fixed + len(sch_saved), "extra": added, "note": note,
-            "items": sch_saved + saved, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta}
+            "items": sch_saved + saved, "library": lib, "mode": mode, "research": research, "scholar": scholar_meta,
+            "links": links}

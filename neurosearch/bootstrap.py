@@ -66,7 +66,11 @@ def _clauses(text: str) -> list[str]:
 
 
 def _content_tokens(q: str) -> set[str]:
-    return {t for t in re.findall(r"[a-z0-9][a-z0-9\-']+", (q or "").lower()) if t not in _STOP and len(t) > 2}
+    """0.60.2: two characters, not three — same fix as `library._tokens`, and for the same reason: "ux", "ui",
+    "ai" and "qa" are the words that identify a field, and dropping them made a goal about AI UI/UX design
+    unrecognisable to the scan that was meant to search for it."""
+    from .library import _tokens
+    return _tokens(q or "")
 
 
 def queries_for(project: dict[str, Any]) -> list[str]:
@@ -76,6 +80,13 @@ def queries_for(project: dict[str, Any]) -> list[str]:
     brief = (project.get("brief") or "").strip()
     cands = _clauses(goal) or _clauses(brief)
     cands += [q for q in (project.get("questions") or []) if q]
+    # 0.60.2 (Kyle: "global library is useful but only if its utilizing the projects criteria/brief/tags/chat").
+    # Tags are the cheapest of those and were simply never read: a project tagged "ux, design systems" said so
+    # explicitly and the scan searched only the goal sentence. Chat and the research state are a separate decision
+    # (RECALL-RUNG.md) because they change what a $0 scan costs and when it can run.
+    tags = [str(t).strip() for t in (project.get("tags") or []) if str(t).strip()]
+    if tags:
+        cands.append(" ".join(tags[:6]))
     picked: list[str] = []
     seen: list[set[str]] = []
     for c in cands:
@@ -93,6 +104,16 @@ def queries_for(project: dict[str, Any]) -> list[str]:
 
 
 def _band(hit: dict[str, Any]) -> str:
+    """0.60.2: `strong` now needs ONE passage that clears the bar, not a union across three.
+
+    Kyle's first screenshot of this card offered "How To Make $3,000/mo From Airbnb With $0" as the single strong
+    match for a project about AI-assisted UI/UX design. Two queries matching, or 0.6 of the terms appearing
+    somewhere among three passages, is a low bar in a library of 1,219 sources about other subjects — and calling
+    it "strong" is the part that misleads, because it is the row the card pre-ticks."""
+    passage = hit.get("passage_coverage")
+    strong_passage = passage is None or passage >= STRONG_COVERAGE     # None = an older row without the measure
+    if not strong_passage:
+        return "possible"
     return "strong" if (len(hit["queries"]) >= STRONG_QUERIES or hit["coverage"] >= STRONG_COVERAGE) else "possible"
 
 
@@ -125,10 +146,11 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
             m = merged.setdefault(s["source_id"], {
                 "source_id": s["source_id"], "title": s.get("title"), "channel": s.get("channel"),
                 "platform": s.get("platform"), "url": s.get("url"), "published_at": s.get("published_at"),
-                "score": 0.0, "coverage": 0.0, "queries": [], "passages": [], "terms": [],
+                "score": 0.0, "coverage": 0.0, "passage_coverage": 0.0, "queries": [], "passages": [], "terms": [],
             })
             m["score"] = round(max(m["score"], s["score"]), 4)
             m["coverage"] = max(m["coverage"], s.get("coverage") or 0.0)
+            m["passage_coverage"] = max(m["passage_coverage"], s.get("passage_coverage") or 0.0)
             m["queries"].append(q)
             m["terms"] = sorted(set(m["terms"]) | set(s.get("covered_terms") or []))
             for c in (s.get("chunks") or [])[:2]:

@@ -50,6 +50,36 @@ MIN_SCORE = 0.012                   # ≈ one RRF rank ≤ 25 in either channel:
 # appear in the matched passages (+ title/creator). Below MIN_COVERAGE a source is not suggested at all.
 MIN_COVERAGE = 0.4
 STRONG_COVERAGE = 0.6               # what Discover may treat as "strong" (together with ≥2 passages) — still relevance, not sufficiency
+# 0.60.2 — WHY THIS WAS RETURNING AN AIRBNB VIDEO AS A STRONG MATCH FOR "enterprise UX complex workflows".
+#
+# Kyle, testing a new AI-UI/UX project against a library built mostly from business and real-estate research:
+# *"it clearly is pulling bad data."* Three separate faults, measured on his own library (1,219 sources with
+# chunks, the query he actually typed):
+#
+#   * `_tokens` required THREE characters, so "ux" was never a query term at all — the query was silently
+#     "enterprise complex workflows", and the UI's own line said "2 of 3 query terms". Two-letter terms are exactly
+#     the domain anchors in his field: ux, ui, ai, qa, 3d.
+#   * coverage counted the UNION of the best three passages, so a source could "cover" a query by mentioning
+#     different words in three unrelated places. 44 of the 63 sources that passed did so only by scattering.
+#   * every term counted the same, so matching the two most generic words was enough.
+#
+# The obvious fix — IDF-weight the terms — was measured first and rejects **none** of the 63: his query's words
+# have similar rarity (idf: enterprise 2.62, ux 2.95, complex 1.80, workflows 2.79), so weighting changes nothing.
+# What works is requiring the query's RAREST term to actually appear (25 of 63 survive: Pencil & Paper, UI
+# Collective, Figma — and out go "The Mathematics of Business", "How AI is breaking the SaaS business model",
+# "If I Wanted to Become a Millionaire in 2026"), and reserving `strong` for a source where ONE passage clears the
+# bar. Both are one explainable sentence to a user; a weighting scheme is not.
+ANCHOR_MIN_TERMS = 2                # a one-word query has no distinctive term to anchor on; the rule is skipped
+ANCHOR_MAX_DF_SHARE = 0.5           # if even the rarest term is in half the library, anchoring says nothing
+# Two guards, both of which turn the rule OFF rather than on, so neither can invent a false negative. They are
+# STRUCTURAL judgements, not calibrations — the measured evidence above covers a deliberate four-word query:
+#   * a long block of prose is not a deliberate phrase. `bootstrap._clauses` already splits a goal for this same
+#     reason; a whole brief's rarest word is more likely incidental than definitive, so above ANCHOR_MAX_TERMS the
+#     query has no anchor.
+#   * a word only one source in the library uses cannot separate topics — requiring it is retrieval, not
+#     relevance. (This is what made the rule reject every hit in the nine-source test fixture.)
+ANCHOR_MAX_TERMS = 8
+ANCHOR_MIN_SOURCES = 2
 BATCH_MIN = 8                       # wanted profiles that trigger an opportunistic batch
 INTERACTIVE_MAX = 3                 # profiles enriched inline when a query needs them right now
 PROFILE_CHARS = 14000               # text sample sent for enrichment (head + topic chunks)
@@ -193,7 +223,91 @@ def profile(source_id: str) -> dict[str, Any] | None:
 # ------------------------------------------------------------------ recall (works with zero enriched profiles)
 
 def _tokens(q: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z][a-z0-9\-']{2,}", q.lower()) if w not in _STOP}
+    """Content terms. TWO characters is the minimum, not three (0.60.2): "ux", "ui", "ai", "qa" and "3d" are the
+    most distinctive words in whole fields, and dropping them turned "enterprise UX complex workflows" into
+    "enterprise complex workflows" before anything was compared. A token must contain a letter, so a year or a
+    figure does not become a topic."""
+    out = set()
+    for w in re.findall(r"[a-z0-9][a-z0-9\-']*", q.lower()):
+        if len(w) < 2 or w in _STOP or not any(c.isalpha() for c in w):
+            continue
+        out.add(w)
+    return out
+
+
+def term_df(term: str) -> int:
+    """How many CHUNKS in the whole library contain `term`, asked of the FTS index itself so the stemming and
+    tokenisation match what `search` did. Cached on the library revision, because rarity only moves when the
+    library does. `query_anchor` counts sources rather than chunks (see there); this is the passage-level view,
+    kept for diagnostics."""
+    from . import cache
+    rev = str(db.library_revision())
+    def compute() -> int:
+        try:
+            q = term.replace('"', " ").strip()
+            if not q:
+                return 0
+            row = db.connect().execute("SELECT COUNT(*) n FROM chunks_fts WHERE chunks_fts MATCH ?",
+                                       (f'"{q}"',)).fetchone()
+            return int(row["n"] or 0)
+        except Exception:  # noqa: BLE001 — an odd token must never take a recall down
+            return 0
+    return cache.get_or_compute(f"library:df:{term}", rev, compute, label="library_df")
+
+
+def sources_with_term(term: str, source_ids: list[str] | None = None) -> set[str]:
+    """Which sources contain `term` ANYWHERE, straight from the FTS index.
+
+    The anchor is checked against the whole source, not against the three passages retrieval happened to return
+    (0.60.2). A source can be entirely about your distinctive term and not use it in the three chunks that scored
+    highest — that is a property of retrieval, not of the source, and letting it veto a match made the rule reject
+    everything in a nine-source fixture."""
+    from . import cache
+    rev = str(db.library_revision())
+
+    def compute() -> set[str]:
+        try:
+            q = term.replace('"', " ").strip()
+            if not q:
+                return set()
+            rows = db.connect().execute(
+                "SELECT DISTINCT c.source_id sid FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                "WHERE chunks_fts MATCH ?", (f'"{q}"',)).fetchall()
+            return {r["sid"] for r in rows}
+        except Exception:  # noqa: BLE001
+            return set()
+
+    hit = cache.get_or_compute(f"library:srcterm:{term}", rev, compute, label="library_df")
+    return set(hit) if source_ids is None else {s for s in hit if s in set(source_ids)}
+
+
+def query_anchor(terms: set[str]) -> dict[str, Any]:
+    """The query's most distinctive term — the one whose absence means the match is about something else.
+
+    Returns the anchor and why, or no anchor with the reason. No anchor means the rule does not apply: a
+    one-word query has nothing to anchor on, a term the library has never seen would reject everything, and a
+    rarest term that still appears in half the library says nothing about topic."""
+    if len(terms) < ANCHOR_MIN_TERMS:
+        return {"term": None, "reason": "too few terms to have a distinctive one"}
+    if len(terms) > ANCHOR_MAX_TERMS:
+        return {"term": None, "reason": f"a {len(terms)}-word search is prose, not a phrase — its rarest word is "
+                                        "probably incidental"}
+    # Rarity is counted in SOURCES, not chunks: one three-hour video repeating a word forty times must not make
+    # that word common, and "in 64 of 1,219 sources" is also the sentence a user can check.
+    present = {t: len(sources_with_term(t)) for t in terms}
+    known = {t: n for t, n in present.items() if n > 0}
+    if not known:
+        return {"term": None, "reason": "none of these words appear anywhere in the library", "df": present}
+    total = max(1, db.sources_with_chunks())
+    term = min(known, key=lambda t: (known[t], t))
+    if known[term] / total > ANCHOR_MAX_DF_SHARE:
+        return {"term": None, "reason": f"even the rarest word ('{term}') is in most of the library", "df": known}
+    if known[term] < ANCHOR_MIN_SOURCES:
+        return {"term": None, "reason": f"'{term}' appears in too few sources to separate one topic from another",
+                "df": known}
+    return {"term": term, "sources": known[term], "of_sources": total, "share": round(known[term] / total, 4),
+            "reason": f"'{term}' is the rarest word in this search, so a match that never says it is about something else",
+            "df": known}
 
 
 def library_scope(project_id: str | None) -> list[str]:
@@ -217,6 +331,9 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
         return {"query": q, "suggestions": [], "scope": len(scope), "enrichment": {"wanted": 0}}
     hits = search(q, limit=RECALL_CHUNKS, source_ids=scope, per_source_cap=PER_SOURCE_CHUNKS, reserve=0)
     qt = _tokens(q)
+    anchor = query_anchor(qt)
+    anchored = sources_with_term(anchor["term"]) if anchor.get("term") else set()
+    rejected = {"no_anchor_term": 0, "low_coverage": 0, "low_score": 0}
     by_src: dict[str, dict[str, Any]] = {}
     for h in hits:
         d = by_src.setdefault(h["source_id"], {"source_id": h["source_id"], "chunk_score": 0.0, "chunks": [], "title": h["title"], "channel": h.get("channel"),
@@ -226,6 +343,7 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
     out = []
     for sid, d in by_src.items():
         if d["chunk_score"] < MIN_SCORE:
+            rejected["low_score"] += 1
             continue
         p = profile(sid) or {}
         b = p.get("baseline") or {}
@@ -235,11 +353,30 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
         passage_terms = _tokens(" ".join(c["text"] for c in d["chunks"]))
         covered = sorted((qt & passage_terms) | set(title_hits))
         coverage = round(len(covered) / len(qt), 2) if qt else 0.0
+        # 0.60.2: the same coverage, per PASSAGE. A source that mentions three of the query's words in three
+        # unrelated places is not covering the query, and on Kyle's library 44 of the 63 sources that passed did
+        # so only that way. The union still decides pass/fail (it is the recall-friendly measure); the best single
+        # passage is what `strong` now needs.
+        best_passage = 0.0
+        for c_ in d["chunks"]:
+            ct = _tokens(c_["text"]) | set(title_hits)
+            best_passage = max(best_passage, len(qt & ct) / len(qt) if qt else 0.0)
         d["coverage"], d["covered_terms"], d["query_terms"] = coverage, covered, sorted(qt)
+        d["passage_coverage"] = round(best_passage, 2)
         if coverage < MIN_COVERAGE:
+            rejected["low_coverage"] += 1
             continue                                                # the nearest thing we own is not the same as coverage
+        # The anchor: the query's rarest word has to be in there. Without this, matching the two most generic
+        # words of a four-word query is enough, which is how a video about Airbnb income became a "strong" match
+        # for enterprise UX work. IDF weighting was measured first and rejected none of them.
+        d["anchor_term"] = anchor.get("term")
+        if anchor.get("term") and sid not in anchored:
+            rejected["no_anchor_term"] += 1
+            continue
         why: list[str] = [f"{len(d['chunks'])} matching passage(s); best at {d['chunks'][0]['timestamp']}",
                           f"passages cover {len(covered)} of {len(qt)} query terms ({', '.join(covered[:6])})"]
+        if anchor.get("term"):
+            why.append(f"the source says \"{anchor['term']}\" — the most distinctive word in this search")
         bonus = 0.0
         if title_hits:
             bonus += 0.004 * len(title_hits); why.append("title/creator mentions " + ", ".join(title_hits[:4]))
@@ -264,7 +401,10 @@ def recall(project_id: str | None, query: str, limit: int = 8, *, want_enrichmen
             db.kv_bump("library:recall_hits", len(out))
     except Exception:  # noqa: BLE001
         pass
-    return {"query": q, "suggestions": out, "scope": len(scope), "enrichment": {"wanted": wanted, "pending": pending_count()}}
+    return {"query": q, "suggestions": out, "scope": len(scope), "anchor": anchor, "rejected": rejected,
+            "note": (f"{rejected['no_anchor_term']} near-miss source(s) were left out because they never say "
+                     f"\"{anchor['term']}\"" if anchor.get("term") and rejected["no_anchor_term"] else None),
+            "enrichment": {"wanted": wanted, "pending": pending_count()}}
 
 
 # ------------------------------------------------------------------ enrichment (lazy · opportunistic batch · never required)

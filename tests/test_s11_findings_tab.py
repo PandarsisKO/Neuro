@@ -157,7 +157,8 @@ def test_every_discover_add_button_looks_the_same():
     ui = open(UI, encoding="utf-8").read()
     acts = ui[ui.index('<div class="dacts">'):ui.index('${d.status !== \'added\' ?')]
     assert "d.kind === 'website'" not in acts
-    assert acts.count('class="small primary"') == 4
+    # five since 0.60.2: the fifth is the "add the site instead" offer on a row whose address 404s
+    assert acts.count('class="small primary"') == 5
 
 
 def test_adding_from_discover_acknowledges_the_click():

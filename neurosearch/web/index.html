@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.60.1';
+const UI_VERSION = '0.60.2';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1832,12 +1832,16 @@ async function loadDiscoveries(keepMsg = false) {
     const vids = (d.start_with || []).filter(v => v.url && !isSearch(v.url) && /youtu|\.mp3|podcast|loom|vimeo/i.test(v.url));
     const searches = [...(d.start_with || []).map(v => v.url), d.url].filter(isSearch);
     const isChan = d.url && /youtube\.com\/(@|channel\/|c\/|user\/)/.test(d.url);
+    // 0.60.2: a suggested address that does not resolve is a fact on the row, checked for free before the user
+    // clicks. A 403 is NOT hidden — the page is usually there and the server just dislikes us.
+    const lc = d.link_check || null;
+    const dead = lc && (lc.status === 'not_found' || lc.status === 'unreachable');
     return `<div class="d ${d.status}">
     <div class="dh">
       <div class="dmain">
         <div class="dt"><b>${esc(d.name)}</b>${d.known_for ? ` <span class="gist">— ${esc(d.known_for)}</span>` : ''}</div>
         <div class="dwhy">${esc(d.why || '')}</div>
-        <div class="dmeta">${KIND[d.kind] || esc(d.kind || '')}${d.fit ? ` · fit <span style="color:var(--warn)">${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? ` · ${esc(d.depth)}` : ''}${d.angle ? ` · <span title="angle / bias">${esc(d.angle)}</span>` : ''}${d.status === 'added' ? ' · <span style="color:var(--ok)">added ✓</span>' : ''}</div>
+        <div class="dmeta">${KIND[d.kind] || esc(d.kind || '')}${d.fit ? ` · fit <span style="color:var(--warn)">${'●'.repeat(d.fit)}</span>` : ''}${d.depth ? ` · ${esc(d.depth)}` : ''}${d.angle ? ` · <span title="angle / bias">${esc(d.angle)}</span>` : ''}${d.status === 'added' ? ' · <span style="color:var(--ok)">added ✓</span>' : ''}${lc && lc.status !== 'ok' && lc.status !== 'skipped' ? ` · <span style="color:var(--${dead ? 'bad' : 'warn'})" title="${esc(lc.detail || lc.reason || '')}">${lc.status === 'not_found' ? `that address is gone (${lc.http || 404})` : lc.status === 'blocked' ? `the site would not let us read it (${lc.http || 'blocked'}) — the page is probably there` : lc.status === 'refused' ? 'refused by the fetch boundary' : 'could not reach it'}</span>` : ''}</div>
       </div>
       <div class="dacts">
         <!-- 0.60.1 (Kyle: "some buttons are blue and some are white - why is that?"): the colour used to depend on
@@ -1847,7 +1851,8 @@ async function loadDiscoveries(keepMsg = false) {
         ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false, this)">＋ Start video</button>` : ''}
         ${isChan ? `<button class="small primary" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true, this)">＋ Channel</button>` : ''}
         ${searches.length ? `<button class="small primary" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true, this)">🔍 Search YouTube</button>` : ''}
-        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length ? `<button class="small primary" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false, this)">＋ Add page</button>` : ''}
+        ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length && !dead ? `<button class="small primary" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false, this)">＋ Add page</button>` : ''}
+        ${dead && lc.suggested_url ? `<button class="small primary" title="${esc(lc.suggested_why || '')}" onclick="discAdd(${d.id}, ${JSON.stringify(lc.suggested_url).replace(/"/g, '&quot;')}, false, this)">＋ Add the site instead</button>` : ''}
         ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
       </div>
     </div>

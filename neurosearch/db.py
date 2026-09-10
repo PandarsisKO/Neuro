@@ -830,6 +830,9 @@ MIGRATIONS = [
     # written before this column therefore attribute Sonnet-priced dollars to a Haiku row, which is exactly the
     # shape of a wrong per-model verdict — so `cost_value.by_model` refuses to divide where the basis is unknown.
     ("usage", "price_model", "ALTER TABLE usage ADD COLUMN price_model TEXT"),
+    # 0.60.2: whether a suggested URL actually resolves. Discover proposes sources from a model's memory, and a
+    # remembered address goes stale — Kyle: "discover is routinely suggesting content that has 404 issues".
+    ("discoveries", "link_check", "ALTER TABLE discoveries ADD COLUMN link_check TEXT"),
 ]
 
 
@@ -3021,6 +3024,24 @@ def list_project_notes(project_id: str, status: str | None = "approved", limit: 
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
 
 
+def chunk_count() -> int:
+    r = connect().execute("SELECT COUNT(*) n FROM chunks").fetchone()
+    return int(r["n"] or 0)
+
+
+def sources_with_chunks() -> int:
+    """The denominator for term rarity: sources that actually have retrievable text (0.60.2)."""
+    r = connect().execute("SELECT COUNT(DISTINCT source_id) n FROM chunks").fetchone()
+    return int(r["n"] or 0)
+
+
+def library_revision() -> str:
+    """A fingerprint of the retrievable library: how many chunks exist and when a source last changed. Term rarity
+    (library.term_df) only moves when this does, so it is what those lookups cache on (0.60.2)."""
+    r = connect().execute("SELECT (SELECT COUNT(*) FROM chunks), (SELECT COALESCE(MAX(updated_at),0) FROM sources)").fetchone()
+    return f"{r[0]}:{r[1]}"
+
+
 def analysis_jobs_queued(project_id: str) -> int:
     """How many findings jobs for this project are QUEUED rather than running — the ones a first wave can move to
     the front. Previously the browser derived this by downloading every source in the project (0.60.1)."""
@@ -3149,12 +3170,15 @@ def add_discoveries(project_id: str, items: list[dict[str, Any]], note: str = ""
     return rows
 
 
-def update_discovery(disc_id: int, url: str | None = None, start_with: list[dict[str, Any]] | None = None) -> None:
+def update_discovery(disc_id: int, url: str | None = None, start_with: list[dict[str, Any]] | None = None,
+                     link_check: dict[str, Any] | None = None) -> None:
     sets, args = [], []
     if url:
         sets.append("url=?"); args.append(url)
     if start_with:
         sets.append("start_with=?"); args.append(json.dumps(start_with))
+    if link_check is not None:
+        sets.append("link_check=?"); args.append(json.dumps(link_check))
     if sets:
         with tx() as conn:
             conn.execute(f"UPDATE discoveries SET {', '.join(sets)} WHERE id=?", (*args, disc_id))
@@ -3173,6 +3197,10 @@ def list_discoveries(project_id: str, status: str | None = None) -> list[dict[st
             d["start_with"] = json.loads(d.get("start_with") or "[]")
         except ValueError:
             d["start_with"] = []
+        try:
+            d["link_check"] = json.loads(d.get("link_check") or "null")
+        except ValueError:
+            d["link_check"] = None
         rows.append(d)
     return rows
 
