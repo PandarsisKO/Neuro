@@ -152,3 +152,22 @@ Read FIELD-MAP-RUNG.md before starting: it carries the shape, the $0 constraint,
 to build (letting a catalogue write research state; running it for projects with no literature behind them;
 presenting an academic taxonomy as the project's real gaps; making it a paid pass), and the open question to settle
 by measurement first — reference-list clusters versus the reviews' own headings.
+
+
+## Its other half, same evening — the source capability profile (SOURCE-CAPABILITY-RUNG.md)
+
+Kyle, right after the field map: when a master source is only partly ingested, what that source turned out to be
+GOOD FOR is data the app currently discards. There is no master-source aggregation anywhere — `sources.channel`
+feeds display grouping, a CSV column and a Bootstrap label, nothing else. `candidates._potential` scores a
+known-but-uncaptured source from its own title and 600 characters of description, so a video from a channel whose
+sixty siblings closed three evidence targets scores the same as one from a channel that has never yielded anything.
+
+Read the two rungs together: FIELD-MAP names which questions exist (outside-in, from literature not owned),
+SOURCE-CAPABILITY names where to look for answers (inside-out, from sources already partly owned).
+
+**Resolve the G4 conflict before writing code.** G4 forbids building a global Source Profile from project findings,
+and a yield profile is by construction built from project findings. The split in the doc is: global stays
+metadata-only (`library.baseline`, unchanged), yield is project-scoped (like `project_reuse`), and gap routing
+combines them at query time. Cross-project aggregation is a separate decision needing its own argument — assume
+project-scoped and argue out of it, not the reverse. Smallest useful slice: a master-source term in
+`candidates._potential`, shippable on its own.
