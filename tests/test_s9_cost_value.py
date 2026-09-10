@@ -13,6 +13,10 @@ Two properties matter more than any single ratio here, and both are tested:
   against $0.0071 on Sonnet 5 — Haiku, at a fifth of the token price, apparently three times dearer. Every one of
   those Haiku rows was priced at Sonnet 5's rates, because `record_anthropic`'s local branch prices avoided spend
   at the CONTRACT's model. `price_basis` is what stops that number being printed as a verdict.
+
+Run against the real snapshot the module refuses EVERY per-model row, because no row written before 0.59.3 records
+its basis. That is the intended answer: a comparison that cannot be made from these rows is reported as one that
+cannot be made, and `usage.price_model` starts recording the basis from this release so it becomes possible.
 """
 from __future__ import annotations
 

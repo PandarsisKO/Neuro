@@ -1070,24 +1070,30 @@ much, `reconcile` how much was really charged, `rate_last_hour` how fast. So the
 table (the findings cap 12 → 20; findings on Haiku) could only be argued on whether the bill rose, which is the
 wrong axis: 40% more spend for twice the output is a good trade and the same spend for nothing is not.
 
-`cost_value.py` divides spend by things the project can use. Measured on his own backup (2026-09-10 05:13,
-month to date, charged = recorded + billed local):
+`cost_value.py` divides spend by things the project can use. The shipped module, run against a snapshot of his
+own database (2026-09-10 05:58, month to date, charged = recorded + billed local):
 
 | kind | charged | unit | produced | each |
 |---|---|---|---|---|
-| findings | $164.95 | finding written | 11,286 | **$0.0146** |
-| | | finding kept | 10,715 | **$0.0154** |
-| claims | $114.18 | Claim tracked | 11,469 | $0.0100 |
-| | | Claim normalized | 7,619 | **$0.0150** |
+| findings | $205.34 | finding written | 12,301 | **$0.0167** |
+| | | finding kept | 11,779 | **$0.0174** |
+| claims | $114.25 | Claim tracked | 12,331 | $0.0093 |
+| | | Claim normalized | 7,628 | **$0.0150** |
 | rank + whisper + embed | $26.59 | source read | 1,214 | **$0.0219** |
-| answer | $16.13 | chat answer | 104 | **$0.155** |
+| answer | $16.13 | chat answer | 104 | **$0.1551** |
 | discover + plan + profile | $4.89 | *unattributed* | — | — |
-| **total** | **$326.74** | | | 1.5% unattributed |
+| **total** | **$367.20** | | | 1.3% unattributed |
 
-Two things worth acting on fell straight out of it. **Claim extraction is 35% of the bill** — $114 for 7,619
-normalized Claims — and nothing in the session had looked at it, because it never appeared as a line anywhere.
-And cost per kept finding by day: $0.0054 (Sep 7) → $0.0157 → $0.0168 (Sep 9) → **$0.0089 (Sep 10)**, the drop
-coinciding with the raised cap and the local path.
+**Claim extraction is 31% of the bill** — $114 for 7,628 normalized Claims — and nothing in two days of cost work
+had looked at it, because it had never appeared as a line anywhere.
+
+**The panel's first act was to falsify something I had already written down.** Calibrating against a five-hour-old
+backup, cost per kept finding for 2026-09-10 read $0.0089 against $0.0168 the day before, and I recorded that as
+the cap raise and the local path paying off. Re-run against the 05:58 snapshot, that day is **$0.0259 — the most
+expensive of the month** ($0.0054 Sep 7 → $0.0157 → $0.0168 → $0.0259), because the intervening hours were almost
+entirely local findings work: **97.5% of the day's charge is the local path**, priced from tokens rather than
+metered by the API. The correction is recorded here rather than the first number quietly replaced, because the
+first number was the kind of result that gets repeated: it agreed with the change we had just shipped.
 
 **The number it would not print.** A naive per-model split said findings cost **$0.0231 each on Haiku against
 $0.0071 on Sonnet 5**: Haiku, at a fifth of the token price, apparently three times dearer per finding — and

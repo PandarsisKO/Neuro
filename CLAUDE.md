@@ -161,12 +161,20 @@ Three rules:
 - **A count of zero is not a cost of infinity.** Spend with no output gives `per_unit: None` with the reason;
   output with no spend gives `0.0`, because a harvested Claim really is free.
 
-**The measurement, from Kyle's own backup (2026-09-10 05:13, whole month):** $326.74 charged — `findings` $164.95,
-**`claims` $114.18 (35% of everything, the second largest line and nobody had looked at it)**, `rank` $24.49,
-`answer` $16.13, `whisper` $1.95, and $4.89 across discover/plan/profile that no unit claims (1.5% unattributed).
-Per unit: **$0.0146 per finding written, $0.0154 per finding kept, $0.0150 per normalized Claim, $0.0219 per source
-read, $0.155 per chat answer.** Per day, cost per kept finding: $0.0054 (Sep 7) → $0.0157 → $0.0168 (Sep 9) →
-**$0.0089 (Sep 10, after the cap raise and the local path)**.
+**The measurement, running the shipped module against a snapshot of Kyle's own database (2026-09-10 05:58, month
+to date):** $367.20 charged — `findings` $205.34, **`claims` $114.25 (31% of everything, the second largest line
+and nobody had looked at it)**, `rank` + `whisper` + `embed` $26.59, `answer` $16.13, and $4.89 across
+discover/plan/profile that no unit claims (1.3% unattributed). Per unit: **$0.0167 per finding written, $0.0174 per
+finding kept, $0.0150 per normalized Claim, $0.0219 per source read, $0.155 per chat answer.**
+
+**And the first thing it did was contradict me.** Reading a five-hour-old backup earlier in the pass, cost per kept
+finding for 2026-09-10 came out at $0.0089 against $0.0168 the day before, and I wrote that down as the cap raise
+and the local path paying off. Against the 05:58 snapshot the same day is **$0.0259 — the most expensive day of the
+month per kept finding** ($0.0054 Sep 7 → $0.0157 → $0.0168 → $0.0259), and **97.5% of that day's charge is the
+local path**, which is priced from tokens rather than metered. So the honest reading is the opposite of the one I
+had already typed: nothing here shows the cap raise making findings cheaper per kept finding, and the local path
+being billed is pushing the number up. That is the whole point of the panel, and it is why `estimated` sits next to
+every window.
 
 **It found a reporting bug in the ledger before it found anything about the models.** A naive per-model split said
 findings cost **$0.0231 each on Haiku against $0.0071 on Sonnet 5** — Haiku, at a fifth of the token price, three
