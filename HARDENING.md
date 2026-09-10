@@ -990,3 +990,46 @@ Two ranking defects the same measurement exposed:
 
 Gate additions in `tests/test_s4_source_capability.py`: the relative bar, the one-lucky-source case, no projection
 from a thin sample, and yield outranking pile size.
+
+
+## 0.58.8 — paraphrases, and the honest floor of a lexical filter
+
+Chasing an implausibly clean number. F5 reported **all 571** withheld `reserve` findings as promotable with **zero**
+overlapping an approved finding. Zero is a strong claim, so it was checked by hand instead of trusted — and it was
+wrong in the way that matters. Scanning reserve against approved findings *from the same source*, the most similar
+pairs are unmistakably the same fact:
+
+```
+J=0.10  RESERVE : SBA loan repayment data shows acquired small businesses have a 95%+ five-year success rate…
+        APPROVED: SBA loan repayment data confirms acquired small businesses succeed at 95%+ over 5 years…
+J=0.06  RESERVE : Posting regular progress updates on LinkedIn/Facebook/Instagram/Twitter attracts investors…
+        APPROVED: Posting real-time updates on LinkedIn, Facebook, or Instagram about the buying process draws…
+```
+
+**Diagnosis:** 3-gram shingles catch near-VERBATIM repeats and miss PARAPHRASES, because a 3-gram of content words
+rarely survives a reordering. The approved-vs-approved duplicates found in 0.58.6 were near-verbatim (the model
+producing almost identical text from different videos); reserve-vs-approved pairs come from the SAME generation pass
+and are reworded, so they scored 0.06–0.10.
+
+**Fix:** a set (bag-of-words) Jaccard alongside, `SET_JACCARD = 0.50`. Sampled bands on the live corpus:
+
+| set-jaccard | pairs | verdict on the samples |
+|---|---|---|
+| 0.55–0.65 | 189 | true duplicates |
+| 0.45–0.55 | 352 | true duplicates |
+| 0.35–0.45 | ~500 | mostly true |
+| 0.30–0.35 | 856 | **mixed** — two DIFFERENT off-topic videos, each described as off-topic, score 0.33 |
+
+0.50 is the conservative pick: a false duplicate costs a real finding. Effect: **192 → 441 duplicates (1.8% → 4.2%),
+360 groups, 5.0 s.** The set measure alone is worth 249 of them.
+
+**The floor, now published rather than left to be discovered.** The three hand-found duplicates above score 0.33,
+0.20 and 0.18 on set-Jaccard. No lexical threshold separates them from findings that merely share vocabulary, so
+`review()["limits"]` states that this is a floor on the duplicates present and never a ceiling, and `promotable()`
+warns to skim before approving in bulk. Catching paraphrases properly needs embeddings — one call per finding,
+about $0.013 for 13,000 findings. That is now a costed decision for Kyle rather than an assumption in either
+direction.
+
+**And the corrected F5 answer:** of 541 withheld findings, 1 duplicates something approved. The cap really did
+withhold different facts rather than restatements, so promoting them is close to free value — with the paraphrase
+caveat attached.

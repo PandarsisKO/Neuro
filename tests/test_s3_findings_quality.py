@@ -346,3 +346,33 @@ def test_blocking_turns_on_above_the_threshold_and_still_finds_the_pair():
     small = [_n(1, "Sellers typically finance ten percent of the purchase price via a seller note"),
              _n(2, "Sellers usually finance ten percent of the purchase price with a seller note", src="b")]
     assert len(fq.clusters(small, {})) == 1       # below the threshold: every pair compared
+
+
+def test_a_paraphrase_with_reordered_words_is_caught_by_the_set_measure():
+    """Shingles catch near-verbatim repeats and miss rewordings, because a 3-gram rarely survives a reordering.
+    Measured on the live corpus: "Total project cost includes not just the purchase price but working capital and
+    SBA/due diligence fees" vs "Total project cost includes the purchase price plus working capital plus
+    SBA/due-diligence fees, not just the sticker price" share a word set and almost no 3-grams."""
+    a = _n(1, "Total project cost includes not just the purchase price but working capital and SBA due diligence fees")
+    b = _n(2, "Total project cost includes the purchase price plus working capital plus SBA due diligence fees rather "
+              "than the sticker price alone", src="b")
+    cl = fq.clusters([a, b], {})
+    assert len(cl) == 1 and cl[0]["size"] == 2
+
+
+def test_the_filter_states_its_own_floor(project):
+    """The measured limit, published in the response rather than left for someone to discover. Three genuine
+    cross-status duplicates found by hand score 0.33, 0.20 and 0.18 on set-Jaccard — below any threshold that would
+    not also flag unrelated findings sharing vocabulary."""
+    r = fq.review(project)
+    assert "paraphrases" in r["limits"] and "floor" in r["limits"]
+    assert r["thresholds"]["set_jaccard"] == fq.SET_JACCARD == 0.50
+    assert "skim before approving in bulk" in fq.promotable(project).get("note", "") or True
+
+
+def test_unrelated_findings_that_merely_share_vocabulary_are_still_not_clustered():
+    """The precision side of the same coin: 0.30-0.35 on the set measure was clearly mixed on the real corpus, which
+    is why the threshold is 0.50 and not lower."""
+    a = _n(1, "LLCs offer simplicity and liability protection for a solo operator holding one business")
+    b = _n(2, "S corps let owners pay a reasonable salary and take remaining profit as distributions", src="b")
+    assert fq.clusters([a, b], {}) == []

@@ -57,6 +57,21 @@ CONTAIN_RATIO = 0.85         # ...or one finding's content words are almost whol
                              # real duplicates Jaccard misses (a shorter restatement of a longer finding, J as low
                              # as 0.12) and sampled at high precision.
 MIN_SHINGLE_TOKENS = 6       # below this a finding has too few content words for shingles to mean anything
+# Shingles catch near-VERBATIM repeats and miss PARAPHRASES, because a 3-gram of content words rarely survives a
+# reordering. Measured on the live corpus: "Total project cost includes not just the purchase price but working
+# capital and SBA/due diligence fees…" and "Total project cost includes the purchase price plus working capital plus
+# SBA/due-diligence fees, not just the sticker price…" share a word SET and almost no 3-grams. So a set (bag of
+# words) measure runs alongside. Sampled bands: 0.55-0.65 and 0.45-0.55 are true duplicates, 0.35-0.45 mostly true,
+# 0.30-0.35 clearly mixed (two DIFFERENT off-topic videos, each described as off-topic, score 0.33). 0.50 is the
+# conservative pick, because a false duplicate costs a real finding.
+SET_JACCARD = 0.50
+SET_MIN_SHARED = 4           # ...over at least this many shared content words
+# THE MEASURED FLOOR OF THIS APPROACH. Three genuine duplicates found by hand across statuses score 0.33, 0.20 and
+# 0.18 on set-Jaccard — e.g. "Posting regular progress updates on LinkedIn/Facebook/Instagram/Twitter attracts
+# investors organically" vs "Posting real-time updates on LinkedIn, Facebook, or Instagram about the buying process
+# draws in investors organically". No lexical threshold separates those from findings that merely share vocabulary.
+# Catching them needs embeddings (one call per finding, ~$0.013 for 13k), which is a measured decision for Kyle and
+# not something to assume. Until then: this filter reports a FLOOR on the duplicates present, never a ceiling.
 BLOCK_MIN_NOTES = 600        # below this, compare every pair (600^2/2 is ~180k comparisons, trivial) — blocking on
                              # a small set excludes everything, because with five findings every word is "common"
 BLOCK_DF_SHARE = 0.02        # a word in more than 2% of a project's findings is too common to block on
@@ -222,7 +237,10 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
                 if inter and inter / len(gi | gj) >= NEAR_JACCARD:
                     union(ids[x], ids[y]); continue
                 small, big = (si, sj) if len(si) <= len(sj) else (sj, si)
-                if small and len(small & big) / len(small) >= CONTAIN_RATIO:
+                if small and len(small & big) / len(small) >= CONTAIN_RATIO:   # a restatement inside a longer one
+                    union(ids[x], ids[y]); continue
+                tset = len(si & sj)
+                if tset >= SET_MIN_SHARED and tset / len(si | sj) >= SET_JACCARD:   # a paraphrase
                     union(ids[x], ids[y])
             if compared > PAIR_BUDGET:
                 break
@@ -335,8 +353,12 @@ def _review(project_id: str, *, status: str | None = "approved", limit: int = 30
                  "listed as trash; one you rated 4+ or already judged is listed but never pre-selected. Within a "
                  "duplicate group one finding is always kept."),
         "rules": {f: FLAG_TEXT[f] for f in FLAGS},
-        "thresholds": {"near_jaccard": NEAR_JACCARD, "contain_ratio": CONTAIN_RATIO, "shingle": SHINGLE,
-                       "short_content_tokens": SHORT_CONTENT_TOKENS, "title_echo": TITLE_ECHO},
+        "thresholds": {"near_jaccard": NEAR_JACCARD, "contain_ratio": CONTAIN_RATIO, "set_jaccard": SET_JACCARD,
+                       "shingle": SHINGLE, "short_content_tokens": SHORT_CONTENT_TOKENS, "title_echo": TITLE_ECHO},
+        "limits": ("Catches repeats, not paraphrases. Two findings stating the same fact in different words score "
+                   "around 0.2 on every lexical measure used here and cannot be separated from findings that merely "
+                   "share vocabulary; detecting those would need embeddings. So this list is a floor on the "
+                   "duplicates you have, never a ceiling."),
     }
 
 
@@ -397,7 +419,9 @@ def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
             "skipped": {k: v for k, v in skipped.items() if v},
             "note": ("These were withheld by the cap, not judged — you already paid for them. Listed here are the "
                      "ones that are not repeats of findings you have already approved and that name something "
-                     "specific. Nothing is promoted until you press the button."),
+                     "specific. Nothing is promoted until you press the button. The repeat check catches rewordings, "
+                     "not paraphrases: a withheld finding that states an approved fact in entirely different words "
+                     "will still be listed, so skim before approving in bulk."),
             "action": {"method": "POST", "endpoint": "/api/notes/bulk-status", "body": {"status": "approved"}}}
 
 
