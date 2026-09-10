@@ -137,3 +137,14 @@ warning). It does NOT reclassify existing artifacts. Deciding that needs a query
 `project_source_analysis.routing` in the live database — through the API, never by opening the file — and Kyle's call
 on whether to re-run anything. Do not assume the artifacts are wrong: `routing.actual_model` was always stored, so
 the answer is already in there.
+
+
+## PARAPHRASE-RUNG.md — the limitation 0.58.8 measured and left
+
+`findings_quality` catches verbatim repeats and rewordings, not paraphrases. Three real duplicates found by hand
+score 0.33 / 0.20 / 0.18 on set-Jaccard, and the 0.30-0.35 band is genuinely mixed (two DIFFERENT off-topic videos,
+each described as off-topic, score 0.33) — so no lexical threshold can separate them. Embeddings would
+(~$0.013 for 13k findings) and the doc carries the shape, the exit test, and the instruction to calibrate the
+cosine threshold the way 0.58.6/0.58.8 calibrated theirs: embed one project, sample the bands by hand, write the
+table into HARDENING.md, THEN pick the number. Not built because a guessed cosine threshold would repeat exactly the
+mistake those two releases exist to correct, and calibrating costs money — Kyle's call.
