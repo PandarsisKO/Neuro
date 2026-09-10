@@ -27,7 +27,17 @@ def _tokens(s: str) -> list[str]:
 def usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     """note id → {plan: n, chat: n, claim: strength|None}. Plan use = a plan evidence entry citing the note's source at the
     note's locator (or, lacking a locator match, the same source); chat use = an assistant citation of the same source and
-    locator; Claim = the note is a Claim's origin or evidence (claim_evidence.note_id / project_claims.origin_note_id)."""
+    locator; Claim = the note is a Claim's origin or evidence (claim_evidence.note_id / project_claims.origin_note_id).
+
+    Cached on the project's view revision (0.61.2). Every call walks every note, every plan evidence entry, every
+    chat citation and every claim, and it is called by the findings workbench, the quality pass and the source
+    drawer — so on a 17,000-note project the same walk was being repeated several times per screen."""
+    from . import cache
+    rev = json.dumps(db.project_view_revision(project_id), sort_keys=True)
+    return cache.get_or_compute(f"usage_map:{project_id}", rev, lambda: _usage_map(project_id), label="usage_map")
+
+
+def _usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     conn = db.connect()
     notes = [dict(r) for r in conn.execute("SELECT id, source_id, citations FROM project_notes WHERE project_id=?", (project_id,)).fetchall()]
     out: dict[int, dict[str, Any]] = {n["id"]: {"plan": 0, "chat": 0, "claim": None} for n in notes}

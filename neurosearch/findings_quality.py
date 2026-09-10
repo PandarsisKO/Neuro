@@ -291,7 +291,7 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
 # ------------------------------------------------------------------ the review surface
 
 def review(project_id: str, *, status: str | None = "approved", limit: int = 300,
-           include_used: bool = False, stale_ok: bool = False) -> dict[str, Any]:
+           include_used: bool = False, stale_ok: bool = False, warm: bool = True) -> dict[str, Any]:
     """Cached on the project's view revision (never a clock, per `cache.py`).
 
     `stale_ok` is how the workbench should ask (0.61.2). Measured on Kyle's live project while the app was locked
@@ -311,7 +311,9 @@ def review(project_id: str, *, status: str | None = "approved", limit: int = 300
 
     if not stale_ok:
         return cache.get_or_compute(key, rev, compute, label="findings_quality")
-    got = cache.get_stale_ok(key, rev, compute, label="findings_quality")
+    got = cache.get_stale_ok(key, rev, compute, label="findings_quality", warm=warm)
+    if got["value"] is None:
+        return {}                        # nothing computed yet and we were told not to compute it in a request
     out = dict(got["value"] or {})
     out["as_of_current"] = bool(got["current"])
     out["recomputing"] = bool(got["pending"])
@@ -505,10 +507,10 @@ def promotable(project_id: str, limit: int = 400) -> dict[str, Any]:
             "action": {"method": "POST", "endpoint": "/api/notes/bulk-status", "body": {"status": "approved"}}}
 
 
-def summary(project_id: str, stale_ok: bool = True) -> dict[str, Any]:
+def summary(project_id: str, stale_ok: bool = True, warm: bool = False) -> dict[str, Any]:
     """The counts only — a chip in the Findings header, and the one place that must never block a screen, so it
     takes the previous answer by default (0.61.2)."""
-    r = review(project_id, limit=1, stale_ok=stale_ok)
+    r = review(project_id, limit=1, stale_ok=stale_ok, warm=warm)
     if not r:
         return {"findings": 0, "pending": True,
                 "note": "the duplicate check has not run for this project yet — it will appear shortly"}

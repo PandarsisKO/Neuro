@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.61.2';
+const UI_VERSION = '0.61.3';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2731,7 +2731,7 @@ async function loadQuality(st) {
   // pile grows now that 0.58.1 raised the cap. Same surface, same door, one extra status.
   if (st !== 'approved' && st !== 'suggested') { el.innerHTML = ''; return; }
   let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1&status=${st}`); } catch (e) { el.innerHTML = ''; return; }
-  if (s && s.pending) { el.innerHTML = `<div class="banner muted" style="font-size:12.5px">🧽 Checking these for repeats — the result appears here shortly.</div>`; return; }
+  if (s && s.pending) { el.innerHTML = `<div class="banner muted" style="font-size:12.5px">🧽 The repeat check runs in the background — it appears here within a couple of minutes. It is never computed while you wait, because on a 12,000-finding project it takes about ten seconds.</div>`; return; }
   if (!s || !s.flagged) { el.innerHTML = ''; return; }
   const bits = [];
   // 0.59.0, Kyle: "even duplicate data is useful somehow". Right — and this app already agrees: claims.assess

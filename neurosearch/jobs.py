@@ -575,6 +575,25 @@ def _housekeeping_loop(every: float = 120.0) -> None:
                 log.info("housekeeping: WAL %.1f MB -> %.1f MB", (r.get("was") or 0) / 1e6, r["wal_bytes"] / 1e6)
         except Exception as e:  # noqa: BLE001
             log.warning("housekeeping skipped: %s", e)
+        _warm_quality()
+
+
+def _warm_quality() -> None:
+    """Compute the duplicate check for each project HERE, in the background, so no screen ever waits for it.
+
+    0.61.2 made the summary serve the previous answer, which fixed every visit except the first after a restart —
+    and that one still cost 9.8 s and dragged everything else with it. The pass is worth having and it is not
+    worth having in a request, so the request never computes it (`warm=False`) and this loop does."""
+    try:
+        from . import findings_quality
+        for row in db.connect().execute("SELECT id FROM projects ORDER BY updated_at DESC LIMIT 8").fetchall():
+            for status in ("approved", "suggested"):
+                try:
+                    findings_quality.summary(row["id"], warm=True)     # cached under the current revision
+                except Exception as e:  # noqa: BLE001
+                    log.debug("quality warm skipped for %s/%s: %s", row["id"][:8], status, e)
+    except Exception as e:  # noqa: BLE001
+        log.warning("quality warm-up skipped: %s", e)
 
 
 def _backup_loop(every: float = 3600.0) -> None:

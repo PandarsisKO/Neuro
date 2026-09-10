@@ -150,11 +150,51 @@ def _notes(project_id, n, status="approved"):
                           1000.0 + i, status, "claude-sonnet-5", 3, f"Finding {i}", "s1"))
 
 
-def test_the_summary_takes_the_previous_answer_by_default():
+def test_the_summary_never_computes_inside_a_request():
+    """0.61.2 made every visit but the FIRST cheap; the first still cost 9.8 s after a restart and dragged
+    everything with it. So the request never computes the pass at all — the housekeeping loop does — and an
+    uncomputed project says so instead of blocking."""
+    from neurosearch import findings_quality
+    p = db.create_project("cold", brief="b")
+    _notes(p["id"], 4)
+    s = findings_quality.summary(p["id"])                 # default: warm=False
+    assert s.get("pending") is True and "has not run" in s["note"]
+    warm = findings_quality.summary(p["id"], warm=True)   # what the background loop does
+    assert warm["as_of_current"] is True and "findings" in warm
+    assert findings_quality.summary(p["id"])["as_of_current"] is True   # now the request finds it ready
+
+
+def test_the_background_loop_is_what_warms_it():
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "neurosearch", "jobs.py"), encoding="utf-8").read()
+    assert "_warm_quality" in src and "warm=True" in src
+
+
+def test_the_usage_map_is_computed_once_per_revision():
+    """It walks every note, plan entry, chat citation and Claim, and three different screens ask for it."""
+    from neurosearch import findings_view
+    p = db.create_project("um", brief="b")
+    _notes(p["id"], 5)
+    runs = []
+    orig = findings_view._usage_map
+
+    def counted(pid):
+        runs.append(1)
+        return orig(pid)
+
+    findings_view._usage_map = counted
+    try:
+        findings_view.usage_map(p["id"]); findings_view.usage_map(p["id"]); findings_view.usage_map(p["id"])
+    finally:
+        findings_view._usage_map = orig
+    assert len(runs) == 1
+
+
+def test_the_summary_takes_the_previous_answer_when_something_is_stored():
     from neurosearch import findings_quality
     p = db.create_project("q", brief="b")
     _notes(p["id"], 6)
-    first = findings_quality.summary(p["id"])
+    first = findings_quality.summary(p["id"], warm=True)
     assert first["as_of_current"] is True
     _notes(p["id"], 1)                              # a finding lands: the revision moves
     calls = []

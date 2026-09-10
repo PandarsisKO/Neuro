@@ -518,9 +518,17 @@ def test_discover_background_and_pause_turn(client, monkeypatch):
     import anthropic
     from tests.fake_claude import Anthropic, _Msgs
     from neurosearch import discover, jobs
+    # 0.61.3: count only the calls made on THIS thread. A worker pool left running by an earlier test module can
+    # claim the same queued discover job and run it concurrently, which doubled the count to 6 and made this gate
+    # flaky by timing rather than by logic. What the gate is actually about is the call sequence of one discover
+    # run: one quick pass, one verify that pauses, one that answers.
+    import threading as _th
+    mine = _th.current_thread()
     calls = {"n": 0}
     orig = _Msgs.create
     def create(self, **kw):   # first call returns a paused turn with no text, second the real answer
+        if _th.current_thread() is not mine:
+            return orig(self, **kw)
         calls["n"] += 1
         r = orig(self, **kw)
         if calls["n"] == 2:   # the web-search (verify) pass hands back a paused turn first

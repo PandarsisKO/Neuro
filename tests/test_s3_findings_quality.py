@@ -195,7 +195,9 @@ def test_the_surface_publishes_its_own_thresholds_and_rules(project):
 
 def test_summary_is_the_counts_only(project):
     db.add_project_note(project, "It covers the importance of things", [])
-    s = fq.summary(project)
+    # 0.61.2: the request path never computes this pass — `warm=True` is what the housekeeping loop passes.
+    assert fq.summary(project).get("pending") is True
+    s = fq.summary(project, warm=True)
     assert set(s) == {"findings", "flagged", "duplicates", "cluster_count", "protected", "counts", "share",
                       "corroborated",      # 0.59.0: the banner needs the corroboration count too
                       # 0.61.2: and it needs to know whether the counts are current. This pass takes 11.5 s on
@@ -403,7 +405,12 @@ def test_health_reports_the_filter_per_project_and_says_it_is_a_floor():
     pid = p["id"] if isinstance(p, dict) else p
     db.add_project_note(pid, "Sellers finance 10% of the price via a seller note", [])
     h = db.health()["findings_quality"]
-    assert any(r["project"] == "Health quality" for r in h["projects"])
+    row = next((r for r in h["projects"] if r["project"] == "Health quality"), None)
+    assert row is not None                       # listed either way — pending is a state, not an omission
+    assert row.get("pending") is True and row["findings"] == 1
+    fq.summary(pid, warm=True)                   # what the background loop does
+    row = next(r for r in db.health()["findings_quality"]["projects"] if r["project"] == "Health quality")
+    assert row.get("pending") is not True
     assert h["thresholds"]["set_jaccard"] == fq.SET_JACCARD
     assert "FLOOR, not a ceiling" in h["note"]
 

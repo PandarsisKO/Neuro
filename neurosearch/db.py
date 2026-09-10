@@ -2746,8 +2746,11 @@ def _batches_health() -> dict[str, Any]:
 
 
 def _findings_quality_health() -> dict[str, Any]:
-    """F1-F5 counts per project. Each `summary` is cached on that project's view revision, so this is cheap after
-    the first call and honest about being a FLOOR on duplicates rather than a ceiling (see findings_quality)."""
+    """F1-F5 counts per project, from the CACHE only (0.61.2).
+
+    The pass takes 11.5 s on a 12,800-finding project, so Health — a page someone opens when the app already feels
+    slow — must never trigger it. A project whose check has not run yet is listed as `pending` rather than
+    computed on the spot or quietly omitted: the housekeeping loop warms it within a couple of minutes."""
     try:
         from . import findings_quality
         out = []
@@ -2756,7 +2759,11 @@ def _findings_quality_health() -> dict[str, Any]:
                 s = findings_quality.summary(row["id"])
             except Exception:  # noqa: BLE001 — one bad project must not blank the whole section
                 continue
-            if s.get("findings"):
+            notes = connect().execute("SELECT COUNT(*) n FROM project_notes WHERE project_id=?", (row["id"],)).fetchone()["n"]
+            if s.get("pending") and notes:
+                out.append({"project": row["name"], "pending": True, "findings": int(notes),
+                            "note": "the duplicate check has not run yet — it is computed in the background"})
+            elif s.get("findings"):
                 out.append({"project": row["name"], **s})
         return {"projects": out,
                 "thresholds": {"near_jaccard": findings_quality.NEAR_JACCARD,
