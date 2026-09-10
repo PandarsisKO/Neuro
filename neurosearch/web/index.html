@@ -583,7 +583,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.58.8';
+const UI_VERSION = '0.58.9';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2462,13 +2462,15 @@ let QUAL = null;
 async function loadQuality(st) {
   const el = $('#fbQual'); if (!el) return;
   if (st === 'reserve') return loadPromotable(el);
-  if (st !== 'approved') { el.innerHTML = ''; return; }
-  let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1`); } catch (e) { el.innerHTML = ''; return; }
+  // 0.58.9: `suggested` is where the filter helps MOST — before a finding is approved rather than after — and the
+  // pile grows now that 0.58.1 raised the cap. Same surface, same door, one extra status.
+  if (st !== 'approved' && st !== 'suggested') { el.innerHTML = ''; return; }
+  let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1&status=${st}`); } catch (e) { el.innerHTML = ''; return; }
   if (!s || !s.flagged) { el.innerHTML = ''; return; }
   const bits = [];
   if (s.duplicates) bits.push(`${s.duplicates} repeat${s.duplicates === 1 ? '' : 's'} of findings you already have`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected because your plan, chats or Claims use them` : ''}.</span><button class="small" onclick="openQuality()">Review</button></div>`;
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected because your plan, chats or Claims use them` : ''}.</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
 // The filter can now say which of them are not repeats of something approved and do name something specific.
@@ -2494,8 +2496,9 @@ async function promoteReserve(ids) {
   try { dlg.close(); } catch (e) { /* the banner path has no dialog open */ }
   toast(`${ids.length} approved`); loadNotes();
 }
-async function openQuality() {
-  let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400`); } catch (e) { return toast('could not load the review'); }
+async function openQuality(st) {
+  st = st || $('#fbStatus').value || 'approved';
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings/quality?limit=400&status=${st}`); } catch (e) { return toast('could not load the review'); }
   QUAL = r;
   const groups = {};
   for (const row of r.rows) { const k = row.flags[0]; (groups[k] = groups[k] || []).push(row); }
@@ -2518,7 +2521,7 @@ async function openQuality() {
 async function sweepQuality() {
   const ids = [...document.querySelectorAll('.qchk:checked')].map(c => +c.value);
   if (!ids.length) return toast('nothing ticked');
-  if (!confirm(`Dismiss ${ids.length} finding${ids.length === 1 ? '' : 's'}? They stay retrievable under status "dismissed", and nothing your plan, chats or Claims use is in this list.`)) return;
+  if (!confirm(`Dismiss ${ids.length} finding${ids.length === 1 ? '' : 's'}? They stay retrievable under status "dismissed", and nothing your plan, chats or Claims use is in this list. The repeat check catches rewordings, not paraphrases — skim first.`)) return;
   await post('/api/notes/bulk-status', { note_ids: ids, status: 'dismissed' });
   dlg.close(); toast(`${ids.length} dismissed`); loadNotes();
 }

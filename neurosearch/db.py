@@ -2462,6 +2462,29 @@ def _provider_health() -> list[dict[str, Any]]:
         return [{"operation": "?", "label": "Provider health", "status": "unknown", "detail": str(e)[:100]}]
 
 
+def _findings_quality_health() -> dict[str, Any]:
+    """F1-F5 counts per project. Each `summary` is cached on that project's view revision, so this is cheap after
+    the first call and honest about being a FLOOR on duplicates rather than a ceiling (see findings_quality)."""
+    try:
+        from . import findings_quality
+        out = []
+        for row in connect().execute("SELECT id, name FROM projects ORDER BY created_at").fetchall():
+            try:
+                s = findings_quality.summary(row["id"])
+            except Exception:  # noqa: BLE001 — one bad project must not blank the whole section
+                continue
+            if s.get("findings"):
+                out.append({"project": row["name"], **s})
+        return {"projects": out,
+                "thresholds": {"near_jaccard": findings_quality.NEAR_JACCARD,
+                               "set_jaccard": findings_quality.SET_JACCARD,
+                               "contain_ratio": findings_quality.CONTAIN_RATIO},
+                "note": "Duplicates are a FLOOR, not a ceiling: the check catches rewordings, not paraphrases. "
+                        "Watch the duplicate share as the raised findings cap takes effect."}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _findings_cap_health() -> dict[str, Any]:
     """F4: how many findings a source is allowed to keep, and whether that is the shipped default. A cap change is
     the one thing in 0.58.1 with a live behavioural effect, so it is visible rather than buried in a constant."""
@@ -2529,6 +2552,7 @@ def health() -> dict[str, Any]:
             "providers": _provider_health(),
             "scholar": _scholar_health(),
             "findings_cap": _findings_cap_health(),
+            "findings_quality": _findings_quality_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "

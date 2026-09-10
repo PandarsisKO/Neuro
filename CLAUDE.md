@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.58.8)
+# Neuro Search — architecture map for Claude Code (current state, 0.58.9)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -125,7 +125,7 @@ or a Claim is **never listed** (`findings_view.usage_map`); one rated 4+ or alre
 never pre-selected; a cluster always keeps one member; and a finding whose only complaint is length while it still
 names something checkable is never pre-selected — brevity is not vacuity. API
 `GET /api/projects/{id}/findings/quality[?summary=1|include_used=1]`; UI a 🧽 banner + review dialog in the Findings
-workbench. Gate `tests/test_s3_findings_quality.py`.
+workbench, on **both** `approved` and `suggested` (0.58.9 — before you approve is where it helps most, and 283 were sitting in that status). Health carries the per-project counts (`db.health()["findings_quality"]`), labelled as a floor. Gate `tests/test_s3_findings_quality.py`.
 
 **F4 — the cap goes back to one job (0.58.1).** `findings.CAP_BASE/CAP_PER_WINDOW/CAP_MAX` are now env-configurable
 and their defaults are **20 / 12 / 200** (were 12 / 8 / 120, kept as `CAP_DEFAULTS_BEFORE`). The cap had two jobs:

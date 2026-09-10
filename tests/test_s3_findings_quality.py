@@ -376,3 +376,26 @@ def test_unrelated_findings_that_merely_share_vocabulary_are_still_not_clustered
     a = _n(1, "LLCs offer simplicity and liability protection for a solo operator holding one business")
     b = _n(2, "S corps let owners pay a reasonable salary and take remaining profit as distributions", src="b")
     assert fq.clusters([a, b], {}) == []
+
+
+# ------------------------------------------------------------------ 0.58.9: the suggested pile, and Health
+
+def test_the_filter_works_on_suggested_findings_too(project):
+    """`suggested` is where a filter helps most — before a finding is approved rather than after — and the pile
+    grows now that the cap is higher. 283 were sitting in that status on the live database."""
+    n = db.add_project_note(project, "The video discusses the importance of consistency", [])
+    db.set_note_status(n["id"], "suggested")
+    r = fq.review(project, status="suggested")
+    assert r["findings"] == 1 and r["flagged"] == 1
+    assert fq.review(project, status="approved")["findings"] == 0        # statuses do not bleed into each other
+
+
+def test_health_reports_the_filter_per_project_and_says_it_is_a_floor():
+    db.init_db()
+    p = db.create_project("Health quality", brief="x")
+    pid = p["id"] if isinstance(p, dict) else p
+    db.add_project_note(pid, "Sellers finance 10% of the price via a seller note", [])
+    h = db.health()["findings_quality"]
+    assert any(r["project"] == "Health quality" for r in h["projects"])
+    assert h["thresholds"]["set_jaccard"] == fq.SET_JACCARD
+    assert "FLOOR, not a ceiling" in h["note"]
