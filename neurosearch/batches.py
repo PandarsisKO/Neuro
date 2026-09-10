@@ -527,6 +527,93 @@ def cohort_summary(job_id: str) -> dict[str, Any]:
                       "model_calls": int(usage_rows["n"] or 0)}}
 
 
+# ------------------------------------------------------------------ the path back from a cancelled batch (0.60.3)
+#
+# Measured on Kyle's own data while auditing the 432 `outcome_unknown` invocations: ONE job
+# (`suggest_findings_batch`, handle msgbatch_01F8ZLA…, 2026-09-08) accounts for 426 of them. It was submitted, then
+# cancelled locally 11.7 hours later, and its 426 `batch_items` are STILL at status `submitted` two days on.
+#
+# `cancel_job` does the right things in the right order — cancel at the provider, wait, persist, materialise — but
+# it waits one second for the batch to end and then gives up inside a try/except. An eleven-hour-old batch does not
+# end within a second of a cancel, so the harvest failed, the warning went to the log, and there was no way back.
+# Anthropic bills the requests that completed before the cancellation landed, so this is both a money leak and a
+# LOST-WORK leak: findings that were paid for and never written.
+#
+# The rule this restores is one the codebase already states about account gates: never leave a state with no path
+# back. `unsettled()` finds these durably (derived, so it cannot go stale), and `settle()` is the path — retrieve,
+# persist whatever succeeded, materialise it into the project it was always for, and mark the rest with a reason so
+# nothing sits at "submitted" for ever. It is idempotent and free: retrieving a batch costs nothing.
+def unsettled() -> list[dict[str, Any]]:
+    """Finished jobs whose provider batch still has items nobody ever collected."""
+    rows = db.connect().execute(
+        "SELECT j.id, j.kind, j.status, j.external_handle, j.payload, j.finished_at, COUNT(b.id) items "
+        "FROM jobs j JOIN batch_items b ON b.job_id = j.id "
+        "WHERE j.status IN ('cancelled','failed','done') AND b.status='submitted' "
+        "AND j.external_handle IS NOT NULL GROUP BY j.id ORDER BY j.finished_at DESC").fetchall()
+    out = []
+    for r in rows:
+        handle = str(r["external_handle"] or "")
+        if handle.startswith(TENTATIVE):
+            continue                       # identity unproven: never touch candidates that may not be ours
+        try:
+            pl = json.loads(r["payload"] or "{}")
+        except ValueError:
+            pl = {}
+        prog = db.kv_get(f"batch:progress:{handle}")
+        out.append({"job_id": r["id"], "kind": r["kind"], "status": r["status"], "handle": handle,
+                    "project_id": pl.get("project_id"), "items": int(r["items"]),
+                    "finished_at": r["finished_at"],
+                    "last_seen_counts": json.loads(prog) if prog else None})
+    return out
+
+
+def settle(job_id: str) -> dict[str, Any]:
+    """Collect what a cancelled or failed batch actually produced. Free, idempotent, and safe to run at any time.
+
+    Materialising into a cancelled job's project is deliberate: the requests were paid for and the findings belong
+    to the source, whatever happened to the job that asked for them. Cancelling the job stopped the *spending*, not
+    the ownership of work already done."""
+    job = db.get_job(job_id)
+    if not job:
+        return {"settled": False, "why": "no such job"}
+    handle = str(job.get("external_handle") or "")
+    if not handle or handle.startswith(TENTATIVE):
+        return {"settled": False, "why": "this job has no proven provider batch"}
+    project_id = (job.get("payload") or {}).get("project_id")
+    try:
+        b = AnthropicBatch._client().messages.batches.retrieve(handle)
+    except Exception as e:  # noqa: BLE001
+        # the handle is gone (batches expire): stop the items pretending to be in flight, with the reason on each
+        n = db.batch_items_mark_unsettled(handle, f"the provider no longer has this batch: {str(e)[:120]}")
+        db.job_event(job_id, "batch_settled", handle=handle, gone=True, items=n)
+        return {"settled": True, "gone": True, "items": n,
+                "note": "the provider no longer has this batch, so nothing can be recovered from it"}
+    counts = getattr(b, "request_counts", None)
+    seen = {k: int(getattr(counts, k, 0) or 0) for k in ("processing", "succeeded", "errored", "canceled", "expired")} if counts else {}
+    if getattr(b, "processing_status", None) != "ended":
+        db.kv_set(f"batch:progress:{handle}", json.dumps({**seen, "ts": time.time()}))
+        return {"settled": False, "still_processing": True, "counts": seen,
+                "note": "the provider is still working through this batch — come back and settle it later"}
+    got = AnthropicBatch.persist_results(handle)
+    harvested = materialize_ready(job_id, project_id) if project_id else {"materialized": 0}
+    db.job_event(job_id, "batch_settled", handle=handle, counts=got, materialized=harvested.get("materialized", 0))
+    return {"settled": True, "counts": got, "provider_counts": seen,
+            "materialized": harvested.get("materialized", 0),
+            "note": (f"{got.get('succeeded', 0)} request(s) had completed and were collected; "
+                     f"{harvested.get('materialized', 0)} source(s) gained their findings")}
+
+
+def settle_all(limit: int = 10) -> dict[str, Any]:
+    out = []
+    for u in unsettled()[:limit]:
+        try:
+            out.append({"job_id": u["job_id"], **settle(u["job_id"])})
+        except Exception as e:  # noqa: BLE001
+            out.append({"job_id": u["job_id"], "settled": False, "why": str(e)[:160]})
+    return {"attempted": len(out), "results": out,
+            "materialized": sum(int(r.get("materialized") or 0) for r in out)}
+
+
 def cancel_job(job: dict[str, Any]) -> dict[str, Any]:
     """Cancel a parked batch job: tell the provider, then harvest whatever already completed (persist + materialize the
     sources whose windows all succeeded) before the job is marked cancelled. Completed valid results are never destroyed."""
@@ -547,6 +634,10 @@ def cancel_job(job: dict[str, Any]) -> dict[str, Any]:
             AnthropicBatch.persist_results(handle)
             harvested = materialize_ready(job["id"], (job.get("payload") or {}).get("project_id"))
         except Exception as e:  # noqa: BLE001
-            log.warning("harvest after cancel failed for %s: %s", handle, e)
+            # 0.60.3: this is where 426 items were abandoned. The failure is expected — a batch does not end within
+            # a second of being cancelled — so it is no longer the end of the story: `unsettled()` will list this
+            # job until someone settles it, and Health says so.
+            log.warning("harvest after cancel failed for %s (left for settling): %s", handle, e)
+            harvested["unsettled"] = True
     db.job_event(job["id"], "batch_cancelled", handle=handle, materialized_after_cancel=harvested.get("materialized", 0))
     return harvested

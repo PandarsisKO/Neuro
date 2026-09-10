@@ -1715,6 +1715,28 @@ def api_check_now(job_id: str) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.get("/api/batches/unsettled", dependencies=[Depends(require_auth)])
+def api_batches_unsettled() -> dict[str, Any]:
+    """0.60.3: provider batches whose completed requests nobody collected — a cancelled batch's work is still paid
+    for. Free to look at, free to settle."""
+    from . import batches
+    rows = batches.unsettled()
+    return {"unsettled": len(rows), "items": sum(r["items"] for r in rows), "rows": rows}
+
+
+@app.post("/api/jobs/{job_id}/settle-batch", dependencies=[Depends(require_auth)])
+def api_settle_batch(job_id: str) -> dict[str, Any]:
+    """Collect what a cancelled or failed batch actually produced, and write it into the project it was for."""
+    from . import batches
+    return batches.settle(job_id)
+
+
+@app.post("/api/batches/settle-all", dependencies=[Depends(require_auth)])
+def api_settle_all() -> dict[str, Any]:
+    from . import batches
+    return batches.settle_all()
+
+
 @app.post("/api/jobs/{job_id}/cancel", dependencies=[Depends(require_auth)])
 def api_cancel_job(job_id: str) -> dict[str, Any]:
     """Cancel one queued job. A queued video goes back to the Review card; running jobs can't be interrupted."""

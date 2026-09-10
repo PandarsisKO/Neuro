@@ -154,7 +154,7 @@ def _authors(names: list[str]) -> str:
 
 def _record(*, provider: str, doi: str | None, title: str, abstract: str = "", authors: str = "", venue: str = "",
             year: Any = None, cited_by: Any = None, oa_pdf_url: str | None = None, landing: str | None = None,
-            oa_status: str | None = None) -> dict[str, Any]:
+            oa_status: str | None = None, copies: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     url = (f"https://doi.org/{doi}" if doi else landing) or ""
     return {"provider": provider, "doi": doi, "external_id": doi or url, "url": url, "landing_url": landing,
             "title": _clean(title, 300) or "(untitled)", "abstract": _clean(abstract, ABSTRACT_CHARS),
@@ -162,7 +162,74 @@ def _record(*, provider: str, doi: str | None, title: str, abstract: str = "", a
             "year": int(year) if isinstance(year, (int, float)) or (isinstance(year, str) and year.isdigit()) else None,
             "cited_by": int(cited_by) if isinstance(cited_by, (int, float)) else None,
             "oa_pdf_url": oa_pdf_url, "is_oa": bool(oa_pdf_url), "oa_status": oa_status,
-            "evidence_class": EVIDENCE_CLASS}
+            "copies": copies or [], "evidence_class": EVIDENCE_CLASS}
+
+
+# ------------------------------------------------------------------ every legal copy, not just the "best" one (0.60.3)
+#
+# Kyle: *"many of these require a subscription. how do we handle that?"* The app already refuses to turn a closed
+# paper into a source, which is right — but it was asking OpenAlex only for `best_oa_location`, and not even
+# REQUESTING the `locations` array. For a paywalled journal article the publisher's own record is closed while a
+# legally free accepted manuscript sits in a repository (arXiv, PubMed Central, an institutional repository), and
+# that copy is in `locations`. So "the full text is not openly available" was sometimes the app not having looked.
+#
+# Nothing here circumvents anything: it reads the catalogue's own list of copies the publisher or author put in the
+# open, prefers a direct PDF, and ranks a repository copy below the published version because an accepted
+# manuscript can differ from the version of record — a difference `works.py` already models as a version
+# relationship. A subscription copy is never fetched, and the user's own institutional access is theirs to use in
+# their own browser (the extension's "Send this page"), never something this app drives.
+COPY_KIND_ORDER = {"publisher": 0, "repository": 1, "other": 2}
+
+
+def _copies(it: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every open copy OpenAlex lists, best first. `pdf_url` when there is one, else the landing page."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for loc in (it.get("locations") or []):
+        if not isinstance(loc, dict) or not loc.get("is_oa"):
+            continue
+        src = loc.get("source") or {}
+        kind = "publisher" if loc.get("is_published") or (src.get("type") == "journal" and not loc.get("is_accepted")) else \
+               ("repository" if src.get("type") in ("repository", "ebook platform") or loc.get("is_accepted") else "other")
+        url = loc.get("pdf_url") or loc.get("landing_page_url")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append({"url": url, "pdf": bool(loc.get("pdf_url")), "kind": kind,
+                    "host": src.get("display_name") or "", "version": loc.get("version"),
+                    "license": loc.get("license")})
+    out.sort(key=lambda c: (COPY_KIND_ORDER.get(c["kind"], 3), 0 if c["pdf"] else 1))
+    return out
+
+
+def best_copy(rec: dict[str, Any]) -> dict[str, Any] | None:
+    """The copy to ingest: a direct PDF first, whatever its host, then a landing page. `oa_pdf_url` stays the
+    primary answer when the catalogue gave one — this only fills in what it left out."""
+    if rec.get("oa_pdf_url"):
+        return {"url": rec["oa_pdf_url"], "pdf": True, "kind": "publisher", "host": "", "version": None}
+    for c in rec.get("copies") or []:
+        if c.get("pdf"):
+            return c
+    return (rec.get("copies") or [None])[0]
+
+
+def access(rec: dict[str, Any]) -> dict[str, Any]:
+    """How this paper can be read, in plain words. `open` = we can ingest it now; `elsewhere` = a free copy exists
+    away from the publisher; `closed` = metadata only, and the honest next step is the user's own access."""
+    if rec.get("oa_pdf_url"):
+        return {"state": "open", "why": "the publisher's own copy is open", "url": rec["oa_pdf_url"]}
+    c = best_copy(rec)
+    if c:
+        where = c.get("host") or "a repository"
+        return {"state": "elsewhere", "url": c["url"], "kind": c.get("kind"),
+                "why": (f"the published version is closed, but a free copy is on {where}"
+                        + ("" if c.get("kind") != "repository" else " — an accepted manuscript can differ from the "
+                           "version of record")),
+                "caution": "repository copy" if c.get("kind") == "repository" else None}
+    return {"state": "closed", "url": rec.get("url") or rec.get("landing_url"),
+            "why": "no free copy is listed anywhere the catalogue can see",
+            "next": ("open it at the publisher — if you have access through a subscription or a library, the "
+                     "browser extension can send the page into the project once you are reading it")}
 
 
 def _from_crossref(it: dict[str, Any]) -> dict[str, Any]:
@@ -199,13 +266,13 @@ def _from_openalex(it: dict[str, Any]) -> dict[str, Any]:
                    abstract=_inverted_abstract(it.get("abstract_inverted_index")), authors=_authors(names),
                    venue=src.get("display_name") or "", year=it.get("publication_year"),
                    cited_by=it.get("cited_by_count"), oa_pdf_url=pdf, landing=it.get("id"),
-                   oa_status=oa.get("oa_status"))
+                   oa_status=oa.get("oa_status"), copies=_copies(it))
 
 
 # ------------------------------------------------------------------ search
 
 OPENALEX_FIELDS = ("id,doi,display_name,publication_year,cited_by_count,authorships,primary_location,best_oa_location,"
-                   "open_access,abstract_inverted_index")
+                   "locations,open_access,abstract_inverted_index")     # `locations` added 0.60.3: every open copy
 CROSSREF_FIELDS = "DOI,title,abstract,author,container-title,issued,is-referenced-by-count,link,URL"
 
 
@@ -300,13 +367,22 @@ def to_candidates(records: list[dict[str, Any]], project_id: str | None, origin:
         ids += candidates.remember(
             # `url` is what an Acquire click ingests, so it is the free PDF when one exists and the DOI landing page
             # otherwise; `canonical_url` is always the DOI, which is the record's identity whatever its access.
-            [{"external_id": r["external_id"], "url": r["oa_pdf_url"] or r["url"], "title": r["title"],
-              "description": ((r["abstract"] or why(r)) + ("" if r["oa_pdf_url"] else
-                              "  [metadata only — no open-access full text was found, so acquiring this may yield "
-                              "a paywalled landing page rather than the paper]"))[:2000],
+            [{"external_id": r["external_id"], "url": (access(r).get("url") if access(r)["state"] != "closed"
+                                                       else r["url"]), "title": r["title"],
+              "description": ((r["abstract"] or why(r)) + _access_note(r))[:2000],
               "creator": r["creator"], "canonical_url": r["url"]} for r in batch],
             platform=prov, project_id=project_id, origin=origin)
     return ids
+
+
+def _access_note(rec: dict[str, Any]) -> str:
+    a = access(rec)
+    if a["state"] == "open":
+        return ""
+    if a["state"] == "elsewhere":
+        return f"  [{a['why']}]"
+    return ("  [metadata only — no open copy is listed, so acquiring this would fetch a paywalled landing page "
+            "rather than the paper; open it at the publisher and use the browser extension if you have access]")
 
 
 def to_discoveries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -315,12 +391,17 @@ def to_discoveries(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     confident score from a relevance rank would be exactly the kind of made-up number this app refuses."""
     out = []
     for r in records:
-        out.append({"name": r["title"][:120], "kind": "paper", "url": r["oa_pdf_url"] or r["url"],
+        a = access(r)
+        # a free copy away from the publisher is still a copy we can read: fit 4, with the caution said out loud
+        angle = {"open": "open access — the full text can be read now",
+                 "elsewhere": a["why"],
+                 "closed": "metadata only — no free copy is listed anywhere"}[a["state"]]
+        out.append({"name": r["title"][:120], "kind": "paper",
+                    "url": a["url"] if a["state"] != "closed" else r["url"],
                     "known_for": (r["venue"] or r["provider"])[:80], "why": why(r)[:300],
-                    "angle": ("open access — the full text can be read now" if r["oa_pdf_url"]
-                              else "metadata only — the full text is not openly available")[:160],
-                    "start_with": [], "fit": 4 if r["oa_pdf_url"] else 3, "depth": "",
-                    "verified_by": r["provider"], "doi": r["doi"]})
+                    "angle": angle[:160], "start_with": [],
+                    "fit": 4 if a["state"] in ("open", "elsewhere") else 3, "depth": "",
+                    "access": a["state"], "verified_by": r["provider"], "doi": r["doi"]})
     return out
 
 
@@ -328,12 +409,14 @@ def acquire(record: dict[str, Any], project_id: str, *, lane: str = "low") -> di
     """Queue the open-access PDF for ordinary ingestion. No new ingestion path: the PDF goes through `ingest_url`
     exactly like any other document, so chunking, embeddings, page locators and findings all behave as usual."""
     from . import db
-    if not record.get("oa_pdf_url"):
-        return {"queued": False, "why": "no open-access full text — the record stays a candidate"}
-    job = db.create_job("ingest_url", {"project_id": project_id, "url": record["oa_pdf_url"],
+    a = access(record)
+    if a["state"] == "closed":
+        return {"queued": False, "why": a["why"], "next": a.get("next"), "access": "closed"}
+    job = db.create_job("ingest_url", {"project_id": project_id, "url": a["url"],
                                        "title": record["title"], "origin": f"scholar:{record['provider']}",
                                        "doi": record.get("doi")}, lane=lane)
-    return {"queued": True, "job_id": job["id"] if isinstance(job, dict) else job, "url": record["oa_pdf_url"]}
+    return {"queued": True, "job_id": job["id"] if isinstance(job, dict) else job, "url": a["url"],
+            "access": a["state"], "caution": a.get("caution"), "why": a["why"]}
 
 
 # ------------------------------------------------------------------ gap-first: does this target want literature?

@@ -833,6 +833,13 @@ MIGRATIONS = [
     # 0.60.2: whether a suggested URL actually resolves. Discover proposes sources from a model's memory, and a
     # remembered address goes stale — Kyle: "discover is routinely suggesting content that has 404 issues".
     ("discoveries", "link_check", "ALTER TABLE discoveries ADD COLUMN link_check TEXT"),
+    # T1 (0.61.0) — vectors for the DERIVED objects. Chunks have had embeddings since the beginning; findings and
+    # Claims never did, which is why every semantic question about them ("which Claim does this passage support",
+    # "what have we never explained", "is this finding a paraphrase of that one") was unanswerable. Measured on
+    # Kyle's corpus: 13,371 Claims + 12,301 findings ~= 1.3 M tokens ~= $0.03 once. Same storage pattern as
+    # `chunks.embedding` — a BLOB on the row, never a second table.
+    ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
+    ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
 ]
 
 
@@ -1241,6 +1248,77 @@ def _pack(vec: Any) -> bytes | None:
 
 def _unpack(blob: bytes) -> np.ndarray:
     return np.frombuffer(blob, dtype=np.float32)
+
+
+# ------------------------------------------------------------------ derived-object vectors (T1, 0.61.0)
+#
+# `kind` is "note" or "claim". Both live on their own row exactly as a chunk's vector does, so they inherit
+# identity, the project cascade and the revision columns that are already there, and nothing has to be kept in
+# step with a second table.
+DERIVED_KINDS = {"note": ("project_notes", "id"), "claim": ("project_claims", "id")}
+
+
+def _derived_text_sql(kind: str) -> str:
+    # a finding's headline carries most of its meaning, so it is embedded with the body rather than thrown away
+    return ("COALESCE(title,'') || CASE WHEN title IS NOT NULL AND title <> '' THEN '. ' ELSE '' END || content"
+            if kind == "note" else "text")
+
+
+def derived_missing_embeddings(kind: str, limit: int = 200, project_id: str | None = None) -> list[dict[str, Any]]:
+    """The same granular checkpoint chunks use: a row either has its vector or it does not, so resuming means
+    embedding the rest and never redoing what landed."""
+    table, idcol = DERIVED_KINDS[kind]
+    q = f"SELECT {idcol} id, {_derived_text_sql(kind)} text FROM {table} WHERE embedding IS NULL"
+    args: list[Any] = []
+    if project_id:
+        q += " AND project_id=?"
+        args.append(project_id)
+    q += " LIMIT ?"
+    args.append(int(limit))
+    return [dict(r) for r in connect().execute(q, args).fetchall() if (r["text"] or "").strip()]
+
+
+def set_derived_embeddings(kind: str, pairs: list[tuple[Any, np.ndarray]]) -> None:
+    table, idcol = DERIVED_KINDS[kind]
+    with tx() as conn:
+        conn.executemany(f"UPDATE {table} SET embedding=? WHERE {idcol}=?", [(_pack(v), i) for i, v in pairs])
+
+
+def load_derived_matrix(kind: str, project_id: str | None = None,
+                        where: str = "") -> tuple[np.ndarray, list[Any]]:
+    table, idcol = DERIVED_KINDS[kind]
+    q = f"SELECT {idcol} id, embedding FROM {table} WHERE embedding IS NOT NULL"
+    args: list[Any] = []
+    if project_id:
+        q += " AND project_id=?"
+        args.append(project_id)
+    if where:
+        q += f" AND ({where})"
+    rows = connect().execute(q, args).fetchall()
+    if not rows:
+        return np.zeros((0, 0), dtype=np.float32), []
+    return np.vstack([_unpack(r["embedding"]) for r in rows]), [r["id"] for r in rows]
+
+
+def derived_embedding_counts(project_id: str | None = None) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for kind, (table, _) in DERIVED_KINDS.items():
+        q = f"SELECT COUNT(*) total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) done FROM {table}"
+        args: list[Any] = []
+        if project_id:
+            q += " WHERE project_id=?"
+            args.append(project_id)
+        r = connect().execute(q, args).fetchone()
+        total, done = int(r["total"] or 0), int(r["done"] or 0)
+        out[kind] = {"total": total, "embedded": done, "pending": total - done}
+    return out
+
+
+def clear_derived_embedding(kind: str, row_id: Any) -> None:
+    """A row whose text changed must lose its vector rather than keep a stale one."""
+    table, idcol = DERIVED_KINDS[kind]
+    with tx() as conn:
+        conn.execute(f"UPDATE {table} SET embedding=NULL WHERE {idcol}=?", (row_id,))
 
 
 def load_embedding_matrix(source_ids: list[str] | None = None) -> tuple[np.ndarray, list[int]]:
@@ -2526,6 +2604,21 @@ def _cost_value_health() -> dict[str, Any]:
         return {"error": str(e)[:200]}
 
 
+def _batches_health() -> dict[str, Any]:
+    """0.60.3: provider batches nobody collected. On Kyle's data one cancelled job had left 426 items at
+    `submitted` for two days — requests Anthropic may have billed and findings that were never written. Derived, so
+    it clears itself the moment a batch is settled."""
+    try:
+        from . import batches
+        rows = batches.unsettled()
+        return {"unsettled": len(rows), "items": sum(r["items"] for r in rows), "rows": rows[:8],
+                "note": ("A cancelled or failed batch can still have completed requests at the provider. Settling "
+                         "one is free and collects whatever was paid for; nothing is lost by waiting, but nothing "
+                         "arrives either." if rows else "every provider batch has been collected")}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)[:200]}
+
+
 def _findings_quality_health() -> dict[str, Any]:
     """F1-F5 counts per project. Each `summary` is cached on that project's view revision, so this is cheap after
     the first call and honest about being a FLOOR on duplicates rather than a ceiling (see findings_quality)."""
@@ -2619,6 +2712,7 @@ def health() -> dict[str, Any]:
             "findings_quality": _findings_quality_health(),
             "spend": _spend_health(),
             "cost_value": _cost_value_health(),
+            "batches": _batches_health(),
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "
@@ -3505,6 +3599,15 @@ def batch_item_result(batch_id: str, custom_id: str, status: str, raw: Any = Non
     with tx() as conn:
         conn.execute("UPDATE batch_items SET status=?, raw=?, error=?, updated_at=? WHERE batch_id=? AND custom_id=?",
                      (status, json.dumps(raw, default=str) if raw is not None else None, error, now(), batch_id, custom_id))
+
+
+def batch_items_mark_unsettled(batch_id: str, reason: str) -> int:
+    """A batch the provider no longer has: its still-submitted items stop claiming to be in flight, each with the
+    reason recorded (0.60.3). Nothing that already succeeded or materialised is touched."""
+    with tx() as conn:
+        cur = conn.execute("UPDATE batch_items SET status='errored', error=?, updated_at=? "
+                           "WHERE batch_id=? AND status='submitted'", (reason[:300], now(), batch_id))
+        return int(cur.rowcount or 0)
 
 
 def batch_items_materialized(job_id: str, source_id: str) -> None:

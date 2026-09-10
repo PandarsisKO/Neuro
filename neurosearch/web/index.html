@@ -489,7 +489,7 @@
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" style="display:none" title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
         <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
@@ -587,7 +587,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.60.2';
+const UI_VERSION = '0.60.3';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1710,6 +1710,11 @@ async function loadHealth() {
         + ((h.spend.budgets || {}).weekly ? `, $${h.spend.budgets.weekly}/week` : ', no weekly budget set')
         + ` · ceiling $${(h.spend.budgets || {}).rate_per_hour ?? '—'}/hour`
       ], [`${h.spend.local_is_free ? '✅' : '⚠️'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
+      // 0.60.3: a cancelled batch's completed requests were paid for. Collecting them is free.
+      ...(h.batches && !h.batches.error && h.batches.unsettled ? [[
+        `⚠️ Provider batches not collected`,
+        `${h.batches.unsettled} batch${h.batches.unsettled === 1 ? '' : 'es'} with ${h.batches.items} request${h.batches.items === 1 ? '' : 's'} nobody collected — a cancelled batch still ran at the provider, so this is work that was paid for and never written. Settling is free.`
+      ]] : []),
       // 0.59.3: how much, per useful thing. "Is it improving?" is a different question from "how much have we spent".
       ...(h.cost_value && !h.cost_value.error ? [[
         `${h.cost_value.week_vs_month === 'dearer' ? '⚠️' : '✅'} Cost per kept finding`,
@@ -1722,8 +1727,21 @@ async function loadHealth() {
         + ' — full picture: Cost per unit of value'
       ]] : []),
     ];
+    const sb = $('#settleBtn'); if (sb) sb.style.display = (h.batches && h.batches.unsettled) ? '' : 'none';
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
+}
+async function settleBatches() {
+  const b = $('#settleBtn'); const m = $('#healthMsg');
+  b.disabled = true; const was = b.textContent; b.textContent = '⏳ collecting…';
+  try {
+    const r = await post('/api/batches/settle-all', {});
+    const still = (r.results || []).filter(x => x.still_processing).length;
+    m.textContent = `${r.materialized || 0} source(s) gained findings from ${r.attempted} batch(es)`
+      + (still ? ` · ${still} still processing at the provider — try again later` : '');
+    loadHealth();
+  } catch (e) { m.textContent = 'could not collect: ' + (e.message || e); }
+  b.disabled = false; b.textContent = was;
 }
 async function valueReport() {
   // 0.59.3: the question Kyle asked after the overnight run — "the volume of data is always valuable, just HOW is
