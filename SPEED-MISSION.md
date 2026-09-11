@@ -1,6 +1,6 @@
 # MISSION: SPEED, RESPONSIVENESS, AND EFFICIENT INTELLIGENCE
 
-*Kyle's mission, filed 2026-09-09 at 0.45.14, revised the same day with the stack-review requirement. Read with `CLAUDE.md` (architecture map), `LOCAL-AI-PROVIDER.md` (L1 routing), `RESEARCH-MISSION.md` (the research quality contract this must not violate) and `EXPANSION.md` (rung log). Every number below was measured against Kyle's live 461.7 MB database and running server on 2026-09-09, not estimated.*
+*Kyle's mission, filed 2026-09-09 at 0.45.14, revised the same day with the stack-review requirement. Read with `CLAUDE.md` (architecture map), `docs/archive/LOCAL-AI-PROVIDER.md` (L1 routing), `docs/archive/RESEARCH-MISSION.md` (the research quality contract this must not violate) and `docs/archive/EXPANSION.md` (rung log). Every number below was measured against Kyle's live 461.7 MB database and running server on 2026-09-09, not estimated.*
 
 ## NORTH STAR
 
@@ -69,7 +69,7 @@ That ratio is the entire economic basis of a fast lane — and it is worth 3×, 
 10. **License review is part of architecture review.** Every significant dependency is recorded with its license, self-hosting story, data portability, maintenance health, and how hard it would be to remove.
 11. **No infrastructure collecting.** Each component must solve a measured problem that cannot be solved more simply. If SQLite + FTS5 works, no vector server. If the jobs table works, no broker. If in-process caching works, no Valkey. If SSE works, no WebSockets. If a small provider adapter works, no gateway.
 12. **Measure before and after every rung.** A rung that cannot show its own improvement did not earn its complexity.
-13. **The research contract in `RESEARCH-MISSION.md` §B outranks every performance goal here.** If a speedup weakens evidence, lineage, novelty detection or recoverability, the speedup loses.
+13. **The research contract in `docs/archive/RESEARCH-MISSION.md` §B outranks every performance goal here.** If a speedup weakens evidence, lineage, novelty detection or recoverability, the speedup loses.
 
 ---
 
@@ -176,7 +176,7 @@ Ordered by measured value ÷ risk, respecting dependencies. Each rung ships with
 
 *(c) Findings/claims extraction — expected to fail, and worth failing on the record.* Run one real 15k-token window through a 70B Q4 and an MoE (gpt-oss-120b), and report prefill time separately from generation time. **Adopt only if** total wall-clock beats 10.9 s (current API parity); I predict 45–90 s, dominated by prefill. Either way the number gets written down and the question closes.
 
-*Why:* (a) attacks retrieval's largest measured cost; (b) unlocks a free triage lane; (c) settles the "128 GB means run everything locally" intuition with evidence instead of argument. *Benefit:* unknown until measured — that is the rung. *Depends:* R0. *Risk:* scope creep from (b) into (c) — Principle 13 forbids trading findings/claims quality for latency, and (c) is expected to show the trade is not even favourable on speed. *Verify:* one written scorecard covering all three; each adopted only against its stated threshold; negative results recorded in EXPANSION.md so the question is not silently reopened later.
+*Why:* (a) attacks retrieval's largest measured cost; (b) unlocks a free triage lane; (c) settles the "128 GB means run everything locally" intuition with evidence instead of argument. *Benefit:* unknown until measured — that is the rung. *Depends:* R0. *Risk:* scope creep from (b) into (c) — Principle 13 forbids trading findings/claims quality for latency, and (c) is expected to show the trade is not even favourable on speed. *Verify:* one written scorecard covering all three; each adopted only against its stated threshold; negative results recorded in docs/archive/EXPANSION.md so the question is not silently reopened later.
 
 ---
 

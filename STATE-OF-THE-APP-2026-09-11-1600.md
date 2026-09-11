@@ -270,8 +270,9 @@ Six rules explain most decisions, and they were each learned by getting it wrong
 
 ## 9. The other documents — what to read, what to ignore
 
-There are twenty other markdown files here, totalling about a megabyte. **You do not need them.** This
-is what they are, so you can ignore them with confidence.
+There are nine other markdown files at the repo root, plus thirteen more moved into `docs/archive/`
+(below). **You do not need the archived ones.** This is what they are, so you can ignore them with
+confidence.
 
 ### Live and worth reading
 
@@ -290,18 +291,24 @@ is what they are, so you can ignore them with confidence.
 | `EXTERNAL-AI-ACCESS-MISSION.md` | Designed in detail, amended once, **not built**. The big one. |
 | `TRANSCRIPT-INTELLIGENCE-MISSION.md` | Designed, **not built**. |
 | `SCHEDULER.md` | A design exploration. **Nothing in it is built**, and it says four things must be measured first. |
+| `FIELD-MAP-RUNG.md` | Filed 2026-09-10 by Kyle, **not built** — a field-map/survey rung that would surface questions a project has no vocabulary for yet, distinct from answering questions it already asked. Missing from this document's index until now, which is exactly the "which doc do I look at" confusion §9 exists to prevent. |
+| `SOURCE-CAPABILITY-RUNG.md` | Filed 2026-09-10, immediately after FIELD-MAP-RUNG.md — the inside-out half of the same idea (where to look, among sources already partly owned). **Part of this shipped** as C1–C3 (§3.2 above, creator yield / where-to-look, 0.58.2–0.58.4); the rung doc itself still describes further NOT BUILT scope beyond what shipped, which is why it stays at the top level rather than in the archive — it is a live, partially-fulfilled idea note, not a finished record. |
 
-### Finished — historical record only
+### Finished — historical record only, moved to `docs/archive/`
 
-`RESEARCH-MISSION.md`, `RESEARCH-TAB.md`, `SOURCES-FINDINGS-MISSION.md`, `BOOTSTRAP-MISSION.md`,
-`PRODUCT-ORGANIZATION.md`, `LOCAL-AI-PROVIDER.md`, `BROWSER-CAPTURE-AND-CATALOG.md`,
-`SCHEDULER-ADMISSION.md`, `OVERNIGHT-MISSION.md`, `OVERNIGHT-LOG.md`, `PARAPHRASE-RUNG.md`,
-`FINDINGS-YIELD-DEBT.md`, `EXPANSION.md`.
+`docs/archive/RESEARCH-MISSION.md`, `docs/archive/RESEARCH-TAB.md`, `docs/archive/SOURCES-FINDINGS-MISSION.md`,
+`docs/archive/BOOTSTRAP-MISSION.md`, `docs/archive/PRODUCT-ORGANIZATION.md`, `docs/archive/LOCAL-AI-PROVIDER.md`,
+`docs/archive/BROWSER-CAPTURE-AND-CATALOG.md`, `docs/archive/SCHEDULER-ADMISSION.md`, `docs/archive/OVERNIGHT-MISSION.md`,
+`docs/archive/OVERNIGHT-LOG.md`, `docs/archive/PARAPHRASE-RUNG.md`, `docs/archive/FINDINGS-YIELD-DEBT.md`,
+`docs/archive/EXPANSION.md`.
 
-These describe work that is **done and shipped**, or a single measurement kept for reference. They are
+These describe work that is **done and shipped**, or a single measurement kept for reference. They were
 the source of the "which mission do I look at?" confusion, because a finished mission document reads
-exactly like a live one. **Recommended:** move all thirteen into `docs/archive/` so that the only
-`*-MISSION.md` files left at the top level are the two that are actually queued.
+exactly like a live one — moved here 2026-09-11 so the only `*-MISSION.md` files left at the top level
+are the two that are actually queued. Every reference to them in `CLAUDE.md`, `HANDOFF.md` and
+`SPEED-MISSION.md` was updated to the new path in the same pass; cross-references between the archived
+files themselves were left as bare filenames, since both sides of each of those live in `docs/archive/`
+together.
 
 ---
 
