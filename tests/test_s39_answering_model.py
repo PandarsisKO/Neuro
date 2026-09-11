@@ -141,3 +141,77 @@ def test_nothing_is_deleted(fresh):
 def test_a_clean_install_has_no_baseline_to_explain(fresh):
     assert db.health()["model_routing"]["mismatches"] == []
     assert json.loads(db.kv_get(db.PRE_FIX_MISMATCH_KEY) or "{}") == {}
+
+
+# ------------------------------------------------------------------ health is per model (0.63.30)
+
+def test_the_probe_asks_about_the_model_the_task_will_run(monkeypatch):
+    """The cause of the $0.59. `_probe` used `settings.claude_code_model or None`, which is None whenever no global
+    override is set — the normal case — so it measured the CLI's own cheapest-available model while real work ran
+    the CONTRACT's model. A limit or error on a model nobody was using reported the whole local path dead and sent
+    every job to the paid API. This is the failure the comment above `_probe` says 0.45.14 fixed; that fix keyed on
+    a setting that is usually unset, so it never applied to Kyle."""
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "claude_code_model", None)
+    assert CC.local_model_for("findings.extract") == "claude-sonnet-5"
+    assert CC.local_model_for(None) is None, "no task and no override means no opinion, not the CLI's default"
+
+
+def test_a_global_override_still_wins(monkeypatch):
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "claude_code_model", "haiku")
+    assert CC.local_model_for("findings.extract") == "haiku"
+
+
+def test_the_router_probes_the_task_model(monkeypatch):
+    """`route` must ask about the model it is about to run, or the verdict is about something else."""
+    from neurosearch import claude_code as CC
+    from neurosearch import providers
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setattr(settings, "claude_code_model", None)
+    asked: list[str | None] = []
+
+    def fake_health(force=False, wait=True, model=None):
+        asked.append(model)
+        return {"state": "ready"}
+
+    monkeypatch.setattr(CC, "health", fake_health)
+    monkeypatch.setattr(providers, "current_policy", lambda: "local_preferred")
+    target, _reason = providers.route("findings.extract")
+    assert target == "local" and asked == ["claude-sonnet-5"]
+
+
+def test_one_models_failure_does_not_refuse_work_on_another(monkeypatch):
+    """The amplification, and why the cache is keyed. `note_failure` was global, so a structured-output failure on
+    one model marked the whole local path unavailable — and every refusal that follows is a paid API call."""
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    with CC._lock:
+        CC._state["by_model"] = {}
+    CC.note_success(model="claude-sonnet-5")
+    CC.note_failure(CC.LocalUnavailable("error", "error_max_structured_output_retries"), model="claude-haiku-4-5")
+    states = CC.states_by_model()
+    assert states["claude-sonnet-5"]["state"] == "ready"
+    assert states["claude-haiku-4-5"]["state"] == "error"
+
+
+def test_a_success_clears_only_its_own_model(monkeypatch):
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    with CC._lock:
+        CC._state["by_model"] = {}
+    CC.note_failure(CC.LocalUnavailable("error", "boom"), model="claude-sonnet-5")
+    CC.note_failure(CC.LocalUnavailable("error", "boom"), model="claude-haiku-4-5")
+    CC.note_success(model="claude-sonnet-5")
+    states = CC.states_by_model()
+    assert states["claude-sonnet-5"]["state"] == "ready" and states["claude-haiku-4-5"]["state"] == "error"
+
+
+def test_the_verdict_says_which_model_it_is_about(monkeypatch):
+    """A health line that does not name its model cannot be read: it was the source of the whole confusion."""
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    with CC._lock:
+        CC._state["by_model"] = {}
+    CC.note_failure(CC.LocalUnavailable("error", "boom"), model="claude-sonnet-5")
+    assert CC.states_by_model()["claude-sonnet-5"]["probed_model"] == "claude-sonnet-5"

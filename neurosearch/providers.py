@@ -588,7 +588,8 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
         except ProviderError as e:
             if e.error_type not in LOCAL_TYPES:
                 raise
-            CC.note_failure(e.cause if isinstance(e.cause, CC.LocalUnavailable) else CC.LocalUnavailable("error", str(e.cause)))
+            CC.note_failure(e.cause if isinstance(e.cause, CC.LocalUnavailable) else CC.LocalUnavailable("error", str(e.cause)),
+                            model=CC.local_model_for(task))
             if current_policy() == "local_only":
                 _tl.route = {"executed_by": "none", "reason": reason, "fallback_reason": f"{e.error_type.lower()}: {str(e.cause)[:160]}"}
                 _accumulate_route()
@@ -598,7 +599,7 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
             _tl.route = {"executed_by": "api", "reason": reason, "fallback_reason": fb}
             _accumulate_route()
             return _Ledgered(client.messages.create._fn, "anthropic", task, policy=policy)(**kw)
-        CC.note_success()
+        CC.note_success(model=CC.local_model_for(task))
         _tl.route = {"executed_by": "local", "reason": reason, "fallback_reason": None}
         _accumulate_route()
         return resp
@@ -662,7 +663,13 @@ def route(task: str) -> tuple[str, str]:
         return "api", "task_not_local_capable"
     if settings.ai_profile != "local":
         return "api", "cloud_profile"
-    h = CC.health()
+    # 0.63.30 — ask about the model this task will actually run, not the CLI's bare default. The probe used
+    # `settings.claude_code_model or None`, which is None whenever no global override is set (the normal case), so
+    # it measured the CLI's own cheapest-available model while real work ran the CONTRACT's model. A limit or
+    # error on a model nobody was using reported the whole local path dead and sent every job to the paid API —
+    # the exact failure the comment above `_probe` claims 0.45.14 fixed, still live because that fix keyed on a
+    # setting that is usually unset. This is what made a four-source re-analysis cost $0.59 instead of $0.
+    h = CC.health(model=CC.local_model_for(task))
     if h.get("state") == "ready" or pol == "local_only":
         return "local", "local_preferred" if pol != "local_only" else "policy:local_only"
     return "api", f"local_{h.get('state')}"

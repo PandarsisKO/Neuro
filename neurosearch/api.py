@@ -547,7 +547,7 @@ def api_usage() -> dict[str, Any]:
     from . import claude_code
     t["background_paused"] = db.background_paused()
     t["rate"] = usage.rate_gate()
-    t["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
+    t["local_ai"] = {**claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
     return t
 
@@ -1084,7 +1084,8 @@ def api_health() -> dict[str, Any]:
     h["version"] = __import__("neurosearch").__version__
     from . import claude_code
     from . import usage
-    h["local_ai"] = {**claude_code.health(wait=False), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split()}
+    h["local_ai"] = {**claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split(),
+                     "models": claude_code.states_by_model()}
     h["perf"] = {"slowest": perf.slowest(5), "caches": perf.snapshot()["caches"]}   # R0: in-memory, no query cost
     return h
 
@@ -1135,7 +1136,7 @@ def api_usage_recheck() -> dict[str, Any]:
     # HEALTH_TTL (10 min), so after the user fixes something the app keeps reporting the old answer and nothing in
     # the UI could ask for a new one. Re-check now forces a fresh probe too — `wait=False` so it runs in the
     # background instead of holding this request for up to PROBE_TIMEOUT.
-    local = claude_code.health(force=True, wait=False)
+    local = claude_code.health(force=True, wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK))
     t = usage.totals()
     ok, reason, _ = usage.check()
     return {"cleared": cleared, "jobs_released": unparked, "blocked": None if ok else reason,

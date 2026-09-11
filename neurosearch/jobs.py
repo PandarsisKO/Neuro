@@ -814,7 +814,7 @@ def backlog(project_id: str | None = None) -> dict[str, Any]:
     local = [i for i in items if i["policy"] in LOCAL_POLICIES]
     api_side = [i for i in items if i["policy"] in API_POLICIES]
     minutes = sum(i["windows"] for i in local) * staleness.LOCAL_MINUTES_PER_WINDOW
-    ready = claude_code.health(wait=False).get("state") == "ready" and settings.ai_profile == "local"
+    ready = claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings.ai_profile == "local"
     return {"local_queued": len(local), "api_queued": len(api_side), "running": running, "jobs": local,
             "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready else None,
             "local_eta": staleness._hm(minutes) if ready and local else None,

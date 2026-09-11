@@ -356,10 +356,13 @@ def test_recheck_forces_a_fresh_local_probe_not_a_cached_verdict(monkeypatch):
     layer up. Re-check must force a new probe, and must not block the request waiting for it."""
     from neurosearch import claude_code as CC
     calls = []
-    monkeypatch.setattr(CC, "health", lambda force=False, wait=True: (calls.append((force, wait)) or
-                                                                     {"state": "checking", "checking": True}))
+    # 0.63.30: health is asked about a specific model — the one real work runs — so the stub takes it and the
+    # assertion checks it. A re-check that probes the CLI's bare default is the bug that made a four-source
+    # re-analysis cost $0.59 when the local path was fine.
+    monkeypatch.setattr(CC, "health", lambda force=False, wait=True, model=None: (calls.append((force, wait, model)) or
+                                                                                  {"state": "checking", "checking": True}))
     out = api.api_usage_recheck()
-    assert calls == [(True, False)]                                     # forced, and non-blocking
+    assert calls == [(True, False, "claude-sonnet-5")]                  # forced, non-blocking, about the real model
     assert out["local_ai"] == {"state": "checking", "rechecking": True}
 
 

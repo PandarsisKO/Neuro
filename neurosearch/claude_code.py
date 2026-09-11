@@ -109,7 +109,25 @@ def fake_mode() -> str | None:
 # ------------------------------------------------------------------ capabilities + health
 
 _lock = threading.Lock()
-_state: dict[str, Any] = {"health": None, "caps": None}
+_state: dict[str, Any] = {"health": None, "caps": None, "by_model": {}}
+
+
+def local_model_for(task: str | None) -> str | None:
+    """The model a local call for `task` will actually run: the global override if set, else the contract's own.
+    Mirrors `create()` so health can be asked about the same thing that is about to be asked to work."""
+    if settings.claude_code_model:
+        return settings.claude_code_model
+    if not task:
+        return None
+    try:
+        from . import contracts as C
+        return C.contract(task).model_for("local")
+    except Exception:  # noqa: BLE001 — an unknown task is not a reason to refuse a health check
+        return None
+
+
+def _hkey(model: str | None) -> str:
+    return model or "(cli default)"
 
 
 def binary() -> str:
@@ -190,28 +208,40 @@ def billing_note() -> str:
     return "cannot tell who pays for local calls, so they are counted as spend — set NEUROSEARCH_LOCAL_BILLING to say."
 
 
-def health(force: bool = False, wait: bool = True) -> dict[str, Any]:
+def health(force: bool = False, wait: bool = True, model: str | None = None) -> dict[str, Any]:
     """ready · not_installed · not_signed_in · usage_limit · error · disabled (cloud profile) · checking. Cached HEALTH_TTL seconds.
     The probe is one tiny prompt (it does spend a few subscription tokens), run only when the profile is local. wait=False
     (the API surfaces) never blocks: a cold or expired verdict starts the probe in the background and returns the last
     known state (or "checking"); the router (wait=True, worker threads) waits for the verdict."""
     if settings.ai_profile != "local":
         return {"state": "disabled", "detail": "AI profile is cloud (NEUROSEARCH_AI_PROFILE=local enables Claude Code)", "checked_at": time.time()}
+    # No model named means "whatever real work would run": the global override if there is one, else the CLI's own
+    # default. Passing a task's model is how the router asks about the thing it is about to run (0.63.30), and the
+    # global override still wins everywhere (0.45.14).
+    if model is None:
+        model = settings.claude_code_model or None
+    key = _hkey(model)
     with _lock:
-        h = _state["health"]
+        # `_state["health"]` stays the single switch a caller (or a test) can clear or inject through: None means
+        # "no cached verdict at all", and an entry with NO `probed_model` is one somebody set by hand, which
+        # answers for every model. Only real probes stamp `probed_model`, and once one has, the per-model entry is
+        # what a specific model's verdict comes from — that separation is the point (0.63.30).
+        g = _state["health"]
+        h = g if (g and not g.get("probed_model")) else (_state["by_model"].get(key) if g else None)
         fresh = bool(h) and not force and time.time() - h["checked_at"] < HEALTH_TTL
         if fresh:
             return h
         if not wait:
             if not _state.get("probing"):
                 _state["probing"] = True
-                threading.Thread(target=_probe_bg, daemon=True, name="ns-claude-code-probe").start()
+                threading.Thread(target=_probe_bg, args=(model,), daemon=True, name="ns-claude-code-probe").start()
             return dict(h or {"state": "checking", "detail": "checking Claude Code…"}, checking=True)
         _state["probing"] = True
     try:
-        h = _probe()
+        h = _probe(model)
         h["checked_at"] = time.time()
         with _lock:
+            _state["by_model"][key] = h
             _state["health"] = h
     finally:
         with _lock:
@@ -219,7 +249,7 @@ def health(force: bool = False, wait: bool = True) -> dict[str, Any]:
     return h
 
 
-def _probe_bg() -> None:
+def _probe_bg(model: str | None = None) -> None:
     try:
         h = _probe()
         h["checked_at"] = time.time()
@@ -233,24 +263,41 @@ def _probe_bg() -> None:
             _state["probing"] = False
 
 
-def note_failure(e: LocalUnavailable) -> None:
-    """A failure seen by a real call updates the cached verdict at once (the next router decision must not wait for the TTL)."""
+DOMINANT_LOCAL_TASK = "findings.extract"     # 220 of his last 240 local jobs; what a single verdict should be about
+
+
+def states_by_model() -> dict[str, dict[str, Any]]:
+    """Every model whose local health has been checked, and its verdict. One global state cannot describe a CLI
+    that runs a different model per task, so the surfaces show the map rather than a winner (0.63.30)."""
     with _lock:
-        h = dict(_state["health"] or {})
+        return {k: dict(v) for k, v in (_state["by_model"] or {}).items()}
+
+
+def note_failure(e: LocalUnavailable, model: str | None = None) -> None:
+    """A failure seen by a real call updates the cached verdict at once (the next router decision must not wait for
+    the TTL) — for THAT MODEL only (0.63.30). A global verdict meant one model's structured-output failure refused
+    local work for every other model too, and every refusal is a paid API call."""
+    key = _hkey(model)
+    with _lock:
+        h = dict(_state["by_model"].get(key) or {})
         h.update({"state": "usage_limit" if isinstance(e, LocalLimit) else ("not_signed_in" if e.kind == "not_signed_in" else "not_installed" if e.kind == "not_installed" else "error"),
-                  "detail": (e.detail or str(e))[:300], "reset_hint": getattr(e, "reset_hint", None), "checked_at": time.time()})
+                  "detail": (e.detail or str(e))[:300], "reset_hint": getattr(e, "reset_hint", None),
+                  "checked_at": time.time(), "probed_model": key})
+        _state["by_model"][key] = h
         _state["health"] = h
 
 
-def note_success() -> None:
+def note_success(model: str | None = None) -> None:
+    key = _hkey(model)
     with _lock:
-        h = dict(_state["health"] or {})
+        h = dict(_state["by_model"].get(key) or {})
         if h.get("state") != "ready":
-            h.update({"state": "ready", "detail": "answered", "checked_at": time.time()})
+            h.update({"state": "ready", "detail": "answered", "checked_at": time.time(), "probed_model": key})
+            _state["by_model"][key] = h
             _state["health"] = h
 
 
-def _probe() -> dict[str, Any]:
+def _probe(model: str | None = None) -> dict[str, Any]:
     fm = fake_mode()
     if fm:
         table = {"ready": ("ready", "fake claude code"), "not_installed": ("not_installed", "no `claude` on PATH"), "not_signed_in": ("not_signed_in", "run `claude` once and sign in"),
@@ -271,12 +318,13 @@ def _probe() -> dict[str, Any]:
         # respects the pin). A probe on the unpinned default can report the whole local path dead over one model's own
         # limit while the pinned model — the one every real call actually uses — is completely fine. Probe with the same
         # pin real work uses, so health reflects what's actually about to be asked to run.
-        resp = _run("Reply with exactly the word OK and nothing else.", system=None, model=settings.claude_code_model or None, timeout=PROBE_TIMEOUT, schema=None)
+        resp = _run("Reply with exactly the word OK and nothing else.", system=None, model=model, timeout=PROBE_TIMEOUT, schema=None)
     except LocalLimit as e:
         return {"state": "usage_limit", "detail": e.detail[:300], "version": version, "reset_hint": e.reset_hint}
     except LocalUnavailable as e:
         return {"state": e.kind if e.kind in ("not_signed_in", "not_installed") else "error", "detail": e.detail[:300], "version": version}
-    return {"state": "ready", "detail": f"answered in probe ({resp.model})", "version": version, "model": resp.model}
+    return {"state": "ready", "detail": f"answered in probe ({resp.model})", "version": version,
+            "model": resp.model, "probed_model": _hkey(model)}
 
 
 # ------------------------------------------------------------------ the call
@@ -475,8 +523,11 @@ def create(**kw: Any) -> LocalResponse:
 
 
 def status_line(wait: bool = False) -> str:
-    """One line for doctor / the Jobs header (never blocks unless asked)."""
-    h = health(wait=wait)
+    """One line for doctor / the Jobs header (never blocks unless asked).
+
+    About the model real work runs, not the CLI's own default (0.63.30) — a person reading "Claude Code: ready"
+    while every findings job is falling back to the paid API has been told something useless."""
+    h = health(wait=wait, model=local_model_for(DOMINANT_LOCAL_TASK))
     st = h.get("state")
     if st == "disabled":
         return "Claude Code: off (cloud profile)"

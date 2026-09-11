@@ -89,12 +89,18 @@ def test_unavailable_or_limited_local_falls_back_to_the_api_with_the_reason(monk
     assert r["executed_by"] == "api" and r["fallback_reason"].startswith(etype.lower())
     led = _ledger()
     assert [x["provider"] for x in led[-2:]] == [CC.PROVIDER, "anthropic"] and led[-2]["status"] == "failed" and led[-2]["error_type"] == etype
-    # the failure updated the cached health at once, so the NEXT call routes straight to the API without a local attempt
-    assert CC.health()["state"] in ("usage_limit", "not_installed", "not_signed_in", "error")
+    # the failure updated the cached health at once, so the NEXT call routes straight to the API without a local
+    # attempt. 0.63.30: asked about the MODEL that failed — `rank.relevance` runs claude-sonnet-5 locally, and a
+    # bare `health()` now means the CLI's own default, which is a different question and was never what failed.
+    # That separation is the fix: one model's failure must not refuse work on another, because every refusal is a
+    # paid API call.
+    failed_model = CC.local_model_for("rank.relevance")
+    assert CC.health(model=failed_model)["state"] in ("usage_limit", "not_installed", "not_signed_in", "error")
     _rank()
     assert _ledger()[-1]["provider"] == "anthropic" and providers.last_route()["reason"].startswith("local_")
     if mode == "limit":
-        assert CC.health()["reset_hint"] == "6pm" and "usage limit" in CC.status_line()
+        assert CC.health(model=failed_model)["reset_hint"] == "6pm"
+        assert "usage limit" in CC.status_line()            # the line a person reads still names it
 
 
 def test_local_errors_never_trip_a_breaker_and_are_never_retried(monkeypatch):

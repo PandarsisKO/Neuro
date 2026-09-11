@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.29)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.30)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,51 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The probe tested a model nobody was using (0.63.30)
+
+This is the actual cause of the $0.59, and it is the one true thing left standing from 0.63.28.
+
+`claude_code._probe` decided whether the WHOLE local path was alive by running one tiny prompt with
+`model=settings.claude_code_model or None`. Kyle has no `NEUROSEARCH_CLAUDE_CODE_MODEL`, so that is **None** — no
+`--model` flag, the CLI's own cheapest-available default. Meanwhile every real call has taken its model from the
+CONTRACT since 0.52.0: `claude-sonnet-5` for findings. So the health verdict was about a model no task was using,
+and when that model hit a limit or an error the router refused local work for everything and sent it to the API
+**that charges**.
+
+The comment directly above that line describes this exact bug as fixed in 0.45.14 — *"a probe on the unpinned
+default can report the whole local path dead over one model's own limit while the pinned model, the one every real
+call actually uses, is completely fine"*. The fix keyed on `settings.claude_code_model`, which is normally unset,
+so for the normal configuration it never applied. **A fix conditional on an override nobody sets is not a fix, and
+it read as one for eighteen releases.**
+
+**Health is now per model.** `claude_code.local_model_for(task)` mirrors `create()` — the global override if set,
+else the contract's own model — and `health(model=…)` caches a verdict per model. `providers.route(task)` asks
+about the model it is about to run. Every surface a person reads (`status_line`, the Jobs header, the Health
+console, `POST /api/usage/recheck`, `jobs.backlog`) asks about `DOMINANT_LOCAL_TASK` — findings, 220 of his last
+240 local jobs — because "Claude Code: ready" while every findings job falls back to the paid API is worse than no
+line at all. `states_by_model()` returns the whole map, so nothing is hidden behind one winner.
+
+**And the amplification is gone.** `note_failure` / `note_success` were global: one model's structured-output
+failure marked the entire local path unavailable, and *every refusal that follows is a paid API call*. They are
+now per model too.
+
+`_state["health"]` stays the single switch a caller can clear or inject through — None means no cached verdict,
+and an entry with no `probed_model` answers for every model — so the existing local-AI gates keep working
+unchanged while real probes stay separated. Two of them did move, each because the question changed rather than
+the promise: the limit test now asks about **the model that actually failed** (`rank.relevance` → sonnet-5) rather
+than a bare `health()`, and the re-check test asserts the probe names that model. Both changes make the assertion
+sharper than it was.
+
+Gate: seven more cases in `tests/test_s39_answering_model.py` — the router probes the task's model, a global
+override still wins, one model's failure does not refuse work on another, a success clears only its own model, and
+every verdict names the model it is about.
+
+**What this leaves honest:** the local path really does fail sometimes
+(`error_max_structured_output_retries`), and a fallback to the paid API is the correct response to that. What was
+wrong was refusing work on a healthy model because a different one was unwell. Whether the structured-output
+failures are frequent enough to be worth their own fix is a separate question, now separately answerable, because
+the verdict finally names its subject.
 
 ## 363 warnings that were mis-readings, and the config change I nearly talked him into (0.63.29)
 
