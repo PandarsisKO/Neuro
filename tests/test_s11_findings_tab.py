@@ -58,10 +58,14 @@ def _notes(project_id, n, status="approved"):
 def test_the_project_endpoint_no_longer_ships_every_finding(project):
     _notes(project, api.NOTES_INLINE_MAX + 50)
     _notes(project, 30, status="suggested")
+    # 0.63.12 — it ships NO finding rows now. 0.60.1 bounded them to 200 because they were unbounded; measured on
+    # the right project, the two bounded lists were still 407 KB of a 457 KB response that every tab fetches
+    # first, and the only line in the UI reading them used `notes.length` as a COUNT — which the cap made wrong.
     p = api.api_project(project)
-    assert len(p["notes"]) == api.NOTES_INLINE_MAX
-    assert p["notes_truncated"] is True
-    assert p["notes_inline_max"] == api.NOTES_INLINE_MAX
+    assert p["notes"] == [] and p["suggested"] == [] and p["notes_omitted"] is True
+    assert p["counts"]["approved"] == api.NOTES_INLINE_MAX + 50 and p["counts"]["suggested"] == 30
+    inline = api.api_project(project, notes="inline")
+    assert len(inline["notes"]) == api.NOTES_INLINE_MAX and inline["notes_truncated"] is True
 
 
 def test_the_counts_are_exact_even_when_the_list_is_not(project):
@@ -73,10 +77,12 @@ def test_the_counts_are_exact_even_when_the_list_is_not(project):
     assert c["total"] == api.NOTES_INLINE_MAX + 80
 
 
-def test_truncation_is_never_silent(project):
+def test_omission_is_never_silent(project):
+    """Absent rows are a stated choice, not an empty project: `notes_omitted` says so and `counts` is the number."""
     _notes(project, 5)
     p = api.api_project(project)
-    assert p["notes_truncated"] is False and len(p["notes"]) == 5
+    assert p["notes"] == [] and p["notes_omitted"] is True and p["counts"]["approved"] == 5
+    assert api.api_project(project, notes="inline")["notes_omitted"] is False
 
 
 def test_a_caller_that_wants_everything_can_still_ask(project):

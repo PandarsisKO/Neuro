@@ -256,11 +256,12 @@ def test_suggested_findings(client, monkeypatch):
     r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks", project_id=p["id"])
     # auto-queued suggestion job runs in the background worker
     for _ in range(60):
-        pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
+        pj = client.get(f"/api/projects/{p['id']}?notes=inline", headers=H).json()   # 0.63.12: rows are opt-in
         if pj["suggested"]:
             break
         time.sleep(0.2)
     assert len(pj["suggested"]) == 2 and pj["notes"] == []
+    assert client.get(f"/api/projects/{p['id']}", headers=H).json()["counts"]["suggested"] == 2   # the count alone
     top = pj["suggested"][0]
     assert 1 <= top["importance"] <= 5 and top["citations"][0]["timestamp"] in ("0:05", "3:40") and top["status"] == "suggested"
     # the fake quotes real transcript text, so the evidence validator passes on it
@@ -276,8 +277,9 @@ def test_suggested_findings(client, monkeypatch):
     client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})
     pj_dismissed_title = pj["suggested"][1]["title"]
     client.post(f"/api/notes/{pj['suggested'][1]['id']}/status", headers=H, json={"status": "dismissed"})
-    pj = client.get(f"/api/projects/{p['id']}", headers=H).json()
+    pj = client.get(f"/api/projects/{p['id']}?notes=inline", headers=H).json()
     assert len(pj["notes"]) == 1 and pj["suggested"] == []
+    assert pj["counts"]["approved"] == 1 and pj["counts"].get("suggested", 0) == 0
     md = client.get(f"/api/projects/{p['id']}/findings.md", headers=H).text
     assert top["title"] in md and pj_dismissed_title not in md
     # nothing left to analyse; force re-analyses

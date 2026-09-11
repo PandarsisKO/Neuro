@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.11';
+const UI_VERSION = '0.63.12';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -704,7 +704,9 @@ async function openProject(id, view, conv) {
   state.project = p;
   $('#home').style.display = 'none'; $('#ws').classList.add('active');
   $('#wsName').textContent = p.name; loadSpend();
-  $('#nSources').textContent = p.n_sources; $('#nFindings').textContent = (p.notes || []).length;
+  // 0.63.12 — the exact count, not the length of a capped list: this said "200" for a project with 17,845.
+  $('#nSources').textContent = p.n_sources;
+  $('#nFindings').textContent = (p.counts && (p.counts.approved || 0) + (p.counts.suggested || 0)) || (p.notes || []).length;
   $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
   $('#epGoal').value = p.goal || ''; $('#epAudience').value = p.audience || ''; $('#epOutput').value = p.output_pref || ''; $('#epSourcePrefs').value = p.source_prefs || ''; $('#epQuestions').value = (p.questions || []).join('\n');
   $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);

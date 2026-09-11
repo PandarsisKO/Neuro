@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.11)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.12)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,32 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The project row shipped 407 KB of findings nobody read (0.63.12)
+
+Measured across every surface of the LARGE project (825 sources, 17,845 findings, 16,174 Claims):
+
+```
+GET /api/projects/{id}        8.5 s   457 KB   ← every tab fetches this before drawing
+GET …/pool                    6.6 s   124 KB
+GET /api/sources              3.4 s  1,205 KB
+GET …/research/overview       1.4 s   570 KB
+claims · triage · staleness · findings · tick   ≤ 0.65 s
+```
+
+The worst number in the app was the project row: **9.9 s cold, 4.9 s warm**, of which `notes` is **307 KB** and
+`suggested` **99 KB**. 0.60.1 bounded both to 200 each because they were unbounded (8 MB before that). Grep the UI
+for what reads them: `suggested`, **nothing**; `notes`, one line — `(p.notes || []).length`, to print the findings
+count in the header. So the 200-cap made the header **wrong**: it said 200 for a project with 17,845 findings.
+
+Both lists are gone by default (`?notes=inline` for the bound, `?notes=all` for everything), the header reads
+`counts`, which was already there and exact, and `notes_omitted` says the rows are absent by choice rather than the
+project being empty. Every stage of the endpoint is now timed, so what remains of the 4.9 s is measured rather than
+guessed.
+
+Third instance of the same defect — a list nobody reads (0.62.7 `area_of_claim`, 0.63.8 `claims`) — and the first
+where the unread list was also producing a false number on screen. **The rule that keeps emerging: if the only thing
+anyone does with a list is take its length, it was a count all along.**
 
 ## Work nothing is doing, and state nothing ever built (0.63.11)
 

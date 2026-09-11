@@ -108,8 +108,9 @@ def test_multi_window_source_keeps_the_overflow_as_reserve(monkeypatch):
     assert db.list_project_notes(p["id"]) == [] and db.list_project_notes(p["id"], status="approved") == []
     claims.ensure(p["id"])
     assert not any(any(e.get("note_id") == n["id"] for e in c.get("evidence") or []) for c in claims.list_for_project(p["id"]) for n in res)
-    pj = api.api_project(p["id"])
+    pj = api.api_project(p["id"], notes="inline")      # 0.63.12: the project row ships no rows unless asked
     assert len(pj["suggested"]) == len(sug) and all(n["status"] != "reserve" for n in pj["suggested"])
+    assert api.api_project(p["id"])["counts"]["suggested"] == len(sug)     # reserve is not counted as suggested
     # the sources listing counts it; the notes endpoint lists it; promotion moves it into the normal flow
     row = next(s for s in api.api_sources(project_id=p["id"]) if s["id"] == r["source_id"])
     assert row["reserve"] == len(res) and row["suggested"] == len(sug)

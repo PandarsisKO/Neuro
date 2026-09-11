@@ -1510,27 +1510,41 @@ NOTES_INLINE_MAX = 200          # 0.60.1: how many full findings this endpoint w
 
 @app.get("/api/projects/{project_id}", dependencies=[Depends(require_auth)])
 def api_project(project_id: str, notes: str | None = None) -> dict[str, Any]:
-    """0.60.1: `notes` and `suggested` are now BOUNDED (`NOTES_INLINE_MAX`) unless `?notes=all`.
+    """The project row. **No finding rows by default** (0.63.12) — `?notes=all` for every one, `?notes=inline` for
+    the first `NOTES_INLINE_MAX`.
 
-    They were not, and this endpoint is fetched by the Findings, Chats, Settings and Plan views — so opening
-    Findings on Kyle's business project downloaded 10,384 approved plus 1,383 suggested findings in full, about
-    8 MB, before it drew anything, which is why the tab looked like it never loaded. `counts` (cheap, exact) is
-    what a screen needs for a number, and the Findings workbench already pages the list server-side. Truncation is
-    never silent: `notes_truncated` says it happened and `counts` says by how much."""
+    0.60.1 bounded these two lists to 200 each because they were unbounded: opening Findings downloaded 10,384
+    approved plus 1,383 suggested findings, about 8 MB, before anything was drawn. Measured again on the right
+    project (0.63.12): **9.9 s cold, 4.9 s warm, 457 KB**, of which `notes` is **307 KB** and `suggested` **99 KB**
+    — and this endpoint is what the Findings, Chats, Settings and Plan views all fetch first.
+
+    Grep the UI for what reads them. `suggested`: nothing. `notes`: one line, `(p.notes || []).length`, to print the
+    findings count in the header — **which the 200-cap made wrong**, so the screen said 200 for a project with
+    17,845. `counts` was already there, exact, and one GROUP BY. So this is the third instance of a list nobody
+    reads (0.62.7 `area_of_claim`, 0.63.8 `claims`), and the first where the list was actively producing a false
+    number on screen."""
+    from . import perf
     p = db.get_project(project_id)
     if not p:
         raise HTTPException(404)
-    cap = None if notes == "all" else NOTES_INLINE_MAX
-    p["notes"] = db.list_project_notes(project_id, limit=cap)
-    p["suggested"] = db.list_project_notes(project_id, status="suggested", limit=cap)
-    p["counts"] = db.note_counts(project_id)
+    cap = None if notes == "all" else (NOTES_INLINE_MAX if notes == "inline" else 0)
+    with perf.timed("project.notes"):
+        p["notes"] = db.list_project_notes(project_id, limit=cap) if cap != 0 else []
+        p["suggested"] = db.list_project_notes(project_id, status="suggested", limit=cap) if cap != 0 else []
+    with perf.timed("project.counts"):
+        p["counts"] = db.note_counts(project_id)
     p["notes_inline_max"] = cap
-    p["notes_truncated"] = bool(cap and (p["counts"].get("approved", 0) > cap or p["counts"].get("suggested", 0) > cap))
-    an = db.sources_being_analysed(project_id)
-    p["analysing"] = {"sources": len(an), "queued": db.analysis_jobs_queued(project_id)}
-    p["conversations"] = db.list_conversations(project_id)
-    p["facts"] = db.list_facts(project_id)
-    p["has_plan"] = db.latest_plan(project_id) is not None
+    p["notes_truncated"] = bool(cap != 0 and cap and (p["counts"].get("approved", 0) > cap or p["counts"].get("suggested", 0) > cap))
+    p["notes_omitted"] = cap == 0        # never silent: the rows are absent by choice, and `counts` is the number
+    with perf.timed("project.analysing"):
+        an = db.sources_being_analysed(project_id)
+        p["analysing"] = {"sources": len(an), "queued": db.analysis_jobs_queued(project_id)}
+    with perf.timed("project.conversations"):
+        p["conversations"] = db.list_conversations(project_id)
+    with perf.timed("project.facts"):
+        p["facts"] = db.list_facts(project_id)
+    with perf.timed("project.plan"):
+        p["has_plan"] = db.latest_plan(project_id) is not None
     return p
 
 
