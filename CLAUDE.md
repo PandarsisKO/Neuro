@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.20)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.21)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,68 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The Sources tab ran the whole research pass twice (0.63.21)
+
+The Sources tab asks for `/api/sources?project_id=…&limit=2000`. Measured on his project that is **1,348 rows and
+3,276 KB in 13.2 s cold** — and the payload, which is what the open task was about, was not the cost:
+
+```
+sources:potential_setup   6.18 s   ← the gap-terms build
+  rv.load.planner         5.3  s   ← inside it, via research_view.questions/areas
+sources:rows              0.98 s
+everything else           ≤ 0.35 s each
+```
+
+**`_planner_dependent` scanned a list per Claim.** 16,191 Claims × 1,804 plan evidence entries = **87 million**
+evaluations of `sid in srcs`, with `claims.overlap` re-tokenising both sides behind it. The test is anchored on
+the source id, so the labels belong in a dict keyed by it, tokenised once. And **an entry with no `source_id` can
+never satisfy the test**, so it is dropped when the index is built rather than 16,191 times — every one of his
+1,804 entries is unanchored (`kind: "user"` constraints have no source by definition, and his pinned findings
+carried none), so the index is empty and the function's existing early return now answers in microseconds what
+took seconds to prove it could not answer at all. Verified identical on all three of his projects.
+
+**The endpoint kept its own copy of an answer another cache already had — and computed it twice.** Its lambda
+called `_gap_terms(project_id)` once for the `*` unpack and again to build the index from it, so a cold request
+ran questions + areas over 16,000 Claims **twice**. Same defect as 0.62.1, where `claims.ensure` called
+`assess_project` and then `knowledge.refresh`, which opens by calling it again. It now shares
+`candidates.gap_terms_cached` with `pool` and `seen_for_query`: one entry instead of two copies of one answer, and
+the background warm-up that keeps the pool warm (0.63.20) keeps this warm too.
+
+**Then the payload, three keys and three different answers** — the 0.62.7 pattern:
+
+| key | was | reader | verdict |
+|---|---|---|---|
+| `analysis` | 248 KB, 25% | **none** — the UI's `.analysis` hits are the PROJECT's `p.analysis` and the separate `s.analysis_job` | dropped; `?analysis=1`, and whole on `/api/sources/{id}` |
+| `summary` | 214 KB, 22% | one muted line per row | clipped at `LIST_SUMMARY_CHARS` (200, the same decision `description` got in 0.46.3) |
+| `value.claims`, `value.importance` | 40 KB | none | dropped |
+| the rest of `value` | | the client **filters and sorts** on it | kept |
+
+Every derived fact the screen reads off the dropped blob is already its own column (`substance`, `depth`,
+`legacy_analysis`, `relevance`, `relevance_why`). Fifth instance of a list nobody reads (0.62.7, 0.63.8, 0.63.12,
+0.63.20).
+
+**That last table row is why you grep before dropping, and my first grep was wrong.** `value.score` had zero hits
+in `web/index.html`, so `score` looked as unread as `claims` — because the file aliases the object,
+`const v = s => s.value || {}`, and `v(s).matters`, `v(s).never_used`, `v(b).score` and
+`v(a).used.plan_evidence` are four real consumers no search for `value.<key>` can see. A grep that proves a key
+is unread has to account for how the reader spells it.
+
+**13.20 s → 5.76 s cold, 0.68 s → 0.53 s warm, 3,276 KB → 2,352 KB**, with the remaining cold cost warmed in the
+background. What is left is largely repeated key names across 1,348 rows; going further means paging the list
+server-side or a compact wire format, and both are decisions for Kyle rather than optimisations.
+
+Three frozen gates moved with the change, each because its address moved and not its promise: `test_core`'s
+provenance assertions now read `?analysis=1` **and** assert the blob is absent by default, `test_n3` reads the
+`depth` column the chip actually renders, and `test_p1`'s cache assertions name `gap_terms_core` — the shared
+entry — instead of the endpoint's own. Gate `tests/test_s36_sources_payload.py` (10), which keeps the old
+`_planner_dependent` as the definition the fast path must reproduce.
+
+**And the measurement corrected my own report of it.** cProfile put `_planner_dependent` at **23.2 s of 34.5 s**,
+and I nearly wrote that down. Unprofiled it is **1.47 s**: 87 million generator steps are exactly what a
+deterministic profiler inflates most, and `claims._tokens` is memoised so the repeated tokenisation was cheaper
+than it looked. cProfile found the right line and gave the wrong number — it ranks stages, it does not measure
+them. The wall-clock figures above come from the endpoint's own `perf` stage timings.
 
 ## 8,917 of 8,970 items "fit an open question" (0.63.20)
 

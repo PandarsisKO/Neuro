@@ -160,7 +160,11 @@ def test_read_deeper_uses_smaller_windows_and_is_current_on_its_own_terms(monkey
     st = staleness.assess(p["id"])
     assert next(x for x in st["sources"] if x["source_id"] == r["source_id"])["status"] == "current"
     row = next(s for s in api.api_sources(project_id=p["id"]) if s["id"] == r["source_id"])
-    assert row["depth"] == "deep" and row["analysis"]["summary"]["depth"] == "deep"
+    # `depth` is the row's own column, which is what the "📚 Deep content" chip reads; the provenance blob it used
+    # to be read from is behind `?analysis=1` since 0.63.21 (248 KB of the response, no reader).
+    assert row["depth"] == "deep"
+    prov = next(s for s in api.api_sources(project_id=p["id"], analysis=True) if s["id"] == r["source_id"])
+    assert prov["analysis"]["summary"]["depth"] == "deep"
     # a brief edit stales the deep analysis like any other
     db.update_project(p["id"], brief="hosting and email deliverability")
     assert not findings.is_current(db.get_project(p["id"]), r["source_id"], depth="deep")

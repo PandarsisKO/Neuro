@@ -58,21 +58,64 @@ def _importance(project_id: str) -> dict[str, int]:
     return out
 
 
+PLANNER_DEPENDENT_OVERLAP = 0.5    # a plan label this close to a Claim's text, on a source the Claim rests on
+
+
 def _planner_dependent(project_id: str, cl: list[dict[str, Any]]) -> set[str]:
+    """Which Claims the current plan leans on — a plan evidence label that matches the Claim's text AND sits on a
+    source the Claim actually rests on.
+
+    **The test is anchored on the source id, so the labels are indexed by it (0.63.21).** This was a list scanned
+    per Claim: 16,191 Claims × 1,804 plan evidence entries = **87 million** evaluations of `sid in srcs`, measured
+    at **23.2 s of a 34.5 s `/api/sources` call** on Kyle's project — and `/api/sources` only wanted the open
+    questions, so it was paying for the whole research pass to score 471 skipped rows (0.62.2's lesson, one
+    surface along).
+
+    **And an entry with no `source_id` can never satisfy the test**, so it is dropped when the index is built
+    rather than 16,191 times. `planner._evidence` attaches one only when it has one, and his plan is user
+    constraints (`kind: "user"`, which by definition have no source) and pinned findings whose note carried none —
+    so all 1,804 of his entries are unanchored, the index is empty, and the existing early return now answers in
+    microseconds what used to take 23 seconds to prove. That is not a bug in his data: a plan built from what he
+    told it has nothing for this test to match, and the function's answer was always the empty set.
+
+    Labels are tokenised ONCE. `claims.overlap` tokenises both sides on every call, so the old loop re-tokenised
+    the same 1,804 labels for every Claim that reached the second half of the `and`."""
     plan = db.latest_plan(project_id)
     if not plan:
         return set()                       # no plan: the evidence query is not run at all
     emap = (plan.get("plan") or {}).get("_evidence") or {}
-    labels = [(v.get("source_id"), v.get("label") or "") for v in emap.values()]
-    if not labels:
+    by_source: dict[str, list[set[str]]] = {}
+    for v in emap.values():
+        sid = v.get("source_id")
+        if not sid:                        # unanchored: `sid in srcs` cannot hold, so it is not work to be done
+            continue
+        by_source.setdefault(sid, []).append(claims._tokens(v.get("label") or ""))
+    if not by_source:
         return set()
     by_claim = claims.evidence_source_ids(project_id)
     dep = set()
     for c in cl:
         srcs = c.get("evidence_source_ids") or by_claim.get(c["id"]) or set()
-        if any(sid in srcs and claims.overlap(lbl, c["text"]) >= 0.5 for sid, lbl in labels):
-            dep.add(c["id"])
+        ct = None
+        for sid in srcs:
+            labels = by_source.get(sid)
+            if not labels:
+                continue
+            if ct is None:
+                ct = claims._tokens(c["text"])
+            if any(_token_overlap(lbl, ct) >= PLANNER_DEPENDENT_OVERLAP for lbl in labels):
+                dep.add(c["id"])
+                break
     return dep
+
+
+def _token_overlap(ta: set[str], tb: set[str]) -> float:
+    """`claims.overlap` on token sets that were computed once. Same definition: the share of the SHORTER side's
+    distinctive tokens present in the other."""
+    if not ta or not tb:
+        return 0.0
+    short, long_ = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    return len(short & long_) / len(short)
 
 
 def _load(project_id: str) -> dict[str, Any]:

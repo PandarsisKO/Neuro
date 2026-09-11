@@ -191,18 +191,23 @@ def test_sources_endpoint_caches_the_skipped_scan_without_changing_its_answer():
 
     first = api.api_sources(project_id=p["id"], limit=50)
     assert first and first[0]["pool_potential"] is not None
-    before = perf.snapshot()["caches"].get("gap_terms", {}).get("miss", 0)
+    # 0.63.21 — the label is `gap_terms_core` because this endpoint no longer keeps its own copy of the answer.
+    # It had a `gap_terms:` entry whose lambda called `_gap_terms` TWICE (once to unpack, once to build the index
+    # from it), so a cold request ran the whole research pass twice: 6.18 s of a 7.72 s call. It now shares
+    # `candidates.gap_terms_cached` with `pool` and `seen_for_query` — one entry, and the background warm-up that
+    # keeps the pool warm keeps this warm too.
+    before = perf.snapshot()["caches"].get("gap_terms_core", {}).get("miss", 0)
 
     second = api.api_sources(project_id=p["id"], limit=50)
     assert [r["pool_potential"] for r in second] == [r["pool_potential"] for r in first]   # same answer
-    assert perf.snapshot()["caches"]["gap_terms"]["hit"] >= 1                              # and it was reused
-    assert perf.snapshot()["caches"]["gap_terms"]["miss"] == before                        # no recompute
+    assert perf.snapshot()["caches"]["gap_terms_core"]["hit"] >= 1                         # and it was reused
+    assert perf.snapshot()["caches"]["gap_terms_core"]["miss"] == before                   # no recompute
 
     db.connect().execute("INSERT INTO research_tensions (id, project_id, kind, description, status, impact, created_at, updated_at) "
                          "VALUES ('t2',?,'CONTRADICTION','d','open','high',?,?)", (p["id"], db.now(), db.now()))
     db.connect().commit()
     api.api_sources(project_id=p["id"], limit=50)
-    assert perf.snapshot()["caches"]["gap_terms"]["miss"] == before + 1                    # research moved → recomputed
+    assert perf.snapshot()["caches"]["gap_terms_core"]["miss"] == before + 1               # research moved → recomputed
 
 
 def test_view_revision_moves_on_sources_jobs_and_findings_changes():

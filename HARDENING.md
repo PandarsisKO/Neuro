@@ -1294,3 +1294,30 @@ the number of rows that carry a label. So the change adds a gate rather than rem
 Second change in the same release, also caught by this gate: `db.project_pool_revision` gained an `excluded` count
 over `project_sources`, because `remove_project_sources` sets `excluded=1` rather than deleting the row and the
 cached pool therefore outlived the user's own removal.
+
+## 0.63.21 — three gates whose address moved, not their promise
+
+**`test_core.py::test_suggested_findings`** asserted the per-task provenance (`prompt_version`, `source_revision`,
+`brief_revision`, `input_hash`) off the `analysis` key of a `/api/sources` LIST row. That blob measured **248 KB,
+25% of a 1,300 KB response**, with no reader anywhere: the UI's `.analysis` hits are the PROJECT's `p.analysis` and
+the separate `s.analysis_job` key, and every derived fact a row renders is already its own column (`substance`,
+`depth`, `legacy_analysis`, `relevance`, `relevance_why`). **What is promised — that provenance is recorded per
+analysis task and surfaced — is unchanged**, and the test now asserts it in both places it lives: behind
+`?analysis=1`, and whole on `/api/sources/{id}` as `analyses` (a line this test has always had). It additionally
+asserts the blob is ABSENT by default, so the trim cannot silently come back.
+
+**`test_n3_deep_findings.py`** read `row["analysis"]["summary"]["depth"]`. `depth` is the row's own column and is
+what the "📚 Deep content" chip renders; the test now asserts the column, and the blob behind `?analysis=1`.
+
+**`test_p1_perf.py`** asserted cache hits under the label `gap_terms`. `/api/sources` no longer keeps its own copy
+of that answer — its lambda called `candidates._gap_terms` **twice** (once to unpack, once to build the question
+index from it), so a cold request ran questions + areas over 16,000 Claims twice: **6.18 s of a 7.72 s call**. It
+now shares `candidates.gap_terms_cached` with `pool` and `seen_for_query`, so the label is `gap_terms_core` and
+there is one entry rather than two. The property under test — the skipped-row scan is computed once per research
+revision and reused, with the same answer — is asserted unchanged.
+
+Also in this release: `value.claims` and `value.importance` dropped from the list rows (40 KB, no reader
+anywhere). The REST of `value` stays, and the reason is recorded because the first grep got it wrong:
+`web/index.html` aliases the object as `const v = s => s.value || {}`, so `v(s).matters`, `v(s).never_used`,
+`v(b).score` and `v(a).used.plan_evidence` are consumers that a search for `value.score` cannot find.
+`tests/test_s36_sources_payload.py` asserts every kept field by name for that reason.

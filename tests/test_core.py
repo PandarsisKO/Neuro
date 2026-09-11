@@ -269,9 +269,17 @@ def test_suggested_findings(client, monkeypatch):
     assert all(quote_in_text(n["citations"][0]["snippet"], " ".join(x["text"] for x in db.get_segments(r["source_id"]))) for n in pj["suggested"])
     # summary/substance are project-relative: they live on the project's listing, not the global source row
     src = [x for x in client.get(f"/api/sources?project_id={p['id']}", headers=H).json() if x["id"] == r["source_id"]][0]
-    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers") and src["analysis"]["summary"]["prompt_version"].startswith("findings-")
-    assert src["analysis"]["summary"]["source_revision"] and src["analysis"]["summary"]["brief_revision"] and src["analysis"]["summary"]["input_hash"]
-    assert "relevance" not in src["analysis"] and not src["legacy_analysis"]           # never ranked: no relevance artifact, and nothing pretends otherwise
+    assert isinstance(src["substance"], int) and src["summary"].startswith("Covers") and not src["legacy_analysis"]
+    # 0.63.21 — the per-task provenance blob is no longer in the LIST by default: 248 KB of a 1,300 KB response
+    # with no reader. What the provenance PROMISES is unchanged and is asserted where it now lives — behind
+    # `?analysis=1` for a CLI/MCP caller, and whole on `/api/sources/{id}` as `analyses` (the line below, which
+    # this test has always had). The list carries the derived facts a screen uses as their own columns.
+    assert "analysis" not in src
+    prov = [x for x in client.get(f"/api/sources?project_id={p['id']}&analysis=1", headers=H).json()
+            if x["id"] == r["source_id"]][0]["analysis"]
+    assert prov["summary"]["prompt_version"].startswith("findings-")
+    assert prov["summary"]["source_revision"] and prov["summary"]["brief_revision"] and prov["summary"]["input_hash"]
+    assert "relevance" not in prov                                                     # never ranked: no relevance artifact, and nothing pretends otherwise
     assert client.get(f"/api/sources/{r['source_id']}", headers=H).json()["analyses"][0]["project_id"] == p["id"]
     # approve one, dismiss one -> only approved counts for exports/planner
     client.post(f"/api/notes/{top['id']}/status", headers=H, json={"status": "approved"})

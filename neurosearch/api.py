@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
 
 
 LIST_DESCRIPTION_CHARS = 200      # R2: the Sources list shows one ellipsised line; the full text stays on /api/sources/{id}
+LIST_SUMMARY_CHARS = 200          # 0.63.21: same decision, same reason, for the project-relative summary
 
 
 class PerfMiddleware:
@@ -1174,7 +1175,7 @@ def api_stats() -> dict[str, Any]:
 @app.get("/api/sources", dependencies=[Depends(require_auth)])
 def api_sources(status: str | None = None, collection_id: str | None = None, q: str | None = None,
                       project_id: str | None = None, not_in_project: str | None = None,
-                      limit: int = 500, offset: int = 0) -> list[dict[str, Any]]:
+                      limit: int = 500, offset: int = 0, analysis: bool = False) -> list[dict[str, Any]]:
     # R2 (SPEED-MISSION.md): this endpoint measured 2.53 s p50 on Kyle's live server against <0.1 s for every
     # other polled endpoint, while the UI polls it every 3 s. The per-stage timings below are what say WHICH
     # part costs that, so the fix lands on the measured bottleneck instead of the assumed one. They stay after
@@ -1228,20 +1229,40 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 # it is now computed once per revision of that state and reused until the state actually changes.
                 from . import candidates as candidates_mod
                 research_rev = db.project_research_revision(project_id)
-                # 0.63.19: the question INDEX is cached with the terms, so a page of skipped rows does not rebuild
-                # it per row — and a cache miss on one row's score does not rebuild it either.
-                pot_qs, pot_vocab, pot_rel, pot_idx = cache.get_or_compute(
-                    f"gap_terms:{project_id}", research_rev,
-                    lambda: (*candidates_mod._gap_terms(project_id), db.project_analysis(project_id, "relevance"),
-                             candidates_mod.question_index(candidates_mod._gap_terms(project_id)[0])),
-                    label="gap_terms")
+                # 0.63.21 — this had its OWN `gap_terms:` cache entry, and its lambda called `_gap_terms` TWICE:
+                # once for the `*` unpack and once to build the index from it. So a cold request ran the whole
+                # research pass (questions + areas over 16,000 Claims) twice — measured at **6.18 s of a 7.72 s**
+                # `/api/sources?limit=2000`, the endpoint's largest stage by far. Same defect as 0.62.1, where
+                # `claims.ensure` called `assess_project` and then `knowledge.refresh`, which calls it again.
+                #
+                # `candidates.gap_terms_cached` is the one place that computes this, on the same revision, and it
+                # is what `pool` and `seen_for_query` already use — so there is now a single entry rather than two
+                # copies of one answer, and the background warm-up that keeps the pool warm keeps this warm too.
+                pot_qs, pot_vocab, pot_idx = candidates_mod.gap_terms_cached(project_id)
+                pot_rel = cache.get_or_compute(f"rel_analysis:{project_id}", research_rev,
+                                               lambda: db.project_analysis(project_id, "relevance"),
+                                               label="rel_analysis")
         _rows_t0 = time.perf_counter()
         for r in rows:
             kinds = analyses.get(r["id"]) or {}
             sm, rv = kinds.get("summary") or {}, kinds.get("relevance") or {}
-            r["summary"], r["substance"] = sm.get("summary"), sm.get("substance")            # project-relative: what THIS brief made of the source
+            # project-relative: what THIS brief made of the source. Clipped to one line in the LIST exactly as
+            # `description` has been since 0.46.3 — the row renders it as a single muted line, and at 448
+            # characters a piece over 485 sources it was **214 KB (22%)** of a 1,300 KB response. The whole text
+            # stays on `/api/sources/{id}`.
+            sm_text = sm.get("summary")
+            if sm_text and len(sm_text) > LIST_SUMMARY_CHARS:
+                sm_text = sm_text[:LIST_SUMMARY_CHARS] + "…"
+            r["summary"], r["substance"] = sm_text, sm.get("substance")
             r["relevance"], r["relevance_why"] = rv.get("relevance"), rv.get("relevance_why")
-            r["analysis"] = {k: {pk: v.get(pk) for pk in prov_keys} for k, v in kinds.items()} or None   # per task, each with its own provenance
+            # 0.63.21 — the per-task provenance blob (model, provider, prompt_version, input_hash, source_revision,
+            # brief_revision, status, updated_at, depth for each of relevance and summary) was **248 KB, 25% of
+            # the response**, and nothing reads it: the UI's `.analysis` hits are the PROJECT's `p.analysis` and
+            # the separate `s.analysis_job` key. Every fact the screen does use is already its own column
+            # (`substance`, `depth`, `legacy_analysis`, `relevance`, `relevance_why`), and the full rows are on
+            # `/api/sources/{id}` as `analyses`. Fifth instance of a list nobody reads (0.62.7, 0.63.8, 0.63.12).
+            if analysis:
+                r["analysis"] = {k: {pk: v.get(pk) for pk in prov_keys} for k, v in kinds.items()} or None
             r["legacy_analysis"] = any(v.get("status") == "legacy_unverified" for v in kinds.values())
             c = counts.get(r["id"], {})
             r["suggested"] = c.get("suggested", 0)
@@ -1257,8 +1278,13 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             r["under_read"] = bool(r["long"] and r.get("depth") != "deep" and r["analysed"] and (r["approved"] + r["suggested"]) <= findings_mod.CAP_BASE)
             v = values.get(r["id"]) or sources_value.empty()
             st = stale_by.get(r["id"]) or {}
+            # `claims` and `importance` are nested dicts with no reader anywhere — 40 KB of the response (0.63.21).
+            # Everything else stays because the client genuinely filters and sorts on it, which the first grep for
+            # `value.score` MISSED: `const v = s => s.value || {}` aliases the object, so `v(s).matters`,
+            # `v(s).never_used`, `v(b).score` and `v(a).used.plan_evidence` are all real consumers. The drawer
+            # (`/api/sources/{id}/digest`) is where the full value breakdown lives.
             r["value"] = {"score": v["value_score"], "label": v["label"], "matters": v["matters"], "never_used": v["never_used"], "used": v["used"],
-                          "claims": v["claims"], "importance": v["importance"], "stale": st.get("status") in ("stale", "legacy_unverified"),
+                          "stale": st.get("status") in ("stale", "legacy_unverified"),
                           "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
             r["priority"] = r["id"] in prio
             if r.get("video_embeds"):
