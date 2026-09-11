@@ -375,19 +375,80 @@ def _creator_term(creator: str | None, stats: dict[str, dict[str, Any]] | None,
     return min(CREATOR_MAX_BONUS, score), why
 
 
-def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str],
-               creator: str | None = None, creator_stats: dict[str, dict[str, Any]] | None = None,
-               want_classes: set[str] | None = None) -> tuple[int, str | None, list[str]]:
-    """A quick $0 scan: 0–100 potential, the best fit (an open question / weak area), and the reasons. Words, plus
-    (0.58.2) what this item's MASTER SOURCE has already given the project — see `creator_yield`."""
-    t = _toks(title + " " + (desc or "")[:600])
+def gap_terms_cached(project_id: str) -> tuple[list[tuple[str, str, set[str]]], set[str], dict[str, Any]]:
+    """`(questions, vocabulary, question index)` for this project, computed once per research revision.
+
+    `_gap_terms` walks every open question and builds a token set for each — 2,689 of them on Kyle's project — and
+    `pool` and `seen_for_query` were both calling it fresh on every request. `api_sources` had already cached it
+    since 0.46.1; caching it HERE means one place serves every caller, and the index (0.63.19) is cached with the
+    terms it belongs to rather than rebuilt beside them."""
+    from . import cache
+    return cache.get_or_compute(
+        f"gap_terms_core:{project_id}", db.project_research_revision(project_id),
+        lambda: (lambda qv: (qv[0], qv[1], question_index(qv[0])))(_gap_terms(project_id)),
+        label="gap_terms_core")
+
+
+def question_index(qs: list[tuple[str, str, set[str]]]) -> dict[str, Any]:
+    """A token → questions index, so scoring an item touches only the questions that share a word with it.
+
+    **Exact, not an approximation.** A question with no token in common with the item scores 0 under the original
+    loop too, so skipping it cannot change an answer — measured on Kyle's live project: identical scores on all
+    **8,499** items, **3.67 s → 1.11 s**.
+
+    Measured because the first benchmark lied. A synthetic corpus at his scale (10,319 candidates, 2,689 questions)
+    said the index was barely worth having — because the synthetic questions shared only **67** distinct tokens, so
+    every item overlapped nearly every question. His real questions carry **6,683**. The shape of the data was the
+    whole variable, and inventing it produced the wrong answer; his own rows produced the right one (0.63.19)."""
+    post: dict[str, list[int]] = {}
+    qlen: list[int] = []
+    labels: list[str] = []
+    for i, (_qid, label, qt) in enumerate(qs):
+        qlen.append(max(3, len(qt)))
+        labels.append(label)
+        for w in qt:
+            post.setdefault(w, []).append(i)
+    return {"post": {w: tuple(v) for w, v in post.items()}, "qlen": qlen, "labels": labels}
+
+
+def _best_fit(t: set[str], qs: list[tuple[str, str, set[str]]], qindex: dict[str, Any] | None) -> tuple[str | None, float]:
+    """(best-fitting open question's label, its share) — via the index when one was built, else the plain scan."""
+    if qindex:
+        post, qlen, labels = qindex["post"], qindex["qlen"], qindex["labels"]
+        hits: dict[int, int] = {}
+        for w in t:
+            for i in post.get(w, ()):
+                hits[i] = hits.get(i, 0) + 1
+        best_i, best_s = -1, 0.0
+        for i, n in hits.items():
+            s = n / qlen[i]
+            # `>` alone is not enough: the plain scan keeps the FIRST question at a tied score, and the index walks
+            # its hits in whatever order the item's tokens touched them. Equal scores must resolve to the same
+            # question either way, or the same item would name a different open question depending on the path
+            # (caught by S34's equivalence test, not by a screen).
+            if s > best_s or (s == best_s and best_i >= 0 and i < best_i):
+                best_i, best_s = i, s
+        return (labels[best_i] if best_i >= 0 else None), best_s
     best, best_s = None, 0.0
-    for qid, label, qt in qs:
+    for _qid, label, qt in qs:
         if not qt:
             continue
         s = len(t & qt) / max(3, len(qt))
         if s > best_s:
             best, best_s = label, s
+    return best, best_s
+
+
+def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str],
+               creator: str | None = None, creator_stats: dict[str, dict[str, Any]] | None = None,
+               want_classes: set[str] | None = None, qindex: dict[str, Any] | None = None) -> tuple[int, str | None, list[str]]:
+    """A quick $0 scan: 0–100 potential, the best fit (an open question / weak area), and the reasons. Words, plus
+    (0.58.2) what this item's MASTER SOURCE has already given the project — see `creator_yield`.
+
+    `qindex` is `question_index(qs)`, built once by a caller that scores many items: the pool scores 8,499 of them
+    against 2,689 open questions, which is 23 million set intersections done one item at a time (0.63.19)."""
+    t = _toks(title + " " + (desc or "")[:600])
+    best, best_s = _best_fit(t, qs, qindex)
     why = []
     score = 0
     if linked:
@@ -537,7 +598,7 @@ def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict
     terms = library._tokens(q)
     anchor = library.query_anchor(terms)
     searched = anchor.get("term") or (sorted(terms)[0] if terms else q)
-    qs, vocab = _gap_terms(project_id)
+    qs, vocab, qidx = gap_terms_cached(project_id)       # the Discover rung scores up to 10x limit items (0.63.19)
     cy = creator_yield(project_id)
     items: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -548,7 +609,7 @@ def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict
             continue
         seen_ids.add(c["id"])
         score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"),
-                                     [], creator=c.get("creator"), creator_stats=cy)
+                                     [], creator=c.get("creator"), creator_stats=cy, qindex=qidx)
         items.append({"kind": "candidate", "id": c["id"], "title": c.get("title") or c["url"], "url": c["url"],
                       "creator": c.get("creator"), "published_at": c.get("published_at"), "platform": c["platform"],
                       "duration": c.get("duration"), "potential": score, "fits": fit, "why": why,
@@ -563,7 +624,7 @@ def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict
             "WHERE status='skipped' AND (lower(title) LIKE ? OR lower(COALESCE(description,'')) LIKE ?) LIMIT ?",
             (like, like, limit * 4)):
         score, fit, why = _potential(s_["title"] or "", s_["description"] or "", qs, vocab, None, [],
-                                     creator=s_["channel"], creator_stats=cy)
+                                     creator=s_["channel"], creator_stats=cy, qindex=qidx)
         items.append({"kind": "skipped", "id": s_["id"], "title": s_["title"] or s_["url"], "url": s_["url"],
                       "creator": s_["channel"], "published_at": s_["published_at"], "platform": s_["platform"],
                       "duration": s_["duration"], "potential": score, "fits": fit, "why": why,
@@ -583,7 +644,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
     """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
     why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web."""
     conn = db.connect()
-    qs, vocab = _gap_terms(project_id)
+    qs, vocab, qidx = gap_terms_cached(project_id)
     prio_creators = {(db.get_source(sid) or {}).get("channel") for sid in db.priority_source_ids(project_id)} - {None, ""}
     cy = creator_yield(project_id)                       # 0.58.2: what each master source has already given us
     want_classes: set[str] = set()                       # the evidence classes this project's open questions ask for
@@ -608,7 +669,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
                 continue
             r = rel.get(s["id"]) or {}
             score, fit, why = _potential(s.get("title") or "", s.get("description") or "", qs, vocab, r.get("relevance"), [],
-                                         creator=s.get("channel"), creator_stats=cy, want_classes=want_classes)
+                                         creator=s.get("channel"), creator_stats=cy, want_classes=want_classes, qindex=qidx)
             items.append({"kind": "skipped", "id": s["id"], "title": s.get("title") or s["url"], "url": s["url"], "creator": s.get("channel"), "published_at": s.get("published_at"),
                           "duration": s.get("duration"), "platform": s["platform"], "why_known": s.get("error") or "skipped at review", "relevance": r.get("relevance"),
                           "relevance_why": r.get("relevance_why"), "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (s.get("channel") in prio_creators),
@@ -623,7 +684,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             if c.get("state") not in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
                 continue
             score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"), links.get(c["id"], []),
-                                         creator=c.get("creator"), creator_stats=cy, want_classes=want_classes)
+                                         creator=c.get("creator"), creator_stats=cy, want_classes=want_classes, qindex=qidx)
             origin = c.get("origin") or {}
             known = ("found for an open question" if links.get(c["id"]) else f"seen in {origin.get('kind', 'exploration')}{(' of ' + str(origin.get('title'))) if origin.get('title') else ''}")
             if c.get("reason"):

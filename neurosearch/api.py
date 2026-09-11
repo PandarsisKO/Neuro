@@ -1217,7 +1217,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 stale_by = {}
         # a skipped (pre-cutoff) source used to show up with no thumbnail and no hint of whether it's worth
         # ingesting anyway — the same $0 potential scan the pool already runs (candidates.pool) works row by row too.
-        pot_qs = pot_vocab = None
+        pot_qs = pot_vocab = pot_idx = None
         pot_rel: dict[str, Any] = {}
         research_rev = ""
         with perf.timed("sources:potential_setup"):
@@ -1228,9 +1228,12 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 # it is now computed once per revision of that state and reused until the state actually changes.
                 from . import candidates as candidates_mod
                 research_rev = db.project_research_revision(project_id)
-                pot_qs, pot_vocab, pot_rel = cache.get_or_compute(
+                # 0.63.19: the question INDEX is cached with the terms, so a page of skipped rows does not rebuild
+                # it per row — and a cache miss on one row's score does not rebuild it either.
+                pot_qs, pot_vocab, pot_rel, pot_idx = cache.get_or_compute(
                     f"gap_terms:{project_id}", research_rev,
-                    lambda: (*candidates_mod._gap_terms(project_id), db.project_analysis(project_id, "relevance")),
+                    lambda: (*candidates_mod._gap_terms(project_id), db.project_analysis(project_id, "relevance"),
+                             candidates_mod.question_index(candidates_mod._gap_terms(project_id)[0])),
                     label="gap_terms")
         _rows_t0 = time.perf_counter()
         for r in rows:
@@ -1280,7 +1283,8 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                 r["pool_potential"] = cache.get_or_compute(
                     f"potential:{project_id}:{r['id']}", f"{research_rev}@{r.get('updated_at')}",
                     lambda rr=rr, r=r: dict(zip(("score", "fits", "why"), candidates_mod._potential(
-                        r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), []))),
+                        r.get("title") or "", r.get("description") or "", pot_qs, pot_vocab, rr.get("relevance"), [],
+                        qindex=pot_idx))),
                     label="potential")
             j = live.get(r["id"])
             if j:

@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.18)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.19)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,40 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## 23 million set intersections to rank a list (0.63.19)
+
+The pool was the last genuinely slow surface: **7–8 s idle** on `GET …/pool`. Measured rather than inspected —
+`candidates._potential` scores each item against **every** open question, and the large project has **2,689** of
+them against 8,499 known-but-uncaptured items. That is ~23M set intersections per request, reproduced at 26–28 s
+locally at his research scale.
+
+`candidates.question_index(qs)` is an exact token → question posting list, so an item's title and description are
+compared only against the questions that share a word with it. `_best_fit(t, qs, qindex)` replaces the scan,
+`_potential(…, qindex=None)` takes it, and `gap_terms_cached(project_id)` builds it once per revision for the three
+callers that score many items (`pool`, `seen_for_query`, `api_sources`). Measured on his real rows: **3.67 s →
+1.11 s, identical scores on all 8,499 items.**
+
+**My synthetic benchmark lied, and it is worth recording how.** A generated corpus of 10,319 candidates and 2,689
+questions said the inverted index was barely worth having. The generated questions shared only **67** distinct
+tokens between them, so almost every item matched almost every posting list and the index degenerated into the scan
+it replaces. His real questions carry **6,683**. A benchmark whose *vocabulary* is unrealistic can be the right
+size, the right shape and the right scale and still measure nothing — the thing being indexed is the token
+distribution, not the row count.
+
+**And the new gate caught two bugs the speedup would otherwise have shipped.**
+
+* The index picked a different *label* than the plain scan whenever two questions tied on score, because the
+  posting lists are walked in token order rather than question order. Tie-break to the lowest question index, so
+  the fast path and the slow path name the same question.
+* **`db.project_research_revision` did not include `project_evidence_targets`.** So the gap-terms cache — mine, and
+  `api_sources`' since 0.46.1 — served stale "fits an open question" data whenever a question was added, satisfied
+  or dropped. A revision that omits a table the cached value reads is not a fingerprint, and this one had been
+  wrong for seventeen releases without anything noticing, because every other component moves often enough to hide
+  it. The component is added; the full suite confirms nothing else depended on the omission.
+
+Gate `tests/test_s34_pool_scoring.py` asserts the index and the scan agree — score AND label — on generated rows
+with a realistic token spread, which is the property the synthetic benchmark did not have.
 
 ## A page's video is not in its text (0.63.16–0.63.17, extension 1.6.1)
 

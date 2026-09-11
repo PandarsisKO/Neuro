@@ -1659,8 +1659,14 @@ def project_research_revision(project_id: str) -> str:
         "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_knowledge_nodes WHERE project_id=?),"
         "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM research_tensions WHERE project_id=?),"
         "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_source_analysis WHERE project_id=?),"
+        # 0.63.19 — evidence TARGETS were missing from this fingerprint, and the open questions are exactly what
+        # `candidates._gap_terms` turns into "fits an open question". So the pool's fit reasons and every skipped
+        # row's potential score went stale the moment a question was added, satisfied or dropped — silently, since
+        # 0.46.1, because the cache key could not see the change. Found by a test of a NEW cache on the same key
+        # (S34) rather than by anything going visibly wrong.
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_evidence_targets WHERE project_id=?),"
         "       (SELECT COALESCE(updated_at,0) FROM projects WHERE id=?)",
-        (project_id,) * 5).fetchone()
+        (project_id,) * 6).fetchone()
     return "|".join(str(x) for x in r)
 
 
