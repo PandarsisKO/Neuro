@@ -1428,3 +1428,31 @@ start rather than from scratch.
 
 Shipped from this investigation instead: `quality` joins `GENERIC_MODIFIERS`, which is measured and unambiguous —
 see the CLAUDE.md entry.
+
+## 0.63.26 — reverting 0.63.25, and the rule I broke
+
+0.63.25 added `quality` to `library.GENERIC_MODIFIERS` on the strength of a measured bad result ("quality of
+earnings" anchoring on `quality` and returning web-design and laundromat videos) and a unit test that confirmed
+the anchor would become `earnings`. **The unit test was right and the change was wrong.**
+
+Run against his live library after the release: `earnings` is in **354 of 1,273 sources (27.8%)**, above
+`ANCHOR_MAX_DF_SHARE` (0.25), so the anchor rule rejects it as not distinctive. With `quality` set aside there was
+then NO anchor — and no anchor means `rejected.no_anchor_term` never fires, so the filter that rejects a source
+which never says the subject word stops running entirely. The query went from **4 off-domain hits to 8**.
+
+Anchoring on a word that names nothing is bad. Anchoring on nothing is worse.
+
+**What the revert leaves is a better artefact than the fix:** "quality of earnings" is a PHRASE, and neither of
+its words can anchor it — one attaches to any topic in any field, the other is corpus-wide vocabulary in a
+business library. No word list can fix it. `library._tokens` splits a query into words before anything else sees
+it, and that is the line where a term of art is lost. The next attempt should be phrase handling, and
+`tests/test_s16_anchor_aboutness.py` now pins both the current (wrong) anchor and the reason the word-list route
+is closed, so a real fix is distinguishable from another guess.
+
+**And the process rule, recorded against myself.** Two changes in the same stretch were measured before shipping
+and correctly abandoned — 0.63.20's stopword list and the per-creator recall spread above. This one was shipped
+first and measured second, and it cost a release to undo. The condition under which setting a modifier aside is
+safe is now explicit and asserted: **a distinctive content word must remain**, which is true for "modern CPA"
+(`cpa`, 12.4%) and false for "quality of earnings". A change to a ranking rule is not verified by its unit test;
+it is verified by running the user's own query against the user's own library, and that has to happen before the
+tag, not after it.

@@ -238,39 +238,45 @@ def test_saturation_never_suppresses_the_web_search(lib):
     assert out["web_skipped"] is True and "Library only" in out["note"]      # mode said library_only, not saturation
 
 
-# ------------------------------------------------------------------ a multi-word term of art (0.63.25)
+# ------------------------------------------------------------------ a multi-word term of art (0.63.26)
 
-def test_quality_of_earnings_anchors_on_earnings(monkeypatch):
-    """MEASURED on his live library: this search anchored on `quality` and returned a web-design channel, a UI
-    channel and a laundromat channel into a business-acquisition project. 0.62.0's defect, surviving for a
-    multi-word term of art because the modifier list was written from the single-word case.
+def test_quality_of_earnings_has_no_good_anchor_and_the_rule_says_so(monkeypatch):
+    """A defect with a precise diagnosis, pinned so a fix can be recognised when it arrives.
 
-    `quality` attaches to any topic in any field and denotes none, so it cannot be an anchor — and once it is set
-    aside, `earnings` is what the search is about. The df values are his real ones."""
-    df = {"quality": 214, "earnings": 61, "of": 1180}
+    Searching his business-acquisition project for **"quality of earnings"** — the QoE report every deal gets —
+    anchors on **`quality`** and returns a web-design channel, a UI channel and a laundromat channel. The subject
+    is the PHRASE: neither word names it alone, `quality` attaches to any topic in any field, and `earnings` is in
+    **354 of his 1,273 sources (27.8%)** — above `ANCHOR_MAX_DF_SHARE`, so it is not distinctive either.
+
+    **0.63.25 tried adding `quality` to `GENERIC_MODIFIERS` and shipped it, and the live measurement showed it made
+    the query WORSE**: with `quality` set aside the only content word left is `earnings`, which the quarter-share
+    bar rejects, so there was NO anchor at all — the near-miss filter switched off entirely and the result went
+    from 4 off-domain hits to 8. Reverted in 0.63.26. This test pins the current behaviour and the reason, so the
+    phrase fix can be told apart from another word-list guess."""
+    df = {"quality": 214, "earnings": 354, "of": 1180}
     monkeypatch.setattr(library, "sources_with_term", lambda t: set(range(df.get(t, 0))))
     monkeypatch.setattr(db, "sources_with_chunks", lambda: 1273)
     a = library.query_anchor({"quality", "of", "earnings"})
-    assert a["term"] == "earnings", a
-    assert "quality" in a.get("skipped_generic", [])
+    assert a["term"] == "quality", "still the wrong anchor — the fix for this is phrase handling, not a word list"
+    assert "quality" not in library.GENERIC_MODIFIERS, "0.63.25's revert: skipping it leaves no anchor at all"
 
 
-def test_a_search_of_nothing_but_the_new_modifiers_is_still_called_vague(monkeypatch):
-    """The guard that has to hold whenever the list grows: skipping modifiers may never invent an anchor from
-    among them, and may never leave a search with no honest answer."""
-    df = {"quality": 214, "high": 300, "standard": 120}
+def test_setting_quality_aside_would_leave_no_anchor_at_all(monkeypatch):
+    """The measurement that killed 0.63.25, kept executable: it is not that `earnings` is a worse anchor, it is
+    that there is then no anchor, and no anchor means nothing is filtered."""
+    df = {"earnings": 354, "of": 1180}
     monkeypatch.setattr(library, "sources_with_term", lambda t: set(range(df.get(t, 0))))
     monkeypatch.setattr(db, "sources_with_chunks", lambda: 1273)
-    a = library.query_anchor({"quality", "high", "standard"})
-    assert a["term"] is None and a.get("all_generic") is True
+    a = library.query_anchor({"of", "earnings"})            # what remains once `quality` is skipped
+    assert a["term"] is None
+    assert a.get("too_common") or "common" in (a.get("reason") or ""), a
 
 
-def test_the_new_words_still_match_and_still_count(monkeypatch):
-    """They are excluded from anchor CHOICE only. A source that says `quality` still matches, still scores and
-    still counts towards coverage — the anchor decides what the search is ABOUT, never what is findable."""
-    assert "quality" in library.GENERIC_MODIFIERS
-    df = {"quality": 214, "earnings": 61}
+def test_modern_cpa_still_works(monkeypatch):
+    """The 0.62.0 fix this investigation confirmed on live data, kept as the contrast: there, setting the modifier
+    aside leaves a word that IS distinctive, which is exactly why it worked and `quality of earnings` does not."""
+    df = {"modern": 143, "cpa": 158}
     monkeypatch.setattr(library, "sources_with_term", lambda t: set(range(df.get(t, 0))))
     monkeypatch.setattr(db, "sources_with_chunks", lambda: 1273)
-    a = library.query_anchor({"quality", "earnings"})
-    assert a["term"] == "earnings" and a["df"].get("quality") == 214   # reported, not hidden
+    a = library.query_anchor({"modern", "cpa"})
+    assert a["term"] == "cpa" and "modern" in a.get("skipped_generic", [])
