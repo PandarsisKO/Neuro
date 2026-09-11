@@ -26,7 +26,20 @@
      them. */
   button{position:relative;transition:transform .06s ease, filter .06s ease}
   button.ns-press{transform:scale(.97);filter:brightness(.93)}          /* the instant frame, pointer-down */
-  button[aria-busy="true"]{cursor:progress;pointer-events:none}          /* also stops the double-click */
+  /* Kyle, on the first version: "the delay was so bad I thought the app was frozen ... I need it to be
+     visually obvious that the button was clicked, maybe turned grey or something while it waits for the
+     process to finish." The animated hairline alone was too quiet, so the busy state now GREYS the
+     control outright — the strongest visual vocabulary a button has, and the one people already read as
+     "not available right now" — with the hairline kept vivid on top so it says *working* rather than
+     *broken*. !important is deliberate and load-bearing: a button here may carry .primary (accent
+     background), .ghost (transparent) or .small, there is no build step and no cascade discipline to
+     lean on, and a busy state that loses to a class on some buttons is worse than none because it is
+     inconsistent. */
+  button[aria-busy="true"]{
+    cursor:progress;pointer-events:none;                                 /* also stops the double-click */
+    background:var(--panel2)!important;color:var(--muted)!important;
+    border-color:var(--line)!important;box-shadow:inset 0 1px 2px rgba(0,0,0,.08)!important;
+    filter:saturate(.15)!important;transform:scale(.985)}
   button[aria-busy="true"]::after{                                       /* an indeterminate hairline, so
       nothing reflows: a spinner that changes a button's size moves everything next to it. */
     content:'';position:absolute;left:1px;right:1px;bottom:1px;height:2px;border-radius:2px;
@@ -569,6 +582,7 @@ const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 // them.
 const NSACK = {
   CLAIM_MS: 1500,        // a handler may await something before its first request
+  SETTLE_MS: 400,        // bridges the gap between requests in one handler's chain
   STUCK_MS: 45000,       // longer than the slowest measured endpoint, so it never fires on real work
   el: null, at: 0, n: 0, bar: null, depth: 0,
   press(el) {
@@ -578,8 +592,16 @@ const NSACK = {
     setTimeout(() => el.classList.remove('ns-press'), 110);
   },
   claim() {
-    if (!this.el || performance.now() - this.at > this.CLAIM_MS) return null;
+    // A press owns its whole REQUEST CHAIN, not just its first request. `bulkNotes` posts 59 ids in
+    // ~200 ms and then calls loadNotes(), which re-fetches the project, the staleness map and a page of
+    // findings — several seconds. Releasing on the first settle left that entire tail unacknowledged,
+    // which is the exact complaint this feature exists to answer, and it was still true after shipping
+    // it. So once a press is busy it keeps claiming regardless of CLAIM_MS; the window only decides
+    // whether a press may START a chain.
+    const live = this.el && (this.n > 0 || performance.now() - this.at <= this.CLAIM_MS);
+    if (!live) return null;
     const el = this.el;
+    clearTimeout(this._settle);
     if (this.n === 0) { try { el.setAttribute('aria-busy', 'true'); } catch (e) {} }
     this.n++;
     clearTimeout(this._stuck);
@@ -588,11 +610,16 @@ const NSACK = {
   },
   release(el) {
     if (!el) return;
-    if (this.el === el && --this.n <= 0) this.done();
-    else if (this.el !== el) { try { el.removeAttribute('aria-busy'); } catch (e) {} }
+    if (this.el !== el) { try { el.removeAttribute('aria-busy'); } catch (e) {} return; }
+    if (--this.n > 0) return;
+    // Do not clear on the instant the last request settles: a handler that immediately issues its next
+    // request (post → reload is the commonest shape in this file) would otherwise flicker off and on.
+    // A new claim inside SETTLE_MS cancels this, so the state spans the gaps in a chain.
+    clearTimeout(this._settle);
+    this._settle = setTimeout(() => { if (this.n === 0) this.done(); }, this.SETTLE_MS);
   },
   done() {
-    clearTimeout(this._stuck);
+    clearTimeout(this._stuck); clearTimeout(this._settle);
     const el = this.el;
     if (el) { try { el.removeAttribute('aria-busy'); el.classList.remove('ns-press'); } catch (e) {} }
     this.el = null; this.n = 0;
@@ -705,7 +732,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.32';
+const UI_VERSION = '0.63.33';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1670,9 +1697,9 @@ async function toggleReserve(sid, a) {
   const notes = r.notes || [];
   box.innerHTML = `<div class="row" style="margin:6px 0 2px"><span class="muted" style="flex:1;font-size:12px">${notes.length} more extracted (lower importance for this brief). They are not exported or planned on until you promote them.</span>
     <button class="small" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'suggested', '${sid}')">Send all to Suggested</button><button class="small ghost" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'dismissed', '${sid}')">Dismiss all</button></div>` +
-    notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="promoteReserve(${n.id}, 'approved', '${sid}')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="promoteReserve(${n.id}, 'suggested', '${sid}')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="promoteReserve(${n.id}, 'dismissed', '${sid}')">✕ Dismiss</button>`)).join('');
+    notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="reserveVerdict(${n.id}, 'approved', '${sid}')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="reserveVerdict(${n.id}, 'suggested', '${sid}')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="reserveVerdict(${n.id}, 'dismissed', '${sid}')">✕ Dismiss</button>`)).join('');
 }
-async function promoteReserve(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.style.display = 'none'; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
+async function reserveVerdict(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.style.display = 'none'; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
 async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
 function extLine() { return EXT.state === 'ready' ? '✓ extension ready' : EXT.state === 'stale' ? `extension last seen ${ago(EXT.last_seen)} ago` : EXT.state === 'not_detected' ? '⚠ extension not detected — see How this works' : ''; }
 function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.style.display = d.style.display === 'none' ? '' : 'none'; }
@@ -3095,7 +3122,16 @@ function findingCard(n, actions) {
     </div><div class="act">${actions}</div></div>`;
 }
 async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
-async function bulkNotes(ids, status) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadNotes(); }
+async function bulkNotes(ids, status) {
+  if (!ids || !ids.length) return toast('nothing to do');
+  await post('/api/notes/bulk-status', { note_ids: ids, status });
+  // Say what happened BEFORE the reload: loadNotes() destroys the button that was pressed (there is
+  // nothing left to approve, so the whole block re-renders without it) and takes several seconds. Kyle
+  // approved 59 findings, it worked, and the app told him nothing — so he reported the button as broken.
+  const n = ids.length, word = status === 'approved' ? 'approved' : status === 'dismissed' ? 'dismissed' : `moved to ${status}`;
+  toast(`✓ ${n} finding${n === 1 ? '' : 's'} ${word}`);
+  loadNotes();
+}
 // Now vs background: the same analysis through two transports. Wording is deliberate — the background option may take
 // up to 24 hours (never "within hours") and the ~50% discount applies to model cost only.
 function transportChoiceHtml(est, onNow, onBg, verb) {

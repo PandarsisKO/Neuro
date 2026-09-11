@@ -157,6 +157,25 @@ def test_the_claim_window_is_long_enough_for_an_async_handler(js: str):
     assert m and int(m.group(1)) >= 1000
 
 
+def test_the_busy_state_is_unmistakable_not_subtle(html: str):
+    """Kyle, on the first version: "the delay was so bad I thought the app was frozen ... I need it to be
+    visually obvious that the button was clicked, maybe turned grey or something while it waits."
+
+    The animated hairline was too quiet on its own. A busy control now greys out — the strongest visual
+    vocabulary a button has and the one people already read as "not right now" — with the hairline kept
+    vivid on top so it says *working* rather than *broken*. The !important flags are load-bearing: a
+    button here may carry .primary (accent background), .ghost (transparent) or .small, and with no build
+    step a busy state that loses the cascade on SOME buttons is worse than none, because it is
+    inconsistent."""
+    rule = re.search(r'button\[aria-busy="true"\]\{(.*?)\}', html, re.S).group(1).replace(" ", "").replace("\n", "")
+    for prop in ("background:var(--panel2)!important", "color:var(--muted)!important"):
+        assert prop in rule, f"the busy state must {prop.split(':')[0]} the control unmistakably"
+    assert "cursor:progress" in rule
+    # and the progress indicator must NOT be greyed with it, or busy reads as merely disabled
+    after = re.search(r'button\[aria-busy="true"\]::after\{(.*?)\}', html.replace("\n", " "), re.S).group(1)
+    assert "var(--accent" in after, "the hairline must stay vivid so busy reads as working, not broken"
+
+
 def test_a_busy_control_cannot_be_clicked_twice(html: str, js: str):
     """0.62.7 had to make a second Settle-all click impossible server-side. Doing it in the UI too is free."""
     assert "pointer-events:none" in re.search(r'button\[aria-busy="true"\]\{(.*?)\}', html, re.S).group(1)
@@ -182,3 +201,75 @@ def test_most_controls_still_rely_on_the_global_mechanism(html: str):
     hand_rolled = html.count("disabled = true")
     assert with_onclick > 150, f"expected the measured population (228), found {with_onclick}"
     assert hand_rolled < 30, f"{hand_rolled} hand-rolled acknowledgements — is the global one still the right shape?"
+
+
+# ------------------------------------------------------------------ what his report actually found
+
+def test_a_press_owns_its_whole_request_chain_not_just_its_first_request(js: str):
+    """Kyle, after 0.63.32 shipped: "its still a big problem on the findings page 'approve all' doesnt
+    appear to have clicked when i click it."
+
+    His click had worked — `approved` went 16,378 → 16,437 and `suggested` went to zero, all 59 of them.
+    The defect was entirely in the telling, and half of it was mine from an hour earlier: `bulkNotes`
+    posts 59 ids in ~200 ms and then calls `loadNotes()`, which re-fetches the project, the staleness map
+    and a page of findings — seconds of work. Releasing the busy state when the FIRST request settled
+    left that whole tail silent, which is the exact complaint the feature exists to answer.
+
+    So a press keeps claiming while its chain is alive, and the gap between two requests in one handler
+    is bridged rather than flickering."""
+    assert re.search(r"SETTLE_MS:\s*(\d+)", js), "no settle window — the state will flicker between requests"
+    settle = int(re.search(r"SETTLE_MS:\s*(\d+)", js).group(1))
+    assert 150 <= settle <= 1500, f"SETTLE_MS={settle} is outside the useful range"
+    claim = re.search(r"claim\(\) \{(.*?)\n  \},", js, re.S).group(1)
+    assert "this.n > 0 ||" in claim, "an in-flight chain must keep claiming past CLAIM_MS"
+    rel = re.search(r"release\(el\) \{(.*?)\n  \},", js, re.S).group(1)
+    assert "this._settle = setTimeout" in rel, "release must debounce, not clear instantly"
+    done = re.search(r"done\(\) \{(.*?)\n  \},", js, re.S).group(1)
+    assert "clearTimeout(this._settle)" in done, "a stale settle timer must not clear a newer press"
+
+
+def test_a_bulk_verdict_says_what_it_did(js: str):
+    """The pressed button is destroyed by the re-render that follows — there is nothing left to approve,
+    so the block redraws without it. A transient control state therefore cannot be the confirmation for
+    this class of action; it needs a durable message. 0.60.1 set that rule and this call site never got
+    it, which is why 59 successful approvals read as a broken button."""
+    m = re.search(r"async function bulkNotes\(ids, status\) \{(.*?)\n\}", js, re.S)
+    assert m, "bulkNotes not found"
+    body = m.group(1)
+    assert "toast(" in body, "a bulk verdict must report what it did"
+    # Compare CODE, not prose: the first version of this assertion matched `loadNotes()` inside the
+    # explanatory comment above the call and reported a false failure — the same mistake test_s38's
+    # first scanner made when its regex walked into a `${...}` template hole.
+    code = "\n".join(ln for ln in body.split("\n") if not ln.strip().startswith("//"))
+    assert code.index("toast(`✓") < code.index("loadNotes()"), "report before the reload that destroys the button"
+    assert "ids.length" in body, "the message must name how many, not just that something happened"
+    for sibling in ("async function bulkReserve", "async function reserveVerdict"):
+        assert sibling in js, f"{sibling} is the same shape and must keep its own confirmation"
+
+
+def test_no_two_top_level_functions_share_a_name(js: str):
+    """Found while fixing the above: `promoteReserve` was declared TWICE at top level. The later
+    declaration wins, so the per-item verdict buttons on the Sources reserve box — the ✓ Approve /
+    📌 To review / ✕ Dismiss that 0.63.27 went to the trouble of labelling — were calling the BULK
+    function with a bare note id. `!ids.length` on a number is true, so every click returned
+    toast('nothing ticked') and the `status` argument was discarded. Three labelled verdict buttons that
+    could not record a verdict, and nothing anywhere said so.
+
+    This file is ~300 KB with no build step and no linter, so a shadowed name is invisible — `node
+    --check` (test_s5) parses it happily, because it is valid JavaScript. It is only wrong. Hence a
+    gate: the same reason test_s38 reads the shipped markup for verdict labels."""
+    names: dict[str, int] = {}
+    for m in re.finditer(r"^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(", js, re.M):
+        names[m.group(1)] = names.get(m.group(1), 0) + 1
+    dupes = {n: c for n, c in names.items() if c > 1}
+    assert not dupes, f"top-level functions declared more than once (the later silently wins): {dupes}"
+
+
+def test_the_reserve_verdict_buttons_pass_a_status_that_is_actually_used(js: str):
+    """The collision above discarded `status` entirely, so approve/dismiss/to-review were the same
+    no-op. Each call site must name its own verdict and the function must consume it."""
+    m = re.search(r"async function reserveVerdict\(id, status, sid\) \{(.*?)\n", js, re.S)
+    assert m, "reserveVerdict not found"
+    assert "{ status }" in m.group(1), "the status argument must reach the request"
+    for verdict in ("'approved'", "'suggested'", "'dismissed'"):
+        assert f"reserveVerdict(${{n.id}}, {verdict}" in js, f"no reserve call site for {verdict}"
