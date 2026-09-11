@@ -273,3 +273,38 @@ def test_the_reserve_verdict_buttons_pass_a_status_that_is_actually_used(js: str
     assert "{ status }" in m.group(1), "the status argument must reach the request"
     for verdict in ("'approved'", "'suggested'", "'dismissed'"):
         assert f"reserveVerdict(${{n.id}}, {verdict}" in js, f"no reserve call site for {verdict}"
+
+
+# ------------------------------------------------------------------ it has to fit on the screen
+
+def test_no_group_of_buttons_is_trapped_in_white_space_nowrap(html: str):
+    """Kyle, with a screenshot of the Findings page: "elements not fitting in their window."
+
+    The staleness triage row put four buttons carrying both currencies — "Rebuild · $0 · about 4 h 17 min
+    on Claude Code", "Rebuild in the background · $9.50", "Rebuild now · $30.55 on the API" — inside a
+    `white-space:nowrap` box. Buttons in a nowrap box can never wrap, so on his 2000 px window the last
+    one was cut off at the right edge: the most expensive button in the app, half visible and unreadable.
+
+    What makes it an oversight rather than a decision is that the sibling row one function away already
+    carried `flex-wrap:wrap`. Four groups had the defect. A nowrap box around TEXT is correct and stays —
+    it stops a label breaking mid-phrase — and one tight inline group ("pick top [n]") is a deliberate
+    exception, so the rule is about GROUPS of buttons, which is the shape that can only overflow."""
+    offenders = []
+    for i, line in enumerate(html.split("\n"), 1):
+        if 'white-space:nowrap">' not in line:
+            continue
+        # count buttons after the nowrap opener on this line
+        tail = line.split('white-space:nowrap">', 1)[1]
+        n = tail.count("<button")
+        if n > 1:
+            offenders.append((i, n))
+    assert not offenders, ("button groups that cannot wrap and will clip off the right edge "
+                           f"(line, count): {offenders}")
+
+
+def test_the_triage_row_itself_wraps(html: str):
+    """The row has to be allowed to drop its buttons below the text, not just wrap them internally —
+    otherwise a long explanation squeezes them to nothing instead of clipping them."""
+    row = re.search(r'return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start([^"]*)"', html)
+    assert row, "the staleness triage row was not found — has it been rewritten?"
+    assert "flex-wrap:wrap" in row.group(1), "the triage row must wrap"
