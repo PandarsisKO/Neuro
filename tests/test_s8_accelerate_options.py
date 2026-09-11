@@ -122,7 +122,9 @@ def test_the_backlog_explains_that_the_api_worker_cannot_help(queued, monkeypatc
     b = jobs.backlog(None)
     p = b["pools"]
     assert p["local_queued"] == 30 and p["api_queued"] == 0
-    assert p["api_workers"] == 1 and p["local_workers"] >= 1
+    # 0.63.13: the size comes from the setting. It was the literal 1 here and in start_workers, so this assertion
+    # was pinning a limit nobody had chosen — the panel reported it truthfully and purchased speed ran serially.
+    assert p["api_workers"] == max(1, settings.api_ai_workers) >= 2 and p["local_workers"] >= 1
     assert p["api_idle_by_construction"] is True
     assert "local_preferred" in p["why"] and "accelerating" in p["why"]
 

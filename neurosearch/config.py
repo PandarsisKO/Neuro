@@ -56,6 +56,10 @@ class Settings:
     # cloud (default until verified live) keeps every call on the API. local_ai_workers = the size of the local pool (busy = wait, never spend).
     ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())
     local_ai_workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_LOCAL_AI_WORKERS", "2") or 2))
+    # 0.63.13 — the API analysis pool was ONE hard-coded thread, so work the user PAID to accelerate ran one job at
+    # a time. Concurrency is not a rate limit: the spend-rate ceiling, the daily/weekly budgets and the account
+    # gates all still hold, and each is a better instrument for "how much" than a thread count.
+    api_ai_workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_API_AI_WORKERS", "3") or 3))
     claude_code_bin: str = field(default_factory=lambda: _env("NEUROSEARCH_CLAUDE_CODE_BIN", "claude") or "claude")
     claude_code_model: str | None = field(default_factory=lambda: _env("NEUROSEARCH_CLAUDE_CODE_MODEL"))
     # politeness: seconds to wait between YouTube fetches (randomised ±50%), and how long to back off after a bot-check

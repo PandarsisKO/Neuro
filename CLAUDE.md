@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.12)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.13)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,31 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A thread count is not a spend control (0.63.13)
+
+Kyle: *"what other artificial limits have we been imposing on ourselves? for example is 2 claude code at a time a
+real limit?"* Measured before answering, on his live data.
+
+**`NEUROSEARCH_LOCAL_AI_WORKERS=2` is a line in his `.env`, and it is free to raise.** Two days to 2026-09-11, the
+local transport recorded **1,065 calls, $3.86 billed, $313.58 booked as avoided** — his CLI is on the subscription.
+The real ceiling is Claude Code's own 5-hour window, and the thing to watch is not the thread count but what
+happens at the edge of it: `providers.route` falls back to the API, **which spends**. More local workers is faster
+until overflow quietly becomes paid work.
+
+**The limit worth fixing was the one nobody chose.** `start_workers` created the API analysis pool as a single
+hard-coded thread, and `_pool_shape` then reported `api_workers: 1` — truthfully reporting a limit that had no
+reason recorded anywhere. **385 of his findings jobs have run `api_requested`, which is what pressing Accelerate
+does: the work he paid to speed up ran one job at a time.** Now `settings.api_ai_workers`, default **3**.
+
+Nothing about spend changes, and that is the argument: **concurrency was never the right instrument for cost.**
+`usage.SPEND_RATE_CEILING` ($/rolling hour), the daily and weekly budgets and the account gates all bound spending,
+all still hold, and each says what it means — where a thread count says nothing and can only be read as "the app
+is slow". Peak concurrency actually reached across his last 500 findings jobs was **3** (2 local + 1 API); the
+queue was idle 83% of that window, so the pool was not the binding constraint for that backlog either.
+
+A zero or negative setting still leaves one worker: a config typo must not silently switch off the pool whose whole
+job is to spend money on purpose. Gate `tests/test_s30_pool_sizes.py`.
 
 ## The project row shipped 407 KB of findings nobody read (0.63.12)
 

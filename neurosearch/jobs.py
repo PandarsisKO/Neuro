@@ -548,9 +548,15 @@ def start_workers(n: int | None = None) -> None:
                                  daemon=True, name=f"ns-worker-local-ai-{i}")
             t.start()
             _threads.append(t)
-        t = threading.Thread(target=_worker, args=("api", ANALYSIS_KINDS), kwargs={"policies": API_POLICIES}, daemon=True, name="ns-worker-api-ai")
-        t.start()
-        _threads.append(t)
+        # 0.63.13 — `settings.api_ai_workers` (3), not a hard-coded 1. Accelerating moves jobs to `api_requested`
+        # precisely because the user asked to buy speed, and one thread served them one at a time: 385 of Kyle's
+        # findings jobs ran this pool. Nothing about spend changes — the rate ceiling, budgets and account gates
+        # are what bound cost, and a thread count was never the right instrument for it.
+        for i in range(max(1, settings.api_ai_workers)):
+            t = threading.Thread(target=_worker, args=(f"api-{i}", ANALYSIS_KINDS), kwargs={"policies": API_POLICIES},
+                                 daemon=True, name=f"ns-worker-api-ai-{i}")
+            t.start()
+            _threads.append(t)
     else:
         # one extra worker that only does the cheap Claude jobs, so findings/ranking never wait behind slow downloads
         t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
@@ -823,9 +829,14 @@ def _pool_shape(n_local: int, n_api: int) -> dict[str, Any]:
     workers by execution policy — the local pool claims `LOCAL_POLICIES`, the api pool claims `API_POLICIES` — and
     ordinary findings work is created `local_preferred`. So the API worker is idle BY CONSTRUCTION whenever the
     backlog is ordinary work, however long that backlog is. Accelerating is the only thing that gives it anything to
-    do, which is a defensible design (it never spends without being asked) but it was never SAID anywhere."""
+    do, which is a defensible design (it never spends without being asked) but it was never SAID anywhere.
+
+    0.63.13: the sizes are reported from the settings rather than hard-coded, because `api_workers` used to be
+    literally `1` in this dict AND in `start_workers` — so the panel was truthfully reporting a limit nobody had
+    chosen."""
     local_workers = max(1, settings.local_ai_workers) if settings.ai_profile == "local" else 0
-    return {"local_workers": local_workers, "api_workers": 1 if settings.ai_profile == "local" else 0,
+    return {"local_workers": local_workers,
+            "api_workers": max(1, settings.api_ai_workers) if settings.ai_profile == "local" else 0,
             "local_queued": n_local, "api_queued": n_api,
             "api_idle_by_construction": bool(local_workers and n_local and not n_api),
             "why": ("Ordinary AI work is created `local_preferred`, and the API worker only claims `api_requested` / "
