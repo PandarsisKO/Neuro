@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.7)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.8)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,30 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A 546 KB key nobody reads (0.63.8)
+
+0.62.7 trimmed `research/overview` from 5.9 MB. Re-measured after it, `/research` — the FULL state, which the shell
+loads lazily behind the Claims and Research-tools panes — was **773,926 bytes**:
+
+```
+claims   546,350      targets  112,730      tensions  80,620      map  33,741      everything else  327
+```
+
+300 claim rows at 1.8 KB each, **206 KB of it their attached evidence**. And `renderResearch` reads `map`,
+`targets`, `tensions`, `attention` — grep `web/index.html` for the claims key and there are no hits.
+`claims_view.query` replaced that list in the 0.45.5 workbench rebuild and the list stayed in the response for
+**eighteen releases** after its consumer was gone. Dropped rather than bounded, for the same reason
+`area_of_claim` was in 0.62.7, and still available at `?claims=true` because a CLI or MCP caller is a different
+question from a screen. Every figure — `claims_total`, `claim_stats`, `freshness_counts` — is still computed over
+the whole set, asserted key by key against the full response. **774 KB → 228 KB.**
+
+The frozen G5 gate that asserted those rows is updated with its reasoning recorded in HARDENING.md: G5 promises
+the state is derivable and surfaced, not that the endpoint returns every row.
+
+**And the drop exposed a real bug one line away.** `qa.research_block` decided whether to say anything at all with
+`if not st["claims"] and not st["targets"]` — so removing the rows would have silenced the chat's research block on
+every project with no open targets. A list that is only ever tested for emptiness is a count wearing a costume.
 
 ## The warm-up waited two minutes before warming anything (0.63.7)
 

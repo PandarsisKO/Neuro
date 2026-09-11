@@ -108,7 +108,7 @@ def research_block(project_id: str) -> str:
     except Exception:  # noqa: BLE001
         return ""
     m = st["map"]["counts"]
-    if not st["claims"] and not st["targets"]:
+    if not st.get("claims_total") and not st["targets"]:      # the COUNT, not the page (0.63.8 drops the rows)
         return ""
     lines = [f"Research state (Claims: {m.get('strong', 0)} strong / {m.get('developing', 0)} developing / {m.get('weak', 0)} weak topics; say when an answer rests on a weak or single-source Claim):"]
     for t in st["tensions"][:RESEARCH_MAX]:

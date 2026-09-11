@@ -30,6 +30,7 @@ a pass worth having is not worth having in a request.
 """
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 
@@ -69,6 +70,27 @@ def _project_with_questions(n):
             conn.execute("INSERT INTO project_evidence_targets (id, project_id, question, status, created_at, updated_at) "
                          "VALUES (?,?,?,?,?,?)", (f"t{i}", p["id"], f"open question number {i}", "open", 1.0, 1.0))
     return p
+
+
+
+def _project_with_claims(n: int = 4) -> str:
+    """A project with claims, an open target and a tension — the three things `/research` actually renders,
+    plus the rows it stopped shipping."""
+    p = db.create_project("with claims", brief="buying businesses")
+    pid = p["id"]
+    with db.tx() as conn:
+        for i in range(n):
+            conn.execute(
+                "INSERT INTO project_claims (id, project_id, text, claim_type, topic, status, strength, "
+                "freshness_class, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"c{i}", pid, f"a claim about seller financing number {i}", "factual", "seller financing",
+                 "accepted" if i == 0 else "proposed", "strong" if i == 0 else "weak", "age_insensitive", 1.0, 1.0))
+        conn.execute("INSERT INTO project_evidence_targets (id, project_id, question, status, created_at, updated_at) "
+                     "VALUES (?,?,?,?,?,?)", ("tc1", pid, "what do lenders require?", "open", 1.0, 1.0))
+        conn.execute("INSERT INTO research_tensions (id, project_id, kind, description, impact, status, "
+                     "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                     ("x1", pid, "NOVEL", "only one source says this", "medium", "open", 1.0, 1.0))
+    return pid
 
 
 # ------------------------------------------------------------------ the bounded list
@@ -167,3 +189,46 @@ def test_the_synchronous_path_is_still_there_for_the_cli(fresh, monkeypatch):
     monkeypatch.setattr(batches, "settle", lambda jid: {"settled": True, "materialized": 1})
     out = api.api_settle_all(background=False)
     assert out["attempted"] == 1 and out["materialized"] == 1 and "queued" not in out
+
+
+# ── 0.63.8 — the same fault, one layer along ────────────────────────────────────────────────────────────────────
+# 0.62.7 trimmed `research/overview`. Re-measured through his browser after it, `/research` — the full state, which
+# the shell loads lazily behind the Claims and Research-tools panes — was **773,926 bytes**, by key:
+#
+#     claims   546,350      targets  112,730      tensions  80,620      map  33,741      everything else  327
+#
+# 300 claim rows at 1.8 KB each, 206 KB of that their attached evidence. And `renderResearch` reads `map`,
+# `targets`, `tensions` and `attention` — grep the UI for the claims key and there are no hits. `claims_view.query`
+# replaced this list in the 0.45.5 workbench rebuild; the list stayed in the response for eighteen releases.
+
+def test_the_research_state_no_longer_ships_claim_rows(fresh):
+    from neurosearch import api, knowledge
+    pid = _project_with_claims()
+    st = api.api_research(pid)
+    assert st["claims"] == []
+    assert st["claims_total"] >= 1 and st["claims_truncated"] is True
+
+
+def test_every_number_is_still_computed_over_the_whole_set(fresh):
+    """The rows go; the counts must not change, because they are what the screen actually renders."""
+    from neurosearch import api, knowledge
+    pid = _project_with_claims()
+    lean, full = api.api_research(pid), api.api_research(pid, claims=True)
+    for k in ("claims_total", "targets_total", "tensions_total", "tension_counts", "freshness_counts", "claim_stats"):
+        assert lean[k] == full[k], k
+    assert full["claims"] and len(json.dumps(lean)) < len(json.dumps(full))
+
+
+def test_the_rows_are_one_parameter_away(fresh):
+    """Dropping a key that a CLI or an MCP caller might want is a different decision from removing the ability."""
+    from neurosearch import api
+    pid = _project_with_claims()
+    assert api.api_research(pid, claims=True)["claims"]
+
+
+def test_the_chat_block_does_not_depend_on_the_dropped_page(fresh):
+    """`qa.research_block` tested emptiness with `st["claims"]`, which is now always empty — it would have gone
+    silent on every project the moment the rows were dropped. It reads the count instead."""
+    from neurosearch import qa
+    pid = _project_with_claims()
+    assert qa.research_block(pid).startswith("Research state")

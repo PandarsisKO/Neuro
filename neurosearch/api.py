@@ -2303,11 +2303,14 @@ class ResearchRefreshIn(BaseModel):
 
 
 @app.get("/api/projects/{project_id}/research", dependencies=[Depends(require_auth)])
-def api_research(project_id: str) -> dict[str, Any]:
+def api_research(project_id: str, claims: bool = False) -> dict[str, Any]:
+    """The full research state. `claims=true` includes the claim ROWS, which no screen asks for: the Claims
+    workbench pages `GET …/claims` instead, and those 300 rows were 546 KB of a 774 KB response (0.63.8). Counts
+    and stats are unaffected — they are computed over the whole set either way."""
     from . import knowledge, research_view
     if not db.get_project(project_id):
         raise HTTPException(404)
-    st = knowledge.state(project_id)
+    st = knowledge.state(project_id, max_claims=knowledge.STATE_MAX_CLAIMS if claims else 0)
     st["attention"] = research_view.attention(project_id)      # the sidebar number (R3): what needs Kyle, never the Claim count
     return st
 

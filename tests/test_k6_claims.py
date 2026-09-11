@@ -277,7 +277,12 @@ def test_discover_leads_with_research_state_and_api_surfaces(monkeypatch):
     r = anyio.run(api.api_research_refresh, pid, api.ResearchRefreshIn(extract=False))
     assert r["harvested"] >= 3 and r["state"]["claim_stats"]["by_strength"].get("strong", 0) >= 1
     st = api.api_research(pid)
-    assert st["tensions"] and st["targets"] and st["claims"]
+    # 0.63.8 — the endpoint no longer ships the claim ROWS by default: 300 of them were 546 KB of a 774 KB
+    # response and no screen read the key (the workbench pages `…/claims` instead). What this gate is about — the
+    # API surfaces the research state — is unchanged, and the rows are still one parameter away. Recorded in
+    # HARDENING.md with the measurement.
+    assert st["tensions"] and st["targets"] and st["claims_total"] >= 1 and st["claims"] == []
+    assert api.api_research(pid, claims=True)["claims"]
     tg = api.api_target_add(pid, api.TargetIn(question="What do lenders require for the seller transition period?", sufficiency="corroborative"))
     p = anyio.run(api.api_target_pursue, tg["id"], api.PursueIn(external=False))
     assert [s["step"] for s in p["escalation"]["steps"]][:3] == ["project_evidence", "global_library", "candidate_index"]

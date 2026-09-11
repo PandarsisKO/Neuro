@@ -1173,6 +1173,36 @@ excluded from anchor CHOICE only. No counting statistic in the measured data sep
 (in 41% of the library) over both. It belongs in the assumption ledger, and it is the first entry that should go
 there when that mechanism is built.
 
+## 0.63.8 — a changed frozen decision: `/research` no longer ships the claim rows
+
+**What changed.** `test_k6_claims::test_discover_leads_with_research_state_and_api_surfaces` — a frozen G5 gate —
+asserted `st["claims"]` on the `/api/projects/{id}/research` response. `knowledge.state(max_claims=0)` is what the
+endpoint now asks for, so `claims` is `[]` by default, with `claims_total` and the new `claims_truncated` beside
+it, and the rows still available at `?claims=true`. The gate asserts both halves: the state is surfaced
+(`claims_total >= 1`) and the rows are one parameter away.
+
+**Why.** Re-measured through Kyle's browser after the 0.62.7 trim, 2026-09-11: `/research` served **773,926
+bytes**. By key:
+
+```
+claims    546,350        targets   112,730        tensions   80,620        map   33,741        rest   327
+```
+
+300 claim rows averaging 1.8 KB, of which **206 KB is their attached evidence**. And `renderResearch` reads
+`map`, `targets`, `tensions` and `attention` — grep `web/index.html` for the claims key and there are no hits.
+`claims_view.query` replaced this list in the 0.45.5 workbench rebuild, and the list stayed in the response for
+eighteen releases after the surface that consumed it was gone. Same fault as `area_of_claim` in 0.62.7, and the
+same answer: **drop, rather than bound, a key nobody reads.**
+
+**What the rung actually promised.** G5's intent is that the research STATE is derivable and surfaced — counts,
+map, open targets, tensions, stats. Every number in the response is still computed over the whole claim set
+(`claims_total`, `claim_stats`, `freshness_counts`), so nothing that reports a figure lost accuracy; only the rows
+went. `test_every_number_is_still_computed_over_the_whole_set` asserts that key by key against `claims=true`.
+
+**One real bug came out of it.** `qa.research_block` decided whether to say anything with
+`if not st["claims"] and not st["targets"]`, so dropping the rows would have silenced the chat's research block on
+every project that has no open targets. It reads `claims_total` now, with a gate.
+
 ## 0.62.7 — a changed frozen decision: the R2 shell no longer promises the whole list in one request
 
 **What changed.** `test_n8_research_shell::test_one_request_carries_every_pane` asserted byte-equality between the

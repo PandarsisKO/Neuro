@@ -555,7 +555,17 @@ def state_map(project_id: str) -> dict[str, Any]:
 
 def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]:
     """Everything the Research view / Chat / Discover need, $0. Claims are capped (accepted and strong first) so a
-    thousand-finding project returns a page, not a dump; `claims_total` carries the real count."""
+    thousand-finding project returns a page, not a dump; `claims_total` carries the real count.
+
+    **`max_claims=0` returns no claim rows at all**, and that is what the API endpoint now asks for (0.63.8).
+    Measured on Kyle's project: `/research` was 774 KB, of which `claims` was **546 KB** — 300 rows averaging 1.8 KB,
+    206 KB of it their attached evidence — and **nothing in the UI reads the key.** `claims_view.query` replaced
+    this list in the 0.45.5 workbench rebuild and the list was never removed from the response; `renderResearch`
+    reads only `map`, `targets`, `tensions` and `attention`. Same fault as `area_of_claim` in 0.62.7, one layer
+    along: a list nobody re-measured after the surface that consumed it was replaced.
+
+    `claims_total`, `claim_stats` and `freshness_counts` are computed from the WHOLE set either way, so nothing
+    that reports a number loses accuracy — only the rows go."""
     nodes = [dict(r) for r in db.connect().execute("SELECT * FROM project_knowledge_nodes WHERE project_id=? ORDER BY updated_at", (project_id,)).fetchall()]
     if not nodes:
         m = refresh(project_id)
@@ -572,7 +582,7 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
     all_claims = [c for c in claims.list_for_project(project_id) if c["status"] != "superseded"]
     all_claims.sort(key=lambda c: (0 if c["status"] == "accepted" else 1 if c["status"] == "proposed" else 2, _STRENGTH_ORDER.get(c["strength"], 9), -(c.get("updated_at") or 0)))
     page = []
-    for c in all_claims[:max_claims]:
+    for c in (all_claims[:max_claims] if max_claims else []):
         c = dict(c)
         c["evidence_total"] = len(c["evidence"])
         c["evidence"] = c["evidence"][:STATE_MAX_EVIDENCE]
@@ -589,7 +599,7 @@ def state(project_id: str, max_claims: int = STATE_MAX_CLAIMS) -> dict[str, Any]
     for c in all_claims:
         k = c.get("freshness_status") or "uncertain"
         freshness_counts[k] = freshness_counts.get(k, 0) + 1
-    return {"map": m, "claims": page, "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "freshness_counts": freshness_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
+    return {"map": m, "claims": page, "claims_truncated": len(page) < len(all_claims), "claims_total": len(all_claims), "targets_total": len(targets_all), "tensions_total": len(tensions_all), "tension_counts": tension_counts, "freshness_counts": freshness_counts, "targets": targets_all[:STATE_MAX_LIST], "tensions": tensions_all[:STATE_MAX_LIST],
             "claim_stats": claims.stats(project_id)}
 
 
