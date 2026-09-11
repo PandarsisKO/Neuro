@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.9)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.10)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,37 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The areas pass is 1.1 s, not tens of seconds — and I had been measuring the wrong project (0.63.10)
+
+0.62.8 left this named and unfixed: *"the pass itself is still tens of seconds at 15,800 Claims."* Going to fix it
+produced two corrections instead, both worth more than the fix would have been.
+
+**First, one real defect.** `research_view._load` called `claims.list_for_project(project_id)`, which attaches
+`evidence_map` — every evidence row of every Claim, with its relation, excerpt, locator and revision. The only
+consumer was `_planner_dependent`, and all it wanted was **a set of `source_id`s**. So the pass was loading
+21,844 evidence rows with their excerpts to collect some ids. `claims.evidence_source_ids` is that query, ids
+only, and `_load` now asks for claims `with_evidence=False`. The bulk-placement loop was also re-tokenising every
+lone-word Claim's text after the bags had already tokenised it; one `toks_of` map per pass serves both.
+
+**Second, and this is the part to keep: I had been measuring the wrong project all day.** The tab Kyle had open is
+`d7a9f585…` — **1,789 claims**. The large project is `c752ed15…` — **16,352**. Every "big project" number I took
+today came from the small one. Measured on the right one, at 0.63.10, with stage timings rather than a stopwatch on
+the endpoint:
+
+```
+GET …/research               1.86 s   284 KB      (16,081 claims)
+GET …/research/overview      1.38 s   583 KB
+  rv.load.planner            0.614 s  ← now the largest stage
+  rv.areas.place_bulk        0.238 s
+  rv.load.claims             0.188 s
+  rv.load.targets / titles / importance / areas.tokens / bags / agglomerate   ≤ 0.13 s each
+```
+
+**So "tens of seconds" is disproven, and the open item is closed as not-a-problem rather than fixed.** The 0.62.8
+measurement was taken while the research revision was churning four claims a second *and* while the pass was
+loading all that evidence; neither holds now. Every stage is instrumented, so the next time someone claims this
+pass is slow there is a number instead of an impression.
 
 ## 321 findings were validated away, and two thirds of them were real (0.63.9)
 
@@ -631,9 +662,10 @@ So the rule is by **AUTHOR, not by age**: background churn is served stale with 
 `knowledge.set_tension_status` — and a failure to drop the cache can never fail the decision, because the status is
 the durable thing and the cache is not.
 
-**Named, not fixed:** the pass itself is still tens of seconds at 15,800 Claims, and `knowledge.state` (75 s) and
-`claims_view.query` (48 s) have no cache of their own — they benefit only because both call `areas()`. Making the
-pass cheap is a separate rung. Gate `tests/test_s22_stale_research.py`.
+**Named, not fixed — and later disproven (0.63.10):** this said the pass itself was still tens of seconds at
+15,800 Claims. Re-measured with stage timings on the project that actually has 16,081 Claims: **1.1 s**. The
+original figure was taken while the revision was churning four Claims a second and while `_load` was also pulling
+every evidence excerpt in the project; see the 0.63.10 entry. Gate `tests/test_s22_stale_research.py`.
 
 ## A 5.9 MB request, and two passes that ran inside one (0.62.7)
 

@@ -275,6 +275,20 @@ def evidence_map(project_id: str) -> dict[str, list[dict[str, Any]]]:
     return out
 
 
+def evidence_source_ids(project_id: str) -> dict[str, set[str]]:
+    """claim id → the set of sources backing it, in ONE query and without the excerpts.
+
+    `evidence_map` returns whole rows — relation, excerpt, locator, revision — and the only consumer that needed
+    anything from them in `research_view._load` was a set of `source_id`s, for which it was loading every excerpt of
+    every piece of evidence in the project (0.63.10)."""
+    out: dict[str, set[str]] = {}
+    for r in db.connect().execute(
+            "SELECT e.claim_id cid, e.source_id sid FROM claim_evidence e JOIN project_claims c ON c.id=e.claim_id "
+            "WHERE c.project_id=?", (project_id,)).fetchall():
+        out.setdefault(r["cid"], set()).add(r["sid"])
+    return out
+
+
 def list_for_project(project_id: str, status: str | None = None, with_evidence: bool = True) -> list[dict[str, Any]]:
     q = "SELECT * FROM project_claims WHERE project_id=?" + (" AND status=?" if status else "") + " ORDER BY created_at"
     rows = db.connect().execute(q, (project_id, status) if status else (project_id,)).fetchall()

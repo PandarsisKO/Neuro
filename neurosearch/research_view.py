@@ -61,29 +61,44 @@ def _importance(project_id: str) -> dict[str, int]:
 def _planner_dependent(project_id: str, cl: list[dict[str, Any]]) -> set[str]:
     plan = db.latest_plan(project_id)
     if not plan:
-        return set()
+        return set()                       # no plan: the evidence query is not run at all
     emap = (plan.get("plan") or {}).get("_evidence") or {}
     labels = [(v.get("source_id"), v.get("label") or "") for v in emap.values()]
+    if not labels:
+        return set()
+    by_claim = claims.evidence_source_ids(project_id)
     dep = set()
     for c in cl:
-        srcs = {e["source_id"] for e in c.get("evidence") or []}
+        srcs = c.get("evidence_source_ids") or by_claim.get(c["id"]) or set()
         if any(sid in srcs and claims.overlap(lbl, c["text"]) >= 0.5 for sid, lbl in labels):
             dep.add(c["id"])
     return dep
 
 
 def _load(project_id: str) -> dict[str, Any]:
-    cl = [c for c in claims.list_for_project(project_id) if c["status"] != "superseded"]
+    """Everything the five panes derive from, in one pass — with stage timings, because the last time this pass was
+    slow the stage I would have optimised on inspection was not the stage that cost anything (0.62.1)."""
+    from . import perf
+    with perf.timed("rv.load.claims"):
+        # NO evidence rows: `_planner_dependent` wanted a set of source ids and was being handed every excerpt of
+        # every piece of evidence in the project to get them (0.63.10).
+        cl = [c for c in claims.list_for_project(project_id, with_evidence=False) if c["status"] != "superseded"]
     by_id = {c["id"]: c for c in cl}
-    targets = [t for t in knowledge.list_targets(project_id) if t["status"] != "dropped"]
-    tensions = knowledge.list_tensions(project_id, status="open")
-    nodes = [dict(r) for r in db.connect().execute("SELECT * FROM project_knowledge_nodes WHERE project_id=?", (project_id,)).fetchall()]
-    from . import candidates
-    known = candidates.link_counts(project_id, "evidence_target")
-    titles = {r["id"]: (r["title"] or "").strip() for r in db.connect().execute("SELECT id, title FROM project_notes WHERE project_id=?", (project_id,)).fetchall()}
-    labels = {c["id"]: _label(c, titles) for c in cl}
-    return {"claims": cl, "by_id": by_id, "targets": targets, "tensions": tensions, "nodes": nodes, "importance": _importance(project_id),
-            "planner": _planner_dependent(project_id, cl), "known": known, "titles": titles, "labels": labels}
+    with perf.timed("rv.load.targets"):
+        targets = [t for t in knowledge.list_targets(project_id) if t["status"] != "dropped"]
+        tensions = knowledge.list_tensions(project_id, status="open")
+        nodes = [dict(r) for r in db.connect().execute("SELECT * FROM project_knowledge_nodes WHERE project_id=?", (project_id,)).fetchall()]
+        from . import candidates
+        known = candidates.link_counts(project_id, "evidence_target")
+    with perf.timed("rv.load.titles"):
+        titles = {r["id"]: (r["title"] or "").strip() for r in db.connect().execute("SELECT id, title FROM project_notes WHERE project_id=?", (project_id,)).fetchall()}
+        labels = {c["id"]: _label(c, titles) for c in cl}
+    with perf.timed("rv.load.importance"):
+        importance = _importance(project_id)
+    with perf.timed("rv.load.planner"):
+        planner = _planner_dependent(project_id, cl)
+    return {"claims": cl, "by_id": by_id, "targets": targets, "tensions": tensions, "nodes": nodes, "importance": importance,
+            "planner": planner, "known": known, "titles": titles, "labels": labels}
 
 
 def _label(c: dict[str, Any], titles: dict[int, str]) -> str:
@@ -163,15 +178,21 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
     cl, nodes = d["claims"], d["nodes"]
     if not cl:
         return {"areas": [], "area_of_topic": {}, "area_of_claim": {}}
+    from . import perf
     by_topic: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for c in cl:
         by_topic[c.get("topic") or "general"].append(c)
+    # One tokenisation per Claim, reused by the bags and by the bulk placement below — it was being redone there
+    # for every lone-word bulk Claim, and on this project that is thousands of them (0.63.10).
+    with perf.timed("rv.areas.tokens"):
+        toks_of = {c["id"]: set(claims._tokens(c["text"])) for c in cl}
     bags: dict[str, Counter] = {}
-    for t, cs in by_topic.items():
-        bag: Counter = Counter()
-        for c in cs:
-            bag.update(claims._tokens(c["text"]))
-        bags[t] = Counter(dict(bag.most_common(AREA_TERMS)))
+    with perf.timed("rv.areas.bags"):
+        for t, cs in by_topic.items():
+            bag: Counter = Counter()
+            for c in cs:
+                bag.update(toks_of[c["id"]])
+            bags[t] = Counter(dict(bag.most_common(AREA_TERMS)))
     big = [t for t in by_topic if t not in GENERIC_TOPICS and len(by_topic[t]) >= AREA_MIN_CLAIMS]
     # a normalized topic reads like a domain ("acquisition due diligence framework"); a lone word ("cash", "deal", "buyer") never does —
     # single-word topics only stand on their own when the project has no multi-word topic at all
@@ -181,6 +202,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
     # greedy agglomeration over the real nodes, largest first, deterministic order
     real.sort(key=lambda t: (-len(by_topic[t]), t))
     clusters: list[dict[str, Any]] = []
+    _t_merge = time.perf_counter()
 
     def jac(a: Counter, b: Counter) -> float:
         sa, sb = set(a), set(b)
@@ -196,6 +218,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
             best["bag"] = Counter(dict((best["bag"] + bags[t]).most_common(AREA_TERMS)))   # re-trim: a big cluster must not become a magnet
         else:
             clusters.append({"topics": [t], "bag": Counter(bags[t])})
+    perf.record("rv.areas.agglomerate", time.perf_counter() - _t_merge)
     if not clusters:
         clusters.append({"topics": [], "bag": Counter()})
     core = [dict(topics=list(c["topics"]), bag=Counter(c["bag"])) for c in clusters]   # the real topics only, for naming
@@ -203,6 +226,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
         cl_["members"] = [c for t in cl_["topics"] for c in by_topic[t]]
         cl_["sets"] = set(cl_["bag"])
     catch_all: dict[str, Any] | None = None
+    _t_bulk = time.perf_counter()
     for t in minor:
         bulk = (len(t.split()) < 2 or t in GENERIC_TOPICS) and len(by_topic[t]) >= AREA_MIN_CLAIMS
         if not bulk:                                            # a small coherent topic folds whole into the nearest cluster (never a card of its own)
@@ -213,7 +237,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
         # a lone-word topic with many Claims ("business" ×1,243) is not a subject, it is unlabelled bulk: each Claim goes to the area its
         # own words belong to; a Claim that matches nothing goes to an explicit "Everything else" rather than inflating the largest area
         for c in by_topic[t]:
-            toks = set(claims._tokens(c["text"]))
+            toks = toks_of[c["id"]]
             best_i, best_s = -1, 0.0
             for i, cl_ in enumerate(clusters):
                 sc = len(toks & cl_["sets"]) / max(1, len(toks)) if cl_["sets"] else 0.0
@@ -227,6 +251,7 @@ def _areas_uncached(project_id: str, data: dict[str, Any] | None = None) -> dict
                     catch_all = {"topics": [], "bag": Counter(), "members": [], "sets": set(), "fixed_name": "Everything else"}
                 catch_all["members"].append(c)
                 catch_all.setdefault("bulk_topics", set()).add(t)
+    perf.record("rv.areas.place_bulk", time.perf_counter() - _t_bulk)
     if catch_all is not None:
         clusters.append(catch_all); core.append(dict(topics=[], bag=Counter()))
     # names: the cluster's own normalized topics (multi-word labels a model or Kyle wrote) — the largest one, plus a second when it
