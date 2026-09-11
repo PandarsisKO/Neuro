@@ -543,7 +543,7 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
 
 def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | None = None,
                       project_id: str | None = None, progress: Progress = _noop,
-                      original_name: str | None = None) -> dict[str, Any]:
+                      original_name: str | None = None, ocr_paid: bool = False) -> dict[str, Any]:
     """Ingest an uploaded file: audio/video is transcribed; PDF/DOCX/TXT are read as documents;
     .srt/.vtt are parsed as ready-made transcripts."""
     from .documents import is_document, is_media
@@ -564,7 +564,7 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
         return ingest_epub(path, title, tags, project_id, name, progress)
     from .images import is_image
     if is_image(kind_path):
-        return ingest_image(path, title or kind_path.stem, tags, project_id, name, progress)
+        return ingest_image(path, title or kind_path.stem, tags, project_id, name, progress, ocr_paid=ocr_paid)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
     if not is_media(kind_path):
@@ -756,7 +756,7 @@ def kept_image(source_id: str) -> Path | None:
 
 
 def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str,
-                 progress: Progress = _noop) -> dict[str, Any]:
+                 progress: Progress = _noop, ocr_paid: bool = False) -> dict[str, Any]:
     """A screenshot or photograph as an ordinary source: OCR text in, chunks out, and the image kept viewable.
 
     Kyle: *"we do not allow PNGs or other image types to be uploaded or used in chats. we need this with OCR for
@@ -780,17 +780,25 @@ def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str
         # Keep the picture. The text is what makes it searchable; the picture is what makes it useful to look at,
         # and a screenshot whose text OCR could not read is still worth having on screen.
         kept = _keep_image(path, src["id"])
-        # allow_model=False: uploading a screenshot must never make a paid call on its own. The free local engines
-        # run, and if they find nothing the source says so and offers "read it with the model" as an explicit,
-        # priced action — the same rule as every other spend in this app: nothing spends without being asked.
-        read = ocr(path, allow_model=False, project_id=project_id, source_id=src["id"])
+        # 0.63.1 — WHO ASKED. A bulk upload is not a request to spend, so it runs on the free local engines only
+        # and says so if they find nothing. But an image ATTACHED TO A QUESTION is itself the ask: Kyle attached two
+        # iPhone screenshots of a CIM and got "I can't see what's actually in them", because neither free engine was
+        # present on his Mac (the Vision dependency had not been installed yet) and 0.63.0 refused to pay. Nothing
+        # spends without being asked — and attaching a screenshot to a question you are waiting on is asking.
+        read = ocr(path, allow_model=ocr_paid, project_id=project_id, source_id=src["id"])
         text = read["text"]
         # One segment, start/end 0: an image has no interior position to cite, so the locator is the image itself.
         segments = [{"start": 0.0, "end": 0.0, "text": " ".join(text.split())}] if text else []
         chunks = build_doc_chunks([{"page": 1, "text": text}]) if text else []
         db.replace_transcript(src["id"], segments, chunks)
-        desc = (f"image · text read by {read['engine']} · {read['chars']} characters" if text
-                else "image · no readable text found by the free local OCR on this machine")
+        if text:
+            desc = f"image · text read by {read['engine']} · {read['chars']} characters"
+        else:
+            from .images import engines as _engines
+            e = _engines()
+            desc = ("image · no text found in it" if (e["vision"] or e["tesseract"]) else
+                    "image · nothing could read it: no free OCR on this machine yet — restart the app to install "
+                    "it, or use 'Read with the model'")
         db.upsert_source(platform="image", external_id=ext_id, duration=None, transcript_kind="image",
                          description=desc, status="ready", error=None)
         n = _embed_ready(src["id"]) if chunks else 0

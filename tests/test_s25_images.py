@@ -149,7 +149,8 @@ def test_an_unreadable_image_still_becomes_a_source(fresh, tmp_path):
     res = ingest.ingest_local_file(q, None, [], p["id"], original_name="blank.png")
     src = db.get_source(res["source_id"])
     assert src["status"] == "ready" and res["chunks"] == 0
-    assert "no readable text" in (src["description"] or "")
+    # 0.63.1 distinguishes "there is no text in this image" from "nothing on this machine can read it"
+    assert "no text found in it" in (src["description"] or "") or "no free OCR" in (src["description"] or "")
     assert ingest.kept_image(res["source_id"])    # and it can still be looked at
 
 
@@ -192,7 +193,8 @@ def test_uploading_never_pays_for_ocr(fresh, tmp_path, monkeypatch):
     p = db.create_project("img", brief="b")
     res = ingest.ingest_local_file(q, None, [], p["id"], original_name="blank.png")
     assert res["chunks"] == 0 and res["ocr"]["paid"] is False
-    assert "free local OCR" in (db.get_source(res["source_id"])["description"] or "")
+    d = db.get_source(res["source_id"])["description"] or ""
+    assert "no text found in it" in d or "no free OCR on this machine" in d
 
 
 def test_the_paid_read_is_available_on_request_and_makes_it_searchable(fresh, tmp_path, monkeypatch):
@@ -210,3 +212,46 @@ def test_the_paid_read_is_available_on_request_and_makes_it_searchable(fresh, tm
 def test_the_paid_read_refuses_when_there_is_no_image(fresh):
     with pytest.raises(RuntimeError):
         ingest.read_image_with_model("nope", None)
+
+
+# ------------------------------------------------------------------ who asked (0.63.1)
+
+def test_an_image_attached_to_a_question_is_read_even_if_it_must_be_paid_for(fresh, tmp_path, monkeypatch):
+    """Kyle attached two iPhone screenshots of a CIM to a chat and got "I can't see what's actually in them":
+    neither free engine was present on his Mac and 0.63.0 refused to pay, so the source had no text and nothing
+    was retrievable. Attaching a screenshot to a question you are waiting on IS the ask."""
+    from PIL import Image
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    monkeypatch.setattr(images, "_ocr_model", lambda path, **k: "Asking price $335,000 · SDE $709,835")
+    q = tmp_path / "IMG_5585.png"
+    Image.new("RGB", (300, 200), "white").save(q)
+    p = db.create_project("img", brief="b")
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="IMG_5585.png", ocr_paid=True)
+    assert res["chunks"] >= 1 and res["ocr"]["engine"] == "model" and res["ocr"]["paid"] is True
+    assert "335,000" in db.get_segments(res["source_id"])[0]["text"]
+
+
+def test_a_bulk_upload_still_never_pays(fresh, tmp_path, monkeypatch):
+    from PIL import Image
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: pytest.fail("a bulk upload paid for OCR"))
+    q = tmp_path / "bulk.png"
+    Image.new("RGB", (300, 200), "white").save(q)
+    p = db.create_project("img", brief="b")
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="bulk.png")
+    assert res["chunks"] == 0 and res["ocr"]["paid"] is False
+
+
+def test_an_unreadable_image_says_whether_the_machine_even_has_an_engine(fresh, tmp_path, monkeypatch):
+    """"no readable text" and "nothing on this machine could read it" are different problems and need different
+    sentences — the first is about the image, the second is about the install."""
+    from PIL import Image
+    q = tmp_path / "blank.png"
+    Image.new("RGB", (240, 240), "white").save(q)
+    p = db.create_project("img", brief="b")
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="blank.png")
+    assert "no free OCR on this machine" in (db.get_source(res["source_id"])["description"] or "")

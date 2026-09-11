@@ -17,7 +17,7 @@ import os
 import re
 from typing import Any
 
-from . import contracts, db
+from . import contracts, db, titles
 from .config import settings
 from .search import search
 
@@ -387,7 +387,7 @@ def ask(
     saved_user = False
     if conversation_id:
         try:
-            db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+            db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
             saved_user = True
         except Exception as e:  # noqa: BLE001 — never lose the answer because the question could not be filed
             log.warning("could not save the question: %s", e)
@@ -424,7 +424,7 @@ def ask(
             answer = "\n\n".join(parts) or "I couldn't tell what to do with that link."
             if conversation_id:
                 if not saved_user:
-                    db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+                    db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
                 db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id)
             return {"answer": answer, "citations": [], "hits": [], "web_used": False, "web_sources": [],
                     "project": _pj(project), "conversation_id": conversation_id, "ingest_jobs": ingest_jobs,
@@ -474,8 +474,8 @@ def ask(
                 d = j["detected"]
                 note += f"\n(Note: {d['url'] or d['input']} was recognised as a {d['kind'].replace('_', ' ')} — NOT added: {d['detail']} Tell the user the choices are in Sources → Add.)"
     if attached_source_ids:
-        titles = [(db.get_source(sid) or {}).get("title") or sid for sid in attached_source_ids]
-        note += f"\n(Note: the user attached {', '.join(titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
+        attached_titles = [(db.get_source(sid) or {}).get("title") or sid for sid in attached_source_ids]
+        note += f"\n(Note: the user attached {', '.join(attached_titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
     messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
     from . import usage
 
@@ -621,7 +621,7 @@ def ask(
 
     if conversation_id:
         if not saved_user:
-            db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+            db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
         meta = dict(validation or {})
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
