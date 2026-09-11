@@ -2986,7 +2986,13 @@ def health() -> dict[str, Any]:
     ev = {k: int(kv_get(f"evidence:{k}") or 0) for k in ("findings_checked", "findings_rejected", "citations_checked", "citations_invalid", "plan_refs_checked", "plan_refs_dangling",
                                                           "schema_mismatches", "schema_mismatch_recovered", "schema_fallbacks", "schema_failures", "output_truncated", "output_refused",
                                                           "retrieval_degraded", "prefilter_keep", "prefilter_uncertain", "prefilter_drop", "prefilter_fail_open", "prefilter_aggressive",
-                                                          "rerank_applied", "rerank_fallback", "fetch_blocked")}
+                                                          "rerank_applied", "rerank_fallback", "fetch_blocked",
+                                                          # 0.63.23 — the measurement that would have caught 0.63.22.
+                                                          # A finding kept without a citation is a finding nothing can
+                                                          # verify and `harvest` turns into a Claim resting on nothing,
+                                                          # and 51.5% of his spreadsheet findings were in that state with
+                                                          # no number anywhere reporting it.
+                                                          "findings_uncitable", "locator_from_quote", "quote_relocated")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -3026,6 +3032,12 @@ def health() -> dict[str, Any]:
                           "fail_open": ev["prefilter_fail_open"], "aggressive_sources_flagged": ev["prefilter_aggressive"],
                           "note": "drop is the only outcome that skips analysis; aggressive = a source lost ≥80% of ≥3 windows (flagged, never overridden)"},
             "evidence": {**ev,
+                         "findings_kept": max(0, ev["findings_checked"] - ev["findings_rejected"]),
+                         # of the findings that PASSED quote validation, the share that could actually be cited. A
+                         # verified finding with no locator is still unusable as evidence, so validity alone was never
+                         # the whole question (0.63.22).
+                         "finding_citation_rate": round(1 - ev["findings_uncitable"] / (ev["findings_checked"] - ev["findings_rejected"]), 4)
+                                                  if ev["findings_checked"] > ev["findings_rejected"] else None,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
             "disk": disk, "fake_ai": settings.fake_ai}

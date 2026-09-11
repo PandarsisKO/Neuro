@@ -1347,3 +1347,46 @@ skip notes with no source and no model, and for the user's notes to reach the re
 It is not done here because it changes what appears in his Claims workbench: 25 rows would stop being Claims, and
 some may be ones he has been treating as Claims. That is a decision about his data rather than a defect in the
 code's logic, so it is his to make.
+
+## The open item: `_library_query` throws the project away (a third attempt, with its measurement plan)
+
+Named and unfixed since 0.62.4. `library._library_query(project, refine)` opens with `if refine: return refine`, so
+the moment the user types a refine term the project brief is discarded for the library rung, and Discover returns
+sources that match the WORDS without matching the PROJECT. Kyle has reported this four times in different words.
+
+**Two attempts have already failed, and both failed for recorded reasons** — anyone picking this up should not
+repeat either:
+
+1. **0.50.0 — concatenate the brief with the refine term.** A long query raises the coverage denominator until good
+   passages fall below `library.MIN_COVERAGE`, so the better matches score WORSE. `bootstrap.queries_for` exists
+   because of this: a long goal is REPLACED by its clauses, never accompanied by them.
+2. **0.62.4 — score candidates by a project-vocabulary model built from term lift over the project's own sources.**
+   Produced `gov, moneywise, university, smith, kenny, sweatpants` — channel names and noise — and separated
+   nothing: all eight candidates scored 0 or 1 of 18.
+
+**What has not been tried, and why it is a different move.** Both attempts changed what is SEARCHED. The rule this
+codebase arrived at afterwards, in 0.62.5's seen-rung, is the opposite: *project grounding enters as RANKING,
+never as a filter* — everything found stays findable, and the project decides the order. And the project-fit
+scorer already exists, measured, at $0: `candidates._potential` scores an item against the project's open
+questions (`gap_terms_cached`, exact and indexed since 0.63.19/0.63.20), its own vocabulary, and what the item's
+creator has already given this project (`creator_yield`, calibrated against real projects in 0.58.7).
+
+So: leave `refine` as the query exactly as it is — coverage keeps its short denominator and nothing about recall
+changes — and re-sort what comes back by project fit, with the reason shown per row the way the pool does. No
+longer query, no new vocabulary model, no model call.
+
+**It is not shipped here because the prior two attempts failed for want of measurement, not for want of a good
+idea, and the same must not happen a third time.** The measurement it needs, before a line of it is written:
+
+- Run it on the query Kyle actually typed (`modern CPA`, and the AI-UI/UX project's clauses) against his live
+  library, and score the top 10 before and after the re-sort against the same target set 0.62.0 used (sources
+  mentioning the subject 3+ times or in the title). Precision at 10 is the number that decides it.
+- Check the re-sort cannot HIDE a good hit: it reorders a fixed result set, so recall is unchanged by
+  construction, and that must be asserted rather than assumed.
+- Check it on the saturated case (0.62.4: 88% of "cpa" sources are already in the project) — when the pool is
+  dregs, a better order over dregs is still dregs, and the card must keep saying so rather than looking confident.
+- `library.recall` needs the `chunks` table, so this cannot be measured from the slim snapshot used for the
+  0.63.20–0.63.22 work; it needs the chunk data staged as well.
+
+Until that is done this stays open, and the honest statement to the user remains that a refine term searches the
+library by words alone.

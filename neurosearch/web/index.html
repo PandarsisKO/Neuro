@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.22';
+const UI_VERSION = '0.63.23';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1744,6 +1744,7 @@ async function loadHealth() {
       [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
       [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
       [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
+      [`${ok(ev.finding_citation_rate == null || ev.finding_citation_rate >= 0.99)} Verified findings that can be cited`, ev.findings_kept ? `${(ev.finding_citation_rate * 100).toFixed(1)}% of ${ev.findings_kept} kept${ev.findings_uncitable ? ` (${ev.findings_uncitable} with no locator)` : ''}${ev.locator_from_quote ? ` · ${ev.locator_from_quote} located from the quote` : ''}` : 'none yet'],
       [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
       [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered && !(h.structured_outputs || {}).mismatches)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} · ${h.structured_outputs.mismatches} schema mismatch${h.structured_outputs.mismatches === 1 ? '' : 'es'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
@@ -1975,7 +1976,7 @@ async function loadDiscoveries(keepMsg = false) {
 function stTag(x) { return `<span class="st ${esc(x)}">${esc((x || '').replace('_', ' '))}</span>`; }
 function renderResearch(st) {
   const m = st.map || { nodes: [], counts: {} };
-  if (typeof st.attention === 'number') $('#nResearch').textContent = st.attention || '';   // R3: what needs you, not how many Claims exist
+  if (typeof st.attention === 'number') $('#nResearch').textContent = st.attention ? (st.attention + (st.attention_capped ? '+' : '')) : '';   // R3: what needs you, not how many Claims exist
   $('#resMap').innerHTML = m.nodes.length ? m.nodes.map(n => `<div class="kn">${stTag(n.state)}<div><b>${esc(n.topic)}</b> <span class="muted">· ${n.claims_total} claim${n.claims_total === 1 ? '' : 's'}${n.targets_open ? ` · ${n.targets_open} open target${n.targets_open === 1 ? '' : 's'}` : ''}${n.tensions_open ? ` · ${n.tensions_open} tension${n.tensions_open === 1 ? '' : 's'}` : ''}</span><div class="why">${esc(n.why || '')}</div></div></div>`).join('')
     : `<div class="muted">No Claims yet — approve some findings (or press Refresh) and the map builds itself at no cost.</div>`;
   const ts = st.tensions || [];
@@ -2121,7 +2122,7 @@ function resSay(m) { const el = $('#resMsg'); if (el) el.textContent = m || ''; 
 async function loadResearch() {
   try { RES.v = await api(`/api/projects/${state.project.id}/research/overview?full=1&limit=6`); }
   catch (e) { resSay('could not load: ' + e.message); return; }
-  $('#nResearch').textContent = RES.v.attention || '';
+  $('#nResearch').textContent = RES.v.attention ? (RES.v.attention + (RES.v.attention_capped ? '+' : '')) : '';   // 0.63.23: the card says 99+, so the badge must too
   RES.qs = RES.v.questions || []; RES.wos = RES.v.watchouts || []; RES.next = RES.v.next || [];
   if (RES.state) { try { RES.state = await api(`/api/projects/${state.project.id}/research`); renderResearch(RES.state); } catch (e) { } }
   renderShell();

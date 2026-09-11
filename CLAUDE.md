@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.22)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.23)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,44 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The number that would have caught it (0.63.23)
+
+0.63.22 fixed uncited findings; this is the instrument that should have made them visible years of releases
+earlier, plus one honest-number fault from the same sweep.
+
+**`finding_citation_rate`.** Health has reported `finding_quote_validity` since Mission F — the share of findings
+whose quote verified — and 0.63.22 proved that is not the whole question: a finding can pass quote validation and
+still be stored with no locator, which makes it unusable as evidence and turns it into a Claim resting on nothing.
+So Health now reports the share of KEPT findings that could actually be cited, with `findings_uncitable` and
+`locator_from_quote` beside it, and the Health console prints the line under the quote-validity one. On his
+spreadsheet sources that number was 48.5% and nothing anywhere said so.
+
+**The sidebar badge was rounding 99+ down to 99.** The Research card renders `99+` from `attention_capped`, which
+`research_view.overview` has always returned beside the capped figure — and the two places that set the sidebar
+badge ignored the flag, so the same number was honest on the card and exact-looking in the badge. Found by
+checking every truncation flag the API emits against whether anything reads it: of 27, the ones with no reader
+are CLI/Health totals and the keys that exist precisely so a caller can tell truncation from emptiness
+(`notes_omitted`, `claims_truncated`), which is correct — `attention_capped` was the only one a screen was
+supposed to read and did not.
+
+**Also swept and clean, recorded because a negative result is worth as much as a fix**, all against his live data:
+`db.replace_transcript`'s retire path (0.62.9) verifies exactly as designed — all 1,426 findings whose source was
+retired are `dismissed`, 1,518 of the affected Claims are `rejected`, and **zero** live Claims are left with no
+in-project evidence; the `rank_proposed` FOREIGN KEY failures (0.63.0) stop dead at the 09-10 23:01 row that entry
+already recorded, with none since; the progress-callback-erases-a-diagnosis fault (0.61.0) likewise has no
+occurrence after its fix; there are no duplicate sources by canonical URL or by `(platform, external_id)`; no
+finding, claim-evidence row or `project_sources` row points at a missing source; and all 1,365 chat citations
+resolve, the 102 that name a retired source being a true record of what an answer cited at the time.
+
+**And `findings.materialize` was the only place a model-written locator string is parsed** — `search.py` and
+`export.py` build theirs from the chunk's own numeric start, so the silent-drop shape 0.63.22 fixed has no second
+home. Checked rather than assumed.
+
+`HARDENING.md` gains the third attempt at `_library_query`'s `if refine: return refine` — written up with its
+measurement plan and NOT shipped, because the two previous attempts (0.50.0's longer query, 0.62.4's vocabulary
+model) failed for want of measurement rather than for want of an idea, and the new idea (leave the query alone,
+re-sort by the project-fit scorer that already exists) deserves better than a third unmeasured try.
 
 ## A verified finding stored with no citation at all (0.63.22)
 
