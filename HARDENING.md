@@ -1456,3 +1456,34 @@ safe is now explicit and asserted: **a distinctive content word must remain**, w
 (`cpa`, 12.4%) and false for "quality of earnings". A change to a ranking rule is not verified by its unit test;
 it is verified by running the user's own query against the user's own library, and that has to happen before the
 tag, not after it.
+
+## 0.63.28 — the local model decision, measured and left to Kyle
+
+His `.env` sets `NEUROSEARCH_AI_PROFILE=local` and no `NEUROSEARCH_CLAUDE_CODE_MODEL`, so `findings.extract` asks
+the local CLI for its contract model, `claude-sonnet-5` — pinned there by the E2.1/E2.2 measured comparisons. The
+CLI returns `claude-haiku-4-5-20251001`, and has done **363** times.
+
+Two consequences, and they compound:
+
+1. **Quality.** 220 of his last 240 interactive findings jobs ran locally, so the bulk of his overnight work is
+   being done by a model the contract explicitly did not choose. Free, but not what was measured.
+2. **Spend.** Haiku fails the findings structured-output schema often enough to exit 1
+   (`error_max_structured_output_retries`), which puts `claude_code.health()` into `error` and routes the work to
+   the paid API. The substitution is the mechanism that turns free work into charges — five artifacts today,
+   including the four-source re-analysis, at $0.59.
+
+**Three options, none taken here because the trade-off is his:**
+
+- **Declare it.** `InferenceContract.local_model="claude-haiku-4-5"` on `findings.extract` (the field 0.52.0 built
+  for exactly this) makes the cheaper model a recorded decision rather than a silent substitution, and the mismatch
+  counter goes quiet because nothing is being overridden any more. Cost: findings quality on the free path is
+  knowingly below what E2.1/E2.2 measured.
+- **Keep Sonnet 5 and find out why the CLI downgrades.** Possibly his plan does not serve `claude-sonnet-5` to the
+  CLI, in which case the honest setting is `NEUROSEARCH_CLAUDE_CODE_MODEL` naming a model it will actually run, so
+  the app stops asking for something it cannot have.
+- **Route findings to the API on purpose** and treat the local path as unsuitable for schema-heavy tasks. Most
+  expensive, highest quality, and it makes the cost visible instead of incidental.
+
+What this release does is make the condition impossible to miss: the Health console now names the task, the model
+asked for, the model that ran, the provider, and the count. `release-check` and `doctor` already warned; no screen
+did.

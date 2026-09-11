@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.27)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.28)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,57 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Why the free path didn't take it: 363 silent model substitutions on no screen (0.63.28)
+
+Kyle: *"Shouldn't the re-analysis have been a background task picked up while I was idle sleeping? Why didn't
+Claude Code automatically grab it and do the free subscription processing?"* Measured on his live database, and
+the answer is three layers deep.
+
+**The free path IS working and did run all night.** Findings routing over 24 hours:
+
+```
+transport=batch        executed_by=api    route_reason=None                    417   (batches are API-only by design)
+transport=interactive  executed_by=local  route_reason=local_preferred         220   ← the subscription, overnight
+transport=interactive  executed_by=api    route_reason=policy:api_requested     15   (Accelerate)
+transport=interactive  executed_by=api    route_reason=local_error               5   ← the four I queued, plus one
+```
+
+**And the instrumentation was already right — I queried the wrong field before claiming otherwise.** The job row's
+`fallback_reason` is null because nothing *fell back*: `route()` decided up front, and it records that as
+`route_reason` on the artifact, which read `local_error` on all four. `executed_by='api'` with a null
+`fallback_reason` is correct, not a gap.
+
+**The cause is a substitution arriving from outside the app.** His `.env` sets `NEUROSEARCH_AI_PROFILE=local` and
+**no** `NEUROSEARCH_CLAUDE_CODE_MODEL`, so per 0.52.0 the CLI is asked for the contract's own model —
+`claude-sonnet-5`, pinned for `findings.extract` by measured comparison (E2.1/E2.2). The CLI returns
+`claude-haiku-4-5-20251001`. **363 times.** Haiku then fails the findings structured-output schema, the CLI exits 1
+with `error_max_structured_output_retries`, `claude_code.health()` goes to `error`, and `route` sends the work to
+the API **that charges**. So the substitution is not only a quality question: it is the mechanism by which free
+work becomes paid work.
+
+**`model_routing` has been computed since 0.56.3 and rendered NOWHERE** — zero references in `web/index.html`.
+0.56.3's own lesson was *"recording `actual_model` was never enough: nothing read it"*, and the fix that release
+made was to count it and put it in `db.health()`. It stopped one step short of a screen. So 363 substitutions sat
+in the database, correctly detected, correctly counted, correctly annotated, and invisible — which is why the
+question had to be asked by a person instead of answered by the app. The Health console now prints the task, the
+model asked for, the model that ran, which provider ran it, and the count, with the line that matters: **local work
+is free on a subscription but is not the model the task was measured on.**
+
+Fourth instance of the same shape this week, and the sharpest: a *number nobody reads* is worse than a missing
+number, because the system looks instrumented.
+
+**Not fixed, because it is his decision** (`HARDENING.md`): either declare `local_model="claude-haiku-4-5"` on
+`findings.extract` so the cheaper model becomes a recorded choice with its quality consequence accepted, or keep
+Sonnet 5 pinned and accept that the local path will keep erroring into paid API calls. Both are defensible; only
+the second is currently happening, and it was happening silently.
+
+**My own part in it, recorded:** the four jobs were queued `transport=interactive` with the sources named, which
+puts them on the `priority` lane — the fastest and most expensive option, chosen so I could verify the 0.63.22 fix
+while working. The free path (`normal` lane, `local_preferred`) is what did the other 220, and `transport=batch` is
+roughly half price. It cost **$0.59** against my $2.07 estimate, and it could have been $0. I did not offer that
+choice, which is the same failure as the decision items he had just told me were unclear: a cost is not a decision
+until the alternative is stated.
 
 ## A verdict has to say what it does (0.63.27)
 
