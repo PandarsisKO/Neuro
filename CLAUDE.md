@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.23)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.24)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -292,6 +292,15 @@ still be stored with no locator, which makes it unusable as evidence and turns i
 So Health now reports the share of KEPT findings that could actually be cited, with `findings_uncitable` and
 `locator_from_quote` beside it, and the Health console prints the line under the quote-validity one. On his
 spreadsheet sources that number was 48.5% and nothing anywhere said so.
+
+**0.63.24 — and the number I added in 0.63.23 flattered.** Deployed to his machine it read
+`finding_citation_rate: 1` — 100% — because it divided a `findings_uncitable` count that started at zero that
+morning by `findings_checked`, an ALL-TIME counter standing at **25,709**, while 79 uncited findings sat in his
+library. A rate whose numerator and denominator measure different windows is the exact fault the pair of counters
+exists to expose, so it took me one deploy to commit it. Both halves are now written by the same code path in the
+same release (`evidence:findings_citable` beside `findings_uncitable`), and `citation_rate_since` states how many
+findings the rate is actually about. `findings_kept` stays, still all-time and still labelled as such. A rate with
+no observations reads as absent, never as perfect.
 
 **The sidebar badge was rounding 99+ down to 99.** The Research card renders `99+` from `attention_capped`, which
 `research_view.overview` has always returned beside the capped figure — and the two places that set the sidebar

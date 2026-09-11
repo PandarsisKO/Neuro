@@ -401,6 +401,14 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         db.kv_bump("evidence:locator_from_quote", from_quote)
     if uncitable:
         db.kv_bump("evidence:findings_uncitable", uncitable)
+    # The citable count exists so the RATE has a denominator from the same period as its numerator. 0.63.23 derived
+    # it from `findings_checked`, an all-time counter standing at 25,709 on Kyle's machine, against an uncitable
+    # count that started at zero that morning — so it read 100% while 79 uncited findings sat in his library. A
+    # rate whose two halves measure different windows flatters, which is the fault this pair of counters exists to
+    # expose (0.63.24).
+    citable = len(chosen) + len(reserve) - uncitable
+    if citable > 0:
+        db.kv_bump("evidence:findings_citable", citable)
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,

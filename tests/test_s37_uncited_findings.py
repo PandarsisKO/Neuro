@@ -191,3 +191,40 @@ def test_the_platforms_that_were_already_at_zero_percent_are_untouched(tmp_path,
     c = json.loads(c) if isinstance(c, str) else c
     assert len(c) == 1 and c[0]["timestamp"] == expect
     db._local.conn = None
+
+
+# ------------------------------------------------------------------ the rate must describe ONE period (0.63.24)
+
+def test_the_citation_rate_counts_both_halves_itself(sheet):
+    """0.63.23 derived this rate from `findings_checked`, an ALL-TIME counter standing at 25,709 on Kyle's
+    machine, against an uncitable count that started at zero that morning — so Health read **100%** while 79
+    uncited findings sat in his library. A rate whose numerator and denominator measure different windows
+    flatters, which is the exact fault the pair of counters exists to expose. Both halves are now written by the
+    same code path in the same release, and `citation_rate_since` says how many findings the rate is about."""
+    pid, sid = sheet
+    db.kv_bump("evidence:findings_checked", 25709)          # a long history the new counters know nothing about
+    db.kv_bump("evidence:findings_rejected", 322)
+    _materialize(pid, sid, "§ Reverse Calculator")          # one citable finding, via the quote
+    ev = db.health()["evidence"]
+    assert ev["findings_citable"] == 1 and ev["findings_uncitable"] == 0
+    assert ev["citation_rate_since"] == 1, "the rate is about what these counters have seen, not all of history"
+    assert ev["finding_citation_rate"] == 1.0
+    assert ev["findings_kept"] == 25388                     # still reported, still all-time, and the one this test just added
+
+
+def test_an_uncitable_finding_moves_the_rate_off_one(sheet):
+    pid, sid = sheet
+    db.replace_transcript(sid, [], [])
+    out = {"summary": "s", "substance": 10,
+           "findings": [{"title": "a", "finding": "f", "quote": "a quote in the window only", "ts": "§ Nowhere", "importance": 3},
+                        {"title": "b", "finding": "g", "quote": "a quote in the window only", "ts": "§ Nowhere", "importance": 3}]}
+    findings.materialize(pid, sid, [("[sheet 0] a quote in the window only", out)], model="m")
+    ev = db.health()["evidence"]
+    assert ev["findings_uncitable"] == 2 and ev["findings_citable"] == 0
+    assert ev["finding_citation_rate"] == 0.0 and ev["citation_rate_since"] == 2
+
+
+def test_the_rate_is_absent_rather_than_perfect_before_anything_is_counted(sheet):
+    """A rate with no observations reads as None, never as 1.0 — the same rule `finding_quote_validity` follows."""
+    ev = db.health()["evidence"]
+    assert ev["citation_rate_since"] == 0 and ev["finding_citation_rate"] is None

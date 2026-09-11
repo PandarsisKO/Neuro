@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.23';
+const UI_VERSION = '0.63.24';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1744,7 +1744,7 @@ async function loadHealth() {
       [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
       [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
       [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
-      [`${ok(ev.finding_citation_rate == null || ev.finding_citation_rate >= 0.99)} Verified findings that can be cited`, ev.findings_kept ? `${(ev.finding_citation_rate * 100).toFixed(1)}% of ${ev.findings_kept} kept${ev.findings_uncitable ? ` (${ev.findings_uncitable} with no locator)` : ''}${ev.locator_from_quote ? ` · ${ev.locator_from_quote} located from the quote` : ''}` : 'none yet'],
+      [`${ok(ev.finding_citation_rate == null || ev.finding_citation_rate >= 0.99)} Verified findings that can be cited`, ev.citation_rate_since ? `${(ev.finding_citation_rate * 100).toFixed(1)}% of the ${ev.citation_rate_since} counted since v0.63.24${ev.findings_uncitable ? ` (${ev.findings_uncitable} with no locator)` : ''}${ev.locator_from_quote ? ` · ${ev.locator_from_quote} located from the quote` : ''}` : 'nothing counted yet'],
       [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
       [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered && !(h.structured_outputs || {}).mismatches)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} · ${h.structured_outputs.mismatches} schema mismatch${h.structured_outputs.mismatches === 1 ? '' : 'es'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],

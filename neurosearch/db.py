@@ -2992,7 +2992,7 @@ def health() -> dict[str, Any]:
                                                           # verify and `harvest` turns into a Claim resting on nothing,
                                                           # and 51.5% of his spreadsheet findings were in that state with
                                                           # no number anywhere reporting it.
-                                                          "findings_uncitable", "locator_from_quote", "quote_relocated")}
+                                                          "findings_uncitable", "findings_citable", "locator_from_quote", "quote_relocated")}
     ev["events"] = {r["kind"]: r["n"] for r in conn.execute("SELECT kind, COUNT(*) n FROM validation_events GROUP BY kind").fetchall()}
     try:
         du = _sh.disk_usage(str(settings.data_dir))
@@ -3033,11 +3033,15 @@ def health() -> dict[str, Any]:
                           "note": "drop is the only outcome that skips analysis; aggressive = a source lost ≥80% of ≥3 windows (flagged, never overridden)"},
             "evidence": {**ev,
                          "findings_kept": max(0, ev["findings_checked"] - ev["findings_rejected"]),
-                         # of the findings that PASSED quote validation, the share that could actually be cited. A
-                         # verified finding with no locator is still unusable as evidence, so validity alone was never
-                         # the whole question (0.63.22).
-                         "finding_citation_rate": round(1 - ev["findings_uncitable"] / (ev["findings_checked"] - ev["findings_rejected"]), 4)
-                                                  if ev["findings_checked"] > ev["findings_rejected"] else None,
+                         # Of the findings that PASSED quote validation, the share that could actually be cited: a
+                         # verified finding with no locator is unusable as evidence, so validity alone was never the
+                         # whole question (0.63.22). Both halves are counted by the SAME code path from the same
+                         # release, so the rate describes one period — 0.63.23 divided the new uncitable count by
+                         # the all-time `findings_checked` and read 100% while 79 uncited findings sat in the
+                         # library. `citation_rate_since` says how many findings the rate is actually about.
+                         "citation_rate_since": ev["findings_citable"] + ev["findings_uncitable"],
+                         "finding_citation_rate": round(ev["findings_citable"] / (ev["findings_citable"] + ev["findings_uncitable"]), 4)
+                                                  if (ev["findings_citable"] + ev["findings_uncitable"]) else None,
                          "finding_quote_validity": round(1 - ev["findings_rejected"] / ev["findings_checked"], 4) if ev["findings_checked"] else None,
                          "citation_validity": round(1 - ev["citations_invalid"] / ev["citations_checked"], 4) if ev["citations_checked"] else None},
             "disk": disk, "fake_ai": settings.fake_ai}
