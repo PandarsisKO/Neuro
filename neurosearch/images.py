@@ -163,15 +163,22 @@ def _ocr_model(path: Path, *, project_id: str | None, source_id: str | None) -> 
 
 
 def ocr(path: Path, *, allow_model: bool = True, project_id: str | None = None,
-        source_id: str | None = None) -> dict[str, Any]:
+        source_id: str | None = None, engine: str | None = None) -> dict[str, Any]:
     """Read the text in one image. Returns `{text, engine, engines_tried, chars, paid, note}`.
 
     Never raises for an unreadable image: an image with no text is a legitimate source, and the caller decides what
     to do with an empty string. What it must never do is pretend — `engine` names the rung that produced the text,
-    and `paid` says whether that cost anything."""
+    and `paid` says whether that cost anything.
+
+    `engine="model"` skips the local rungs entirely. It exists because the ladder is about *cost*, and cost is not
+    the only axis: on one of Kyle's two CIM screenshots Apple Vision cleared the character floor with `$950k
+    $617.2k 1.5x $3.3M 19%` and dropped every label — ASKING, SDE, MULTIPLE, DSCR, REVENUE, MARGIN — that the model
+    had read correctly. A figure without its label is not cheaper text, it is wrong text. So the free rung stays the
+    default and a person who asks for the model gets the model (0.63.4)."""
     tried: list[dict[str, Any]] = []
-    text, engine = "", "none"
-    for name, fn in (("vision", _ocr_vision), ("tesseract", _ocr_tesseract)):
+    want, text, engine = engine, "", "none"
+    ladder = () if want == "model" else (("vision", _ocr_vision), ("tesseract", _ocr_tesseract))
+    for name, fn in ladder:
         if name == "vision" and not _vision_available():
             tried.append({"engine": name, "skipped": "not installed (macOS only)"})
             continue
@@ -190,7 +197,7 @@ def ocr(path: Path, *, allow_model: bool = True, project_id: str | None = None,
             tried.append({"engine": name, "error": str(e)[:160]})
             log.warning("%s OCR failed on %s: %s", name, path.name, e)
     paid = False
-    if allow_model and len(text) < THIN_TEXT_CHARS:
+    if allow_model and (want == "model" or len(text) < THIN_TEXT_CHARS):
         try:
             got = _ocr_model(path, project_id=project_id, source_id=source_id).strip()
             tried.append({"engine": "model", "chars": len(got)})

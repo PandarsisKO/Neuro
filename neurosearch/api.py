@@ -1341,12 +1341,15 @@ def api_source_image(source_id: str) -> Any:
 
 
 @app.post("/api/sources/{source_id}/read-image", dependencies=[Depends(require_auth)])
-def api_read_image(source_id: str, project_id: str | None = None) -> dict[str, Any]:
-    """Read a kept image with the model — a PAID call, which is why uploading never does it (0.63.0). Use it when
-    the free local OCR on this machine found nothing."""
+def api_read_image(source_id: str, project_id: str | None = None, engine: str | None = None,
+                   force: bool = False) -> dict[str, Any]:
+    """Read a kept image again — possibly a PAID call, which is why uploading never does it (0.63.0).
+
+    `engine=model` skips the free local rungs, for when they read the image but read it badly. `force=true` allows a
+    shorter read to replace the text already stored, which is otherwise refused (0.63.4)."""
     from . import ingest as _ingest
     try:
-        return _ingest.read_image_with_model(source_id, project_id)
+        return _ingest.read_image_with_model(source_id, project_id, engine=engine, force=force)
     except RuntimeError as e:
         raise HTTPException(404, str(e)) from None
 

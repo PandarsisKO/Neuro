@@ -348,3 +348,62 @@ def test_the_paid_read_reports_every_rung_it_tried(fresh, tmp_path, monkeypatch)
     out = ingest.read_image_with_model(res["source_id"], p["id"])
     assert out["chars"] == 0
     assert [t for t in out["engines_tried"] if t["engine"] == "model" and "boom" in t.get("error", "")]
+
+
+# ── 0.63.4 — the ladder is about cost, and cost is not the only axis ────────────────────────────────────────────
+# Once Apple Vision was installed on his Mac, re-reading IMG_5585 replaced the model's `ASKING $950k · SDE $617.2k ·
+# MULTIPLE 1.5x · DSCR 4.7 · REVENUE $3.3M · MARGIN 19%` with Vision's `$950k $617.2k 1.5x $3.3M 19%`: every figure,
+# no labels. It cleared the character floor, so the ladder stopped there and the stored text got worse. Free is the
+# right default; forcing it on someone who asked for a better read is not.
+
+def test_the_model_rung_can_be_demanded_over_a_working_local_engine(tmp_path, monkeypatch):
+    from PIL import Image
+    q = tmp_path / "cim.png"
+    Image.new("RGB", (400, 700), "white").save(q)
+    monkeypatch.setattr(images, "_vision_available", lambda: True)
+    monkeypatch.setattr(images, "_ocr_vision", lambda p: "$950k $617.2k 1.5x $3.3M 19%")
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: "ASKING $950k SDE $617.2k MULTIPLE 1.5x REVENUE $3.3M")
+    cheap = images.ocr(q)
+    assert cheap["engine"] == "vision" and cheap["paid"] is False          # still the default
+    asked = images.ocr(q, engine="model")
+    assert asked["engine"] == "model" and asked["paid"] is True and "ASKING" in asked["text"]
+    assert not [t for t in asked["engines_tried"] if t["engine"] == "vision"]   # the free rungs are not even tried
+
+
+def test_a_reread_that_loses_text_keeps_what_is_stored(fresh, tmp_path, monkeypatch):
+    """The one irreversible thing in this module: the previous read is gone and re-earning it costs another call."""
+    from PIL import Image
+    q = tmp_path / "deal.png"
+    Image.new("RGB", (400, 700), "white").save(q)
+    p = db.create_project("img", brief="b")
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: "ASKING $950k SDE $617.2k MULTIPLE 1.5x REVENUE $3.3M")
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="deal.png", ocr_paid=True)
+    full = db.get_chunks(res["source_id"])[0]["text"]
+    assert "ASKING" in full
+
+    monkeypatch.setattr(images, "_vision_available", lambda: True)
+    # Long enough to stop the ladder at vision (THIN_TEXT_CHARS), short enough to be a loss against what is stored.
+    monkeypatch.setattr(images, "_ocr_vision", lambda pth: "$950k $617.2k 1.5x $3.3M 19%")
+    out = ingest.read_image_with_model(res["source_id"], p["id"])
+    assert out["kept"] is True and out["read_chars"] < out["chars"]
+    assert "ASKING" in db.get_chunks(res["source_id"])[0]["text"]          # nothing was lost
+
+    forced = ingest.read_image_with_model(res["source_id"], p["id"], force=True)
+    assert forced.get("kept") is not True and "ASKING" not in db.get_chunks(res["source_id"])[0]["text"]
+
+
+def test_a_longer_reread_replaces_the_stored_text(fresh, tmp_path, monkeypatch):
+    """The rule is "not shorter", not "never changes" — a better read must still land."""
+    from PIL import Image
+    q = tmp_path / "thin.png"
+    Image.new("RGB", (400, 700), "white").save(q)
+    p = db.create_project("img", brief="b")
+    monkeypatch.setattr(images, "_vision_available", lambda: True)
+    monkeypatch.setattr(images, "_ocr_vision", lambda pth: "Renewable Energy and Generator Installation")
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="thin.png")
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: "ASKING $950k SDE $617.2k MULTIPLE 1.5x " * 4)
+    out = ingest.read_image_with_model(res["source_id"], p["id"], engine="model")
+    assert out["engine"] == "model" and out["chars"] > 60
+    assert "ASKING" in db.get_chunks(res["source_id"])[0]["text"]

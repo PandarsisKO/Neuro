@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.3)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.4)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,24 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The cheapest rung is not always the right one (0.63.4)
+
+Apple Vision installed, and re-reading his two screenshots became free — `engine: vision`, `paid: false`, $0. Then
+I compared the two reads on IMG_5585. The model had produced **ASKING $950k · SDE $617.2k · MULTIPLE 1.5x · DSCR
+4.7 · REVENUE $3.3M · MARGIN 19%**. Vision produced **`$950k $617.2k 1.5x $3.3M 19%`** — every figure, no labels,
+because the small-caps label row did not survive. It cleared `THIN_TEXT_CHARS`, so the ladder stopped there, and
+**my re-read replaced good text with worse text.** A figure without its label is not cheaper text; it is wrong text.
+
+* `images.ocr(engine="model")` skips the local rungs entirely. The ladder remains the default for everything; the
+  override exists for the person who has already seen the free read and wants better.
+* **A re-read that loses text is not an improvement.** `read_image_with_model` compares against what is stored and
+  keeps the longer text when a new read comes in under `KEEP_LONGER_SHARE` (0.8), reporting both lengths, unless
+  `force=True`. This is the only irreversible operation in the module: the previous read is gone and re-earning it
+  costs another call.
+* **And the button existed only in a sentence.** The 0.63.1 failure note told him to *"use 'Read with the model'"*
+  — there was no such control anywhere in the app, only an endpoint. `👁 Read again with the model` is now on every
+  image source row. A message that names an action the UI does not have is a worse bug than the missing action.
 
 ## A rung that cannot run is not a rung (0.63.2)
 

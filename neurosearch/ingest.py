@@ -722,17 +722,37 @@ def _keep_image(path: Path, source_id: str) -> Path | None:
         return None
 
 
-def read_image_with_model(source_id: str, project_id: str | None = None) -> dict[str, Any]:
-    """Re-read a kept image with the model, on request. A PAID call, which is why it is a separate verb: ingestion
-    never makes it (0.63.0)."""
+KEEP_LONGER_SHARE = 0.8        # a re-read under 80% of what is already stored is a loss, not a re-read
+
+
+def read_image_with_model(source_id: str, project_id: str | None = None, *, engine: str | None = None,
+                          force: bool = False) -> dict[str, Any]:
+    """Re-read a kept image, on request. May be a PAID call, which is why it is a separate verb: ingestion never
+    makes it (0.63.0).
+
+    Two rules learned from doing it to Kyle's own screenshots (0.63.4):
+
+    * `engine="model"` skips the free rungs. Once Apple Vision was installed, re-reading IMG_5585 replaced the
+      model's `ASKING $950k · SDE $617.2k · MULTIPLE 1.5x` with Vision's `$950k $617.2k 1.5x` — the figures without
+      their labels. The ladder is the right default and the wrong thing to force on someone asking for a better read.
+    * **A re-read that loses text is not an improvement.** If the image already has text and this read is materially
+      shorter, the stored text is kept and both lengths are reported, unless `force=True`. Overwriting is the one
+      thing here that is not reversible: the previous read is gone and re-earning it costs another call."""
     from .chunking import build_doc_chunks
     from .images import ocr
     src = db.get_source(source_id)
     p = kept_image(source_id)
     if not src or not p:
         raise RuntimeError("no image is kept for that source")
-    read = ocr(p, allow_model=True, project_id=project_id, source_id=source_id)
+    had = " ".join(r["text"] for r in db.get_chunks(source_id))
+    read = ocr(p, allow_model=True, project_id=project_id, source_id=source_id, engine=engine)
     text = read["text"]
+    if text and had and len(text) < len(had) * KEEP_LONGER_SHARE and not force:
+        return {"source_id": source_id, "chars": len(had), "engine": "kept", "kept": True,
+                "read_chars": read["chars"], "read_engine": read["engine"], "paid": read["paid"],
+                "engines_tried": read["engines_tried"],
+                "note": f"kept the text already stored ({len(had)} characters) — this read found only "
+                        f"{read['chars']}. Pass force=true to replace it anyway."}
     if not text:
         # `engines_tried` goes back to the caller on the failure path, because "nothing could read it" and "there is
         # no text in it" are different answers and only this list tells them apart (0.63.2).
