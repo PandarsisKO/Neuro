@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.24)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.25)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,51 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## "Quality of earnings" searched for the word "quality" (0.63.25)
+
+Measured on his live library, hunting the oldest open item. Searching his business-acquisition project for
+**"quality of earnings"** — a term of art in that field, the QoE report every deal gets — anchored on
+**`quality`** and returned *"Sam Crawford | Web Design Expert"*, *"UI Collective"* and *"Laundromat
+Millionaire"*.
+
+That is 0.62.0's defect exactly, surviving because the `GENERIC_MODIFIERS` list was written from the single-word
+case. `quality` attaches to any topic in any field — quality software, quality of life, quality control, quality
+time — and denotes none; there is no search in which it alone names the subject. Skipping it makes the anchor
+`earnings`, which does. The word joins the list along with the ones missing from families already there
+(`best/good/great` had no `bad/worst`, `big/small` no `high/low`) — and the entry says which one was measured and
+which are reasoned, because this is an assumption list and the assumption half should be labelled.
+
+**0.62.0's other two fixes verify clean on the same data**, which is what made this one findable: "modern CPA" now
+anchors on `cpa`, skips `modern` as generic, and returns *"How to Build a CPA Firm That Attracts Buyers"* and
+*"Running a Modern CPA Firm"* rather than house-flipping videos — and the saturation line correctly reports that
+78% of his library's CPA sources are already in the project.
+
+**And the fix I measured next did not survive the measurement.** His "modern CPA" results are 12 suggestions from
+6 channels, with one bookkeeping podcast taking **4** slots and a real-estate channel **3** — four consecutive
+episodes of one series at positions 3, 5, 6, 7, all inside a score band (0.062–0.035) where the order carries no
+information. There is a real argument for a per-creator cap, and it is not cosmetic: `claims.add_evidence` already
+treats a second piece of evidence from the same creator as NOT independent, and 0.62.9 retires a direction by
+CHANNEL because a channel is a publisher's whole body of work. Recall was the one place offering one creator's
+series as several separate answers.
+
+So it was built — at most 2 per creator, then a top-up in score order so nothing is dropped — and measured at the
+default limit of 8:
+
+```
+before   Anders · Paula · Wilber · Jason · Wilber · Wilber · Wilber · Robuilt
+after    Anders · Paula · Wilber · Jason · Wilber · Robuilt · Robuilt · Jason
+```
+
+**It trades two bookkeeping episodes for two real-estate tax videos** — further from a business-acquisition
+project, not closer. Capping one publisher frees slots, and what fills them is whatever scored next, and the score
+knows nothing about the project. **Diversity and relevance are different axes, and correcting one without the
+other can make the list worse.** Reverted, with the table kept in HARDENING.md so the next attempt starts from it
+rather than from scratch: the cap and the project-fit re-sort are one change, to be measured together against his
+own judgement of the top 10.
+
+Third time in this stretch that measuring before shipping killed a plausible fix, and the other two are recorded
+the same way (0.63.20's stopword list, 0.63.22's three dissolved hypotheses).
 
 ## The number that would have caught it (0.63.23)
 

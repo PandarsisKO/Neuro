@@ -1390,3 +1390,41 @@ idea, and the same must not happen a third time.** The measurement it needs, bef
 
 Until that is done this stays open, and the honest statement to the user remains that a refine term searches the
 library by words alone.
+
+## 0.63.25 — the per-creator spread, measured on his data and NOT shipped
+
+Searching his business-acquisition project for **"modern CPA"** returns 12 suggestions from **6** channels, with
+one bookkeeping podcast taking **4** slots (positions 3, 5, 6, 7 — four consecutive episodes) and a real-estate
+channel **3**. Seven of twelve to two publishers. Their scores sit between 0.062 and 0.035 against a list spanning
+0.099 to 0.035, so within that band the order carries no information.
+
+The argument for a cap is not cosmetic diversity, and it is a good argument: **`claims.add_evidence` already marks
+a second piece of evidence from the same creator as NOT independent, and 0.62.9 retires a direction by CHANNEL
+because "a channel is a publisher's whole body of work".** Library recall was the one place in the app offering
+one creator's series as several separate answers.
+
+So it was implemented — at most 2 per creator on a first pass, then a top-up in score order so nothing is dropped
+and the list never shortens — and then measured on his real run at the default limit of 8:
+
+```
+before   Anders · Paula · Wilber · Jason · Wilber · Wilber · Wilber · Robuilt
+after    Anders · Paula · Wilber · Jason · Wilber · Robuilt · Robuilt · Jason
+```
+
+**It trades two bookkeeping episodes for two real-estate tax videos.** `Robuilt` is a real-estate channel and this
+is a business-acquisition project, so the freed slots went to content that is further from the project, not
+closer. The cap does exactly what it says and the result is not an improvement — it is a coin flip.
+
+**The lesson, and it is the reason this is not shipped:** capping one publisher frees slots, and what fills them is
+whatever scored next, which the score knows nothing about relevance to the PROJECT. Diversity and relevance are
+different axes, and correcting one without the other can make the list worse. 0.62.4 failed the same way for a
+different reason.
+
+So the two halves belong together and neither should go alone: **spread by creator, and fill the freed slots by
+project fit** (`candidates._potential`'s existing $0 signals — open questions, project vocabulary, creator yield),
+which is the re-sort written up in the `_library_query` entry above. Measure them as one change, against his own
+judgement of the top 10, with him awake to judge it. The measurement table above is where that attempt should
+start rather than from scratch.
+
+Shipped from this investigation instead: `quality` joins `GENERIC_MODIFIERS`, which is measured and unambiguous —
+see the CLAUDE.md entry.

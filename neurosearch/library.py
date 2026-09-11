@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 import numpy as np
 
 from . import db
-from .config import settings
+from .config import int_env, settings
 
 log = logging.getLogger(__name__)
 
@@ -112,6 +112,19 @@ GENERIC_MODIFIERS = frozenset({
     "smart", "powerful", "effective", "efficient", "useful", "helpful", "popular", "common", "typical",
     "current", "recent", "old", "traditional", "classic", "big", "small", "large", "huge", "cheap", "free",
     "expensive", "important", "essential", "key", "main", "major", "minor", "general", "overall", "successful",
+    # 0.63.25 — MEASURED on Kyle's live library: searching his business-acquisition project for
+    # **"quality of earnings"** — a term of art in that field, a QoE report — anchored on **`quality`** and
+    # returned "Sam Crawford | Web Design Expert", "UI Collective" and "Laundromat Millionaire". Exactly 0.62.0's
+    # defect, surviving for a multi-word term of art because the list was written from the single-word case:
+    # `quality` attaches to any topic in any field ("quality software", "quality of life", "quality control") and
+    # denotes none, and there is no search in which it alone names the subject. Skipping it makes the anchor
+    # `earnings`, which does.
+    "quality",
+    # The rest of this group is REASONED from the same rule, not measured — they are the words that were missing
+    # from the families already here ("best/good/great" without "bad/worst", "big/small" without "high/low").
+    # This is the assumption half of an assumption list, and the ledger says so.
+    "high", "low", "strong", "weak", "bad", "worst", "right", "wrong", "different", "various", "multiple",
+    "average", "normal", "standard", "comprehensive", "detailed", "beautiful", "nice",
 })
 BATCH_MIN = 8                       # wanted profiles that trigger an opportunistic batch
 INTERACTIVE_MAX = 3                 # profiles enriched inline when a query needs them right now
