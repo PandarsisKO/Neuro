@@ -183,3 +183,49 @@ def test_the_extension_version_moved_again():
     import json as _json
     mf = _json.loads((__import__("pathlib").Path(__file__).resolve().parent.parent / "extension" / "manifest.json").read_text())
     assert mf["version"] == "1.6.1"
+
+
+# ── 0.63.17 — and then it said "not added yet" about a video that was already transcribed ───────────────────────
+# Kyle: *"it worked! I sent the video and its putting it through transcription now"* — and it had in fact already
+# finished: a `media` source, 306 s, **69 segments, 7 chunks, 8 findings**, attached to the big project. But the
+# page row still read *"1 video embedded (not added yet)"* and still offered the button. Queueing again would not
+# double-spend (identity resolves to the ready source) — it would just be the screen saying something false.
+#
+# The state is DERIVED from `sources` rather than stored as a flag, because a stored "added" marker is a second
+# copy of a truth the library already holds, and second copies drift.
+
+def test_a_video_already_in_the_library_is_not_offered_again(fresh):
+    p = db.create_project("c", brief="b")
+    r = ingest.ingest_webpage("https://smbmarket.com/lesson-7", project_id=p["id"], title="L", html=NOTES + LOOM)
+    row = next(x for x in api.api_sources(project_id=p["id"]) if x["id"] == r["source_id"])
+    assert row["video_embeds_added"] == []                       # nothing added yet, so the offer stands
+
+    # the video arrives, exactly as the ingest job would leave it
+    db.upsert_source(platform="media", external_id="loom:9f8a7b6c5d4e",
+                     url="https://www.loom.com/share/9f8a7b6c5d4e", title="the lesson video", status="ready")
+    row = next(x for x in api.api_sources(project_id=p["id"]) if x["id"] == r["source_id"])
+    assert row["video_embeds_added"] == ["https://loom.com/embed/9f8a7b6c5d4e"]
+
+
+def test_adding_twice_says_so_instead_of_queueing_again(fresh):
+    p = db.create_project("c", brief="b")
+    r = ingest.ingest_webpage("https://smbmarket.com/lesson-7", project_id=p["id"], title="L", html=NOTES + LOOM)
+    assert courses.add_page_videos(p["id"], r["source_id"])["queued"] == 1
+    db.upsert_source(platform="media", external_id="loom:9f8a7b6c5d4e",
+                     url="https://www.loom.com/share/9f8a7b6c5d4e", title="v", status="ready")
+    again = courses.add_page_videos(p["id"], r["source_id"])
+    assert again["queued"] == 0 and "already added" in again["why"]
+
+
+def test_the_match_survives_the_embed_to_share_rewrite(fresh):
+    """The page records `loom.com/embed/<id>` and the library holds `loom.com/share/<id>`: the same video under two
+    addresses, which is exactly what `normalise_embed` exists to reconcile."""
+    db.upsert_source(platform="media", external_id="loom:abc123", url="https://www.loom.com/share/abc123",
+                     title="v", status="ready")
+    from neurosearch.courses import normalise_embed
+    assert db.sources_for_urls([normalise_embed("https://www.loom.com/embed/abc123")])
+
+
+def test_a_video_that_is_not_in_the_library_is_not_claimed_as_added(fresh):
+    assert db.sources_for_urls(["https://www.loom.com/share/nothinghere"]) == {}
+    assert db.sources_for_urls([]) == {}

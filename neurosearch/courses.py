@@ -79,6 +79,13 @@ def add_page_videos(project_id: str, source_id: str, cookies: list[dict[str, Any
     found = [u for u in (urls or db.video_embeds_of(source_id)) if isinstance(u, str) and u.startswith("http")]
     if not found:
         return {"queued": 0, "videos": [], "why": "no video embed was recorded for that page"}
+    # Already in the library? Then say so rather than queueing a job that will dedupe silently (0.63.17).
+    have = db.sources_for_urls([normalise_embed(u) for u in found])
+    fresh = [u for u in found if normalise_embed(u) not in have]
+    if not fresh:
+        return {"queued": 0, "videos": [], "already": list(have.values()),
+                "why": f"already added — {len(have)} video{'s' if len(have) != 1 else ''} from this page is in the library"}
+    found = fresh
     page_url = src.get("url") or ""
     title = (src.get("title") or "page").strip()[:120]
     coll = db.upsert_collection("course", page_url or title, page_url, title)

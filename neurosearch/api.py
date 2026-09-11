@@ -1261,10 +1261,16 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             if r.get("video_embeds"):
                 # 0.63.16 — a captured page's embedded players, so the row can OFFER them. The list itself is the
                 # honest part: a page whose video was dropped used to look identical to a page with no video.
+                # 0.63.17 — and which of them the library now HOLDS, derived from `sources` rather than a stored
+                # flag, so a row cannot go on offering a video that has already been added.
                 try:
-                    r["video_embeds"] = json.loads(r["video_embeds"]) or []
+                    found = json.loads(r["video_embeds"]) or []
                 except (TypeError, ValueError):
-                    r["video_embeds"] = []
+                    found = []
+                from .courses import normalise_embed
+                have = db.sources_for_urls([normalise_embed(u) for u in found])
+                r["video_embeds"] = found
+                r["video_embeds_added"] = [u for u in found if normalise_embed(u) in have]
             if r.get("status") == "skipped" and pot_qs is not None:
                 # 452 skipped rows on Kyle's project, each re-scored on every poll (0.68 s of the endpoint). The
                 # score is a pure function of the source's own words and the project's research state, so it is

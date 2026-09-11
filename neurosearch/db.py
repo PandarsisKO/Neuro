@@ -1033,6 +1033,25 @@ def upsert_source(**fields: Any) -> dict[str, Any]:
         return row_to_dict(conn.execute("SELECT * FROM sources WHERE id=?", (sid,)).fetchone())  # type: ignore[return-value]
 
 
+def sources_for_urls(urls: list[str]) -> dict[str, str]:
+    """Which of these addresses the library already holds, as {url: source_id}.
+
+    Derived, never a flag. 0.63.17: the page that offered its Loom video went on saying "not added yet" after Kyle
+    added it, because a stored "added" marker is a second copy of a truth the `sources` table already holds. The
+    library is asked instead, so the answer cannot drift — and it is right even when the video arrived by another
+    route entirely."""
+    out: dict[str, str] = {}
+    want = [u for u in dict.fromkeys(urls) if u]
+    if not want:
+        return out
+    conn = connect()
+    for u in want:
+        r = conn.execute("SELECT id FROM sources WHERE url=? OR canonical_url=? LIMIT 1", (u, u)).fetchone()
+        if r:
+            out[u] = r["id"]
+    return out
+
+
 def set_video_embeds(source_id: str, urls: list[str]) -> None:
     """The players found in a captured page. Additive and idempotent; an empty list clears the column."""
     with tx() as conn:

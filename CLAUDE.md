@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.16)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.17)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -281,7 +281,7 @@ target — so that a discovery pass could read some counts and a list of open qu
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
 
-## A page's video is not in its text (0.63.16, extension 1.6.1)
+## A page's video is not in its text (0.63.16–0.63.17, extension 1.6.1)
 
 Kyle: *"I did send page, which worked for capturing the notes on the page, but I think its failing to grab the
 content of the video, which is a video hosted on Loom."*
@@ -307,12 +307,20 @@ Two halves, deliberately separate, because one is free and one is not:
   the extension a separate press after the capture that also collects the cookies of **every embed host**, since a
   private Loom refuses an anonymous download.
 
-**One thing I could not verify from here and should not pretend to:** whether his captured HTML actually contained
-the Loom URL. The server had already thrown the HTML away, and on his course page the player only exists once a
-lesson is open — I measured the catalogue (six `<button>` cards, zero `<video>`, zero iframes) but did not open a
-lesson in his account. If the player is built by JavaScript only after Play is pressed, there will be nothing in the
-capture to find, and the honest outcome of this release is then that the page says so instead of staying silent.
+**The open question is closed: it worked.** I had flagged that I could not verify from here whether the captured
+HTML really contained the Loom URL — the server had discarded the HTML, and the player only exists once a lesson is
+open. His result settles it: `loom.com/embed/370960d1c929…` was recorded on the page, the button queued
+`loom.com/share/370960d1c929…` with his session, and the video came back **306 s, 69 segments, 7 chunks, 8
+findings**, attached to the business project. The DOM capture did carry the embed; nothing had ever looked at it.
 Gate `tests/test_s33_page_videos.py`.
+
+**0.63.17 — and then the row said "not added yet" about a video that had already finished transcribing.** The page
+went on advertising an offer it had already fulfilled. Queueing again would not have double-spent (identity
+resolves to the ready source) — it would simply have been the screen stating something false. `db.sources_for_urls`
+asks the library which of a page's embeds it now holds, and the row offers only the rest; `add_page_videos` answers
+*"already added"* instead of queueing. **Derived, never a flag:** a stored "added" marker is a second copy of a
+truth the `sources` table already holds, and second copies drift. It also matches across the `embed`→`share`
+rewrite, so the same video under two addresses is recognised as one.
 
 ## The course importer blamed the login (0.63.15, extension 1.6.0)
 
