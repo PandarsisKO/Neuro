@@ -1321,3 +1321,29 @@ anywhere). The REST of `value` stays, and the reason is recorded because the fir
 `web/index.html` aliases the object as `const v = s => s.value || {}`, so `v(s).matters`, `v(s).never_used`,
 `v(b).score` and `v(a).used.plan_evidence` are consumers that a search for `value.score` cannot find.
 `tests/test_s36_sources_payload.py` asserts every kept field by name for that reason.
+
+## 0.63.22 — two things measured on his live data and deliberately NOT changed
+
+**1. His 79 existing uncited extractor findings cannot be repaired for free.** The fix makes future findings
+citable by deriving the locator from the already-verified quote, but the quote is only persisted INSIDE the
+citation — so a finding stored with `citations: []` has lost its quote, and there is nothing to locate against.
+Recovering them means re-analysing the four sources involved (`Copy of Acquisition Ace Deal Calculator`,
+`CAN6535 Central Valley CPA Practice Profile`, `Episode 1: Breaking Barriers in SBA Lending`, and one community
+thread), which is a paid `findings.extract` pass per source. **Kyle's decision.** Until he takes it, 63 live
+Claims in the large project rest on no evidence; they are not wrong, and `assess` already reads them as
+unsupported, but they cannot be explained.
+
+Worth recording for its own sake: **the quote's only home is the citation.** A finding is stored as content plus
+citations, and the verified quote lives in `citations[0].snippet`. So the citation is not decoration on a finding —
+it is the only place the evidence exists, and a code path that can drop it can destroy the evidence for work that
+was paid for and checked. That is the argument for deriving the locator rather than dropping the citation.
+
+**2. 25 of his 95 hand-written project notes have been harvested into Claims** with origin `finding_suggested`.
+G5's invariant is that a user's own facts (`record_fact`) are NOT Claims — they are project state. A hand-written
+note has no model, no source and no citations, so harvesting it produces a Claim that rests on nothing AND is
+labelled as something a finding suggested, which misstates where it came from. The honest fix is for `harvest` to
+skip notes with no source and no model, and for the user's notes to reach the research layer as facts.
+
+It is not done here because it changes what appears in his Claims workbench: 25 rows would stop being Claims, and
+some may be ones he has been treating as Claims. That is a decision about his data rather than a defect in the
+code's logic, so it is his to make.

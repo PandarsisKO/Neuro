@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.21)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.22)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,61 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A verified finding stored with no citation at all (0.63.22)
+
+Found by sweeping his live data for correctness rather than for speed. **63 live Claims in his large project rest
+on no evidence whatsoever**, and every one was harvested from an approved finding whose citations blob is empty.
+123 of his 16,378 approved findings are like that, and they are not spread evenly:
+
+```
+platform      transcript_kind    findings   no citation    rate
+spreadsheet   spreadsheet             134            69   51.5%
+community     community                 9             9   100.0%
+youtube       captions             16,733             1    0.0%
+web · document · book · file · media · instagram      1,085   0    0.0%
+```
+
+**Every platform that cites by timestamp or page is at zero.** The cause is in his own rejection log:
+`_ts_to_seconds` reads `p. 3`, `§ 3`, `sheet 3`, `post 3`, `MM:SS` and a bare integer — and on a spreadsheet the
+model writes the sheet by **NAME**: `§ Reverse Calculator`, `§ Sheet: Profile`. A sheet's name is the meaningful
+thing about it and its ordinal is not, so that is the model doing the sensible thing. No digits, so the parse
+returns None — and the citation was built **only** when that parse succeeded, so the finding was stored with
+`citations: []`.
+
+Silently: no validation event, no counter, nothing. An uncitable finding was indistinguishable from a cited one —
+the failure mode this codebase keeps paying for (0.63.2's OCR rung, 0.63.4's missing button, 0.63.15's course
+importer, 0.63.20's pool header). It then reached `claims.harvest`, which attaches evidence from a note's
+citations, and produced a Claim resting on nothing; `harvest` is idempotent per note, so nothing ever went back
+for it — the "only ever forward" shape of 0.63.11.
+
+**The fix does not teach the parser more formats.** At the point the citation is built the quote has ALREADY been
+verified against the source, so its position is a fact the app holds rather than something to take the model's
+word for. `evidence.locate_quote` answers for every platform, needs no per-platform parsing and no model call, and
+it is the same move 0.63.9 made for a locator that pointed at the wrong PLACE — applied to one that cannot be read
+at all. `evidence:locator_from_quote` counts it. When the quote cannot be placed either, the finding keeps its
+verified quote (paid, checked work is not discarded) and `finding_uncitable` records what it saw — the claimed
+locator, the quote and the platform, not a guessed cause.
+
+**Not repaired, and it cannot be cheaply.** The quote is only persisted INSIDE the citation, so his existing 79
+uncited extractor findings have lost their quotes: recovering them means re-analysing those four sources, which
+costs money. That is his decision, not mine, and it is written up rather than done.
+
+**A second thing the sweep turned up, reported and not changed:** 25 of his 95 hand-written project notes have
+been harvested into Claims with origin `finding_suggested`. G5's rule is that a user's facts are not Claims, and
+labelling his own words as something a finding suggested is a provenance error rather than a cosmetic one — but
+changing it alters what appears in his Claims workbench, so it is a decision for him.
+
+**And three hypotheses the sweep killed before they reached a fix**, recorded because each read as obvious:
+*"130 Claims have no evidence"* — 66 of them are `superseded` normalization tombstones that `research_view`
+already filters out, and their evidence moved to the Claim that replaced them; the honest number is 63.
+*"`finding_validation_failed` is still firing 195 times a day, so 0.63.9 did not work"* — those are the same 321
+historical rows 0.63.9 analysed, and exactly one has been recorded since. *"`add_evidence` has a silent skip
+path"* — it has none; it always inserts, which is what proved the evidence attach was never called rather than
+failing.
+
+Gate `tests/test_s37_uncited_findings.py` (14), which runs the four locator shapes his model actually wrote and
+asserts the platforms already at 0% are untouched.
 
 ## The Sources tab ran the whole research pass twice (0.63.21)
 

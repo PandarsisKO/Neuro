@@ -356,8 +356,26 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     db.kv_bump("evidence:findings_checked", rejected + len(all_findings))
     chosen, reserve = select_findings(per_window, cap=max_findings)
     notes = []
+    uncitable = 0
+    from_quote = 0
     for f in chosen + reserve:
         start = _ts_to_seconds(str(f.get("ts", "")), platform)
+        if start is None:
+            # 0.63.22 — the quote is already VERIFIED to be in this source at this point, so its position is a
+            # fact we hold, not something to take the model's word for. Before this, a locator the parser could
+            # not read meant the finding was stored with NO citation at all — silently, with no event and no
+            # counter, so an uncited finding was indistinguishable from a cited one.
+            #
+            # Measured on Kyle's corpus: **51.5% of spreadsheet findings (69 of 134) and 100% of community
+            # findings (9 of 9)** had empty citations, against **0.0%** for YouTube, web, document, book, file,
+            # media and Instagram. The cause is in his own rejection log: on a spreadsheet the model writes the
+            # sheet by NAME — `§ Reverse Calculator`, `§ Sheet: Profile` — because a sheet's name is the
+            # meaningful thing about it and its ordinal is not. No digits, so `_ts_to_seconds` returns None.
+            # `locate_quote` needs no per-platform parsing and no model call, and it answers for every platform.
+            at = locate_quote(f.get("quote") or "", segs)
+            if at is not None:
+                start, f["ts"] = at, fmt_locator(platform, at)
+                from_quote += 1
         cites = []
         if start is not None:
             from .search import locator_for
@@ -366,11 +384,23 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
                           "url": src["url"], "link": link,
                           "timestamp": label, "start": start, "end": start, "platform": platform,
                           "snippet": (f.get("quote") or "")[:300]})
+        if not cites:
+            # Neither the model's locator nor the quote could be placed. The finding keeps its verified quote, so
+            # it is not discarded — but it can never be cited, `harvest` would turn it into a Claim resting on
+            # nothing, and that has to be VISIBLE rather than inferred from an empty list later.
+            uncitable += 1
+            db.validation_event("finding_uncitable", {"title": f.get("title"), "claimed_locator": f.get("ts"),
+                                                      "quote": (f.get("quote") or "")[:200], "platform": platform},
+                                project_id=project_id, source_id=source_id, prompt_version=prompt_version())
         content = f["finding"].strip()
         if cites and "[1]" not in content:
             content += " [1]"
         notes.append({"title": (f.get("title") or "").strip()[:120] or None, "content": content, "citations": cites,
                       "importance": int(f.get("importance") or 0), "status": "suggested" if len(notes) < len(chosen) else "reserve"})
+    if from_quote:
+        db.kv_bump("evidence:locator_from_quote", from_quote)
+    if uncitable:
+        db.kv_bump("evidence:findings_uncitable", uncitable)
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,
