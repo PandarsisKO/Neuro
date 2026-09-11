@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.4';
+const UI_VERSION = '0.63.5';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1480,7 +1480,14 @@ async function readImageAgain(id) {
 }
 
 async function readDeeper(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id], depth: 'deep' }); toast('🔬 Reading deeper — findings land in Suggested as each part completes; the card shows deep-read when done'); loadJobs(); }
-async function suggestSource(id) { const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] }); alert('Analysing — suggestions will appear in Findings in a minute.'); loadJobs(); }
+// 0.63.5 — a source you clicked goes to the front of the queue, so the message can say what will happen rather
+// than "in a minute" (the measured median wait for this job was 2.6 hours). alert() blocked the page for it.
+async function suggestSource(id) {
+  const r = await post(`/api/projects/${state.project.id}/suggest`, { source_ids: [id] });
+  toast(r.lane === 'priority' ? '📌 Next in the queue — suggestions land in Findings when it finishes'
+        : '📌 Queued — suggestions appear in Findings when it runs');
+  loadJobs();
+}
 async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 const capRecover = { n: 0 };
 async function loadCaptionRecovery() {

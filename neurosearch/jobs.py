@@ -655,6 +655,29 @@ FIRST_WAVE_RANKED = 3     # of a whole channel/playlist, the top N by the rankin
 FIRST_WAVE_CAP = 12       # a hard ceiling per project, whatever the rules below decide
 
 
+USER_PICK_MAX = 5         # named sources in one request that still reads as "I clicked this", not a sweep
+
+
+def user_pick_lane(named: bool, count: int) -> str | None:
+    """The lane for work a person picked by hand just now, or None if this is not that.
+
+    Measured on Kyle's project (0.63.5): of 2,507 completed `suggest_findings` jobs, **2,504 ran in lane `normal`**,
+    waiting a median of **2.6 hours** and up to 17 hours for 25 seconds of work — including every source he clicked
+    "Suggest findings" on himself. `bumped_at` was NULL on all 2,511 jobs ever created, so the priority mechanism
+    built in 0.45.12 had never once been used.
+
+    The cause was a rule that was right for the case it was written for: `first_wave_lane` returns `normal` as soon
+    as a project has any findings, because there is nothing left to *bootstrap*. But bootstrapping is not the only
+    reason a job should go first. **A source the user names in a request is the strongest statement of intent the
+    app ever receives** — they are sitting there waiting on that one source — and it was the single case with no
+    priority at all.
+
+    A sweep is not a pick: "analyse everything" names no sources (the endpoint fills them in from the project), and
+    a request naming more than `USER_PICK_MAX` is a bulk action whose value does not depend on any one item landing
+    first. Ordering only — same provider, same model, same cost."""
+    return "priority" if named and 0 < count <= USER_PICK_MAX else None
+
+
 def first_wave_lane(project_id: str, source_id: str | None = None) -> str:
     """Which sources jump the global queue so a project is usable while the rest of it ingests.
 

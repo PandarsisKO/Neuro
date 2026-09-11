@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.4)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.5)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,40 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The thing you just clicked runs next (0.63.5)
+
+Measured on his live queue before writing anything: of **2,507** completed `suggest_findings` jobs, **2,504 ran in
+lane `normal`**, waiting a median of **9,457 s (2.6 h)** and up to **17 h** for **25 s** of work. And `bumped_at`
+was NULL on all **2,511** jobs ever created — the manual "run this next" mechanism built in 0.45.12 had never once
+been used, by anything.
+
+The cause is a rule that is right for the case it was written for. `jobs.first_wave_lane` returns `normal` the
+moment a project has any findings, because there is nothing left to *bootstrap*. His project has 20,000 findings,
+so **every source he clicked "Suggest findings" on himself joined the back of a 1,900-job background queue.**
+Bootstrapping is not the only reason work should go first: a source the user NAMES in a request is the strongest
+statement of intent the app ever receives — they are sitting there waiting on that one source — and it was the one
+case with no priority at all.
+
+`jobs.user_pick_lane(named, count)` → `priority` when the request names sources and there are at most
+`USER_PICK_MAX` (5) of them. **A sweep is not a pick:** "analyse everything" names nothing (the endpoint fills the
+ids in from the project), and a request naming more than five is a bulk action whose value does not depend on any
+one item landing first — making all of it priority would mean none of it is. Read deeper stays on `slow` (minutes
+of work carried by a single local worker). Ordering only: same provider, same model, same cost. The Sources button
+now says which of the two happened instead of "in a minute", and no longer blocks the page with `alert()`.
+
+Also measured, and worth recording because it was my suspicion and it was wrong: **the lanes do work for everything
+else.** `ingest_file` waits 0.69 s at the median, `bootstrap_scan` 0.8 s, `extract_claims` 1.5 s — user-initiated
+work is not starved. `suggest_findings` was the one kind that serves both a person's click and a bulk backfill
+under a single name, which is exactly why it needed the distinction drawn at the point of request.
+
+**And a test of mine was flaky for the reason my own fix was still wrong.** `test_embedding_failure…` asserted
+`embeddings_deferred == 1` over the whole `validation_events` table; I replaced it with `before + 1`, which still
+failed intermittently, because a background embed for an unrelated source logs the same event. The claim is about
+one document, so it is now asserted about that document (`json_extract(detail,'$.source_id')`). A conservation law
+was an improvement on an absolute; scoping it to the subject is the actual fix.
+
+Gate `tests/test_s27_user_pick_lane.py`.
 
 ## The cheapest rung is not always the right one (0.63.4)
 

@@ -2727,9 +2727,15 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
             # one job PER source in the slow lane: each finishes and lands on its own, and only one local worker ever carries them
             made = [db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "depth": "deep", "reason": "read deeper"}, lane="slow") for sid in ids]
             return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids), "transport": body.transport, "depth": body.depth, "lane": "slow"}
+        # A source the user NAMED goes first, whether or not the project is still bootstrapping (0.63.5). A sweep
+        # names nothing and keeps the first-wave rule, which is about a project becoming usable rather than about
+        # one source the user is waiting on.
+        lane = (jobs.user_pick_lane(bool(body.source_ids), len(ids))
+                or jobs.first_wave_lane(project_id, ids[0] if len(ids) == 1 else None))
         job = db.create_job("suggest_findings", {"project_id": project_id, "source_ids": ids, "force": body.force, "depth": body.depth},
-                            lane=jobs.first_wave_lane(project_id, ids[0] if len(ids) == 1 else None))
-    return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth}
+                            lane=lane)
+    return {"job": job["id"], "sources": len(ids), "transport": body.transport, "depth": body.depth,
+            "lane": job.get("lane") or "normal"}
 
 
 class EstimateIn(BaseModel):

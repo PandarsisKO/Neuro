@@ -236,13 +236,13 @@ def test_embedding_failure_does_not_fail_a_readable_document(tmp_path, monkeypat
     monkeypatch.setattr(ingest, "embed_pending", boom)
     f = tmp_path / "note.txt"; f.write_text("A readable note about hangar rent at Modesto airport. " * 20)
 
-    def deferred() -> int:
-        return int(db.connect().execute(
-            "SELECT COUNT(*) c FROM validation_events WHERE kind='embeddings_deferred'").fetchone()["c"])
-
-    before = deferred()                     # a conservation law, not an absolute: `== 1` over a global table made
-    res = ingest.ingest_local_file(f, "note", [], pid, original_name="note.txt")   # this test depend on every
-    src = db.get_source(res["source_id"])                                          # other test that ran first
+    res = ingest.ingest_local_file(f, "note", [], pid, original_name="note.txt")
+    src = db.get_source(res["source_id"])
     assert src["status"] == "ready" and res["embedded"] == 0
     assert db.fts_search("hangar rent Modesto", limit=5, source_ids=[src["id"]])           # full-text works immediately
-    assert deferred() == before + 1
+    # The claim is about THIS document, so it is asserted about this document. `== 1` over the whole table, and
+    # then even `before + 1`, made the test depend on what other work happened to be running: an event logged by a
+    # background embed for an unrelated source failed it intermittently while proving nothing (0.63.5).
+    assert int(db.connect().execute(
+        "SELECT COUNT(*) c FROM validation_events WHERE kind='embeddings_deferred' "
+        "AND json_extract(detail,'$.source_id')=?", (src["id"],)).fetchone()["c"]) == 1
