@@ -1195,7 +1195,13 @@ def test_provenance_is_per_analysis_task(client, monkeypatch):
     findings.suggest_for_source(p["id"], sid)
     sm = db.get_analysis(p["id"], sid, "summary")
     assert sm["prompt_version"].startswith("findings-") and sm["input_hash"] != rel["input_hash"] and sm["relevance"] is None
-    assert db.get_analysis(p["id"], sid, "relevance") == rel                      # not a byte changed by the other task
+    # "not a byte changed by the other task" — compared whole, and on failure it NAMES the field that moved.
+    # 0.63.20: this flaked once in ~9 full-suite runs under release-check, and the bare `== rel` printed a
+    # truncated dict with one float in it, which is not a diagnosis. The captured log showed jobs from another
+    # test's project completing inside this test's window, so a leaked worker is the standing suspicion; the diff
+    # is what will settle it next time rather than another re-run.
+    _again = db.get_analysis(p["id"], sid, "relevance")
+    assert _again == rel, {k: (rel.get(k), _again.get(k)) for k in set(rel) | set(_again) if rel.get(k) != _again.get(k)}
     # input hashes follow meaningful task inputs: a title change moves the ranking hash, not the findings hash;
     # a view-count change moves neither
     s = db.get_source(sid)

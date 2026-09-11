@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.19)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.20)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,71 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## 8,917 of 8,970 items "fit an open question" (0.63.20)
+
+Profiling the pool after 0.63.19's index had taken it to 2.82 s cold / 1.49 s warm on his machine found a
+correctness fault sitting under the remaining cost, and closing it is what made the rest fast.
+
+**The chip was making a claim nothing had measured.** `_potential` has awarded points for a fit only at or above
+0.34 since S5, but `_best_fit` returned the argmax whatever its share was — and `fits` is rendered on every pool
+row and counted in the header. Measured on his project:
+
+```
+items in the pool                              8,970
+carrying a "fits: <question>" label            8,917   ← the header chip
+clearing the 0.34 bar the score itself uses      196
+best share under 0.10 (one word in common)     49.6%
+```
+
+`and`, `what` and `the` are in ~80% of his 2,726 open questions, so nearly every item shared enough with something
+to be handed a label. Same defect as the 0.63.12 header that read 200 for 17,845 findings: **a number that is
+worse than absent, because it looks like an answer.** `FIT_MIN_SHARE` is now named and env-configurable, and
+`_best_fit` returns `(None, 0.0)` below it — there is no fit to report where there are no points to award. The
+count went 8,917 → **345**.
+
+**And the bar is what licenses pruning.** A question of `den` tokens needs `_need_for(den)` of them shared, so
+leaving its `need - 1` MOST COMMON tokens out of the postings cannot lose it, by pigeonhole — and those are exactly
+the tokens that cost everything (his top ten each sit in 800–2,300 questions and can never decide one). Verified
+against the plain scan on all **13,034** of his real rows: **zero mismatches, 8.3× faster**, postings 83,380 →
+56,454, and the index narrows 2,725 questions to a median of **106** per item. `_need_for` is derived with the same
+comparison the verification makes rather than `ceil(share × den)`, because 0.34 is not representable in binary —
+`0.34 * 50` is 17.000000000000004, and a ceiling would demand 18 shared tokens from a question that 17 genuinely
+clear, silently pruning it.
+
+**The pool was also the last screen with no cache and no background writer.** `_pool_items` is the assembly —
+8,970 items each scored against his questions, his vocabulary and its creator's yield — cached on
+`db.project_pool_revision`; `pool` filters, sorts and slices it, and one cached list serves all three `kind`
+values. **2.30 s → 0.053 s warm**, and it joined `_warm_quality` so a restart does not make someone wait for it.
+Fifth instance of the same sentence: **a pass worth having is not worth having in a request.**
+
+The revision deliberately omits the global `jobs` component `project_view_revision` carries — a 2 s assembly keyed
+on job churn is retired before it can ever be reused, which is the mistake 0.62.0 already paid for with the
+findings rows. It costs ~35 ms against the 2.3 s it guards.
+
+**Two bugs the gates caught, both in the cache key.** `project_sources` has no `updated_at`, so the priority count
+stands in for one — and **the frozen S5 gate then failed**, because `remove_project_sources` sets `excluded=1`
+rather than deleting the row (0.34.2's durable marker), so the plain count did not move either and the pool went
+on offering a source the user had just removed. A cache that outlives the user's own decision is wrong, not stale
+(0.62.8). And that same S5 gate had been **asserting the defect**: its fixture source, titled *"How to structure a
+seller transition when buying an accounting practice"*, was pinned to name the open question — measured share
+**0.217**. The fixture source is now genuinely on the question (0.478) and the near miss is asserted as a near
+miss: it still outranks the dated one on its other signals and says nothing it cannot support. Recorded in
+HARDENING.md.
+
+Also measured and **disproven**, recorded because it was my hypothesis and it read as obvious: that function words
+were corrupting which question an item is said to fit. A stopword list changed the named label on 57% of items —
+but on the items that clear the bar it changed **nothing**, 0 of 4,000 gained or lost a fit, and it cut postings
+only 20%. The bar was the whole fix; a stopword list would have been a behaviour change bought for nothing.
+
+Gate `tests/test_s35_pool_cache.py` (17).
+
+**Open, not fixed:** `tests/test_core.py::test_provenance_is_per_analysis_task` failed once in ~9 full-suite runs
+under `release-check` and has not reproduced in eight more, including under release-check's own environment. The
+captured log shows jobs from another test's project completing inside its window, so a leaked worker is the
+standing suspicion; `candidates.pool` was ruled out by tracing every statement it issues (51 reads, **0 writes**).
+The assertion now names the field that moved instead of printing a truncated dict, so the next occurrence is a
+diagnosis rather than another re-run.
 
 ## 23 million set intersections to rank a list (0.63.19)
 

@@ -18,6 +18,7 @@ candidate RESOLVES to the global source (`source_id`) — never a second evidenc
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any
 
@@ -237,6 +238,7 @@ def satisfy_links(candidate_id: str) -> int:
 
 EVERGREEN = {"how", "framework", "principle", "principles", "checklist", "playbook", "guide", "mistakes", "lessons", "rules", "process", "steps", "strategy",
              "structure", "negotiat", "diligence", "valuation", "financing", "story", "case", "study", "explained", "beginner", "basics", "fundamentals"}
+_EVERGREEN_T = tuple(sorted(EVERGREEN))        # for str.startswith, which accepts a tuple and tests it in C
 DATED = {"news", "update", "breaking", "rates", "rate", "today", "week", "month", "2019", "2020", "2021", "2022", "2023", "2024", "election", "market", "stocks", "crypto", "price", "prices"}
 
 
@@ -389,46 +391,88 @@ def gap_terms_cached(project_id: str) -> tuple[list[tuple[str, str, set[str]]], 
         label="gap_terms_core")
 
 
-def question_index(qs: list[tuple[str, str, set[str]]]) -> dict[str, Any]:
-    """A token → questions index, so scoring an item touches only the questions that share a word with it.
+# A "fit" is a claim on screen, so it needs the same bar the SCORE uses (0.63.20). `_potential` has awarded points
+# only at or above 0.34 since S5, but `_best_fit` returned the argmax whatever it was, and `fits` is rendered
+# unconditionally on every pool row and counted in the header chip. Measured on Kyle's project: 8,917 of 8,970
+# items carried a `fits:` label and the chip read "8,917 fit an open question" — while **196** cleared 0.34, and
+# 49.6% of items scored under 0.10, which is one function word in common. Revert with NEUROSEARCH_FIT_MIN_SHARE.
+FIT_MIN_SHARE = max(0.0, min(1.0, float(os.environ.get("NEUROSEARCH_FIT_MIN_SHARE") or 0.34)))
 
-    **Exact, not an approximation.** A question with no token in common with the item scores 0 under the original
-    loop too, so skipping it cannot change an answer — measured on Kyle's live project: identical scores on all
-    **8,499** items, **3.67 s → 1.11 s**.
+
+def _need_for(den: int) -> int:
+    """The fewest shared tokens that clear `FIT_MIN_SHARE` for a question of this denominator.
+
+    Derived with the SAME comparison the verification uses rather than by `ceil(share * den)`: 0.34 is not
+    representable in binary, so `0.34 * 50` is 17.000000000000004 and a ceiling would demand 18 shared tokens for a
+    question that 17 genuinely clear. A wrong `need` here would prune a reachable question, which is a silent
+    wrong answer rather than a slow one. `den` is at most a few dozen, so the loop costs nothing."""
+    n = 1
+    while n <= den and n / den < FIT_MIN_SHARE:
+        n += 1
+    return n
+
+
+def question_index(qs: list[tuple[str, str, set[str]]]) -> dict[str, Any]:
+    """A token → questions index, so scoring an item touches only the questions that could possibly fit it.
+
+    **Exact, not an approximation**, in two steps. A question of `den` tokens needs `_need_for(den)` of them in
+    common to clear `FIT_MIN_SHARE`, so each question's `need - 1` MOST COMMON tokens are left out of the postings:
+    if an item shares `need` or more tokens, at most `need - 1` of them can be among the ones left out, so at least
+    one remains and the question is still reached. Everything the reduced postings reach is then verified with the
+    full token set, so the answer is the plain scan's answer and the postings only decide who is asked.
+
+    That is where the time goes. Kyle's 2,726 open questions carry 7,513 distinct tokens and 83,380 postings, and
+    the top ten tokens — `and`, `what`, `the`, `for`, `are`, `business`, `acquisition`, `sba`, `does`, `current` —
+    hold 16% of them on their own, each sitting in 800–2,300 questions. They can never *decide* a fit (a question
+    needs ~11 of its ~31 tokens matched), and walking them was most of the bill.
 
     Measured because the first benchmark lied. A synthetic corpus at his scale (10,319 candidates, 2,689 questions)
-    said the index was barely worth having — because the synthetic questions shared only **67** distinct tokens, so
-    every item overlapped nearly every question. His real questions carry **6,683**. The shape of the data was the
+    said an index was barely worth having — because the synthetic questions shared only **67** distinct tokens, so
+    every item overlapped nearly every question. His real questions carry **7,513**. The shape of the data was the
     whole variable, and inventing it produced the wrong answer; his own rows produced the right one (0.63.19)."""
+    df: dict[str, int] = {}
+    for _qid, _label, qt in qs:
+        for w in qt:
+            df[w] = df.get(w, 0) + 1
     post: dict[str, list[int]] = {}
     qlen: list[int] = []
     labels: list[str] = []
+    toks: list[frozenset[str]] = []
     for i, (_qid, label, qt) in enumerate(qs):
-        qlen.append(max(3, len(qt)))
+        den = max(3, len(qt))
+        qlen.append(den)
         labels.append(label)
-        for w in qt:
+        toks.append(frozenset(qt))
+        drop = _need_for(den) - 1
+        # Highest df first, ties by the word itself so the index is deterministic across runs.
+        for w in sorted(qt, key=lambda x: (-df[x], x))[drop:]:
             post.setdefault(w, []).append(i)
-    return {"post": {w: tuple(v) for w, v in post.items()}, "qlen": qlen, "labels": labels}
+    return {"post": {w: tuple(v) for w, v in post.items()}, "qlen": qlen, "labels": labels, "toks": toks,
+            "postings": sum(len(v) for v in post.values())}
 
 
 def _best_fit(t: set[str], qs: list[tuple[str, str, set[str]]], qindex: dict[str, Any] | None) -> tuple[str | None, float]:
-    """(best-fitting open question's label, its share) — via the index when one was built, else the plain scan."""
+    """(the open question this item fits, its share) — or `(None, 0.0)` when nothing clears `FIT_MIN_SHARE`.
+
+    Below the bar there is no fit to report: `_potential` awards no points for one and the row has nothing true to
+    say, so naming the argmax anyway was how 99.3% of the pool came to claim a question (0.63.20)."""
     if qindex:
-        post, qlen, labels = qindex["post"], qindex["qlen"], qindex["labels"]
-        hits: dict[int, int] = {}
+        post, qlen, labels, toks = qindex["post"], qindex["qlen"], qindex["labels"], qindex["toks"]
+        reached: set[int] = set()
         for w in t:
-            for i in post.get(w, ()):
-                hits[i] = hits.get(i, 0) + 1
+            reached.update(post.get(w, ()))
         best_i, best_s = -1, 0.0
-        for i, n in hits.items():
-            s = n / qlen[i]
-            # `>` alone is not enough: the plain scan keeps the FIRST question at a tied score, and the index walks
-            # its hits in whatever order the item's tokens touched them. Equal scores must resolve to the same
-            # question either way, or the same item would name a different open question depending on the path
-            # (caught by S34's equivalence test, not by a screen).
+        for i in reached:
+            den = qlen[i]
+            s = len(t & toks[i]) / den
+            # `>` alone is not enough: the plain scan keeps the FIRST question at a tied score, and `reached` has no
+            # order. Equal scores must resolve to the same question either way, or the same item would name a
+            # different open question depending on the path (caught by S34's equivalence test, not by a screen).
             if s > best_s or (s == best_s and best_i >= 0 and i < best_i):
                 best_i, best_s = i, s
-        return (labels[best_i] if best_i >= 0 else None), best_s
+        if best_s < FIT_MIN_SHARE:
+            return None, 0.0
+        return labels[best_i], best_s
     best, best_s = None, 0.0
     for _qid, label, qt in qs:
         if not qt:
@@ -436,6 +480,8 @@ def _best_fit(t: set[str], qs: list[tuple[str, str, set[str]]], qindex: dict[str
         s = len(t & qt) / max(3, len(qt))
         if s > best_s:
             best, best_s = label, s
+    if best_s < FIT_MIN_SHARE:
+        return None, 0.0
     return best, best_s
 
 
@@ -453,14 +499,17 @@ def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab
     score = 0
     if linked:
         score += 45; why.append(f"already found for: {linked[0][:60]}")
-    if best_s >= 0.34:
+    if best_s >= FIT_MIN_SHARE:
         score += int(35 * min(1.0, best_s)); why.append(f"fits an open question: {best}")
     cov = len(t & vocab) / max(4, len(vocab)) if vocab else 0
     if cov > 0:
         score += int(20 * min(1.0, cov * 4)); why.append("uses the project's own vocabulary")
     if relevance is not None:
         score += int(relevance * 0.25); why.append(f"ranked {relevance}/100 at review")
-    ever = len({w for w in t if any(w.startswith(e) for e in EVERGREEN)})
+    # `str.startswith` takes a tuple and does the whole test in C. The generator-per-word form cost 2.19M
+    # Python-level calls and 29% of the pool pass once _best_fit stopped dominating it (0.63.20) —
+    # identical answer, since a tuple of prefixes is exactly what the `any(...)` was spelling out.
+    ever = sum(1 for w in t if w.startswith(_EVERGREEN_T))
     dated = len(t & DATED)
     if ever and not dated:
         score += 10; why.append("reads as timeless (how-to / principles)")
@@ -640,13 +689,26 @@ def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict
                     if items else f"nothing the app has seen but not read mentions \"{searched}\""}
 
 
-def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
-    """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
-    why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web."""
+def _pool_items(project_id: str) -> list[dict[str, Any]]:
+    """Every known-but-uncaptured item scored, unfiltered and unsorted — the part of the pool that costs anything.
+
+    Cached on `db.project_pool_revision` because it is a pass, not a lookup: 8,970 items on Kyle's project, each
+    scored against his open questions, his vocabulary and what its creator has already given him. Filtering,
+    sorting and paging that list costs milliseconds; assembling it was the whole bill — the same split
+    `findings_view` needed at 17,000 findings (0.61.4), and the fifth time the answer has been that **a pass worth
+    having is not worth having in a request**.
+
+    Both kinds are always assembled, so one cached list serves `kind=all`, `kind=skipped` and `kind=candidates`
+    rather than three. The returned dicts are SHARED with every later caller and must never be mutated — `pool`
+    only filters, sorts and slices, all of which copy."""
+    from . import perf
     conn = db.connect()
-    qs, vocab, qidx = gap_terms_cached(project_id)
-    prio_creators = {(db.get_source(sid) or {}).get("channel") for sid in db.priority_source_ids(project_id)} - {None, ""}
-    cy = creator_yield(project_id)                       # 0.58.2: what each master source has already given us
+    with perf.timed("pool.gap_terms"):
+        qs, vocab, qidx = gap_terms_cached(project_id)
+    with perf.timed("pool.priority"):
+        prio_creators = {(db.get_source(sid) or {}).get("channel") for sid in db.priority_source_ids(project_id)} - {None, ""}
+    with perf.timed("pool.creator_yield"):
+        cy = creator_yield(project_id)                   # 0.58.2: what each master source has already given us
     want_classes: set[str] = set()                       # the evidence classes this project's open questions ask for
     try:
         from . import knowledge
@@ -661,7 +723,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
     except Exception:  # noqa: BLE001 — the creator term is a bonus, never a prerequisite
         pass
     items: list[dict[str, Any]] = []
-    if kind in ("all", "skipped"):
+    with perf.timed("pool.score_skipped"):               # both kinds, always: one cached list serves every `kind`
         rel = db.project_analysis(project_id, "relevance")
         ids = set(db.project_source_ids(project_id, ready_only=False))
         for s in db.list_sources(status="skipped", limit=100000):
@@ -675,7 +737,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
                           "relevance_why": r.get("relevance_why"), "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (s.get("channel") in prio_creators),
                           "actions": {"capture": {"method": "POST", "endpoint": f"/api/sources/{s['id']}/retry", "label": "Ingest anyway"},
                                       "dismiss": {"method": "DELETE", "endpoint": f"/api/projects/{project_id}/members", "body": {"source_ids": [s["id"]]}, "label": "Not for this project"}}})
-    if kind in ("all", "candidates"):
+    with perf.timed("pool.score_candidates"):
         links: dict[str, list[str]] = {}
         for r in conn.execute("""SELECT l.candidate_id, t.question FROM candidate_links l LEFT JOIN project_evidence_targets t ON t.id=l.ref_id
                                  WHERE l.project_id=? AND l.state='open' AND l.kind='evidence_target'""", (project_id,)).fetchall():
@@ -694,6 +756,19 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
                           "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (c.get("creator") in prio_creators), "state": c.get("state"),
                           "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire", "body": {"project_id": project_id}, "label": "Capture"},
                                       "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss", "body": {"project_id": project_id}, "label": "Not for this project"}}})
+    return items
+
+
+def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int = 100, kind: str = "all") -> dict[str, Any]:
+    """Skipped sources (the ingest cutoff) and Candidate Index rows (available + skipped-low-relevance) as ONE ranked list:
+    why known · potential · what it fits · one-click capture or dismissal. Never evidence until ingested; never the web.
+
+    The scoring is `_pool_items`, cached per revision; everything here is a filter, a sort and a slice."""
+    from . import cache, perf
+    with perf.timed("pool.items"):
+        all_items = cache.get_or_compute(f"pool_items:{project_id}", db.project_pool_revision(project_id),
+                                         lambda: _pool_items(project_id), label="pool_items")
+    items = all_items if kind == "all" else [i for i in all_items if i["kind"] == ("skipped" if kind == "skipped" else "candidate")]
     if q:
         qt = _toks(q)
         items = [i for i in items if qt <= _toks(i["title"] + " " + (i.get("creator") or "") + " " + " ".join(i["why"]))]
@@ -701,7 +776,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             "relevance": lambda i: (-(i.get("relevance") or 0), -i["potential"]),
             "newest": lambda i: ((i.get("published_at") or ""), ),
             "creator": lambda i: (0 if i["same_creator_as_priority"] else 1, -i["potential"])}.get(rank_by, lambda i: (-i["potential"],))
-    items.sort(key=keyf, reverse=(rank_by == "newest"))
+    items = sorted(items, key=keyf, reverse=(rank_by == "newest"))   # never sort the cached list in place
     counts = {"skipped": sum(1 for i in items if i["kind"] == "skipped"), "candidates": sum(1 for i in items if i["kind"] == "candidate"),
               "worth_a_look": sum(1 for i in items if i["potential"] >= 40), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
     return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,

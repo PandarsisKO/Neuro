@@ -49,8 +49,8 @@ def test_pool_unifies_skipped_and_candidates_with_a_potential_scan(monkeypatch):
     claims.ensure(pid); knowledge.refresh(pid)
     corro = [t for t in knowledge.list_targets(pid, status="open") if t["sufficiency"] == "corroborative"][0]
     knowledge.pursue(corro["id"], external=False)                      # links the fixture's skipped candidate to the open question
-    timeless = _skipped(pid, "old-timeless", "How to structure a seller transition when buying an accounting practice",
-                        "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention principles.", relevance=35)
+    timeless = _skipped(pid, "old-timeless", "Seller transition length: six, twelve or eighteen months versus two full tax seasons",
+                        "A framework and checklist for the usual seller transition: how many tax seasons the seller keeps working, retention principles.", relevance=35)
     dated = _skipped(pid, "old-dated", "SBA rates news update this week", "Breaking: rates moved again today; market update for 2021.", relevance=20)
     r = candidates.pool(pid)
     assert r["total"] >= 3 and r["counts"]["skipped"] == 2 and r["counts"]["candidates"] >= 1
@@ -75,6 +75,21 @@ def test_pool_unifies_skipped_and_candidates_with_a_potential_scan(monkeypatch):
     assert all(i["explain"] if False else True for i in r["items"]) and "never" in r["explain"].lower()
 
 
+    # 0.63.20 — this fixture's source used to be titled "How to structure a seller transition when buying an
+    # accounting practice" and was asserted to name the open question. Measured: its best share was **0.217**,
+    # under the 0.34 `FIT_MIN_SHARE` that `_potential` has needed for fit POINTS since S5 — so the assertion was
+    # pinning the very behaviour that made Kyle's pool header read "8,917 of 8,970 fit an open question". The
+    # source is now genuinely on the question (0.478), and the near miss is asserted as a near miss: it still
+    # outranks the dated one on its other signals, and it says nothing it cannot support.
+    near = _skipped(pid, "old-near", "How to structure a seller transition when buying an accounting practice",
+                    "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention.", relevance=35)
+    r2 = candidates.pool(pid)
+    nrow = {i["id"]: i for i in r2["items"]}[near]
+    assert nrow["fits"] is None and nrow["potential"] > d["potential"]
+    assert not any(w.startswith("fits an open question") for w in nrow["why"])
+    assert r2["counts"]["fits_a_question"] == sum(1 for i in r2["items"] if i["fits"])
+
+
 def test_capture_the_n_that_fit_takes_the_same_paths_as_a_single_capture(monkeypatch):
     """0.45.4 — HANDOFF §4a's 'capture the N that fit' bulk action. One request captures every pool item at or above the
     'worth a look' threshold (potential >= 40) through EXACTLY the per-item path a single Capture click takes: retry for a
@@ -84,8 +99,8 @@ def test_capture_the_n_that_fit_takes_the_same_paths_as_a_single_capture(monkeyp
     claims.ensure(pid); knowledge.refresh(pid)
     corro = [t for t in knowledge.list_targets(pid, status="open") if t["sufficiency"] == "corroborative"][0]
     knowledge.pursue(corro["id"], external=False)
-    timeless = _skipped(pid, "old-timeless", "How to structure a seller transition when buying an accounting practice",
-                        "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention principles.", relevance=35)
+    timeless = _skipped(pid, "old-timeless", "Seller transition length: six, twelve or eighteen months versus two full tax seasons",
+                        "A framework and checklist for the usual seller transition: how many tax seasons the seller keeps working, retention principles.", relevance=35)
     dated = _skipped(pid, "old-dated", "SBA rates news update this week", "Breaking: rates moved again today; market update for 2021.", relevance=20)
     before = candidates.pool(pid)
     # a lower bar catches both the linked candidate and the timeless skipped source; the dated one never clears even that
@@ -121,8 +136,8 @@ def test_skipped_sources_carry_the_pool_potential_scan_on_the_plain_sources_list
     ('worth a look' >= 40), and must never compute it (or crash) for a non-skipped row."""
     pid, ids = _fixture(monkeypatch)
     claims.ensure(pid); knowledge.refresh(pid)
-    timeless = _skipped(pid, "old-timeless-src", "How to structure a seller transition when buying an accounting practice",
-                        "A framework and checklist for the seller transition: how many tax seasons, what the seller keeps doing, retention principles.", relevance=35)
+    timeless = _skipped(pid, "old-timeless-src", "Seller transition length: six, twelve or eighteen months versus two full tax seasons",
+                        "A framework and checklist for the usual seller transition: how many tax seasons the seller keeps working, retention principles.", relevance=35)
     dated = _skipped(pid, "old-dated-src", "SBA rates news update this week", "Breaking: rates moved again today; market update for 2021.", relevance=20)
     rows = {r["id"]: r for r in api.api_sources(project_id=pid)}
     pool_by = {i["id"]: i for i in candidates.pool(pid, kind="skipped")["items"]}

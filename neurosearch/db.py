@@ -1739,6 +1739,36 @@ def project_notes_revision(project_id: str) -> str:
     return f"{parts[0]}:{parts[1]}:{tail}"
 
 
+def project_pool_revision(project_id: str) -> str:
+    """The fingerprint of the known-but-uncaptured pool ALONE (0.63.20).
+
+    Deliberately NOT `project_view_revision`: that one's `jobs` component is global, so during an ingest run it
+    moves whenever any job anywhere heartbeats, and a 2.3 s assembly keyed on it would be retired before it could
+    ever be reused — the failure 0.62.0 already paid for once with the findings rows. What the pool actually reads
+    is the Candidate Index, the skipped sources, this project's membership and priorities, and the research state
+    its "fits an open question" term comes from. A job moving does not change any of those.
+
+    `project_sources` has no `updated_at`, so COUNTS stand in for one. Starring a source changes every row's
+    `same_creator_as_priority` without touching a timestamp, and **removing a source from the project sets
+    `excluded=1` rather than deleting the row** (0.34.2's durable "removed from this project" marker), so the
+    plain count does not move either — the frozen S5 gate caught that one, which is the right place for it to
+    be caught: a cache that outlives the user's own removal is wrong, not stale (0.62.8). `candidates` is global for the same reason
+    `project_view_revision`'s `sources` is — a candidate's title can be rewritten by an exploration pass that knows
+    nothing about this project, and over-invalidating costs a recompute while under-invalidating costs a wrong
+    screen."""
+    r = connect().execute(
+        "SELECT (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM candidate_projects WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(last_seen_at),0) FROM candidates),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM candidate_links WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM sources WHERE status='skipped'),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(suggested_at),0)||':'"
+        "               ||COALESCE(SUM(CASE WHEN priority THEN 1 ELSE 0 END),0)||':'"
+        "               ||COALESCE(SUM(CASE WHEN excluded THEN 1 ELSE 0 END),0) FROM project_sources WHERE project_id=?),"
+        "       (SELECT COUNT(*) FROM project_notes WHERE project_id=?)",
+        (project_id, project_id, project_id, project_id)).fetchone()
+    return "|".join(str(x) for x in r) + "|" + project_research_revision(project_id)
+
+
 def project_view_revision(project_id: str) -> dict[str, str]:
     """R2: the cheap fingerprint of everything the Sources view renders — measured at ~6 ms against the 440 ms the
     view itself costs, which is what lets a 3 s poll ask "did anything change?" instead of rebuilding the answer.

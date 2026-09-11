@@ -1266,3 +1266,31 @@ that.
 **Not fixed, and named:** the areas/overview pass itself still costs tens of seconds at 15,800 Claims, and
 `knowledge.state` (75 s) and `claims_view.query` (48 s) have no cache of their own — they only benefit indirectly
 because both call `areas()`. Making the pass cheap is a separate rung; how fast Claims accumulate is Kyle's call.
+
+## 0.63.20 — a frozen gate that was asserting the defect (changed decision, with reasoning)
+
+`tests/test_n7_pool.py` (S5, the known-but-uncaptured pool) asserted that a skipped source titled *"How to
+structure a seller transition when buying an accounting practice"* would name the fixture's open question:
+
+```python
+assert t["potential"] > d["potential"] and t["fits"] and "seller transition" in (t["fits"] or "").lower()
+```
+
+Measured inside that fixture, its best share against the three open questions is **0.217 / 0.083 / 0.143** — every
+one below the **0.34** `FIT_MIN_SHARE` that `_potential` has required for fit POINTS since S5. So the gate was
+pinning a label the scan had not earned, and it is the same behaviour that made Kyle's live pool header read
+*"8,917 of 8,970 fit an open question"* (8,917 rows carrying a label, 196 clearing the bar).
+
+**What is still promised** is the property the test was written for: an on-topic skipped source is connected to the
+open question it answers, ranked above a dated one, through the same $0 scan `/api/sources` uses. The fixture's
+source is retitled *"Seller transition length: six, twelve or eighteen months versus two full tax seasons"*, which
+shares 11 of the question's 23 tokens (**0.478**) and is the source you would actually want surfaced. **What is no
+longer promised** is that a 21.7% word overlap is reported as a fit.
+
+The old title is kept in the same test as a NEAR MISS with its own assertions — it still outranks the dated source
+on its other signals, it carries no `fits` label, no "fits an open question" reason, and the header count equals
+the number of rows that carry a label. So the change adds a gate rather than removing one.
+
+Second change in the same release, also caught by this gate: `db.project_pool_revision` gained an `excluded` count
+over `project_sources`, because `remove_project_sources` sets `excluded=1` rather than deleting the row and the
+cached pool therefore outlived the user's own removal.
