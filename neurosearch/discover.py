@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from . import db
-from .config import settings
+from .config import int_env, settings
 
 log = logging.getLogger(__name__)
 
@@ -136,7 +136,10 @@ def scholar_pass(project: dict[str, Any], refine: str | None, research: dict[str
 # fetch uses. A dead address is then a FACT on the row rather than a failed job the user discovers by clicking. And
 # on a 404 the site root is tried once, because "the blog moved" is the common case and the root is nearly always
 # where it moved to — offered as a suggestion, never substituted silently.
-LINK_MAX = 24                      # URLs checked per run: the shortlist plus a couple of start_with links each
+# 0.63.14: 40, was 24. A link check is one HEAD/GET through `safe_fetch` on 4 threads and costs nothing but a
+# little network, while an unchecked dead link costs a queued job that fails later. Revert with
+# NEUROSEARCH_DISCOVER_LINK_MAX=24.
+LINK_MAX = int_env("NEUROSEARCH_DISCOVER_LINK_MAX", 40)     # URLs checked per run: the shortlist plus a couple of start_with links each
 LINK_DEADLINE_S = 8.0              # per URL
 LINK_STATUSES = ("ok", "not_found", "blocked", "unreachable", "refused", "skipped")
 

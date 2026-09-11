@@ -15,6 +15,19 @@ def _env(name: str, default: str | None = None) -> str | None:
     return v if v not in (None, "") else default
 
 
+def int_env(name: str, default: int) -> int:
+    """A positive integer ceiling from the environment, or the default.
+
+    0.63.14: several module constants were round numbers with no evidence attached, and a limit that cannot be
+    changed without editing code is not a setting — it is a decision nobody can revisit. These read the environment
+    so every one of them is reversible from `.env`."""
+    try:
+        v = int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+    return v if v > 0 else default
+
+
 @dataclass
 class Settings:
     # Storage
@@ -51,7 +64,10 @@ class Settings:
     cookies_file: str | None = field(default_factory=lambda: _env("NEUROSEARCH_COOKIES_FILE"))
     allow_transcription: bool = field(default_factory=lambda: (_env("NEUROSEARCH_ALLOW_TRANSCRIPTION", "true") or "").lower() == "true")
     max_transcribe_minutes: int = field(default_factory=lambda: int(_env("NEUROSEARCH_MAX_TRANSCRIBE_MINUTES", "240") or 240))
-    workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_WORKERS", "2") or 2))
+    # 0.63.14: 3, was 2. These workers do ingestion — download, transcribe, chunk — and YouTube politeness is
+    # already handled by `yt_delay` (4 s, randomised) rather than by how many workers exist, so 2 was throttling
+    # his own machine rather than protecting anything. Revert with NEUROSEARCH_WORKERS=2.
+    workers: int = field(default_factory=lambda: int_env("NEUROSEARCH_WORKERS", 3))
     # L1 Local-First AI: ai_profile=local routes local-capable tasks through Claude Code (claude_code.py) with the API as fallback;
     # cloud (default until verified live) keeps every call on the API. local_ai_workers = the size of the local pool (busy = wait, never spend).
     ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())

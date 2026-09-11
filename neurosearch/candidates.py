@@ -22,6 +22,7 @@ import time
 from typing import Any
 
 from . import db
+from .config import int_env
 
 STATES = ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "user_dismissed", "duplicate", "acquired")
 LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
@@ -495,7 +496,9 @@ def where_to_look(project_id: str, target: dict[str, Any] | None = None, limit: 
                                        f"is no rate to project from.")}
 
 
-SEEN_LIMIT = 12               # what a Discover rung shows before the web is worth trying (0.62.5)
+# 0.63.14: 24, was 12. $0 and no network — this rung is a DB search over 10,319 candidates plus 574 skipped
+# sources, and twelve rows of a pool that size is a keyhole. Revert with NEUROSEARCH_SEEN_LIMIT=12.
+SEEN_LIMIT = int_env("NEUROSEARCH_SEEN_LIMIT", 24)      # what a Discover rung shows before the web is worth trying (0.62.5)
 
 
 def seen_for_query(project_id: str, query: str, limit: int = SEEN_LIMIT) -> dict[str, Any]:

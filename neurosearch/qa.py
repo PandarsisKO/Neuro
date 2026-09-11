@@ -18,7 +18,7 @@ import re
 from typing import Any
 
 from . import contracts, db, titles
-from .config import settings
+from .config import int_env, settings
 from .search import search
 
 log = logging.getLogger(__name__)
@@ -95,8 +95,40 @@ Known project facts (decisions, constraints, requirements):
 {research}
 {inventory}"""
 
-INVENTORY_MAX = 40
-RESEARCH_MAX = 4
+# 0.63.14 — both of these were round numbers with nothing measured behind them, and both narrowed what the chat
+# knows about the user's OWN project. Sized against Kyle's live data before changing:
+#
+#   INVENTORY_MAX 40: his project has 65 non-video sources. Listing all of them costs ~1,359 tokens against ~853
+#   at the old cap — so 40 was hiding 25 of his own documents to save 500 tokens a turn (~$0.0015).
+#   RESEARCH_MAX 4: against 2,672 open questions and 264 open watch-outs. A target question averages 180
+#   characters (~45 tokens) and a tension 134 (~34), so ten of each costs ~475 tokens more per turn.
+#
+# The ORDER matters more than the count, and that was the real defect: these were the first N of an arbitrary
+# order. They now come from `research_view.overview`'s ranked `next` list — the same score the Research tab's
+# "what to do next" uses, already cached and background-warmed, so it is cheaper than what it replaces was
+# pretending to be. Ten ranked beats ten arbitrary.
+INVENTORY_MAX = int_env("NEUROSEARCH_CHAT_INVENTORY_MAX", 120)      # was 40
+RESEARCH_MAX = int_env("NEUROSEARCH_CHAT_RESEARCH_MAX", 10)         # was 4
+
+
+def _ranked_next(project_id: str) -> list[str]:
+    """The highest-priority open questions and watch-outs, in the Research tab's own order.
+
+    Returns [] on any failure, so the caller falls back to the unranked lists — a chat turn must never fail because
+    a priority order could not be computed. `overview` is stale-tolerant and background-warmed, so this reads a
+    cached value rather than computing one inside the request (0.62.2's rule)."""
+    try:
+        from . import research_view
+        nxt = research_view.overview(project_id, limit=RESEARCH_MAX).get("next") or []
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for item in nxt:
+        if item.get("type") == "watchout":
+            out.append(f"- ⚠ {item.get('kind', 'issue')}: {str(item.get('title') or item.get('detail') or '')[:200]}")
+        else:
+            out.append(f"- open evidence target: {str(item.get('question') or '')[:140]}")
+    return out
 
 
 def research_block(project_id: str) -> str:
@@ -111,6 +143,10 @@ def research_block(project_id: str) -> str:
     if not st.get("claims_total") and not st["targets"]:      # the COUNT, not the page (0.63.8 drops the rows)
         return ""
     lines = [f"Research state (Claims: {m.get('strong', 0)} strong / {m.get('developing', 0)} developing / {m.get('weak', 0)} weak topics; say when an answer rests on a weak or single-source Claim):"]
+    ranked = _ranked_next(project_id)
+    if ranked:
+        lines += ranked
+        return "\n".join(lines)
     for t in st["tensions"][:RESEARCH_MAX]:
         lines.append(f"- ⚠ {t['kind']}: {t['description'][:200]}")
     for tg in [x for x in st["targets"] if x["status"] == "open"][:RESEARCH_MAX]:
@@ -314,7 +350,10 @@ TOOL_LABELS = {          # R1: what a tool round is actually doing, in the user'
     "resolve_work": "resolving that document against your library…",
     "calculate": "running your calculator…",
 }
-MAX_TOOL_ROUNDS = 6       # agentic rounds with tools; the round after that runs without tools so the answer ends in text
+# 0.63.14: 8, was 6. A round is a model call, so this is a real budget — but it is spent only on a question the
+# model is still working on, and being cut off mid-investigation wastes the rounds already paid for. Revert with
+# NEUROSEARCH_CHAT_TOOL_ROUNDS=6.
+MAX_TOOL_ROUNDS = int_env("NEUROSEARCH_CHAT_TOOL_ROUNDS", 8)   # agentic rounds with tools; the round after that runs without tools so the answer ends in text
 CONTINUATIONS_MAX = 2     # automatic "continue where you stopped" rounds after stop_reason=max_tokens (a runaway answer cannot spend unbounded)
 CONTINUE_PROMPT = "Continue the previous answer exactly where it stopped. Do not restart, summarise or repeat prior material; pick up mid-sentence if that is where it stopped."
 
@@ -701,7 +740,10 @@ def _pj(project: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"id": project["id"], "name": project["name"], "brief": project.get("brief")} if project else None
 
 
-MAX_EXCERPTS = 60   # hard ceiling on excerpts per answer (initial retrieval + search_library calls)
+# 0.63.14: 90, was 60. This ceiling is only REACHED when the model keeps calling `search_library`, i.e. on a
+# question it cannot answer from the first 14 excerpts — so the extra ~12k input tokens (~$0.04) are spent on the
+# hard questions and on nothing else. Revert with NEUROSEARCH_CHAT_MAX_EXCERPTS=60.
+MAX_EXCERPTS = int_env("NEUROSEARCH_CHAT_MAX_EXCERPTS", 90)   # hard ceiling on excerpts per answer (initial retrieval + search_library calls)
 
 
 def _run_tool(name: str, inp: dict[str, Any], project: dict[str, Any] | None,

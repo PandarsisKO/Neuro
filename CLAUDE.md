@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.13)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.14)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,36 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The arbitrary limits, raised with their cost stated (0.63.14)
+
+Kyle: *"lets update the arbitrary limits - balancing speed and budget."* Each was sized against his live data
+before being changed, because "arbitrary" is not a reason to raise a number either.
+
+| limit | was | now | measured cost |
+|---|---|---|---|
+| `qa.INVENTORY_MAX` | 40 | **120** | his project has 65 non-video sources; all of them cost ~1,359 tokens against ~853 at 40, so the cap hid **25 of his own documents** from the chat to save ~500 tokens (~$0.0015) a turn |
+| `qa.RESEARCH_MAX` | 4 | **10** | ~475 tokens a turn (a question averages 180 chars, a watch-out 134) against **2,672** open questions and **264** watch-outs |
+| `qa.MAX_EXCERPTS` | 60 | **90** | only REACHED when the model keeps calling `search_library`, so ~12k input tokens (~$0.04) on the hard questions and nothing on the rest |
+| `qa.MAX_TOOL_ROUNDS` | 6 | **8** | up to two more calls, spent only on a question still being worked — being cut off mid-investigation wastes the rounds already paid for |
+| `candidates.SEEN_LIMIT` | 12 | **24** | $0, no network: a DB search over 10,319 candidates and 574 skipped sources, of which twelve rows is a keyhole |
+| `discover.LINK_MAX` | 24 | **40** | a little network; an unchecked dead link costs a queued job that fails later |
+| `settings.workers` | 2 | **3** | ingestion concurrency — YouTube politeness is `yt_delay` (4 s, randomised), never the worker count, so 2 was throttling his own machine rather than protecting anything |
+
+**The order mattered more than the count, and that was the real defect in the research block.** Those four tensions
+and four targets were the first N of an arbitrary order. They now come from `research_view.overview`'s ranked
+`next` list — the same score the Research tab's "what to do next" uses, already cached and background-warmed, so
+it is cheaper than the thing it replaces. **Ten ranked beats ten arbitrary.** A failure to compute the order falls
+back to the unranked lists, because a chat turn must never fail over a priority sort.
+
+**Every one of them now reads the environment** (`config.int_env`), so each is revertible from `.env` with no code
+change: a limit that needs a code edit is not a setting, it is a decision nobody can revisit. A junk, zero or
+negative value falls back to the default.
+
+**The frozen Tier 1 totals did not move, and that is a fact about the gate rather than about the change** — the
+golden fixture has too few sources and targets to reach any of these caps. So `tests/test_s31_limits.py` hits them
+on purpose: the inventory lists all 65 of a 65-document project, still bounds a 150-document one and says how many
+it left out, and the excerpt ceiling still refuses rather than growing the prompt.
 
 ## A thread count is not a spend control (0.63.13)
 
