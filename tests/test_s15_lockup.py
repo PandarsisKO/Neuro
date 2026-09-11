@@ -307,3 +307,58 @@ def test_the_background_loop_warms_the_workbench_too():
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "neurosearch", "jobs.py"), encoding="utf-8").read()
     assert "findings_view.decorated" in src and "research_view.areas" in src
+
+
+# ── 0.63.6 — the warm-up waited two minutes before warming anything ────────────────────────────────────────────
+# `_housekeeping_loop` opened with `_stop.wait(every)`, so the first 120 s after a restart had no warm cache at
+# all — which is precisely when Kyle opens the app, because relaunching is what he had just been told to do.
+# Measured through his browser on a freshly restarted server: `staleness/triage` 8.1 s (for 1.7 KB of answer),
+# the Claims page 7.7 s, Research 8.0 s; the same three warm are 128 ms, 49 ms and 57 ms.
+
+def test_the_warm_up_runs_before_the_first_wait(monkeypatch):
+    """The bug was the ORDER of two statements, so the test is about order and nothing else."""
+    from neurosearch import jobs
+    seen: list[str] = []
+    monkeypatch.setattr(jobs, "_warm_quality", lambda: seen.append("warm"))
+    monkeypatch.setattr(jobs.db, "checkpoint_wal", lambda: seen.append("wal") or {})
+
+    class OneShot:
+        def __init__(self) -> None:
+            self.n = 0
+
+        def is_set(self) -> bool:
+            self.n += 1
+            return self.n > 1              # enter the loop body never; stop right after the pre-loop warm
+
+        def wait(self, _s: float) -> None:
+            pass
+
+    monkeypatch.setattr(jobs, "_stop", OneShot())
+    jobs._housekeeping_loop(every=0.0)
+    assert seen == ["warm"], "the warm-up must have run before the loop's first wait"
+
+
+def test_every_cold_screen_is_in_the_warm_set(monkeypatch):
+    """A screen that is cached but never computed in the background is cold on every restart. The set is asserted
+    by name because the failure is silent — nothing breaks, a person just waits."""
+    from neurosearch import claims_view, findings_quality, findings_view, jobs, research_view, staleness
+    called: list[str] = []
+    monkeypatch.setattr(research_view, "areas", lambda pid: called.append("areas"))
+    monkeypatch.setattr(findings_view, "decorated", lambda pid: called.append("rows"))
+    monkeypatch.setattr(findings_quality, "summary", lambda pid, warm=False: called.append("quality"))
+    monkeypatch.setattr(staleness, "triage", lambda pid: called.append("triage"))
+    monkeypatch.setattr(claims_view, "query", lambda pid: called.append("claims"))
+    db.create_project("warm me", brief="b")
+    jobs._warm_quality()
+    assert set(called) == {"areas", "rows", "quality", "triage", "claims"}
+
+
+def test_one_failing_warm_up_never_stops_the_others(monkeypatch):
+    """A warm-up is a nicety: if the triage pass raises, the Claims pass must still run."""
+    from neurosearch import claims_view, jobs, staleness
+    ran: list[str] = []
+    monkeypatch.setattr(staleness, "triage", lambda pid: (_ for _ in ()).throw(RuntimeError("nope")))
+    monkeypatch.setattr(claims_view, "query", lambda pid: ran.append("claims"))
+    db.create_project("warm me too", brief="b")
+    jobs._warm_quality()
+    assert "claims" in ran

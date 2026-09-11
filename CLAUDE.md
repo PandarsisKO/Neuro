@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.6)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.7)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,24 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The warm-up waited two minutes before warming anything (0.63.7)
+
+0.61.4 added a background warm-up so the first visit after a restart would not pay for the expensive derived
+passes. It opened with `_stop.wait(120)`. So the first two minutes after a relaunch had no warm cache at all —
+**exactly when he opens the app, because relaunching is what he had just been told to do.** Measured through his
+browser on a freshly restarted server, against 50–170 ms warm:
+
+```
+GET …/staleness/triage    8.1 s   (for 1,753 bytes of answer)
+GET …/claims?limit=50     7.7 s
+GET …/research            8.0 s
+```
+
+Two fixes, both small. `_warm_quality()` runs **before** the loop's first wait. And `staleness.triage` and
+`claims_view.query` joined the warmed set: both were already cached on a revision, and nothing was ever computing
+them except a person waiting for a screen. A cached pass with no background writer is cold on every restart, which
+is a silent failure — nothing breaks, someone just waits — so the warm set is asserted by name in the gate.
 
 ## More descriptive without more words (0.63.6)
 

@@ -571,6 +571,11 @@ def _housekeeping_loop(every: float = 120.0) -> None:
     thread and several of those threads run multi-second derived-state passes, so there was always an older
     snapshot in the way. A checkpoint that cannot run is not an error; it is a thing to try again shortly, which
     is exactly what a loop is for."""
+    # 0.63.6: warm BEFORE the first wait. The loop waited 120 s before doing anything, so the two minutes right
+    # after a relaunch — exactly when he opens the app, because relaunching is what he had just been told to do —
+    # were the cold ones. Measured cold on his project: staleness/triage 8.1 s, Claims 7.7 s, Research 8.0 s,
+    # against 50–170 ms warm.
+    _warm_quality()
     while not _stop.is_set():
         _stop.wait(every)
         if _stop.is_set():
@@ -592,12 +597,16 @@ def _warm_quality() -> None:
     was **23.2 s cold** on the 17,000-note project, because a cold request was also building the research areas
     from 13,000 Claims. All three passes are worth having and none is worth having in a request."""
     try:
-        from . import findings_quality, findings_view, research_view
+        from . import claims_view, findings_quality, findings_view, research_view, staleness
         for row in db.connect().execute("SELECT id FROM projects ORDER BY updated_at DESC LIMIT 8").fetchall():
             pid = row["id"]
             for what, fn in (("areas", lambda: research_view.areas(pid)),
                              ("rows", lambda: findings_view.decorated(pid)),
-                             ("quality", lambda: findings_quality.summary(pid, warm=True))):
+                             ("quality", lambda: findings_quality.summary(pid, warm=True)),
+                             # 0.63.6 — the two remaining cold screens, measured through his browser. Both are
+                             # already cached on a revision; nothing was computing them before a person did.
+                             ("triage", lambda: staleness.triage(pid)),
+                             ("claims", lambda: claims_view.query(pid))):
                 try:
                     fn()                          # each is cached under the project's current revision
                 except Exception as e:  # noqa: BLE001
