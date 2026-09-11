@@ -215,3 +215,42 @@ def test_the_verdict_says_which_model_it_is_about(monkeypatch):
         CC._state["by_model"] = {}
     CC.note_failure(CC.LocalUnavailable("error", "boom"), model="claude-sonnet-5")
     assert CC.states_by_model()["claude-sonnet-5"]["probed_model"] == "claude-sonnet-5"
+
+
+def test_the_background_probe_fills_the_cache_it_was_asked_about(monkeypatch):
+    """0.63.31, and it was my own 0.63.30 bug: `_probe_bg` took a model and called `_probe()` without it, writing
+    only the global slot. So the Health console's verdict was about the CLI's bare default however specific the
+    caller was, and the per-model cache the router reads stayed empty. A parameter accepted and not used is worse
+    than one that was never added."""
+    import time as _t
+
+    from neurosearch import claude_code as CC
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setattr(settings, "claude_code_model", None)
+    seen: list[str | None] = []
+    monkeypatch.setattr(CC, "_probe", lambda model=None: (seen.append(model) or
+                                                          {"state": "ready", "probed_model": CC._hkey(model)}))
+    with CC._lock:
+        CC._state["health"] = None
+        CC._state["by_model"] = {}
+    CC.health(wait=False, model="claude-sonnet-5")          # what every Health render does
+    for _ in range(40):                                     # the probe runs in its own thread
+        if CC.states_by_model().get("claude-sonnet-5"):
+            break
+        _t.sleep(0.05)
+    assert seen == ["claude-sonnet-5"], "the background probe must measure the model it was handed"
+    assert CC.states_by_model()["claude-sonnet-5"]["state"] == "ready"
+
+
+def test_the_start_scripts_keep_the_servers_output_on_disk():
+    """Kyle's app hung and there was NOTHING to read — no log anywhere, so a startup crash, a worker traceback and
+    a silent deadlock all look identical from outside. The rule this codebase applies to every ladder rung applies
+    to its own front door. Bounded, so the log cannot become the problem it exists to diagnose."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for name in ("start", "start.command"):
+        src = (root / name).read_text()
+        assert "data/server.log" in src, name
+        assert "tee -a" in src, name
+        assert "5000000" in src, f"{name}: the log must be bounded"
+        assert "exec .venv/bin/neurosearch start" not in src, f"{name}: exec cannot pipe to tee"

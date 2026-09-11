@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.30)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.31)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,48 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## His app hung and there was nothing to read (0.63.31)
+
+Kyle asked what was left on the list. Measuring the surfaces to answer him found the app **not responding at all**
+— `/api/version` and even `/` (a static file) timing out rather than refusing, which means something was holding
+the port and answering nothing. From his database:
+
+```
+last write to project_notes / claims / usage / invocations / jobs    all ~8,700 s ago
+one extract_claims                 running 8,679 s, heartbeat 8,679 s ago, lease EXPIRED
+_recovery_loop (runs every 60 s)   never recovered it
+WAL 25.7 MB (not the 0.61.2 cause), queue otherwise empty
+```
+
+Everything stopped in the same second, including the loops whose whole job is to notice that — a process-wide
+block, not a slow query. It began at the moment the server reloaded onto 0.63.30.
+
+**And I could not diagnose it, because the app keeps no log.** uvicorn's output goes to the terminal window
+`start.command` opened, and nothing is written to disk, so a startup crash, a worker traceback and a silent
+deadlock are indistinguishable from outside — the exact failure class this codebase has fixed six times this week
+in the OCR ladder (0.63.2), the course importer (0.63.15), the pool header (0.63.20) and the dropped citation
+(0.63.22), now found in the app's own front door. `start` and `start.command` tee stdout and stderr to
+`data/server.log`, bounded at 5 MB with one previous generation kept, with a dated banner per launch. The next
+occurrence is readable instead of gone.
+
+**One real bug found by reading while looking for the cause, and it is mine from 0.63.30.** `_probe_bg` took a
+`model` argument and then called `_probe()` **without it**, writing only the global slot and never the per-model
+cache it exists to fill. So every background probe — which is what each Health render triggers — measured the
+CLI's bare default however specific the caller was, and left the router to probe again itself. **A parameter
+accepted and not used is worse than one that was never added**, and it is the same shape as the bug 0.63.30 was
+fixing one layer up.
+
+**What is NOT claimed here:** that this was the cause of the hang. It was not diagnosed, because it could not be —
+that is the point of the logging change. Two hypotheses were formed and both were tested and discarded rather than
+shipped as fixes: that the poisoned cache made `route` run a 90-second probe before every call (disproved by
+repro — one probe, then cached), and that a re-entrant `_lock` deadlocked (`_lock` is released before `_probe`, and
+no caller holds it across a `health()` call). The tree compiles, all three version files agree, and the suite is
+green, so a broken deploy is not it either.
+
+The honest state: an unexplained process-wide hang on his machine, a relaunch to clear it, and from now on a log
+to read the next time. Recorded in HARDENING.md with what was ruled out, so the next attempt starts from the
+evidence rather than from these two dead ends.
 
 ## The probe tested a model nobody was using (0.63.30)
 

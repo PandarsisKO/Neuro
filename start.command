@@ -6,4 +6,13 @@ if [ ! -x .venv/bin/neurosearch ]; then
   python3 -m venv .venv && .venv/bin/pip install -q -e . || exit 1
 fi
 .venv/bin/pip install -q -e . 2>/dev/null   # picks up new dependencies after an update (fast when nothing changed)
-exec .venv/bin/neurosearch start "$@"
+# 0.63.31 — keep the server's own output on disk. Kyle's app hung and there was NOTHING to read: no log file
+# anywhere, so a crash at startup, a traceback in a worker and a silent deadlock all look identical from outside.
+# The same rule this codebase applies to every ladder rung ("a failure indistinguishable from its answer is worse
+# than not having the rung") applies to the app's own front door. Bounded at ~5 MB with one previous generation
+# kept, so it can never grow into the problem it exists to diagnose.
+mkdir -p data
+LOG=data/server.log
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 5000000 ]; then mv -f "$LOG" "$LOG.1"; fi
+printf '\n===== %s  starting Neuro Search =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
+.venv/bin/neurosearch start "$@" 2>&1 | tee -a "$LOG"

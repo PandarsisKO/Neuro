@@ -250,14 +250,24 @@ def health(force: bool = False, wait: bool = True, model: str | None = None) -> 
 
 
 def _probe_bg(model: str | None = None) -> None:
+    """0.63.31 — it took the model and then called `_probe()` without it, and wrote only the global slot.
+
+    Two consequences, both mine from 0.63.30: the background probe measured the CLI's bare default however
+    specific the caller was, and the per-model cache it was supposed to fill stayed empty — so the verdict the
+    Health console renders was about a model nobody asked about, and the router had to probe again itself. A
+    parameter accepted and not used is worse than one that was never added."""
+    key = _hkey(model)
     try:
-        h = _probe()
+        h = _probe(model)
         h["checked_at"] = time.time()
         with _lock:
+            _state["by_model"][key] = h
             _state["health"] = h
     except Exception as e:  # noqa: BLE001
         with _lock:
-            _state["health"] = {"state": "error", "detail": str(e)[:300], "checked_at": time.time()}
+            h = {"state": "error", "detail": str(e)[:300], "checked_at": time.time(), "probed_model": key}
+            _state["by_model"][key] = h
+            _state["health"] = h
     finally:
         with _lock:
             _state["probing"] = False

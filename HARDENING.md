@@ -1564,3 +1564,30 @@ it is true; the bug is that it is being recorded when it is not. The questions t
 This needs the server in front of you: the evidence above is all the database can say, and the next step is
 watching one of these happen. It is a correctness fault in the accounting layer, not a user-visible one, and
 nothing here is spending money incorrectly — `usage` rows are written from what actually returned.
+
+## OPEN: an unexplained process-wide hang, 2026-09-11 ~11:37 local
+
+Symptoms, all measured: `/api/version` and `/` both time out (not refused — the port is held, nothing answers);
+every table's newest row is ~8,700 s old and they all stop within the same second; one `extract_claims` is
+`running` with an expired lease and a heartbeat 8,700 s stale; `_lease_loop` (30 s) and `_recovery_loop` (60 s)
+both stopped too. WAL 25.7 MB, so not 0.61.2's starved-checkpoint cause. It began when the server reloaded onto
+0.63.30.
+
+**Ruled out, each by test rather than by argument:**
+
+- *A poisoned health cache making `route` probe before every call.* `_probe_bg` did leave the per-model cache empty
+  (fixed in 0.63.31), but a repro shows `health(wait=True, model=…)` probes **once** and then caches — five calls,
+  one probe. Not a per-call 90 s stall.
+- *A re-entrant `_lock` deadlock.* `_lock` is a plain `threading.Lock`, but `health()` releases it before `_probe`,
+  and no caller holds it across a `health()` call.
+- *A broken deploy.* Every `.py` compiles, `__init__.py` / `pyproject.toml` / `UI_VERSION` all read 0.63.31, suite
+  green, release-check PASS.
+
+**Why it could not be diagnosed:** the app wrote no log. That is fixed in 0.63.31 (`data/server.log`), and it is
+the prerequisite for any further progress here — there is nothing more the database can say.
+
+**Next time it happens, in order:** read the tail of `data/server.log` for a traceback or the last line before
+silence; if the log ends mid-request, get a thread dump (`kill -QUIT` on the uvicorn child prints stacks for a
+Python process built with faulthandler, or attach with `py-spy dump --pid`); check whether the uvicorn PARENT is
+alive while the child is gone, which is what would explain a held port with no answers. Do NOT restart before
+capturing one of those — the restart is what destroys the evidence, and it has now destroyed it twice.
