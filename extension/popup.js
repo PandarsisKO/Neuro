@@ -195,7 +195,14 @@ function onMsg(m) {
 async function showResult(m) {
   result = m; $('#scan').disabled = false;
   const withV = m.lessons.filter(l => l.video_urls.length);
-  $('#scanMsg').textContent = withV.length ? '' : 'No videos found — are you on the course home page, and logged in?';
+  // 1.6.0 — the old message named ONE cause ("are you logged in?") for every empty result, and on the course Kyle
+  // reported it was the wrong one: he was logged in, on the course page, and the course simply cannot be listed
+  // from a page. A message that guesses is worse than a message that says what it saw.
+  const d = m.diagnosis || {};
+  $('#scanMsg').textContent = withV.length ? ''
+    : d.app_rendered ? `This course keeps one address for every lesson (${d.clickable_lessonish} lesson rows, no lesson links), so it cannot be listed from here. Open a lesson and use “Send this page” instead.`
+    : !d.candidates ? 'No lesson links on this page — open the course home page that lists the lessons.'
+    : `Found ${d.candidates} lesson page${d.candidates === 1 ? '' : 's'} but no video in any of them. If the videos only appear after you press play, open a lesson and use “Send this page”.`;
   $('#courseTitle').value = m.course.title;
   $('#lessons').innerHTML = m.lessons.map((l, i) => `<div class="les ${l.video_urls.length ? '' : 'nov'}"><input type="checkbox" data-i="${i}" ${l.video_urls.length ? 'checked' : 'disabled'}><div class="t">${esc(l.title)}${l.module ? ` <span class="m">· ${esc(l.module)}</span>` : ''}<div class="m">${l.video_urls.length ? l.video_urls.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)).join(', ') : 'no video found'}</div></div></div>`).join('');
   $('#summary').textContent = `${withV.length} of ${m.lessons.length} lessons have a video${m.truncated ? ' (first 120 pages only)' : ''}. Session cookies for this site and the video hosts will be sent so the app can download them.`;

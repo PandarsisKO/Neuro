@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.14)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.15)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,35 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## The course importer blamed the login (0.63.15, extension 1.6.0)
+
+Kyle: *"the course importer doesnt seem to be working properly ... errors include: no videos found - are you sure
+you are logged in?"* He was logged in, and on the course page. Measured in **his own browser** against
+`smbmarket.com/dashboard/educational-hub/classroom/` rather than reasoned about — three separate faults:
+
+* **The lesson pattern matched the site's own navigation.** `/partners/` matched because the pattern contained the
+  bare substring **`part`**. The two calendar links matched because it contained **`classroom`** and they sit
+  *under* the course path — so "this link is inside the course" was being read as "this link is a lesson". All
+  three candidates on that page were navigation. `good` now matches lesson words at word boundaries (`parts?`, not
+  `part`), links inside `nav`/`aside`/`header`/`footer`/`[role=navigation]` are excluded structurally, and the
+  nav-ish names he actually has are in `bad`.
+* **Those false positives silenced the real result.** The on-page fallback read
+  `if (!lessons.length && here.length)`, so videos on the page the user is *looking at* were used only when nothing
+  else had been found at all — and two junk rows were enough to discard them. The current page now always
+  contributes, deduped, whatever else was found.
+* **That course cannot be crawled at all, and the message named the wrong reason.** Measured: the six course paths
+  are `<button class="group block w-full text-left">`, not links; the catalogue and every lesson render at the
+  **same URL**; the served HTML has **zero `<video>` tags, zero iframes and no player URL anywhere**. So the
+  scanner reports what it saw (`candidates`, `on_page_videos`, `clickable_lessonish`, `app_rendered`) and the popup
+  says one of three true things instead of one guessed one: *this course keeps one address for every lesson, so it
+  cannot be listed from here — open a lesson and use "Send this page"*; or *no lesson links on this page*; or
+  *found N lesson pages but no video in any of them*.
+
+Same rule as 0.63.2's OCR message and 0.63.4's missing button: **a message that names one cause for every failure
+is worse than a message that says what it saw** — it sends the user looking for a problem they do not have. Gate
+`tests/test_s32_course_scanner.py` runs the shipped `scanner.js` predicates under `node` against his real paths,
+and skips where no JS engine exists.
 
 ## The arbitrary limits, raised with their cost stated (0.63.14)
 
