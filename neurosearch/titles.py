@@ -96,35 +96,68 @@ VERB_LEAD = {"describe", "explain", "design", "create", "build", "compare", "aud
              "summarize", "summarise", "write", "list", "find", "identify", "review", "expand", "improve",
              "fix", "understand", "communicate", "research", "outline", "draft", "choose", "pick", "handle"}
 
+# The words of FRAMING a request rather than of its subject. Measured on his 42 real chats: they produced
+# `Wife Gio and Taking Ben`, `Mostly Interested in Laundromats`, `Supply with Data Regarding Current`,
+# `Attached a Conversation with Josh`, `Dream Big for a Moment` — in each case the subject was sitting just past
+# them. Dropped anywhere, like DROP, because framing can open a sentence or sit in the middle of one.
+FRAMING = {"talk", "talks", "talked", "talking", "supply", "regarding", "curious", "moment", "dream",
+           "attached", "attach", "mostly", "interested", "wanting", "taking", "essentially",
+           "wife", "husband", "yet", "without", "knowing", "once", "both", "lot", "bit",
+           "come", "idea", "ideas"}
 
-def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS) -> str:
+# Cannot OPEN a title: once the framing is gone these are left stranded at the front (`What of Business
+# Acquisition`, `If Start an LLC`). They may still appear inside one.
+LEADING_JUNK = {"what", "which", "if", "whether", "how", "up"}
+
+# A title that ends on one of these ends mid-phrase — the noun being qualified is the word that did not fit.
+# Only ever applied when the cap actually cut something, so a title that legitimately ends here keeps its word.
+WEAK_TAIL = {"what", "which", "out", "up", "set", "first", "current", "next", "more", "other", "such",
+             "any", "every", "all", "own", "same", "one", "two", "type", "types", "kind",
+             "private", "potential", "unique", "modern", "whole", "entire", "top", "main", "overall",
+             "general", "specific", "certain", "various", "different", "several", "few"}
+
+
+def _content(text: str) -> list[str]:
+    """The words that could carry a subject — everything the title vocabularies do not throw away."""
+    return [w for w in re.findall(r"[A-Za-z0-9']+", text)
+            if w.lower() not in SMALL and w.lower() not in DROP and w.lower() not in FRAMING
+            and w.lower() not in LEADING_JUNK]
+
+
+def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS, _depth: int = 0) -> str:
     """A short noun-phrase title for a chat, from its first message."""
     s = (q or "").strip()
     if not s:
         return ""
-    s = re.split(r"(?<=[.!?])\s|\n", s)[0][:260]                  # the lead sentence only
-    s = LEAD.sub("", s).strip(" ,;:-—")
+    sentences = [x for x in re.split(r"(?<=[.!?])\s|\n+", s) if x.strip()]
+    s = LEAD.sub("", sentences[0][:260]).strip(" ,;:-—")
     parts = re.split(r"[,:;]\s", s, maxsplit=1)
     head, tail = parts[0], (parts[1] if len(parts) > 1 else "")
-    content_in_head = len([w for w in re.findall(r"[A-Za-z0-9']+", head)
-                           if w.lower() not in SMALL and w.lower() not in DROP])
+    content_in_head = len(_content(head))
     next_word = (re.findall(r"[A-Za-z0-9']+", tail) or [""])[0].lower()
     if content_in_head >= 3 or (content_in_head >= 1 and next_word in RELATIVE):
         s = head                                                  # a clause that names its subject can stand alone
+    # A lead sentence that names nothing is a preamble, and the subject is in the next one: "I want to dream big
+    # for a moment. how can we have a private jet?" titled itself `Dream Big for a Moment` — everything except
+    # what he asked about. Bounded to the two sentences after it so a long message cannot be walked.
+    if len(_content(s)) < 2 and len(sentences) > 1 and _depth < 2:
+        return for_question(" ".join(sentences[1:3]), max_words, max_chars, _depth + 1)
     toks = [t for t in re.findall(r"[A-Za-z0-9$%&/'’\-\.]+", s) if t]
     out: list[str] = []
     content = 0
+    cut = False                                                   # did the cap leave words behind?
     for t in toks:
         low = t.lower().strip(".,")
-        if low in DROP:
+        if low in DROP or low in FRAMING:
             continue
-        if content == 0 and low in SMALL:
-            continue                                              # never open on a connector
+        if content == 0 and (low in SMALL or low in LEADING_JUNK):
+            continue                                              # never open on a connector or a stranded "what"
+        if content >= max_words:
+            cut = True
+            break
         out.append(t)
         if low not in SMALL:
             content += 1
-        if content >= max_words:
-            break
     words: list[str] = []
     for i, t in enumerate(out):
         clean = t.strip(".,")
@@ -150,8 +183,15 @@ def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS)
                 break
             keep.append(w)
         words = keep or [words[0][:max_chars]]
+        cut = True
     while len(words) > 1 and words[-1].lower() in SMALL:
         words.pop()                                               # never end on a connector, cap or no cap
+    # Only when something was actually cut: a qualifier at the end qualified a word that did not fit, so the title
+    # ends mid-phrase — `Questions to the Advisor on First`, `Attached a Conversation with Josh Private`.
+    while cut and len(words) > 2 and words[-1].lower() in WEAK_TAIL:
+        words.pop()
+        while len(words) > 1 and words[-1].lower() in SMALL:
+            words.pop()
     return " ".join(words) or s[:max_chars].strip() or (q or "").strip()[:max_chars]
 
 

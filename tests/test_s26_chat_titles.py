@@ -235,3 +235,80 @@ def test_the_measured_titles_from_his_real_chats_are_stable():
         ("how do I get claude to effectively audit the web app comprehensively", "Claude to Effectively Audit"),
     ]:
         assert titles.for_question(q) == want, (q, titles.for_question(q))
+
+
+# ── 0.63.6 — "more descriptive without more words" ─────────────────────────────────────────────────────────────
+# Kyle, on being shown the 37 previewed renames: *"yes they need better, shorter titles, more descriptive without
+# more words."* So the budget stays at 4 words / 34 characters and the words have to be better ones.
+#
+# **The obvious idea was measured first and rejected.** Scoring each content word for informativeness (acronyms,
+# figures, proper nouns, long domain nouns, repetition) and keeping the best four *in order* reads well as a rule
+# and produced, on his own 42 questions: `Claude to Design the Web as Apple`, `Gio and about Accounting/Book`,
+# `0 on the Business What`, `Free Up for Purchasing a Company`. A title is a PHRASE, not a bag of its best words —
+# picking non-adjacent words breaks the grammar that made them readable. Four wrong titles for one right one.
+#
+# What worked was three narrow rules, each fixing a named output, with the phrase left contiguous.
+
+def test_framing_words_are_not_the_subject():
+    """`Wife Gio and Taking Ben` — the subject (Ben Kelly's course) was one word past the framing."""
+    assert titles.for_question(
+        "My wife (gio) and I are taking Ben Kelly's course on business acquisition") == "Gio and Ben Kelly's Course"
+    assert titles.for_question(
+        "My wife is mostly interested in laundromats, becoming an expert in them") == "Laundromats Becoming an Expert"
+    assert titles.for_question(
+        "I wanted to supply you with data regarding our current finance situation."
+    ) == "Data Current Finance Situation"
+    assert titles.for_question(
+        "I have attached a conversation with Josh regarding private consulting") == "Conversation with Josh"
+
+
+def test_a_preamble_sentence_hands_over_to_the_next_one():
+    """`Dream Big for a Moment` — every word of the title except what he actually asked about."""
+    assert titles.for_question("I want to dream big for a moment. how can we have a private jet?") == "Private Jet"
+
+
+def test_the_handover_is_bounded_and_never_loops():
+    """A message of nothing but preamble must still produce something rather than walking the whole text."""
+    t = titles.for_question("I want to. I need to. we should. ok so.")
+    assert isinstance(t, str) and len(t) <= titles.MAX_CHARS
+
+
+def test_a_stranded_question_word_cannot_open_a_title():
+    assert titles.for_question(
+        "without knowing what type of business acquisition we want to do yet") == "Business Acquisition"
+    assert titles.for_question(
+        "Help me come up with a list of potential businesses to target.") == "List of Businesses to Target"
+
+
+def test_a_cut_phrase_does_not_end_on_a_qualifier():
+    """`Questions to the Advisor on First` — "first" qualified "call", which did not fit."""
+    assert titles.for_question(
+        "my wife had questions that we did not get to ask the advisor on our first call") == "Questions to the Advisor"
+
+
+def test_a_title_that_legitimately_ends_there_keeps_its_word():
+    """The trim applies only when the cap actually cut something, so it can never shorten a complete phrase."""
+    assert titles.for_question("how do we get the money out?") == "Money Out"
+    assert titles.for_question("how do we split the money up") == "Split the Money Up"
+    assert titles.for_question("who goes first") == "Goes First"
+
+
+def test_the_whole_measured_set_is_pinned():
+    """These are the titles his 42 real chats produce. A rule change that improves one of them and breaks another
+    is the failure mode this release was written to catch, so the set is asserted rather than eyeballed."""
+    for q, want in [
+        ("I have a potential deal I need you to evaluate.", "Deal to Evaluate"),
+        ("what are some good B2B businesses to buy?", "B2B Businesses to Buy"),
+        ("for the Stanislaus CPA deal, the CIM is only ~2 years of data", "Stanislaus CPA Deal"),
+        ("the tool I want to revisit and have claude redesign is Neuro Search, which is a research tool",
+         "Neuro Search"),
+        ("ELI5 - how do we pay ourselves? how do use SMB acquisition to pay ourselves", "Pay Ourselves"),
+        ("what are the fees and costs for acquiring a CPA business in California",
+         "Fees and Costs for Acquiring a CPA"),
+        ("give me the breakdown on ADUs in california, what should I do?", "Breakdown on ADUs in California"),
+        ("what is house hacking? how do get other people to pay for my mortgage?", "House Hacking"),
+        ("how do distributions work, and how will that pay for our lifestyle?", "Distributions Work"),
+        ("once we have a laundromat service up and running, what are the modernizations",
+         "Laundromat Service Up and Running"),
+    ]:
+        assert titles.for_question(q) == want, (q, titles.for_question(q))

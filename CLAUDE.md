@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.5)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.6)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,37 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## More descriptive without more words (0.63.6)
+
+Kyle, shown the 37 previewed renames: *"yes they need better, shorter titles, more descriptive without more
+words."* So the budget stays at 4 words / 34 characters and the words have to be better ones.
+
+**The obvious idea was measured first and rejected.** Scoring each content word for informativeness — acronyms +5,
+figures +3, proper nouns +2, long domain nouns +2, repetition +2 — and keeping the best four *in their original
+order* reads well as a rule. On his own 42 questions it produced `Claude to Design the Web as Apple`, `Gio and
+about Accounting/Book`, `0 on the Business What`, `Free Up for Purchasing a Company`, `Education People
+Attention`. **A title is a phrase, not a bag of its best words:** picking non-adjacent words destroys the grammar
+that made them readable. Four titles ruined for each one improved, so it is not in the module.
+
+Three narrow rules, each fixing a named output, with the phrase left contiguous:
+
+* **`FRAMING` — the words of making a request, dropped anywhere like `DROP`.** `Wife Gio and Taking Ben` →
+  `Gio and Ben Kelly's Course`; `Mostly Interested in Laundromats` → `Laundromats Becoming an Expert`; `Supply with
+  Data Regarding Current` → `Data Current Finance Situation`; `Attached a Conversation with Josh` →
+  `Conversation with Josh`. In every case the subject was sitting one or two words past the framing.
+* **A preamble sentence hands over to the next one.** *"I want to dream big for a moment. how can we have a private
+  jet?"* was titled `Dream Big for a Moment` — every word except what he asked about. When the lead sentence has
+  under two content words left, the title comes from the next one instead (bounded to two, so a long message
+  cannot be walked): `Private Jet`.
+* **A cut phrase may not end on a qualifier** (`WEAK_TAIL`), and a stranded question word may not open one
+  (`LEADING_JUNK`). `Questions to the Advisor on First` → `Questions to the Advisor` ("first" qualified "call",
+  which did not fit); `Without Knowing What of Business` → `Business Acquisition`; `Come Up with a List of
+  Businesses` → `List of Businesses to Target`. The tail trim fires **only when the cap actually cut something**,
+  so a title that legitimately ends on one of those words keeps it (`Money Out`, `Goes First`).
+
+`test_the_whole_measured_set_is_pinned` asserts ten of his real titles, because the failure mode of a rule change
+here is improving one output and quietly breaking another.
 
 ## The thing you just clicked runs next (0.63.5)
 
