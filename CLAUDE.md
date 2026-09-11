@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.26)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.27)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,50 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A verdict has to say what it does (0.63.27)
+
+Kyle: *"it's unclear in the app how to approve or reject sometimes."* Audited every surface that asks for a
+verdict, and the inconsistency is the whole answer:
+
+```
+Claims workbench      Accept · Applies to us · Reject             words
+Findings workbench    ✓  ✕                                        two glyphs, no label and NO title either
+Findings (reserve)    ✓  📌  ✕                                     glyphs, partial titles
+Findings (dismissed)  ↩                                           glyph
+per-source bulk       ✓ all · ✕ all                               a quantity, but not the verb
+ticked-rows bulk      "Approve the ticked ones" · "Dismiss all"   words
+```
+
+**The most-used verdict surface in the app was the least labelled.** On the `suggested` filter — where the
+approving actually happens — the two buttons carried neither text nor a tooltip, while the Claims workbench one
+tab away says it in words. And `✓` already means *"this happened"* elsewhere in the same file (`✓ added`,
+`✓ attached`, `✓ already in your library`), so one glyph was both a status and a command. `📌` for "put it back in
+the review queue" is the clearest case that an icon cannot carry a verb: nothing about a pin says that, and it was
+reachable only by hovering and waiting.
+
+Every per-item verdict now reads `✓ Approve`, `✕ Dismiss`, `📌 To review`, `↩ Restore`, identically at all three
+call sites, and the per-source bulk pair says `✓ Approve all` / `✕ Dismiss all`. The icons stay as a prefix,
+because they are worth having once a word tells you what they mean.
+
+**And the gate found the half I had missed.** `Accept` and `Reject` on a Claim were words with no explanatory
+title, so a person could accept a Claim without learning what accepting commits them to — which is exactly the
+question I had to go and measure before I could answer it for Kyle. Both now say it on hover, including that it is
+reversible and that nothing is deleted.
+
+`tests/test_s38_verdict_labels.py` reads the shipped `web/index.html` and requires four things of every button that
+changes a verdict: a word, not just a symbol; an explanatory title on the per-item ones; the same verb at every
+call site for the same action, so the app does not teach three vocabularies for one decision; and no bare status
+glyph standing alone as a command. It is a text check for the same reason `test_s5_ui_syntax.py` shells out to
+`node --check` — there is no build step and no DOM here. Its own first version mis-parsed the bulk buttons with a
+regex that walked into a `${...}` template hole and reported a false failure, so the scanner tracks `${}` depth by
+hand.
+
+**Related, and measured on his data the same morning:** the four sources whose findings had lost their citations
+were re-analysed at his go-ahead (~$2 estimated from his own ledger, priced per pass rather than guessed). Result:
+**58 of 59 new findings citable against roughly half before, with 10 locators recovered from the verified quote** —
+ten citations 0.63.22 would otherwise have dropped in silence. One finding is genuinely unplaceable and says so.
+`finding_citation_rate` reads **98.3% of 59**, which is the first time that number has meant anything.
 
 ## "Quality of earnings" searched for the word "quality" — and my fix made it worse (0.63.25 → 0.63.26)
 

@@ -132,7 +132,7 @@
   .f .meta{display:flex;gap:6px;align-items:center;margin-top:4px;flex-wrap:wrap;font-size:12px}
   .f .meta .chip{margin:0;padding:1px 7px;font-size:11.5px}
   .f .qtoggle{font-size:11.5px;color:var(--muted)} .f .quote{font-size:12px;color:var(--muted);font-style:italic;flex-basis:100%}
-  .f .act{flex:0 0 auto;display:flex;gap:4px}
+  .f .act{flex:0 0 auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .f .act button{padding:3px 8px;font-size:12px}
   .rv .li{display:flex;gap:8px;align-items:center;padding:3px 0;font-size:13px;border-bottom:1px solid var(--line)}
   .rv .li input{width:auto}
@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.26';
+const UI_VERSION = '0.63.27';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1561,7 +1561,7 @@ async function toggleReserve(sid, a) {
   const notes = r.notes || [];
   box.innerHTML = `<div class="row" style="margin:6px 0 2px"><span class="muted" style="flex:1;font-size:12px">${notes.length} more extracted (lower importance for this brief). They are not exported or planned on until you promote them.</span>
     <button class="small" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'suggested', '${sid}')">Send all to Suggested</button><button class="small ghost" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'dismissed', '${sid}')">Dismiss all</button></div>` +
-    notes.map(n => findingCard(n, `<button class="small primary" title="Approve" onclick="promoteReserve(${n.id}, 'approved', '${sid}')">✓</button><button class="small" title="Send to Suggested" onclick="promoteReserve(${n.id}, 'suggested', '${sid}')">📌</button><button class="small ghost" title="Dismiss" onclick="promoteReserve(${n.id}, 'dismissed', '${sid}')">✕</button>`)).join('');
+    notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="promoteReserve(${n.id}, 'approved', '${sid}')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="promoteReserve(${n.id}, 'suggested', '${sid}')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="promoteReserve(${n.id}, 'dismissed', '${sid}')">✕ Dismiss</button>`)).join('');
 }
 async function promoteReserve(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.style.display = 'none'; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
 async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
@@ -1998,7 +1998,7 @@ const CW = { q: '', status: 'all', strength: '', freshness: '', needs_decision: 
 const CWG = { collapsed: new Set() };   // remembers which area-groups the user closed by hand (area -> closed)
 function claimCard(c) {
   const ev = (c.evidence || []).map(e => `<a class="chip" href="${esc(e.link || '#')}" target="_blank" title="${esc(e.relation)} · ${esc(e.evidence_class || '')}${e.independent ? '' : ' · repeats another source'}${e.stale ? ' · STALE (source revised)' : ''}">${e.relation === 'CONTRADICTS' ? '✗ ' : e.relation === 'QUALIFIES' ? '≈ ' : ''}${esc((e.title || 'source').slice(0, 34))}${e.locator ? ' @ ' + esc(e.locator) : ''}${e.independent ? '' : ' ↩'}</a>`).join('');
-  return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div style="flex:1;min-width:0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
+  return `<div class="kn" style="${c.status === 'rejected' ? 'opacity:.5' : ''}"><input type="checkbox" style="margin-top:3px" ${CW.sel.has(c.id) ? 'checked' : ''} onchange="claimSel('${c.id}',this.checked)">${stTag(c.strength)}<div style="flex:1;min-width:0"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.area ? ` · ${esc(c.area)}` : ''}<span title="${esc(c.strength_why || '')}"> — ${esc((c.strength_why || '').slice(0, 140))}</span></div><div style="margin-top:2px">${ev}${c.evidence_total > (c.evidence || []).length ? `<span class="muted"> +${c.evidence_total - c.evidence.length} more</span>` : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" title="You stand behind this: it counts as settled for its research area, and the plan and chat may lean on it. Reversible — nothing is deleted." onclick="claimStatus('${c.id}','accepted')">Accept</button> ` : ''}${c.application !== 'established' ? `<button class="small ghost" onclick="claimStatus('${c.id}','${c.status}','established')" title="You judge that this applies to your situation">Applies to us</button> ` : ''}${c.status !== 'rejected' ? `<button class="small ghost" title="You do not accept this: it stops counting as evidence for its area. Nothing is deleted and it is reversible." onclick="claimStatus('${c.id}','rejected')">Reject</button>` : ''}</span></div>`;
 }
 function claimSel(id, on) { if (on) CW.sel.add(id); else CW.sel.delete(id); renderClaimsBulkBar(); }
 function renderClaimsBulkBar() {
@@ -2047,7 +2047,7 @@ async function whyThisAnswer(sourceId, locator) {
   $('#dlgBody').innerHTML = '<span class="spin"></span> checking what this source became…'; dlg.showModal();
   let r; try { r = await api(`/api/projects/${state.project.id}/claims/for-source?source_id=${encodeURIComponent(sourceId)}&locator=${encodeURIComponent(locator || '')}`); } catch (e) { $('#dlgBody').innerHTML = esc(e.message); return; }
   $('#dlgBody').innerHTML = `<b>Why this answer</b> <span class="muted">· ${r.total} Claim${r.total === 1 ? '' : 's'} rest${r.total === 1 ? 's' : ''} on this source</span>` +
-    (r.claims.length ? r.claims.map(c => `<div class="kn" style="${c.matched_here ? '' : 'opacity:.75'}">${stTag(c.strength)}<div style="flex:1"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.matched_here ? ' · this exact passage' : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" onclick="claimStatus('${c.id}','accepted');dlg.close()">Accept</button>` : ''}</span></div>`).join('')
+    (r.claims.length ? r.claims.map(c => `<div class="kn" style="${c.matched_here ? '' : 'opacity:.75'}">${stTag(c.strength)}<div style="flex:1"><div>${esc(c.text)}</div><div class="why"><b>${esc(c.plain)}</b> · ${esc(c.type_label)}${c.matched_here ? ' · this exact passage' : ''}</div></div><span style="margin-left:auto;white-space:nowrap">${c.status !== 'accepted' ? `<button class="small" title="You stand behind this: it counts as settled for its research area, and the plan and chat may lean on it. Reversible — nothing is deleted." onclick="claimStatus('${c.id}','accepted');dlg.close()">Accept</button>` : ''}</span></div>`).join('')
       : '<div class="muted">This source has not become a Claim yet — it may be too new, or its findings did not carry a proposition worth harvesting.</div>') +
     `<div class="row" style="margin-top:10px"><button class="small ghost" onclick="dlg.close();showView('research');resPane('claims')">See all Claims</button></div>`;
 }
@@ -2776,8 +2776,8 @@ async function loadNotes() {
       <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new…</button><button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button></div>
     ${sugTotal > sug.length ? `<div class="muted" style="margin-bottom:6px">Showing the ${sug.length} most important of ${sugTotal}. The workbench below pages through the rest — set Show to <b>suggested</b>.</div>` : ''}
     <div class="muted" id="sugMsg"></div>` +
-    (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ all</button><button class="small ghost" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ all</button></div>` +
-      list.map(n => findingCard(n, `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`)).join('') + `</div>`).join('')
+    (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" title="Approve every suggested finding from this source" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ Approve all</button><button class="small ghost" title="Dismiss every suggested finding from this source (nothing is deleted)" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ Dismiss all</button></div>` +
+      list.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`)).join('') + `</div>`).join('')
       || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
   loadWorkbench();
 }
@@ -2831,10 +2831,15 @@ async function loadWorkbench(reset = true) {
   const rows = r.findings || [];
   const bySrc = []; const idx = {};
   for (const n of rows) { const k = n.source_title || 'Pinned from chat'; if (!(k in idx)) { idx[k] = bySrc.length; bySrc.push([k, n.source_id, []]); } bySrc[idx[k]][2].push(n); }
-  const act = n => st === 'approved' || st === 'all' && n.status === 'approved' ? `<button class="small ghost" title="dismiss" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
-    : n.status === 'suggested' ? `<button class="small primary" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
-    : n.status === 'reserve' ? `<button class="small primary" title="Approve" onclick="noteStatus(${n.id},'approved')">✓</button><button class="small" title="Send to Suggested" onclick="noteStatus(${n.id},'suggested')">📌</button><button class="small ghost" onclick="noteStatus(${n.id},'dismissed')">✕</button>`
-    : `<button class="small ghost" title="restore to suggested" onclick="noteStatus(${n.id},'suggested')">↩</button>`;
+  // 0.63.27 — Kyle: "it's unclear in the app how to approve or reject sometimes." On the `suggested` filter, where
+  // the approving actually happens, these were a bare ✓ and ✕ with NO label and NO title — two glyphs. The Claims
+  // workbench one tab away says "Accept" and "Reject" in words, so the same verdict was spoken in one place and
+  // mimed in the other. And ✓ already means "this happened" elsewhere in this file (✓ already in your library, ✓
+  // added, ✓ attached), so the same glyph was both a status and a command. The verb goes on the button.
+  const act = n => st === 'approved' || st === 'all' && n.status === 'approved' ? `<button class="small ghost" title="Remove it from the project's approved findings" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
+    : n.status === 'suggested' ? `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
+    : n.status === 'reserve' ? `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="noteStatus(${n.id},'suggested')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
+    : `<button class="small ghost" title="Put it back in the review queue" onclick="noteStatus(${n.id},'suggested')">↩ Restore</button>`;
   // PRODUCT-ORGANIZATION.md #1: this list already groups by source (nothing new there) — what was missing was any
   // way to collapse a group, so a project with many sources was still one long scroll of open groups.
   if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
