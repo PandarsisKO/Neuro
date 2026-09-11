@@ -254,3 +254,39 @@ def test_the_start_scripts_keep_the_servers_output_on_disk():
         assert "tee -a" in src, name
         assert "5000000" in src, f"{name}: the log must be bounded"
         assert "exec .venv/bin/neurosearch start" not in src, f"{name}: exec cannot pipe to tee"
+
+
+def test_the_launchers_refuse_a_held_port_and_say_what_to_do():
+    """0.63.32 — the log earned its keep on its very first launch and the line was `[Errno 48] Address already in
+    use`. A crash leaves uvicorn's PARENT alive holding port 8000, so the port is bound and nothing answers:
+    requests time out instead of being refused, the app reads as "stuck loading", and the relaunch Kyle was told
+    to do failed one minute later for a reason that scrolled past in a Terminal window.
+
+    So both launchers pre-flight the port and refuse with a sentence instead of an errno, and the window is held
+    open (`read`) because a double-clicked script that closes itself takes its own error message with it."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for name in ("start", "start.command"):
+        src = (root / name).read_text()
+        assert "-sTCP:LISTEN" in src, f"{name}: must ask only about LISTENers, not every socket on the port"
+        assert "restart.command" in src, f"{name}: must name the action that fixes it"
+        assert "read -r -n 1 -s" in src, f"{name}: a double-clicked window must not close on its own error"
+        # the pre-flight has to run BEFORE the server is launched, or it is decoration
+        assert src.index("tcp:${PORT}") < src.index("neurosearch start"), f"{name}: pre-flight runs too late"
+
+
+def test_restart_command_frees_only_our_own_listener_and_asks_first():
+    """It kills things, so every narrowing in it is load-bearing: only LISTENers, only on our port, SIGTERM before
+    SIGKILL (a server asked to stop closes the database cleanly, which matters with a 27 MB WAL waiting to check
+    in), and a plain-language fallback to Activity Monitor when it cannot win. It must NOT exec `./start`, which
+    installs dev extras Kyle's Mac does not want — he gets the same launch he always gets."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    p = root / "restart.command"
+    assert p.exists(), "restart.command is the only terminal-free way out of a held port"
+    src = p.read_text()
+    assert "-sTCP:LISTEN" in src and "tcp:${PORT}" in src
+    assert src.index("kill $PIDS") < src.index("kill -9"), "ask before forcing"
+    assert "Activity Monitor" in src, "it must say what to do when it cannot free the port itself"
+    assert "exec ./start.command" in src and "exec ./start " not in src
+    assert (p.stat().st_mode & 0o111), "a double-clickable script has to be executable"

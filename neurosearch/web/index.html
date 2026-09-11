@@ -13,6 +13,37 @@
   input,textarea,select{width:100%}
   textarea{min-height:80px;resize:vertical}
   button{cursor:pointer;white-space:nowrap}
+
+  /* ---- 0.63.32: every press says something, within one frame ----------------------------------------
+     Kyle: "I click a button and the button doesnt respond for 1-5 seconds and I think something is
+     broken." Measured: 228 controls in this file carry a click handler and TWELVE of them acknowledge
+     the click. The other 216 look identical whether the app heard you or not — which is the same defect
+     this codebase keeps paying for at every other rung (a failure indistinguishable from its answer),
+     arriving at the one surface a person actually touches.
+     These rules are deliberately VISUAL ONLY and never touch a control's text content, because the
+     twelve handlers that already say "⏳ queueing…" / "Pinned ✓" own their own labels and must keep
+     working unchanged. A class and a pseudo-element compose with them; a textContent write would fight
+     them. */
+  button{position:relative;transition:transform .06s ease, filter .06s ease}
+  button.ns-press{transform:scale(.97);filter:brightness(.93)}          /* the instant frame, pointer-down */
+  button[aria-busy="true"]{cursor:progress;pointer-events:none}          /* also stops the double-click */
+  button[aria-busy="true"]::after{                                       /* an indeterminate hairline, so
+      nothing reflows: a spinner that changes a button's size moves everything next to it. */
+    content:'';position:absolute;left:1px;right:1px;bottom:1px;height:2px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--accent,#2563eb),transparent);
+    background-size:45% 100%;background-repeat:no-repeat;animation:ns-indet 900ms linear infinite}
+  @keyframes ns-indet{0%{background-position:-45% 0}100%{background-position:145% 0}}
+  /* When a click causes a full re-render the button itself is replaced, taking its spinner with it, so
+     the window keeps its own bar. This is the only feedback for "the whole panel is being rebuilt". */
+  #nsbar{position:fixed;top:0;left:0;right:0;height:2px;z-index:200;pointer-events:none;opacity:0;transition:opacity .15s}
+  #nsbar.on{opacity:1}
+  #nsbar i{display:block;height:100%;width:35%;border-radius:2px;background:var(--accent,#2563eb);animation:ns-bar 1.1s ease-in-out infinite}
+  @keyframes ns-bar{0%{margin-left:-35%}100%{margin-left:100%}}
+  @media (prefers-reduced-motion:reduce){
+    button.ns-press{transform:none}
+    button[aria-busy="true"]::after,#nsbar i{animation:none}
+    button[aria-busy="true"]::after{background:var(--accent,#2563eb);background-size:100% 100%}
+  }
   button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
   button.ghost{background:transparent}
   button.small{padding:5px 9px;font-size:13px;border-radius:7px}
@@ -513,12 +544,90 @@
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// ================= 0.63.32: every press is acknowledged within one frame =================
+// Kyle: "every single button needs instant feedback that SOMETHING has happened even if it takes many
+// seconds to truly do something. right now I click a button and the button doesnt respond for 1-5
+// seconds and I think something is broken."
+//
+// Measured in this file before building anything: 228 controls carry a click handler and TWELVE of them
+// acknowledge the click. So this is ONE mechanism, not 216 patched call sites — patching them by hand
+// would be a day's work, would miss the next button anyone adds, and could not be gated.
+//
+// How it works, and why in this order:
+//   1. A CAPTURE-phase listener on `document` runs BEFORE any onclick attribute, so the press is marked
+//      before the handler gets a chance to block the thread. That is what makes it feel instant: the
+//      class lands in the same frame as the click, whatever the handler then does for five seconds.
+//   2. Every request in the app goes through `api()` (post/put/del all call it), so `api()` is the one
+//      place that knows when the work actually finishes. A request starting within CLAIM_MS of a press
+//      belongs to that press; the button stays busy until every request it started has settled.
+//   3. A click that starts NO request clears on the next frame — correct, not a bug: a tab switch or a
+//      collapse toggle really is done, and it still flashed, which is the acknowledgement.
+//   4. A watchdog clears anything still busy after STUCK_MS. A spinner that never stops is the same lie
+//      as no spinner at all, and this codebase has paid for that shape six times.
+// It never writes a control's textContent. The twelve handlers that already say "⏳ queueing…" or
+// "Pinned ✓" own their labels; a class and a pseudo-element compose with those, a label write fights
+// them.
+const NSACK = {
+  CLAIM_MS: 1500,        // a handler may await something before its first request
+  STUCK_MS: 45000,       // longer than the slowest measured endpoint, so it never fires on real work
+  el: null, at: 0, n: 0, bar: null, depth: 0,
+  press(el) {
+    this.done();                                       // a new press supersedes an unfinished one
+    this.el = el; this.at = performance.now(); this.n = 0;
+    el.classList.add('ns-press');
+    setTimeout(() => el.classList.remove('ns-press'), 110);
+  },
+  claim() {
+    if (!this.el || performance.now() - this.at > this.CLAIM_MS) return null;
+    const el = this.el;
+    if (this.n === 0) { try { el.setAttribute('aria-busy', 'true'); } catch (e) {} }
+    this.n++;
+    clearTimeout(this._stuck);
+    this._stuck = setTimeout(() => this.done(), this.STUCK_MS);
+    return el;
+  },
+  release(el) {
+    if (!el) return;
+    if (this.el === el && --this.n <= 0) this.done();
+    else if (this.el !== el) { try { el.removeAttribute('aria-busy'); } catch (e) {} }
+  },
+  done() {
+    clearTimeout(this._stuck);
+    const el = this.el;
+    if (el) { try { el.removeAttribute('aria-busy'); el.classList.remove('ns-press'); } catch (e) {} }
+    this.el = null; this.n = 0;
+  },
+  // the window's own bar, for the clicks whose handler re-renders the panel and destroys the button
+  rise() { if (++this.depth === 1) this._bar(true); },
+  fall() { if (--this.depth <= 0) { this.depth = 0; this._bar(false); } },
+  _bar(on) {
+    if (!this.bar) { this.bar = document.createElement('div'); this.bar.id = 'nsbar'; this.bar.innerHTML = '<i></i>'; document.body.appendChild(this.bar); }
+    this.bar.className = on ? 'on' : '';
+  },
+};
+// capture:true is load-bearing — without it this runs after the onclick has already blocked the thread
+document.addEventListener('click', e => {
+  const el = e.target && e.target.closest && e.target.closest('button');
+  if (!el || el.disabled || el.dataset.noack === '1' || el.getAttribute('aria-busy') === 'true') return;
+  NSACK.press(el);
+}, true);
+
 async function api(path, opts = {}) {
-  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
-  if (r.status === 401) { location.reload(); return; }
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
-  return j;
+  // opts.ack === false: a background poll must never light the window up. Everything a person started
+  // is acknowledged; the 3-second /tick loop is not something a person started.
+  const owner = opts.ack === false ? null : NSACK.claim();
+  const quiet = opts.ack === false;
+  if (!quiet) NSACK.rise();
+  try {
+    const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    if (r.status === 401) { location.reload(); return; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
+    return j;
+  } finally {
+    if (!quiet) NSACK.fall();
+    NSACK.release(owner);
+  }
 }
 const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b) });
 // ---- fun stats: how much did we not have to watch? ----
@@ -596,7 +705,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.31';
+const UI_VERSION = '0.63.32';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2613,7 +2722,7 @@ const RECONCILE_EVERY = 20;
 async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
   let t;
-  try { t = await api(`/api/projects/${state.project.id}/tick`); }
+  try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); }
   catch (e) { loadJobs(); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
   const rev = t.rev, prev = lastRev;
   const changed = k => !prev || prev[k] !== rev[k];
@@ -2749,7 +2858,7 @@ let notesRev = null, notesTicks = 0;
 async function notesTick() {
   if (state.view !== 'findings' || !state.project) return;
   let t;
-  try { t = await api(`/api/projects/${state.project.id}/tick`); } catch (e) { scheduleNotesTick(); return; }
+  try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); } catch (e) { scheduleNotesTick(); return; }
   const rev = JSON.stringify(t.rev);
   notesTicks++;
   if (rev !== notesRev || notesTicks >= RECONCILE_EVERY) { notesTicks = 0; await loadNotes(); }
@@ -2771,7 +2880,7 @@ async function loadNotes() {
   $('#nFindings').textContent = nApproved + (nSug ? ` +${nSug}` : '');
   const analysing = (p.analysing || {}).sources || 0;
   FWAVE.queued = (p.analysing || {}).queued || 0;
-  notesRev = JSON.stringify((await api(`/api/projects/${state.project.id}/tick`).catch(() => ({}))).rev || null);
+  notesRev = JSON.stringify((await api(`/api/projects/${state.project.id}/tick`, { ack: false }).catch(() => ({}))).rev || null);
   clearTimeout(window._notesTimer);
   if (analysing) scheduleNotesTick();
   let sug = [], sugTotal = nSug;

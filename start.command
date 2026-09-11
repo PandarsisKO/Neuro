@@ -13,6 +13,26 @@ fi
 # kept, so it can never grow into the problem it exists to diagnose.
 mkdir -p data
 LOG=data/server.log
+# 0.63.32 — say what is wrong instead of dying on an errno. A crash leaves uvicorn's parent holding the port, so
+# the next launch fails with "[Errno 48] Address already in use" and scrolls away: Kyle read that as the app still
+# loading and waited. Same rule as every ladder rung here — a failure indistinguishable from its answer is worse
+# than not having the rung.
+PORT="${NEUROSEARCH_PORT:-8000}"
+if [ -n "$(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null)" ]; then
+  printf '\n===== %s  port %s already held — not starting =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PORT" >> "$LOG"
+  echo
+  echo "Neuro Search is NOT starting: something is already listening on port ${PORT}."
+  echo
+  echo "  If the app looks stuck or will not load, that something is very likely a crashed"
+  echo "  copy of this server still holding the port. Close this window and double-click"
+  echo "  restart.command instead — it frees the port and then starts."
+  echo
+  ps -o pid=,comm= -p $(lsof -ti "tcp:${PORT}" -sTCP:LISTEN 2>/dev/null) 2>/dev/null
+  echo
+  echo "Press any key to close this window."
+  read -r -n 1 -s
+  exit 1
+fi
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG" 2>/dev/null || echo 0)" -gt 5000000 ]; then mv -f "$LOG" "$LOG.1"; fi
 printf '\n===== %s  starting Neuro Search =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
 .venv/bin/neurosearch start "$@" 2>&1 | tee -a "$LOG"
