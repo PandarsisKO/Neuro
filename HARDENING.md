@@ -1510,3 +1510,57 @@ is cheaper than a fallback to the API — and it is NOT the same problem as a mo
 
 What survives unchanged from 0.63.28: `model_routing` had been computed since 0.56.3 and rendered on no screen,
 and it now appears in the Health console. The irony is that surfacing it is what exposed the detector's own bug.
+
+## OPEN, precisely diagnosed: 3.8% of local calls are recorded as "we don't know if we were charged"
+
+Measured on Kyle's live database, 7 days, the local (Claude Code) path:
+
+```
+completed         1,557   95.52%
+outcome_unknown      62    3.80%
+failed               11    0.67%   (4 exit-1, 3 timeout, 3 max_structured_output_retries, 1 usage limit)
+```
+
+**First, the good news, which closes 0.63.30's open question.** The local path is **99.3% reliable**, and
+structured-output failures — the thing 0.63.28 blamed for the paid fallbacks — are **3 calls in 1,630 (0.18%)**.
+They are not worth a fix, and they were never the reason work went to the API. The probe testing the wrong model
+was (fixed in 0.63.30).
+
+**The 62 `outcome_unknown` rows are the real finding, and they are a ledger-integrity problem rather than a spend
+problem.** That state means *"the provider may have executed and charged this call and we cannot tell"* — the
+honest state 0.62.6 and 0.59.0 both leaned on. But:
+
+- **48 of the 62 belong to jobs that ended `done`.** The work succeeded and was used.
+- Each is the **only** row for its logical call (no completed twin), always `attempt_no 1`.
+- They are marked a median of **35 s** after the call started (43 of 62 under a minute; max 5,804 s).
+- The owning jobs carry **84 `lease_expired`, 84 `recovered`, 75 `ambiguous_external_execution`, 51 `yielded`**
+  events, and **57 of the 62 rows have a NULL `run_id`**.
+- By task: `claims.extract` 32, `findings.extract` 27, `rank.relevance` 2, `discover.quick` 1.
+
+So the shape is: a local call is in flight, the job's lease expires, `_recovery_loop` recovers and re-runs it, and
+the original in-flight invocation is swept to `outcome_unknown` by `_resolve_job_inflight` when the (re-run) job
+finishes. The ledger then reports 3.8% of local calls as possibly-charged-unknown when they in fact completed
+normally — polluting exactly the accounting Kyle got burned by in 0.59.0, where a wrong spend column cost him
+$200 of invisible charges.
+
+**What does not add up, and is why this is written up rather than fixed:** `_lease_loop` heartbeats every entry in
+`_running` every 30 s against a 120 s `LEASE_SECONDS`, so a job held by a live worker should never expire. Either
+the job is not in `_running` for part of its life, or `db.heartbeat` is returning False (it logs "lost the lease"),
+or the `Yield` path (51 events) removes the job from `_running` while a call is still in flight. The NULL
+`run_id` on 57 of 62 rows is a second thread worth pulling: `mark_ambiguous_invocations` filters by `run_id` when
+given one, so rows without it are missed by the precise path and only caught by the blunt terminal-job sweep —
+which may be why the state is being applied to calls that were not actually abandoned.
+
+**Do not fix this by widening the sweep or by suppressing the state.** `outcome_unknown` is the right answer when
+it is true; the bug is that it is being recorded when it is not. The questions to answer first, in order:
+
+1. Is the job in `_running` for the whole duration of a local call? Instrument `_running` add/remove against
+   invocation open/close and look for the gap.
+2. Why does an invocation row have no `run_id` when `logctx` carries one? If the ledger cannot attribute a call to
+   a run, no run-scoped sweep can be correct.
+3. Does `Yield` (51 events, and `claims.extract` is the biggest contributor at 32 rows) release the worker while a
+   call is outstanding?
+
+This needs the server in front of you: the evidence above is all the database can say, and the next step is
+watching one of these happen. It is a correctness fault in the accounting layer, not a user-visible one, and
+nothing here is spending money incorrectly — `usage` rows are written from what actually returned.
