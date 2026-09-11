@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.2)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.3)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -309,6 +309,15 @@ because a chat view wants the latest turns — so asking it for one message retu
 in 41 of the 42, and the scan for a user message found nothing. Every test passed because a test conversation has
 one message, where the head and the tail are the same row. `db.first_user_message(conversation_id)` is now its own
 query, and S26 builds real threads (question → answer → follow-up) rather than single messages.
+
+**Two of the 37 renames were wrong, and both were rules.** Running the backfill over his 42 chats is the only way
+this gets measured, and it produced 35 good titles and 2 bad ones. `Neuro Search Which a Research` — "Neuro Search"
+is two content words and the comma split needed three, so the title ran on into the relative clause; a clause
+opening on *which/who/where/and* is now split off regardless of how short the head is. `Describe a Modern Beautiful`
+— 35 characters trimmed to 34 by dropping `Website`, the one word the title was about; an instruction verb at the
+front (`VERB_LEAD`) is now the cheaper thing to lose, giving `Modern Beautiful Website`. The restriction to those
+verbs matters: the first word is usually the subject, and dropping a subject to save a character is the same mistake
+in reverse.
 
 The general rule this is an instance of: **a ladder rung whose failure is indistinguishable from its answer is worse
 than not having the rung.** Every `except` around an engine must record what happened and the caller must be able to

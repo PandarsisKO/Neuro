@@ -235,9 +235,14 @@ def test_embedding_failure_does_not_fail_a_readable_document(tmp_path, monkeypat
         raise RuntimeError("embeddings provider down")
     monkeypatch.setattr(ingest, "embed_pending", boom)
     f = tmp_path / "note.txt"; f.write_text("A readable note about hangar rent at Modesto airport. " * 20)
-    res = ingest.ingest_local_file(f, "note", [], pid, original_name="note.txt")
-    src = db.get_source(res["source_id"])
+
+    def deferred() -> int:
+        return int(db.connect().execute(
+            "SELECT COUNT(*) c FROM validation_events WHERE kind='embeddings_deferred'").fetchone()["c"])
+
+    before = deferred()                     # a conservation law, not an absolute: `== 1` over a global table made
+    res = ingest.ingest_local_file(f, "note", [], pid, original_name="note.txt")   # this test depend on every
+    src = db.get_source(res["source_id"])                                          # other test that ran first
     assert src["status"] == "ready" and res["embedded"] == 0
     assert db.fts_search("hangar rent Modesto", limit=5, source_ids=[src["id"]])           # full-text works immediately
-    ev = db.connect().execute("SELECT COUNT(*) c FROM validation_events WHERE kind='embeddings_deferred'").fetchone()["c"]
-    assert ev == 1
+    assert deferred() == before + 1

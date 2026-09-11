@@ -80,6 +80,22 @@ DROP = {"some", "good", "best", "better", "kind", "kinds", "sort", "sorts", "typ
         "asked", "use", "uses", "used", "take", "takes", "look", "looks",
         "that", "this", "these", "those", "there", "here", "not"}
 
+# A relative or coordinating clause after a comma is never part of a title, however short the part before it is.
+# Measured: "the tool I want to revisit and have claude redesign is Neuro Search, which is a research tool" gave
+# `Neuro Search Which a Research`, because "Neuro Search" is only two content words and the comma split needed
+# three. The words below make the split unconditional.
+RELATIVE = {"which", "who", "whose", "whom", "where", "when", "while", "because", "so", "and", "but", "although",
+            "though", "since", "unless", "whereas"}
+
+# An instruction verb at the FRONT of a title, dropped only when the length cap would otherwise eat the subject.
+# Measured: "how do I describe a modern, beautiful website that focuses on…" gave `Describe a Modern Beautiful` —
+# 35 characters trimmed to 34 by removing `Website`, the one word the title was about. Dropping the verb instead
+# gives `Modern Beautiful Website`. Restricted to these words because the first word is usually the subject
+# ("Stanislaus CPA Deal"), and dropping a subject to save a character would be the same mistake in reverse.
+VERB_LEAD = {"describe", "explain", "design", "create", "build", "compare", "audit", "analyze", "analyse",
+             "summarize", "summarise", "write", "list", "find", "identify", "review", "expand", "improve",
+             "fix", "understand", "communicate", "research", "outline", "draft", "choose", "pick", "handle"}
+
 
 def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS) -> str:
     """A short noun-phrase title for a chat, from its first message."""
@@ -88,9 +104,12 @@ def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS)
         return ""
     s = re.split(r"(?<=[.!?])\s|\n", s)[0][:260]                  # the lead sentence only
     s = LEAD.sub("", s).strip(" ,;:-—")
-    head = re.split(r"[,:;]\s", s)[0]
-    if len([w for w in re.findall(r"[A-Za-z0-9']+", head)
-            if w.lower() not in SMALL and w.lower() not in DROP]) >= 3:
+    parts = re.split(r"[,:;]\s", s, maxsplit=1)
+    head, tail = parts[0], (parts[1] if len(parts) > 1 else "")
+    content_in_head = len([w for w in re.findall(r"[A-Za-z0-9']+", head)
+                           if w.lower() not in SMALL and w.lower() not in DROP])
+    next_word = (re.findall(r"[A-Za-z0-9']+", tail) or [""])[0].lower()
+    if content_in_head >= 3 or (content_in_head >= 1 and next_word in RELATIVE):
         s = head                                                  # a clause that names its subject can stand alone
     toks = [t for t in re.findall(r"[A-Za-z0-9$%&/'’\-\.]+", s) if t]
     out: list[str] = []
@@ -118,6 +137,12 @@ def for_question(q: str, max_words: int = MAX_WORDS, max_chars: int = MAX_CHARS)
         else:
             w = clean[:1].upper() + clean[1:]
             words.append(re.sub(r"([/\-])([a-z])", lambda m: m.group(1) + m.group(2).upper(), w))
+    if len(" ".join(words)) > max_chars and words and words[0].lower() in VERB_LEAD:
+        shorter = words[1:]
+        while shorter and shorter[0].lower() in SMALL:
+            shorter.pop(0)                                        # "a Modern Beautiful Website" → "Modern …"
+        if shorter and len(" ".join(shorter)) <= max_chars:
+            words = shorter                                       # lose the instruction, keep the subject
     if len(" ".join(words)) > max_chars:
         keep: list[str] = []
         for w in words:

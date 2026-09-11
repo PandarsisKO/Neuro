@@ -194,3 +194,44 @@ def test_a_thread_with_no_user_message_is_left_alone(fresh):
     db.save_message("c11", "assistant", "a system-started note", project_id=p["id"], title="a system-started note")
     assert db.first_user_message("c11") == ""
     assert api.api_retitle_conversations(p["id"], apply=True)["changed"] == 0
+
+
+# ── 0.63.2 — two titles the preview on his real chats got wrong ─────────────────────────────────────────────────
+# Running the backfill against all 42 produced 37 renames, 35 of them good and 2 wrong. Both were rules, not luck.
+
+def test_a_relative_clause_after_a_comma_is_never_part_of_the_title():
+    """`Neuro Search Which a Research`. "Neuro Search" is two content words and the comma split needed three, so
+    the title ran on into "which is a research tool". A clause opening on which/who/where/and can never be part of
+    a name, however short the part before it."""
+    assert titles.for_question(
+        "the tool I want to revisit and have claude redesign is Neuro Search, which is a research tool"
+    ) == "Neuro Search"
+    assert titles.for_question("the CPA deal, and the numbers behind it") == "CPA Deal"
+
+
+def test_the_length_cap_never_eats_the_subject():
+    """`Describe a Modern Beautiful` — 35 characters trimmed to 34 by dropping `Website`, the one word the title was
+    about. An instruction verb at the front is the cheaper thing to lose."""
+    assert titles.for_question(
+        "how do I describe a modern, beautiful website that focuses on clarity") == "Modern Beautiful Website"
+
+
+def test_a_subject_at_the_front_is_not_dropped_to_save_characters():
+    """The same rule in reverse: only an instruction verb may be dropped from the front, because the first word is
+    usually the subject."""
+    t = titles.for_question("Stanislaus CPA deal financials review and the questions it raises")
+    assert t.startswith("Stanislaus")
+
+
+def test_the_measured_titles_from_his_real_chats_are_stable():
+    """The 0.63.2 preview over his own 42 conversations. These are the assertions that would have caught both bugs."""
+    for q, want in [
+        ("I have a potential deal I need you to evaluate.", "Deal to Evaluate"),
+        ("how can I communicate to Claude that the web app it has made needs work",
+         "Communicate to Claude the Web App"),
+        ("how would you expand business of a CPA company, what ways could we grow it",
+         "Expand Business of a CPA Company"),
+        ("I need to evaluate a potential business.  - here are the numbers", "Evaluate a Business"),
+        ("how do I get claude to effectively audit the web app comprehensively", "Claude to Effectively Audit"),
+    ]:
+        assert titles.for_question(q) == want, (q, titles.for_question(q))
