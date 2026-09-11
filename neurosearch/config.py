@@ -28,6 +28,20 @@ def int_env(name: str, default: int) -> int:
     return v if v > 0 else default
 
 
+def float_env(name: str, default: float) -> float:
+    """The float twin of `int_env`, added 0.63.35 for a contract TIMEOUT.
+
+    Same contract and same reason: a junk, zero or negative value falls back to the default. Written
+    because the first version of the claims timeout used `float(os.environ.get(...) or 480.0)` and a
+    typo in `.env` would have raised ValueError at import time — stopping the app from starting over a
+    misspelled number, which is a far worse failure than the wrong timeout."""
+    try:
+        v = float(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+    return v if v > 0 else default
+
+
 @dataclass
 class Settings:
     # Storage

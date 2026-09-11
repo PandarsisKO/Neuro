@@ -292,6 +292,58 @@ target — so that a discovery pass could read some counts and a list of open qu
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
 
+## 27% of local wall-clock was spent saying "OK" (0.63.35)
+
+Kyle: *"investigate the local AI errors."* His sidebar read `Claude Code: error — no answer within 240s ·
+API fallback active`, and every such refusal moves a call from a free subscription onto the paid API.
+
+**The first investigation in this project driven by the server log** — which exists only because 0.63.31
+added it after a hang nobody could diagnose. Forty-five minutes of real claims extraction:
+
+```
+real claims.extract work   n=20   p50 122.3s   p90 146.9s   max 150.8s
+liveness probes            n=20   p50  44.1s   max  51.2s   total 890s = 14.8 min
+                                  => 27% of all local wall-clock
+models probed              19x claude-sonnet-5, 7x claude-opus-5
+fallbacks to the paid API  2
+```
+
+Twenty real calls, twenty probes: **exactly one probe per call**, against a verdict cached for ten
+minutes. Three faults.
+
+**`note_success` repaired the verdict instead of refreshing it.** It wrote only when the state was not
+already `ready`, so `checked_at` never moved while things were working — the TTL expired mid-run and each
+expiry bought a ~45 s probe to re-establish what a 12,000-token schema-valid answer had just proved. The
+guard was presumably there to avoid a redundant write; what it did was discard the strongest evidence the
+system ever gets. **A probe asks "can you answer?"; a completed contract call answered.** A success is now
+a fresh verdict, so during active work the probe stops happening at all — which is what makes the CLI's
+~45 s startup cost, which is not ours to fix, stop mattering.
+
+**One `health()` call site never named a model.** `staleness.assess` asked whether "local" was ready with
+no model, so `wait=False` kicked off a background probe of the CLI's bare DEFAULT — opus-5 on his
+subscription — seven times, for a verdict about a model no task uses. **Fourth appearance of one bug:**
+0.45.14 keyed its fix on an override nobody sets, 0.63.30 made health per-model, 0.63.31 fixed the
+background probe, and this is the site all three missed. So the gate is on the SHAPE — no runtime module
+may call `health()` without naming a model — rather than on the line that happened to be wrong.
+
+**The `claims.extract` timeout sat 1.59× above the observed maximum of the work it bounds.** 240 s against
+a 150.8 s max is inside the tail, and a timeout here costs twice: the whole local attempt is discarded AND
+the work re-runs on the API, which charges. Now `CLAIMS_TIMEOUT` = 480 s (~3.2× the observed max, ~3.9×
+p50), env-settable, with `CLAIMS_TIMEOUT_BEFORE` kept so the change stays legible. A changed frozen number,
+recorded in HARDENING.md.
+
+**And my own first draft of the fix would have stopped the app from starting.** `float(os.environ.get(...)
+or 480.0)` raises ValueError on a typo, at import time, in the module every contract lives in — so a
+misspelled number in `.env` would have been a dead app rather than a wrong timeout. `config.float_env` is
+the twin of 0.63.14's `int_env` and falls back on junk, zero or negative. Caught by its own gate.
+
+**What is NOT claimed:** that the probe can be made fast. ~45 s is the CLI's own startup. The fix is to
+stop needing it. Whether the two API fallbacks were genuinely hung calls or just slow ones is also still
+open — 480 s will answer that, because a call that now completes was never hung.
+
+Gate `tests/test_s42_local_ai_cost.py` (9). Two frozen stubs in `test_n4_stale_triage.py` moved because
+the question changed (which model) and not the promise (both currencies, wall-clock ETA).
+
 ## Reading his database killed his server (0.63.32)
 
 Kyle brought a macOS crash report, and it closes the 0.63.31 question with an answer I did not look for: the app

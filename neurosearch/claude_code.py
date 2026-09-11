@@ -298,13 +298,30 @@ def note_failure(e: LocalUnavailable, model: str | None = None) -> None:
 
 
 def note_success(model: str | None = None) -> None:
+    """0.63.35 — a real successful call now REFRESHES the verdict, it does not merely repair it.
+
+    Measured from Kyle's first server log (2026-09-11, 45 minutes of claims extraction):
+
+        real claims work   n=20  p50 122.3s  p90 146.9s  max 150.8s
+        liveness probes    n=20  p50  44.1s  max  51.2s   total 890s = 14.8 minutes
+        => 27% of all local wall-clock was spent asking the CLI to say "OK"
+
+    Twenty real calls, twenty probes: exactly one probe per call. The cause was the guard this replaces.
+    `note_success` only wrote when the state was NOT already ready, so `checked_at` never moved while
+    things were working — the HEALTH_TTL window kept expiring mid-run and each expiry cost a ~45 second
+    probe to re-establish what a 12,000-token answer had just proved.
+
+    The guard was presumably there to avoid a pointless write. What it actually did was throw away the
+    strongest evidence the system ever gets. A probe asks "can you answer?"; a completed contract call
+    answered, with a schema-valid payload. Nothing a probe can tell us is better than that, so a success
+    is now treated as a fresh verdict — which means that during active work the probe stops happening
+    at all, and a 45-second startup cost we cannot control stops mattering."""
     key = _hkey(model)
     with _lock:
         h = dict(_state["by_model"].get(key) or {})
-        if h.get("state") != "ready":
-            h.update({"state": "ready", "detail": "answered", "checked_at": time.time(), "probed_model": key})
-            _state["by_model"][key] = h
-            _state["health"] = h
+        h.update({"state": "ready", "detail": "answered", "checked_at": time.time(), "probed_model": key})
+        _state["by_model"][key] = h
+        _state["health"] = h
 
 
 def _probe(model: str | None = None) -> dict[str, Any]:

@@ -21,6 +21,7 @@ import os
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from . import config
 from .config import settings
 
 THINKING = ("disabled", "adaptive")
@@ -112,6 +113,21 @@ HELD_MODEL = "claude-sonnet-5"       # where an `irreversible` task waits — th
                                      # claude-sonnet-4-6: that is dearer ($3/$15 vs $2/$10) AND older, which is drift, not caution.
 RANK_MODEL = "claude-sonnet-5"       # rank.relevance production model (E2.1)
 FINDINGS_MODEL = "claude-sonnet-5"   # findings.extract production model (E2.2); every other task still follows settings.answer_model
+
+# 0.63.35 — MEASURED, not chosen. Was 240.0 since the contract was written, and the first server log
+# (2026-09-11, 45 minutes of real claims extraction on Kyle's machine) showed why that was too tight:
+#
+#     local claims.extract   n=20   p50 122.3s   p90 146.9s   max 150.8s
+#     240s timeout           =>     1.59x the observed MAXIMUM
+#
+# Two calls in that window hit the timeout, and a timeout here is expensive twice over: the full 240
+# seconds of local work is thrown away AND `providers.route` falls back to the API, which charges. A
+# timeout whose job is to catch a HUNG process should sit far outside the distribution of work that
+# finishes; 1.59x is inside the tail. 480s is ~3.2x the observed max and ~3.9x p50, and a genuinely
+# hung CLI is still caught by it as well as by the job's own lease and heartbeat.
+# Revertible without a code change: NEUROSEARCH_CLAIMS_TIMEOUT.
+CLAIMS_TIMEOUT = config.float_env("NEUROSEARCH_CLAIMS_TIMEOUT", 480.0)
+CLAIMS_TIMEOUT_BEFORE = 240.0        # kept so the change is legible and the gate can assert the reason
 RERANK_MODEL = "claude-haiku-4-5"     # retrieval.rerank (I2 experiment): listwise reorder of the retrieved candidates; env NEUROSEARCH_TASK_MODEL_RETRIEVAL_RERANK
 PREFILTER_MODEL = "claude-haiku-4-5"  # findings.prefilter (H1): the cheap conservative rejection filter — NEVER the extractor; env override NEUROSEARCH_TASK_MODEL_FINDINGS_PREFILTER
 
@@ -163,7 +179,7 @@ def _base() -> dict[str, InferenceContract]:
         # G5 (0.29.0): claim normalization + proposed evidence targets for a bounded group of $0 candidates; lazy, debounced,
         # idempotent by extraction_hash — never one call per finding
         InferenceContract("claims.extract", "anthropic", HELD_MODEL, local_capable=True, reversible=False,
-                          tier_reason="irreversible", gate="schema claim-set-v1; idempotent by extraction_hash", thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=240.0,
+                          tier_reason="irreversible", gate="schema claim-set-v1; idempotent by extraction_hash", thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=CLAIMS_TIMEOUT,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="claim-set-v1",
                           notes="normalise candidate Claims (qualifiers, type by evidence requirement, topic, freshness class, merges) + propose evidence targets"),
         InferenceContract("discover.quick", "anthropic", CHEAP, local_capable=True, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",

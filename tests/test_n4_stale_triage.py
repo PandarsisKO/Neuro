@@ -205,7 +205,7 @@ def test_every_tier_quotes_both_currencies_so_faster_is_visible(monkeypatch):
     db.update_project(p["id"], brief="hosting and email deliverability")
 
     monkeypatch.setattr(settings, "ai_profile", "local")
-    monkeypatch.setattr(CC, "health", lambda wait=False: {"state": "ready"})
+    monkeypatch.setattr(CC, "health", lambda wait=False, model=None, force=False: {"state": "ready", "probed_model": model})
     t = staleness.triage(p["id"])
     x = t["tiers"]["accept"]
     assert t["local"] and x["count"] == 4
@@ -238,7 +238,7 @@ def test_the_local_eta_is_wall_clock_and_the_batch_price_is_offered(monkeypatch)
     p, ids = _project()
     db.update_project(p["id"], brief="hosting and email deliverability")
     monkeypatch.setattr(settings, "ai_profile", "local")
-    monkeypatch.setattr(CC, "health", lambda wait=False: {"state": "ready"})
+    monkeypatch.setattr(CC, "health", lambda wait=False, model=None, force=False: {"state": "ready", "probed_model": model})
 
     monkeypatch.setattr(settings, "local_ai_workers", 1)
     one = staleness.triage(p["id"])["tiers"]["accept"]
