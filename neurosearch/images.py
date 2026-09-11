@@ -115,10 +115,22 @@ def _ocr_tesseract(path: Path) -> str:
 
 def _for_model(path: Path) -> tuple[str, str]:
     """(media_type, base64) — converted and downscaled as needed. Tokens scale with pixels, so a 5120-wide
-    screenshot is resized rather than sent whole; the text stays legible well below Anthropic's own 1568 guidance."""
-    from PIL import Image
+    screenshot is resized rather than sent whole; the text stays legible well below Anthropic's own 1568 guidance.
 
+    Pillow is how the resizing and converting is done, but it is **not** allowed to be the reason the rung fails.
+    Kyle's two CIM screenshots came back "no readable text found" on a machine where nothing could read them: no
+    Vision, no tesseract, and the model rung raised `ImportError` inside this function because the app had not been
+    relaunched since Pillow was added. Anthropic accepts png/jpeg/gif/webp and downscales oversized images itself, so
+    without Pillow an already-acceptable file is sent as it is — more tokens than necessary, and the right answer."""
     ext = path.suffix.lower()
+    try:
+        from PIL import Image
+    except ImportError:
+        if ext in MODEL_MEDIA_TYPES and path.stat().st_size <= MODEL_MAX_BYTES:
+            return MODEL_MEDIA_TYPES[ext], base64.b64encode(path.read_bytes()).decode()
+        raise RuntimeError(
+            f"{ext} images need Pillow to be converted before the model can read them, and it is not installed here"
+        ) from None
     with Image.open(path) as im:
         im.load()
         w, h = im.size
@@ -190,7 +202,14 @@ def ocr(path: Path, *, allow_model: bool = True, project_id: str | None = None,
             tried.append({"engine": "model", "error": str(e)[:160]})
             log.warning("model OCR failed on %s: %s", path.name, e)
     note = ""
-    if not text:
+    ran = [t for t in tried if "chars" in t]
+    if not text and not ran:
+        # Nothing could read it, which is a fact about this machine and not about the image. Saying "no text found"
+        # here is the mistake that stranded Kyle's two CIM screenshots: both were dense with text.
+        why = "; ".join(f"{t['engine']}: {t.get('skipped') or t.get('error')}" for t in tried) or "no engine ran"
+        note = ("nothing on this machine could read this image, so it has not been read yet — it is attached and "
+                f"viewable. ({why})")
+    elif not text:
         note = ("no readable text was found in this image — it is attached to the project and viewable, but there "
                 "is nothing to search")
     elif engine == "model":

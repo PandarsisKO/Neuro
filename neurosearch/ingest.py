@@ -734,7 +734,10 @@ def read_image_with_model(source_id: str, project_id: str | None = None) -> dict
     read = ocr(p, allow_model=True, project_id=project_id, source_id=source_id)
     text = read["text"]
     if not text:
-        return {"source_id": source_id, "chars": 0, "engine": read["engine"], "note": read["note"] or
+        # `engines_tried` goes back to the caller on the failure path, because "nothing could read it" and "there is
+        # no text in it" are different answers and only this list tells them apart (0.63.2).
+        return {"source_id": source_id, "chars": 0, "engine": read["engine"],
+                "engines_tried": read["engines_tried"], "note": read["note"] or
                 "the model could not find text in this image either"}
     segments = [{"start": 0.0, "end": 0.0, "text": " ".join(text.split())}]
     db.replace_transcript(source_id, segments, build_doc_chunks([{"page": 1, "text": text}]))
@@ -743,7 +746,7 @@ def read_image_with_model(source_id: str, project_id: str | None = None) -> dict
                      status="ready", error=None)
     n = _embed_ready(source_id)
     return {"source_id": source_id, "chars": read["chars"], "engine": read["engine"], "embedded": n,
-            "paid": read["paid"], "note": read["note"]}
+            "paid": read["paid"], "engines_tried": read["engines_tried"], "note": read["note"]}
 
 
 def kept_image(source_id: str) -> Path | None:

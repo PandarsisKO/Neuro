@@ -1,0 +1,846 @@
+{
+ "error": null,
+ "seconds": 0.02,
+ "tasks": {
+  "planner.analysis": {
+   "present": true,
+   "rubric": {
+    "score": 0.1818,
+    "passed": 2,
+    "total": 11,
+    "failed": [
+     "threat.customer_concentration",
+     "threat.add_backs_or_qoe",
+     "threat.overpaying_multiple",
+     "assumption.financing_terms",
+     "assumption.checkable",
+     "contradiction.zero_down_vs_injection",
+     "options.sba_path",
+     "options.seller_financing_path",
+     "failure.diligence"
+    ],
+    "by_kind": {
+     "assumption": "0/2",
+     "completeness": "2/4",
+     "contradiction": "0/1",
+     "risk": "0/4"
+    },
+    "structure": {
+     "score": 0.375,
+     "failed": [
+      "swot.opportunities: 1 < 2",
+      "swot.threats: 1 < 2",
+      "readiness: 2 < 3",
+      "assumptions: 1 < 2",
+      "failure_patterns: 1 < 2"
+     ]
+    }
+   },
+   "grounding": {
+    "research_items": 0,
+    "grounded": 0,
+    "fraction": null,
+    "evidence_refs": 8
+   },
+   "evidence_refs": 8,
+   "dangling_after_removal": 0,
+   "truncated": 0,
+   "parse_failed": 0,
+   "json_repaired": 0,
+   "output_chars": 1311,
+   "output_tokens": 327,
+   "input_tokens": 18,
+   "cache_read": 0,
+   "cache_write": 5751,
+   "cost": 0.0265,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": 0.0,
+   "invocations": {
+    "logical": 1,
+    "attempts": 1,
+    "by_state": {
+     "completed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": "fake-claude"
+   }
+  },
+  "planner.build": {
+   "present": true,
+   "rubric": {
+    "score": 0.0,
+    "passed": 0,
+    "total": 24,
+    "failed": [
+     "risk.customer_concentration",
+     "risk.add_backs_or_qoe",
+     "risk.personal_guarantee",
+     "risk.seller_transition",
+     "risk.lease_assignment",
+     "assumption.dscr",
+     "assumption.sde_multiple",
+     "assumption.valuation_range",
+     "dependency.equity_injection",
+     "dependency.seller_note_standby",
+     "dependency.lender",
+     "dependency.qoe_in_diligence",
+     "first_step.lender_contact",
+     "first_step.deal_flow",
+     "first_step.money_check",
+     "contradiction.zero_down_vs_injection",
+     "contradiction.high_multiples",
+     "open_question.working_capital_peg",
+     "open_question.cash_available",
+     "open_question.target_industry",
+     "completeness.first_90_days",
+     "completeness.loi_exclusivity",
+     "completeness.guarantee_fee_or_closing_costs",
+     "completeness.closing_day"
+    ],
+    "by_kind": {
+     "assumption": "0/3",
+     "completeness": "0/4",
+     "contradiction": "0/2",
+     "dependency": "0/4",
+     "first_step": "0/3",
+     "open_question": "0/3",
+     "risk": "0/5"
+    },
+    "structure": {
+     "score": 0.125,
+     "failed": [
+      "this_week: 1 < 3",
+      "first_steps: 2 < 3",
+      "risks: 1 < 3",
+      "open_questions: 1 < 2",
+      "refine_questions: 2 < 4",
+      "phases: 1 < 2",
+      "gotchas: 1 < 2"
+     ]
+    }
+   },
+   "grounding": {
+    "research_items": 3,
+    "grounded": 2,
+    "fraction": 0.6667,
+    "evidence_refs": 10
+   },
+   "evidence_refs": 10,
+   "dangling_after_removal": 0,
+   "truncated": 0,
+   "parse_failed": 0,
+   "json_repaired": 0,
+   "output_chars": 3272,
+   "output_tokens": 818,
+   "input_tokens": 396,
+   "cache_read": 6543,
+   "cache_write": 0,
+   "cost": 0.0154,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": 0.0,
+   "invocations": {
+    "logical": 1,
+    "attempts": 1,
+    "by_state": {
+     "completed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": "fake-claude"
+   }
+  }
+ },
+ "plan_evidence_dangling_raw": 0,
+ "plan_evidence_refs_raw": 18,
+ "plan": {
+  "goal": {
+   "outcome": "Move the marketing site off Squarespace to a faster, cheaper host without breaking email.",
+   "constraints": [
+    "budget under $500",
+    "live by end of October"
+   ],
+   "success": [
+    "site loads < 1s",
+    "no email downtime"
+   ],
+   "evidence": [
+    "F1",
+    "F2"
+   ]
+  },
+  "approach": {
+   "recommended": "Static export + Cloudflare Pages",
+   "why": "Cheapest recurring cost and the sources agree it handles small sites well.",
+   "alternatives": [
+    {
+     "option": "Webflow",
+     "why_not": "recurring cost exceeds the budget"
+    }
+   ],
+   "basis": "research",
+   "confidence": "medium",
+   "evidence": [
+    "F1",
+    "F2"
+   ]
+  },
+  "first_steps": [
+   {
+    "action": "Export the existing Squarespace site",
+    "detail": "Save a complete local backup before touching DNS.",
+    "today": true,
+    "evidence": [
+     "F1",
+     "F2"
+    ]
+   },
+   {
+    "action": "Document current DNS records",
+    "detail": "Screenshot every record, especially MX.",
+    "today": true
+   }
+  ],
+  "phases": [
+   {
+    "name": "Preparation",
+    "objective": "Backups and inventory",
+    "tasks": [
+     {
+      "task": "Export site",
+      "detail": ""
+     },
+     {
+      "task": "List all pages and redirects"
+     }
+    ],
+    "dependencies": [
+     "Squarespace admin access"
+    ],
+    "decisions": [],
+    "outcome": "Nothing can be lost"
+   }
+  ],
+  "dependencies": [
+   {
+    "item": "Registrar login",
+    "blocking": true,
+    "note": "Needed before DNS changes"
+   },
+   {
+    "item": "Analytics choice",
+    "blocking": false
+   }
+  ],
+  "decisions": [
+   {
+    "decision": "Which host",
+    "options": [
+     "Cloudflare Pages",
+     "Netlify"
+    ],
+    "recommended": "Cloudflare Pages",
+    "why": "free tier suffices",
+    "when": "now",
+    "by_phase": "Phase 2",
+    "basis": "research",
+    "evidence": [
+     "F1",
+     "F2"
+    ]
+   }
+  ],
+  "tools": [
+   {
+    "need": "Hosting",
+    "tool": "Cloudflare Pages",
+    "free_option": "yes",
+    "premium_option": "n/a",
+    "cost": "$0",
+    "why": "static hosting",
+    "tier": "required",
+    "basis": "research"
+   }
+  ],
+  "costs": {
+   "upfront": [
+    {
+     "item": "Domain transfer",
+     "amount": "$10-15"
+    }
+   ],
+   "recurring": [],
+   "optional": [],
+   "services": [],
+   "contingency": "$50",
+   "minimum": "$15",
+   "recommended": "$65",
+   "premium": "$300+",
+   "note": "Estimates.",
+   "evidence": [
+    "F1",
+    "F2"
+   ]
+  },
+  "risks": [
+   {
+    "risk": "DNS change breaks email",
+    "mitigation": "Do not touch MX records.",
+    "priority": "high"
+   }
+  ],
+  "gotchas": [
+   {
+    "gotcha": "Domain may be registered with Squarespace itself",
+    "avoid": "Check the registrar before Phase 3."
+   }
+  ],
+  "defer": [
+   {
+    "item": "Analytics platform",
+    "until": "after launch"
+   }
+  ],
+  "open_questions": [
+   {
+    "question": "Where is the domain registered?",
+    "category": "blocking",
+    "why": "Changes the migration procedure",
+    "research_prompt": "Is our domain registered directly with Squarespace or a third-party registrar?"
+   }
+  ],
+  "confidence": [
+   {
+    "area": "Hosting choice",
+    "level": "high",
+    "note": "two sources agree"
+   },
+   {
+    "area": "Timeline",
+    "level": "needs_research",
+    "note": "depends on registrar"
+   }
+  ],
+  "ready": {
+   "first_three": [
+    "Export the site",
+    "Document DNS",
+    "Create Cloudflare account"
+   ],
+   "initial_cost": "~$15",
+   "need_before": [
+    "Squarespace admin login"
+   ],
+   "blockers": []
+  },
+  "this_week": [
+   {
+    "action": "Export the Squarespace site to a local folder",
+    "why": "backup before anything",
+    "time": "30 min"
+   }
+  ],
+  "refine_questions": [
+   {
+    "question": "Where is the domain registered?",
+    "why": "changes the DNS procedure",
+    "kind": "fact",
+    "options": [
+     "Squarespace",
+     "GoDaddy",
+     "Other"
+    ]
+   },
+   {
+    "question": "Do you need a contact form?",
+    "why": "static hosts need a form service",
+    "kind": "decision",
+    "options": [
+     "Yes",
+     "No"
+    ]
+   }
+  ],
+  "_evidence": {
+   "F1": {
+    "label": "Sourdough starter notes @ p. 1",
+    "link": "file://irrelevant_sourdough.txt",
+    "kind": "research",
+    "source_id": "f577f6dbf38e403b9de37d5c18408eb0"
+   },
+   "F2": {
+    "label": "Van life in Utah: solar, water and a sunrise hike @ 0:18",
+    "link": "https://www.youtube.com/watch?v=golden00009&t=18s",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "F3": {
+    "label": "Van life in Utah: solar, water and a sunrise hike @ 0:38",
+    "link": "https://www.youtube.com/watch?v=golden00009&t=38s",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "F4": {
+    "label": "Van life in Utah: solar, water and a sunrise hike @ 0:07",
+    "link": "https://www.youtube.com/watch?v=golden00009&t=7s",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "F5": {
+    "label": "Van life in Utah: solar, water and a sunrise hike @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00009&t=0s",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "F6": {
+    "label": "Van life in Utah: solar, water and a sunrise hike @ 0:27",
+    "link": "https://www.youtube.com/watch?v=golden00009&t=27s",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "F7": {
+    "label": "No money down: a contrarian on buying businesses @ 0:49",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=49",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "F8": {
+    "label": "No money down: a contrarian on buying businesses @ 1:08",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=68",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "F9": {
+    "label": "No money down: a contrarian on buying businesses @ 1:00",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=60",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "F10": {
+    "label": "No money down: a contrarian on buying businesses @ 0:33",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=33",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "F11": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:28:34",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=5314s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F12": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:09:24",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=4164s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F13": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:14:28",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=4468s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F14": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:23:41",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=5021s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F15": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:20:52",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=4852s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F16": {
+    "label": "Due diligence checklist for a small business purchase @ 0:08",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=8s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "F17": {
+    "label": "Due diligence checklist for a small business purchase @ 0:25",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=25s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "F18": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 1:26",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=86s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "F19": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 0:27",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=27s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "F20": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 1:44",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=104s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "F21": {
+    "label": "SBA 7(a) acquisition lending summary @ p. 2",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "b65ab7cef3114e209302f0d2d1171a32"
+   },
+   "F22": {
+    "label": "SBA 7(a) acquisition lending summary @ p. 3",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "b65ab7cef3114e209302f0d2d1171a32"
+   },
+   "F23": {
+    "label": "SBA 7(a) acquisition lending summary @ p. 1",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "b65ab7cef3114e209302f0d2d1171a32"
+   },
+   "F24": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 2",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "a3c699584cc04297af7e7e1162fc89c5"
+   },
+   "F25": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 1",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "a3c699584cc04297af7e7e1162fc89c5"
+   },
+   "F26": {
+    "label": "No money down: a contrarian on buying businesses @ 0:09",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=9",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "F27": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 41:43",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2503s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F28": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 4:15",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=255s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F29": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 58:14",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=3494s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F30": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 25:00",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1500s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F31": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 37:35",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2255s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "F32": {
+    "label": "Due diligence checklist for a small business purchase @ 1:21",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=81s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "F33": {
+    "label": "Due diligence checklist for a small business purchase @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=0s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "F34": {
+    "label": "Due diligence checklist for a small business purchase @ 2:04",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=124s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "F35": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 0:39",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=39s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "F36": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=0s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "S1": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min)",
+    "link": "https://www.youtube.com/watch?v=golden00003",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "S2": {
+    "label": "No money down: a contrarian on buying businesses",
+    "link": "https://example.com/podcasts/no-money-down.mp3",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "S3": {
+    "label": "Due diligence checklist for a small business purchase",
+    "link": "https://www.youtube.com/watch?v=golden00002",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "S4": {
+    "label": "SBA 7(a) loans for buying a business, explained",
+    "link": "https://www.youtube.com/watch?v=golden00001",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "S5": {
+    "label": "SBA 7(a) acquisition lending summary",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "b65ab7cef3114e209302f0d2d1171a32"
+   },
+   "S6": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "a3c699584cc04297af7e7e1162fc89c5"
+   },
+   "S7": {
+    "label": "Van life in Utah: solar, water and a sunrise hike",
+    "link": "https://www.youtube.com/watch?v=golden00009",
+    "kind": "research",
+    "source_id": "a53039659ead48988c7538240efcc1bd"
+   },
+   "S8": {
+    "label": "Sourdough starter notes",
+    "link": "file://irrelevant_sourdough.txt",
+    "kind": "research",
+    "source_id": "f577f6dbf38e403b9de37d5c18408eb0"
+   },
+   "S9": {
+    "label": "Deal calculator",
+    "link": "file://deal_calculator.xlsx",
+    "kind": "research",
+    "source_id": "0e5272776bdf4650b02a72622acb4e7c"
+   },
+   "C1": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=0s",
+    "kind": "research",
+    "source_id": "b93aae4290ff45348cf4320c9c143714"
+   },
+   "C2": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 2",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "a3c699584cc04297af7e7e1162fc89c5"
+   },
+   "C3": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 3:24",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=204s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C4": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 1",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "a3c699584cc04297af7e7e1162fc89c5"
+   },
+   "C5": {
+    "label": "No money down: a contrarian on buying businesses @ 0:00",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=0",
+    "kind": "research",
+    "source_id": "34cbbb53273d42979735a347745e65c6"
+   },
+   "C6": {
+    "label": "Due diligence checklist for a small business purchase @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=0s",
+    "kind": "research",
+    "source_id": "f5c7addad8a24949a661f4d458b5a2f8"
+   },
+   "C7": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 41:13",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2473s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C8": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:27:58",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=5277s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C9": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:24:29",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=5069s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C10": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 20:07",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1207s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C11": {
+    "label": "Deal calculator @ sheet 1",
+    "link": "file://deal_calculator.xlsx",
+    "kind": "research",
+    "source_id": "0e5272776bdf4650b02a72622acb4e7c"
+   },
+   "C12": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 44:36",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2675s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C13": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 54:53",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=3292s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C14": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 15:06",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=905s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C15": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 28:30",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1709s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C16": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 24:25",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1465s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   },
+   "C17": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 42:54",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2574s",
+    "kind": "research",
+    "source_id": "148d5292b5d647aaa8f7b39ef1aa411d"
+   }
+  },
+  "_generated": "2026-09-07",
+  "_evidence_check": {
+   "references": 18,
+   "dangling": [],
+   "removed": false
+  }
+ },
+ "analysis": {
+  "situation": "You have a small budget and a live site to move.",
+  "swot": {
+   "strengths": [
+    {
+     "point": "Existing content",
+     "so_what": "Nothing to write, just move"
+    }
+   ],
+   "weaknesses": [
+    {
+     "point": "No DNS experience",
+     "so_what": "Get help before touching records"
+    }
+   ],
+   "opportunities": [
+    {
+     "point": "Static hosting is free",
+     "so_what": "Recurring cost can drop to zero",
+     "evidence": [
+      "F1",
+      "F2"
+     ]
+    }
+   ],
+   "threats": [
+    {
+     "point": "Email breaks on DNS change",
+     "so_what": "Sequence carefully",
+     "evidence": [
+      "F1",
+      "F2"
+     ]
+    }
+   ]
+  },
+  "readiness": [
+   {
+    "area": "money",
+    "level": "ready",
+    "note": "budget covers it"
+   },
+   {
+    "area": "skills",
+    "level": "gap",
+    "note": "DNS"
+   }
+  ],
+  "options": [
+   {
+    "path": "Static + Cloudflare",
+    "summary": "export and host free",
+    "cost": "$0-15",
+    "time_to_result": "1 week",
+    "risk": "low",
+    "fit": 5,
+    "why_fit": "cheapest, sources agree",
+    "evidence": [
+     "F1",
+     "F2"
+    ]
+   },
+   {
+    "path": "Webflow",
+    "summary": "rebuild",
+    "cost": "$20/mo",
+    "time_to_result": "3 weeks",
+    "risk": "medium",
+    "fit": 2,
+    "why_fit": "over budget"
+   }
+  ],
+  "assumptions": [
+   {
+    "assumption": "Site is mostly static",
+    "if_wrong": "need a CMS",
+    "how_to_check": "list dynamic features"
+   }
+  ],
+  "failure_patterns": [
+   {
+    "pattern": "Changing MX with the A record",
+    "seen_in": "two videos",
+    "avoid": "leave MX alone",
+    "evidence": [
+     "F1",
+     "F2"
+    ]
+   }
+  ],
+  "verdict": "Proceed with the static export path."
+ },
+ "plan_row_id": "e5d66c081d1c47dd81e013b2a2e0912d",
+ "usage": {
+  "calls": 2,
+  "input_tokens": 414,
+  "output_tokens": 1145,
+  "cache_read_tokens": 6543,
+  "cache_write_tokens": 5751,
+  "cost": 0.0419
+ }
+}

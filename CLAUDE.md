@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.1)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.2)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,39 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A rung that cannot run is not a rung (0.63.2)
+
+0.63.1 gave the chat's attach button permission to pay for OCR. It still did not read Kyle's two screenshots.
+Measured, not guessed: I staged one of the PNGs and looked at it — a dense CIM detail page, price, SDE, location,
+a 300-word About paragraph — and then listed his venv: **no `PIL`, no `pyobjc`.** `./start` re-runs
+`pip install -e '.[dev]'`, and he had not relaunched since those dependencies were added in 0.63.0, so
+`images._for_model` raised `ImportError` inside the `try` that guards the model rung, the exception was logged and
+swallowed, and a **missing dependency was reported to him as an image with no text in it.**
+
+Two separate faults, and they need separate fixes:
+
+* **The paid rung no longer depends on Pillow being there.** Pillow is how an image gets downscaled and converted,
+  and that is worth doing — tokens scale with pixels. But Anthropic accepts png/jpeg/gif/webp and downscales
+  oversized images itself, so when Pillow is absent an already-acceptable file is sent as it is. More tokens than
+  necessary beats *"nothing could read your screenshot"*. A `.heic` still cannot go without conversion, and now
+  fails saying so.
+* **The sentence must not make a claim nothing measured.** `images.ocr` distinguishes *no rung ran* from *a rung ran
+  and found nothing* by whether any entry in `engines_tried` carries a character count. The first case says
+  "nothing on this machine could read this image" and names what was tried; only the second says there is no text in
+  it. `read_image_with_model` returns `engines_tried` on the failure path too, because `{chars: 0, engine: "none"}`
+  is unactionable on its own.
+
+**And the title backfill renamed nothing.** `POST /api/conversations/retitle` reported `changed: 0` across his 42
+chats. Not a titling failure: `db.get_messages(limit=1)` is a **tail** — `ORDER BY id DESC LIMIT n`, reversed,
+because a chat view wants the latest turns — so asking it for one message returned the *newest*, an assistant reply
+in 41 of the 42, and the scan for a user message found nothing. Every test passed because a test conversation has
+one message, where the head and the tail are the same row. `db.first_user_message(conversation_id)` is now its own
+query, and S26 builds real threads (question → answer → follow-up) rather than single messages.
+
+The general rule this is an instance of: **a ladder rung whose failure is indistinguishable from its answer is worse
+than not having the rung.** Every `except` around an engine must record what happened and the caller must be able to
+read it — the cost of swallowing it here was two unusable screenshots and a chat that could not answer.
 
 ## Who asked, and what to call it (0.63.1)
 

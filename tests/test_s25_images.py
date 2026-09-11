@@ -255,3 +255,96 @@ def test_an_unreadable_image_says_whether_the_machine_even_has_an_engine(fresh, 
     monkeypatch.setattr(shutil, "which", lambda b: None)
     res = ingest.ingest_local_file(q, None, [], p["id"], original_name="blank.png")
     assert "no free OCR on this machine" in (db.get_source(res["source_id"])["description"] or "")
+
+
+# ── 0.63.2 — the rung that was there but could not run ──────────────────────────────────────────────────────────
+# Kyle's two CIM screenshots came back "no readable text found by the free local OCR on this machine". Both were
+# dense with text: prices, SDE, location, a 300-word About paragraph. Nothing had read them. The measured cause was
+# neither OCR nor the model — his venv had no `PIL`, because `./start` had not been re-run since Pillow was added,
+# so `_for_model` raised `ImportError` and a *missing dependency* was reported to him as *an image with no text*.
+# Two separate faults, fixed separately: the rung must survive without Pillow, and the sentence must not lie.
+
+def test_the_model_rung_works_without_pillow(tmp_path, monkeypatch):
+    """Anthropic accepts png/jpeg/gif/webp and downscales oversized images itself, so a file that is already an
+    accepted type is sent as it is rather than not at all. More tokens than necessary is the right trade against
+    "nothing could read your screenshot"."""
+    from PIL import Image
+    q = tmp_path / "shot.png"
+    Image.new("RGB", (1320, 2868), "white").save(q)          # the shape of his actual iPhone screenshot
+    import builtins
+    real = builtins.__import__
+
+    def no_pil(name, *a, **k):
+        if name == "PIL" or name.startswith("PIL."):
+            raise ImportError("No module named 'PIL'")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_pil)
+    media_type, data = images._for_model(q)
+    assert media_type == "image/png" and len(data) > 100
+
+
+def test_without_pillow_an_unconvertible_format_says_so(tmp_path, monkeypatch):
+    """A .heic cannot be sent as it is, so that one still fails — but with the reason, not as "no text"."""
+    q = tmp_path / "photo.heic"
+    q.write_bytes(b"not really heic")
+    import builtins
+    real = builtins.__import__
+
+    def no_pil(name, *a, **k):
+        if name == "PIL" or name.startswith("PIL."):
+            raise ImportError("No module named 'PIL'")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", no_pil)
+    try:
+        images._for_model(q)
+    except RuntimeError as e:
+        assert "Pillow" in str(e)
+    else:
+        raise AssertionError("an unconvertible format without Pillow must say why")
+
+
+def test_an_image_no_engine_could_open_is_not_called_empty(tmp_path, monkeypatch):
+    """The sentence that stranded his screenshots. When every rung was skipped or errored, nothing learned anything
+    about the image, so the note must not make a claim about its contents — and must name what was tried."""
+    from PIL import Image
+    q = tmp_path / "dense.png"
+    Image.new("RGB", (400, 400), "white").save(q)
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no PIL")))
+    read = images.ocr(q, allow_model=True)
+    assert read["text"] == "" and read["engine"] == "none"
+    assert "nothing on this machine could read this image" in read["note"]
+    assert "no PIL" in read["note"]
+    assert "no readable text was found" not in read["note"]
+
+
+def test_an_engine_that_ran_and_found_nothing_still_says_the_image_is_empty(tmp_path, monkeypatch):
+    """The other side of it: when a rung actually read the image and got nothing, "no readable text" is true and is
+    the more useful sentence. The distinction is whether any rung reported a character count."""
+    from PIL import Image
+    q = tmp_path / "blank.png"
+    Image.new("RGB", (240, 240), "white").save(q)
+    monkeypatch.setattr(images, "_vision_available", lambda: True)
+    monkeypatch.setattr(images, "_ocr_vision", lambda p: "")
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    read = images.ocr(q, allow_model=False)
+    assert read["text"] == "" and "no readable text was found" in read["note"]
+
+
+def test_the_paid_read_reports_every_rung_it_tried(fresh, tmp_path, monkeypatch):
+    """`/api/sources/{id}/read-image` returning `{chars: 0, engine: "none"}` was unactionable: it could mean an
+    empty image or a broken install. `engines_tried` is what tells them apart, so it comes back on failure too."""
+    from PIL import Image
+    q = tmp_path / "cim.png"
+    Image.new("RGB", (500, 900), "white").save(q)
+    p = db.create_project("img", brief="b")
+    monkeypatch.setattr(images, "_vision_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda b: None)
+    res = ingest.ingest_local_file(q, None, [], p["id"], original_name="cim.png")
+    monkeypatch.setattr(images, "_ocr_model", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    out = ingest.read_image_with_model(res["source_id"], p["id"])
+    assert out["chars"] == 0
+    assert [t for t in out["engines_tried"] if t["engine"] == "model" and "boom" in t.get("error", "")]

@@ -1,0 +1,518 @@
+{
+ "answers": 34,
+ "failed_answers": 0,
+ "questions": 34,
+ "citation_validity": 1.0,
+ "answers_cite_expected_source": 0.9,
+ "expected_questions": 30,
+ "gap_detection": 0.0,
+ "gap_questions": 2,
+ "contradiction_surfaced": 0.6667,
+ "contradiction_questions": 3,
+ "offtopic_handled": 1.0,
+ "repair_rounds": 0,
+ "repairs_succeeded": 0,
+ "answers_repaired": 0,
+ "answers_with_unrepaired_invalid_citations": 0,
+ "truncated_answers": 0,
+ "tool_rounds": 0,
+ "tool_calls": 0,
+ "mean_answer_chars": 220,
+ "seconds": 0.13,
+ "s_per_answer": 0.0,
+ "invocations": {
+  "logical": 34,
+  "attempts": 34,
+  "by_state": {
+   "completed": 34
+  },
+  "outcome_unknown": 0,
+  "returned_model": "fake-claude"
+ },
+ "repair_invocations": {
+  "logical": 0,
+  "attempts": 0,
+  "by_state": {},
+  "outcome_unknown": 0,
+  "returned_model": null
+ },
+ "usage": {
+  "calls": 34,
+  "input_tokens": 97746,
+  "output_tokens": 1855,
+  "cache_read_tokens": 40689,
+  "cache_write_tokens": 1233,
+  "cost": 0.3379
+ },
+ "per_question": [
+  {
+   "q": "What is the minimum down payment for an SBA 7(a) business acquisition?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 244,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Can a seller note count toward the equity injection?",
+   "cited": [
+    "report"
+   ],
+   "chars": 244,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What does full standby mean for a seller note?",
+   "cited": [
+    "yt01",
+    "yt03"
+   ],
+   "chars": 220,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How long is the term on an SBA acquisition loan?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 240,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Who has to sign a personal guarantee?",
+   "cited": [
+    "yt01",
+    "yt03"
+   ],
+   "chars": 211,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What is the maximum SBA 7(a) loan amount?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 233,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What debt service coverage ratio do lenders want?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 219,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How much is the SBA guarantee fee?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 208,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How long does closing take on an SBA deal?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 227,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": false
+  },
+  {
+   "q": "What is a quality of earnings report and what does it cost?",
+   "cited": [
+    "pod",
+    "yt02"
+   ],
+   "chars": 230,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What counts as a legitimate add-back?",
+   "cited": [
+    "yt01",
+    "yt02"
+   ],
+   "chars": 208,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "When is customer concentration a deal breaker?",
+   "cited": [
+    "yt02",
+    "yt03"
+   ],
+   "chars": 217,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How do you set a working capital peg?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 222,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Should the seller stay on after closing?",
+   "cited": [
+    "article",
+    "calc"
+   ],
+   "chars": 225,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": false
+  },
+  {
+   "q": "Are leases and contracts assignable to a new owner?",
+   "cited": [
+    "article",
+    "yt02"
+   ],
+   "chars": 230,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What kinds of businesses actually sell?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 231,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How long should LOI exclusivity be?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 185,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What is a typical SDE multiple for a small business?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 231,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What EBITDA multiple do lower middle market businesses trade at?",
+   "cited": [
+    "article"
+   ],
+   "chars": 243,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What moves a valuation multiple up or down?",
+   "cited": [
+    "article",
+    "pod"
+   ],
+   "chars": 222,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What financing structure does the deal walkthrough recommend?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 246,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Can real estate be financed on a longer term?",
+   "cited": [
+    "report"
+   ],
+   "chars": 237,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What should I change in the first 90 days after buying?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 218,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Which bank and payroll changes happen on closing day?",
+   "cited": [
+    "yt02",
+    "yt03"
+   ],
+   "chars": 216,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "Is it possible to buy a business with zero down?",
+   "cited": [
+    "pod",
+    "yt01"
+   ],
+   "chars": 215,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true,
+   "contradiction_ok": true
+  },
+  {
+   "q": "Do home services businesses trade above 4x SDE?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 226,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": false,
+   "contradiction_ok": false
+  },
+  {
+   "q": "Do I really need to pay for a quality of earnings report?",
+   "cited": [
+    "pod",
+    "yt02"
+   ],
+   "chars": 228,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true,
+   "contradiction_ok": true
+  },
+  {
+   "q": "What is SDE?",
+   "cited": [
+    "article",
+    "yt03"
+   ],
+   "chars": 174,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How do I find businesses that are not listed with a broker?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 241,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "What documents will the lender ask me for?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 206,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "expected_ok": true
+  },
+  {
+   "q": "How do I feed a sourdough starter?",
+   "cited": [
+    "sourdough"
+   ],
+   "chars": 177,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "offtopic_ok": true
+  },
+  {
+   "q": "What solar setup does the van have?",
+   "cited": [
+    "vlog",
+    "yt03"
+   ],
+   "chars": 191,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "offtopic_ok": true
+  },
+  {
+   "q": "What is the best CRM for HVAC companies?",
+   "cited": [
+    "yt03"
+   ],
+   "chars": 202,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "gap_ok": false
+  },
+  {
+   "q": "How do SBA loans work in Canada?",
+   "cited": [
+    "report",
+    "yt01"
+   ],
+   "chars": 206,
+   "rounds": 1,
+   "tools": [],
+   "truncated": 0,
+   "invalid_citations": 0,
+   "repaired": 0,
+   "gap_ok": false
+  }
+ ]
+}

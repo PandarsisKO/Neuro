@@ -3740,6 +3740,20 @@ def get_messages(conversation_id: str, limit: int = 20) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in reversed(rows)]  # type: ignore[misc]
 
 
+def first_user_message(conversation_id: str) -> str:
+    """The question a chat OPENED with — which is not what `get_messages(limit=1)` returns.
+
+    `get_messages` is a tail: `ORDER BY id DESC LIMIT n`, reversed, because a chat view wants the latest turns. The
+    0.63.1 retitle backfill asked it for `limit=1` and got the newest message — an assistant reply in 41 of Kyle's
+    42 chats — so it found no user message and renamed nothing. The tests did not catch it because a test
+    conversation has one message, where the head and the tail are the same row. A title comes from the head, so the
+    head gets its own query (0.63.2)."""
+    r = connect().execute(
+        "SELECT content FROM messages WHERE conversation_id=? AND role='user' AND TRIM(content) <> '' "
+        "ORDER BY id ASC LIMIT 1", (conversation_id,)).fetchone()
+    return str(r["content"]) if r else ""
+
+
 def count_messages(conversation_id: str) -> int:
     """0.60.0: how many messages a conversation really has, so a retelling can say what share of it it covers."""
     r = connect().execute("SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND role IN ('user','assistant') "
