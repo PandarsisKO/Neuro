@@ -169,6 +169,16 @@ def _base() -> dict[str, InferenceContract]:
         InferenceContract("discover.quick", "anthropic", CHEAP, local_capable=True, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
                           reversible=True, gate="schema discovery-v2; every suggestion is reviewed before anything is acquired",
                           notes="structured (F3); discover.verify stays on the citation-capable text/tool path — citations and output_config.format are incompatible"),
+        # 0.63.0 — reading the text in an image. CHEAP is where it belongs and the reason is not cost: OCR is
+        # transcription, the cheapest vision-capable tier does it as well as any, and it only ever runs when no
+        # FREE local engine (Apple Vision, tesseract) could. Reversible because re-reading an image costs nothing
+        # but the call and changes no state; the gate is that its output is stored as a source's text, where a bad
+        # read is visible to the user in the source drawer rather than buried in a derived artifact.
+        InferenceContract("image.read", "anthropic", CHEAP, max_output_tokens=4000, timeout=180.0, interactive=True,
+                          reversible=True, gate="the transcription becomes the source's own text, shown beside the "
+                                                "image in the source drawer, so a wrong read is visible and re-readable",
+                          notes="only reached when Apple Vision and tesseract are both unavailable, or a local "
+                                "engine returned almost nothing; images are downscaled to MODEL_MAX_EDGE first"),
         InferenceContract("discover.verify", "anthropic", CHEAP, max_output_tokens=2500, timeout=180.0, interactive=True,
                           reversible=True, gate="links are verified against the fetched page, never taken on the model's word",
                           notes="uses the Anthropic web_search server tool; no fallback provider can serve it"),

@@ -2396,9 +2396,32 @@ def set_relevance(source_id: str, score: int | None, why: str | None, project_id
 ANALYSIS_KINDS = ("relevance", "summary")
 
 
+def analysis_writable(project_id: str, source_id: str) -> bool:
+    """Do both parents still exist? (0.63.0)
+
+    Kyle: *"we seem to be getting 'error: FOREIGN KEY constraint failed' a lot today."* Measured in his job history:
+    every occurrence is a `rank_proposed` job — 9 of them, the newest at 23:01. That job reads a collection's
+    proposed sources, spends minutes ranking them (p50 384 s), then writes a relevance artifact per source. If a
+    source is deleted or replaced in between — which is precisely what approving a review, discarding one or
+    retiring a direction does — the write lands on a dangling foreign key. And because the writes share one
+    `db.batch()`, **one vanished source voided the entire ranking**, so minutes of paid work were thrown away with
+    an error message that named nothing.
+
+    A source that no longer exists has not failed; it has left. The artifact has nowhere to live and the honest
+    thing is to skip it and say how many were skipped, which is what `relevance.rank_collection` now reports."""
+    c = connect()
+    if not c.execute("SELECT 1 FROM sources WHERE id=?", (source_id,)).fetchone():
+        return False
+    return bool(c.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone())
+
+
 def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **fields: Any) -> None:
     """Write one project-relative analysis artifact (one per AI task) with ITS provenance. A fresh write is current."""
     assert analysis_kind in ANALYSIS_KINDS, analysis_kind
+    if not analysis_writable(project_id, source_id):
+        logging.getLogger(__name__).info("analysis skipped: %s/%s no longer exists",
+                                         (project_id or "?")[:8], (source_id or "?")[:8])
+        return
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
                "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing", "depth"}
     f = {k: v for k, v in fields.items() if k in allowed}

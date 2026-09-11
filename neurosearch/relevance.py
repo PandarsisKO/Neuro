@@ -232,6 +232,11 @@ def rank_collection(collection_id: str, project_id: str | None, want: int | None
     note = None
     if failed_batches or len(scored) < len(pool):
         note = f"{len(pool) - len(scored)} of {len(pool)} videos could not be scored — press re-rank to try those again."
+    # 0.63.0: how many sources disappeared while this was ranking. Before the guard in `db.upsert_analysis`, one of
+    # them raised FOREIGN KEY and took the whole batch with it; now the ranking survives and the count is stated.
+    vanished = sum(1 for s in rows if not db.analysis_writable(project_id, s["id"])) if project_id else 0
+    if vanished:
+        note = (note + " · " if note else "") + f"{vanished} source(s) were removed while this was ranking"
     db.mark_review_ranked(collection_id, note=note)
     return {"ranked": len(scored), "pool": len(pool), "unranked": len(rest), "batches": batches,
             "failed_batches": failed_batches, "repaired_batches": repaired_batches}

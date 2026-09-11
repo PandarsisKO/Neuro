@@ -262,7 +262,7 @@
         <div style="flex:1">
           <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
           <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label>
-            <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
+            <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
             <span id="qAttach"></span><span class="muted" id="askStatus"></span></div>
         </div>
         <button class="primary" id="askBtn" onclick="ask()">Ask</button>
@@ -295,7 +295,7 @@
         </div>
         <div class="pane" id="pane-upload">
           <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is. <b>Spreadsheets (xlsx, csv)</b> become searchable <i>and</i> usable as calculators: the chat can change the inputs and read what the workbook's own formulas compute.</div>
-          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv,.epub"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
+          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,image/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv,.epub,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.heic"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
         </div>
         <div class="pane" id="pane-paste">
           <div class="row"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
@@ -596,7 +596,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.62.9';
+const UI_VERSION = '0.63.0';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;

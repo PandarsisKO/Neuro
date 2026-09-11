@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Callable
@@ -561,6 +562,9 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
         return ingest_spreadsheet(path, title or kind_path.stem, tags, project_id, name)
     if kind_path.suffix.lower() == ".epub":
         return ingest_epub(path, title, tags, project_id, name, progress)
+    from .images import is_image
+    if is_image(kind_path):
+        return ingest_image(path, title or kind_path.stem, tags, project_id, name, progress)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
     if not is_media(kind_path):
@@ -696,6 +700,105 @@ def ingest_document(path: Path, title: str, tags: list[str] | None, project_id: 
         _after_ready(src["id"], project_id)
         return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
                 "transcript": "document", "embedded": n}
+    except Exception as e:  # noqa: BLE001
+        db.set_source_status(src["id"], "failed", str(e)[:1000])
+        raise
+
+
+def _keep_image(path: Path, source_id: str) -> Path | None:
+    """Copy the image to `images_dir/<source_id><ext>`. Keyed by source id so the serving route never handles a
+    user-supplied name, and the suffix is taken from a fixed set rather than from the upload."""
+    from .images import IMAGE_EXTS
+    ext = path.suffix.lower()
+    if ext not in IMAGE_EXTS:
+        return None
+    try:
+        settings.images_dir.mkdir(parents=True, exist_ok=True)
+        dest = settings.images_dir / f"{source_id}{ext}"
+        shutil.copy2(path, dest)
+        return dest
+    except Exception as e:  # noqa: BLE001 — a source that reads fine must not fail because we could not keep a copy
+        log.warning("could not keep a copy of %s: %s", path.name, e)
+        return None
+
+
+def read_image_with_model(source_id: str, project_id: str | None = None) -> dict[str, Any]:
+    """Re-read a kept image with the model, on request. A PAID call, which is why it is a separate verb: ingestion
+    never makes it (0.63.0)."""
+    from .chunking import build_doc_chunks
+    from .images import ocr
+    src = db.get_source(source_id)
+    p = kept_image(source_id)
+    if not src or not p:
+        raise RuntimeError("no image is kept for that source")
+    read = ocr(p, allow_model=True, project_id=project_id, source_id=source_id)
+    text = read["text"]
+    if not text:
+        return {"source_id": source_id, "chars": 0, "engine": read["engine"], "note": read["note"] or
+                "the model could not find text in this image either"}
+    segments = [{"start": 0.0, "end": 0.0, "text": " ".join(text.split())}]
+    db.replace_transcript(source_id, segments, build_doc_chunks([{"page": 1, "text": text}]))
+    db.upsert_source(platform="image", external_id=src["external_id"], duration=None, transcript_kind="image",
+                     description=f"image · text read by {read['engine']} · {read['chars']} characters",
+                     status="ready", error=None)
+    n = _embed_ready(source_id)
+    return {"source_id": source_id, "chars": read["chars"], "engine": read["engine"], "embedded": n,
+            "paid": read["paid"], "note": read["note"]}
+
+
+def kept_image(source_id: str) -> Path | None:
+    from .images import IMAGE_EXTS
+    for ext in sorted(IMAGE_EXTS):
+        p = settings.images_dir / f"{source_id}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str,
+                 progress: Progress = _noop) -> dict[str, Any]:
+    """A screenshot or photograph as an ordinary source: OCR text in, chunks out, and the image kept viewable.
+
+    Kyle: *"we do not allow PNGs or other image types to be uploaded or used in chats. we need this with OCR for
+    screenshots etc."* Until this, the router ended at `unsupported file type: .png`.
+
+    Platform `image`, one segment (the whole picture is one locator — there is no page or timestamp to cite), and
+    the ordinary `replace_transcript` → embed → `_after_ready` path, so search, findings, Claims and citations treat
+    a screenshot exactly like a transcript. **An image with no readable text still becomes a source**: it is
+    attached, viewable and named, and the description says there was nothing to read rather than the upload
+    failing."""
+    from .chunking import build_doc_chunks
+    from .images import ocr
+
+    res = identity.resolve_or_create_source(identity.upload_candidate("image", path, name, title, tags, "img"), project_id, retry=True)
+    src, ext_id = res.source, res.source["external_id"]
+    if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
+        return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": "image",
+                "embedded": 0, "already_ingested": True, "identity": res.state}
+    try:
+        progress(0.2, "reading the text in the image…")
+        # Keep the picture. The text is what makes it searchable; the picture is what makes it useful to look at,
+        # and a screenshot whose text OCR could not read is still worth having on screen.
+        kept = _keep_image(path, src["id"])
+        # allow_model=False: uploading a screenshot must never make a paid call on its own. The free local engines
+        # run, and if they find nothing the source says so and offers "read it with the model" as an explicit,
+        # priced action — the same rule as every other spend in this app: nothing spends without being asked.
+        read = ocr(path, allow_model=False, project_id=project_id, source_id=src["id"])
+        text = read["text"]
+        # One segment, start/end 0: an image has no interior position to cite, so the locator is the image itself.
+        segments = [{"start": 0.0, "end": 0.0, "text": " ".join(text.split())}] if text else []
+        chunks = build_doc_chunks([{"page": 1, "text": text}]) if text else []
+        db.replace_transcript(src["id"], segments, chunks)
+        desc = (f"image · text read by {read['engine']} · {read['chars']} characters" if text
+                else "image · no readable text found by the free local OCR on this machine")
+        db.upsert_source(platform="image", external_id=ext_id, duration=None, transcript_kind="image",
+                         description=desc, status="ready", error=None)
+        n = _embed_ready(src["id"]) if chunks else 0
+        _after_ready(src["id"], project_id)
+        progress(1.0, desc)
+        return {"source_id": src["id"], "title": title, "segments": len(segments), "chunks": len(chunks),
+                "transcript": "image", "embedded": n, "ocr": {k: read[k] for k in ("engine", "chars", "paid", "note")},
+                "engines_tried": read["engines_tried"], "image_kept": bool(kept)}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise

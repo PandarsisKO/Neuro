@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.62.9)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.0)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,56 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A question is the user's, not the answer's (0.63.0)
+
+Kyle, minutes apart, two live faults.
+
+**"chats are failing to save, I was chatting, it did not complete its response, and I lost the chat because I
+looked at sources."** `qa.ask` wrote BOTH messages at the very end of the turn — after the model call, after
+citations, after findings. A conversation row is created by its first `save_message`, so a turn that raised or was
+abandoned saved nothing at all: not the answer, and **not the question he had typed.** The whole chat vanished.
+The question is now saved the moment it arrives, before anything can fail (`saved_user` stops the late path writing
+it twice), and `qa.save_failure` records the assistant's side of a turn that did not finish — keeping whatever text
+had already been streamed, marked so it can never read as a finished answer. Both `/api/ask` and `/api/ask/stream`
+call it; the stream endpoint accumulates its own deltas so a mid-answer failure keeps the half that arrived.
+
+**"we seem to be getting 'error: FOREIGN KEY constraint failed' a lot today."** Measured in his job history: every
+occurrence is `rank_proposed` — 9 of them, newest 23:01, oldest Sep 8. That job reads a collection's proposed
+sources, spends minutes ranking (p50 384 s), then writes a relevance artifact per source. If a source is deleted or
+replaced in between — exactly what approving a review, discarding one, or retiring a direction does — the write
+lands on a dangling foreign key, and because the writes share one `db.batch()`, **one vanished source voided the
+entire ranking**: minutes of paid work discarded under an error that named neither table nor row.
+`db.analysis_writable` asks the question explicitly and `upsert_analysis` skips when a parent has gone —
+**a source that no longer exists has not failed, it has left** — and `relevance.rank_collection` reports the count
+in the review note.
+
+## Images as sources, with OCR (0.63.0)
+
+Kyle: *"one major flaw is we do not allow PNGs or other image types to be uploaded or used in chats. we need this
+with OCR for screenshots etc."* Correct: `ingest_local_file` ended at `raise RuntimeError("unsupported file type:
+.png")`.
+
+`images.py` reads an image cheapest-first and reports which rung answered:
+
+1. **Apple Vision** (`pyobjc-framework-Vision`) — free, local, no network, and the strongest of the three on UI
+   screenshots. It is a **pip** install rather than a system package, and that is the deciding property, not the
+   quality: Kyle does no terminal work, so an OCR path needing `brew install` is a path he cannot use.
+2. **tesseract** when the binary is on PATH — free, local, and what the test environment has, so it is the rung the
+   automated tests exercise.
+3. **the model** (`image.read`, cheapest tier, new contract) — only when no local engine exists or a local engine
+   returned under `THIN_TEXT_CHARS`. Images are downscaled to `MODEL_MAX_EDGE` first, since tokens scale with pixels.
+
+**Uploading never pays.** `ingest_image` runs with `allow_model=False`; an image no free engine could read becomes a
+source that says so, and `POST /api/sources/{id}/read-image` is the explicit priced verb — the same rule as every
+other spend here. **An image with no readable text is still a source**, because the picture being there, named and
+viewable, is the one thing always true; and the picture is KEPT at `images_dir/<source_id><ext>`, named by id so
+`GET /api/sources/{id}/image` handles no user-supplied path and there is nothing to traverse. Platform `image`, one
+segment (an image has no interior position to cite), then the ordinary transcript → chunk → embed path, so search,
+findings, Claims and citations treat a screenshot exactly like a transcript. Chat attachment needed no API change:
+the upload route already treats anything non-media as immediate.
+
+Gates `tests/test_s24_lost_chat_and_fk.py`, `tests/test_s25_images.py`.
 
 ## Retiring a direction (0.62.9)
 

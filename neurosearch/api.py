@@ -1324,6 +1324,37 @@ def api_set_tags(source_id: str, body: TagsIn) -> dict[str, Any]:
     return db.upsert_source(platform=s["platform"], external_id=s["external_id"], tags=body.tags)
 
 
+@app.get("/api/sources/{source_id}/image", dependencies=[Depends(require_auth)])
+def api_source_image(source_id: str) -> Any:
+    """The image itself (0.63.0). The path is built from the source id and a suffix from a fixed set, so nothing the
+    user supplied reaches the filesystem and there is no path to traverse."""
+    from . import ingest as _ingest
+    if not db.get_source(source_id):
+        raise HTTPException(404)
+    p = _ingest.kept_image(source_id)
+    if not p:
+        raise HTTPException(404, "no image kept for this source")
+    return FileResponse(p)
+
+
+@app.post("/api/sources/{source_id}/read-image", dependencies=[Depends(require_auth)])
+def api_read_image(source_id: str, project_id: str | None = None) -> dict[str, Any]:
+    """Read a kept image with the model — a PAID call, which is why uploading never does it (0.63.0). Use it when
+    the free local OCR on this machine found nothing."""
+    from . import ingest as _ingest
+    try:
+        return _ingest.read_image_with_model(source_id, project_id)
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from None
+
+
+@app.get("/api/images/engines", dependencies=[Depends(require_auth)])
+def api_image_engines() -> dict[str, Any]:
+    """Which OCR rungs this machine actually has — free and local first, the paid model rung last."""
+    from . import images
+    return images.engines()
+
+
 @app.get("/api/sources/{source_id}/transcript.txt", dependencies=[Depends(require_auth)])
 def api_transcript(source_id: str, timestamps: bool = True) -> Any:
     s = db.get_source(source_id)
@@ -2834,9 +2865,14 @@ class AskIn(BaseModel):
 @app.post("/api/ask", dependencies=[Depends(require_auth)])
 async def api_ask(body: AskIn) -> dict[str, Any]:
     cid = body.conversation_id or db.new_id()
-    return await anyio.to_thread.run_sync(
-        lambda: qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web,
-                       attached_source_ids=body.attached_source_ids or None))
+    try:
+        return await anyio.to_thread.run_sync(
+            lambda: qa.ask(body.question, project_id=body.project_id, conversation_id=cid, use_web=body.use_web,
+                           attached_source_ids=body.attached_source_ids or None))
+    except Exception as e:  # noqa: BLE001 — 0.63.0: the chat must show what happened, not lose the turn
+        log.exception("ask failed")
+        qa.save_failure(cid, body.project_id, str(e))
+        raise
 
 
 SSE_HEARTBEAT = 10.0     # seconds of silence after which the stream sends a keep-alive comment (nothing is ever "frozen")
@@ -2854,7 +2890,11 @@ async def api_ask_stream(body: AskIn) -> StreamingResponse:
     loop = asyncio.get_running_loop()
     q: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
+    written: list[str] = []          # 0.63.0: what the model had written when a turn failed is worth keeping
+
     def push(ev: dict[str, Any] | None) -> None:
+        if isinstance(ev, dict) and ev.get("type") == "delta" and ev.get("text"):
+            written.append(str(ev["text"]))
         loop.call_soon_threadsafe(q.put_nowait, ev)
 
     def run() -> None:
@@ -2864,6 +2904,7 @@ async def api_ask_stream(body: AskIn) -> StreamingResponse:
             push({"type": "done", "result": res})
         except Exception as e:  # noqa: BLE001 — the client must always learn why, not just lose the connection
             log.exception("ask stream failed")
+            qa.save_failure(cid, body.project_id, str(e), partial="".join(written))
             push({"type": "error", "message": str(e)})
         finally:
             push(None)

@@ -341,6 +341,25 @@ def _join_continuation(prev: str, nxt: str) -> str:
 OBSERVER: Any = None      # evals hook: one dict per provider call (task, round, stop_reason, tools, model); never changes behaviour
 
 
+def save_failure(conversation_id: str | None, project_id: str | None, error: str, partial: str = "") -> None:
+    """Record that a turn did not finish, so the chat shows what happened instead of a question with no answer.
+
+    0.63.0, from Kyle: *"it did not complete its response, and I lost the chat."* `ask` now saves his question the
+    moment it arrives, so the conversation exists; this is the other half — the assistant's side of a turn that
+    failed. The partial text is kept when there is any, because half an answer with a visible marker is worth more
+    than a blank, and it is clearly labelled so it can never be mistaken for a finished one."""
+    if not conversation_id:
+        return
+    body = (partial or "").strip()
+    marker = f"_This answer did not finish: {error.strip()[:300]}_"
+    text = (body + "\n\n" + marker) if body else marker
+    try:
+        db.save_message(conversation_id, "assistant", text, citations=[], project_id=project_id,
+                        meta={"warning": "the turn did not finish", "incomplete": True, "error": error[:300]})
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not save the failure message: %s", e)
+
+
 def ask(
     question: str,
     project_id: str | None = None,
@@ -358,6 +377,20 @@ def ask(
     is computed, and a callback that raises is ignored rather than costing the user their answer."""
     project = db.get_project(project_id) if project_id else None
     actions: list[dict[str, Any]] = []
+
+    # 0.63.0 — A QUESTION IS THE USER'S, NOT THE ANSWER'S. Kyle: *"chats are failing to save, I was chatting, it did
+    # not complete its response, and I lost the chat because I looked at sources."* Both messages used to be written
+    # at the very END of this function — after the model call, after citations, after findings — so a turn that was
+    # abandoned, timed out or raised saved NOTHING, and the question he had typed disappeared with the answer he
+    # never got. It is saved here, before anything can fail, and the assistant's message is saved separately when
+    # there is one. `saved_user` stops the late path writing it twice.
+    saved_user = False
+    if conversation_id:
+        try:
+            db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+            saved_user = True
+        except Exception as e:  # noqa: BLE001 — never lose the answer because the question could not be filed
+            log.warning("could not save the question: %s", e)
 
     def emit(**ev: Any) -> None:
         if on_event is None:
@@ -390,7 +423,8 @@ def ask(
                 parts.append(f"**{d['label']}** — {d['detail']} Options in **Sources → Add**: {choices}.")
             answer = "\n\n".join(parts) or "I couldn't tell what to do with that link."
             if conversation_id:
-                db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+                if not saved_user:
+                    db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
                 db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id)
             return {"answer": answer, "citations": [], "hits": [], "web_used": False, "web_sources": [],
                     "project": _pj(project), "conversation_id": conversation_id, "ingest_jobs": ingest_jobs,
@@ -586,7 +620,8 @@ def ask(
             db.add_project_note(project["id"], content, [c for c in citations if c["n"] in nums])
 
     if conversation_id:
-        db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
+        if not saved_user:
+            db.save_message(conversation_id, "user", question, project_id=project_id, title=question[:80])
         meta = dict(validation or {})
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:

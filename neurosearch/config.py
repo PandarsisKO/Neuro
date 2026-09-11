@@ -83,6 +83,12 @@ class Settings:
         return self.data_dir / "media"
 
     @property
+    def images_dir(self) -> Path:
+        """Where an ingested image is KEPT so it can be looked at (0.63.0). Named by source id, never by anything
+        the user supplied — the serving route then needs no path handling at all, so there is nothing to traverse."""
+        return self.data_dir / "images"
+
+    @property
     def embeddings_enabled(self) -> bool:
         return self.fake_ai or bool(self.openai_api_key)
 
