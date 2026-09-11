@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.17)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.18)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -1391,7 +1391,20 @@ rank.relevance and findings.extract → `claude-sonnet-5` (thinking disabled); e
 
 ## Missions filed but not started
 
-- **`EXTERNAL-AI-ACCESS-MISSION.md` (filed 2026-09-10).** External AI Access + bidirectional project intelligence:
+- **`EXTERNAL-AI-ACCESS-MISSION.md` (filed 2026-09-10, AMENDED 2026-09-11 — §20–§37, which override §1–§19 where
+  they disagree; the superseded passages are annotated in place).** The amendment's correction: ChatGPT is neither
+  thin transport into Neuro nor an independent chatbot that occasionally searches it — **ChatGPT owns the live
+  conversation and immediate reasoning, Neuro owns durable project memory, and both exchange information during
+  substantive work.** Concretely it adds: a second ingestion path where an external AI's own extraction (a
+  screenshot it has read, a PDF it has parsed, a URL it has opened) is reused rather than redone — *one knowledge
+  architecture, several extraction producers*; a three-layer separation of source / extraction / interpretation so
+  AI judgment can never become evidence; a compact `consult_project` intelligence packet (200–700 tokens, not
+  Neuro's verbose native chat) for substantive turns; progressive citations; read-from-Neuro and write-to-Neuro as
+  independent per-turn decisions with a local-continuation rule so a rewrite does not re-query; and automatic
+  synchronisation of clearly durable decisions **without** the user saying "save this", while indiscriminate
+  transcript storage stays forbidden. Its cost rule gains a rung above the existing ladder: *has the external AI
+  already processed this?* — **avoid paying twice for cognition that has already happened.**
+  External AI Access + bidirectional project intelligence:
   ChatGPT and Claude using Neuro Search as a private, persistent project intelligence layer — one cheap project
   orientation call, project-scoped search, evidence drill-down, and writes back in (correspondence, files, URLs,
   user decisions) through a **Project Inbox**, with per-identity project ACLs so possession of a credential does

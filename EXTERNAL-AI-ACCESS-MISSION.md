@@ -1,5 +1,13 @@
 # MISSION — External AI Access + Bidirectional Project Intelligence
 
+**AMENDED 2026-09-11 — see §20–§37.** Kyle dictated an amendment while the fix queue was running: *"I have an
+amendment to a future mission… Do NOT create a separate mission for these changes. Update the existing
+`EXTERNAL-AI-ACCESS-MISSION.md` so these requirements become part of the same mission. Where this amendment
+conflicts with wording in the original mission, this amendment takes precedence."* It is therefore part of THIS
+mission, not a second one, and **§20–§37 override §1–§19 wherever they disagree.** The passages it supersedes are
+marked in place with a pointer, so a future session cannot read the old rule without meeting the new one. Nothing
+here is implemented and nothing is scheduled.
+
 **Status: FILED, NOT STARTED.** Kyle dictated this on 2026-09-10 while a fix queue was in progress and said
 explicitly: *"I don't want you to work on the expansion mission but I want to add information."* So nothing here is
 implemented, nothing here is scheduled, and the sequencing decision is his. The brief below ends with "then
@@ -106,6 +114,12 @@ ChatGPT or Claude receives Neuro's evidence and project state and performs its o
 `ask()` for existing Neuro/Claude workflows if it is useful — do not break it. We are adding a retrieval-first
 external interface alongside it.
 
+> **AMENDED (§20, §26–§29).** "Not `ask()`" must not be read as "raw retrieval only". Neuro has accumulated
+> higher-order intelligence — findings, claims, tensions, decisions, relationships, evidence strength, open
+> questions — and a substantive turn should get it. What external clients must not receive is Neuro's **verbose
+> native chat response**. The addition is a compact project-intelligence packet (§27), not a conversational
+> answer: ChatGPT owns the final reasoning, Neuro contributes what the project knows.
+
 ## §4 Target experience, and citations as available-not-mandatory
 
 Gio opens her own ChatGPT account: *"Look at our accounting firm acquisition project in Neuro. What should we be
@@ -204,6 +218,12 @@ P&L, tax return, lease, customer report, PDF, spreadsheet, attachment, web page,
 become SOURCES and should go through Neuro's normal ingestion, indexing, deduplication, finding-generation and
 research pipeline as appropriate.
 
+> **AMENDED (§22–§24).** Class A may arrive by **either** of two paths: raw material for Neuro's own extraction
+> (Path A), or an **already-processed package** from an external AI that has read the image, parsed the PDF or
+> opened the URL (Path B). Both feed the same knowledge system. And Class A splits into two layers that must not
+> be collapsed: the **source** (evidence) and the **extraction** (an AI representation of what is visibly present
+> in it). Class C stays exactly as written — interpretation is never evidence.
+
 **Class B — user-authored project state.** *"We won't pay more than $1.8M."* · *"We prefer 10% seller financing."* ·
 *"Gio is willing to extend the transition period."* · *"We rejected an earnout."* · *"Our current negotiating
 position is 10% seller financing."* · *"We need this acquisition to produce at least X."* These become facts,
@@ -276,6 +296,13 @@ PDF · XLSX · CSV · DOCX · TXT · images/screenshots · anything else already
 
 Use the existing ingestion pipeline. **Do not duplicate PDF parsing, spreadsheet handling, chunking, embeddings or
 job logic inside the external connector.** The external interface is an entry point into the same pipeline.
+
+> **AMENDED (§22–§26, §31).** The rule is about the KNOWLEDGE ARCHITECTURE, not about who extracts. Precisely:
+> *do not create a second persistent ingestion/indexing architecture, but do allow an external AI to perform
+> upstream extraction that Neuro reuses.* **One Neuro knowledge architecture, several extraction producers.** So
+> Neuro must not re-OCR a screenshot ChatGPT has already read, or pay a model to reread a PDF ChatGPT has already
+> parsed, merely because Neuro is the thing that stores it. Chunking, embeddings, dedupe, findings, claims and the
+> job queue stay exactly where they are.
 
 Because MCP clients differ in how they support binary/file inputs: inspect the current FastMCP version and
 capabilities; determine the cleanest supported file transport; keep the underlying REST/API ingestion path usable
@@ -353,6 +380,12 @@ Plus `add_project_file(...)` using the transport the actual stack supports, and 
 system for project state — do not create duplicate "external facts" if `project_facts` or its successor already
 solves the problem.
 
+> **AMENDED (§28–§31, §34).** Two additions. (a) A write does **not** require the user to say *"save this"*: a
+> clearly durable decision, constraint, position or rejected option made inside a Neuro-connected project
+> conversation is eligible for automatic synchronisation, while indiscriminate transcript storage stays forbidden
+> (§30 lists what counts and what does not). (b) `add_processed_material` (§25) joins `add_project_material` as
+> the entry point for externally extracted packages.
+
 **Tool descriptions matter**, because the external model must use the interface correctly without Neuro controlling
 its system prompt. Conceptually:
 
@@ -390,6 +423,10 @@ controls · queue controls · current Claude Code/API routing · processing mode
 existing analysis settings. If an incoming file would normally trigger findings, claims, extraction or embeddings,
 use the same configured behaviour. **Do not introduce new mandatory LLM calls merely because a source arrived
 through ChatGPT.**
+
+> **AMENDED (§32).** The ladder gains a rung ABOVE everything else: *has the external AI already processed this?*
+> If so, reuse that work rather than re-extracting. **Avoid paying twice for cognition that has already
+> happened.** The rest of the ladder — free local tooling, then Claude Code, then the paid API — is unchanged.
 
 The capability must exist **below** the MCP layer:
 
@@ -580,3 +617,397 @@ has been built for this mission.
    reuse the job system; the states it lists map almost exactly onto existing derived job statuses.
 4. What FastMCP version is pinned and what it supports for binary transport — §10 requires this be inspected, not
    assumed, and it is the one item that cannot be answered from the repository alone.
+
+---
+
+# AMENDMENT — 2026-09-11 (§20–§37)
+
+Kyle: *"The original External AI Access mission remains valid, but several important behaviors need to be clarified
+and expanded before implementation begins."* These sections are part of this mission and **take precedence over
+§1–§19 wherever they conflict**. The core correction in one sentence:
+
+> External AI clients such as ChatGPT are **not** thin transport into Neuro, and **not** independent chatbots that
+> occasionally search it. **ChatGPT owns the live conversation and the immediate reasoning; Neuro owns durable
+> project intelligence and persistent memory; both exchange useful information during substantive project work.**
+> And ChatGPT may process attachments itself before passing structured results to Neuro, so nothing is extracted
+> twice.
+
+## §20 Updated north star
+
+```text
+                        NEURO SEARCH
+                             ^
+                             |
+                    durable project memory
+                             |
+         evidence / decisions / context / relationships
+                             |
+                             v
+USER <-----------------> CHATGPT
+                              ^
+                              |
+                     concise Neuro intelligence
+                     when substantive project
+                     reasoning requires it
+```
+
+**ChatGPT owns:** the live conversation · immediate reasoning · interpreting newly attached material · vision ·
+document understanding · writing · tone · rewriting · presentation · conversational follow-ups.
+
+**Neuro owns:** durable project memory · research state · sources · evidence · findings · claims · relationships ·
+project facts · constraints · requirements · decisions · rejected options · counterpart positions · historical
+project context · persistent chronology.
+
+The experience should feel like **ChatGPT that understands and remembers the entire Neuro project** — not like
+Neuro's native research chat reproduced inside ChatGPT.
+
+## §21 ChatGPT may process material before Neuro
+
+When ChatGPT has already viewed an image · read a screenshot · parsed a PDF · opened a URL · read an email ·
+inspected a table · interpreted a document · extracted text · identified metadata · recognised entities ·
+understood document structure — **reuse that work.** Do not force Neuro to repeat expensive or difficult extraction
+merely because Neuro is what ultimately stores the material.
+
+```text
+wanted:                             not:
+User material                       User material
+    |                                   |
+    v                               ChatGPT processes it
+ChatGPT processes it                    |
+    |                               sends original to Neuro
+    v                                   |
+structured extraction               Neuro OCRs/parses it again
+    |                                   |
+    v                               another model rereads it
+Neuro persists / indexes / relates
+```
+
+**One Neuro knowledge architecture; several extraction producers.**
+
+## §22 Two ingestion paths, both supported
+
+**Path A — raw Neuro ingestion.** `Raw source → Neuro extraction → Neuro knowledge system.` Use when Neuro receives
+material directly · external extraction is unavailable · verification is required · the source needs special Neuro
+processing · bulk processing is appropriate · the external client cannot inspect the content.
+
+**Path B — externally processed ingestion.** `Raw source → external AI → structured extraction → Neuro knowledge
+system.` Use when the external AI has already done useful processing.
+
+**Do not remove Neuro's existing ingestion pipeline.** This amendment adds a producer of normalised source
+information; it replaces nothing.
+
+## §23 Source, extraction, interpretation — three layers, never collapsed
+
+```text
+ORIGINAL MATERIAL  ->  EXTERNAL EXTRACTION  ->  EXTERNAL INTERPRETATION
+```
+
+**Original material** — seller email · screenshot · PDF · contract · spreadsheet · URL · financial statement ·
+broker message · tax return. **This is evidence.**
+
+**External extraction** — visible text from a screenshot · email sender · date · PDF page text · headings · tables ·
+explicit amounts · names · dates · document structure · explicit seller positions · stated objections · contractual
+terms. **An AI representation of what is visibly or explicitly present in the source.** Neuro may use it to
+construct the normalised source representation.
+
+**External interpretation** — *"The seller is probably bluffing." · "This clause is unusually aggressive." · "They
+seem nervous about retention." · "This expense probably isn't sustainable."* **Analytical judgments. These must NOT
+silently become factual evidence.** They may be retained as AI analysis · hypotheses · candidate findings ·
+candidate relationships · suggested interpretations — always distinguishable from the source.
+
+## §24 Processed source packages
+
+Extend the external write interface so ChatGPT can submit structured processed material rather than only raw files.
+Conceptually — **use naming consistent with the live repo**:
+
+```text
+add_processed_material(
+    project_id, source_type, original_metadata, extracted_content,
+    structured_data?, provenance?, candidate_findings?, candidate_relationships?,
+    interpretations?, original_artifact?, client_request_id?
+)
+```
+
+A package may carry:
+
+- **Source identity** — title · source type · URL · author · sender · recipients · date · filename · MIME type ·
+  external message id · thread id.
+- **Extracted content** — full readable text · page boundaries · screenshot text · sections · headings · tables ·
+  message body · spreadsheet values.
+- **Structured information** — people · companies · amounts · dates · topics · deadlines · explicit positions ·
+  objections · offers · counteroffers · commitments · referenced documents.
+- **Provenance** — page · section · URL · source attachment · timestamp · screenshot region where practical ·
+  message metadata.
+- **Optional candidate intelligence** — candidate findings · relationships · tensions · hypotheses · uncertainties.
+
+**Do not require every field.** Design it as an extensible representation.
+
+## §25 Retain original artifacts when practical
+
+The ideal pattern is `original artifact + external extraction + structured metadata + candidate semantic
+information` — e.g. `seller-email.png` + extracted body + sender/date/subject + identified positions, or `CIM.pdf` +
+page-bounded text + tables + entities. That gives Neuro immediate usable intelligence, durable original evidence,
+and the future ability to reprocess with better tools.
+
+**But inability to transfer the original binary must never prevent Neuro from accepting useful structured
+extraction** — external clients differ in file transport.
+
+**Screenshots / images (§26a).** External vision may be better than Neuro's local pipeline. Accept visible text ·
+document type · sender/recipient · names · dates · amounts · tables · visual structure · source context · candidate
+findings · explicit statements. **Do not re-OCR an image just to recreate what ChatGPT already extracted.** Store
+the image as the artifact when possible.
+
+**PDFs (§26b).** Accept filename · title · page count · page-bounded text · headings · tables · metadata ·
+entities · explicit facts · candidate findings, and create a normal searchable source **without paying another
+model to reread the whole PDF**. Preserve page provenance. Retain the original when transferable.
+
+**URLs (§26c).** Accept canonical URL · title · author · publication date · normalised text · headings · structured
+data · extracted facts · candidate findings. **Do not automatically refetch** merely because URL ingestion
+historically worked that way. Refetch only when useful: extraction incomplete · verification requested · freshness
+matters · the source may have changed · richer metadata needed · archival capture wanted. This is especially
+valuable for sites that block Neuro but not the external AI.
+
+**Email / correspondence (§26d).** Accept sender · recipients · date · subject · thread context · body ·
+attachments · explicit claims · questions · objections · offers · counteroffers · commitments · deadlines ·
+amounts · people/companies · candidate relationships. The evidence is **what the counterparty actually said**:
+
+```text
+Seller statement: "We have another interested buyer."   -> Evidence: seller assertion.
+ChatGPT: "The seller is bluffing."                      -> NOT evidence.
+```
+
+**Spreadsheets (§26e).** Preserve Neuro's existing spreadsheet/formula capabilities. Extracted values, trends,
+table structure, anomalies and key rows may be passed as extraction — but when Neuro needs the workbook for formula
+evaluation · calculator features · editable inputs · formula inspection · workbook structure, use a hybrid approach
+and process the workbook normally as well.
+
+## §26 Neuro builds the durable relationships
+
+External preprocessing exists to free Neuro for what only Neuro provides: **persistent relationships across time,
+sources, research, decisions and project state.**
+
+```text
+New financial statement      -> SUPPORTS      -> existing growth claim
+Seller email                 -> CONFLICTS WITH -> buyer financing preference
+New seller position          -> SUPERSEDES    -> earlier seller position
+Financial concentration data -> SUPPORTS      -> existing customer-retention risk
+```
+
+External AI may *suggest* these. **Neuro owns the persistent version.**
+
+## §27 The Neuro intelligence packet
+
+Expose something conceptually equivalent to `consult_project(project_id, question, new_material_context?,
+mode="concise")` — **exact implementation follows the live architecture.** The purpose is a compact project
+intelligence packet, not a long conversational answer:
+
+```text
+CURRENT PROJECT POSITION   - Buyer prefers 10% seller financing.
+WHAT MATTERS               - Seller financing is intended to align transition risk.
+                           - Customer retention remains a known concern.
+                           - Updated numbers support historical growth.
+                           - No independent evidence confirms another buyer.
+WHAT CHANGED               - New financials strengthen the historical-performance argument.
+                           - They do not eliminate transition risk.
+TENSIONS                   - Seller explicitly opposes the 10% note.
+                           - Buyer preference now conflicts with seller position.
+                           - Competitive-buyer claim is unverified.
+NEURO ASSESSMENT           - Do not abandon the 10% request solely because the business performs well.
+                           - Reframe the request around transition alignment.
+EVIDENCE STATE             - Historical growth: strongly supported.
+                           - Competing buyer: seller assertion only.
+                           - Transition risk: supported.
+SOURCE REFERENCES          - available if requested
+```
+
+ChatGPT uses the packet as **one input** into its own response. It must not print it.
+
+## §28 External responses are far less verbose than native chat
+
+Native Neuro chat may carry detailed citations · timestamps · source links · long evidence explanations · research
+caveats · explicit gap analysis. That is right inside Neuro and **too heavy for ordinary ChatGPT conversation.**
+
+External advisory mode defaults to: concise · decision-oriented · project-aware · low repetition · no giant source
+lists · no inline transcript timestamps · no explicit source linking unless needed · no methodology unless
+relevant. Roughly **200–700 useful tokens** rather than a research report — **not a hard limit** where the situation
+genuinely requires more.
+
+**Citations are progressive.** Neuro always preserves provenance; ChatGPT need not surface it constantly. *"The
+updated financials strengthen the seller's case that the business is healthy, but they don't eliminate your
+transition-risk rationale for the note."* → *"Why?"* explain → *"What evidence supports that?"* retrieve deeper →
+*"Show me the sources."* then names · excerpts · URLs · pages · timestamps · precise evidence relationships.
+
+**ChatGPT synthesises** `NEW MATERIAL + USER QUESTION + CHAT HISTORY + NEURO INTELLIGENCE + ITS OWN REASONING`. The
+answer should read like ChatGPT, not like a packet.
+
+## §29 Read and write are separate decisions
+
+For every turn, two independent questions:
+
+```text
+1. DOES CHATGPT NEED NEW INFORMATION FROM NEURO?
+2. DID THIS TURN CREATE DURABLE PROJECT INFORMATION NEURO SHOULD REMEMBER?
+```
+
+The answers frequently differ.
+
+| turn | classification | read | write |
+|---|---|---|---|
+| *"Does this new PDF change our seller-note position?"* | new evidence · substantive reasoning · project context | **yes** | **yes** |
+| *"Agreed. We'll stay at 10%."* | user decision | usually no | **yes** |
+| *"Turn that into a polite email I can send the seller."* | presentation / transformation | no | usually no |
+| *"Make the email shorter and a little warmer."* | presentation | no | no |
+| *"Actually, change the offer to 7.5%. I'm willing to compromise."* | presentation + **new decision** | probably no | **yes** (10% → 7.5%, reason: willing to compromise) |
+| *"How does that compare with what the broker said last week?"* | historical project question | **yes** | interaction context at most |
+| *"Did our research say seller notes are common for businesses like this?"* | research question | **yes** | usually no |
+
+**Local continuation rule.** After a Neuro-informed substantive turn, ChatGPT continues locally while the context
+remains in the conversation. These should generally NOT trigger another retrieval: draft the email · rewrite it ·
+shorten it · make it friendlier · make it firmer · turn it into a text message · into call talking points · explain
+it simply · translate it · five broker questions · make paragraph two less aggressive. **Do not repeatedly retrieve
+the same project knowledge.**
+
+**Consult again when substantive reasoning changes:** *"Does this new document change your recommendation?" · "What
+did the seller say before?" · "How does this compare to our research?" · "What risks are we still missing?" · "What
+happens if we offer 5% instead?" · "Does the tax return support their claim?" · "What did we decide last week?" ·
+"What evidence supports that?"*
+
+## §30 What flows back — and what must not
+
+**The user's question itself may create project context.** *"Does this change how we should approach the seller
+note?"* reveals the current concern (financing negotiation), the decision under consideration (whether to change the
+request) and the project stage (active counterparty negotiation).
+
+**User responses must flow back. This is a hard requirement.** If ChatGPT recommends holding at 10% and Gio says
+*"That makes sense. Let's stay at 10% but explain that it's about making sure the transition goes well, not because
+we think the company is weak"* — Neuro should receive:
+
+```text
+DECISION          Maintain 10% seller financing request.
+RATIONALE         Transition alignment / successful handoff.
+REJECTED FRAMING  Do not present seller financing as concern about company quality.
+```
+
+**without Gio having to say "save that to Neuro".**
+
+```text
+wanted:  conversation -> durable-state extraction -> Neuro
+not:     conversation -> save every message forever
+```
+
+**Durable:** decisions · changed decisions · constraints · requirements · negotiating positions · rejected options ·
+user-provided facts · counterpart positions · unresolved questions · active concerns · commitments · deadlines ·
+important rationale · project-relevant preferences.
+
+**Not project memory by default:** *"Thanks" · "Make that shorter" · "Use a warmer tone" · "Try again" · "Change the
+first paragraph" · "Make it sound less corporate" · "Give me three options."* Those are presentation instructions.
+
+**AI analysis may be retained, never as evidence.** ChatGPT's *"the stronger financials change the framing but not
+necessarily the structure"* may be stored as `EXTERNAL ASSISTANT ANALYSIS` with its provenance intact. It must not
+become a factual source claim because ChatGPT said it.
+
+**User acceptance promotes a recommendation into a decision.** ChatGPT: *"I recommend holding at 10% but changing
+the rationale."* → Gio: *"Agreed. Let's do that."* → Neuro records a USER DECISION with that rationale. **The user
+should not have to restate the recommendation — conversation semantics matter.**
+
+## §31 Worked multi-format scenario (the acceptance shape)
+
+Gio sends `[seller-email.png]` `[Updated-Financials.pdf]` with *"The seller sent these. Does this change how we
+should handle the 10% seller note?"*
+
+1. **ChatGPT processes both attachments.** PNG → visible text, seller identity, seller position, objection to 10%,
+   competitive-buyer statement. PDF → page text, figures, tables, trends, page provenance. Two independent
+   potential Neuro sources.
+2. **ChatGPT consults Neuro** with the question plus concise structured context from the new material — enough for
+   Neuro to understand what changed. Neuro returns the §27 packet.
+3. **ChatGPT answers naturally**, no citation dump: *"The new financials strengthen the seller's argument that the
+   business has performed well, so I'd stop framing the note around protecting yourself from weak performance. But
+   I wouldn't abandon the 10% request yet… the 'other interested buyer' comment adds pressure, but nothing
+   independently verifies it, so I wouldn't negotiate against yourselves on it alone."*
+4. **The turn feeds back:** two sources under one intake event (correspondence · financial document, each with its
+   external extraction and the artifact retained when available), plus interaction context — active issue, seller
+   position, seller rationale, buyer question, `AI ANALYSIS`, and *no final buyer decision yet*.
+5. **Gio decides** → `USER DECISION` + rationale + rejected framing (§30). No new read needed.
+6. **Gio asks for the email** → entirely inside ChatGPT. No Neuro query, no research, no source retrieval, no
+   project-context rebuild.
+
+**Neuro ends up knowing:** the new correspondence and financial document · the seller's objection and stated
+rationale · the extracted financial information · the active negotiation issue · Gio's decision and rationale · the
+relationship to previous project state. **Neuro does not misclassify** ChatGPT speculation · draft language · tone
+preferences · rewrite requests as factual project evidence.
+
+## §32 Cost routing
+
+```text
+Has ChatGPT already processed it? --yes--> reuse that work
+                 | no
+Can local/free Neuro tooling do it? --yes--> use local
+                 | no
+Can Claude Code do it cheaply? --yes--> use Claude Code
+                 | no
+                 v  paid API fallback
+```
+
+Do not implement this ladder rigidly if the live architecture already has a better routing mechanism. The principle
+is what binds: **avoid paying twice for cognition that has already happened.**
+
+## §33 External processing is not external truth
+
+External extraction is useful; external reasoning is fallible. Preserve confidence and provenance boundaries:
+
+```text
+SOURCE                  Seller email
+EXPLICIT STATEMENT      "We have another interested buyer."
+EXTRACTION CONFIDENCE   High
+NEURO STATUS            Seller assertion, independently unverified
+CHATGPT INTERPRETATION  May be negotiation pressure
+INTERPRETATION STATUS   AI hypothesis
+```
+
+**Never collapse that into** `FACT: Seller definitely has another buyer.`
+
+## §34 Wording in §1–§19 that this amendment replaces
+
+Each of these is annotated in place, at the passage itself:
+
+| where | old reading | replaced by |
+|---|---|---|
+| §3 | ChatGPT independently reasons over raw Neuro retrieval | ChatGPT owns the final conversation and reasoning, **and** Neuro may provide concise higher-order project intelligence on substantive turns (§27) |
+| §7 Class A | external AI just sends material into the existing ingestion pipeline | external AI is another extraction/understanding layer feeding the same persistent knowledge system (§21–§24) |
+| §10 | "do not recreate parsing" | do not create a second persistent ingestion/indexing architecture, **but** allow external upstream extraction that Neuro reuses (§21) |
+| §12 | writes happen when the user says "save this" | externally connected project conversations may automatically synchronise clearly durable decisions, facts, constraints, concerns and state, while avoiding indiscriminate transcript storage (§30) |
+| §14 | cost ladder starts at local tooling | the ladder starts one rung higher: has the external AI already done this work? (§32) |
+
+## §35 Questions for the implementation session to resolve from the live repo
+
+**Inspect what exists before inventing anything parallel.** Determine: how to represent externally processed
+normalised sources · whether processed material needs a new provenance field or existing metadata suffices · how
+external assistant analysis is stored without contaminating evidence · whether external interaction state needs its
+own table or can extend facts/notes/project context · how to detect durable user decisions without saving every
+message · how to decide read / write / both / neither · how to generate the compact advisory packet efficiently ·
+whether the existing findings/claims/research system can produce it **without paid inference** · when additional
+inference is justified · how externally processed attachments interact with deduplication · how provenance survives
+external extraction · what the pinned FastMCP/client versions support for binary transport · how much of this can
+live **below** MCP so future clients reuse it.
+
+## §36 Updated success experience
+
+```text
+Gio: [PNG] [PDF]  The seller sent these. Does this change our position?
+ChatGPT: [understands attachments] [consults Neuro] [combines new information with durable intelligence]
+         "I wouldn't change the structure yet. The new numbers strengthen their argument that the
+          company is healthy, but your seller-note rationale is really about transition alignment…"
+Gio: That makes sense. Let's stay at 10%, but frame it around transition.
+ChatGPT: [records the durable decision back to Neuro]  "Understood."
+Gio: Can you turn that into a polite email?
+ChatGPT: [current conversation only] [drafts email] [does NOT query Neuro]
+```
+
+## §37 Final product principle
+
+> **ChatGPT handles the moment. Neuro remembers what the moment means to the project.**
+
+ChatGPT should be free to use its own multimodal and conversational strengths. Neuro should quietly contribute the
+project's accumulated intelligence when needed and quietly absorb durable new knowledge when the conversation
+creates it. **Neither system should redundantly repeat work the other has already done.** The result is a fast,
+concise, natural ChatGPT experience backed by Neuro's persistent research, evidence, relationships and memory.
