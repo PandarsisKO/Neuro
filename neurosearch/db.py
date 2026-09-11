@@ -898,6 +898,10 @@ def init_db() -> None:
         backfill_failure_classes()           # 0.61.0: the failures already on the books become distinguishable too
     except Exception as e:  # noqa: BLE001 — never let a cosmetic backfill stop the app from starting
         logging.getLogger(__name__).warning("failure-class backfill skipped: %s", e)
+    try:
+        sweep_orphaned_pending()             # 0.63.11: a source nothing is running says so instead of waiting
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger(__name__).warning("orphan sweep skipped: %s", e)
 
 
 def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
@@ -1118,7 +1122,43 @@ FAILURE_CLASSES: tuple[tuple[str, str, bool], ...] = (
     ("extractor", r"Unable to extract|Unable to download webpage|unsupported url", False),
     ("cancelled", r"^cancelled", False),
     ("uploaded_file", r"uploaded file, not a link", True),
+    # 0.63.11 — a source left `pending` with nothing running it. Retryable by construction: the URL is still
+    # there, so a retry re-enters the ordinary path, which is why this is not a permanent class.
+    ("orphaned", r"queued by an earlier version|no job is running it", False),
 )
+
+
+ORPHAN_PENDING_AFTER_S = 6 * 3600     # a real ingest never takes six hours; anything still pending has no runner
+
+
+def sweep_orphaned_pending(older_than_s: float = ORPHAN_PENDING_AFTER_S) -> list[str]:
+    """A source stuck `pending` with no job to run it is told so, instead of waiting for ever.
+
+    Found on Kyle's database (0.63.11): two YouTube **search** URLs — `youtube.com/results?search_query=mark+kohler…`
+    — sitting `pending` since 2026-09-04 with no title, no `external_id`, no error and **no job anywhere referencing
+    them**. Every current path handles a search link correctly (`media.classify_url` → `youtube_search` →
+    `enumerate_search` → a review list), so these are orphans of an older version; the app's own UI offered
+    "pending (no job — use Retry)", and a retry had nothing to retry.
+
+    Marked `failed` with the retryable class `orphaned`, which is what the Sources view already knows how to offer
+    a retry for — and a retry now goes down the correct path. Nothing is deleted and no URL is re-fetched here."""
+    cutoff = now() - max(60.0, float(older_than_s))
+    rows = connect().execute("SELECT id FROM sources WHERE status='pending' AND updated_at < ?", (cutoff,)).fetchall()
+    if not rows:
+        return []
+    stuck: list[str] = []
+    for r in rows:
+        live = connect().execute(
+            "SELECT 1 FROM jobs WHERE status IN ('queued','running','external_pending','blocked') AND payload LIKE ? LIMIT 1",
+            (f'%{r["id"]}%',)).fetchone()
+        if not live:
+            stuck.append(r["id"])
+    for sid in stuck:
+        set_source_status(sid, "failed",
+                          "this was queued by an earlier version and no job is running it — Retry to add it again")
+    if stuck:
+        logging.getLogger(__name__).info("swept %d orphaned pending source(s)", len(stuck))
+    return stuck
 
 
 def failure_class(error: str | None) -> str | None:

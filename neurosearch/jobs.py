@@ -576,6 +576,7 @@ def _housekeeping_loop(every: float = 120.0) -> None:
     # were the cold ones. Measured cold on his project: staleness/triage 8.1 s, Claims 7.7 s, Research 8.0 s,
     # against 50–170 ms warm.
     _warm_quality()
+    _backfill_research()
     while not _stop.is_set():
         _stop.wait(every)
         if _stop.is_set():
@@ -587,6 +588,40 @@ def _housekeeping_loop(every: float = 120.0) -> None:
         except Exception as e:  # noqa: BLE001
             log.warning("housekeeping skipped: %s", e)
         _warm_quality()
+
+
+def _backfill_research() -> list[str]:
+    """A project with findings and NO research state gets its harvest queued, once.
+
+    Found on Kyle's database (0.63.11): *Real Estate Investment Strategy* — **605 findings, 0 Claims, 0 knowledge
+    nodes, 0 evidence targets**, so its whole Research tab read as an empty project. The cause is not the hook:
+    `_after_done` harvests after every findings job, and 72 of them completed for that project. They completed
+    between 2026-09-03 and 2026-09-08 00:09, and **the earliest Claim anywhere in the database is 2026-09-08
+    01:07** — its findings all landed before the machinery was live in his app, and nothing ever went back.
+
+    Run by hand afterwards it took **652 ms and produced 589 Claims for $0.** So the defect is that research state
+    was only ever built FORWARD: a project whose findings predate the feature, or whose hook failed once, stays
+    empty for ever and looks like a project with nothing in it.
+
+    `refresh_research` is the existing job, on the `low` lane, deduped per project; the marker means a project is
+    offered this at most once, so a project whose findings genuinely yield no Claims is not retried for ever."""
+    queued: list[str] = []
+    try:
+        from . import claims
+        rows = db.connect().execute(
+            "SELECT p.id FROM projects p WHERE EXISTS (SELECT 1 FROM project_notes n WHERE n.project_id=p.id) "
+            "AND NOT EXISTS (SELECT 1 FROM project_claims c WHERE c.project_id=p.id)").fetchall()
+        for r in rows:
+            pid = r["id"]
+            if db.kv_get(f"claims:backfilled:{pid}"):
+                continue
+            db.kv_set(f"claims:backfilled:{pid}", str(time.time()))
+            if claims.maybe_refresh(pid):
+                queued.append(pid)
+                log.info("queued the first research harvest for project %s", pid[:8])
+    except Exception as e:  # noqa: BLE001 — a backfill is a nicety and never stops the loop
+        log.warning("research backfill skipped: %s", e)
+    return queued
 
 
 def _warm_quality() -> None:

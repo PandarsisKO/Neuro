@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.10)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.11)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,35 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Work nothing is doing, and state nothing ever built (0.63.11)
+
+Two faults found by reading his database rather than his screen, and they are the same shape: something the app
+only ever does **forward**, leaving anything from before it in silent limbo.
+
+**Two sources `pending` since 2026-09-04, with no job anywhere.** Both are YouTube *search* URLs
+(`youtube.com/results?search_query=mark+kohler+LLC+vs+S-Corp`) with no title, no `external_id` and no error. Every
+current path handles a search link properly — `media.classify_url` → `youtube_search` → `enumerate_search` → a
+review list — so these are orphans of an older version. The Sources view offered *"pending (no job — use Retry)"*
+and Retry had nothing to retry. `db.sweep_orphaned_pending()` runs in `init_db`: a source still `pending` after
+`ORPHAN_PENDING_AFTER_S` (6 h — a long video legitimately takes a while, so this is deliberately not minutes) with
+no queued, running, parked or blocked job referencing it becomes `failed` with the **retryable** class `orphaned`
+and a sentence saying what happened. Nothing is deleted; a retry now goes down the correct path.
+
+**A project with 605 findings and no research state at all.** *Real Estate Investment Strategy*: 0 Claims, 0
+knowledge nodes, 0 evidence targets, so its Research tab read as an empty project. **Not the hook's fault** —
+`_after_done` harvests after every findings job, and 72 of them completed for that project. They completed between
+2026-09-03 and 2026-09-08 00:09, and **the earliest Claim anywhere in the database is 2026-09-08 01:07**: every one
+of its findings landed before the machinery was live in his app, and nothing ever went back. Run by hand it took
+**652 ms and produced 589 Claims for $0.**
+
+So the defect is that research state was only ever built forward. `jobs._backfill_research()` closes it: a project
+with findings and no Claims gets `refresh_research` queued once (`low` lane, deduped, $0), with a
+`claims:backfilled:<pid>` marker so a project whose findings genuinely yield nothing is not retried for ever. It
+runs at startup beside the warm-up — same lesson as 0.63.7, work that waits two minutes has not happened by the
+time the user opens the app.
+
+Gate `tests/test_s29_orphans_and_backfill.py`.
 
 ## The areas pass is 1.1 s, not tens of seconds — and I had been measuring the wrong project (0.63.10)
 
