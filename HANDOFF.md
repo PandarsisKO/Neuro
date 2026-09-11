@@ -1,10 +1,24 @@
 # HANDOFF — start here in any new session (any model)
 
-*Neuro Search, written 2026-09-08 at 0.34.2, current at 0.56.1. This file is the front door; it stays short and points at the documents that hold the substance.*
+*Neuro Search, written 2026-09-08 at 0.34.2, **current at 0.63.35 (2026-09-11)**. This file is the front door; it stays short and points at the documents that hold the substance.*
+
+## 0. The 5-minute path (do this first)
+
+The list in §1 is for deep work in one area. To orient and start being useful:
+
+1. **`STATE-OF-THE-APP-<latest date>.md`** — the product: what exists, what is in progress, the ranked
+   ladder, known problems. Written for someone with no context and kept current.
+2. **§4 of this file** — the engineering state: exact version, suite count, what shipped most recently,
+   what is open and ranked, and what is waiting on Kyle rather than on you.
+3. **The first fifteen lines of `CLAUDE.md`** — the standing rules. Rule one will crash his app if you
+   break it.
+
+That is enough to pick up item 1 of §4's ranked list. Read further only when your work needs it, and
+prefer the tests to the prose: `tests/` is the executable form of every lock.
 
 ## 1. Read in this order (about 20 minutes)
 
-1. `CLAUDE.md` — the architecture map and the **standing rules** (never write the DB from outside the app; additive schema; `providers.invoke` is the only model entry point; `safe_fetch` is the only fetch; frozen numbers are decisions; API keys only in `.env`; Tier 1 + pytest always; new test modules sort after `test_core.py`).
+1. `CLAUDE.md` — the architecture map and the **standing rules** (never **OPEN** the DB from outside the app — not even read-only, see §4; additive schema; `providers.invoke` is the only model entry point; `safe_fetch` is the only fetch; frozen numbers are decisions; API keys only in `.env`; Tier 1 + pytest always; new test modules sort after `test_core.py`).
 2. `PRODUCT-ORGANIZATION.md` — Kyle's own synthesis of the philosophy underneath every mission (locked 2026-09-09), with a status audit of every organizational item he's raised against the actual codebase. Read this before proposing new work in any mission; it's the test a new idea should pass.
 3. `EXPANSION.md` — the ladder (G1–G9, G6P1–P7, B1–B7), every LOCK Kyle wrote, every addendum, and the rung log with what each release built and its honest limits. The last sections say what is queued and how work moves between sessions.
 4. The mission you were given (e.g. `SOURCES-FINDINGS-MISSION.md` (S1–S5 queued: stale triage, source value, source drawer, findings workbench, known-but-uncaptured pool), `RESEARCH-MISSION.md` + `RESEARCH-TAB.md`, or `SPEED-MISSION.md` (R0–R9: performance, filed 2026-09-09 with measured baselines from Kyle's live DB — read §A before planning anything, it contradicts several intuitions; §D is a KEEP/MODIFY/ADOPT/TEST/REJECT verdict per stack layer and §H records the numeric trigger that reopens each rejection), or `BOOTSTRAP-MISSION.md` (Mission BOOTSTRAP — project bootstrap and cross-project research reuse; R1–R3 shipped 0.50.0, R4–R8 queued; §0 records that ~70% of the architecture already existed and §B the six corrections to the original brief), or `SCHEDULER.md` (a design exploration of the bidirectional outside-in scheduler — two pools claiming from two orderings; nothing in it is built, and §9 lists the four measurements that must come first), or `LOCAL-AI-PROVIDER.md`, or the G6P section of EXPANSION.md, or `BROWSER-CAPTURE-AND-CATALOG.md`).
@@ -49,7 +63,84 @@ is the app and therefore holds the locks properly; **(c)** if a raw query is gen
 open the copy there. Copying a backup is safe; copying or opening the live file is not. A `-shm` file appearing
 next to a backup means a session opened the backup in place — also wrong, for the same reason.
 
-## 4. Where things stand (0.45.0)
+## 4. Where things stand — CURRENT (0.63.35, 2026-09-11 16:30 UTC)
+
+**Read `STATE-OF-THE-APP-<date>.md` first if you want the product picture.** This section is the
+engineering state: what is true right now, what is open, and what to do next. The sections BELOW this one
+are historical and describe states from 0.45–0.55; they are kept for reasoning, not for orientation.
+
+```
+version      0.63.35 in all three places · tag v0.63.35 · tree clean
+suite        1,255 passing (pytest -q -p no:randomly)
+gates        Tier 1 PASS (frozen totals answer 34/200,052 · findings 9/30,297 · plan 2/11,026)
+             release-check PASS, artifact in evals/release/
+live scale   1,863 sources · 17,923 findings (16,437 approved) · ~16,400 Claims · 660 MB db
+```
+
+### THE RULE THAT CHANGED TODAY — read this before you measure anything
+
+**Never OPEN `data/neurosearch.db` from a session. Not to write, and not to read.** Reading it read-only
+crashed Kyle's live server twice on 2026-09-11. WAL-mode SQLite memory-maps a shared index into every
+connection and decides it is the sole connection from POSIX file locks; a session reaching the folder over
+the bridge mount cannot see the server's locks, so it truncates that index under a running server and the
+server dies with SIGBUS. `mode=ro` and `PRAGMA query_only=1` are **not** protection — they govern writes to
+the main file, not wal/shm management. CLAUDE.md rule #1 and §7b below have the full form.
+
+Measure through: **the app's API in Kyle's Chrome** (almost always enough) → the `neurosearch` CLI on his
+Mac → `data/server.log` (a plain text file, always safe to read) → as a last resort, copy a backup into the
+session's own workspace and open the copy there.
+
+### What shipped today (0.63.31 → 0.63.35), because each one changed a rule
+
+| ver | what | the rule it left behind |
+|---|---|---|
+| 0.63.31 | `data/server.log` — the app kept no log at all | an app that cannot say why it stopped is a defect; also fixed `_probe_bg` ignoring its own argument |
+| 0.63.32 | instant click feedback on all 228 buttons (12 had it) | a capture-phase listener + `api()` as the clock; never write a control's label, so the 12 hand-rolled ones still work |
+| 0.63.33 | the busy state greys out, spans the whole request CHAIN, and bulk actions toast | a press owns its chain, not its first request; a button destroyed by a re-render needs a durable message. Also: `promoteReserve` was declared twice, so three labelled verdict buttons had been silently dead |
+| 0.63.34 | four button groups were inside `white-space:nowrap` and clipped off-screen | a $30.55 button was half visible; buttons in a nowrap box can never wrap |
+| 0.63.35 | 27% of local wall-clock was liveness probes | a success must REFRESH the health verdict, not merely repair it; every `health()` call must name its model (4th instance); a timeout inside the tail of its own work converts free work into paid |
+
+### Open, ranked — what to do next
+
+1. **`in_flight` reaper + the four missing indexes** (SPEED R8). A live correctness defect, low risk,
+   no design decisions. **Start here.**
+2. **The consolidated review surface.** Kyle's own request: the Findings page stacks three unexplained
+   review mechanisms (stale sources · findings nothing ever used · findings that repeat each other), two
+   of which offer to bulk-dismiss thousands of items. He proposed "one page for reviewing ALL stale or
+   risky content". **Scope is not agreed — ask before building.**
+3. **3.8% of local calls recorded as `outcome_unknown`** — precisely diagnosed, not fixed.
+4. **`test_provenance_is_per_analysis_task` flakes** ~1 in 9 full runs; a leaked worker is the suspicion.
+5. **A long-open browser tab silently runs a months-old UI** against a current server and nothing says so.
+   (Hit this while verifying 0.63.32 — a tab was on 0.61.0.)
+6. **Phrase handling in `library._tokens`** — "quality of earnings" anchors on "quality". Two word-list
+   fixes were measured and abandoned; do not try a third.
+7. **36 paid batch results collected and never written** (their source's other windows were cancelled at
+   the provider). Kyle's decision whether to re-read those sources.
+8. SPEED R9 (local model benchmark, ~20 min of his machine) → R4 → R5. **R5 is the highest-risk rung.**
+9. The two queued missions — external AI access, transcript intelligence. Kyle decides the order.
+
+### Waiting on Kyle, not on us
+
+- Whether to move the 13 finished `*-MISSION.md` / historical docs into `docs/archive/` (needs a
+  reference sweep, since CLAUDE.md and this file point at them by path).
+- Whether to relabel the 25 Claims harvested from pinned chat answers from `finding` to `chat`. **Do not
+  call them hand-written notes** — I made that mistake and it was wrong; he has no hand-written notes, and
+  the only path that creates a source-less note is the Pin button on a chat message.
+- `_to_delete/` in his repo needs dragging to the Trash; the sandbox cannot delete.
+
+### Two things about working with him that cost time to learn
+
+- **He does no terminal work.** Anything he must run is a double-clickable `.command` file next to
+  `start.command` (`restart.command` is the newest). Never hand him a command to type.
+- **Verify a ranking or UX change against his live app before the tag, not after.** 0.63.25 shipped a
+  ranking fix that made his query worse and took a release to undo. The gate suite cannot catch that class.
+
+---
+
+## 4b. Historical states (kept for reasoning, NOT for orientation)
+
+## Where things stood at 0.45.0
+
 
 Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), Share ▾ (0.35.1), B3 candidate links (0.36.0), Research view engine R1/R3/R5/R6 (0.37.2, `research_view.py` + endpoints; the tab's shell is NOT rebuilt yet), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 458, Tier 1 chat totals 34 / 196,951.
 
