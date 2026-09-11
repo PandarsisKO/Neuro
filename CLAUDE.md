@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.8)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.9)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,41 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## 321 findings were validated away, and two thirds of them were real (0.63.9)
+
+Looking for correctness rather than speed, `validation_events` on Kyle's database: **321 `finding_validation_failed`
+rows, 198 of them on one day**, against 20,289 findings. 319 of 321 were *"quote not found in transcript"*, median
+quote 11 words, none over the 40-word limit. So I re-checked the 200 most recent against his actual transcripts:
+
+```
+105  (53%)  the quote IS in the transcript — just not in the window being validated
+ 30  (15%)  an elided quote whose every fragment is verbatim ("A... B")
+ 63  (32%)  genuinely not there — a paraphrase, a video title, a figure nobody said
+```
+
+Three causes, each a rule that was slightly wrong rather than a bug:
+
+* **`normalize` treated a digit separator as punctuation.** `$1,600` became `1 600` against a transcript saying
+  `1600`, so a nine-word quote had to match an eight-word run and fell under the 0.8 floor. In a
+  business-acquisition corpus almost every interesting quote carries a money figure. Contractions were the same
+  kind of error — `we're` → `we re` against a transcript that says `we are`; Whisper and YouTube captions disagree
+  about those constantly, and it is not a difference in what was said.
+* **A window is an arbitrary slice.** `findings._windows` cuts at `WINDOW_CHARS` on a line boundary and the model is
+  never told where the seams are, so a quote that straddles one can never verify. `evidence_for` checks the window
+  first and then the whole source, reporting which (`scope`).
+* **An ellipsis is ordinary quotation.** Each fragment must still be found, in the order written, and a fragment
+  under `FRAGMENT_MIN_WORDS` (3) is not counted at all — so *"consistency... documentation... proactive planning"*,
+  a real example from his data, stays rejected because pieces that short match any transcript.
+
+**The invariant is untouched: no quote, no finding.** The same words must be found, in the same order, in the same
+source; the 63 that were not there are still rejected. What is dropped is the demand that they sit inside one
+arbitrary slice and be consecutive. And a `source`-scope quote gets its **locator corrected** from where the quote
+actually is (`evidence.locate_quote`) — the model's own `ts` described a place it was not reading, so the citation
+becomes more accurate, not less, and `evidence:quote_relocated` counts how often.
+
+**Re-judged against all 319 of his rejections with a transcript on file: 177 (55%) are now accepted, 142 stay
+rejected.** Those 177 were extracted, paid for, and discarded. Tier 1 `finding_quote_validity` holds at 1.0.
 
 ## A 546 KB key nobody reads (0.63.8)
 

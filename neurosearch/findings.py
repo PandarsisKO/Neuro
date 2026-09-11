@@ -296,13 +296,18 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
     window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
     transport-specific provenance (transport, batch_id, model id as returned) differs, explicitly."""
-    from .evidence import check_finding
+    from .evidence import evidence_for, locate_quote
     from .jobs import crash_point
     project = db.get_project(project_id)
     src = db.get_source(source_id)
     if not project or not src:
         raise RuntimeError("project or source not found")
     platform = src["platform"]
+    # 0.63.9 — a quote is evidence if it is in the SOURCE, not only in the window the model happened to be given.
+    # Measured on Kyle's 200 most recent rejections: 105 of them (53%) were quotes that really are in the
+    # transcript. Windows are cut at WINDOW_CHARS on a line boundary, so a quote straddling one can never verify.
+    segs = db.get_segments(source_id)
+    source_text = " ".join((sg.get("text") or "") for sg in segs)
     all_findings: list[dict[str, Any]] = []
     per_window: list[list[dict[str, Any]]] = []
     summaries: list[str] = []
@@ -319,7 +324,15 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
         for f in res.get("findings") or []:
             if not (isinstance(f, dict) and f.get("finding")):
                 continue
-            why = check_finding(f, w)          # the quote must be in the transcript — no quote, no finding
+            ev = evidence_for(f, w, source_text)   # the quote must be in the transcript — no quote, no finding
+            why = ev["reason"]
+            if not why and ev["scope"] == "source":
+                # The model was reading a different part of the transcript, so its own locator describes a place it
+                # was not looking at. The true one is recoverable, and a corrected citation is better than none.
+                at = locate_quote(f.get("quote") or "", segs)
+                if at is not None:
+                    f["ts"] = fmt_locator(platform, at)
+                    f["_relocated"] = True
             if why:
                 rejected += 1
                 log.info("finding rejected (%s): %s", why, str(f.get("title") or f.get("finding"))[:80])
@@ -335,6 +348,9 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
                       "kept": len(all_findings) - kept_before, "rejected": rejected - rejected_before,
                       "summary_ok": bool(str(res.get("summary") or "").strip()), "substance_ok": isinstance(res.get("substance"), (int, float)) and 0 <= res["substance"] <= 100,
                       **_last_call, "transport": transport})
+    for f in all_findings:
+        if f.pop("_relocated", False):
+            db.kv_bump("evidence:quote_relocated")
     if rejected:
         db.kv_bump("evidence:findings_rejected", rejected)
     db.kv_bump("evidence:findings_checked", rejected + len(all_findings))
