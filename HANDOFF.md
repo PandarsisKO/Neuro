@@ -34,6 +34,21 @@ The session has a full copy of the repo in its own workspace and a `.venv` (Pyth
 6. Release gate: in the sandbox `NEUROSEARCH_GIT_SHA=<mac short sha> .venv/bin/neurosearch release-check` → copy the two `evals/release/release-check-<ver>-<sha>-*.{txt,json}` to the conversation and to `<repo>/evals/release/`, commit separately ("release-check <ver> @ <sha>: PASS"), and `git tag -f <rung-tag>` (existing tags: `expansion-g5`, `expansion-g5-1`, `expansion-g6`, `expansion-g7`, `browser-b1`, `browser-b2`, `publication-g6p1`, `publication-g6p2`, `portable-answers-c0`, `browser-b3`, `research-r1`, `local-ai-l1`, `local-ai-l4`, `deep-d1`, `stale-s1`, `value-s2`, `findings-s4`, `pool-s5`, `research-r2`, `drawer-s3`, `grouped-views-s6-r8`, `skipped-metadata-s7`, `claims-cancel-s1`, `priority-lane-s1`, `low-lane-s1`, `lane-backfill-s1`, `bump-job-s1`, `check-now-s1`, `probe-model-pin-s1`, `speed-r0`, `speed-r2a`, `speed-r2b`, `speed-r2c`, `account-gate-fix`, `claims-slow-lane`, `caption-recovery-s8`, `claim-triage-r6a`, `honest-progress-s9`, `background-pause-s10`).
 7. Live checks go through Kyle's Chrome (the Claude-in-Chrome tools) against `http://localhost:8000` — `fetch('/api/…')` from a tab on that origin; the sandbox and the Mac shell have no network to the app or to the web. Keep live probes to what a test cannot answer.
 
+**7b. NEVER open `data/neurosearch.db` from a session — reading it crashes the server.** This is the hardest-won
+rule in the file, because it cost Kyle two crashes on 2026-09-11 and I am the one who caused both. WAL-mode SQLite
+mmaps a `-shm` index into every connection and decides it is the sole connection from POSIX locks; a session
+reaching the folder over the bridge mount **cannot see the server's locks**, concludes it is alone, and truncates
+`-shm` to 32 KB — under a live server holding those pages mapped. The server then touches a page past EOF and
+macOS kills it with SIGBUS. `mode=ro` and `PRAGMA query_only=1` do NOT prevent it; they govern writes to the main
+file, not wal/shm management, which a read-only WAL connection still does. The tell in the folder is a 32 KB
+`-shm` beside a multi-megabyte `-wal`.
+Measure in this order instead: **(a)** the app's own API through Kyle's Chrome (step 7 above) — this is almost
+always enough, because every number worth having is on an endpoint; **(b)** `neurosearch` CLI on his Mac, which
+is the app and therefore holds the locks properly; **(c)** if a raw query is genuinely unavoidable, `cp` the newest
+`data/backups/neurosearch-*.db` into the SESSION's own workspace (`/home/claude/...`, never `$HOME/mnt/...`) and
+open the copy there. Copying a backup is safe; copying or opening the live file is not. A `-shm` file appearing
+next to a backup means a session opened the backup in place — also wrong, for the same reason.
+
 ## 4. Where things stand (0.45.0)
 
 Shipped and gated: G1–G7, G5.1, B1 (browser capture + `requires_browser`), B2 (completeness + capture queue), G6P1 (EPUB Core), G6P2 (EPUB structure: role weighting, reader, deep links), Share ▾ (0.35.1), B3 candidate links (0.36.0), Research view engine R1/R3/R5/R6 (0.37.2, `research_view.py` + endpoints; the tab's shell is NOT rebuilt yet), 0.32.2 (Reddit official API + browser reading), 0.34.x fixes. Suite 458, Tier 1 chat totals 34 / 196,951.

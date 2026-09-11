@@ -7,7 +7,18 @@ History and evidence live in `HARDENING.md` (final verdict table, experimental-f
 
 ## Standing rules (never break these)
 
-- **Never write to `data/neurosearch.db` from outside the running app** (a mount from another OS/VM corrupts the WAL). Use the API/CLI. Hourly verified snapshots → `data/backups/`.
+- **Never OPEN `data/neurosearch.db` from outside the running app — not to write, and not to read.** Opening it
+  read-only crashed the live server on 2026-09-11 (0.63.32), twice. SQLite in WAL mode mmaps a shared-memory index
+  (`-shm`) into every connection and decides "I am the only connection" from POSIX file locks. A session reaching
+  the folder through a bridge mount from another OS/VM **does not see the server's locks**, so it believes it is
+  alone and truncates `-shm` back to 32 KB on close — underneath a server that has those pages mapped. The next
+  page the server touches is past EOF, and macOS kills it with SIGBUS (`Bus error, pagein past EOF`, inside a
+  SQLite shm read). `mode=ro` + `PRAGMA query_only=1` **does not protect against this**: it forbids writes to the
+  main database file and says nothing about wal/shm management, which a read-only WAL connection still performs.
+  Only `immutable=1` leaves wal/shm alone, and the rule is simpler than remembering that.
+  **How to measure instead, in order of preference:** the app's own API through Kyle's browser; `neurosearch`
+  CLI on his Mac; or `cp` the newest file from `data/backups/` into the session's OWN workspace and open the copy
+  there (never the copy in place). Hourly verified snapshots → `data/backups/`.
 - Schema is additive (`CREATE … IF NOT EXISTS` + column adds in `db.py`); no migration tool. Migration fixtures in `tests/fixtures/db/`.
 - **The model decision engine (0.54.0).** Every task runs the CHEAPEST tier (`contracts.TIERS`, ordered by `usage.PRICES` — note `claude-sonnet-4-6` $3/$15 ranks ABOVE `claude-sonnet-5` $2/$10) unless its contract names one of four reasons: `capability:<what>` (fact) · `evidence:<path>` (measured) · `irreversible` (debt) · `user:<who/why>` (opinion). Anything above the cheapest tier with no reason is a CONFIG ERROR refused by `release-check` — that refusal is the engine. `neurosearch models` prints the decision table. **`reversible` means the CONSEQUENCES are undoable, not that the call is cheap to repeat** (`rank.relevance` chooses which 20 of 400 videos enter the corpus, so it is irreversible however cheap re-ranking is). Everything at the cheapest tier must be reversible AND have a `gate`. Gate `tests/test_r6_model_policy.py`.
 - **The local provider runs the CONTRACT's model (0.52.0).** `InferenceContract.local_model` (None = the contract's own model, the default for every task) is what Claude Code runs, via `contract.model_for(executed_by)`; `providers.routing_for` records `local_model`/`api_model` on the artifact whenever they differ. `NEUROSEARCH_CLAUDE_CODE_MODEL` is still honoured as a global override but `doctor` now names every task it overrides. Before this, one .env line silently replaced every per-task model — `findings.extract` and `rank.relevance`, both pinned to Sonnet 5 by measured comparisons (E2.1/E2.2), ran on Haiku 4.5 on every local call with nothing recording it. A cheaper model is often right; it has to be a declared decision, never a side effect. Gate `tests/test_r4_local_model.py`.
@@ -280,6 +291,37 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## Reading his database killed his server (0.63.32)
+
+Kyle brought a macOS crash report, and it closes the 0.63.31 question with an answer I did not look for: the app
+never hung. It was **killed**, by me, twice.
+
+```
+died inside   SQLite, reading data/neurosearch.db-shm, on the "ns-" threads
+signal        SIGBUS — "pagein past EOF": a page of an mmap'd file that no longer exists
+the tell      -shm 32,768 bytes beside a -wal of 26,911,872. A 26.9 MB WAL cannot be indexed by one 32 KB block.
+14:26         -shm modified with no server running — only something outside the app can do that
+```
+
+WAL-mode SQLite mmaps the `-shm` index into every connection and decides it is the sole connection from **POSIX
+file locks**. A session reaching his folder over the bridge mount does not see the macOS server's locks, so it
+concludes it is alone and truncates `-shm` on close — under a live server holding those pages mapped. uvicorn's
+parent kept the port bound, which is precisely why requests **timed out instead of being refused**, why every
+table's newest row stopped in the same second, and why the lease and recovery loops stopped with everything else.
+A killed process parks no jobs and writes no log.
+
+**`mode=ro` + `PRAGMA query_only=1` was never protection and I trusted it for a week.** It forbids writes to the
+main database file; it says nothing about wal/shm management, which a read-only WAL connection still performs.
+Only `immutable=1` leaves them alone — and remembering that is more fragile than not opening the file, so the
+standing rule is now **never open it**, with the alternatives ordered: the app's own API through his Chrome, the
+`neurosearch` CLI on his Mac, or copy a backup into the session's workspace and open the copy.
+
+**The failure was in the question, not the method.** 0.63.31 discarded two hypotheses properly and then filed the
+cause as unexplained — because I searched inside a process for the reason it stopped and never asked what outside
+it could stop a process without leaving a trace. The second crash happened while I was investigating the first.
+The logging that release added is still worth having; an app that cannot say why it stopped is a real defect. But
+it was an instrument shipped in place of a diagnosis, and the diagnosis was a thing I was doing every few minutes.
 
 ## His app hung and there was nothing to read (0.63.31)
 

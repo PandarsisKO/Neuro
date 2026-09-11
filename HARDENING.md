@@ -1565,7 +1565,62 @@ This needs the server in front of you: the evidence above is all the database ca
 watching one of these happen. It is a correctness fault in the accounting layer, not a user-visible one, and
 nothing here is spending money incorrectly — `usage` rows are written from what actually returned.
 
-## OPEN: an unexplained process-wide hang, 2026-09-11 ~11:37 local
+## CLOSED, and the cause was me: the hang was a SIGBUS crash caused by a session READING the live database (0.63.32)
+
+**Superseded the entry below.** Kyle brought a macOS crash report on 2026-09-11 and it answers the open question.
+The app did not hang: it was **killed**, and every "ruled out" line below was ruled out correctly because none of
+them was ever the cause. The cause is outside the app, and it is my own measurement practice.
+
+```
+where it died   inside SQLite, reading data/neurosearch.db-shm, on the "ns-" (Neuro Search) threads
+why             Bus error / KERN_MEMORY_ERROR — "pagein past EOF": a page of an mmap'd file that no longer exists
+the tell        -shm is 32,768 bytes (one minimum block) beside a -wal of 26,911,872 bytes. A 26.9 MB WAL cannot
+                be indexed by a 32 KB shm — so the shm had grown and was reset underneath the running server.
+```
+
+**The mechanism.** WAL-mode SQLite mmaps the `-shm` shared-memory index into *every* connection, and it decides
+whether it is the only connection from **POSIX file locks**. A Claude session reaches Kyle's folder through a
+bridge mount from a Linux VM, and that mount **does not carry the macOS server's locks across**. So my connection
+concluded it was alone and, on close, truncated `-shm` back to 32 KB — under a live server holding those pages
+mapped. The next page the server touched was past EOF, and the kernel killed it with SIGBUS. uvicorn's parent kept
+the port bound, which is exactly why requests **timed out instead of being refused** and why every table's newest
+row stopped in the same second, loops included. A crashed process does not write a log or park its jobs.
+
+**`mode=ro` + `PRAGMA query_only=1` is not protection, and I believed it was for a week.** Those forbid writes to
+the main database file. They say nothing about wal/shm management, which a read-only WAL connection still performs
+— `immutable=1` is the only flag that leaves wal/shm alone. Every "measured on his live database" line in the
+0.62–0.63 entries was taken this way. The rule in CLAUDE.md has been changed from *never write* to **never open**,
+with the safe alternatives ordered (app API through his Chrome → `neurosearch` CLI on his Mac → copy a backup into
+the session's own workspace and open the copy). HANDOFF.md §7b carries the long form.
+
+**The timeline, from file mtimes and my own tool calls:**
+
+```
+11:35  last write to neurosearch.db                 ← the "hang" begins; I was querying the DB at ~11:35 and 11:41
+14:16  0.63.31 extracted; --reload restarts server
+14:17  -wal written (server alive), /api/version 200 in 840 ms
+14:18  I read the jobs table over the bridge; heartbeat 7 s old, so the server was alive as I read
+~14:18 crash, ~70 s after the restart
+14:26  -shm modified with NO server running                    ← only an outside process can do that. It was me.
+```
+
+Both occurrences are mine, roughly three hours apart, and the second one happened **while I was investigating the
+first**. I also left a `-shm` beside the 14:16 backup, which means I opened a backup in place too — harmless to
+the server, and the same error of habit.
+
+**What 0.63.31 got right and wrong.** The logging is worth keeping: an app that cannot say why it stopped is a real
+defect, and `data/server.log` stays. But I shipped an *instrument* and filed the cause as unexplained, when the
+cause was a thing I was doing every few minutes and had written a rule against in spirit. The `_probe_bg` fix in
+that release is unrelated and still correct. The entry below is kept verbatim, not rewritten, because the
+hypotheses it discarded were discarded properly — the fault was in the question, not the method: I searched inside
+a process for the reason it stopped, and never asked what outside it could stop a process without leaving a trace.
+
+**Standing risk, not yet cleared:** repeated shm resets while the server was writing carry a small chance of
+database damage. Kyle is to relaunch and then run the Health console's integrity check + fresh verified backup
+(`POST /api/backup`, which runs `integrity_check()` and verifies the snapshot) — from the app, never from a
+session. Hourly verified snapshots in `data/backups/` predate both crashes.
+
+## OPEN (SUPERSEDED by the entry above — kept for the record): an unexplained process-wide hang, 2026-09-11 ~11:37 local
 
 Symptoms, all measured: `/api/version` and `/` both time out (not refused — the port is held, nothing answers);
 every table's newest row is ~8,700 s old and they all stop within the same second; one `extract_claims` is
