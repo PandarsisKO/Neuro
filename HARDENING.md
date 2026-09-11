@@ -1487,3 +1487,26 @@ Two consequences, and they compound:
 What this release does is make the condition impossible to miss: the Health console now names the task, the model
 asked for, the model that ran, the provider, and the count. `release-check` and `doctor` already warned; no screen
 did.
+
+## 0.63.29 — supersedes 0.63.28's recommendation entirely
+
+0.63.28 reported 363 model substitutions on the local path and offered Kyle three options, recommending that he
+set `NEUROSEARCH_CLAUDE_CODE_MODEL` to a model his plan would actually serve. **That entry's diagnosis was wrong
+and its recommendation would have caused the harm it described.** The CLI was serving `claude-sonnet-5` exactly as
+pinned; the app was reading its `modelUsage` map incorrectly, choosing the answering model by uncached token count
+when the real model's input is almost entirely cache reads.
+
+Do not act on 0.63.28's option list. The three options it described were:
+
+- declare `local_model="claude-haiku-4-5"` — **would have pinned Haiku for work Sonnet 5 was doing correctly**
+- set `NEUROSEARCH_CLAUDE_CODE_MODEL` — same effect, same mistake
+- route findings to the API on purpose — would have spent money to fix a reporting bug
+
+None is needed. The remaining true statement from 0.63.28 is narrower and still holds: the local path does
+sometimes error (`error_max_structured_output_retries`) and the router then falls back to the paid API, which is
+why the four-source re-analysis cost $0.59 instead of $0. That is worth its own investigation — whether
+structured-output failures on the local CLI are frequent enough to matter, and whether a retry on the local path
+is cheaper than a fallback to the API — and it is NOT the same problem as a model substitution.
+
+What survives unchanged from 0.63.28: `model_routing` had been computed since 0.56.3 and rendered on no screen,
+and it now appears in the Health console. The irony is that surfacing it is what exposed the detector's own bug.

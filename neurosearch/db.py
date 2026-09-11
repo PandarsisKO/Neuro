@@ -903,6 +903,7 @@ def init_db() -> None:
         logging.getLogger(__name__).warning("failure-class backfill skipped: %s", e)
     try:
         sweep_orphaned_pending()             # 0.63.11: a source nothing is running says so instead of waiting
+        snapshot_pre_fix_mismatches()        # 0.63.29: separate the mis-read substitutions from any real ones
     except Exception as e:  # noqa: BLE001
         logging.getLogger(__name__).warning("orphan sweep skipped: %s", e)
 
@@ -2648,6 +2649,45 @@ def kv_get(key: str) -> str | None:
     return row["value"] if row else None
 
 
+PRE_FIX_MISMATCH_KEY = "model_mismatch:pre_0_63_29"
+
+
+def snapshot_pre_fix_mismatches() -> None:
+    """Record, ONCE, how many `model_mismatch` rows existed before 0.63.29's accounting fix.
+
+    Those counts are not trustworthy: the answering model was chosen by `inputTokens + outputTokens` with cached
+    tokens ignored, so the CLI's own scaffolding model (a few hundred uncached tokens) beat the model that did the
+    work (over a hundred thousand CACHED tokens) — 363 times on Kyle's machine, and in both directions, which is
+    the tell. See `claude_code._answering_model`.
+
+    **The history is not rewritten** — the same rule 0.62.3 set for mis-dated spend: the number stays and sits
+    beside an explanation, so a warning that read as 363 substitutions can be recognised as 363 mis-readings
+    rather than quietly deleted. New rows counted after this snapshot are real, and Health shows the two apart."""
+    try:
+        if kv_get(PRE_FIX_MISMATCH_KEY) is not None:
+            return
+        rows = {r["task_key"]: r["count"] for r in _raw_model_mismatches()}
+        kv_set(PRE_FIX_MISMATCH_KEY, json.dumps(rows))
+    except sqlite3.OperationalError:
+        return                             # no kv table yet: nothing to baseline, and nothing to lose
+
+
+def _raw_model_mismatches() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    try:
+        rows = connect().execute("SELECT key, value FROM kv WHERE key LIKE 'model_mismatch:%' "
+                                 "AND key NOT IN ('model_mismatch:last', ?)", (PRE_FIX_MISMATCH_KEY,)).fetchall()
+    except sqlite3.OperationalError:
+        return out
+    for row in rows:
+        body = row["key"].split(":", 1)[1]
+        task, pair, by = (body.rsplit(":", 2) + ["", ""])[:3] if body.count(":") >= 2 else (body, "", "")
+        req, _, act = pair.partition(">")
+        out.append({"task_key": body, "task": task, "requested": req, "actual": act,
+                    "executed_by": by, "count": int(row["value"] or 0)})
+    return out
+
+
 def bump_model_mismatch(task: str, requested: str, actual: str, executed_by: str) -> None:
     """A provider returned a model the app did not ask for. Counted per task+pair in kv (no schema change) so Health
     and `doctor` can say it out loud — 0.56.3. Silent substitution is the failure this layer exists to prevent, and
@@ -2664,17 +2704,20 @@ def bump_model_mismatch(task: str, requested: str, actual: str, executed_by: str
 
 def model_mismatches() -> list[dict[str, Any]]:
     """Every recorded substitution, newest count first — what Health renders and `doctor` fails on."""
-    out: list[dict[str, Any]] = []
+    raw = _raw_model_mismatches()          # safe on a missing kv table: `doctor` runs before init_db
+    if not raw:
+        return []
     try:
-        rows = connect().execute("SELECT key, value FROM kv WHERE key LIKE 'model_mismatch:%' AND key <> 'model_mismatch:last'").fetchall()
-    except sqlite3.OperationalError:
-        return out            # `doctor` runs before init_db on a fresh install: no kv table means no history to report
-    for row in rows:
-        body = row["key"].split(":", 1)[1]
-        task, pair, by = (body.rsplit(":", 2) + ["", ""])[:3] if body.count(":") >= 2 else (body, "", "")
-        req, _, act = pair.partition(">")
-        out.append({"task": task, "requested": req, "actual": act, "executed_by": by, "count": int(row["value"] or 0)})
-    return sorted(out, key=lambda r: -r["count"])
+        pre = json.loads(kv_get(PRE_FIX_MISMATCH_KEY) or "{}")
+    except (ValueError, sqlite3.OperationalError):
+        pre = {}
+    out = []
+    for r in raw:
+        before = int(pre.get(r["task_key"]) or 0)
+        r = {**r, "before_fix": min(before, r["count"]), "since_fix": max(0, r["count"] - before)}
+        r.pop("task_key", None)
+        out.append(r)
+    return sorted(out, key=lambda r: (-r["since_fix"], -r["count"]))
 
 
 def kv_set(key: str, value: str | None) -> None:
@@ -3020,7 +3063,11 @@ def health() -> dict[str, Any]:
             "model_routing": {"mismatches": model_mismatches(), "last": _j("model_mismatch:last"),
                               "note": "0.56.3: a provider returned a model the app did not request. Steady state is an "
                                       "empty list — the app has no model-substitution path, so any row here is a provider "
-                                      "(usually the local Claude Code CLI) overriding a contract."},
+                                      "(usually the local Claude Code CLI) overriding a contract. `since_fix` is what "
+                                      "counts: 0.63.29 corrected how the answering model is read from the CLI's "
+                                      "modelUsage (cached tokens were ignored, so the CLI's scaffolding model beat the "
+                                      "model that did the work), and `before_fix` rows are mis-readings kept rather "
+                                      "than deleted."},
             "flags": _flags_health(),
             "release": _last_release_check(),
             "app_version": __import__("neurosearch").__version__,

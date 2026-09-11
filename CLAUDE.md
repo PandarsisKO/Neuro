@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.28)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.29)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,52 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## 363 warnings that were mis-readings, and the config change I nearly talked him into (0.63.29)
+
+Kyle agreed to my 0.63.28 recommendation — find what his plan serves the CLI and pin it. **Before touching his
+`.env` I probed the CLI, and the recommendation was wrong.** Asking for `--model sonnet` on a request whose whole
+answer is the word "OK":
+
+```
+claude-haiku-4-5   inputTokens  902   outputTokens 8   cache       0   cost $0.0009
+claude-sonnet-5    inputTokens    2   outputTokens 4   cache 113,720   cost $0.1948
+```
+
+**A CLI session routinely uses more than one model.** The pinned model does the work; the CLI's own scaffolding
+(titles, tool suggestions) runs on Haiku. `claude_code._run` picked the model with the most
+`inputTokens + outputTokens` and **ignored cached tokens** — so Haiku scored 910 to Sonnet's 6 and was reported as
+the model that answered, while Sonnet 5 did the work and accounted for **99.5% of the cost**.
+
+So his findings ran on Sonnet 5 all along. The 363 `model_mismatch` rows are an accounting artefact of the app's
+own reading, `release-check` and `doctor` have been failing on it, and pinning Haiku — my advice — would have
+bought a real downgrade with a false number.
+
+**The tell was in his data before I probed anything, and I walked past it.** The same counter held a row going the
+other way: `discover.quick` asked for Haiku and reported Sonnet 5. A provider that downgrades does not also
+upgrade. I read a bidirectional inconsistency as two separate faults instead of as evidence that the measurement
+was broken.
+
+**The rule now: if the model we asked for appears in the map at all, it is the model that answered.** A provider
+running the requested model alongside its own helpers has substituted nothing. Only when the requested model is
+absent is this real, and then the busiest is chosen by **cost** — the one figure that does not depend on whether
+the input sat in cache. Aliases resolve (`sonnet` → `claude-sonnet-5`), because `--model sonnet` is what the CLI
+actually takes.
+
+**The 363 are explained, not deleted** — 0.62.3's rule for mis-dated spend, applied to a mis-read model.
+`snapshot_pre_fix_mismatches` records the pre-upgrade counts once at `init_db`, `model_mismatches()` returns
+`before_fix` beside `since_fix`, and Health judges the row on `since_fix` while saying how many earlier rows were
+corrected. A clean install has nothing to explain.
+
+**And a frozen gate caught my fix**: `model_mismatches()` must survive a missing `kv` table because `doctor` runs
+before `init_db` on a fresh install, and my rewrite read kv before the guarded query. Both paths now fail closed.
+
+Two lessons, and the second is the one worth keeping. The first: **a counter is a measurement and measurements
+have bugs** — 0.56.3 built this detector to catch a provider lying, and for four releases the detector was the
+thing that was wrong, loudly, in a place `release-check` fails on. The second: **0.63.28 told him his overnight
+work ran on the wrong model, and the fix was one config line away from making that true.** The only thing that
+stopped it was probing the tool instead of trusting the number — the same discipline that killed 0.63.20's
+stopword list and the per-creator spread, arriving one release later than it should have.
 
 ## Why the free path didn't take it: 363 silent model substitutions on no screen (0.63.28)
 

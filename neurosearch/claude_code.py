@@ -328,6 +328,48 @@ def _strip_fences(text: str) -> str:
     return t.strip()
 
 
+def _answering_model(mu: dict[str, Any] | None, requested: str | None) -> str:
+    """Which model actually answered, from the CLI's `modelUsage` map.
+
+    **A CLI session routinely uses MORE THAN ONE model**, and the old rule — the one with the most
+    `inputTokens + outputTokens` — named the wrong one, because the real model's input is almost entirely CACHED
+    and cache tokens were not counted. Measured on a one-word request pinned to `--model sonnet`:
+
+        claude-haiku-4-5   inputTokens  902   outputTokens 8   cache 0        cost $0.0009
+        claude-sonnet-5    inputTokens    2   outputTokens 4   cache 113,720  cost $0.1948
+
+    Haiku scored 910 to Sonnet's 6 and was reported as the model that answered, while Sonnet 5 did the work and
+    was 99.5% of the cost. Haiku is the CLI's own scaffolding (titles, tool suggestions) and it burns a few
+    UNCACHED tokens, which is exactly what the old sum rewarded.
+
+    That mis-reading was not cosmetic. It produced **363** `model_mismatch` rows for `findings.extract` on Kyle's
+    machine — a warning that `release-check` and `doctor` fail on — and it appeared in BOTH directions (a call
+    pinned to Haiku reported Sonnet 5), which is the tell that it was an artefact rather than a downgrade. Acting
+    on it would have meant pinning Haiku for work Sonnet 5 was doing correctly (0.63.29).
+
+    **The rule now: if the model we asked for is in the map at all, it is the model that answered.** A provider
+    that runs the requested model alongside its own helpers has not substituted anything. Only when the requested
+    model is absent is this a real substitution, and then the busiest is chosen by COST, which is the one figure
+    that cannot be gamed by where the tokens sat."""
+    if not isinstance(mu, dict) or not mu:
+        return str(requested or "claude-code")
+    if requested:
+        for name, row in mu.items():
+            canon = str((row or {}).get("canonicalModel") or "")
+            if requested == name or requested == canon or str(name).startswith(str(requested)):
+                return str(name)
+        # aliases: the CLI takes `sonnet`/`haiku`/`opus` and reports a full id
+        alias = str(requested).lower()
+        for name, row in mu.items():
+            if alias in str(name).lower() or alias in str((row or {}).get("canonicalModel") or "").lower():
+                return str(name)
+    return str(max(mu.items(), key=lambda kv: (float((kv[1] or {}).get("costUSD") or 0.0),
+                                               int((kv[1] or {}).get("inputTokens") or 0)
+                                               + int((kv[1] or {}).get("outputTokens") or 0)
+                                               + int((kv[1] or {}).get("cacheReadInputTokens") or 0)
+                                               + int((kv[1] or {}).get("cacheCreationInputTokens") or 0)))[0])
+
+
 def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, schema: dict[str, Any] | None) -> LocalResponse:
     """One headless CLI invocation → LocalResponse. Raises LocalUnavailable / LocalLimit."""
     if not shutil.which(binary()):
@@ -391,11 +433,7 @@ def _run(prompt: str, *, system: str | None, model: str | None, timeout: float, 
     text = _strip_fences(str(text)) if schema else str(text)
     usage = data.get("usage") or {}
     mu = data.get("modelUsage") or {}
-    if isinstance(mu, dict) and mu:
-        busiest = max(mu.items(), key=lambda kv: int((kv[1] or {}).get("outputTokens") or 0) + int((kv[1] or {}).get("inputTokens") or 0))[0]
-    else:
-        busiest = None
-    model_name = busiest or model or "claude-code"      # what actually answered (the CLI may route a trivial prompt to Haiku)
+    model_name = _answering_model(mu, model)
     cost = data.get("total_cost_usd")
     log.info("claude code %s answered in %.1fs (%s in / %s out)", model_name, time.time() - t0, usage.get("input_tokens"), usage.get("output_tokens"))
     return LocalResponse(text, usage, str(model_name), data.get("session_id"), float(cost) if isinstance(cost, (int, float)) else None)
