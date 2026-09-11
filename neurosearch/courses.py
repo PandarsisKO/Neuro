@@ -60,6 +60,42 @@ def normalise_embed(url: str) -> str:
     return u
 
 
+def add_page_videos(project_id: str, source_id: str, cookies: list[dict[str, Any]] | None = None,
+                    urls: list[str] | None = None) -> dict[str, Any]:
+    """Queue the videos a captured page embeds — the explicit, priced half of the capture (0.63.16).
+
+    Kyle captured a lesson with "Send this page": the notes arrived, the Loom video did not. `ingest_webpage` now
+    RECORDS the embeds (`webpage.video_embeds`) and this is how they become sources — a separate verb, because a
+    video means a download and a transcription, and nothing here spends without being asked.
+
+    Reuses the course importer's machinery exactly: the same `write_cookie_file` (a private Loom needs the user's
+    session), the same `normalise_embed`, the same `ingest_url` job, and the page's own URL as the referer, which
+    Loom checks on an embed. No second path."""
+    if not db.get_project(project_id):
+        raise RuntimeError("project not found")
+    src = db.get_source(source_id)
+    if not src:
+        raise RuntimeError("source not found")
+    found = [u for u in (urls or db.video_embeds_of(source_id)) if isinstance(u, str) and u.startswith("http")]
+    if not found:
+        return {"queued": 0, "videos": [], "why": "no video embed was recorded for that page"}
+    page_url = src.get("url") or ""
+    title = (src.get("title") or "page").strip()[:120]
+    coll = db.upsert_collection("course", page_url or title, page_url, title)
+    if project_id:
+        db.add_project_collections(project_id, [coll["id"]])
+    cookies_file = write_cookie_file(cookies, coll["id"]) if cookies else None
+    queued = []
+    for j, v in enumerate(found):
+        t = title if len(found) == 1 else f"{title} ({j + 1})"
+        jobs.enqueue("ingest_url", {"url": normalise_embed(v), "tags": [], "project_id": project_id, "force": False,
+                                    "cookies_file": cookies_file, "referer": page_url, "title": t,
+                                    "collection_id": coll["id"]})
+        queued.append(normalise_embed(v))
+    log.info("queued %d embedded video(s) from %s", len(queued), source_id[:8])
+    return {"queued": len(queued), "videos": queued, "collection_id": coll["id"], "cookies": bool(cookies_file)}
+
+
 def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[str, Any]],
                   cookies: list[dict[str, Any]] | None) -> dict[str, Any]:
     if not db.get_project(project_id):

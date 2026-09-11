@@ -1,4 +1,4 @@
-# Neuro Search — architecture map for Claude Code (current state, 0.63.15)
+# Neuro Search — architecture map for Claude Code (current state, 0.63.16)
 
 Python 3.11+ / FastAPI / SQLite (FTS5 + numpy vectors) / single-file vanilla-JS UI / MV3 Chrome extension. Package `neurosearch/`.
 History and evidence live in `HARDENING.md` (final verdict table, experimental-feature inventory, rung-by-rung record) and `evals/`.
@@ -280,6 +280,39 @@ target — so that a discovery pass could read some counts and a list of open qu
 **A pass worth having is not worth having in a request** — the third time that sentence has been the fix this week
 (0.61.2 the findings-quality pass, 0.61.4/0.62.0 the findings rows, this). And the third time the stage I would have
 optimised on inspection was not the stage that cost anything. Gate `tests/test_s17_steering_cost.py`.
+
+## A page's video is not in its text (0.63.16, extension 1.6.1)
+
+Kyle: *"I did send page, which worked for capturing the notes on the page, but I think its failing to grab the
+content of the video, which is a video hosted on Loom."*
+
+Measured on his database: the capture produced a `web` source with **4,926 characters over 4 chunks** — all of
+Lesson 7's notes, correctly sectioned — and **not one URL of any kind**, no mention of Loom. The cause is
+structural rather than a bug in the reader. `webpage.read_page` returns TEXT; an `<iframe src="…loom.com/embed/…">`
+contributes no text; and the captured HTML is not kept anywhere afterwards. So the video was dropped **and the drop
+left no trace** — a page whose video was discarded looked exactly like a page that never had one, which is why it
+could not be diagnosed after the fact.
+
+Two halves, deliberately separate, because one is free and one is not:
+
+* **Free and automatic.** `webpage.video_embeds` (the same player set the extension's `scanner.js` matches — one
+  list, two places it has to work) runs at capture time, finds players in iframes, `<video>` tags and
+  escaped-JSON blobs alike, and the result is stored on `sources.video_embeds` with the description saying
+  *"1 video embedded (not added yet)"*. Bounded at `EMBED_MAX` 12; page furniture (`player.js`, thumbnails, fonts)
+  is excluded by suffix.
+* **Priced and explicit.** `courses.add_page_videos` queues them through the course importer's own machinery: the
+  same `write_cookie_file`, the same `normalise_embed`, the same `ingest_url` job, and **the page's own URL as the
+  referer, which Loom checks on an embed**. No second path. A video is a download plus a transcription, so it is
+  offered, never taken — `POST …/page-videos`, a `🎬 Add the video on this page` button on the Sources row, and in
+  the extension a separate press after the capture that also collects the cookies of **every embed host**, since a
+  private Loom refuses an anonymous download.
+
+**One thing I could not verify from here and should not pretend to:** whether his captured HTML actually contained
+the Loom URL. The server had already thrown the HTML away, and on his course page the player only exists once a
+lesson is open — I measured the catalogue (six `<button>` cards, zero `<video>`, zero iframes) but did not open a
+lesson in his account. If the player is built by JavaScript only after Play is pressed, there will be nothing in the
+capture to find, and the honest outcome of this release is then that the page says so instead of staying silent.
+Gate `tests/test_s33_page_videos.py`.
 
 ## The course importer blamed the login (0.63.15, extension 1.6.0)
 

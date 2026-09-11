@@ -121,5 +121,6 @@ def test_the_popup_no_longer_blames_the_login_for_every_empty_result():
 
 
 def test_the_extension_version_moved():
+    """The scanner fix shipped in 1.6.0; a later release may raise this again, so the floor is what is asserted."""
     mf = json.loads((EXT / "manifest.json").read_text())
-    assert mf["version"] == "1.6.0"
+    assert tuple(int(x) for x in mf["version"].split(".")) >= (1, 6, 0)

@@ -858,14 +858,25 @@ def ingest_webpage(url: str, tags: list[str] | None = None, project_id: str | No
         segments = [{"start": float(p["page"]), "end": float(p["page"]), "text": " ".join(p["text"].split())} for p in pages]
         chunks = build_doc_chunks(pages)
         db.replace_transcript(src["id"], segments, chunks)
+        # 0.63.16 — a page's VIDEO is not in its text. A lesson page captured by the extension gave 4,926
+        # characters of notes and threw the Loom embed away without trace. Recorded here, never fetched here:
+        # a download plus transcription costs money, so it is offered rather than taken.
+        from .webpage import video_embeds
+        vids = video_embeds(html or "", url)
+        desc = f"{len(pages)} sections"
+        if vids:
+            desc += f" · {len(vids)} video{'s' if len(vids) != 1 else ''} embedded (not added yet)"
         db.upsert_source(platform="web", external_id=ext_id, title=title or page["title"], url=page["url"],
-                         transcript_kind=page["kind"], description=f"{len(pages)} sections",
+                         transcript_kind=page["kind"], description=desc,
                          channel=urlparse(page["url"]).netloc.replace("www.", ""), status="ready", error=None, error_class=None)
+        if vids:
+            db.set_video_embeds(src["id"], vids)
         progress(0.7, "embedding…")
         n = _embed_ready(src["id"])
         _after_ready(src["id"], project_id)
         return {"kind": "web", "source_id": src["id"], "title": title or page["title"], "segments": len(segments),
-                "chunks": len(chunks), "transcript": page["kind"], "embedded": n, "identity": res.state}
+                "chunks": len(chunks), "transcript": page["kind"], "embedded": n, "identity": res.state,
+                "video_embeds": vids}
     except Exception as e:  # noqa: BLE001
         db.set_source_status(src["id"], "failed", str(e)[:1000])
         raise

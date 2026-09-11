@@ -158,7 +158,31 @@ $('#sendPage').onclick = async () => {
     $('#pageMsg').textContent = 'sending…';
     const r = await api(`/api/projects/${pid}/ingest/html`, { method: 'POST', body: JSON.stringify({ url: cap.url, title: cap.title, html: cap.html }) });
     await chrome.storage.local.set({ lastProject: pid });
-    $('#pageMsg').innerHTML = `<span class="ok">Added “${esc(r.title)}” (${r.segments} sections).</span> Findings will be suggested in the app.`;
+    const vids = r.video_embeds || [];
+    $('#pageMsg').innerHTML = `<span class="ok">Added “${esc(r.title)}” (${r.segments} sections).</span> Findings will be suggested in the app.`
+      + (vids.length ? ` <b>This page embeds ${vids.length} video</b> (${esc(vids.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 34)).join(', '))}). The notes were free; a video is downloaded and transcribed. <button id="addVid" class="mini">Add the video${vids.length === 1 ? '' : 's'}</button>` : '');
+    // 1.6.1 — his lesson's Loom video was dropped without trace by the page capture. The app records the embeds
+    // now; adding them is a separate press because it spends, and the SESSION has to travel with it: a private
+    // Loom refuses an anonymous download, which is why the cookies of every embed host go too.
+    const add = document.getElementById('addVid');
+    if (add) add.onclick = async () => {
+      add.disabled = true; const note = document.createElement('span');
+      $('#pageMsg').appendChild(note); note.textContent = ' collecting sessions…';
+      try {
+        const hosts = new Set([new URL(cap.url).hostname]);
+        vids.forEach(v => { try { hosts.add(new URL(v).hostname); } catch (e) {} });
+        let cookies = [];
+        for (const h of hosts) {
+          const b = h.split('.').slice(-2).join('.');
+          for (const dom of new Set([h, b, '.' + b])) { try { cookies = cookies.concat(await chrome.cookies.getAll({ domain: dom })); } catch (e) {} }
+        }
+        const seen = new Set(); cookies = cookies.filter(c => { const k = c.domain + '|' + c.name + '|' + c.path; if (seen.has(k)) return false; seen.add(k); return true; });
+        const q = await api(`/api/projects/${pid}/page-videos`, { method: 'POST', body: JSON.stringify({
+          source_id: r.source_id,
+          cookies: cookies.map(c => ({ domain: c.domain, name: c.name, value: c.value, path: c.path, secure: c.secure, expirationDate: c.expirationDate })) }) });
+        note.innerHTML = q.queued ? ` <span class="ok">queued ${q.queued} — watch the app's Sources tab.</span>` : ` <span class="bad">${esc(q.why || 'nothing to add')}</span>`;
+      } catch (e) { note.innerHTML = ` <span class="bad">${esc(e.message)}</span>`; add.disabled = false; }
+    };
   } catch (e) { $('#pageMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
   $('#sendPage').disabled = false;
 };

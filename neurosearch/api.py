@@ -1258,6 +1258,13 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
                           "claims": v["claims"], "importance": v["importance"], "stale": st.get("status") in ("stale", "legacy_unverified"),
                           "stale_status": st.get("status"), "stale_reasons": st.get("reasons") or []}
             r["priority"] = r["id"] in prio
+            if r.get("video_embeds"):
+                # 0.63.16 — a captured page's embedded players, so the row can OFFER them. The list itself is the
+                # honest part: a page whose video was dropped used to look identical to a page with no video.
+                try:
+                    r["video_embeds"] = json.loads(r["video_embeds"]) or []
+                except (TypeError, ValueError):
+                    r["video_embeds"] = []
             if r.get("status") == "skipped" and pot_qs is not None:
                 # 452 skipped rows on Kyle's project, each re-scored on every poll (0.68 s of the endpoint). The
                 # score is a pure function of the source's own words and the project's research state, so it is
@@ -2673,6 +2680,23 @@ class CourseImportIn(BaseModel):
     course: dict[str, Any]
     lessons: list[dict[str, Any]]
     cookies: list[dict[str, Any]] | None = None
+
+
+class PageVideosIn(BaseModel):
+    source_id: str
+    urls: list[str] | None = None                    # normally omitted: the embeds recorded at capture time
+    cookies: list[dict[str, Any]] | None = None      # a private Loom needs the user's session, as a course does
+
+
+@app.post("/api/projects/{project_id}/page-videos", dependencies=[Depends(require_auth)])
+def api_page_videos(project_id: str, body: PageVideosIn) -> dict[str, Any]:
+    """Add the videos a captured page embeds. Separate from the capture on purpose: the notes are free, a video is
+    a download plus a transcription (0.63.16)."""
+    from .courses import add_page_videos
+    try:
+        return add_page_videos(project_id, body.source_id, body.cookies, body.urls)
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from None
 
 
 @app.post("/api/projects/{project_id}/course-import", dependencies=[Depends(require_auth)])

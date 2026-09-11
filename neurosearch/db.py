@@ -818,6 +818,9 @@ MIGRATIONS = [
     ("sources", "content_fingerprint", "ALTER TABLE sources ADD COLUMN content_fingerprint TEXT"),
     ("sources", "error_class", "ALTER TABLE sources ADD COLUMN error_class TEXT"),           # B1: classified acquisition failure (browser_solvable:<cls> | <cls>)
     ("sources", "completeness", "ALTER TABLE sources ADD COLUMN completeness TEXT"),
+    # 0.63.16: JSON list of the video players a captured page embeds. Recorded, never auto-fetched — a download
+    # plus transcription costs money, so the page says what it holds and the user decides.
+    ("sources", "video_embeds", "ALTER TABLE sources ADD COLUMN video_embeds TEXT"),
     ("community_syntheses", "coverage", "ALTER TABLE community_syntheses ADD COLUMN coverage TEXT"),   # B2: JSON — partial/unknown threads behind the state         # B2: JSON — captured vs expected, never "complete" by default
     ("project_notes", "batch_id", "ALTER TABLE project_notes ADD COLUMN batch_id TEXT"),
     ("project_source_analysis", "depth", "ALTER TABLE project_source_analysis ADD COLUMN depth TEXT"),   # D2: NULL = ordinary reading, 'deep' = Read deeper
@@ -1028,6 +1031,24 @@ def upsert_source(**fields: Any) -> dict[str, Any]:
             qs = ", ".join("?" for _ in fields)
             conn.execute(f"INSERT INTO sources ({cols}) VALUES ({qs})", tuple(fields.values()))
         return row_to_dict(conn.execute("SELECT * FROM sources WHERE id=?", (sid,)).fetchone())  # type: ignore[return-value]
+
+
+def set_video_embeds(source_id: str, urls: list[str]) -> None:
+    """The players found in a captured page. Additive and idempotent; an empty list clears the column."""
+    with tx() as conn:
+        conn.execute("UPDATE sources SET video_embeds=?, updated_at=? WHERE id=?",
+                     (json.dumps(list(urls)) if urls else None, now(), source_id))
+
+
+def video_embeds_of(source_id: str) -> list[str]:
+    r = connect().execute("SELECT video_embeds FROM sources WHERE id=?", (source_id,)).fetchone()
+    if not r or not r["video_embeds"]:
+        return []
+    try:
+        v = json.loads(r["video_embeds"])
+    except ValueError:
+        return []
+    return [str(x) for x in v] if isinstance(v, list) else []
 
 
 def get_source(source_id: str) -> dict[str, Any] | None:

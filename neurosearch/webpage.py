@@ -159,6 +159,55 @@ def LOGIN_OR_CHALLENGE(head: str) -> str | None:
     return None
 
 
+# The players a course page embeds. Deliberately the SAME set the browser extension's `scanner.js` looks for: one
+# list, two places it has to work, because a course page and a captured page are the same problem (0.63.16).
+PLAYER_RE = re.compile(
+    r"""loom\.com/(?:embed|share)/[A-Za-z0-9]+
+      | player\.vimeo\.com/video/\d+ | vimeo\.com/\d+
+      | fast\.wistia\.(?:net|com)/embed/[^\s"'<>]+ | wistia\.com/medias/[A-Za-z0-9]+
+      | youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]+ | youtu\.be/[A-Za-z0-9_-]+
+      | stream\.mux\.com/[^\s"'<>]+ | (?:iframe\.)?videodelivery\.net/[^\s"'<>]+
+      | vidyard\.com/[^\s"'<>]+ | mediadelivery\.net/[^\s"'<>]+
+      | [^\s"'<>]+\.m3u8 | [^\s"'<>]+\.mp4""",
+    re.I | re.X)
+EMBED_MAX = 12
+JUNK_SUFFIX = re.compile(r"\.(?:js|css|png|jpe?g|svg|webp|woff2?)(?:\?|$)", re.I)
+
+
+def video_embeds(html_text: str, base_url: str = "") -> list[str]:
+    """Every video a captured page embeds, in document order, deduped and bounded.
+
+    Kyle: *"I did send page, which worked for capturing the notes on the page, but I think its failing to grab the
+    content of the video, which is a video hosted on Loom."* Correct, and the cause is structural rather than a bug
+    in the reader: `read_page` returns TEXT, so `<iframe src="…loom.com/embed/…">` contributes nothing and is
+    discarded without trace. His captured lesson holds 4,926 characters of notes and **not one URL of any kind** —
+    which is also why it could not be diagnosed afterwards: the page's HTML is not kept anywhere.
+
+    Detection therefore happens at capture time and the result is recorded on the source. **Nothing is downloaded
+    here:** fetching a video means a download plus transcription, which costs money, and the standing rule is that
+    nothing spends without being asked. The page says what it holds; the user decides."""
+    if not html_text:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    text = html_text.replace("\\/", "/").replace("&amp;", "&")
+    for m in PLAYER_RE.finditer(text):
+        u = m.group(0).split("#")[0].rstrip(").,'\"")
+        if JUNK_SUFFIX.search(u):
+            continue
+        if u.startswith("//"):
+            u = "https:" + u
+        elif not u.lower().startswith("http"):
+            u = "https://" + u.lstrip("/")
+        if u in seen:
+            continue
+        seen.add(u)
+        out.append(u)
+        if len(out) >= EMBED_MAX:
+            break
+    return out
+
+
 def read_page(url: str, html_text: str | None = None) -> dict[str, Any]:
     """Fetch (or use the supplied HTML) and section a page.
     Returns {title, url, pages, kind} where kind is 'webpage' or 'document' (PDF)."""
