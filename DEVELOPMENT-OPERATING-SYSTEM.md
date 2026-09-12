@@ -81,7 +81,8 @@ They are not automatically admitted into development.
 
 When beginning any session:
 
-1. Find every file matching:
+1. Find every current top-level file matching (ignore `docs/archive/**`, which is historical evidence unless a
+   comparison is explicitly required):
 
 `STATE-OF-THE-APP-YYYY-MM-DD-HHMM.md`
 
