@@ -862,6 +862,7 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
         f"SELECT source_id, relevance FROM project_source_analysis WHERE project_id=? AND analysis_kind='relevance' AND source_id IN ({marks})",
         (project_id, *ids)).fetchall()}
     target_words = set().union(*(_wave_tokens(t.get("question") or "") for t in knowledge.list_targets(project_id, status="open")))
+    residuals = novelty.profiles(project_id, ids, comparison_source_ids=ids)
     candidates = []
     for sid in ids:
         source = rows.get(sid)
@@ -871,7 +872,7 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
         target_hits = len(words & target_words)
         value = int((values.get(sid) or {}).get("value_score") or 0)
         priority = bool((values.get(sid) or {}).get("priority"))
-        residual = novelty.profile(project_id, sid, comparison_source_ids=ids)
+        residual = residuals[sid]
         novelty_adjustment = novelty.priority_adjustment(residual)
         base = (1000 if priority else 0) + value * 10 + relevance.get(sid, 0) + min(40, target_hits * 8) + novelty_adjustment
         why = ([] if not priority else ["priority source"])

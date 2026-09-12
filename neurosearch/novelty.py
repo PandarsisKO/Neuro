@@ -35,35 +35,49 @@ def _normalise(vectors: list[np.ndarray]) -> np.ndarray:
     return mat / np.maximum(norms, 1e-12)
 
 
-def profile(project_id: str, source_id: str, *, comparison_source_ids: list[str] | None = None) -> dict[str, Any]:
-    """Return a source's project-relative redundancy and least-similar chunks.
+def profiles(project_id: str, source_ids: list[str], *, comparison_source_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Return profiles from one embedding snapshot for all requested sources.
 
     The comparison corpus is every project member plus the supplied batch
-    candidates.  The candidate itself is excluded, making the score stable if
-    the source is re-read.  ``available=False`` means callers must leave their
-    normal priority/order unchanged.
+    candidates. This avoids reloading the same project matrix for every Fast
+    candidate, while each candidate still excludes itself from its comparison.
     """
     comparison = set(db.project_source_ids(project_id, ready_only=False))
     comparison.update(comparison_source_ids or [])
-    comparison.discard(source_id)
-    own = _rows([source_id])
-    other = _rows(sorted(comparison))
-    base = {"source_id": source_id, "available": False, "redundancy": None, "residual_chunks": [], "chunk_scores": {}, "compared_chunks": len(other)}
-    if not own or not other:
-        return base
-    try:
-        own_vecs = [db._unpack(r["embedding"]) for r in own]
-        other_vecs = [db._unpack(r["embedding"]) for r in other]
-        a, b = _normalise(own_vecs), _normalise(other_vecs)
-        if not len(a) or not len(b) or a.shape[1] != b.shape[1]:
-            return base
-        scores = np.max(a @ b.T, axis=1)
-    except Exception:  # corrupted/legacy vectors must never make evidence unreachable
-        return base
-    by_idx = {int(row["idx"]): round(float(score), 4) for row, score in zip(own, scores)}
-    ordered = sorted(by_idx, key=lambda idx: (by_idx[idx], idx))
-    return {"source_id": source_id, "available": True, "redundancy": round(float(np.mean(scores)), 4), "residual_chunks": ordered,
-            "chunk_scores": by_idx, "compared_chunks": len(other)}
+    comparison.update(source_ids)
+    all_rows = _rows(sorted(comparison))
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for row in all_rows:
+        by_source.setdefault(str(row["source_id"]), []).append(row)
+    out: dict[str, dict[str, Any]] = {}
+    for source_id in source_ids:
+        own = by_source.get(source_id, [])
+        other = [row for sid, rows in by_source.items() if sid != source_id for row in rows]
+        base = {"source_id": source_id, "available": False, "redundancy": None, "residual_chunks": [], "chunk_scores": {}, "compared_chunks": len(other)}
+        if not own or not other:
+            out[source_id] = base
+            continue
+        try:
+            own_vecs = [db._unpack(r["embedding"]) for r in own]
+            other_vecs = [db._unpack(r["embedding"]) for r in other]
+            a, b = _normalise(own_vecs), _normalise(other_vecs)
+            if not len(a) or not len(b) or a.shape[1] != b.shape[1]:
+                out[source_id] = base
+                continue
+            scores = np.max(a @ b.T, axis=1)
+        except Exception:  # corrupted/legacy vectors must never make evidence unreachable
+            out[source_id] = base
+            continue
+        by_idx = {int(row["idx"]): round(float(score), 4) for row, score in zip(own, scores)}
+        ordered = sorted(by_idx, key=lambda idx: (by_idx[idx], idx))
+        out[source_id] = {"source_id": source_id, "available": True, "redundancy": round(float(np.mean(scores)), 4), "residual_chunks": ordered,
+                          "chunk_scores": by_idx, "compared_chunks": len(other)}
+    return out
+
+
+def profile(project_id: str, source_id: str, *, comparison_source_ids: list[str] | None = None) -> dict[str, Any]:
+    """Return one project-relative redundancy profile; unavailable signals fail open."""
+    return profiles(project_id, [source_id], comparison_source_ids=comparison_source_ids)[source_id]
 
 
 def priority_adjustment(profile_row: dict[str, Any]) -> int:
