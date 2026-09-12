@@ -70,7 +70,7 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
-**0.63.39 — Phase 1/2 closeout candidate (prepared, not delivered).** Read-only Health, Usage, backlog and staleness
+**0.63.39 — Phase 1/2 closeout (observed live).** Read-only Health, Usage, backlog and staleness
 paths were still calling `claude_code.health(wait=False)`. Although those requests returned immediately, a cold or
 expired cache launched a Claude CLI probe in the background and spent subscription tokens merely because a status
 surface was read. They now use `health_snapshot()`, which reports cached, stale or unchecked state without external
