@@ -24,9 +24,10 @@ the explicitly non-blocking R8 retention observation remain before T1 implementa
 unchanged until versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md`,
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
-GitHub custody: `origin/main` is preserved at `523a259` (Foundation R7 novelty residual reading and closeout), a
-compact descendant of the prior 0.63.42 checkpoint. It contains the R7 code, tests, release artifacts and active
-handoffs. `VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked files.
+GitHub custody: the next compact sync will publish this handoff at the current local documentation commit. The previous
+remote snapshot was `f0574f6` (Foundation R7 novelty residual reading, closeout, R9(a), and the pre-T1 audit). It contains
+the R7 code, tests, release artifacts and active handoffs. `VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked
+files.
 
 ## Shared checkout and coordination
 
