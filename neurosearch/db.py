@@ -263,6 +263,8 @@ CREATE TABLE IF NOT EXISTS project_source_analysis (
     source_revision TEXT,
     brief_revision  TEXT,
     facts_revision  TEXT,
+    r6_wave         TEXT,               -- fast | warm; scheduling provenance, not a quality verdict
+    r6_provisional  INTEGER NOT NULL DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'current',   -- current | legacy_unverified
     created_at      REAL NOT NULL,
     updated_at      REAL NOT NULL,
@@ -874,6 +876,8 @@ MIGRATIONS = [
     ("project_source_analysis", "batch_id", "ALTER TABLE project_source_analysis ADD COLUMN batch_id TEXT"),
     ("usage", "transport", "ALTER TABLE usage ADD COLUMN transport TEXT"),
     ("project_source_analysis", "prefilter", "ALTER TABLE project_source_analysis ADD COLUMN prefilter TEXT"),
+    ("project_source_analysis", "r6_wave", "ALTER TABLE project_source_analysis ADD COLUMN r6_wave TEXT"),
+    ("project_source_analysis", "r6_provisional", "ALTER TABLE project_source_analysis ADD COLUMN r6_provisional INTEGER NOT NULL DEFAULT 0"),
     # 0.59.3: WHICH MODEL'S RATES PRODUCED THIS ROW'S DOLLARS. Normally the same as `model`, but never for a local
     # call: `usage.record_anthropic` writes the model the CLI returned into `model` while pricing the tokens at the
     # CONTRACT's API model (the avoided-spend figure is only meaningful against the model that would have run). Rows
@@ -1896,6 +1900,14 @@ def set_job_policy(job_id: str, policy: str) -> dict[str, Any] | None:
     return get_job(job_id)
 
 
+def set_job_lane(job_id: str, lane: str) -> dict[str, Any] | None:
+    assert lane in ("normal", "slow", "priority", "low"), lane
+    with tx() as conn:
+        conn.execute("UPDATE jobs SET lane=?, updated_at=? WHERE id=?", (lane, now(), job_id))
+        job_event(job_id, "lane", conn=conn, lane=lane)
+    return get_job(job_id)
+
+
 def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str | None) -> None:
     with tx() as conn:
         conn.execute("UPDATE jobs SET executed_by=?, fallback_reason=? WHERE id=?", (executed_by, fallback_reason, job_id))
@@ -2554,7 +2566,7 @@ def upsert_analysis(project_id: str, source_id: str, analysis_kind: str, **field
                                          (project_id or "?")[:8], (source_id or "?")[:8])
         return
     allowed = {"summary", "substance", "relevance", "relevance_why", "model", "provider", "prompt_version", "schema_version",
-               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing", "depth"}
+               "input_hash", "source_revision", "brief_revision", "facts_revision", "status", "transport", "batch_id", "prefilter", "routing", "depth", "r6_wave", "r6_provisional"}
     f = {k: v for k, v in fields.items() if k in allowed}
     f.setdefault("status", "current")
     t = now()

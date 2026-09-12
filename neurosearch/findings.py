@@ -342,7 +342,8 @@ def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, 
 
 def materialize(project_id: str, source_id: str, window_results: list[tuple[str, dict[str, Any]]], *, model: str | None,
                 transport: str = "interactive", batch_id: str | None = None, max_findings: int | None = None, prefilter: dict[str, Any] | None = None,
-                depth: str | None = None, routing: str | None = None) -> dict[str, Any]:
+                depth: str | None = None, routing: str | None = None, r6_wave: str | None = None,
+                r6_provisional: bool = False) -> dict[str, Any]:
     """Turn validated per-window outputs into the stored research artifact — the ONE place findings become notes and an
     analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
     window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
@@ -465,7 +466,8 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,
             "prefilter": json.dumps(prefilter) if prefilter else None,
-            "routing": routing or providers.routing_json("findings.extract", model)}
+            "routing": routing or providers.routing_json("findings.extract", model), "r6_wave": r6_wave,
+            "r6_provisional": 1 if r6_provisional else 0}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     with db.batch():                                     # notes + analysis land together or not at all
@@ -476,7 +478,8 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
             "substance": substance, "summary": summary, "rejected_quotes": rejected, "transport": transport, "batch_id": batch_id, "prefilter": prefilter}
 
 
-def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None, progress=None) -> dict[str, Any]:
+def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None,
+                       progress=None, r6_wave: str | None = None, r6_provisional: bool = False) -> dict[str, Any]:
     """Extract candidate findings for one source in the context of one project (interactive transport). Stores them as
     'suggested'. Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a
     retried or duplicated job never pays twice; force=True re-analyses regardless."""
@@ -603,7 +606,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     if not _inputs_current():
         raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
     return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"), transport="interactive",
-                       max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing)
+                       max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing,
+                       r6_wave=r6_wave, r6_provisional=r6_provisional)
 
 
 def window_plan(project: dict[str, Any], src: dict[str, Any], windows: list[str]) -> tuple[set[int], dict[str, Any] | None]:
@@ -652,7 +656,8 @@ def is_long(src: dict[str, Any], n_segments: int | None = None) -> bool:
     return False
 
 
-def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False, depth: str | None = None) -> dict[str, Any]:
+def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False, depth: str | None = None,
+                        r6_wave: str | None = None, r6_provisional: bool = False) -> dict[str, Any]:
     ids = source_ids or db.sources_needing_suggestions(project_id)
     done, failed = 0, []
     for i, sid in enumerate(ids):
@@ -664,7 +669,7 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             if progress:
                 progress(max(0.02, (_i + frac) / max(len(ids), 1)), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
         try:
-            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub)
+            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub, r6_wave=r6_wave, r6_provisional=r6_provisional)
             done += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable

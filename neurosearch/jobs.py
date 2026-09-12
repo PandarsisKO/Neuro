@@ -323,7 +323,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
             path.unlink(missing_ok=True)
     if kind == "suggest_findings":
         from .findings import suggest_for_project
-        return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress, force=bool(payload.get("force")), depth=payload.get("depth"))
+        return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress, force=bool(payload.get("force")), depth=payload.get("depth"),
+                                   r6_wave=payload.get("r6_wave"), r6_provisional=bool(payload.get("r6_provisional")))
     if kind == "suggest_findings_batch":
         from .batches import run as run_batch
         return run_batch(jid, payload, progress=progress)
@@ -768,6 +769,8 @@ def wait_for_idle(poll: float = 1.0) -> None:
 
 FIRST_WAVE_RANKED = 3     # of a whole channel/playlist, the top N by the ranking the user already reviewed
 FIRST_WAVE_CAP = 12       # a hard ceiling per project, whatever the rules below decide
+FAST_WAVE_SIZE = 3        # R6: a small paid first wave; the remaining sources stay eligible on the warm/local path
+FAST_WAVE_MIN_BATCH = 6   # a hand-picked few keeps existing user-pick semantics; a real bulk request gets Fast/Warm
 
 
 USER_PICK_MAX = 5         # named sources in one request that still reads as "I clicked this", not a sweep
@@ -834,6 +837,102 @@ def enqueue_suggestions(source_id: str, project_id: str | None = None) -> None:
     pids = [project_id] if project_id else db.projects_for_source(source_id)
     for pid in pids:
         db.create_job("suggest_findings", {"project_id": pid, "source_ids": [source_id]}, lane=first_wave_lane(pid, source_id))
+
+
+def _wave_tokens(text: str) -> set[str]:
+    import re
+    return {w for w in re.findall(r"[a-z0-9]{3,}", (text or "").lower()) if w not in {"with", "from", "that", "this", "what", "when", "where"}}
+
+
+def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAVE_SIZE) -> list[dict[str, Any]]:
+    """Deterministically choose a small high-value, diverse portfolio without a model call.
+
+    This ranks only sources supplied by the bulk request. A high score changes scheduling order, never eligibility;
+    every unselected source remains a warm job. Diversity is greedy but deterministic: source id breaks every tie.
+    """
+    from . import knowledge, sources_value
+    ids = list(dict.fromkeys(source_ids))
+    if not ids:
+        return []
+    marks = ",".join("?" for _ in ids)
+    rows = {r["id"]: dict(r) for r in db.connect().execute(
+        f"SELECT id, title, description, channel, platform FROM sources WHERE id IN ({marks})", ids).fetchall()}
+    values = sources_value.compute(project_id)
+    relevance = {r["source_id"]: int(r["relevance"] or 0) for r in db.connect().execute(
+        f"SELECT source_id, relevance FROM project_source_analysis WHERE project_id=? AND analysis_kind='relevance' AND source_id IN ({marks})",
+        (project_id, *ids)).fetchall()}
+    target_words = set().union(*(_wave_tokens(t.get("question") or "") for t in knowledge.list_targets(project_id, status="open")))
+    candidates = []
+    for sid in ids:
+        source = rows.get(sid)
+        if not source:
+            continue
+        words = _wave_tokens(f"{source.get('title') or ''} {source.get('description') or ''}")
+        target_hits = len(words & target_words)
+        value = int((values.get(sid) or {}).get("value_score") or 0)
+        priority = bool((values.get(sid) or {}).get("priority"))
+        base = (1000 if priority else 0) + value * 10 + relevance.get(sid, 0) + min(40, target_hits * 8)
+        why = ([] if not priority else ["priority source"])
+        if value:
+            why.append(f"existing project value {value}")
+        if relevance.get(sid):
+            why.append(f"review score {relevance[sid]}")
+        if target_hits:
+            why.append(f"matches {target_hits} open-target term{'s' if target_hits != 1 else ''}")
+        candidates.append({"source_id": sid, "base": base, "creator": (source.get("channel") or "").strip().lower(),
+                           "platform": source.get("platform") or "", "why": why or ["available source"]})
+    selected, creators, platforms = [], set(), set()
+    while candidates and len(selected) < max(1, min(int(limit), FAST_WAVE_SIZE)):
+        def key(item: dict[str, Any]) -> tuple[int, int, int, str]:
+            creator_bonus = 30 if item["creator"] and item["creator"] not in creators else 0
+            platform_bonus = 5 if item["platform"] and item["platform"] not in platforms else 0
+            return (item["base"] + creator_bonus + platform_bonus, creator_bonus, platform_bonus, item["source_id"])
+        picked = max(candidates, key=key)
+        picked["diversity"] = ("new creator" if picked["creator"] and picked["creator"] not in creators else
+                                "new source type" if picked["platform"] and picked["platform"] not in platforms else "best remaining score")
+        selected.append(picked)
+        candidates.remove(picked)
+        if picked["creator"]:
+            creators.add(picked["creator"])
+        if picked["platform"]:
+            platforms.add(picked["platform"])
+    return selected
+
+
+def enqueue_fast_warm(project_id: str, source_ids: list[str], *, force: bool = False) -> dict[str, Any]:
+    """R6 bulk admission: fast sources get explicit paid priority; all others remain warm/local and eligible."""
+    ids = list(dict.fromkeys(source_ids))
+    plan = fast_wave_plan(project_id, ids)
+    fast = {row["source_id"]: row for row in plan}
+    jobs_ = []
+    for sid in ids:
+        wave = "fast" if sid in fast else "warm"
+        payload = {"project_id": project_id, "source_ids": [sid], "force": force, "r6_wave": wave,
+                   "r6_provisional": wave == "fast", "r6_reason": (fast[sid]["why"] + [fast[sid]["diversity"]]) if sid in fast else ["continues after the fast wave"]}
+        jobs_.append(db.create_job("suggest_findings", payload, lane="priority" if wave == "fast" else "normal",
+                                   execution_policy="api_requested" if wave == "fast" else "local_preferred"))
+    return {"fast": [row["source_id"] for row in plan], "warm": [sid for sid in ids if sid not in fast],
+            "jobs": jobs_, "reasons": {row["source_id"]: row["why"] + [row["diversity"]] for row in plan}}
+
+
+def promote_warm_sources(project_id: str, source_ids: list[str], limit: int = FAST_WAVE_SIZE) -> dict[str, Any]:
+    """Promote existing compatible warm jobs; never recreates a job or discards R4 completed units."""
+    wanted = set(source_ids)
+    rows = [j for j in db.list_jobs(limit=10000, statuses=("queued",)) if j.get("kind") == "suggest_findings"]
+    eligible = []
+    for job in rows:
+        payload = job.get("payload") or {}
+        sid = (payload.get("source_ids") or [None])[0]
+        if payload.get("project_id") == project_id and payload.get("r6_wave") == "warm" and sid in wanted:
+            eligible.append((str(sid), job))
+    plan_order = {r["source_id"]: i for i, r in enumerate(fast_wave_plan(project_id, [sid for sid, _ in eligible], limit=limit))}
+    eligible.sort(key=lambda pair: (plan_order.get(pair[0], 9999), pair[0], pair[1]["id"]))
+    moved = []
+    for sid, job in eligible[:max(1, min(int(limit), FAST_WAVE_SIZE))]:
+        db.set_job_policy(job["id"], "api_requested")
+        db.set_job_lane(job["id"], "priority")
+        moved.append(job["id"])
+    return {"promoted": len(moved), "job_ids": moved, "remaining_warm": max(0, len(eligible) - len(moved))}
 
 
 # ------------------------------------------------------------------ L3: the acceleration dialog — "the local provider is slow, buy speed on purpose"

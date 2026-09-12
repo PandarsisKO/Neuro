@@ -740,7 +740,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.41';
+const UI_VERSION = '0.63.42';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1357,7 +1357,7 @@ function srcRowHtml(s) {
     ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div style="flex:1;min-width:0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
-      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.r6_provisional ? ' <span class="tag" title="Fast-wave result: useful early evidence, still provisional while the warm/deep queue continues. Later evidence can revise it.">⚡ provisional</span>' : ''}${s.under_read ? ' <span class="tag" style="color:var(--warn)" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       ${needsBrowser ? browserBlock(s) : s.error ? `<div class="muted" style="color:var(--bad)">${esc(s.error)}${s.error_class && !s.error_class.startsWith('browser_solvable') ? ` <span class="tag" title="${PERMANENT_FAILURES.has(s.error_class) ? 'A retry cannot help with this one — the material is gone or has no audio. Remove it from the project when you are ready.' : 'This one could work on another try.'}">${PERMANENT_FAILURES.has(s.error_class) ? 'will not work' : 'retryable'} · ${esc(s.error_class.replace(/_/g, ' '))}</span>` : ''}</div>` : ''}
       ${s.status === 'skipped' && s.pool_potential ? `<div class="muted" style="margin-top:3px" title="${esc((s.pool_potential.why || []).join('; ') || 'no signal either way')}"><span class="tag" style="color:${s.pool_potential.score >= 40 ? 'var(--ok)' : 'var(--muted)'}">🔎 ${s.pool_potential.score >= 40 ? 'worth a look' : 'low potential'} — ${s.pool_potential.score}/100</span>${s.pool_potential.fits ? ` · fits: ${esc(s.pool_potential.fits)}` : ''}</div>` : ''}
       ${completenessLine(s)}
@@ -3193,6 +3193,7 @@ async function suggestNow(force, transport = 'interactive') {
   const r = await post(`/api/projects/${state.project.id}/suggest`, { force, transport });
   if (!r.job) { $('#sugMsg').textContent = 'Every source has already been analysed for this project.'; return; }
   if (transport === 'batch') { $('#sugMsg').innerHTML = `Queued in the background for ${r.sources} source${r.sources === 1 ? '' : 's'} — findings appear here as each source completes (up to 24 hours). Progress is in the Sources view.`; loadJobs(); setTimeout(loadNotes, 4000); return; }
+  if (r.fast) { $('#sugMsg').innerHTML = `<span class="spin"></span> fast wave: ${r.fast.length} source${r.fast.length === 1 ? '' : 's'} will land first; their findings are provisional while ${r.warm.length} remaining source${r.warm.length === 1 ? '' : 's'} continue on the warm path. Later evidence can correct the early picture.`; loadJobs(); setTimeout(loadNotes, 4000); return; }
   $('#sugMsg').innerHTML = `<span class="spin"></span> reading ${r.sources} source${r.sources === 1 ? '' : 's'}…`;
   const tick = async () => { const j = await api('/api/jobs/' + r.job); if (j.status === 'done' || j.status === 'failed') { await loadNotes(); } else { $('#sugMsg').innerHTML = `<span class="spin"></span> ${esc(j.message || 'working…')}`; setTimeout(tick, 2500); } };
   setTimeout(tick, 2000);

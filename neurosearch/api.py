@@ -1240,7 +1240,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             analysed_ids = db.analysed_sources(project_id)
             analyses = db.project_analyses(project_id)
             prio = db.priority_source_ids(project_id)
-        prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at", "depth")
+        prov_keys = ("model", "provider", "prompt_version", "input_hash", "source_revision", "brief_revision", "status", "updated_at", "depth", "r6_wave", "r6_provisional")
         from . import sources_value, staleness
         with perf.timed("sources:value"):
             values = sources_value.compute(project_id)                                    # S2: what each source gave (one pass)
@@ -1312,6 +1312,7 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
             r["approved"] = c.get("approved", 0)
             r["reserve"] = c.get("reserve", 0)          # D1: extracted beyond the cap, lower importance — promotable, never exported
             r["depth"] = sm.get("depth")                # D2: 'deep' when Read deeper produced the current analysis
+            r["r6_wave"], r["r6_provisional"] = sm.get("r6_wave"), bool(sm.get("r6_provisional"))
             from . import findings as findings_mod
             r["long"] = findings_mod.is_long(r)         # D2/D3: a book or ≥ 45 min — a candidate for Read deeper
             r["analysing"] = r["id"] in analysing
@@ -2837,6 +2838,10 @@ class SuggestIn(BaseModel):
     depth: str | None = None               # D2: "deep" = Read deeper (smaller windows + depth instruction; interactive only)
 
 
+class FastWaveIn(BaseModel):
+    source_ids: list[str]
+
+
 @app.post("/api/projects/{project_id}/findings/first-wave", dependencies=[Depends(require_auth)])
 def api_findings_first_wave(project_id: str, limit: int = 6) -> dict[str, Any]:
     """Push this project's first few queued findings jobs to the front of the whole queue. Free — it changes queue
@@ -2845,6 +2850,14 @@ def api_findings_first_wave(project_id: str, limit: int = 6) -> dict[str, Any]:
     if not db.get_project(project_id):
         raise HTTPException(404)
     return db.promote_first_findings(project_id, limit=min(max(1, limit), jobs.FIRST_WAVE_CAP * 4))
+
+
+@app.post("/api/projects/{project_id}/findings/fast-wave/promote", dependencies=[Depends(require_auth)])
+def api_promote_fast_wave(project_id: str, body: FastWaveIn) -> dict[str, Any]:
+    """Promote compatible warm jobs into the fast wave without replacing their durable work."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return jobs.promote_warm_sources(project_id, body.source_ids)
 
 
 @app.post("/api/projects/{project_id}/suggest", dependencies=[Depends(require_auth)])
@@ -2863,6 +2876,12 @@ def api_suggest(project_id: str, body: SuggestIn) -> dict[str, Any]:
             # one job PER source in the slow lane: each finishes and lands on its own, and only one local worker ever carries them
             made = [db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "depth": "deep", "reason": "read deeper"}, lane="slow") for sid in ids]
             return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids), "transport": body.transport, "depth": body.depth, "lane": "slow"}
+        if len(ids) >= jobs.FAST_WAVE_MIN_BATCH:
+            wave = jobs.enqueue_fast_warm(project_id, ids, force=body.force)
+            made = wave["jobs"]
+            return {"job": made[0]["id"] if made else None, "jobs": [j["id"] for j in made], "sources": len(ids),
+                    "transport": body.transport, "lane": "priority", "fast": wave["fast"], "warm": wave["warm"],
+                    "provisional": True, "reasons": wave["reasons"]}
         # A source the user NAMED goes first, whether or not the project is still bootstrapping (0.63.5). A sweep
         # names nothing and keeps the first-wave rule, which is about a project becoming usable rather than about
         # one source the user is waiting on.
