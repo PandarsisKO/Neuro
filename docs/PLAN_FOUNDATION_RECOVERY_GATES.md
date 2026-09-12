@@ -1,7 +1,7 @@
 # Foundation recovery gates
 
-Status: Gates 1–3 immediate work and R4 recovery gate complete. Version 0.63.40 is observed through `/api/version`;
-R5 bounded concurrency is active.
+Status: Gates 1–3 immediate work, R4 recovery and R5 concurrency gates complete. Version 0.63.41 is release-checked;
+R6 is active.
 
 ## Gate 1 — graceful shutdown during provider work — COMPLETE 2026-09-11
 

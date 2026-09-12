@@ -4,9 +4,8 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Foundation R5 bounded concurrency. Version 0.63.40 is observed through `/api/version` with `fake_ai=false`;
-commit `3af9c37` implements R4 durable work units. Full pytest, Tier 1, commit-bound release-check and the consolidated
-66-case R4 abuse gate pass. R5 is admitted; preserve explicit job/run/policy attribution in every child call.
+Foundation R6 Fast/Warm/Deep first wave. Version 0.63.41 is release-checked at `9f46c79`; R5 bounded concurrency and
+its attribution, cancellation, spend, crash/retry, mutation and ordering gate pass. R6 is admitted.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -14,9 +13,9 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Implement Speed R5 bounded concurrency.
-2. Pass its mandatory concurrency/attribution/cancellation gate.
-3. Speed R6, then R7, each with its own measured release.
+1. Implement Speed R6 Fast/Warm/Deep first wave.
+2. Pass its required diversity, provenance and usability gate.
+3. Speed R7, then formal Foundation closeout.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
@@ -42,7 +41,8 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 
 0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
 blocking the ladder. R9 preflight is complete and the benchmark is blocked on a supported local runtime and weights.
-R4 implementation and its 66-case abuse gate are complete in 0.63.40.
+R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
+0.63.41.
 
 ## AUDIT ADDITIONS — 2026-09-11
 
@@ -61,7 +61,7 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
    integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
    and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
-The next execution order is R5 → concurrency gate → R6 → R7 → Foundation closeout.
+The next execution order is R6 → R7 → Foundation closeout.
 The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 

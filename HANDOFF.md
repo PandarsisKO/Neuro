@@ -9,9 +9,9 @@
 
 The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
 
-Current execution state: 0.63.40 is observed through `/api/version` with `fake_ai=false`. Commit `3af9c37` implements
-R4 durable Findings windows and Claims groups; its full suite, Tier 1, bound release-check and consolidated 66-case
-abuse gate pass. R4 is closed and R5 bounded concurrency is active.
+Current execution state: 0.63.41 is release-checked at commit `9f46c79`. It implements R5 bounded Findings-window and
+Claims-group concurrency with explicit child job/run/policy/log context, route aggregation and spend reservations.
+The full suite, Tier 1, release-check and R5 gate pass. R6 is active.
 
 ## Shared checkout and coordination
 

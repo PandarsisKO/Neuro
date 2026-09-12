@@ -70,6 +70,17 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.63.41 — R5 bounded durable-unit concurrency (candidate).** Findings windows and Claims groups run under a small,
+transport-sensitive bound only while executing a job: two local units or three API units, hard-capped at four.
+`concurrency.bounded_map` captures job/run identity, policy and log fields explicitly; child routes merge into the
+parent job record, each child closes its own SQLite connection, input-order materialization remains deterministic,
+and a failure/cancellation stops further admission. In-process estimated-spend reservations make the daily, weekly,
+monthly and rate guards account for concurrent pending calls. The first true parallel test exposed a circuit-breaker
+healthy-row creation race, corrected with idempotent insertion. The gate covers duplicate work, attribution,
+cancellation, local/API policy preservation, no spend-ceiling race, 7/12 crash with five-unit retry, input mutation,
+and completion ordering. Gate evidence: **54 focused + 113 adjacent + 1,309 full-suite tests passed**; Tier 1 and
+release-check pass. Artifact: `evals/release/release-check-0.63.41-9f46c79-20260912-025822.json`.
+
 **0.63.40 — R4 durable work units (candidate).** Findings windows and Claims groups now persist their structured
 provider result before parent artifacts materialize. A content-addressed key includes the exact request, model
 contract, prompt/schema/source/brief/facts revisions, depth and execution policy. Retries therefore purchase only

@@ -1,10 +1,9 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.40 R4 COMPLETE; R5 ACTIVE**, 2026-09-11.
+Status: **0.63.41 R5 COMPLETE; R6 ACTIVE**, 2026-09-12.
 
-Current restart point: commit `3af9c37` implements durable, content-addressed Findings windows and Claims groups.
-`/api/version` reports 0.63.40 with `fake_ai=false`. Its consolidated 66-case abuse gate passes. R4 is closed and
-R5 bounded concurrency is active.
+Current restart point: commit `9f46c79` implements bounded R5 concurrency for durable Findings windows and Claims
+groups. The 0.63.41 full suite, Tier 1 and release-check pass. R5 is closed and R6 is active.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
@@ -62,6 +61,16 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
   occurred. R4 is committed and deterministically validated; its abuse-gate closeout is still active.
 
 ## Validation evidence
+
+- 0.63.41 R5 candidate: a bounded executor carries explicit job/run, policy and logging context into every child;
+  child routes merge back into the parent job summary and each child closes its own database connection. Findings uses
+  at most two local or three API units (hard cap four); Claims uses the same bound only for job execution. It preserves
+  input-order materialization, stops admitting units after failure/cancellation, and reserves estimated spend so
+  parallel guards cannot race around a ceiling. Concurrent first successes exposed a circuit-breaker row-creation
+  race; `INSERT OR IGNORE` makes healthy-row initialization idempotent. R5 gate suite: **54 passed**; adjacent
+  recovery/local-policy suite: **113 passed**; full pytest: **1,309 passed, one existing Starlette warning in
+  159.20 seconds**. Tier 1 passes unchanged. Commit-bound release-check artifact:
+  `evals/release/release-check-0.63.41-9f46c79-20260912-025822.json`.
 
 - 0.63.40 R4 candidate: `work_units` stores each exact Findings window or Claims group before parent
   materialization. Keys cover request text, model contract, prompt/schema/source/brief/facts revisions, depth and
@@ -130,7 +139,7 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-Next: implement R5, pass its concurrency/attribution gate, then follow R6 → R7 → formal
+Next: implement R6, pass its diversity/provenance/usability gate, then follow R7 → formal
 closeout → Transcript Intelligence. R8's 30-day retention sample continues without blocking this ladder. R9 is
 preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 
