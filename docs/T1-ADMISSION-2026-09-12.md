@@ -1,9 +1,9 @@
 # Transcript Intelligence T1 admission — 2026-09-12
 
-## State: design complete; T1 first measurement slice admitted
+## State: design complete; implementation awaits full pre-T1 gate audit
 
 Foundation closed through R7 with an authenticated live observation on 2026-09-12. Transcript Intelligence is now
-the active product program. Its first rung, T1, now has its governing embedding prerequisite resolved:
+the active product program. Its first rung, T1 has its embedding prerequisite resolved, but implementation remains gated on the complete pre-T1 audit:
 `DEVELOPMENT-OPERATING-SYSTEM.md` §35 requires T1 to use the embedding system validated by R9, and
 `PRODUCT-SCHEDULER.md` records the same dependency.
 
@@ -42,7 +42,7 @@ T1's canonical-active and project-relative requirements.
    comparison, locator reconciliation, and a fail-open read path. A fresh T1 cohort must report latency and cost
    separately from the historical Foundation queue/batch measurements.
 
-## Admitted first implementation slice
+## First implementation slice after pre-T1 gate completion
 
 1. Add metadata columns and schema compatibility migrations for both derived tables.
 2. Add typed db helpers for selecting canonical rows, reading/writing versioned vectors, and invalidating only the

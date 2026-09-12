@@ -4,7 +4,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-T1 first measurement slice: R9(a) selected local Ollama `bge-m3` (1024 dimensions) after it cleared the frozen latency, recall@10 and MRR gates in an isolated fixture. Implement versioned derived-knowledge vectors and the read-only coverage measurement; do not change existing production chunk embeddings or re-embed the live corpus yet.
+Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions), but R9(b)/(c) remain unmeasured. Reconcile the full governing R9 scorecard and the intentionally non-blocking R8 retention observation before beginning T1 implementation; see `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -12,18 +12,17 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Implement T1's first versioned-vector measurement slice using R9(a)'s selected `bge-m3`; see
-   `docs/R9-ADMISSION-2026-09-11.md` and `docs/T1-ADMISSION-2026-09-12.md`.
-2. Run a fresh, version-stamped T1 semantic-coverage cohort and keep its quality, latency and
-   cost separate from historical provider-batch and queue wait.
-3. Continue the non-blocking R8 retention observation; no retention cutoff is admitted yet.
+1. Complete R9(b)/(c), or record owner-approved deferrals with the mission's numeric revisit triggers; see
+   `docs/R9-ADMISSION-2026-09-11.md` and `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+2. Continue the non-blocking R8 retention observation; no retention cutoff is admitted yet.
+3. Only then begin T1's versioned-vector measurement slice using R9(a)'s selected `bge-m3`.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
 
 ## PARKED
 
-- Transcript Intelligence: active program after Foundation closeout. T1 is admitted with R9(a)'s selected embedding system; its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
+- Transcript Intelligence: active program after Foundation closeout. T1 design is ready, but implementation awaits completion or explicit deferral of R9(b)/(c); its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
 - External AI access and multi-user/sharing: permissions boundary unresolved; no implementation admission.
 - Project Inbox, cloud/infrastructure expansion, new acquisition classes, additional Bootstrap, Research/Discover/Planner expansion.
 - Consolidated stale/risky Findings review and unrelated Findings redesign: real usability pain; revisit at Foundation admission checkpoint unless it blocks current work.
