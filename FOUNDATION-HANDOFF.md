@@ -158,8 +158,9 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-Next: produce the formal Foundation Performance + Stability closeout report, then admit Transcript Intelligence.
-R8's 30-day retention sample continues without blocking this ladder. R9 is
+The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Next: capture its authenticated live
+Health/Performance observation, resolve any reported failure, then admit Transcript Intelligence. R8's 30-day
+retention sample continues without blocking this ladder. R9 is
 preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776

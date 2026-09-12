@@ -4,8 +4,9 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Formal Foundation closeout. Version 0.63.43 is release-checked at `bf8d595`; R7 project-relative novelty-residual
-reading and its redundancy, eligibility, decisive-exception and fail-open gate pass.
+Formal Foundation closeout: capture the authenticated live Health/Performance snapshot named in
+`docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Version 0.63.43 is release-checked at `bf8d595`; R7
+project-relative novelty-residual reading and its redundancy, eligibility, decisive-exception and fail-open gate pass.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -13,9 +14,9 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Produce the formal Performance + Stability report using recorded release evidence and bounded runtime observations.
-2. Resolve any closeout gap that makes the Foundation speed claim unprovable.
-3. Admit Transcript Intelligence only after the closeout answer is supported.
+1. Capture the authenticated Health/Performance snapshot and append its measured operational values to the closeout report.
+2. Resolve any closeout failure that makes the Foundation speed claim unprovable.
+3. Admit Transcript Intelligence only after the report supports the conclusion.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
