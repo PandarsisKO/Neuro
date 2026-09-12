@@ -65,3 +65,5 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
 The next execution order is 0.63.39 delivery/verification → immediate R8 evidence → R9 → R4. The 30-day job-event
 sample continues alongside those measurement/design stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
+
+R9 admission preflight: runtime discovery is clean but no Ollama/llama.cpp executable is installed; benchmark is awaiting that external prerequisite. See docs/R9-ADMISSION-2026-09-11.md.
