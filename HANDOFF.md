@@ -25,10 +25,10 @@ remains before T1 implementation. R8 retention is deliberately deferred to its n
 unchanged until versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md`,
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
-GitHub custody: the current documentation tree is published on GitHub as compact sync `de238f0` (local documentation
-commit `5fb5304`). The previous snapshot `f0574f6` contained the Foundation R7 closeout, R9(a), and the pre-T1 audit;
-the current snapshot adds the R9(b) scorecard, T1 vector-space reconciliation, R8 revisit trigger, Claude handoff,
-and the reproducible R9(c) continuation chain.
+GitHub custody: the current documentation tree is published on `https://github.com/PandarsisKO/Neuro` and the latest
+compact sync was verified tree-equal to this checkout. The published snapshot includes the Foundation R7 closeout,
+R9(a)/(b) scorecards, the T1 vector-space reconciliation, the R8 revisit trigger, the Claude handoff, and the
+reproducible R9(c) continuation chain. Re-run the compact sync after any future tracked documentation change.
 `VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked files.
 
 ## Shared checkout and coordination
