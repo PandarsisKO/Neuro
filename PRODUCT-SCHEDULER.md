@@ -70,8 +70,9 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
    integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
    and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
-The next execution order is Transcript Intelligence baseline → bounded admission experiment.
-The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
-finishes. The cold derived-state change remains trigger-only.
+The historical next-order note is superseded. The current execution order is R9(c) long-window measurement, then the
+T1 first measurement slice in the existing production embedding space. The 30-day job-event sample continues in
+parallel; no deletion or retention cutoff is admitted before its 2026-10-11 17:28 PT trigger. The cold derived-state
+change remains trigger-only.
 
 R9(a) admission: `bge-m3` is selected after passing frozen latency, recall and MRR gates; `nomic-embed-text` is rejected on MRR. R9(b) is complete: Llama 3.1 8B is adopted for short classification, while Qwen3 8B, Qwen3 14B and gpt-oss-20b are rejected on the measured gate. R9(c) remains open; see docs/R9-ADMISSION-2026-09-11.md.

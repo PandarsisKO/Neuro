@@ -1,10 +1,14 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.43 R7 COMPLETE; FOUNDATION CLOSEOUT ACTIVE**, 2026-09-12.
+Status: **0.63.43 R7 COMPLETE; FOUNDATION CLOSEOUT COMPLETE; PRE-T1 R9(c) OPEN**, 2026-09-12.
 
 Current restart point: commit `bf8d595` implements R7 project-relative novelty/residual reading over R6's durable
-Fast/Warm jobs. The 0.63.43 full suite, Tier 1 and release-check pass. R7 is closed; formal Foundation closeout is
-the next active work.
+Fast/Warm jobs. The 0.63.43 full suite, Tier 1, release-check and authenticated Foundation closeout pass. The
+remaining active work is the pre-T1 R9(c) long-window benchmark; T1 implementation has not started.
+
+The detailed 0.63.36–0.63.39 and 0.63.37 delivery sections below are historical release records. Current admission
+and sequencing are owned by `STATE-OF-THE-APP-2026-09-12-1510.md`, `PRODUCT-SCHEDULER.md` and
+`docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
@@ -129,7 +133,7 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
   `evals/release/release-check-0.63.37-nogit-20260911-123448.json` (and matching `.txt`).
 - Candidate package, pyproject and UI all report 0.63.37.
 
-## Delivery hold and exact restart point
+## Historical 0.63.37 delivery hold and exact restart point
 
 At 11:43 local time the live 0.63.35 server was actively normalizing Claims in job `20f418c7`; it yielded after
 two groups with 7,763 candidates still queued and then continued. Landing watched Python/HTML files would reload
@@ -142,7 +146,7 @@ helpers or reports), let the launcher reload, then verify `/api/version`, stale-
 worker startup, `background_paused=true`, and the cancelled job through the supported app/API. Record the exact live
 facts below. Commit/tag only after that proof.
 
-## 0.63.37 live verification record
+## Historical 0.63.37 live verification record
 
 - Source validation: 1,281 native tests passed; deterministic release-check passed.
 - Live delivery: verified after authorized restart and post-restart API/UI check.
@@ -153,10 +157,9 @@ facts below. Commit/tag only after that proof.
 - Live background state: `/api/usage` returned `background_paused=true`, `paused=false`.
 - Live startup: workers started, one interrupted job was recovered, and the recovered cancellation was finalized
   without launching another Claims call.
-- Git hygiene follow-up: `.git/index.lock` already existed (timestamp 09:49) when the index-only `VIDEOS/` cleanup
-  was attempted. No lock was removed and no index mutation was forced. Before staging the five recording deletions,
-  inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
-  procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
+- Git hygiene follow-up (historical): `.git/index.lock` was present during the initial index-only `VIDEOS/` cleanup
+  attempt. It later released at 16:08 PT with no Git process associated; the real index was reconciled to `HEAD`.
+  `git ls-files VIDEOS` is zero and the compact GitHub tree excludes `VIDEOS/`, `data/` and `_to_delete/`.
 
 The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Its authenticated Health/Performance
 observation is complete: the refreshed console ran `0.63.43`, the 42-gate release check passed, integrity and backup
@@ -173,4 +176,5 @@ migration/backfill gates exist. The complete handoff is `docs/T1-ADMISSION-2026-
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
 bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable
-across that hour. The 30-day retention sample and live memory/query-plan observations remain open.
+across that hour. The 30-day `job_events` observation is deliberately deferred to after 2026-10-11 17:28 PT and is
+non-blocking; no retention mutation is admitted before then.
