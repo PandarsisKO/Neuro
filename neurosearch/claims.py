@@ -841,11 +841,23 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
     if not project:
         return {"normalized": 0, "targets": 0, "calls": 0}
     cands = cands if cands is not None else unnormalized(project_id)
+    project_signature = db._sha({k: project.get(k) for k in ("brief", "goal", "questions")})
+    facts_revision = db.facts_revision(project_id)
+
+    def _inputs_current() -> bool:
+        current = db.get_project(project_id)
+        return bool(current) and db._sha({k: current.get(k) for k in ("brief", "goal", "questions")}) == project_signature \
+            and db.facts_revision(project_id) == facts_revision
     calls, normalized, targets = 0, 0, 0
     total_groups = max(1, (len(cands) + EXTRACT_GROUP - 1) // EXTRACT_GROUP)
     if progress:
         progress(0.02, f"reading {len(cands)} candidate claim{'' if len(cands) == 1 else 's'} in {total_groups} group{'' if total_groups == 1 else 's'}")
     ran, more = 0, False
+    work = []
+    from . import knowledge as _kn
+    existing_topics = [r["topic"] for r in db.connect().execute(
+        "SELECT topic, COUNT(*) n FROM project_claims WHERE project_id=? AND status NOT IN ('rejected','superseded') GROUP BY topic ORDER BY n DESC LIMIT 40", (project_id,))]
+    existing_targets = [t["question"][:160] for t in _kn.list_targets(project_id, status="open")[:40]]
     for i in range(0, len(cands), EXTRACT_GROUP):
         if transport == "job":
             from .jobs import check_cancel
@@ -854,31 +866,34 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
             more = True                                     # hand the worker back; the remainder is picked up later
             break
         gno = i // EXTRACT_GROUP + 1
-        if progress:
-            # reported BEFORE the call, so the message names what is being waited on rather than what already ended
-            progress(0.02 + 0.96 * (i / max(1, len(cands))),
-                     f"group {gno} of {total_groups} · {normalized} claim{'' if normalized == 1 else 's'} written so far")
         group = cands[i:i + EXTRACT_GROUP]
         ih = extraction_hash(project, group)
         if all(c.get("extraction_hash") == ih for c in group):
+            if progress:
+                progress(0.02 + 0.96 * ((i + len(group)) / max(1, len(cands))),
+                         f"group {gno} of {total_groups} already complete · {normalized} claims written so far")
             continue
-        from . import knowledge as _kn
-        existing_topics = [r["topic"] for r in db.connect().execute(
-            "SELECT topic, COUNT(*) n FROM project_claims WHERE project_id=? AND status NOT IN ('rejected','superseded') GROUP BY topic ORDER BY n DESC LIMIT 40", (project_id,))]
-        existing_targets = [t["question"][:160] for t in _kn.list_targets(project_id, status="open")[:40]]
         user = json.dumps({"brief": project.get("brief"), "goal": project.get("goal"), "questions": project.get("questions"),
                            "existing_topics": existing_topics, "existing_targets": existing_targets,
                            "candidates": [_candidate_payload(c) for c in group]}, ensure_ascii=False)
         unit_key = extraction_unit_key(project, user)
+        work.append((gno, group, ih, user, unit_key))
+        ran += 1
+
+    def _extract(item):
+        gno, group, ih, user, unit_key = item
         with db.work_unit_lock(unit_key):
             saved = db.work_unit_get(unit_key)
             if saved:
                 parsed = dict(saved["result"])
                 saved_routing = parsed.pop("_neurosearch_work_unit_routing", None)
                 model = saved["model"]
+                called = 0
             else:
-                parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
-                calls += 1
+                from . import usage
+                estimate = usage.estimate_model_call("claims.extract", len(user))
+                parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id, guard_estimate=estimate)
+                called = 1
                 model = str(getattr(providers.last_response(), "model", None) or "")
                 saved_routing = providers.routing_json("claims.extract", model)
                 durable_result = dict(parsed)
@@ -893,10 +908,31 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
                 )
                 from .jobs import crash_point
                 crash_point("claims_group_persisted")
-        ran += 1
         if transport == "job":
             from .jobs import check_cancel
             check_cancel()                                  # the paid call ended; do not materialise a cancelled group
+        return gno, group, ih, parsed, str(model or ""), saved_routing, called
+
+    from . import concurrency, usage
+    from .jobs import current_job
+    max_workers = concurrency.limit_for("claims.extract") if current_job()[0] and transport == "job" else 1
+
+    def _completed(index, value):
+        if progress:
+            gno = value[0]
+            progress(0.02 + 0.96 * (gno / max(1, total_groups)),
+                     f"finished group {gno} of {total_groups}; writing durable results")
+
+    extracted = concurrency.bounded_map(
+        _extract, work, max_workers=max_workers, completed=_completed,
+        estimate=lambda item: usage.estimate_model_call("claims.extract", len(item[3])),
+    )
+    if not _inputs_current():
+        raise RuntimeError("claims inputs changed during normalization; completed compatible groups were kept for retry")
+    for gno, group, ih, parsed, model, saved_routing, called in extracted:
+        if not _inputs_current():
+            raise RuntimeError("claims inputs changed during normalization; completed compatible groups were kept for retry")
+        calls += called
         prov = {"extraction_hash": ih, "model": str(model or ""), "prompt_version": PROMPT_VERSION, "schema_version": "claim-set-v1",
                 "routing": saved_routing or providers.routing_json("claims.extract", model), "transport": transport}
         by_id = {c["id"]: c for c in group}

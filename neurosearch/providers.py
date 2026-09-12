@@ -417,6 +417,7 @@ def output_event(task: str, exc: OutputError, *, project_id: str | None = None, 
 COMPAT_FALLBACK_ENV = "NEUROSEARCH_SCHEMA_COMPAT_FALLBACK"      # =1: the explicitly degraded escape hatch (legacy parser + full local validation)
 
 import threading as _threading  # noqa: E402
+import contextlib as _contextlib  # noqa: E402
 
 _tl = _threading.local()
 
@@ -622,6 +623,16 @@ def current_policy() -> str:
     return getattr(_policy_tl, "policy", None) or "local_preferred"
 
 
+@_contextlib.contextmanager
+def policy_context(policy: str):
+    before = getattr(_policy_tl, "policy", None)
+    _policy_tl.policy = policy
+    try:
+        yield
+    finally:
+        _policy_tl.policy = before
+
+
 def last_route() -> dict[str, Any]:
     return dict(getattr(_tl, "route", None) or {})
 
@@ -647,6 +658,22 @@ def job_route() -> tuple[str | None, str | None]:
         return None, None
     by = jr["by"] - {"none"}
     return ("mixed" if len(by) > 1 else (next(iter(by)) if by else "none")), jr["fb"]
+
+
+def merge_job_route(executed_by: str | None, fallback_reason: str | None) -> None:
+    """Merge a child thread's completed routing into the parent job's routing summary."""
+    if not executed_by and not fallback_reason:
+        return
+    jr = getattr(_tl, "job_route", None)
+    if jr is None:
+        reset_job_route()
+        jr = _tl.job_route
+    if executed_by == "mixed":
+        jr["by"].update(("local", "api"))
+    elif executed_by:
+        jr["by"].add(executed_by)
+    if fallback_reason and not jr["fb"]:
+        jr["fb"] = fallback_reason
 
 
 def route(task: str) -> tuple[str, str]:

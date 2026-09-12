@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from typing import Any
 
 from . import db, providers
@@ -205,6 +206,15 @@ def _windows(segs: list[dict[str, Any]], platform: str, source_id: str | None = 
 
 _last_model: dict[str, str] = {}
 _last_call: dict[str, Any] = {}          # diagnostics of the most recent window call (for OBSERVER; never changes behaviour)
+_call_state = threading.local()          # R5: authoritative per-call state; globals above remain diagnostic compatibility mirrors
+
+
+def _call_diagnostics() -> dict[str, Any]:
+    return dict(getattr(_call_state, "diagnostics", {}) or _last_call)
+
+
+def _call_model() -> str | None:
+    return getattr(_call_state, "model", None) or _last_model.get("model")
 OBSERVER: Any = None                     # evals hook: called with one dict per transcript window (see suggest_for_source)
 
 
@@ -262,29 +272,36 @@ def _call(system: str, user: str, project_id: str | None = None, source_id: str 
     sys_blocks = _system_blocks(system, head)
     c = contract("findings.extract")
     messages = [{"role": "user", "content": user}]
+    diagnostics = {"structured": bool(c.schema), "parse": "strict", "truncated": False, "empty": False}
+    _call_state.diagnostics = diagnostics
     _last_call.clear()
-    _last_call.update({"structured": bool(c.schema), "parse": "strict", "truncated": False, "empty": False})
+    _last_call.update(diagnostics)
     if c.schema:
         # Mission F path: provider-enforced schema → json.loads → full local validation. No legacy parsing here.
         try:
             out = providers.invoke_structured("findings.extract", system=sys_blocks, messages=messages, usage_kind="findings", project_id=project_id,
                                               source_id=source_id, guard_estimate=usage.estimate_findings(len(user)), legacy=_legacy_parse)
         except providers.OutputError as e:
-            _last_call.update({"parse": "failed", "truncated": e.kind == providers.OutputError.TRUNCATED, "stop_reason": "max_tokens" if e.kind == "TRUNCATED" else e.kind.lower()})
+            diagnostics.update({"parse": "failed", "truncated": e.kind == providers.OutputError.TRUNCATED, "stop_reason": "max_tokens" if e.kind == "TRUNCATED" else e.kind.lower()})
+            _last_call.update(diagnostics)
             raise
         resp = providers.last_response()
-        _last_model["model"] = str(getattr(resp, "model", None) or settings.answer_model)
-        _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(getattr(resp, "usage", None), "output_tokens", 0) or 0)})
+        _call_state.model = str(getattr(resp, "model", None) or settings.answer_model)
+        _last_model["model"] = _call_state.model
+        diagnostics.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(getattr(resp, "usage", None), "output_tokens", 0) or 0)})
+        _last_call.update(diagnostics)
         return out
     # legacy/unstructured contract (NEUROSEARCH_TASK_SCHEMA_FINDINGS_EXTRACT=none): the pre-F tolerant path
     usage.guard(usage.estimate_findings(len(user)))
     resp = providers.invoke("findings.extract", system=sys_blocks, messages=messages)
     usage.record_anthropic(resp, "findings", project_id=project_id, source_id=source_id)
-    _last_model["model"] = str(getattr(resp, "model", settings.answer_model))
+    _call_state.model = str(getattr(resp, "model", settings.answer_model))
+    _last_model["model"] = _call_state.model
     raw = providers.text_of(resp).strip()
     u = getattr(resp, "usage", None)
-    _last_call.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
-                       "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "empty": not raw})
+    diagnostics.update({"stop_reason": getattr(resp, "stop_reason", None), "output_tokens": int(getattr(u, "output_tokens", 0) or 0),
+                        "truncated": getattr(resp, "stop_reason", None) == "max_tokens", "empty": not raw})
+    _last_call.update(diagnostics)
     return _legacy_parse(raw)
 
 
@@ -349,6 +366,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     rejected = 0
     n_windows = len(window_results)
     for i, (w, res) in enumerate(window_results):
+        call_diagnostics = dict(res.pop("_neurosearch_call_diagnostics", {}) or {})
         if res.get("summary"):
             summaries.append(str(res["summary"]))
         if isinstance(res.get("substance"), (int, float)):
@@ -381,7 +399,7 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
             OBSERVER({"source_id": source_id, "window": i + 1, "windows": n_windows, "raw_findings": len(res.get("findings") or []),
                       "kept": len(all_findings) - kept_before, "rejected": rejected - rejected_before,
                       "summary_ok": bool(str(res.get("summary") or "").strip()), "substance_ok": isinstance(res.get("substance"), (int, float)) and 0 <= res["substance"] <= 100,
-                      **_last_call, "transport": transport})
+                      **(call_diagnostics or _last_call), "transport": transport})
     for f in all_findings:
         if f.pop("_relocated", False):
             db.kv_bump("evidence:quote_relocated")
@@ -514,34 +532,29 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                      f"{verb} · part {i + 1}/{len(windows)}" + (f" · {found} finding{'' if found == 1 else 's'} so far" if found else ""))
 
     reading = "reading deeper" if depth == "deep" else "reading"
-    for i, w in enumerate(windows):
-        if i not in kept:                                # H1: the pre-filter dropped this window (recorded in window_decisions + the analysis row)
-            continue
+
+    def _run_window(item: tuple[int, str]) -> tuple[str, dict[str, Any], str, str | None, int, bool]:
+        i, w = item
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         if not _inputs_current():
             raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
         crash_point("findings_before_response")
-        _say(i / max(1, len(windows)), reading, i)
         unit_key = work_unit_key(project, src, w, i, len(windows), depth=depth)
         with db.work_unit_lock(unit_key):
             saved = db.work_unit_get(unit_key)
             if saved:
                 res = dict(saved["result"])
-                last_routing = res.pop("_neurosearch_work_unit_routing", None)
-                _last_model["model"] = saved["model"]
-                found += len(res.get("findings") or []) if isinstance(res, dict) else 0
-                results.append((w, res))
-                _say((i + 1) / max(1, len(windows)), "reused", i)
-                continue
+                routing = res.pop("_neurosearch_work_unit_routing", None)
+                return w, res, str(saved["model"]), routing, len(res.get("findings") or []), True
             try:
                 res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
-                found += len(res.get("findings") or []) if isinstance(res, dict) else 0
                 from .contracts import contract
                 c = contract("findings.extract")
-                model = _last_model.get("model") or c.model
-                last_routing = providers.routing_json("findings.extract", model)
+                model = _call_model() or c.model
+                routing = providers.routing_json("findings.extract", model)
                 durable_result = dict(res)
-                durable_result["_neurosearch_work_unit_routing"] = last_routing
+                durable_result["_neurosearch_work_unit_routing"] = routing
+                durable_result["_neurosearch_call_diagnostics"] = _call_diagnostics()
                 db.work_unit_complete(
                     unit_key, task="findings.extract", project_id=project_id, source_id=source_id,
                     parent_hash=ih, unit_index=i, unit_count=len(windows), model=str(model),
@@ -553,16 +566,43 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                 check_cancel()                           # keep the paid response, but never materialise a cancelled parent
                 if not _inputs_current():
                     raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
-                _say((i + 1) / max(1, len(windows)), "read", i)  # the bar moves when a part is actually done
+                res["_neurosearch_call_diagnostics"] = _call_diagnostics()
+                return w, res, str(model), routing, len(res.get("findings") or []), False
             except Exception:
                 if OBSERVER:
                     OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
-                              "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
+                              "summary_ok": False, "substance_ok": False, **_call_diagnostics(), "error": True})
                 raise
-        results.append((w, res))
+
+    items = [(i, w) for i, w in enumerate(windows) if i in kept]
+    for i, _ in items[:1]:
+        _say(i / max(1, len(windows)), reading, i)
+
+    def _completed(index: int, value: tuple[str, dict[str, Any], str, str | None, int, bool]) -> None:
+        nonlocal found
+        _, _, _, _, count, reused = value
+        found += count
+        i = items[index][0]
+        _say((i + 1) / max(1, len(windows)), "reused" if reused else "read", i)
+
+    from . import concurrency
+    from .jobs import current_job
+    max_workers = concurrency.limit_for("findings.extract") if current_job()[0] else 1
+    from . import usage
+    completed_units = concurrency.bounded_map(
+        _run_window, items, max_workers=max_workers, completed=_completed,
+        estimate=lambda item: usage.estimate_findings(len(_user(item[0], len(windows), item[1], depth=depth))),
+    )
+    results = [(w, res) for w, res, _, _, _, _ in completed_units]
+    models = [model for _, _, model, _, _, _ in completed_units]
+    routings = [routing for _, _, _, routing, _, _ in completed_units if routing]
+    if models:
+        _last_model["model"] = models[-1]
+    if routings:
+        last_routing = routings[-1]
     if not _inputs_current():
         raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
-    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive",
+    return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"), transport="interactive",
                        max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing)
 
 

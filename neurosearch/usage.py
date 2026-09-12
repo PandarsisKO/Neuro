@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import time
+import contextlib
+import threading
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -383,10 +385,36 @@ class BudgetPaused(RuntimeError):
         self.wait = wait
 
 
+_reservation_lock = threading.Lock()
+_reservation_local = threading.local()
+_reserved_estimate = 0.0
+
+
 def guard(estimate: float = 0.0) -> None:
-    ok, reason, wait = check(estimate)
+    with _reservation_lock:
+        own = float(getattr(_reservation_local, "estimate", 0.0) or 0.0)
+        ok, reason, wait = check(estimate + max(0.0, _reserved_estimate - own))
     if not ok:
         raise BudgetPaused(reason, wait)
+
+
+@contextlib.contextmanager
+def reserve(estimate: float):
+    """Reserve estimated spend so concurrent guards cannot all pass against the same ledger total."""
+    global _reserved_estimate
+    amount = max(0.0, float(estimate or 0.0))
+    with _reservation_lock:
+        ok, reason, wait = check(amount + _reserved_estimate)
+        if not ok:
+            raise BudgetPaused(reason, wait)
+        _reserved_estimate += amount
+        _reservation_local.estimate = amount
+    try:
+        yield
+    finally:
+        with _reservation_lock:
+            _reserved_estimate = max(0.0, _reserved_estimate - amount)
+            _reservation_local.estimate = 0.0
 
 
 def estimate_transcription(duration_s: float | None) -> float:
@@ -432,6 +460,14 @@ def estimate_findings(n_chars: int, batch: bool = False) -> float:
     from .contracts import contract
     pin, pout = _price(contract("findings.extract").model)
     return (n_chars / 4 / 1e6 * pin + 0.0006 * pout) * (BATCH_MULT if batch else 1.0)
+
+
+def estimate_model_call(task: str, n_chars: int) -> float:
+    """Conservative admission estimate for a structured call, including its full output allowance."""
+    from .contracts import contract
+    c = contract(task)
+    pin, pout = _price(c.model)
+    return n_chars / 4 / 1e6 * pin + c.max_output_tokens / 1e6 * pout
 
 
 def avoided_this_month() -> float:

@@ -91,7 +91,9 @@ def record_success(operation: str, worker: str, generation: int | None = None) -
     with db.tx() as conn:
         r = conn.execute("SELECT * FROM circuit_breakers WHERE operation=?", (operation,)).fetchone()
         if not r:
-            conn.execute("INSERT INTO circuit_breakers (operation, state, failures, last_success_at, updated_at) VALUES (?,?,0,?,?)", (operation, CLOSED, t, t))
+            # R5: several successful units may complete together before any one has created this operation row.
+            # The row is a cache of healthy state, so duplicate creation is an idempotent success, never a failure.
+            conn.execute("INSERT OR IGNORE INTO circuit_breakers (operation, state, failures, last_success_at, updated_at) VALUES (?,?,0,?,?)", (operation, CLOSED, t, t))
             return False
         if r["state"] == CLOSED:
             conn.execute("UPDATE circuit_breakers SET failures=0, last_success_at=?, updated_at=? WHERE operation=?", (t, t, operation))

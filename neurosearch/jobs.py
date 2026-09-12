@@ -21,6 +21,7 @@ import os
 import re
 import socket
 import threading
+import contextlib
 import time
 from typing import Any
 
@@ -121,6 +122,17 @@ def stage_event(stage: str, state: str = "complete", **payload: Any) -> None:
 
 def current_job() -> tuple[str | None, str | None]:
     return getattr(_current, "job_id", None), getattr(_current, "run_id", None)
+
+
+@contextlib.contextmanager
+def bound_current(job_id: str | None, run_id: str | None):
+    """Bind explicit parent-job identity in a child execution thread."""
+    before = current_job()
+    _current.job_id, _current.run_id = job_id, run_id
+    try:
+        yield
+    finally:
+        _current.job_id, _current.run_id = before
 
 
 # ------------------------------------------------------------------ external providers (Rung G plugs Anthropic Batch in here)
