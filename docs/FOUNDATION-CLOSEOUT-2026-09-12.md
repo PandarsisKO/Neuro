@@ -12,6 +12,11 @@ This is not yet permission to declare that the live system became faster overall
 `/api/health` endpoints hold the required live measures, but this closeout run did not have authenticated API access.
 The live database was not opened, copied or queried to work around that boundary.
 
+Observation attempt: `GET /api/version` returned `0.63.43` with `fake_ai=false`; direct `/api/health` correctly
+returned HTTP 401. The existing Chrome performance tab did not respond to automation, and a new browser tab was
+blocked by the browser client (`ERR_BLOCKED_BY_CLIENT`). This is a client/session limitation, not an application
+health verdict.
+
 ## Correctness and recovery: PASS
 
 | Requirement | Evidence | Result |
