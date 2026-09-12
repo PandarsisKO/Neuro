@@ -14,6 +14,10 @@ comparison to R6 scheduling and Findings reading: redundant material receives a 
 its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
 leave existing order unchanged. Full pytest, Tier 1 and release-check pass. Foundation closeout is active.
 
+GitHub custody: `origin/main` is preserved at `82568d6` (Foundation R7 novelty residual reading and closeout), a
+compact descendant of the prior 0.63.42 checkpoint. It contains the R7 code, tests, release artifacts and active
+handoffs. `VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked files.
+
 ## Shared checkout and coordination
 
 The Mac checkout is `/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO`. Codex works directly on this Mac; historical VM/device-bridge/tar delivery instructions DO NOT apply here. Claude was dormant when Kyle confirmed coordination on 2026-09-11.
