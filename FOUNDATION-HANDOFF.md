@@ -1,6 +1,10 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.38 DELIVERED AND LIVE-VERIFIED; 0.63.39 PREPARED**, 2026-09-11.
+Status: **0.63.40 R4 COMPLETE; R5 ACTIVE**, 2026-09-11.
+
+Current restart point: commit `3af9c37` implements durable, content-addressed Findings windows and Claims groups.
+`/api/version` reports 0.63.40 with `fake_ai=false`. Its consolidated 66-case abuse gate passes. R4 is closed and
+R5 bounded concurrency is active.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
@@ -40,9 +44,9 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
 9. **Job-poll payload size.** List endpoints omit browser-captured `_external_result` page bodies; the individual
    job endpoint retains the complete durable payload.
 10. **Claims cancellation.** `extract_claims` checks after a model response and during backlog assessment.
-11. **Repository hygiene.** Five unreferenced screen recordings (~3 GB) remain locally and are ignored, but they
-   remain in the Git index because the pre-existing `.git/index.lock` prevented the index-only removal. No recording
-   was deleted and history was not rewritten.
+11. **Repository hygiene.** Five unreferenced screen recordings (~3 GB) remain locally and are ignored. No
+   `VIDEOS/**` path is tracked, `.git/index.lock` is absent, and clean GitHub snapshots exclude `VIDEOS/`, `data/`
+   and `_to_delete/`. No recording was deleted.
 12. **Queued cancellation cleanup.** A cancellation requested before a paused worker can claim a job is finalized as
     terminal `cancelled`; it cannot remain indefinitely in user-facing `cancelling` state.
 
@@ -54,10 +58,18 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
   collect 30 days and audit consumers before admitting an evidence-preserving rollup/archive.
 - `_to_delete/` remains untouched. It is 432 MB and includes database journals that must never be opened. Move it
   as a recoverable unit only after a separate cleanup decision. The empty `_scratch/` can be removed on delivery.
-- No live provider evaluation, product semantics rewrite, R9 model adoption, R4/R5 work-unit/concurrency design,
-  commit, tag or release has occurred.
+- No live provider evaluation, product semantics rewrite, R9 model adoption or R5 concurrency implementation has
+  occurred. R4 is committed and deterministically validated; its abuse-gate closeout is still active.
 
 ## Validation evidence
+
+- 0.63.40 R4 candidate: `work_units` stores each exact Findings window or Claims group before parent
+  materialization. Keys cover request text, model contract, prompt/schema/source/brief/facts revisions, depth and
+  execution policy. Exact concurrent duplicates serialize by key; incompatible revisions cannot materialize as
+  current. Focused R4/Findings/Claims validation reached **57 passed**; the affected broad subset reached
+  **227 passed**. Full pytest: **1,298 passed, 1 existing Starlette deprecation warning in 165.06 seconds**. Tier 1
+  passed with frozen totals. Commit-bound release-check passed in **6.4 seconds** with artifact
+  `evals/release/release-check-0.63.40-3af9c37-20260911-191914.json`.
 
 - 0.63.38 test-isolation milestone: the harness selects the cloud-shaped adapter before imports, so the live `.env` cannot launch the real Claude CLI from API-mocked tests. The final full native suite is **1,284 passed, 1 dependency deprecation warning in 141.16 seconds**. `test_ask_tool_loop` is self-contained and passes in isolation.
 - 0.63.38 replay gate: caption/metadata jobs, browser capture, session ingest, collection review, and candidate actions are covered against repeated delivery. The post-change full suite is **1,285 passed**; the combined Foundation/replay subset is **46 passed in 3.88 seconds**. Python, package, and UI versions all report 0.63.38; `git diff --check` is clean.
@@ -118,10 +130,9 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-Next: deliver and live-verify 0.63.39, record Phase 1/2 closed, then collect R8's immediate live statistics, memory,
-query-plan and cold/warm evidence. Begin the 30-day job-event sample without freezing unrelated measurement work.
-Then follow R9 → R4 → recovery abuse gate → R5 → concurrency gate → R6 → R7 → formal closeout → Transcript
-Intelligence. `PRODUCT-SCHEDULER.md` is authoritative; parked mission files are not assignments.
+Next: implement R5, pass its concurrency/attribution gate, then follow R6 → R7 → formal
+closeout → Transcript Intelligence. R8's 30-day retention sample continues without blocking this ladder. R9 is
+preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
 bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable

@@ -70,6 +70,17 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.63.40 — R4 durable work units (candidate).** Findings windows and Claims groups now persist their structured
+provider result before parent artifacts materialize. A content-addressed key includes the exact request, model
+contract, prompt/schema/source/brief/facts revisions, depth and execution policy. Retries therefore purchase only
+missing compatible units; cancellation or a crash after a paid response retains that unit while leaving the parent
+incomplete. Source or brief changes fence stale materialization. Exact concurrent duplicates share one computation
+through a keyed in-process lock. The additive `work_units` table is the durable seam; external batch ownership stays
+with `batch_items`. Focused validation is **57 passed**, affected validation **227 passed**, and full pytest
+**1,298 passed with one existing deprecation warning**. Tier 1 passes unchanged. Commit-bound release-check artifact:
+`evals/release/release-check-0.63.40-3af9c37-20260911-191914.json`. The consolidated new-interactive plus established
+indestructible recovery suite passes **66 tests in 15.27 seconds**. R4 is closed and R5 is admitted.
+
 **0.63.39 — Phase 1/2 closeout (observed live).** Read-only Health, Usage, backlog and staleness
 paths were still calling `claude_code.health(wait=False)`. Although those requests returned immediately, a cold or
 expired cache launched a Claude CLI probe in the background and spent subscription tokens merely because a status

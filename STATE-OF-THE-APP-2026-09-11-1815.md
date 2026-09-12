@@ -5,7 +5,8 @@ implementation and delivery evidence is in FOUNDATION-HANDOFF.md.
 
 ## Current status and priority
 
-Live baseline: **0.63.39**, observed through `/api/version` after watcher reload; the prior 0.63.38 restart was verified at 15:28 PT. Version **0.63.39 is observed live**; authenticated behavioral verification remains bounded. It closes
+Live baseline: **0.63.40**, observed through `/api/version` with `fake_ai=false`. Commit `3af9c37` adds R4 durable
+Findings windows and Claims groups. Full pytest, Tier 1, a commit-bound release-check and the 66-case R4 abuse gate pass. It closes
 the Phase 1/2 gaps found during reconciliation: read-only surfaces no longer start hidden Claude CLI probes, tests
 cannot inherit experimental flags from the developer `.env`, and the native killed-worker gate waits for the
 provider invocation to be durably in flight before terminating it.
@@ -52,19 +53,18 @@ Consult FOUNDATION-HANDOFF.md for actual test results and whether these changes 
 
 1. Historical outcome_unknown attribution is NOT repaired or fully explained. HARDENING's 62 local unknown rows and lease-expiry hypothesis remain evidence to investigate. The available server log has no lost-lease/heartbeat-failure/recovery messages establishing that cause. Do not relabel unknown results as completed, widen sweeps, or repurchase work to hide the issue.
 2. Terminal/orphan invocation cleanup and scheduled WAL checkpointing ALREADY exist. R8 indexes/pragmas/statistics are implemented from copied-backup measurements; the first 16:28→17:28 backup pair passed integrity with `sqlite_stat1` present and no file/event growth. Live memory/query-plan observations and the evidence-preserving job-event retention decision remain. No second reaper is needed.
-3. General durable interactive work units (R4), their interruption/compatibility abuse gate, bounded per-unit concurrency (R5) and its gate are unfinished. Job deduplication is not proof that completed windows survive an incomplete parent. Stored partial external batch results are not a completed source.
+3. General durable interactive work units (R4) and their consolidated interruption/compatibility abuse gate are
+   complete. Bounded per-unit concurrency (R5) and its attribution gate are active.
 4. R9 local-runtime/embedding measurements on the M3 Max have not been run. No new model, store, framework or embedding threshold was adopted.
-5. The Phase 1/2 cross-cutting suite is now complete in the prepared 0.63.39 candidate; delivery and one bounded live
-   verification remain before declaring the phases closed. Post-change R8 measurements and formal Foundation
-   Performance + Stability closeout remain required.
+5. Phases 1/2 and R8's immediate evidence are complete. R8 retention remains observational. Formal Foundation
+   Performance + Stability closeout remains required.
 6. Consolidated stale/risky-content review, phrase-aware retrieval ("quality of earnings"), and additional product ideas remain parked. Active evidence/citation behavior was not changed in this candidate.
 
 ## Safest next step
 
-Deliver and live-verify the bounded 0.63.39 candidate, then mark Phases 1–2 closed. Complete R8's immediate live
-statistics, memory/query-plan and cold/warm evidence and begin the 30-day job-event sample. The retention decision
-waits for the sample; passive collection does not block R9. Continue R9 → R4 → recovery abuse gate → R5 → concurrency
-gate → R6 → R7 → formal closeout → Transcript Intelligence.
+Implement R5 and pass its concurrency gate. Then continue R6 → R7 → formal closeout →
+Transcript Intelligence. R9 remains open pending a supported local runtime and weights; its external prerequisite
+does not stop the software ladder.
 
 ## Document map
 

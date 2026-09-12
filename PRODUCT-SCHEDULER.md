@@ -4,8 +4,9 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Foundation Phase 0 reconciliation and Phase 1/2 closeout. Version 0.63.39 is observed live through `/api/version`; authenticated behavioral verification remains bounded. It closes the request-path and test-isolation gaps: ordinary Health, Usage, backlog and staleness reads do not launch a hidden Claude CLI probe, and the native killed-worker gate waits for a durably in-flight invocation. Execution
-and validation evidence: `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`; delivery state: `FOUNDATION-HANDOFF.md`.
+Foundation R5 bounded concurrency. Version 0.63.40 is observed through `/api/version` with `fake_ai=false`;
+commit `3af9c37` implements R4 durable work units. Full pytest, Tier 1, commit-bound release-check and the consolidated
+66-case R4 abuse gate pass. R5 is admitted; preserve explicit job/run/policy attribution in every child call.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -13,11 +14,9 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Deliver and live-verify the bounded 0.63.39 Phase 1/2 candidate, then record Phase 1/2 closed.
-2. Finish R8's immediate evidence record: live statistics, memory/query-plan observations and cold-versus-warm
-   findings-quality cost. Start the 30-day job-event sample; its retention decision continues in parallel and does
-   not freeze unrelated measurement work.
-3. Speed R9, then Speed R4 and its mandatory recovery abuse gate. Each remains a separate admission and release.
+1. Implement Speed R5 bounded concurrency.
+2. Pass its mandatory concurrency/attribution/cancellation gate.
+3. Speed R6, then R7, each with its own measured release.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
@@ -41,7 +40,9 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 - 0.63.35 local probe/model/timeout fixes: released historical baseline.
 - Historical mission archival at f345726: completed.
 
-0.63.36, 0.63.37 and 0.63.38 are DONE and live-verified. 0.63.39 is observed live through `/api/version`; release-check and full-suite evidence are recorded, while authenticated behavioral verification remains bounded.
+0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
+blocking the ladder. R9 preflight is complete and the benchmark is blocked on a supported local runtime and weights.
+R4 implementation and its 66-case abuse gate are complete in 0.63.40.
 
 ## AUDIT ADDITIONS — 2026-09-11
 
@@ -49,21 +50,19 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
 
 1. **Graceful shutdown gate — complete 2026-09-11.** Clean live restart and native SIGTERM-during-provider recovery are covered. The worker fence remains intact; interrupted invocation uncertainty is recorded as `outcome_unknown`; durable output is not duplicated. Evidence: `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`.
 2. **Mutation replay/idempotency gate — complete 2026-09-11.** Queue, capture, session-ingest, collection, and candidate transitions were inventoried and covered; missing caption/metadata natural keys, capture replay, and session cookie-file reuse were fixed. Evidence: `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`.
-3. **Request-path purity and test isolation — prepared in 0.63.39.** Read-only status/polling paths use a cached
+3. **Request-path purity and test isolation — complete in 0.63.39.** Read-only status/polling paths use a cached
    health snapshot and never start a Claude CLI probe. Explicit Re-check and actual local work remain the only probe
    initiators. Tests pin every experimental feature to its production-safe default before imports. The native
    restart gate kills only after an invocation is durably in flight. Combined Phase 1/2 suite: **115 passed**.
 4. **Cold derived-state budget.** The first findings-quality scan can still hit the eight-million comparison budget and emit a partial-review warning. Keep the narrowed invalidation cache; measure cold-start cost and admit an indexed/blocking or persisted derived graph only if the agreed latency and memory trigger is crossed.
-5. **Evidence and repository hygiene.** The stale `.git/index.lock` has no open file owner, but remains untouched.
-   The five recordings remain tracked and on disk; earlier text claiming they were removed from the index was wrong.
-   Resolve the lock through the approved Git-recovery step before an index-only removal. Review the ignored database
-   backup and `_to_delete/` journals separately. Bind the next release artifact to a commit once Git is usable.
+5. **Evidence and repository hygiene.** `.git/index.lock` is absent. The recordings remain on local disk but no
+   `VIDEOS/**` path is tracked. Clean GitHub snapshots exclude `VIDEOS/`, `data/` and `_to_delete/`.
 6. **R8 evidence checkpoint — observed 2026-09-11 17:28 PT.** Copied verified backups at 16:28 and 17:28 both pass
    integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
    and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
-The next execution order is 0.63.39 delivery/verification → immediate R8 evidence → R9 → R4. The 30-day job-event
-sample continues alongside those measurement/design stages; no deletion or retention cutoff is admitted before it
+The next execution order is R5 → concurrency gate → R6 → R7 → Foundation closeout.
+The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 
 R9 admission preflight: runtime discovery is clean but no Ollama/llama.cpp executable is installed; benchmark is awaiting that external prerequisite. See docs/R9-ADMISSION-2026-09-11.md.

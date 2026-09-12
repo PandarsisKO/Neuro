@@ -9,8 +9,9 @@
 
 The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
 
-Current execution state: 0.63.39 is observed live through `/api/version`; authenticated behavioral verification remains bounded. Its bounded changes remove hidden Claude CLI probes from read-only surfaces, isolate
-tests from experimental `.env` flags, and make the native killed-worker gate wait for durable in-flight evidence.
+Current execution state: 0.63.40 is observed through `/api/version` with `fake_ai=false`. Commit `3af9c37` implements
+R4 durable Findings windows and Claims groups; its full suite, Tier 1, bound release-check and consolidated 66-case
+abuse gate pass. R4 is closed and R5 bounded concurrency is active.
 
 ## Shared checkout and coordination
 
@@ -18,10 +19,8 @@ The Mac checkout is `/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO`. Codex
 
 Before editing, inspect current Git state and the Foundation handoff. Record the base commit, isolation path and touched files. Before delivery, compare against that base; preserve other changes and reconcile overlap instead of overwriting it. Never reset, broadly stage, remove Git locks, or delete files as a delivery shortcut. Do not assume a clean tree solely because an older handoff says so.
 
-Current custody note: `.git/index.lock` was present before the 0.63.37 recording cleanup was staged. Do not remove it
-blindly; first establish whether a Git process owns it, then follow the repository's approved recovery procedure.
-On the 2026-09-11 Phase 0 reconciliation, `lsof .git/index.lock` reported no owner. The lock remains untouched, and
-the five `VIDEOS/` recordings remain tracked and present on disk. Any contrary earlier sentence is superseded.
+Current custody note: `.git/index.lock` is absent and `git ls-files 'VIDEOS/**'` returns zero files. The recordings
+remain on local disk and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/` to a snapshot.
 
 ## Protect the live app
 

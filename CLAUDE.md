@@ -4,7 +4,8 @@ Python 3.11+ / FastAPI / SQLite FTS5 + numpy vectors / vanilla JavaScript UI / M
 
 Read the newest timestamped State-of-the-App first, then HANDOFF.md and the active Foundation handoff. `DEVELOPMENT-OPERATING-SYSTEM.md` records Kyle's governing priorities. `PRODUCT-SCHEDULER.md` is the product queue; `SCHEDULER.md` is a parked runtime design. Historical checklists are not assignments.
 
-Runtime: 0.63.38 live and verified. Version 0.63.39 is a prepared Phase 1/2 closeout candidate, not delivered.
+Runtime: 0.63.40 is observed through `/api/version` with `fake_ai=false`. Its R4 candidate is committed at
+`3af9c37` and release-checked; authenticated product behavior has not been re-exercised for this candidate.
 Delivery and validation status live in FOUNDATION-HANDOFF.md; `PRODUCT-SCHEDULER.md` owns the current execution order.
 
 ## Standing rules (never break these)
@@ -80,4 +81,7 @@ Consult HARDENING.md by search before touching frozen measurements or rejected h
 
 Reuse the existing invocation ledger, run ids, leases/heartbeats, provider policies, budgets, job queue and batch_items. Terminal/orphan invocation cleanup and scheduled WAL checkpointing already exist; R8 must measure their gaps rather than rebuild them.
 
-Durable per-window work reuse (R4), its abuse gate, bounded concurrency (R5), its concurrency gate, and R9 local-model measurements remain separate admitted rungs. Neither job deduplication nor stored external batch results proves completed interactive work survives an interrupted parent.
+Durable per-window/group work reuse (R4) is implemented in 0.63.40 and its consolidated 66-case abuse gate passes.
+Bounded concurrency (R5) and its concurrency gate are active. R9 local-model measurements remain a separate admitted
+rung. R9 is preflighted but cannot run
+until a supported local runtime and weights exist on this Mac.
