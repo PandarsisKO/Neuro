@@ -1,6 +1,6 @@
 # Vestigial and friction inventory
 
-Updated 2026-09-11 during Foundation stabilization. This is a bounded inventory, not a new
+Updated 2026-09-12 during pre-T1 gate verification. This is a bounded inventory, not a new
 parallel roadmap. `PRODUCT-SCHEDULER.md` decides admission. “Vestigial” means the current
 purpose is unclear, duplicated, historically superseded, or expensive to maintain; it does
 not mean safe to delete without evidence.
@@ -10,9 +10,9 @@ not mean safe to delete without evidence.
 | Surface | Evidence | Cost/risk | Disposition |
 |---|---|---|---|
 | `_to_delete/` | 432 MB; old update tarballs, Git lock copies, database journals, drafts, samples and stray document copies | Bloats scans/backups and makes artifacts look current | Move as one recoverable unit outside the repo, verify Git state, then delete only after Kyle is satisfied. Never inspect/open database journals. |
-| `Claude outputs/` | 120 KB of older mission snapshots; comparison found their current/archive counterparts contain later corrections or status | A collaborator can read the snapshot as the current mission | Completed in candidate: exact files moved to `docs/archive/claude-outputs-snapshot/` with a historical banner; duplicate root folder removed. |
-| `_scratch/` | Empty | Creates a false place for durable state | Remove with candidate delivery; use system temporary directories for scratch work. |
-| `VIDEOS/` Git entries | Five September 3 screen recordings, about 3.0 GB total; no code or documentation references them by path | Binary recordings dominate clone/fetch/backup size and Git cannot diff them | 0.63.37 ignores the directory and preserves the local recordings. Index removal is pending because a pre-existing `.git/index.lock` must be resolved safely first; no recording or Git history is deleted. |
+| `Claude outputs/` | The root folder now contains an untracked `T1-DESIGN-AUDIT-2026-09-12.md` handoff artifact; older snapshots are archived | A collaborator can read an unreviewed draft as current product truth, or a broad stage can publish it accidentally | Preserve the current untracked audit until the Claude design set is reviewed as one coherent unit. The reconciled, tracked copy is `docs/T1-DESIGN-AUDIT-2026-09-12.md`; archive or remove the root copy only after explicit comparison. |
+| `_scratch/` | No `_scratch/` directory exists in the current checkout | A recreated scratch directory could become an untracked second source of durable state | No action required; use system temporary directories for scratch work. |
+| `VIDEOS/` local recordings | Five September 3 screen recordings, about 3.0 GB total; no code or documentation references them by path; `git ls-files VIDEOS` and the compact GitHub tree both return zero entries | Binary recordings still expand local scans and backups, while Git no longer carries them | Index removal and ignore policy are complete. Preserve the local recordings for now; delete or move them only through the recoverable cleanup decision with owner approval. |
 
 ## Archive or label, not blindly delete
 
