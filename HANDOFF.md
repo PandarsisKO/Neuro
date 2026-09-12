@@ -16,7 +16,8 @@ comparison to R6 scheduling and Findings reading: redundant material receives a 
 its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
 leave existing order unchanged. Full pytest, Tier 1 and release-check pass. The authenticated closeout observation
 also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. Start
-Transcript Intelligence with a fresh, version-stamped baseline; see `PRODUCT-SCHEDULER.md`.
+Transcript Intelligence with a fresh, version-stamped baseline after R9 validates an embedding runtime; see
+`PRODUCT-SCHEDULER.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
 GitHub custody: `origin/main` is preserved at `82568d6` (Foundation R7 novelty residual reading and closeout), a
 compact descendant of the prior 0.63.42 checkpoint. It contains the R7 code, tests, release artifacts and active

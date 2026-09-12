@@ -162,9 +162,10 @@ The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Its a
 observation is complete: the refreshed console ran `0.63.43`, the 42-gate release check passed, integrity and backup
 were healthy, and the live queue was `0 queued · 0 running`. Interactive endpoint p90 was at most 0.58s in the
 captured sample. Historical provider-batch and queue waits remain explicitly recorded as old/provider-bound evidence,
-not as an R7 regression. Transcript Intelligence is now admitted. R8's 30-day retention sample continues without
-blocking this ladder. R9 is preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is
-authoritative.
+not as an R7 regression. Transcript Intelligence is now admitted, but its T1 implementation remains correctly
+blocked until R9 validates a supported local runtime and weights; the complete handoff is
+`docs/T1-ADMISSION-2026-09-12.md`. R8's 30-day retention sample continues without blocking this ladder.
+`PRODUCT-SCHEDULER.md` is authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
 bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable
