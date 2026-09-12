@@ -14,6 +14,22 @@ The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 befo
 | R9(c) findings/claims extraction | **Open** | The declared 70B Q4 and MoE candidates still need one real 15k-token window, separately reporting prefill and generation, against the 10.9-second API gate. |
 | Foundation R4, R4 recovery gate, R5, R5 concurrency gate, R6, R7, formal closeout | Complete | 0.63.40–0.63.43 and `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. |
 
+## Phase-by-phase confirmation
+
+| Roadmap phase | Status | Checkpoint |
+|---|---|---|
+| Phase 0 — documentation and repository hygiene | Complete | Active mission, scheduler, handoff, protected-path policy, and this audit agree; GitHub snapshot excludes `VIDEOS/`, `data/`, and `_to_delete/`. |
+| Phase 1 — measurement environment | Complete | R8 copied-backup measurement and the loopback Ollama R9 environment are recorded; live `data/neurosearch.db` was not opened. |
+| Phase 2 — systemic regression gates | Complete | 0.63.39 request-path purity, test isolation, recovery and release checks. |
+| Phase 3 — R8 storage hygiene | Immediate gate complete; retention deferred | Statistics, WAL policy and indexes are shipped. The 30-day `job_events` observation has a dated revisit trigger and no destructive cutoff. |
+| Phase 4 — R9 local runtime | R9(a)/(b) complete; R9(c) open | `bge-m3` selected for a later full-space migration; Llama 3.1 8B adopted for short classification; long-window extraction is still measured. |
+| Phase 5 — R4 durable work units | Complete | 0.63.40 and its 66-case recovery abuse gate. |
+| Phase 6 — R4 recovery gate | Complete | Graceful shutdown and mutation replay/idempotency evidence in `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`. |
+| Phase 7 — R5 bounded concurrency | Complete | 0.63.41 deterministic concurrency gate. |
+| Phase 8 — R5 concurrency regression gate | Complete | Dedicated gate passed; no reopened scheduler implementation. |
+| Phase 9 — R6 then R7 | Complete | 0.63.42 Fast/Warm admission, 0.63.43 novelty/residual gate, and authenticated live closeout. |
+| Phase 10 — Foundation hardening closeout | Complete | `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`; queue, integrity, backup, release check, and interactive p90 evidence recorded. |
+
 ## Consequence
 
 T1 must remain at design/admission preparation until R9(c)'s remaining benchmark arm is complete or deliberately deferred
