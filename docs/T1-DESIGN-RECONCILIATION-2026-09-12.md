@@ -23,7 +23,9 @@ first measurement and must not be introduced by a silent provider switch.
 ## Consequences for implementation
 
 - T1 derived-vector metadata records provider, model, dimension, preparation/version tag, content hash and timestamp.
-- A vector is comparable only when its complete space identity matches the chunk space used by the report.
+- A vector is comparable only when its complete space identity matches the chunk space used by the report. Because legacy
+  chunk blobs have no per-row model field, a T1 corpus-space attestation must verify the configured production model and
+  observed dimensions before those chunks form that baseline.
 - Missing, stale, corrupt or wrong-space vectors are excluded from similarity, counted in a visible report bucket, and never
   make a source or chunk unreachable.
 - The first report measures semantic similarity and locator coverage separately, with project-relative distributions. It
