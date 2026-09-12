@@ -4,9 +4,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Foundation Phase 0 reconciliation and Phase 1/2 closeout. Version 0.63.38 is live; 0.63.39 is the prepared
-request-path/test-isolation candidate. It makes ordinary Health, Usage, backlog and staleness reads must not launch a
-hidden Claude CLI probe, and makes the native killed-worker gate wait for a durably in-flight invocation. Execution
+Foundation Phase 0 reconciliation and Phase 1/2 closeout. Version 0.63.39 is observed live through `/api/version`; authenticated behavioral verification remains bounded. It closes the request-path and test-isolation gaps: ordinary Health, Usage, backlog and staleness reads do not launch a hidden Claude CLI probe, and the native killed-worker gate waits for a durably in-flight invocation. Execution
 and validation evidence: `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`; delivery state: `FOUNDATION-HANDOFF.md`.
 
 ## SUSPENDED — RESUME FIRST
@@ -43,7 +41,7 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 - 0.63.35 local probe/model/timeout fixes: released historical baseline.
 - Historical mission archival at f345726: completed.
 
-0.63.36, 0.63.37 and 0.63.38 are DONE and live-verified. The 0.63.39 candidate is prepared, not delivered.
+0.63.36, 0.63.37 and 0.63.38 are DONE and live-verified. 0.63.39 is observed live through `/api/version`; release-check and full-suite evidence are recorded, while authenticated behavioral verification remains bounded.
 
 ## AUDIT ADDITIONS — 2026-09-11
 

@@ -5,7 +5,7 @@ implementation and delivery evidence is in FOUNDATION-HANDOFF.md.
 
 ## Current status and priority
 
-Live baseline: **0.63.38**, restart-verified at 15:28 PT. Version **0.63.39 is prepared, not delivered**. It closes
+Live baseline: **0.63.39**, observed through `/api/version` after watcher reload; the prior 0.63.38 restart was verified at 15:28 PT. Version **0.63.39 is observed live**; authenticated behavioral verification remains bounded. It closes
 the Phase 1/2 gaps found during reconciliation: read-only surfaces no longer start hidden Claude CLI probes, tests
 cannot inherit experimental flags from the developer `.env`, and the native killed-worker gate waits for the
 provider invocation to be durably in flight before terminating it.

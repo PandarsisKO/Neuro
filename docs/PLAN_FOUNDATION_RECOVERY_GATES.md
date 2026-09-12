@@ -1,6 +1,6 @@
 # Foundation recovery gates
 
-Status: Gates 1–2 complete. Phase 1/2 closeout fixes are prepared in 0.63.39; 0.63.38 remains live.
+Status: Gates 1–2 complete. Version 0.63.39 is observed live through `/api/version`; authenticated behavioral verification remains bounded.
 
 ## Gate 1 — graceful shutdown during provider work — COMPLETE 2026-09-11
 
@@ -76,8 +76,7 @@ initial observation, not the 30-day retention decision.
 Validation: Foundation lifecycle, local transport, frontend integrity, fallback/release and crash/recovery suites:
 **115 passed in 37.59 seconds**. Full native suite: **1,287 passed, 1 existing Starlette deprecation warning in
 140.53 seconds**. Deterministic release-check: **PASS in 5.7 seconds**, artifact
-`evals/release/release-check-0.63.39-f345726-20260911-162905.json`. Candidate is prepared, not delivered or
-live-verified.
+`evals/release/release-check-0.63.39-f345726-20260911-162905.json`. Version is observed live; authenticated behavioral verification remains bounded.
 
 ## Validation note — 2026-09-11
 
