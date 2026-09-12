@@ -72,3 +72,11 @@ def test_t1_job_writes_provider_versioned_vector(t1_db, monkeypatch):
     assert result["dimensions"] == 2
     assert db.load_versioned_derived_embeddings("project_notes", project_id, provider="openai",
                                                 model="text-embedding-3-small", version="t1-v1", dimensions=2)
+
+
+def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 coverage", "test")["id"]
+    report = t1.coverage_report(project_id)
+    assert report["status"] == "measurement_pending"
+    assert report["semantic_distributions"] is None

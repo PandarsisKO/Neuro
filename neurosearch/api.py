@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
-from . import bootstrap, cache, db, ingest, jobs, perf, qa
+from . import bootstrap, cache, db, ingest, jobs, perf, qa, t1
 from .chunking import fmt_ts
 from .config import settings
 from .mcp_server import mcp
@@ -3003,6 +3003,14 @@ def api_list_notes(project_id: str, status: str = "reserve", source_id: str | No
     if source_id:
         rows = [r for r in rows if r.get("source_id") == source_id]
     return {"total": len(rows), "notes": rows[:limit]}
+
+
+@app.get("/api/projects/{project_id}/transcript/coverage", dependencies=[Depends(require_auth)])
+def api_t1_coverage(project_id: str) -> dict[str, Any]:
+    """T1 read-only coverage measurement; never queues work or invents semantic coverage."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return t1.coverage_report(project_id)
 
 
 @app.delete("/api/notes/{note_id}", dependencies=[Depends(require_auth)])
