@@ -18,9 +18,9 @@ and rejected Qwen3 8B, Qwen3 14B, and gpt-oss-20b Q4 on the measured speed and/o
 15k-token findings/claims benchmark is explicitly deferred after the external 70B pull stalled; its numeric revisit
 trigger is recorded in the pre-T1 audit. R8 retention is deliberately deferred to its non-destructive
 observation trigger after 2026-10-11 17:28 PT and does not block T1.
-The first bounded schema slice is now underway: additive metadata columns and typed fail-open read/write/invalidation
-helpers have been added to both derived-object tables, with focused coverage in `tests/test_t1_vector_metadata.py`.
-No live database was opened or re-embedded.
+The first bounded schema slice is now underway: additive metadata columns, typed fail-open read/write/invalidation
+helpers, and a low-lane durable backfill adapter have been added to both derived-object tables, with focused coverage
+in `tests/test_t1_vector_metadata.py`. No live database was opened or re-embedded.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
