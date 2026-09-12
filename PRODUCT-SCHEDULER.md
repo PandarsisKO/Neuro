@@ -1,10 +1,10 @@
 # Neuro Search product scheduler
 
-Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is distinct from the parked runtime scheduler design in SCHEDULER.md.
+Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-12. This is distinct from the parked runtime scheduler design in SCHEDULER.md.
 
 ## NOW — one active effort
 
-Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions), but R9(b)/(c) remain unmeasured. Reconcile the full governing R9 scorecard and the intentionally non-blocking R8 retention observation before beginning T1 implementation; see `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark and the intentionally non-blocking R8 retention observation remain open; reconcile them before beginning T1 implementation. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -12,17 +12,18 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Complete R9(b)/(c), or record owner-approved deferrals with the mission's numeric revisit triggers; see
+1. Complete R9(c), or record an owner-approved deferral with the mission's numeric revisit trigger; see
    `docs/R9-ADMISSION-2026-09-11.md` and `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 2. Continue the non-blocking R8 retention observation; no retention cutoff is admitted yet.
-3. Only then begin T1's versioned-vector measurement slice using R9(a)'s selected `bge-m3`.
+3. Only then begin T1's versioned-vector measurement slice in the existing production `text-embedding-3-small` space;
+   `bge-m3` is reserved for a later full-space migration gate. See `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
 
 ## PARKED
 
-- Transcript Intelligence: active program after Foundation closeout. T1 design is ready, but implementation awaits completion or explicit deferral of R9(b)/(c); its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
+- Transcript Intelligence: active program after Foundation closeout. T1 design is ready, but implementation awaits completion or explicit deferral of R9(c); its admission design and shared-space decision are at `docs/T1-ADMISSION-2026-09-12.md` and `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`. T4 reuses R4/R5.
 - External AI access and multi-user/sharing: permissions boundary unresolved; no implementation admission.
 - Project Inbox, cloud/infrastructure expansion, new acquisition classes, additional Bootstrap, Research/Discover/Planner expansion.
 - Consolidated stale/risky Findings review and unrelated Findings redesign: real usability pain; revisit at Foundation admission checkpoint unless it blocks current work.
@@ -40,7 +41,7 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 - Historical mission archival at f345726: completed.
 
 0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
-blocking the ladder. R9(a) embedding decision is complete: `bge-m3` is selected from an isolated frozen-fixture scorecard. R9(b)/(c) remain separate open measurements and do not block T1.
+blocking the ladder. R9(a) embedding decision is complete: `bge-m3` is selected from an isolated frozen-fixture scorecard. R9(b) is complete with Llama 3.1 8B adopted for short classification and all other candidates rejected. R9(c) remains the only open R9 measurement.
 R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
 0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42. R7 and its novelty/residual gate are complete
 in 0.63.43. The authenticated Foundation closeout observation is complete: current queue was empty, integrity and
@@ -67,4 +68,4 @@ The next execution order is Transcript Intelligence baseline → bounded admissi
 The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 
-R9(a) admission: `bge-m3` is selected after passing frozen latency, recall and MRR gates; `nomic-embed-text` is rejected on MRR. R9(b)/(c) remain open; see docs/R9-ADMISSION-2026-09-11.md.
+R9(a) admission: `bge-m3` is selected after passing frozen latency, recall and MRR gates; `nomic-embed-text` is rejected on MRR. R9(b) is complete: Llama 3.1 8B is adopted for short classification, while Qwen3 8B, Qwen3 14B and gpt-oss-20b are rejected on the measured gate. R9(c) remains open; see docs/R9-ADMISSION-2026-09-11.md.

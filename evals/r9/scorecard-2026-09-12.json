@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-12",
+  "runtime": "Ollama 0.33.3 on 127.0.0.1",
+  "fixture": "tests/fixtures/golden/retrieval/ version 1",
+  "r9a": {
+    "nomic-embed-text": {
+      "dimensions": 768,
+      "p50_seconds": 0.013941,
+      "p90_seconds": 0.015224,
+      "recall_at_10": 1.0,
+      "mrr": 0.8087,
+      "decision": "REJECT"
+    },
+    "bge-m3": {
+      "dimensions": 1024,
+      "p50_seconds": 0.034484,
+      "p90_seconds": 0.035912,
+      "recall_at_10": 1.0,
+      "mrr": 0.8898,
+      "decision": "SELECT for later full-space migration"
+    }
+  },
+  "r9b": {
+    "protocol": {
+      "warmups": 3,
+      "samples": 15,
+      "temperature": 0,
+      "num_predict": 256,
+      "validity": "exact enum-conforming class and priority JSON"
+    },
+    "llama3.1:8b": {"p50_seconds": 0.343368, "p90_seconds": 0.371299, "valid_json": 15, "decision": "ADOPT"},
+    "qwen3:8b": {"p50_seconds": 7.206792, "p90_seconds": 9.198209, "valid_json": 0, "decision": "REJECT"},
+    "qwen3:14b": {"p50_seconds": 10.973709, "p90_seconds": 11.726912, "valid_json": 0, "decision": "REJECT"},
+    "gpt-oss:20b": {"p50_seconds": 3.15405, "p90_seconds": 3.307263, "valid_json": 15, "decision": "REJECT"}
+  },
+  "r9c": {
+    "status": "OPEN",
+    "gate": "one real 15000-token window; report prefill and generation separately; total wall clock below 10.9 seconds"
+  }
+}

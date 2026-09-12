@@ -15,10 +15,14 @@ Current execution state: 0.63.43 is release-checked at commit `bf8d595`. R7 adds
 comparison to R6 scheduling and Findings reading: redundant material receives a bounded priority reduction, while
 its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
 leave existing order unchanged. Full pytest, Tier 1 and release-check pass. The authenticated closeout observation
-also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. Start
-Transcript Intelligence T1 first measurement slice using R9(a)'s selected local `bge-m3` embedding system. Its isolated
-fixture result is 34.48 ms p50, recall@10 1.0000 and MRR 0.8898; existing production chunks remain unchanged until
-versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md` and `docs/T1-ADMISSION-2026-09-12.md`.
+also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. Prepare the
+Transcript Intelligence T1 first measurement slice in the existing production `text-embedding-3-small` space for
+derived vectors so it can compare against the already embedded chunks. R9(a)'s selected local `bge-m3` result is 34.48
+ms p50, recall@10 1.0000 and MRR 0.8898; it is reserved for a later full-space migration gate. R9(b) is now complete: Llama 3.1 8B
+clears the short-classification gate and the other declared candidates are rejected. R9(c)'s long-window benchmark and
+the explicitly non-blocking R8 retention observation remain before T1 implementation. Existing production chunks remain
+unchanged until versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md`,
+`docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
 GitHub custody: `origin/main` is preserved at `523a259` (Foundation R7 novelty residual reading and closeout), a
 compact descendant of the prior 0.63.42 checkpoint. It contains the R7 code, tests, release artifacts and active

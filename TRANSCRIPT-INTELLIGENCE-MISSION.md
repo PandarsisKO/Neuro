@@ -90,8 +90,10 @@ between them is itself the interesting result.
 Only the last is refinery fuel. The brief's illustrative morning report is right in shape; the numbers in it will
 come out of this table rather than from the complement of one test.
 
-**The embeddings are already paid for.** Every chunk has one. Nothing in the brief's Tier 1 needs a new model call
-over transcripts — only over the *derived* objects, which have no vectors yet.
+**The embeddings are already paid for.** Every chunk has one. Nothing in the brief's Tier 1 needs a new model call over
+transcripts — only over the *derived* objects, which have no vectors yet. T1's first measurement embeds those derived
+objects in the same current production space as the chunks, so the comparison is mathematically defined. A local model
+that uses a different dimension is a later full-space migration experiment, not a silent second space for T1.
 
 ---
 
@@ -158,8 +160,10 @@ Each rung is independently shippable, gated, and useful on its own. Cost is *inc
 
 ### T1 — Embed the derived objects, then MEASURE semantic coverage ($0.03, low complexity) — **do first**
 `embeddings.py` already batches and prices; `chunks.embedding` shows the storage pattern (a BLOB on the row, not a
-new table). Add a vector to `project_claims` and `project_notes`, embed lazily on write, backfill in a `low`-lane
-job, and compute over the vectors already in memory (the 165 MB matrix loads in 0.10 s warm — SPEED-MISSION §A).
+new table). Add a vector to `project_claims` and `project_notes`, embed lazily on write in the current production
+`text-embedding-3-small` space, backfill in a `low`-lane job, and compute over the vectors already in memory (the 165 MB
+matrix loads in 0.10 s warm — SPEED-MISSION §A). R9's selected `bge-m3` remains a separately gated candidate for a
+future full-space chunk and derived-object migration.
 
 Three constraints from Kyle's review, all of which change the design:
 

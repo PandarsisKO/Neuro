@@ -1346,7 +1346,11 @@ If that cannot be demonstrated, foundation work is not complete.
 
 Transcript Intelligence is the first major product mission after Foundation closes.
 
-T1 uses the embedding system validated by R9.
+T1 uses one embedding space for both existing transcript chunks and newly embedded derived objects. The first T1
+measurement stays in the current production `text-embedding-3-small` space because every chunk is already embedded there
+and T1 must compare chunks with Claims and Findings. R9's selected local `bge-m3` is evidence for a later, separately
+gated full-space migration; it must not be mixed with the existing 1536-dimensional chunk vectors or silently substituted
+inside T1.
 
 Embed canonical active derived knowledge with embedding model/version metadata.
 
