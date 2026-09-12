@@ -577,7 +577,12 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                               "summary_ok": False, "substance_ok": False, **_call_diagnostics(), "error": True})
                 raise
 
-    items = [(i, w) for i, w in enumerate(windows) if i in kept]
+    # R7: embeddings only reorder equivalent work.  The complete kept set is
+    # still read, and durable work-unit keys retain original transcript indexes.
+    from . import novelty
+    residual = novelty.profile(project_id, source_id)
+    ordered_indexes = novelty.order_windows(windows, kept, residual)
+    items = [(i, windows[i]) for i in ordered_indexes]
     for i, _ in items[:1]:
         _say(i / max(1, len(windows)), reading, i)
 
@@ -596,7 +601,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         _run_window, items, max_workers=max_workers, completed=_completed,
         estimate=lambda item: usage.estimate_findings(len(_user(item[0], len(windows), item[1], depth=depth))),
     )
-    results = [(w, res) for w, res, _, _, _, _ in completed_units]
+    # Materialisation stays in source order even when residual windows were read first.
+    results = [(w, res) for _, (w, res, _, _, _, _) in sorted(zip(ordered_indexes, completed_units), key=lambda row: row[0])]
     models = [model for _, _, model, _, _, _ in completed_units]
     routings = [routing for _, _, _, routing, _, _ in completed_units if routing]
     if models:
