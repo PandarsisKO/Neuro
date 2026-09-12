@@ -4,7 +4,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-12. This is
 
 ## NOW — one active effort
 
-Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark and the intentionally non-blocking R8 retention observation remain open; reconcile them before beginning T1 implementation. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark remains open. R8 retention is deliberately deferred to the non-destructive observation trigger after 2026-10-11 17:28 PT and is non-blocking. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -14,7 +14,7 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 1. Complete R9(c), or record an owner-approved deferral with the mission's numeric revisit trigger; see
    `docs/R9-ADMISSION-2026-09-11.md` and `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
-2. Continue the non-blocking R8 retention observation; no retention cutoff is admitted yet.
+2. Continue the deliberately deferred, non-blocking R8 retention observation; revisit after 2026-10-11 17:28 PT and admit no retention cutoff before then.
 3. Only then begin T1's versioned-vector measurement slice in the existing production `text-embedding-3-small` space;
    `bge-m3` is reserved for a later full-space migration gate. See `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
 
@@ -41,7 +41,7 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 - Historical mission archival at f345726: completed.
 
 0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
-blocking the ladder. R9(a) embedding decision is complete: `bge-m3` is selected from an isolated frozen-fixture scorecard. R9(b) is complete with Llama 3.1 8B adopted for short classification and all other candidates rejected. R9(c) remains the only open R9 measurement.
+blocking the ladder. R8 retention is deliberately deferred until after 2026-10-11 17:28 PT with no deletion or cutoff admitted. R9(a) embedding decision is complete: `bge-m3` is selected from an isolated frozen-fixture scorecard. R9(b) is complete with Llama 3.1 8B adopted for short classification and all other candidates rejected. R9(c) remains the only open R9 measurement.
 R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
 0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42. R7 and its novelty/residual gate are complete
 in 0.63.43. The authenticated Foundation closeout observation is complete: current queue was empty, integrity and

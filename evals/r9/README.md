@@ -14,6 +14,8 @@ MODEL=bge-m3 .venv/bin/python evals/r9/retrieval_probe.py > /tmp/r9-bge-retrieva
 for model in llama3.1:8b qwen3:8b qwen3:14b gpt-oss:20b; do
   MODEL="$model" NUM_PREDICT=256 .venv/bin/python evals/r9/classification_probe.py
 done
+.venv/bin/python evals/r9/long_window_probe.py --model llama3.1:70b
+.venv/bin/python evals/r9/long_window_probe.py --model gpt-oss:120b
 ```
 
 The frozen retrieval fixture is `tests/fixtures/golden/retrieval/` (version 1). R9(a) uses three warmups and fifteen
@@ -23,3 +25,8 @@ was discarded because it truncated reasoning-model responses before the JSON obj
 
 The admitted 2026-09-12 scorecard is `scorecard-2026-09-12.json`; the narrative decision and the R9(c) benchmark gate
 are in `docs/R9-ADMISSION-2026-09-11.md`.
+
+The long-window probe uses the real `yt03_deal_walkthrough_long.json` fixture, truncates only at the declared character
+budget (60,000 by default), sets a 32,768-token context and a 256-token output cap, and reports Ollama's actual
+`prompt_eval_count`, `prompt_eval_duration`, `eval_duration`, and `total_duration`. The reported token count is the
+acceptance evidence; adjust `--target-chars` and rerun if a model's tokenizer lands materially away from 15,000 tokens.

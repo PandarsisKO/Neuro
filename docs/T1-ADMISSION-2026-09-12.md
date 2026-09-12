@@ -14,7 +14,8 @@ in `docs/R9-ADMISSION-2026-09-11.md`. T1's first derived-object vectors stay in 
 
 R9(b) is also complete. The fair 256-token-cap classification probe adopted Llama 3.1 8B (343 ms p50, 15/15 valid)
 and rejected Qwen3 8B, Qwen3 14B, and gpt-oss-20b Q4 on the measured speed and/or validity gates. R9(c)'s real
-15k-token findings/claims benchmark remains open, as does the intentionally non-blocking R8 retention observation.
+15k-token findings/claims benchmark remains open. R8 retention is deliberately deferred to its non-destructive
+observation trigger after 2026-10-11 17:28 PT and does not block T1.
 Follow `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` before starting the implementation slice below.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
