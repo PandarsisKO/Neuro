@@ -9,8 +9,7 @@
 
 The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
 
-Current execution state: 0.63.38 is live. Version 0.63.39 is prepared for Phase 1/2 closeout and still requires
-delivery/live verification. Its bounded changes remove hidden Claude CLI probes from read-only surfaces, isolate
+Current execution state: 0.63.39 is observed live through `/api/version`; authenticated behavioral verification remains bounded. Its bounded changes remove hidden Claude CLI probes from read-only surfaces, isolate
 tests from experimental `.env` flags, and make the native killed-worker gate wait for durable in-flight evidence.
 
 ## Shared checkout and coordination
