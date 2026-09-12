@@ -4,9 +4,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Formal Foundation closeout: capture the authenticated live Health/Performance snapshot named in
-`docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Version 0.63.43 is release-checked at `bf8d595`; R7
-project-relative novelty-residual reading and its redundancy, eligibility, decisive-exception and fail-open gate pass.
+R9 local-runtime scorecard: Ollama 0.33.3 is running on loopback against an isolated frozen fixture. `nomic-embed-text` passed the latency and recall gates but failed the MRR floor, so it is rejected; complete the remaining declared candidates before changing production embeddings or admitting T1 code.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -14,7 +12,7 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Complete R9's external local-runtime prerequisite and scorecard before writing T1 code; see
+1. Complete R9's active local-runtime scorecard before writing T1 code; see
    `docs/R9-ADMISSION-2026-09-11.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 2. On an R9 pass, begin T1 with a fresh, version-stamped semantic-coverage cohort and keep its quality, latency and
    cost separate from historical provider-batch and queue wait.
@@ -25,8 +23,7 @@ closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but req
 
 ## PARKED
 
-- Transcript Intelligence: active program after Foundation closeout. T1 implementation is blocked on R9's external
-  runtime/weights prerequisite; its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
+- Transcript Intelligence: active program after Foundation closeout. T1 implementation is blocked on R9's embedding decision; its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
 - External AI access and multi-user/sharing: permissions boundary unresolved; no implementation admission.
 - Project Inbox, cloud/infrastructure expansion, new acquisition classes, additional Bootstrap, Research/Discover/Planner expansion.
 - Consolidated stale/risky Findings review and unrelated Findings redesign: real usability pain; revisit at Foundation admission checkpoint unless it blocks current work.
@@ -44,7 +41,7 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 - Historical mission archival at f345726: completed.
 
 0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
-blocking the ladder. R9 preflight is complete and the benchmark is blocked on a supported local runtime and weights.
+blocking the ladder. R9 preflight is superseded: the local runtime is installed and the scorecard is actively measuring candidates in an isolated fixture.
 R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
 0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42. R7 and its novelty/residual gate are complete
 in 0.63.43. The authenticated Foundation closeout observation is complete: current queue was empty, integrity and
@@ -71,4 +68,4 @@ The next execution order is Transcript Intelligence baseline → bounded admissi
 The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 
-R9 admission preflight: runtime discovery is clean but no Ollama/llama.cpp executable is installed; benchmark is awaiting that external prerequisite. See docs/R9-ADMISSION-2026-09-11.md.
+R9 admission: local Ollama is installed and the benchmark is active. `nomic-embed-text` is rejected on frozen MRR despite passing latency; see docs/R9-ADMISSION-2026-09-11.md.

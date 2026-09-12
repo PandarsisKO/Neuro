@@ -7,10 +7,9 @@ the active product program. Its first rung, T1, is intentionally blocked by the 
 `DEVELOPMENT-OPERATING-SYSTEM.md` §35 requires T1 to use the embedding system validated by R9, and
 `PRODUCT-SCHEDULER.md` records the same dependency.
 
-R9 preflight remains unchanged: no `ollama`, `llama-cli`, or `llama-server` executable is installed or discoverable
-on this Mac, and no supported local-model weights are present. No runtime was installed, no model was downloaded, and
-the live database was not opened or queried. The external prerequisite is documented in
-`docs/R9-ADMISSION-2026-09-11.md`.
+R9 is now actively measured in an isolated fixture: Ollama 0.33.3 runs on loopback and the first candidate,
+`nomic-embed-text`, passed latency but failed the frozen MRR floor. The live database was not opened, queried,
+changed, or re-embedded. T1 still awaits R9's validated embedding decision, recorded in `docs/R9-ADMISSION-2026-09-11.md`.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
