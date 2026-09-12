@@ -801,6 +801,27 @@ def extraction_hash(project: dict[str, Any], cands: list[dict[str, Any]]) -> str
                                       "ids": sorted(c["id"] for c in cands), "texts": [c["text"] for c in cands], "revs": revs}, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def extraction_unit_key(project: dict[str, Any], user: str) -> str:
+    """Content identity for the exact Claims-group request, including routing and test execution controls."""
+    import os
+    from . import providers
+    from .contracts import contract
+    c = contract("claims.extract")
+    fake_controls = sorted((k, v) for k, v in os.environ.items() if providers.fake() and k.startswith("NEUROSEARCH_FAKE_AI_"))
+    return db._sha("work-unit-v1", {
+        "task": c.task,
+        "system": SYSTEM,
+        "user": user,
+        "contract": {"provider": c.provider, "model": c.model, "local_model": c.local_model,
+                     "thinking": c.thinking, "effort": c.effort, "max_output_tokens": c.max_output_tokens,
+                     "schema": c.schema},
+        "execution": {"policy": providers.current_policy(), "profile": settings.ai_profile,
+                      "fake": providers.fake(), "fake_controls": fake_controls},
+        "brief_revision": db.brief_revision(project),
+        "facts_revision": db.facts_revision(project["id"]),
+    })
+
+
 def unnormalized(project_id: str) -> list[dict[str, Any]]:
     return [c for c in list_for_project(project_id) if not c.get("normalized") and c["status"] != "rejected"]
 
@@ -848,15 +869,36 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
         user = json.dumps({"brief": project.get("brief"), "goal": project.get("goal"), "questions": project.get("questions"),
                            "existing_topics": existing_topics, "existing_targets": existing_targets,
                            "candidates": [_candidate_payload(c) for c in group]}, ensure_ascii=False)
-        parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
-        calls += 1
+        unit_key = extraction_unit_key(project, user)
+        with db.work_unit_lock(unit_key):
+            saved = db.work_unit_get(unit_key)
+            if saved:
+                parsed = dict(saved["result"])
+                saved_routing = parsed.pop("_neurosearch_work_unit_routing", None)
+                model = saved["model"]
+            else:
+                parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
+                calls += 1
+                model = str(getattr(providers.last_response(), "model", None) or "")
+                saved_routing = providers.routing_json("claims.extract", model)
+                durable_result = dict(parsed)
+                durable_result["_neurosearch_work_unit_routing"] = saved_routing
+                revs = sorted({e.get("source_revision") or "" for c in group for e in c.get("evidence", [])})
+                db.work_unit_complete(
+                    unit_key, task="claims.extract", project_id=project_id, source_id=None,
+                    parent_hash=ih, unit_index=gno - 1, unit_count=total_groups, model=model,
+                    prompt_version=PROMPT_VERSION, schema_version="claim-set-v1",
+                    source_revision=db._sha(revs), brief_revision=db.brief_revision(project),
+                    facts_revision=db.facts_revision(project_id), depth=None, result=durable_result,
+                )
+                from .jobs import crash_point
+                crash_point("claims_group_persisted")
         ran += 1
         if transport == "job":
             from .jobs import check_cancel
             check_cancel()                                  # the paid call ended; do not materialise a cancelled group
-        model = getattr(providers.last_response(), "model", None)
         prov = {"extraction_hash": ih, "model": str(model or ""), "prompt_version": PROMPT_VERSION, "schema_version": "claim-set-v1",
-                "routing": providers.routing_json("claims.extract", model), "transport": transport}
+                "routing": saved_routing or providers.routing_json("claims.extract", model), "transport": transport}
         by_id = {c["id"]: c for c in group}
         t = time.time()
         with db.tx() as conn:

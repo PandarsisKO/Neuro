@@ -93,9 +93,43 @@ def schema_version() -> str | None:
 
 def input_hash(project: dict[str, Any] | str, source_id: str, depth: str | None = None) -> str:
     """Hash of exactly what this task reads: the transcript (source revision), the steering text (brief revision), the
-    prompt, (Mission F) the output schema and (D2) the reading depth. Staleness compares this, not database rows."""
-    base = db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(), schema_version() or "text")
+    prompt, output schema, configured model contract and reading depth. Staleness compares this, not database rows."""
+    from .contracts import contract
+    c = contract("findings.extract")
+    base = db._sha("findings", db.source_revision(source_id), db.brief_revision(project), prompt_version(),
+                   schema_version() or "text", c.model, c.local_model, c.thinking, c.effort, c.max_output_tokens)
     return db._sha(base, "deep") if depth == "deep" else base
+
+
+def work_unit_key(project: dict[str, Any], src: dict[str, Any], window: str, index: int, count: int,
+                  depth: str | None = None) -> str:
+    """Identity of one exact Findings request, including every input that can change its meaning or output."""
+    import os
+    from .contracts import contract
+    c = contract("findings.extract")
+    head = _head(project, src)
+    fake_controls = sorted((k, v) for k, v in os.environ.items() if providers.fake() and k.startswith("NEUROSEARCH_FAKE_AI_"))
+    request = {
+        "system": _system_blocks(SYSTEM, head),
+        "user": _user(index, count, window, depth=depth),
+        "contract": {
+            "task": c.task,
+            "provider": c.provider,
+            "model": c.model,
+            "local_model": c.local_model,
+            "thinking": c.thinking,
+            "effort": c.effort,
+            "max_output_tokens": c.max_output_tokens,
+            "schema": c.schema,
+        },
+        "execution": {"policy": providers.current_policy(), "profile": settings.ai_profile, "fake": providers.fake(),
+                      "fake_controls": fake_controls},
+        "source_revision": db.source_revision(src["id"]),
+        "brief_revision": db.brief_revision(project),
+        "facts_revision": db.facts_revision(project["id"]),
+        "depth": depth,
+    }
+    return db._sha("work-unit-v1", request)
 
 
 # D2 (0.39.0) — "Read deeper": a second, explicit pass over long-form sources with smaller windows (≈3× the attention per
@@ -291,7 +325,7 @@ def _skipped(project_id: str, source_id: str, src: dict[str, Any]) -> dict[str, 
 
 def materialize(project_id: str, source_id: str, window_results: list[tuple[str, dict[str, Any]]], *, model: str | None,
                 transport: str = "interactive", batch_id: str | None = None, max_findings: int | None = None, prefilter: dict[str, Any] | None = None,
-                depth: str | None = None) -> dict[str, Any]:
+                depth: str | None = None, routing: str | None = None) -> dict[str, Any]:
     """Turn validated per-window outputs into the stored research artifact — the ONE place findings become notes and an
     analysis, shared by the interactive and the batch path. `window_results` = [(window_text, parsed_output), …] in
     window order; quote validation, note shaping, provenance and the atomic write are identical either way; only the
@@ -412,7 +446,8 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
     prov = {"model": model, "provider": "fake" if providers.fake() else "anthropic", "prompt_version": prompt_version(),
             "schema_version": schema_version() or "findings-v1", "source_revision": db.source_revision(source_id), "brief_revision": db.brief_revision(project),
             "facts_revision": db.facts_revision(project_id), "input_hash": input_hash(project, source_id, depth=depth), "transport": transport, "batch_id": batch_id, "depth": depth,
-            "prefilter": json.dumps(prefilter) if prefilter else None, "routing": providers.routing_json("findings.extract", model)}
+            "prefilter": json.dumps(prefilter) if prefilter else None,
+            "routing": routing or providers.routing_json("findings.extract", model)}
     substance = int(sum(substances) / len(substances)) if substances else None
     summary = " ".join(summaries)[:1200] if summaries else None
     with db.batch():                                     # notes + analysis land together or not at all
@@ -462,6 +497,14 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
     found = 0
+    last_routing: str | None = None
+    source_rev = db.source_revision(source_id)
+    brief_rev = db.brief_revision(project)
+    facts_rev = db.facts_revision(project_id)
+
+    def _inputs_current() -> bool:
+        current_project = db.get_project(project_id)
+        return bool(current_project) and db.source_revision(source_id) == source_rev and db.brief_revision(current_project) == brief_rev
     # A progress bar that reads i/n reports the work ALREADY finished, so it shows 0% while the first (often only)
     # part is being read, and never passes (n-1)/n. Kyle, live: "how do I know it's actually doing anything?".
     # Report on both edges instead — starting part i, then finished part i — and never report a bare zero.
@@ -475,19 +518,52 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         if i not in kept:                                # H1: the pre-filter dropped this window (recorded in window_decisions + the analysis row)
             continue
         check_cancel()                                   # safe boundary: nothing of this source is written yet
+        if not _inputs_current():
+            raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
         crash_point("findings_before_response")
         _say(i / max(1, len(windows)), reading, i)
-        try:
-            res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
-            found += len(res.get("findings") or []) if isinstance(res, dict) else 0
-            _say((i + 1) / max(1, len(windows)), "read", i)      # the bar moves when a part is actually done
-        except Exception:
-            if OBSERVER:
-                OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
-                          "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
-            raise
+        unit_key = work_unit_key(project, src, w, i, len(windows), depth=depth)
+        with db.work_unit_lock(unit_key):
+            saved = db.work_unit_get(unit_key)
+            if saved:
+                res = dict(saved["result"])
+                last_routing = res.pop("_neurosearch_work_unit_routing", None)
+                _last_model["model"] = saved["model"]
+                found += len(res.get("findings") or []) if isinstance(res, dict) else 0
+                results.append((w, res))
+                _say((i + 1) / max(1, len(windows)), "reused", i)
+                continue
+            try:
+                res = _call(SYSTEM, _user(i, len(windows), w, depth=depth), project_id, source_id, head=head)
+                found += len(res.get("findings") or []) if isinstance(res, dict) else 0
+                from .contracts import contract
+                c = contract("findings.extract")
+                model = _last_model.get("model") or c.model
+                last_routing = providers.routing_json("findings.extract", model)
+                durable_result = dict(res)
+                durable_result["_neurosearch_work_unit_routing"] = last_routing
+                db.work_unit_complete(
+                    unit_key, task="findings.extract", project_id=project_id, source_id=source_id,
+                    parent_hash=ih, unit_index=i, unit_count=len(windows), model=str(model),
+                    prompt_version=prompt_version(), schema_version=schema_version(),
+                    source_revision=source_rev, brief_revision=brief_rev,
+                    facts_revision=facts_rev, depth=depth, result=durable_result,
+                )
+                crash_point("findings_window_persisted")
+                check_cancel()                           # keep the paid response, but never materialise a cancelled parent
+                if not _inputs_current():
+                    raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+                _say((i + 1) / max(1, len(windows)), "read", i)  # the bar moves when a part is actually done
+            except Exception:
+                if OBSERVER:
+                    OBSERVER({"source_id": source_id, "window": i + 1, "windows": len(windows), "raw_findings": 0, "kept": 0, "rejected": 0,
+                              "summary_ok": False, "substance_ok": False, **_last_call, "error": True})
+                raise
         results.append((w, res))
-    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive", max_findings=max_findings, prefilter=pf_summary, depth=depth)
+    if not _inputs_current():
+        raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+    return materialize(project_id, source_id, results, model=_last_model.get("model"), transport="interactive",
+                       max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing)
 
 
 def window_plan(project: dict[str, Any], src: dict[str, Any], windows: list[str]) -> tuple[set[int], dict[str, Any] | None]:

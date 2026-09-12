@@ -292,6 +292,30 @@ CREATE TABLE IF NOT EXISTS batch_items (
 CREATE INDEX IF NOT EXISTS ix_batch_items_job ON batch_items(job_id, cohort_no);
 CREATE INDEX IF NOT EXISTS ix_batch_items_batch ON batch_items(batch_id);
 
+-- Foundation R4: provider responses are durable at the smallest independently retryable unit. The unit key is
+-- derived from the exact request plus its inference contract and semantic revisions, so a compatible result can be
+-- reused across a recovered parent job while a changed prompt/model/brief/source cannot materialise as current.
+CREATE TABLE IF NOT EXISTS work_units (
+    unit_key        TEXT PRIMARY KEY,
+    task            TEXT NOT NULL,
+    project_id      TEXT,
+    source_id       TEXT,
+    parent_hash     TEXT NOT NULL,
+    unit_index      INTEGER NOT NULL,
+    unit_count      INTEGER NOT NULL,
+    model           TEXT NOT NULL,
+    prompt_version  TEXT NOT NULL,
+    schema_version  TEXT,
+    source_revision TEXT,
+    brief_revision  TEXT,
+    facts_revision  TEXT,
+    depth           TEXT,
+    result          TEXT NOT NULL,
+    created_at      REAL NOT NULL,
+    updated_at      REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_work_units_parent ON work_units(task, project_id, source_id, parent_hash, unit_index);
+
 -- G1 (0.25.0): source lineage seam. No behaviour yet — populated by later rungs (derived-from / cites / same-work) so
 -- corroboration can tell twenty derivative repeats from one underlying piece of evidence. Additive, empty until then.
 CREATE TABLE IF NOT EXISTS source_relations (
@@ -2767,7 +2791,7 @@ def live_job_by_source() -> dict[str, dict[str, Any]]:
 
 
 REQUIRED_TABLES = ("sources", "segments", "chunks", "projects", "project_sources", "project_notes", "project_facts",
-                   "plans", "conversations", "messages", "jobs", "usage", "kv")
+                   "plans", "conversations", "messages", "jobs", "usage", "kv", "work_units")
 
 
 def verify_database(path: Path) -> dict[str, Any]:
@@ -4077,6 +4101,76 @@ def batch_item_result(batch_id: str, custom_id: str, status: str, raw: Any = Non
                      "WHERE batch_id=? AND custom_id=?",
                      (status, json.dumps(raw, default=str) if raw is not None else None, error, now(), now(),
                       batch_id, custom_id))
+
+
+def work_unit_get(unit_key: str) -> dict[str, Any] | None:
+    """Return one completed, content-addressed unit. Malformed legacy data fails closed and is recomputed."""
+    row = connect().execute("SELECT * FROM work_units WHERE unit_key=?", (unit_key,)).fetchone()
+    if not row:
+        return None
+    out = dict(row)
+    try:
+        out["result"] = json.loads(out["result"])
+    except (TypeError, ValueError):
+        return None
+    return out
+
+
+_work_unit_locks_guard = threading.Lock()
+_work_unit_locks: dict[str, tuple[threading.Lock, int]] = {}
+
+
+@contextmanager
+def work_unit_lock(unit_key: str) -> Iterator[None]:
+    """Serialize one logical unit inside the single app process; unrelated units remain fully independent."""
+    with _work_unit_locks_guard:
+        lock, users = _work_unit_locks.get(unit_key, (threading.Lock(), 0))
+        _work_unit_locks[unit_key] = (lock, users + 1)
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+        with _work_unit_locks_guard:
+            current, users = _work_unit_locks.get(unit_key, (lock, 1))
+            if current is lock and users <= 1:
+                _work_unit_locks.pop(unit_key, None)
+            elif current is lock:
+                _work_unit_locks[unit_key] = (lock, users - 1)
+
+
+def work_unit_complete(unit_key: str, *, task: str, project_id: str | None, source_id: str | None,
+                       parent_hash: str, unit_index: int, unit_count: int, model: str,
+                       prompt_version: str, schema_version: str | None, source_revision: str | None,
+                       brief_revision: str | None, facts_revision: str | None, depth: str | None,
+                       result: Any) -> None:
+    """Commit a provider result immediately. Replays of the same exact unit keep the first durable answer."""
+    t = now()
+    with tx() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO work_units (unit_key, task, project_id, source_id, parent_hash, unit_index, "
+            "unit_count, model, prompt_version, schema_version, source_revision, brief_revision, facts_revision, "
+            "depth, result, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (unit_key, task, project_id, source_id, parent_hash, unit_index, unit_count, model, prompt_version,
+             schema_version, source_revision, brief_revision, facts_revision, depth,
+             json.dumps(result, sort_keys=True, default=str), t, t),
+        )
+
+
+def work_units_for_parent(task: str, project_id: str, source_id: str, parent_hash: str) -> list[dict[str, Any]]:
+    rows = connect().execute(
+        "SELECT * FROM work_units WHERE task=? AND project_id=? AND source_id=? AND parent_hash=? ORDER BY unit_index",
+        (task, project_id, source_id, parent_hash),
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["result"] = json.loads(item["result"])
+        except (TypeError, ValueError):
+            continue
+        out.append(item)
+    return out
 
 
 def batch_items_mark_unsettled(batch_id: str, reason: str) -> int:
