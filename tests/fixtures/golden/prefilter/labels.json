@@ -1,0 +1,105 @@
+{
+ "version": 1,
+ "sources": [
+  {
+   "id": "beekeeping",
+   "file": "beekeeping.json",
+   "platform": "youtube",
+   "external_id": "prefilt0001",
+   "url": "https://www.youtube.com/watch?v=prefilt0001",
+   "title": "Backyard beekeeping: a full season, start to finish",
+   "channel": "Hive Mind",
+   "windows": 2,
+   "relevant": [
+    false,
+    false
+   ],
+   "nuggets": []
+  },
+  {
+   "id": "marathon",
+   "file": "marathon.json",
+   "platform": "youtube",
+   "external_id": "prefilt0002",
+   "url": "https://www.youtube.com/watch?v=prefilt0002",
+   "title": "My 18-week marathon training plan, week by week",
+   "channel": "Slow Miles",
+   "windows": 1,
+   "relevant": [
+    false
+   ],
+   "nuggets": []
+  },
+  {
+   "id": "mixed",
+   "file": "mixed.json",
+   "platform": "youtube",
+   "external_id": "prefilt0003",
+   "url": "https://www.youtube.com/watch?v=prefilt0003",
+   "title": "Restaurant owner vlog: marketing that works + how we bought our second location",
+   "channel": "Table for Two",
+   "windows": 2,
+   "relevant": [
+    false,
+    true
+   ],
+   "nuggets": [
+    {
+     "window": 1,
+     "quote": "expect the seller to stay for ninety days of transition",
+     "why": "seller transition rule in the relevant window of a mixed source"
+    }
+   ]
+  },
+  {
+   "id": "tangent",
+   "file": "tangent.json",
+   "platform": "youtube",
+   "external_id": "prefilt0004",
+   "url": "https://www.youtube.com/watch?v=prefilt0004",
+   "title": "Lake weekend, garage paint and one business lesson",
+   "channel": "Weekend Rambles",
+   "windows": 1,
+   "relevant": [
+    true
+   ],
+   "nuggets": [
+    {
+     "window": 0,
+     "quote": "negotiate a working capital peg equal to the trailing twelve month average",
+     "why": "one nugget in 95% filler: the filter must keep this window"
+    }
+   ]
+  }
+ ],
+ "golden": {
+  "yt01": [
+   true
+  ],
+  "yt02": [
+   true
+  ],
+  "yt03": [
+   true,
+   true
+  ],
+  "pod": [
+   true
+  ],
+  "vlog": [
+   false
+  ],
+  "article": [
+   true
+  ],
+  "report": [
+   true
+  ],
+  "calc": [
+   true
+  ],
+  "sourdough": [
+   false
+  ]
+ }
+}

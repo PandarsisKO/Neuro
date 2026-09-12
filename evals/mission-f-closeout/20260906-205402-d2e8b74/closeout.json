@@ -1,0 +1,360 @@
+{
+ "eval": "mission-f-closeout",
+ "tier": "live",
+ "app_version": "0.19.0+f5",
+ "git_sha": "d2e8b74",
+ "started": "20260906-205402",
+ "dir": "evals/mission-f-closeout/20260906-205402-d2e8b74",
+ "deterministic": {
+  "steps": [
+   {
+    "step": "pytest",
+    "pass": true,
+    "detail": "131 passed, 1 warning in 31.74s"
+   },
+   {
+    "step": "schema registry provider-compatible",
+    "pass": true,
+    "detail": [
+     "discovery-v2",
+     "findings-v2",
+     "plan-actions-v3",
+     "plan-core-v3",
+     "plan-economics-v3",
+     "plan-execution-v3",
+     "plan-update-v2",
+     "rank-v2",
+     "situation-v3"
+    ]
+   },
+   {
+    "step": "Tier 1 (Planner V1)",
+    "pass": true,
+    "detail": "cost $0.5776"
+   },
+   {
+    "step": "Tier 1 (Planner V1) zero structured-output events",
+    "pass": true,
+    "detail": {
+     "schema_mismatches": 0,
+     "schema_fallbacks": 0,
+     "schema_failures": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "structured_tasks": [
+      "discover.quick",
+      "findings.extract",
+      "planner.actions",
+      "planner.core",
+      "planner.economics",
+      "planner.execution",
+      "planner.situation",
+      "planner.update",
+      "rank.relevance"
+     ]
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V1) frozen planner rubric",
+    "pass": true,
+    "detail": {
+     "plan": 0.0,
+     "analysis": 0.1818
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V3)",
+    "pass": true,
+    "detail": "cost $0.5974"
+   },
+   {
+    "step": "Tier 1 (Planner V3) zero structured-output events",
+    "pass": true,
+    "detail": {
+     "schema_mismatches": 0,
+     "schema_fallbacks": 0,
+     "schema_failures": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "structured_tasks": [
+      "discover.quick",
+      "findings.extract",
+      "planner.actions",
+      "planner.core",
+      "planner.economics",
+      "planner.execution",
+      "planner.situation",
+      "planner.update",
+      "rank.relevance"
+     ]
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V3) frozen planner rubric",
+    "pass": true,
+    "detail": {
+     "plan": 1.0,
+     "analysis": 1.0
+    }
+   },
+   {
+    "step": "Tier 1 V3 evidence / assembly",
+    "pass": true,
+    "detail": {
+     "references": 56,
+     "dangling": [],
+     "removed": false
+    }
+   },
+   {
+    "step": "rubric V3 \u2265 V1 (fakes)",
+    "pass": true,
+    "detail": {
+     "v1": {
+      "plan": 0.0,
+      "analysis": 0.1818
+     },
+     "v3": {
+      "plan": 1.0,
+      "analysis": 1.0
+     }
+    }
+   }
+  ],
+  "pass": true,
+  "rubric_v1": {
+   "plan": 0.0,
+   "analysis": 0.1818
+  },
+  "rubric_v3": {
+   "plan": 1.0,
+   "analysis": 1.0
+  }
+ },
+ "live": {
+  "tier": "live",
+  "preflight": {
+   "claude-sonnet-4-6": 11,
+   "claude-sonnet-5": 12
+  },
+  "spend_estimate": {
+   "items": {
+    "embeddings": 0.02,
+    "findings.extract (Sonnet 5, structured)": 0.2,
+    "rank.relevance (Sonnet 5, structured)": 0.04,
+    "planner V1 (4.6)": 0.3,
+    "planner V3 (4.6, 5 calls, cached prefix)": 0.4,
+    "planner.update": 0.06,
+    "discover.quick": 0.03
+   },
+   "estimate": 1.05,
+   "maximum": 1.58,
+   "budget": 10.0
+  },
+  "surfaces": {
+   "findings.extract": {
+    "pass": true,
+    "fails": [],
+    "golden_evidence_recall": 0.9,
+    "finding_quote_validity": 1.0,
+    "stored_findings_verified": 1.0,
+    "findings_suggested": 53,
+    "findings_rejected": 0,
+    "saved_sonnet5_recall": 1.0,
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "findings-v2",
+    "configured_model": "claude-sonnet-5",
+    "returned_model": "claude-sonnet-5",
+    "cost": 0.1737,
+    "seconds": 106.65,
+    "canonical_input_tokens": 47216,
+    "billed": {
+     "calls": 9,
+     "input_tokens": 47216,
+     "output_tokens": 7927,
+     "cache_read_tokens": 0,
+     "cache_write_tokens": 0,
+     "canonical_input_tokens": 47216,
+     "output_tokens_per_window": 880.8
+    }
+   },
+   "rank.relevance": {
+    "pass": true,
+    "fails": [],
+    "precision_at_10": 1.0,
+    "recall_at_20": 0.4545,
+    "recall_at_20_strict": 0.68,
+    "ndcg_at_20": 0.9628,
+    "unscored_candidates": 0,
+    "failed_batches": 0,
+    "repaired_batches": 0,
+    "saved_sonnet5": {
+     "ndcg_at_20": 0.9623,
+     "precision_at_10": 1.0,
+     "precision_at_20": 1.0,
+     "recall_at_20_strict": 0.68,
+     "recall_at_10_strict": 0.36
+    },
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "rank-v2",
+    "configured_model": "claude-sonnet-5",
+    "returned_model": "claude-sonnet-5",
+    "cost": 0.0356,
+    "seconds": 21.9
+   },
+   "planner.update": {
+    "pass": false,
+    "fails": [
+     "planner.update raised: CONNECTION after 3 attempts: Connection error."
+    ],
+    "n_updates": 0,
+    "addresses_new_finding": 0,
+    "addresses_new_fact": 0,
+    "well_formed": 0,
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "plan-update-v2",
+    "returned_model": null,
+    "cost": 0.0,
+    "seconds": 53.43,
+    "updates": null
+   },
+   "discover.quick": {
+    "pass": false,
+    "fails": [
+     "discover.quick raised: CONNECTION after 3 attempts: Connection error."
+    ],
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    }
+   }
+  },
+  "fails": [
+   "planner V3: structured-output/assembly events during the V3 build: {'schema_mismatch': 1}",
+   "planner.update raised: CONNECTION after 3 attempts: Connection error.",
+   "discover.quick raised: CONNECTION after 3 attempts: Connection error."
+  ],
+  "caveats": [
+   "findings: evidence recall 1.0 \u2192 0.9 (within tolerance)",
+   "planner V3: completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2",
+   "planner V3: latency V1 317.52s \u2192 V3 587.05s (+85%)"
+  ],
+  "notes": [
+   "Planner V3 not promoted (see the separate decision); this does not fail Mission F unless its build raised structured-output/assembly events"
+  ],
+  "total_cost": 0.5838,
+  "total_s": 1148.75,
+  "project_id": "a042c12db97e4f04999fd36c07b746db"
+ },
+ "planner_v3": {
+  "promote": false,
+  "decision": "DO NOT PROMOTE \u2014 leave the default on V1; V3 recorded as not promoted (no further tuning loop)",
+  "hard_failures": [
+   "V3 build failed: CONNECTION after 3 attempts: Connection error.",
+   "plan rubric V3 0.0 < V1 1.0 (lost: assumption.dscr, assumption.sde_multiple, assumption.valuation_range, completeness.closing_day, completeness.first_90_days, completeness.guarantee_fee_or_closing_costs, completeness.loi_exclusivity, contradiction.high_multiples, contradiction.zero_down_vs_injection, dependency.equity_injection, dependency.lender, dependency.qoe_in_diligence, dependency.seller_note_standby, first_step.deal_flow, first_step.lender_contact, first_step.money_check, open_question.cash_available, open_question.target_industry, open_question.working_capital_peg, risk.add_backs_or_qoe, risk.customer_concentration, risk.lease_assignment, risk.personal_guarantee, risk.seller_transition)",
+   "analysis rubric V3 0.0 < V1 1.0",
+   "V3 structured-output/assembly events {'schema_mismatch': 1}",
+   "V3 truncation / parse failure / JSON repair",
+   "V3 truncation / parse failure / JSON repair",
+   "V3 produced no build telemetry (did the flag take effect?)"
+  ],
+  "caveats": [
+   "completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2",
+   "latency V1 317.52s \u2192 V3 587.05s (+85%)"
+  ],
+  "notes": [
+   "V1 built first and wrote the shared research prefix to the prompt cache; V3 (same model, same prefix, within minutes) read it back. Cold-cache equivalent cost: V1 $0.2878 vs V3 $0.1033",
+   "calls V1 2 \u2192 V3 1; input 7,228 \u2192 299; cache write 6,301 \u2192 7,746; cache read 6,301 \u2192 0; output 14,905 \u2192 4,889"
+  ],
+  "mission_fails": [
+   "structured-output/assembly events during the V3 build: {'schema_mismatch': 1}"
+  ],
+  "v1": {
+   "rubric_plan": 1.0,
+   "rubric_analysis": 1.0,
+   "structure": 1.0,
+   "evidence_refs": 51,
+   "dangling_raw": 0,
+   "cost": 0.2708,
+   "cost_cold_equivalent": 0.2878,
+   "seconds": 317.52,
+   "usage": {
+    "calls": 2,
+    "input_tokens": 7228,
+    "output_tokens": 14905,
+    "cache_read_tokens": 6301,
+    "cache_write_tokens": 6301,
+    "cost": 0.2708
+   }
+  },
+  "v3": {
+   "rubric_plan": 0.0,
+   "rubric_analysis": 0.0,
+   "structure": 0.0,
+   "evidence_refs": 0,
+   "dangling_raw": 0,
+   "cost": 0.1033,
+   "cost_cold_equivalent": 0.1033,
+   "seconds": 587.05,
+   "usage": {
+    "calls": 1,
+    "input_tokens": 299,
+    "output_tokens": 4889,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 7746,
+    "cost": 0.1033
+   },
+   "telemetry": {},
+   "events": {
+    "schema_mismatch": 1,
+    "schema_fallback": 0,
+    "schema_failure": 0,
+    "output_truncated": 0,
+    "output_refused": 0,
+    "plan_assembly_failed": 0
+   }
+  }
+ },
+ "mission": {
+  "verdict": "FAIL",
+  "headline": "Mission F FAIL \u2014 a changed surface did not hold its guarantees",
+  "fails": [
+   "planner V3: structured-output/assembly events during the V3 build: {'schema_mismatch': 1}",
+   "planner.update raised: CONNECTION after 3 attempts: Connection error.",
+   "discover.quick raised: CONNECTION after 3 attempts: Connection error."
+  ],
+  "caveats": [
+   "findings: evidence recall 1.0 \u2192 0.9 (within tolerance)",
+   "planner V3: completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2",
+   "planner V3: latency V1 317.52s \u2192 V3 587.05s (+85%)"
+  ],
+  "notes": [
+   "Planner V3 not promoted (see the separate decision); this does not fail Mission F unless its build raised structured-output/assembly events"
+  ]
+ }
+}

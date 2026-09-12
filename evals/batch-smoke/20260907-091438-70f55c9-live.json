@@ -1,0 +1,314 @@
+{
+ "eval": "batch-smoke",
+ "tier": "live",
+ "app_version": "0.20.0+g3",
+ "git_sha": "70f55c9",
+ "started": "20260907-091438",
+ "checks": [
+  {
+   "check": "fixture is one single-window findings item",
+   "pass": true,
+   "detail": {
+    "source": "yt01",
+    "windows": 1
+   }
+  },
+  {
+   "check": "contract allows batch execution and enforces findings-v2",
+   "pass": true,
+   "detail": {
+    "task": "findings.extract",
+    "model": "claude-sonnet-5",
+    "thinking": "disabled",
+    "schema": "findings-v2",
+    "batch_allowed": true,
+    "max_output_tokens": 4000
+   }
+  },
+  {
+   "check": "preflight claude-sonnet-5",
+   "pass": true,
+   "detail": {
+    "claude-sonnet-5": 12
+   }
+  },
+  {
+   "check": "token-counted estimate (standard vs batch model cost)",
+   "pass": true,
+   "detail": "basis token count \u00b7 input tokens 2434 \u00b7 now $0.0109 \u00b7 batch $0.0054"
+  },
+  {
+   "check": "job parked external_pending with the provider batch id persisted",
+   "pass": true,
+   "detail": {
+    "status": "external_pending",
+    "handle": "msgbatch_01JBuWiGC5fsCCHHGbAoXiUG"
+   }
+  },
+  {
+   "check": "exactly one submitted item with the expected custom_id",
+   "pass": true,
+   "detail": [
+    {
+     "custom_id": "fw-0d63eedcd1c8-0-2b65a416a1ea",
+     "status": "submitted"
+    }
+   ]
+  },
+  {
+   "check": "submission intent cleared once the handle was persisted",
+   "pass": true,
+   "detail": null
+  },
+  {
+   "check": "batch ended and the job was handed back to the queue",
+   "pass": true,
+   "detail": {
+    "status": "queued",
+    "polls": 11
+   }
+  },
+  {
+   "check": "raw provider result persisted locally before materialisation",
+   "pass": true,
+   "detail": {
+    "status": "succeeded",
+    "raw_content_blocks": 1
+   }
+  },
+  {
+   "check": "returned custom_id set matches the expected item exactly",
+   "pass": true,
+   "detail": {
+    "succeeded": 1,
+    "errored": 0,
+    "expired": 0,
+    "canceled": 0,
+    "unknown_custom_id": 0
+   }
+  },
+  {
+   "check": "ledger: one completed invocation on the batch provider carrying the batch id",
+   "pass": true,
+   "detail": [
+    {
+     "state": "completed",
+     "provider_request_id": "msgbatch_01JBuWiGC5fsCCHHGbAoXiUG",
+     "returned_model": "claude-sonnet-5"
+    }
+   ]
+  },
+  {
+   "check": "job completed through findings.materialize",
+   "pass": true,
+   "detail": {
+    "status": "done",
+    "result": {
+     "sources": 1,
+     "done": 1,
+     "failed": 0,
+     "items": 1,
+     "cohorts": 1
+    }
+   }
+  },
+  {
+   "check": "provenance: transport=batch with the provider batch id, analysis current",
+   "pass": true,
+   "detail": {
+    "status": "current",
+    "transport": "batch",
+    "batch_id": "msgbatch_01JBuWiGC5fsCCHHGbAoXiUG",
+    "model": "claude-sonnet-5",
+    "schema_version": "findings-v2",
+    "prompt_version": "findings-18b5db69",
+    "input_hash": "2b65a416a1eab717"
+   }
+  },
+  {
+   "check": "findings written with evidence",
+   "pass": true,
+   "detail": "10 suggested findings"
+  },
+  {
+   "check": "quote validator ran on every finding",
+   "pass": true,
+   "detail": {
+    "findings_checked": 10,
+    "findings_rejected": 0,
+    "citations_checked": 0,
+    "citations_invalid": 0
+   }
+  },
+  {
+   "check": "zero schema mismatch / fallback / truncation / refusal events",
+   "pass": true,
+   "detail": {
+    "mismatches": 0,
+    "mismatches_recovered_by_retry": 0,
+    "fallbacks": 0,
+    "unrecovered": 0,
+    "truncated": 0,
+    "refused": 0,
+    "steady_state": "all zero"
+   }
+  },
+  {
+   "check": "actual batch cost = 50% of the standard model-rate calculation",
+   "pass": true,
+   "detail": "in 2434 \u00b7 out 1135 \u00b7 cache read 0 / write 0 \u00b7 standard $0.016218 \u00b7 batch $0.008109 (expected $0.008109)"
+  },
+  {
+   "check": "pre-submission estimate within 2\u00d7 of the actual batch cost",
+   "pass": true,
+   "detail": "estimated $0.0054 vs actual $0.0081"
+  },
+  {
+   "check": "job history: planned \u2192 submitting \u2192 submitted \u2192 result \u2192 ended, no re-attach/retry/cancel",
+   "pass": true,
+   "detail": [
+    "queued",
+    "claimed",
+    "batch_planned",
+    "external_submitting",
+    "external_submitted",
+    "external_result",
+    "claimed",
+    "batch_ended",
+    "done"
+   ]
+  }
+ ],
+ "pass": true,
+ "database": "/var/folders/ss/g8pgs97n53q5smbybwsj_r3w0000gn/T/ns_batch_smoke_xljovnuz",
+ "contract": {
+  "task": "findings.extract",
+  "model": "claude-sonnet-5",
+  "thinking": "disabled",
+  "schema": "findings-v2",
+  "batch_allowed": true,
+  "max_output_tokens": 4000
+ },
+ "expected_custom_id": "fw-0d63eedcd1c8-0-2b65a416a1ea",
+ "schema_version": "findings-v2",
+ "estimate": {
+  "items": 1,
+  "sources": 1,
+  "skipped_current": 0,
+  "chars": 2149,
+  "input_tokens": 2434,
+  "basis": "token count",
+  "now": 0.0109,
+  "background": 0.0054,
+  "discount": 0.5,
+  "recommended": "now",
+  "bulk_threshold_items": 6,
+  "choices": {
+   "now": {
+    "label": "Analyze now",
+    "detail": "Faster \u00b7 standard model cost"
+   },
+   "background": {
+    "label": "Analyze in background",
+    "detail": "Up to 24 hours \u00b7 ~50% lower model cost"
+   }
+  },
+  "note": "model cost only (the batch discount applies to model tokens, not to transcription, embeddings or web search); batches may take up to 24 hours"
+ },
+ "batch_id": "msgbatch_01JBuWiGC5fsCCHHGbAoXiUG",
+ "polls": 11,
+ "poll_seconds": 159.0,
+ "result_counts": {
+  "succeeded": 1,
+  "errored": 0,
+  "expired": 0,
+  "canceled": 0,
+  "unknown_custom_id": 0
+ },
+ "returned_model": "claude-sonnet-5",
+ "job_result": {
+  "sources": 1,
+  "done": 1,
+  "failed": 0,
+  "items": 1,
+  "by_status": {
+   "materialized": 1
+  },
+  "cohorts": 1,
+  "batch": {
+   "input_tokens": 2434,
+   "output_tokens": 1135,
+   "cache_read": 0,
+   "cache_write": 0,
+   "cost": 0.008109,
+   "saved_vs_interactive_full_price": 0.008109,
+   "model_calls": 1
+  }
+ },
+ "analysis": {
+  "status": "current",
+  "transport": "batch",
+  "batch_id": "msgbatch_01JBuWiGC5fsCCHHGbAoXiUG",
+  "model": "claude-sonnet-5",
+  "schema_version": "findings-v2",
+  "prompt_version": "findings-18b5db69",
+  "input_hash": "2b65a416a1eab717"
+ },
+ "notes": 10,
+ "evidence": {
+  "findings_checked": 10,
+  "findings_rejected": 0,
+  "citations_checked": 0,
+  "citations_invalid": 0
+ },
+ "structured_outputs": {
+  "mismatches": 0,
+  "mismatches_recovered_by_retry": 0,
+  "fallbacks": 0,
+  "unrecovered": 0,
+  "truncated": 0,
+  "refused": 0,
+  "steady_state": "all zero"
+ },
+ "usage": [
+  {
+   "model": "claude-sonnet-5",
+   "input_tokens": 2434,
+   "output_tokens": 1135,
+   "cache_read": 0,
+   "cache_write": 0,
+   "cost": 0.008109,
+   "saved": 0.008109,
+   "transport": "batch"
+  }
+ ],
+ "pricing": {
+  "model": "claude-sonnet-5",
+  "configured_model": "claude-sonnet-5",
+  "price_in_per_mtok": 2.0,
+  "price_out_per_mtok": 10.0,
+  "input_tokens": 2434,
+  "output_tokens": 1135,
+  "cache_read": 0,
+  "cache_write": 0,
+  "standard_model_cost": 0.016218,
+  "expected_batch_cost": 0.008109,
+  "actual_batch_cost": 0.008109,
+  "saved_recorded": 0.008109,
+  "estimate_before_submission": 0.0054
+ },
+ "job_events": [
+  "queued",
+  "claimed",
+  "batch_planned",
+  "external_submitting",
+  "external_submitted",
+  "external_result",
+  "claimed",
+  "batch_ended",
+  "done"
+ ],
+ "fails": [],
+ "verdict": "PASS",
+ "seconds": 159.4
+}

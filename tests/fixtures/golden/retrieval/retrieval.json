@@ -1,0 +1,532 @@
+{
+ "version": 1,
+ "sources": [
+  {
+   "id": "pop_weak",
+   "file": "pop_weak.json",
+   "platform": "youtube",
+   "external_id": "retr000001",
+   "url": "https://www.youtube.com/watch?v=retr000001",
+   "title": "Buy a business with (almost) no money down \u2014 the cheat code",
+   "channel": "Hustle Capital",
+   "published_at": "2025-08-01"
+  },
+  {
+   "id": "dscr_numbers",
+   "file": "dscr_numbers.json",
+   "platform": "youtube",
+   "external_id": "retr000002",
+   "url": "https://www.youtube.com/watch?v=retr000002",
+   "title": "Every lender ratio explained: DSCR, LTV, global cash flow",
+   "channel": "Bank Talk",
+   "published_at": "2025-07-10"
+  },
+  {
+   "id": "startup_wc",
+   "file": "startup_wc.json",
+   "platform": "youtube",
+   "external_id": "retr000003",
+   "url": "https://www.youtube.com/watch?v=retr000003",
+   "title": "Working capital and runway for seed-stage startups",
+   "channel": "Founder Office Hours",
+   "published_at": "2025-06-15"
+  },
+  {
+   "id": "hvac_ops",
+   "file": "hvac_ops.json",
+   "platform": "youtube",
+   "external_id": "retr000004",
+   "url": "https://www.youtube.com/watch?v=retr000004",
+   "title": "Running an HVAC service business: dispatch, notes, standby units",
+   "channel": "Trade Owner",
+   "published_at": "2025-05-20"
+  }
+ ],
+ "queries": [
+  {
+   "q": "What is the minimum down payment for an SBA 7(a) acquisition?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 6.2
+    },
+    {
+     "source": "report",
+     "at": 1
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak says 'five percent' \u2014 wrong and vague"
+  },
+  {
+   "q": "Can the seller note count toward the equity injection?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 26.9
+    },
+    {
+     "source": "report",
+     "at": 2
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": ""
+  },
+  {
+   "q": "Do I really have to sign a personal guarantee?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 60.1
+    },
+    {
+     "source": "report",
+     "at": 3
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak calls it a myth"
+  },
+  {
+   "q": "Is a quality of earnings report necessary on a small deal?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 16.9
+    },
+    {
+     "source": "pod"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": ""
+  },
+  {
+   "q": "What should I change in the first ninety days after buying a business?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 5020.8
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak",
+    "hvac_ops"
+   ],
+   "note": "pop_weak says rebrand and raise prices; hvac_ops has 'first ninety days' for new hires"
+  },
+  {
+   "q": "What debt service coverage ratio do lenders want on a business acquisition loan?",
+   "category": "numeric",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 86.2
+    },
+    {
+     "source": "dscr_numbers",
+     "at": 26.9
+    }
+   ],
+   "hard_negatives": [],
+   "note": "dscr_numbers has 1.20 / 1.15 / 1.35 / 1.10 / 1.5 for OTHER products in neighbouring chunks"
+  },
+  {
+   "q": "What DSCR applies to an owner-occupied 504 real estate deal?",
+   "category": "numeric",
+   "expected": [
+    {
+     "source": "dscr_numbers",
+     "at": 16.9
+    }
+   ],
+   "hard_negatives": [
+    "yt01"
+   ],
+   "note": "yt01's 1.25 is the acquisition figure, not the answer"
+  },
+  {
+   "q": "How much is the SBA guarantee fee?",
+   "category": "numeric",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 118.5
+    },
+    {
+     "source": "dscr_numbers",
+     "at": 88.2
+    },
+    {
+     "source": "report"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak: 'like a percent'"
+  },
+  {
+   "q": "What loan-to-value do banks allow on owner-occupied real estate?",
+   "category": "numeric",
+   "expected": [
+    {
+     "source": "dscr_numbers",
+     "at": 69.3
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "Can you buy a business with zero percent down?",
+   "category": "contradiction",
+   "expected": [
+    {
+     "source": "pod",
+     "at": 8.8
+    },
+    {
+     "source": "yt01"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pod is the contrarian claim; yt01/report the rule; pop_weak the hype"
+  },
+  {
+   "q": "Do home services businesses sell for more than four times SDE?",
+   "category": "contradiction",
+   "expected": [
+    {
+     "source": "pod"
+    },
+    {
+     "source": "article"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak: 'under five x is a steal'"
+  },
+  {
+   "q": "How do you set a working capital peg in a business purchase?",
+   "category": "terminology",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 81.2
+    },
+    {
+     "source": "yt03",
+     "at": 2255.0
+    },
+    {
+     "source": "article"
+    }
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "note": "startup_wc: working capital = runway, 'peg your valuation'"
+  },
+  {
+   "q": "What does full standby mean for a seller note?",
+   "category": "terminology",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 38.9
+    },
+    {
+     "source": "report",
+     "at": 2
+    }
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "note": "hvac_ops: standby generators"
+  },
+  {
+   "q": "Should the seller stay on after closing, and for how long?",
+   "category": "terminology",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 123.5
+    },
+    {
+     "source": "yt03",
+     "at": 4005.0
+    }
+   ],
+   "hard_negatives": [
+    "hvac_ops",
+    "startup_wc"
+   ],
+   "note": "hvac_ops: parts seller; startup_wc: 'transition after a raise'"
+  },
+  {
+   "q": "How much working capital should a seed startup raise?",
+   "category": "terminology",
+   "expected": [
+    {
+     "source": "startup_wc",
+     "at": 16.2
+    }
+   ],
+   "hard_negatives": [
+    "yt02",
+    "yt03"
+   ],
+   "note": "the reverse: here the startup source IS the answer and the acquisition sources are the distractors"
+  },
+  {
+   "q": "How long should the exclusivity period in the LOI be?",
+   "category": "buried",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 1500.4
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "What multiple of SDE do small businesses under a million in SDE trade at?",
+   "category": "buried",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 1994.6
+    },
+    {
+     "source": "article"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": ""
+  },
+  {
+   "q": "Can the building be financed on a longer term than the business?",
+   "category": "buried",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 3493.5
+    },
+    {
+     "source": "report"
+    }
+   ],
+   "hard_negatives": [
+    "dscr_numbers"
+   ],
+   "note": "dscr_numbers talks real estate ratios, not terms"
+  },
+  {
+   "q": "What has to change on closing day \u2014 bank signers, payroll, insurance?",
+   "category": "buried",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 4251.9
+    }
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "note": ""
+  },
+  {
+   "q": "Where do the best off-market deals come from?",
+   "category": "buried",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 738.5
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "How long is the term on an SBA acquisition loan?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 46.6
+    },
+    {
+     "source": "report"
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak: 'ten years-ish, depends on the vibe'"
+  },
+  {
+   "q": "What is the maximum 7(a) loan size?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 75.1
+    },
+    {
+     "source": "report",
+     "at": 1
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "When is customer concentration a deal breaker?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 64.2
+    },
+    {
+     "source": "pod"
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "What is a legitimate add-back?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 48.8
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": ""
+  },
+  {
+   "q": "Which leases and contracts need to be assignable?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt02",
+     "at": 111.2
+    }
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "note": ""
+  },
+  {
+   "q": "What documents will the lender ask for?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt03",
+     "at": 3255.8
+    },
+    {
+     "source": "report"
+    }
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "note": "startup_wc: 'not about tax returns'"
+  },
+  {
+   "q": "What interest rate spread do acquisition loans carry?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 46.6
+    },
+    {
+     "source": "dscr_numbers",
+     "at": 96.2
+    }
+   ],
+   "hard_negatives": [],
+   "note": ""
+  },
+  {
+   "q": "What is global cash flow and why do buyers fail it?",
+   "category": "same_concept",
+   "expected": [
+    {
+     "source": "dscr_numbers",
+     "at": 79.7
+    }
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "note": ""
+  },
+  {
+   "q": "Is closing possible in thirty days?",
+   "category": "authority",
+   "expected": [
+    {
+     "source": "yt01",
+     "at": 104.3
+    }
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "note": "pop_weak claims thirty days; yt01 says sixty to ninety"
+  },
+  {
+   "q": "How should service technicians write up their notes?",
+   "category": "terminology",
+   "expected": [
+    {
+     "source": "hvac_ops",
+     "at": 15.4
+    }
+   ],
+   "hard_negatives": [
+    "yt01",
+    "report"
+   ],
+   "note": "the reverse: 'notes' here means service notes, not seller notes"
+  }
+ ],
+ "grading": {
+  "media_locator_tolerance_s": 120,
+  "hard_negative_false_positive": "a hard-negative source ranks ABOVE the first expected hit",
+  "ndcg": "binary source relevance per hit, top 10",
+  "locator_exact": "the FIRST hit of an expected source is at its graded locator"
+ }
+}

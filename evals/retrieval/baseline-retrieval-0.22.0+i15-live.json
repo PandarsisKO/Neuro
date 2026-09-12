@@ -1,0 +1,5210 @@
+{
+ "eval": "retrieval",
+ "tier": "live",
+ "retrieval": "hybrid (FTS + vectors, RRF)",
+ "fixture_version": 1,
+ "fixture": {
+  "sources": 13,
+  "queries": 30,
+  "locators": 39,
+  "hard_negatives": 27
+ },
+ "metrics": {
+  "queries": 30,
+  "recall_at_1": 0.8667,
+  "recall_at_3": 0.9333,
+  "recall_at_5": 0.9333,
+  "recall_at_10": 1.0,
+  "candidate_recall_at_40": 1.0,
+  "mrr": 0.9093,
+  "ndcg_at_10": 0.8501,
+  "mean_first_rank": 1.5,
+  "median_first_rank": 1.0,
+  "locator_accuracy": 0.9231,
+  "locator_exact_at_first_hit": 0.8718,
+  "locators": 39,
+  "hard_negative_false_positives": 1,
+  "queries_with_hard_negative_above": 1,
+  "not_first": 4,
+  "candidates_mean": 16.7,
+  "candidates_min_max": [
+   14,
+   18
+  ]
+ },
+ "by_category": {
+  "authority": {
+   "queries": 6,
+   "recall_at_1": 0.6667,
+   "recall_at_3": 0.8333,
+   "recall_at_5": 0.8333,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 0.7685,
+   "ndcg_at_10": 0.7375,
+   "mean_first_rank": 2.5,
+   "median_first_rank": 1.0,
+   "locator_accuracy": 0.8889,
+   "locator_exact_at_first_hit": 0.7778,
+   "locators": 9,
+   "hard_negative_false_positives": 1,
+   "queries_with_hard_negative_above": 1,
+   "not_first": 2
+  },
+  "buried": {
+   "queries": 5,
+   "recall_at_1": 1.0,
+   "recall_at_3": 1.0,
+   "recall_at_5": 1.0,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 1.0,
+   "ndcg_at_10": 0.8721,
+   "mean_first_rank": 1.0,
+   "median_first_rank": 1,
+   "locator_accuracy": 1.0,
+   "locator_exact_at_first_hit": 1.0,
+   "locators": 5,
+   "hard_negative_false_positives": 0,
+   "queries_with_hard_negative_above": 0,
+   "not_first": 0
+  },
+  "contradiction": {
+   "queries": 2,
+   "recall_at_1": 1.0,
+   "recall_at_3": 1.0,
+   "recall_at_5": 1.0,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 1.0,
+   "ndcg_at_10": 0.9207,
+   "mean_first_rank": 1.0,
+   "median_first_rank": 1.0,
+   "locator_accuracy": 1.0,
+   "locator_exact_at_first_hit": 1.0,
+   "locators": 1,
+   "hard_negative_false_positives": 0,
+   "queries_with_hard_negative_above": 0,
+   "not_first": 0
+  },
+  "numeric": {
+   "queries": 4,
+   "recall_at_1": 1.0,
+   "recall_at_3": 1.0,
+   "recall_at_5": 1.0,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 1.0,
+   "ndcg_at_10": 0.9799,
+   "mean_first_rank": 1.0,
+   "median_first_rank": 1.0,
+   "locator_accuracy": 1.0,
+   "locator_exact_at_first_hit": 1.0,
+   "locators": 6,
+   "hard_negative_false_positives": 0,
+   "queries_with_hard_negative_above": 0,
+   "not_first": 0
+  },
+  "same_concept": {
+   "queries": 8,
+   "recall_at_1": 0.75,
+   "recall_at_3": 0.875,
+   "recall_at_5": 0.875,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 0.8333,
+   "ndcg_at_10": 0.8543,
+   "mean_first_rank": 1.75,
+   "median_first_rank": 1.0,
+   "locator_accuracy": 1.0,
+   "locator_exact_at_first_hit": 1.0,
+   "locators": 10,
+   "hard_negative_false_positives": 0,
+   "queries_with_hard_negative_above": 0,
+   "not_first": 2
+  },
+  "terminology": {
+   "queries": 5,
+   "recall_at_1": 1.0,
+   "recall_at_3": 1.0,
+   "recall_at_5": 1.0,
+   "recall_at_10": 1.0,
+   "candidate_recall_at_40": 1.0,
+   "mrr": 1.0,
+   "ndcg_at_10": 0.8245,
+   "mean_first_rank": 1.0,
+   "median_first_rank": 1,
+   "locator_accuracy": 0.75,
+   "locator_exact_at_first_hit": 0.625,
+   "locators": 8,
+   "hard_negative_false_positives": 0,
+   "queries_with_hard_negative_above": 0,
+   "not_first": 0
+  }
+ },
+ "per_query": [
+  {
+   "q": "What is the minimum down payment for an SBA 7(a) acquisition?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt01",
+     6.2
+    ],
+    [
+     "report",
+     1
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "pop_weak says 'five percent' \u2014 wrong and vague",
+   "top10": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0329
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.03
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0294
+    },
+    {
+     "chunk_id": 103,
+     "source": "yt03",
+     "start": 5069.2,
+     "score": 0.0262
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.0259
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0242
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0164
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0159
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0157
+    }
+   ]
+  },
+  {
+   "q": "Can the seller note count toward the equity injection?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt01",
+     26.9
+    ],
+    [
+     "report",
+     2
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.8385,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2117.7
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 57,
+     "source": "yt03",
+     "start": 2730.0,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0326
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0321
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 45,
+     "source": "yt03",
+     "start": 2117.7,
+     "score": 0.0308
+    },
+    {
+     "chunk_id": 21,
+     "source": "yt03",
+     "start": 905.8,
+     "score": 0.0301
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0298
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0271
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0242
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0225
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.022
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0205
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0194
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0143
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0141
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0122
+    }
+   ]
+  },
+  {
+   "q": "Do I really have to sign a personal guarantee?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt01",
+     60.1
+    ],
+    [
+     "report",
+     3
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9134,
+   "locator": "1/2",
+   "exact": "1/2",
+   "hard_negative_fp": 0,
+   "note": "pop_weak calls it a myth",
+   "top10": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0333
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.032
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.03
+    },
+    {
+     "chunk_id": 47,
+     "source": "yt03",
+     "start": 2216.5,
+     "score": 0.0298
+    },
+    {
+     "chunk_id": 81,
+     "source": "yt03",
+     "start": 3964.2,
+     "score": 0.029
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0286
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0285
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0273
+    },
+    {
+     "chunk_id": 59,
+     "source": "yt03",
+     "start": 2837.7,
+     "score": 0.0253
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0208
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0204
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0156
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0083
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0076
+    }
+   ]
+  },
+  {
+   "q": "Is a quality of earnings report necessary on a small deal?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt02",
+     16.9
+    ],
+    [
+     "pod",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.8066,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "yt03",
+     3035.8
+    ],
+    [
+     "yt03",
+     3913.1
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 37,
+     "source": "yt03",
+     "start": 1709.6,
+     "score": 0.0334
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0325
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0324
+    },
+    {
+     "chunk_id": 63,
+     "source": "yt03",
+     "start": 3035.8,
+     "score": 0.029
+    },
+    {
+     "chunk_id": 80,
+     "source": "yt03",
+     "start": 3913.1,
+     "score": 0.0287
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0264
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0262
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.025
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0219
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0208
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0202
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0162
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0073
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0064
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "What should I change in the first ninety days after buying a business?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt03",
+     5020.8
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak",
+    "hvac_ops"
+   ],
+   "first_rank": 1,
+   "candidate_rank": 1,
+   "ndcg": 0.5654,
+   "locator": "1/1",
+   "exact": "0/1",
+   "hard_negative_fp": 0,
+   "note": "pop_weak says rebrand and raise prices; hvac_ops has 'first ninety days' for new hires",
+   "top10": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "yt03",
+     4463.5
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 92,
+     "source": "yt03",
+     "start": 4515.4,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0336
+    },
+    {
+     "chunk_id": 102,
+     "source": "yt03",
+     "start": 5020.8,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 91,
+     "source": "yt03",
+     "start": 4463.5,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.031
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.03
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0299
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0296
+    },
+    {
+     "chunk_id": 86,
+     "source": "yt03",
+     "start": 4213.1,
+     "score": 0.0292
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.026
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0216
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0209
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0208
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0192
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0062
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "What debt service coverage ratio do lenders want on a business acquisition loan?",
+   "category": "numeric",
+   "expected": [
+    [
+     "yt01",
+     86.2
+    ],
+    [
+     "dscr_numbers",
+     26.9
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9197,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "dscr_numbers has 1.20 / 1.15 / 1.35 / 1.10 / 1.5 for OTHER products in neighbouring chunks",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0318
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0296
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0293
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0291
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0288
+    },
+    {
+     "chunk_id": 108,
+     "source": "yt03",
+     "start": 5327.3,
+     "score": 0.0271
+    },
+    {
+     "chunk_id": 84,
+     "source": "yt03",
+     "start": 4119.2,
+     "score": 0.0265
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0221
+    }
+   ]
+  },
+  {
+   "q": "What DSCR applies to an owner-occupied 504 real estate deal?",
+   "category": "numeric",
+   "expected": [
+    [
+     "dscr_numbers",
+     16.9
+    ]
+   ],
+   "hard_negatives": [
+    "yt01"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "yt01's 1.25 is the acquisition figure, not the answer",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0336
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0332
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0325
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0318
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0312
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0303
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0292
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0282
+    },
+    {
+     "chunk_id": 75,
+     "source": "yt03",
+     "start": 3658.5,
+     "score": 0.0274
+    },
+    {
+     "chunk_id": 12,
+     "source": "yt03",
+     "start": 448.5,
+     "score": 0.0274
+    },
+    {
+     "chunk_id": 79,
+     "source": "yt03",
+     "start": 3864.2,
+     "score": 0.0271
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0255
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0216
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0096
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0064
+    }
+   ]
+  },
+  {
+   "q": "How much is the SBA guarantee fee?",
+   "category": "numeric",
+   "expected": [
+    [
+     "yt01",
+     118.5
+    ],
+    [
+     "dscr_numbers",
+     88.2
+    ],
+    [
+     "report",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "pop_weak: 'like a percent'",
+   "top10": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0336
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0319
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0304
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0162
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0155
+    },
+    {
+     "chunk_id": 5,
+     "source": "yt03",
+     "start": 105.0,
+     "score": 0.0153
+    },
+    {
+     "chunk_id": 57,
+     "source": "yt03",
+     "start": 2730.0,
+     "score": 0.0151
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0139
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0111
+    }
+   ]
+  },
+  {
+   "q": "What loan-to-value do banks allow on owner-occupied real estate?",
+   "category": "numeric",
+   "expected": [
+    [
+     "dscr_numbers",
+     69.3
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0325
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0298
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0258
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0255
+    },
+    {
+     "chunk_id": 86,
+     "source": "yt03",
+     "start": 4213.1,
+     "score": 0.0213
+    },
+    {
+     "chunk_id": 17,
+     "source": "yt03",
+     "start": 702.3,
+     "score": 0.0212
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0162
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0135
+    }
+   ]
+  },
+  {
+   "q": "Can you buy a business with zero percent down?",
+   "category": "contradiction",
+   "expected": [
+    [
+     "pod",
+     8.8
+    ],
+    [
+     "yt01",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9197,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "pod is the contrarian claim; yt01/report the rule; pop_weak the hype",
+   "top10": [
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0341
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0311
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0308
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0297
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.029
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0284
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.028
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0276
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0274
+    },
+    {
+     "chunk_id": 81,
+     "source": "yt03",
+     "start": 3964.2,
+     "score": 0.0271
+    },
+    {
+     "chunk_id": 5,
+     "source": "yt03",
+     "start": 105.0,
+     "score": 0.0259
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0149
+    }
+   ]
+  },
+  {
+   "q": "Do home services businesses sell for more than four times SDE?",
+   "category": "contradiction",
+   "expected": [
+    [
+     "pod",
+     null
+    ],
+    [
+     "article",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9218,
+   "locator": "0/0",
+   "exact": "0/0",
+   "hard_negative_fp": 0,
+   "note": "pop_weak: 'under five x is a steal'",
+   "top10": [
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     204.2
+    ],
+    [
+     "yt01",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0324
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 7,
+     "source": "yt03",
+     "start": 204.2,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0303
+    },
+    {
+     "chunk_id": 37,
+     "source": "yt03",
+     "start": 1709.6,
+     "score": 0.0297
+    },
+    {
+     "chunk_id": 8,
+     "source": "yt03",
+     "start": 255.4,
+     "score": 0.0296
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0288
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0251
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.025
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.02
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0143
+    }
+   ]
+  },
+  {
+   "q": "How do you set a working capital peg in a business purchase?",
+   "category": "terminology",
+   "expected": [
+    [
+     "yt02",
+     81.2
+    ],
+    [
+     "yt03",
+     2255.0
+    ],
+    [
+     "article",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.6534,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "startup_wc: working capital = runway, 'peg your valuation'",
+   "top10": [
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 47,
+     "source": "yt03",
+     "start": 2216.5,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0325
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0324
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0292
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0286
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0278
+    },
+    {
+     "chunk_id": 81,
+     "source": "yt03",
+     "start": 3964.2,
+     "score": 0.0275
+    },
+    {
+     "chunk_id": 69,
+     "source": "yt03",
+     "start": 3343.8,
+     "score": 0.0263
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0256
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0059
+    }
+   ]
+  },
+  {
+   "q": "What does full standby mean for a seller note?",
+   "category": "terminology",
+   "expected": [
+    [
+     "yt01",
+     38.9
+    ],
+    [
+     "report",
+     2
+    ]
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.4693,
+   "locator": "1/2",
+   "exact": "1/2",
+   "hard_negative_fp": 0,
+   "note": "hvac_ops: standby generators",
+   "top10": [
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2730.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "yt03",
+     5069.2
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 57,
+     "source": "yt03",
+     "start": 2730.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 20,
+     "source": "yt03",
+     "start": 857.7,
+     "score": 0.0304
+    },
+    {
+     "chunk_id": 21,
+     "source": "yt03",
+     "start": 905.8,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 103,
+     "source": "yt03",
+     "start": 5069.2,
+     "score": 0.0297
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0258
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0253
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.025
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0244
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0233
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0205
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0202
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0192
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0179
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0124
+    }
+   ]
+  },
+  {
+   "q": "Should the seller stay on after closing, and for how long?",
+   "category": "terminology",
+   "expected": [
+    [
+     "yt02",
+     123.5
+    ],
+    [
+     "yt03",
+     4005.0
+    ]
+   ],
+   "hard_negatives": [
+    "hvac_ops",
+    "startup_wc"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/2",
+   "exact": "0/2",
+   "hard_negative_fp": 0,
+   "note": "hvac_ops: parts seller; startup_wc: 'transition after a raise'",
+   "top10": [
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     654.2
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 76,
+     "source": "yt03",
+     "start": 3707.3,
+     "score": 0.0332
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0322
+    },
+    {
+     "chunk_id": 20,
+     "source": "yt03",
+     "start": 857.7,
+     "score": 0.0307
+    },
+    {
+     "chunk_id": 16,
+     "source": "yt03",
+     "start": 654.2,
+     "score": 0.0301
+    },
+    {
+     "chunk_id": 81,
+     "source": "yt03",
+     "start": 3964.2,
+     "score": 0.029
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0262
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0225
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0225
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0223
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0221
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0221
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0168
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0131
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.013
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0128
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0062
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0061
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.006
+    }
+   ]
+  },
+  {
+   "q": "How much working capital should a seed startup raise?",
+   "category": "terminology",
+   "expected": [
+    [
+     "startup_wc",
+     16.2
+    ]
+   ],
+   "hard_negatives": [
+    "yt02",
+    "yt03"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "the reverse: here the startup source IS the answer and the acquisition sources are the distractors",
+   "top10": [
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt03",
+     2216.5
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0337
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0333
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0312
+    },
+    {
+     "chunk_id": 102,
+     "source": "yt03",
+     "start": 5020.8,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 47,
+     "source": "yt03",
+     "start": 2216.5,
+     "score": 0.0304
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.026
+    },
+    {
+     "chunk_id": 3,
+     "source": "yt03",
+     "start": 0.0,
+     "score": 0.0258
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0245
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0177
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0169
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0159
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0149
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0147
+    }
+   ]
+  },
+  {
+   "q": "How long should the exclusivity period in the LOI be?",
+   "category": "buried",
+   "expected": [
+    [
+     "yt03",
+     1500.4
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     1207.3
+    ],
+    [
+     "yt03",
+     1256.2
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 32,
+     "source": "yt03",
+     "start": 1465.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 27,
+     "source": "yt03",
+     "start": 1207.3,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 28,
+     "source": "yt03",
+     "start": 1256.2,
+     "score": 0.0334
+    },
+    {
+     "chunk_id": 37,
+     "source": "yt03",
+     "start": 1709.6,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0315
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0222
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0215
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0094
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0082
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.008
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0077
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0076
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0062
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "What multiple of SDE do small businesses under a million in SDE trade at?",
+   "category": "buried",
+   "expected": [
+    [
+     "yt03",
+     1994.6
+    ],
+    [
+     "article",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.7017,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt03",
+     1964.6
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt03",
+     1709.6
+    ],
+    [
+     "report",
+     1.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0327
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0326
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0318
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0317
+    },
+    {
+     "chunk_id": 37,
+     "source": "yt03",
+     "start": 1709.6,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0311
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.03
+    },
+    {
+     "chunk_id": 99,
+     "source": "yt03",
+     "start": 4873.1,
+     "score": 0.0278
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0276
+    },
+    {
+     "chunk_id": 49,
+     "source": "yt03",
+     "start": 2321.2,
+     "score": 0.0272
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0265
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0259
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0141
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0109
+    }
+   ]
+  },
+  {
+   "q": "Can the building be financed on a longer term than the business?",
+   "category": "buried",
+   "expected": [
+    [
+     "yt03",
+     3493.5
+    ],
+    [
+     "report",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "dscr_numbers"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.8494,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "dscr_numbers talks real estate ratios, not terms",
+   "top10": [
+    [
+     "report",
+     2.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0344
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0337
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0324
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0312
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0301
+    },
+    {
+     "chunk_id": 62,
+     "source": "yt03",
+     "start": 2981.2,
+     "score": 0.0288
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.0284
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0278
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0273
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0261
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0238
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0221
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "What has to change on closing day \u2014 bank signers, payroll, insurance?",
+   "category": "buried",
+   "expected": [
+    [
+     "yt03",
+     4251.9
+    ]
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9047,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt03",
+     4213.1
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt03",
+     3964.2
+    ],
+    [
+     "yt03",
+     5020.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 86,
+     "source": "yt03",
+     "start": 4213.1,
+     "score": 0.0341
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 76,
+     "source": "yt03",
+     "start": 3707.3,
+     "score": 0.0333
+    },
+    {
+     "chunk_id": 81,
+     "source": "yt03",
+     "start": 3964.2,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 102,
+     "source": "yt03",
+     "start": 5020.8,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0272
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0255
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0224
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0221
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0219
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0212
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0202
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0197
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0151
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0128
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0083
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "Where do the best off-market deals come from?",
+   "category": "buried",
+   "expected": [
+    [
+     "yt03",
+     738.5
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.9047,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt03",
+     702.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     204.2
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "yt03",
+     3292.7
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 17,
+     "source": "yt03",
+     "start": 702.3,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 7,
+     "source": "yt03",
+     "start": 204.2,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 32,
+     "source": "yt03",
+     "start": 1465.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 68,
+     "source": "yt03",
+     "start": 3292.7,
+     "score": 0.0297
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.027
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0255
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0235
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0231
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0226
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0219
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0206
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0176
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.015
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0149
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0141
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "How long is the term on an SBA acquisition loan?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt01",
+     46.6
+    ],
+    [
+     "report",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "pop_weak: 'ten years-ish, depends on the vibe'",
+   "top10": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     2473.1
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0321
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0307
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0298
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0294
+    },
+    {
+     "chunk_id": 62,
+     "source": "yt03",
+     "start": 2981.2,
+     "score": 0.0277
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0206
+    },
+    {
+     "chunk_id": 63,
+     "source": "yt03",
+     "start": 3035.8,
+     "score": 0.0162
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0159
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0105
+    }
+   ]
+  },
+  {
+   "q": "What is the maximum 7(a) loan size?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt01",
+     75.1
+    ],
+    [
+     "report",
+     1
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0333
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0316
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 42,
+     "source": "yt03",
+     "start": 1964.6,
+     "score": 0.0155
+    },
+    {
+     "chunk_id": 52,
+     "source": "yt03",
+     "start": 2473.1,
+     "score": 0.0153
+    },
+    {
+     "chunk_id": 62,
+     "source": "yt03",
+     "start": 2981.2,
+     "score": 0.0151
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0147
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.009
+    }
+   ]
+  },
+  {
+   "q": "When is customer concentration a deal breaker?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt02",
+     64.2
+    ],
+    [
+     "pod",
+     null
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 0.8316,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     4569.2
+    ],
+    [
+     "yt03",
+     448.5
+    ],
+    [
+     "yt03",
+     3864.2
+    ],
+    [
+     "yt03",
+     2117.7
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "calc",
+     1.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0347
+    },
+    {
+     "chunk_id": 93,
+     "source": "yt03",
+     "start": 4569.2,
+     "score": 0.0315
+    },
+    {
+     "chunk_id": 12,
+     "source": "yt03",
+     "start": 448.5,
+     "score": 0.0311
+    },
+    {
+     "chunk_id": 79,
+     "source": "yt03",
+     "start": 3864.2,
+     "score": 0.0304
+    },
+    {
+     "chunk_id": 45,
+     "source": "yt03",
+     "start": 2117.7,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0235
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0227
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0225
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0215
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0166
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0155
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0152
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0137
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.012
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0064
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "What is a legitimate add-back?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt02",
+     48.8
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2930.8
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "yt03",
+     1861.5
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 61,
+     "source": "yt03",
+     "start": 2930.8,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 32,
+     "source": "yt03",
+     "start": 1465.0,
+     "score": 0.0326
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0325
+    },
+    {
+     "chunk_id": 40,
+     "source": "yt03",
+     "start": 1861.5,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 101,
+     "source": "yt03",
+     "start": 4971.5,
+     "score": 0.0304
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0228
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0207
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0189
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0106
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0105
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0097
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0093
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0087
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0066
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "Which leases and contracts need to be assignable?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt02",
+     111.2
+    ]
+   ],
+   "hard_negatives": [
+    "hvac_ops"
+   ],
+   "first_rank": 5,
+   "candidate_rank": 5,
+   "ndcg": 0.3562,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt03",
+     1514.6
+    ],
+    [
+     "yt03",
+     1465.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "article",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 20,
+     "source": "yt03",
+     "start": 857.7,
+     "score": 0.0318
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.0311
+    },
+    {
+     "chunk_id": 33,
+     "source": "yt03",
+     "start": 1514.6,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 32,
+     "source": "yt03",
+     "start": 1465.0,
+     "score": 0.0306
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.025
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0248
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0226
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0219
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0217
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0085
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0077
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0072
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0068
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0065
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0062
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "What documents will the lender ask for?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt03",
+     3255.8
+    ],
+    [
+     "report",
+     null
+    ]
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "first_rank": 1,
+   "candidate_rank": 1,
+   "ndcg": 0.6463,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "startup_wc: 'not about tax returns'",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt03",
+     3239.6
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "yt03",
+     4971.5
+    ],
+    [
+     "yt03",
+     1159.6
+    ],
+    [
+     "yt03",
+     806.9
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0337
+    },
+    {
+     "chunk_id": 67,
+     "source": "yt03",
+     "start": 3239.6,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0315
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0303
+    },
+    {
+     "chunk_id": 101,
+     "source": "yt03",
+     "start": 4971.5,
+     "score": 0.0302
+    },
+    {
+     "chunk_id": 26,
+     "source": "yt03",
+     "start": 1159.6,
+     "score": 0.0294
+    },
+    {
+     "chunk_id": 19,
+     "source": "yt03",
+     "start": 806.9,
+     "score": 0.0286
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.026
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0254
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0228
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0216
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0216
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0176
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0159
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0152
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0149
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0062
+    }
+   ]
+  },
+  {
+   "q": "What interest rate spread do acquisition loans carry?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "yt01",
+     46.6
+    ],
+    [
+     "dscr_numbers",
+     96.2
+    ]
+   ],
+   "hard_negatives": [],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "2/2",
+   "exact": "2/2",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "report",
+     1.0
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     3447.3
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0337
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0331
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 62,
+     "source": "yt03",
+     "start": 2981.2,
+     "score": 0.0309
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0294
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0265
+    },
+    {
+     "chunk_id": 71,
+     "source": "yt03",
+     "start": 3447.3,
+     "score": 0.0262
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0257
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0215
+    },
+    {
+     "chunk_id": 103,
+     "source": "yt03",
+     "start": 5069.2,
+     "score": 0.0167
+    },
+    {
+     "chunk_id": 57,
+     "source": "yt03",
+     "start": 2730.0,
+     "score": 0.0164
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0151
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.008
+    }
+   ]
+  },
+  {
+   "q": "What is global cash flow and why do buyers fail it?",
+   "category": "same_concept",
+   "expected": [
+    [
+     "dscr_numbers",
+     79.7
+    ]
+   ],
+   "hard_negatives": [
+    "startup_wc"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "",
+   "top10": [
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "startup_wc",
+     0.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "yt03",
+     957.7
+    ],
+    [
+     "report",
+     2.0
+    ],
+    [
+     "yt01",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0341
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0339
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0328
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0327
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0326
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0321
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 22,
+     "source": "yt03",
+     "start": 957.7,
+     "score": 0.029
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.025
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0241
+    },
+    {
+     "chunk_id": 114,
+     "source": "article",
+     "start": 1.0,
+     "score": 0.0229
+    },
+    {
+     "chunk_id": 74,
+     "source": "yt03",
+     "start": 3610.4,
+     "score": 0.0172
+    },
+    {
+     "chunk_id": 80,
+     "source": "yt03",
+     "start": 3913.1,
+     "score": 0.0162
+    },
+    {
+     "chunk_id": 75,
+     "source": "yt03",
+     "start": 3658.5,
+     "score": 0.0159
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0062
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "Is closing possible in thirty days?",
+   "category": "authority",
+   "expected": [
+    [
+     "yt01",
+     104.3
+    ]
+   ],
+   "hard_negatives": [
+    "pop_weak"
+   ],
+   "first_rank": 8,
+   "candidate_rank": 8,
+   "ndcg": 0.301,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 1,
+   "note": "pop_weak claims thirty days; yt01 says sixty to ninety",
+   "top10": [
+    [
+     "yt03",
+     3707.3
+    ],
+    [
+     "yt03",
+     4515.4
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "yt03",
+     2981.2
+    ],
+    [
+     "yt03",
+     153.8
+    ],
+    [
+     "pop_weak",
+     0.0
+    ],
+    [
+     "article",
+     2.0
+    ],
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "vlog",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 76,
+     "source": "yt03",
+     "start": 3707.3,
+     "score": 0.0342
+    },
+    {
+     "chunk_id": 92,
+     "source": "yt03",
+     "start": 4515.4,
+     "score": 0.033
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0313
+    },
+    {
+     "chunk_id": 62,
+     "source": "yt03",
+     "start": 2981.2,
+     "score": 0.0305
+    },
+    {
+     "chunk_id": 6,
+     "source": "yt03",
+     "start": 153.8,
+     "score": 0.0303
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0279
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0228
+    },
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.0222
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0216
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0088
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0085
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0073
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0067
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0067
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0064
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0061
+    }
+   ]
+  },
+  {
+   "q": "How should service technicians write up their notes?",
+   "category": "terminology",
+   "expected": [
+    [
+     "hvac_ops",
+     15.4
+    ]
+   ],
+   "hard_negatives": [
+    "yt01",
+    "report"
+   ],
+   "first_rank": 0,
+   "candidate_rank": 0,
+   "ndcg": 1.0,
+   "locator": "1/1",
+   "exact": "1/1",
+   "hard_negative_fp": 0,
+   "note": "the reverse: 'notes' here means service notes, not seller notes",
+   "top10": [
+    [
+     "hvac_ops",
+     0.0
+    ],
+    [
+     "yt03",
+     957.7
+    ],
+    [
+     "yt03",
+     857.7
+    ],
+    [
+     "yt03",
+     5119.6
+    ],
+    [
+     "yt03",
+     905.8
+    ],
+    [
+     "calc",
+     1.0
+    ],
+    [
+     "yt02",
+     0.0
+    ],
+    [
+     "dscr_numbers",
+     0.0
+    ],
+    [
+     "yt01",
+     0.0
+    ],
+    [
+     "pod",
+     0.0
+    ]
+   ],
+   "candidates": [
+    {
+     "chunk_id": 123,
+     "source": "hvac_ops",
+     "start": 0.0,
+     "score": 0.035
+    },
+    {
+     "chunk_id": 22,
+     "source": "yt03",
+     "start": 957.7,
+     "score": 0.0323
+    },
+    {
+     "chunk_id": 20,
+     "source": "yt03",
+     "start": 857.7,
+     "score": 0.0314
+    },
+    {
+     "chunk_id": 104,
+     "source": "yt03",
+     "start": 5119.6,
+     "score": 0.0311
+    },
+    {
+     "chunk_id": 21,
+     "source": "yt03",
+     "start": 905.8,
+     "score": 0.0301
+    },
+    {
+     "chunk_id": 118,
+     "source": "calc",
+     "start": 1.0,
+     "score": 0.0268
+    },
+    {
+     "chunk_id": 2,
+     "source": "yt02",
+     "start": 0.0,
+     "score": 0.0229
+    },
+    {
+     "chunk_id": 121,
+     "source": "dscr_numbers",
+     "start": 0.0,
+     "score": 0.0221
+    },
+    {
+     "chunk_id": 1,
+     "source": "yt01",
+     "start": 0.0,
+     "score": 0.0212
+    },
+    {
+     "chunk_id": 112,
+     "source": "pod",
+     "start": 0.0,
+     "score": 0.0208
+    },
+    {
+     "chunk_id": 113,
+     "source": "vlog",
+     "start": 0.0,
+     "score": 0.0207
+    },
+    {
+     "chunk_id": 115,
+     "source": "article",
+     "start": 2.0,
+     "score": 0.0187
+    },
+    {
+     "chunk_id": 120,
+     "source": "pop_weak",
+     "start": 0.0,
+     "score": 0.0184
+    },
+    {
+     "chunk_id": 119,
+     "source": "sourdough",
+     "start": 1.0,
+     "score": 0.0176
+    },
+    {
+     "chunk_id": 117,
+     "source": "report",
+     "start": 2.0,
+     "score": 0.0156
+    },
+    {
+     "chunk_id": 122,
+     "source": "startup_wc",
+     "start": 0.0,
+     "score": 0.0152
+    },
+    {
+     "chunk_id": 116,
+     "source": "report",
+     "start": 1.0,
+     "score": 0.0115
+    }
+   ]
+  }
+ ],
+ "performance": {
+  "search_s_per_query": 0.3068,
+  "seconds": 18.4
+ },
+ "embeddings": {
+  "model": "text-embedding-3-small",
+  "fake": false
+ },
+ "anthropic_calls": 0,
+ "embedding_usage": {
+  "input_tokens": 22333,
+  "cost": 0.00044666000000000004,
+  "calls": 44
+ },
+ "headroom": {
+  "mrr_ceiling": 0.0907,
+  "recall_at_3_ceiling_pp": 6.7,
+  "exact_locator_ceiling_pp": 12.8,
+  "fixable_mistakes": 4,
+  "fixable": [
+   {
+    "q": "What should I change in the first ninety days after buying a business?",
+    "category": "authority",
+    "first_rank": 1,
+    "candidate_rank": 1,
+    "exact": "0/1",
+    "hard_negative_fp": 0
+   },
+   {
+    "q": "Which leases and contracts need to be assignable?",
+    "category": "same_concept",
+    "first_rank": 5,
+    "candidate_rank": 5,
+    "exact": "1/1",
+    "hard_negative_fp": 0
+   },
+   {
+    "q": "What documents will the lender ask for?",
+    "category": "same_concept",
+    "first_rank": 1,
+    "candidate_rank": 1,
+    "exact": "1/1",
+    "hard_negative_fp": 0
+   },
+   {
+    "q": "Is closing possible in thirty days?",
+    "category": "authority",
+    "first_rank": 8,
+    "candidate_rank": 8,
+    "exact": "1/1",
+    "hard_negative_fp": 1
+   }
+  ],
+  "candidate_positions_of_first_target": {
+   "1": 26,
+   "2-3": 2,
+   "6-10": 2
+  },
+  "deepest_target_position": 9,
+  "min_rerank_depth_for_100pct_candidate_recall": 9,
+  "recommended_rerank_depth": 11,
+  "candidate_recall_100": true,
+  "gate": {
+   "mrr": true,
+   "recall_at_3": true,
+   "exact_locator": true,
+   "fixable_mistakes": true
+  },
+  "build_i2": true,
+  "decision": "BUILD I2 (experiment, off by default; must still beat the baseline by MRR +0.02 / R@3 +5 pp / locator +10 pp)"
+ },
+ "app_version": "0.22.0+i15",
+ "git_sha": "b5768c0"
+}

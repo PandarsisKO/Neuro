@@ -1,0 +1,67 @@
+{
+ "version": 1,
+ "_about": "Frozen, deterministic planner-quality rubric for the Golden Project (buying a small business with an SBA 7(a) loan). Each check names the sections of the plan or analysis JSON it looks in (dotted paths; '*' walks lists; the path '*' alone means the whole document) and the case-insensitive regexes that must appear: every 'all' pattern and at least one 'any' pattern. No model judges anything here.",
+ "plan": {
+  "checks": [
+   {"id": "risk.customer_concentration", "kind": "risk", "sections": ["risks", "gotchas", "phases.*.tasks", "decisions"], "any": ["customer concentration", "concentrat"], "why": "yt02 + pod: one customer over ~20% of revenue is a price-in-or-walk risk"},
+   {"id": "risk.add_backs_or_qoe", "kind": "risk", "sections": ["risks", "gotchas", "phases.*.tasks", "dependencies", "costs"], "any": ["add-back", "add back", "addback", "quality of earnings", "qoe"], "why": "yt02: inflated add-backs; a QoE report ($8-20k) is how you check"},
+   {"id": "risk.personal_guarantee", "kind": "risk", "sections": ["risks", "gotchas", "decisions", "dependencies", "goal.constraints"], "any": ["personal guarantee", "personally guarantee", "personal guaranty"], "why": "yt01 + report: every 20%+ owner signs"},
+   {"id": "risk.seller_transition", "kind": "risk", "sections": ["risks", "gotchas", "phases", "decisions"], "any": ["transition", "seller stay", "stays on", "training period", "handover", "hand-over"], "why": "yt02 + yt03: seller transition period after closing"},
+   {"id": "risk.lease_assignment", "kind": "risk", "sections": ["risks", "gotchas", "phases.*.tasks", "dependencies", "open_questions"], "any": ["lease", "assignab", "assignment"], "why": "yt02: leases and contracts must be assignable"},
+   {"id": "assumption.dscr", "kind": "assumption", "sections": ["*"], "any": ["dscr", "debt service coverage", "1\\.25", "one point two five"], "why": "yt01/report/article: lenders want DSCR >= 1.25"},
+   {"id": "assumption.sde_multiple", "kind": "assumption", "sections": ["*"], "all": ["sde|seller'?s? discretionary"], "any": ["multiple", "\\dx", "\\d\\.\\dx", "times"], "why": "article + yt03: value is a multiple of SDE"},
+   {"id": "assumption.valuation_range", "kind": "assumption", "sections": ["*"], "any": ["2\\.0x", "2x", "3\\.5x", "two to three", "2-3\\.5", "2 to 3\\.5", "2–3\\.5", "2\\.0–3\\.5", "2\\.0-3\\.5"], "why": "article: SDE multiples cluster 2.0x-3.5x; yt03: two to three and a half"},
+   {"id": "dependency.equity_injection", "kind": "dependency", "sections": ["dependencies", "ready", "costs", "first_steps", "phases", "goal"], "any": ["equity injection", "10%", "ten percent", "down payment", "10 percent"], "why": "yt01 + report: 10% equity injection is the gating dependency"},
+   {"id": "dependency.seller_note_standby", "kind": "dependency", "sections": ["*"], "all": ["seller note|seller financ|seller carry"], "any": ["standby", "stand-by", "half", "5%", "five percent"], "why": "yt01: half of the injection may be a seller note on full standby"},
+   {"id": "dependency.lender", "kind": "dependency", "sections": ["dependencies", "first_steps", "this_week", "phases", "ready"], "any": ["lender", "bank", "sba"], "why": "the loan is the path; a lender relationship is a dependency"},
+   {"id": "dependency.qoe_in_diligence", "kind": "dependency", "sections": ["phases", "dependencies", "decisions", "costs", "first_steps"], "any": ["quality of earnings", "qoe", "due diligence", "diligence"], "why": "diligence with a QoE is a phase, not an afterthought"},
+   {"id": "first_step.lender_contact", "kind": "first_step", "sections": ["first_steps", "this_week", "ready.first_three"], "any": ["lender", "bank", "sba"], "why": "actionable: talk to lenders now"},
+   {"id": "first_step.deal_flow", "kind": "first_step", "sections": ["first_steps", "this_week", "ready.first_three"], "any": ["broker", "listing", "bizbuysell", "search", "off-market", "off market", "outreach", "deal flow", "dealflow", "owners"], "why": "actionable: start finding businesses"},
+   {"id": "first_step.money_check", "kind": "first_step", "sections": ["first_steps", "this_week", "ready", "refine_questions"], "any": ["cash", "savings", "liquid", "net worth", "capital", "how much money", "budget"], "why": "actionable: know what you can bring"},
+   {"id": "contradiction.zero_down_vs_injection", "kind": "contradiction", "sections": ["*"], "all": ["seller financ|seller note|seller carry|seller-financ"], "any": ["zero down", "zero percent down", "0% down", "no money down", "100% seller", "full seller", "nothing down", "zero-down"], "why": "pod says zero down via seller financing; yt01/report say 10% injection, only half from a seller note — the plan must reconcile, not pick one silently"},
+   {"id": "contradiction.high_multiples", "kind": "contradiction", "sections": ["*"], "any": ["4x", "four times", "above 4", "over 4", "premium multiple", "higher multiple", "4\\.0x", "5x"], "why": "pod says home services trade above 4x vs the article's 2.0-3.5x cluster"},
+   {"id": "open_question.working_capital_peg", "kind": "open_question", "sections": ["open_questions", "refine_questions", "decisions", "phases", "gotchas"], "any": ["working capital", "peg"], "why": "yt02/article/yt03: the peg is negotiated and easy to get wrong"},
+   {"id": "open_question.cash_available", "kind": "open_question", "sections": ["refine_questions", "open_questions"], "any": ["cash", "liquid", "savings", "how much money", "capital", "net worth", "down payment"], "why": "only the user knows what they can bring"},
+   {"id": "open_question.target_industry", "kind": "open_question", "sections": ["refine_questions", "open_questions", "decisions"], "any": ["hvac", "industry", "services", "manufacturing", "which business", "what kind of business", "type of business", "sector"], "why": "the brief spans HVAC / services / light manufacturing — a real choice"},
+   {"id": "completeness.first_90_days", "kind": "completeness", "sections": ["phases", "defer", "gotchas", "first_steps", "decisions"], "any": ["90 days", "ninety days", "first 90", "first ninety", "raise prices", "first three months", "first 3 months"], "why": "yt03: do not raise prices in the first 90 days"},
+   {"id": "completeness.loi_exclusivity", "kind": "completeness", "sections": ["*"], "any": ["exclusiv", "loi", "letter of intent"], "why": "yt03: sixty-day exclusivity in the LOI"},
+   {"id": "completeness.guarantee_fee_or_closing_costs", "kind": "completeness", "sections": ["costs", "gotchas", "risks"], "any": ["guarantee fee", "guaranty fee", "sba fee", "closing cost", "fees"], "why": "yt01/report: the SBA guarantee fee is a real upfront cost"},
+   {"id": "completeness.closing_day", "kind": "completeness", "sections": ["phases", "first_steps", "gotchas", "defer"], "any": ["closing day", "payroll", "bank account", "merchant", "signers", "insurance", "closing checklist", "at closing", "on closing"], "why": "yt03: bank/payroll/merchant/insurance changes on closing day"}
+  ],
+  "structure": {
+   "this_week": {"min": 3, "max": 5, "fields": ["action", "why", "time"]},
+   "first_steps": {"min": 3, "fields": ["action"]},
+   "risks": {"min": 3, "fields": ["risk", "mitigation"]},
+   "open_questions": {"min": 2, "fields": ["question", "research_prompt"]},
+   "refine_questions": {"min": 4, "max": 7, "fields": ["question", "why"]},
+   "phases": {"min": 2, "fields": ["name", "objective"]},
+   "dependencies": {"min": 2, "fields": ["item"]},
+   "gotchas": {"min": 2, "fields": ["gotcha", "avoid"]}
+  }
+ },
+ "analysis": {
+  "checks": [
+   {"id": "threat.customer_concentration", "kind": "risk", "sections": ["swot.threats", "failure_patterns"], "any": ["customer concentration", "concentrat"], "why": "yt02 + pod"},
+   {"id": "threat.add_backs_or_qoe", "kind": "risk", "sections": ["swot.threats", "failure_patterns", "assumptions"], "any": ["add-back", "add back", "addback", "quality of earnings", "qoe", "inflated", "overstated"], "why": "yt02"},
+   {"id": "threat.overpaying_multiple", "kind": "risk", "sections": ["swot.threats", "failure_patterns", "assumptions", "options"], "any": ["overpay", "multiple", "valuation", "sde"], "why": "article + yt03 + pod"},
+   {"id": "assumption.financing_terms", "kind": "assumption", "sections": ["assumptions", "options", "readiness"], "any": ["10%", "ten percent", "equity injection", "down payment", "dscr", "debt service", "sba"], "why": "the whole plan rests on SBA financing rules"},
+   {"id": "assumption.checkable", "kind": "assumption", "sections": ["assumptions.*.how_to_check"], "any": ["lender", "bank", "ask", "call", "quote", "check", "verify", "confirm", "get", "pull", "request", "review", "run"], "why": "assumptions must say how to check them cheaply"},
+   {"id": "contradiction.zero_down_vs_injection", "kind": "contradiction", "sections": ["*"], "all": ["seller financ|seller note|seller carry|seller-financ"], "any": ["zero down", "zero percent down", "0% down", "no money down", "100% seller", "full seller", "nothing down", "zero-down", "standby", "half"], "why": "pod vs yt01/report"},
+   {"id": "readiness.money", "kind": "completeness", "sections": ["readiness.*.area"], "any": ["money", "cash", "capital", "financ", "funds"], "why": "readiness must rate money"},
+   {"id": "options.sba_path", "kind": "completeness", "sections": ["options"], "any": ["sba", "7\\(a\\)", "bank loan", "lender"], "why": "the SBA 7(a) path must be one of the options"},
+   {"id": "options.seller_financing_path", "kind": "completeness", "sections": ["options", "assumptions", "failure_patterns", "verdict"], "any": ["seller financ", "seller note", "seller carry", "seller-financ"], "why": "the pod's seller-financing path deserves an honest comparison"},
+   {"id": "failure.diligence", "kind": "risk", "sections": ["failure_patterns"], "any": ["diligence", "quality of earnings", "qoe", "add-back", "concentrat", "lease", "working capital", "transition"], "why": "the sources describe how buyers get burned"},
+   {"id": "verdict.present", "kind": "completeness", "sections": ["verdict"], "any": ["proceed", "buy", "ready", "should", "wait", "go", "not yet", "can", "recommend", "worth"], "why": "an honest take, not a summary"}
+  ],
+  "structure": {
+   "swot.strengths": {"min": 1, "fields": ["point", "so_what"]},
+   "swot.weaknesses": {"min": 1, "fields": ["point", "so_what"]},
+   "swot.opportunities": {"min": 2, "fields": ["point", "so_what"]},
+   "swot.threats": {"min": 2, "fields": ["point", "so_what"]},
+   "readiness": {"min": 3, "fields": ["area", "level"]},
+   "options": {"min": 2, "max": 4, "fields": ["path", "cost", "risk", "fit"]},
+   "assumptions": {"min": 2, "fields": ["assumption", "how_to_check"]},
+   "failure_patterns": {"min": 2, "fields": ["pattern", "avoid"]}
+  }
+ }
+}

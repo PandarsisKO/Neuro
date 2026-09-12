@@ -1,0 +1,24 @@
+{
+ "version": "0.14.0",
+ "tables": {
+  "sources": 1,
+  "segments": 1,
+  "chunks": 1,
+  "collections": 1,
+  "source_collections": 1,
+  "jobs": 1,
+  "projects": 1,
+  "project_sources": 1,
+  "project_collections": 1,
+  "project_notes": 1,
+  "project_facts": 1,
+  "plans": 1,
+  "plan_items": 1,
+  "plan_updates": 1,
+  "discoveries": 1,
+  "usage": 1,
+  "kv": 1,
+  "conversations": 1,
+  "messages": 1
+ }
+}

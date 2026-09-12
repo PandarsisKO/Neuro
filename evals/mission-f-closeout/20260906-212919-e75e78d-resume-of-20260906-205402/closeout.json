@@ -1,0 +1,467 @@
+{
+ "eval": "mission-f-closeout",
+ "tier": "live",
+ "app_version": "0.19.0+f6",
+ "git_sha": "e75e78d",
+ "started": "20260906-212919",
+ "dir": "evals/mission-f-closeout/20260906-212919-e75e78d-resume-of-20260906-205402",
+ "resumed_from": "evals/mission-f-closeout/20260906-205402-d2e8b74",
+ "deterministic": {
+  "steps": [
+   {
+    "step": "pytest",
+    "pass": true,
+    "detail": "135 passed, 1 warning in 31.21s"
+   },
+   {
+    "step": "schema registry provider-compatible",
+    "pass": true,
+    "detail": [
+     "discovery-v2",
+     "findings-v2",
+     "plan-actions-v3",
+     "plan-core-v3",
+     "plan-economics-v3",
+     "plan-execution-v3",
+     "plan-update-v2",
+     "rank-v2",
+     "situation-v3"
+    ]
+   },
+   {
+    "step": "Tier 1 (Planner V1)",
+    "pass": true,
+    "detail": "cost $0.5776"
+   },
+   {
+    "step": "Tier 1 (Planner V1) zero structured-output events",
+    "pass": true,
+    "detail": {
+     "schema_mismatches": 0,
+     "schema_fallbacks": 0,
+     "schema_failures": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "structured_tasks": [
+      "discover.quick",
+      "findings.extract",
+      "planner.actions",
+      "planner.core",
+      "planner.economics",
+      "planner.execution",
+      "planner.situation",
+      "planner.update",
+      "rank.relevance"
+     ]
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V1) frozen planner rubric",
+    "pass": true,
+    "detail": {
+     "plan": 0.0,
+     "analysis": 0.1818
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V3)",
+    "pass": true,
+    "detail": "cost $0.5974"
+   },
+   {
+    "step": "Tier 1 (Planner V3) zero structured-output events",
+    "pass": true,
+    "detail": {
+     "schema_mismatches": 0,
+     "schema_fallbacks": 0,
+     "schema_failures": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "structured_tasks": [
+      "discover.quick",
+      "findings.extract",
+      "planner.actions",
+      "planner.core",
+      "planner.economics",
+      "planner.execution",
+      "planner.situation",
+      "planner.update",
+      "rank.relevance"
+     ]
+    }
+   },
+   {
+    "step": "Tier 1 (Planner V3) frozen planner rubric",
+    "pass": true,
+    "detail": {
+     "plan": 1.0,
+     "analysis": 1.0
+    }
+   },
+   {
+    "step": "Tier 1 V3 evidence / assembly",
+    "pass": true,
+    "detail": {
+     "references": 56,
+     "dangling": [],
+     "removed": false
+    }
+   },
+   {
+    "step": "rubric V3 \u2265 V1 (fakes)",
+    "pass": true,
+    "detail": {
+     "v1": {
+      "plan": 0.0,
+      "analysis": 0.1818
+     },
+     "v3": {
+      "plan": 1.0,
+      "analysis": 1.0
+     }
+    }
+   }
+  ],
+  "pass": true,
+  "rubric_v1": {
+   "plan": 0.0,
+   "analysis": 0.1818
+  },
+  "rubric_v3": {
+   "plan": 1.0,
+   "analysis": 1.0
+  }
+ },
+ "live": {
+  "tier": "live",
+  "preflight": {
+   "claude-sonnet-4-6": 11,
+   "claude-sonnet-5": 12
+  },
+  "spend_estimate": {
+   "items": {
+    "embeddings": 0.02,
+    "findings.extract (Sonnet 5, structured)": 0.2,
+    "rank.relevance (Sonnet 5, structured)": 0.04,
+    "planner V1 (4.6)": 0.3,
+    "planner V3 (4.6, 5 calls, cached prefix)": 0.4,
+    "planner.update": 0.06,
+    "discover.quick": 0.03
+   },
+   "estimate": 1.05,
+   "maximum": 1.58,
+   "budget": 10.0
+  },
+  "surfaces": {
+   "findings.extract": {
+    "pass": true,
+    "fails": [],
+    "golden_evidence_recall": 0.9,
+    "finding_quote_validity": 1.0,
+    "stored_findings_verified": 1.0,
+    "findings_suggested": 53,
+    "findings_rejected": 0,
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "findings-v2",
+    "configured_model": "claude-sonnet-5",
+    "returned_model": "claude-sonnet-5",
+    "cost": 0.1737,
+    "seconds": 106.65,
+    "reused": true
+   },
+   "rank.relevance": {
+    "pass": true,
+    "fails": [],
+    "precision_at_10": 1.0,
+    "recall_at_20": 0.4545,
+    "recall_at_20_strict": 0.68,
+    "ndcg_at_20": 0.9628,
+    "unscored_candidates": 0,
+    "failed_batches": 0,
+    "repaired_batches": 0,
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "rank-v2",
+    "configured_model": "claude-sonnet-5",
+    "returned_model": "claude-sonnet-5",
+    "cost": 0.0356,
+    "seconds": 21.9,
+    "reused": true
+   },
+   "planner.update": {
+    "pass": true,
+    "fails": [],
+    "n_updates": 7,
+    "addresses_new_finding": 1,
+    "addresses_new_fact": 1,
+    "well_formed": 1,
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "plan-update-v2",
+    "returned_model": "claude-sonnet-4-6",
+    "cost": 0.0457,
+    "seconds": 34.29,
+    "updates": [
+     {
+      "section": "constraints",
+      "previous": "SBA 7(a) minimum 10% equity injection required \u2014 up to half can be a seller note on full standby",
+      "proposed": "At least one lender now requires 15% full-cash equity injection for acquisitions over $500K, with no seller note credit toward the injection. Verify with each lender you contact \u2014 terms vary by institution. The 10/10/80 structure may not be available at all lenders for deals above $500K.",
+      "reason": "New lender guidance explicitly states 15% cash-only injection for acquisitions over $500K, with seller note excluded regardless of standby status."
+     },
+     {
+      "section": "constraints",
+      "previous": "Unlimited personal guarantee required for all owners with 20%+ stake",
+      "proposed": "Unlimited personal guarantee required for all owners with 20%+ stake. If your partner holds 20%+ and will not sign, they must be kept below 20% ownership \u2014 structure your entity accordingly before closing. This is a hard SBA requirement and cannot be waived.",
+      "reason": "User has disclosed that their partner will not sign a personal guarantee, which is a structural conflict requiring entity ownership to be arranged so the partner stays below 20%."
+     },
+     {
+      "section": "costs \u2014 minimum/recommended/premium",
+      "previous": "Minimum: $63,000 all-in on a $1M deal (5% cash injection + QoE + attorney at low end). Recommended: $100,000 all-in on a $1M deal (10% full cash injection + QoE + attorney at mid-range + contingency). Premium: $135,000+ if seller won't accept standby and you need full 10% cash plus advisor.",
+      "proposed": "Minimum: $63,000 all-in on a $1M deal if lender accepts 10/10/80 (confirm per lender). Recommended: $150,000+ all-in on a $1M deal if lender requires 15% cash-only injection ($150K injection + QoE + attorney). Premium: $175,000+ with advisor. Note: at least one lender now requires 15% cash-only for deals over $500K \u2014 model both scenarios until your specific lender confirms their requirement.",
+      "reason": "15% cash-only injection at $1M deal = $150K, materially higher than the $50K\u2013$100K previously modeled. User's $120K cash is below this threshold for a $1M deal."
+     },
+     {
+      "section": "decisions \u2014 deal size range",
+      "previous": "Match to your liquid capital: minimum cash floor is 5% of purchase price if seller note is achievable, 10% if not.",
+      "proposed": "Match to your liquid capital with lender-specific injection requirement confirmed first. At $120K cash: (a) if lender accepts 10% cash injection, maximum deal size is ~$1.2M (10% of $1.2M = $120K, reserving nothing for fees \u2014 realistically ~$900K\u2013$1M after fees); (b) if lender requires 15% cash-only injection, maximum deal size is ~$800K ($120K \u00f7 15%) before fees \u2014 realistically $600K\u2013$700K after professional fees. Confirm the injection requirement with your specific lender in Phase 1 before setting your deal size ceiling.",
+      "reason": "User disclosed $120K liquid capital. New lender guidance of 15% cash-only materially compresses the viable deal size range and must be reflected in the deal size decision."
+     },
+     {
+      "section": "open_questions",
+      "previous": "What is your total liquid capital available for an equity injection, excluding retirement accounts?",
+      "proposed": "Liquid capital is confirmed at $120K. The critical open question is now: which lenders require 15% cash-only vs. 10% with seller note credit for acquisitions in your target size range? This determines whether your deal ceiling is ~$700K (15% lender) or ~$1M (10% lender). Ask each lender explicitly in your pre-qualification call.",
+      "reason": "User provided liquid capital figure. The blocking question shifts to lender-specific injection requirement, which now has material variability per the new lender guidance."
+     },
+     {
+      "section": "gotchas",
+      "previous": "(no existing gotcha about partner guarantee or injection rate variability)",
+      "proposed": "Add two new gotchas: (1) Lender injection requirements now vary \u2014 at least one lender requires 15% cash-only for acquisitions over $500K with no seller note credit. Do not assume 10/10/80 is available at every lender. Ask the injection question in your first pre-qualification call. (2) A co-owner partner who will not sign a personal guarantee must be kept below 20% ownership in your acquisition entity. Structure this before you make any offers \u2014 SBA rules require every 20%+ owner to sign, and restructuring after LOI is signed creates lender problems.",
+      "reason": "New lender guidance on injection and user's disclosure about partner guarantee refusal are both material operational risks not covered in existing gotchas."
+     },
+     {
+      "section": "approach \u2014 recommended",
+      "previous": "SBA 7(a) with seller note \u2014 10% cash equity, 10% seller note on full standby, 80% SBA loan.",
+      "proposed": "SBA 7(a) \u2014 target structure depends on lender confirmed in Phase 1. Best case: 10% cash equity, 10% seller note on full standby, 80% SBA loan (10/10/80). If lender requires 15% cash-only injection (now confirmed at least one does for deals over $500K), structure becomes 15% cash, 85% SBA loan with no seller note toward injection. At $120K cash, this limits deal size to approximately $600K\u2013$700K net of fees at a 15%-injection lender, or $900K\u2013$1M at a 10%-injection lender. Confirm with each lender before setting deal size.",
+      "reason": "New lender guidance and user's $120K cash constraint combine to make the 10/10/80 structure lender-dependent rather than assumed."
+     }
+    ],
+    "reused": false
+   },
+   "discover.quick": {
+    "pass": true,
+    "fails": [],
+    "sources": 6,
+    "with_url": 6,
+    "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read aft",
+    "events": {
+     "schema_mismatch": 0,
+     "schema_fallback": 0,
+     "schema_failure": 0,
+     "output_truncated": 0,
+     "output_refused": 0,
+     "plan_assembly_failed": 0
+    },
+    "schema": "discovery-v2",
+    "returned_model": "claude-sonnet-4-6",
+    "cost": 0.0209,
+    "seconds": 23.89,
+    "reused": false
+   }
+  },
+  "fails": [
+   "planner V3: structured-output/assembly events during the V3 build: {'schema_mismatch': 1, 'schema_failure': 1}"
+  ],
+  "caveats": [
+   "findings: evidence recall 1.0 \u2192 0.9 (within tolerance)",
+   "planner V3: completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2"
+  ],
+  "notes": [
+   "Planner V3 not promoted (see the separate decision); this does not fail Mission F unless its build raised structured-output/assembly events"
+  ],
+  "incomplete": {},
+  "total_cost": 0.4606,
+  "total_s": 546.13,
+  "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+  "research_hash": "d1d61ede90b5251a"
+ },
+ "stages": {
+  "findings": {
+   "status": "done",
+   "legacy": true,
+   "reused_from": "evals/mission-f-closeout/20260906-205402-d2e8b74"
+  },
+  "ranking": {
+   "status": "done",
+   "legacy": true,
+   "reused_from": "evals/mission-f-closeout/20260906-205402-d2e8b74"
+  },
+  "shared_inputs": {
+   "status": "done",
+   "at": "2026-09-06T21:29:59",
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "source_ids": {
+    "yt01": "e67c80cbb3be4295bb8362d2c4da1dc5",
+    "yt02": "39edf28d7e3048358a43853d9a5287b5",
+    "yt03": "f785bae8c4a9431bafefe5bb71133e27",
+    "pod": "01506db712634a6880ab6fd842fa75a9",
+    "vlog": "1a53afb9188646c69a9f74a196c3d738",
+    "article": "7950f75ad2b94800919e4d0d15e44eda",
+    "report": "16508b55c8fa4413aaf61e2a461ba2bd",
+    "calc": "aa1359ad3be44ddebf2324894d8958b0",
+    "sourdough": "9102e169eb5f4b15bcfbb97a77fcc765"
+   }
+  },
+  "research": {
+   "status": "done",
+   "at": "2026-09-06T21:30:01",
+   "material_hash": "d1d61ede90b5251a",
+   "evidence_count": 25,
+   "material_chars": 18951
+  },
+  "planner_v1": {
+   "status": "done",
+   "at": "2026-09-06T21:34:47",
+   "cost": 0.2419,
+   "research_hash": "d1d61ede90b5251a"
+  },
+  "planner_v3": {
+   "status": "done",
+   "at": "2026-09-06T21:38:02",
+   "cost": 0.1517,
+   "research_hash": "d1d61ede90b5251a"
+  },
+  "update": {
+   "status": "done",
+   "at": "2026-09-06T21:38:36",
+   "cost": 0.0457
+  },
+  "discover": {
+   "status": "done",
+   "at": "2026-09-06T21:39:00",
+   "cost": 0.0209
+  }
+ },
+ "history": [
+  {
+   "resumed_from": "evals/mission-f-closeout/20260906-205402-d2e8b74",
+   "at": "2026-09-06T21:29:53",
+   "reused": [
+    "findings",
+    "ranking"
+   ],
+   "invalidated": {
+    "planner_v1": "built on different research (hash unknown \u2014 the original run retrieved per arm and did not freeze it vs frozen d1d61ede90b5251a); rebuilt on the frozen payload",
+    "planner_v3": "built on different research (hash unknown \u2014 the original run retrieved per arm and did not freeze it vs frozen d1d61ede90b5251a); rebuilt on the frozen payload",
+    "update": "CONNECTION after 3 attempts: Connection error.",
+    "discover": "['discover.quick raised: CONNECTION after 3 attempts: Connection error.']"
+   },
+   "rebuilt": [
+    "planner_v1",
+    "planner_v3"
+   ],
+   "database": "the previous run did not persist its database \u2014 shared inputs (ingest + findings extraction) are rebuilt"
+  }
+ ],
+ "planner_v3": {
+  "promote": false,
+  "decision": "DO NOT PROMOTE \u2014 leave the default on V1; V3 recorded as not promoted (no further tuning loop)",
+  "hard_failures": [
+   "V3 build failed: planner.situation: output SCHEMA \u2014 options/0/fit: 9 is greater than the maximum of 5; options/2/fit: 6 is greater than the maximum of 5",
+   "plan rubric V3 0.0 < V1 0.9583 (lost: assumption.dscr, assumption.sde_multiple, assumption.valuation_range, completeness.first_90_days, completeness.guarantee_fee_or_closing_costs, completeness.loi_exclusivity, contradiction.high_multiples, contradiction.zero_down_vs_injection, dependency.equity_injection, dependency.lender, dependency.qoe_in_diligence, dependency.seller_note_standby, first_step.deal_flow, first_step.lender_contact, first_step.money_check, open_question.cash_available, open_question.target_industry, open_question.working_capital_peg, risk.add_backs_or_qoe, risk.customer_concentration, risk.lease_assignment, risk.personal_guarantee, risk.seller_transition)",
+   "analysis rubric V3 0.0 < V1 0.9091",
+   "V3 structured-output/assembly events {'schema_mismatch': 1, 'schema_failure': 1}",
+   "V3 truncation / parse failure / JSON repair",
+   "V3 truncation / parse failure / JSON repair",
+   "V3 produced no build telemetry (did the flag take effect?)"
+  ],
+  "caveats": [
+   "completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2"
+  ],
+  "notes": [
+   "V1 built first and wrote the shared research prefix to the prompt cache; V3 (same model, same prefix, within minutes) read it back. Cold-cache equivalent cost: V1 $0.2547 vs V3 $0.1691",
+   "calls V1 2 \u2192 V3 2; input 6,973 \u2192 598; cache write 4,758 \u2192 6,428; cache read 4,758 \u2192 6,428; output 13,448 \u2192 8,259"
+  ],
+  "mission_fails": [
+   "structured-output/assembly events during the V3 build: {'schema_mismatch': 1, 'schema_failure': 1}"
+  ],
+  "v1": {
+   "rubric_plan": 0.9583,
+   "rubric_analysis": 0.9091,
+   "structure": 1.0,
+   "evidence_refs": 34,
+   "dangling_raw": 0,
+   "cost": 0.2419,
+   "cost_cold_equivalent": 0.2547,
+   "seconds": 286.88,
+   "usage": {
+    "calls": 2,
+    "input_tokens": 6973,
+    "output_tokens": 13448,
+    "cache_read_tokens": 4758,
+    "cache_write_tokens": 4758,
+    "cost": 0.2419
+   }
+  },
+  "v3": {
+   "rubric_plan": 0.0,
+   "rubric_analysis": 0.0,
+   "structure": 0.0,
+   "evidence_refs": 0,
+   "dangling_raw": 0,
+   "cost": 0.1517,
+   "cost_cold_equivalent": 0.1691,
+   "seconds": 194.12,
+   "usage": {
+    "calls": 2,
+    "input_tokens": 598,
+    "output_tokens": 8259,
+    "cache_read_tokens": 6428,
+    "cache_write_tokens": 6428,
+    "cost": 0.1517
+   },
+   "telemetry": {},
+   "events": {
+    "schema_mismatch": 1,
+    "schema_fallback": 0,
+    "schema_failure": 1,
+    "output_truncated": 0,
+    "output_refused": 0,
+    "plan_assembly_failed": 0
+   }
+  }
+ },
+ "mission": {
+  "verdict": "FAIL",
+  "headline": "Mission F FAIL \u2014 a changed surface did not hold its guarantees",
+  "fails": [
+   "planner V3: structured-output/assembly events during the V3 build: {'schema_mismatch': 1, 'schema_failure': 1}"
+  ],
+  "caveats": [
+   "findings: evidence recall 1.0 \u2192 0.9 (within tolerance)",
+   "planner V3: completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2"
+  ],
+  "notes": [
+   "Planner V3 not promoted (see the separate decision); this does not fail Mission F unless its build raised structured-output/assembly events"
+  ],
+  "incomplete": {}
+ }
+}

@@ -1,0 +1,863 @@
+{
+ "eval": "ranking",
+ "tier": "live",
+ "model": "claude-sonnet-5",
+ "configured_model": "claude-sonnet-5",
+ "app_version": "0.19.0+f5",
+ "git_sha": "d2e8b74",
+ "provider": "anthropic",
+ "fixture_version": 1,
+ "candidates": 79,
+ "want": 20,
+ "prompt_version": "f38f9a9c",
+ "contract": {
+  "task": "rank.relevance",
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "thinking": "disabled",
+  "effort": null,
+  "max_output_tokens": 6000,
+  "timeout": null,
+  "max_attempts": 3,
+  "backoff": [
+   1.0,
+   4.0
+  ],
+  "interactive": false,
+  "batch_allowed": true,
+  "fallback_allowed": false,
+  "schema": "rank-v2",
+  "max_output_ceiling": 9000,
+  "quality_floor": null,
+  "notes": "Sonnet 5 since E2.1; NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE overrides for experiments"
+ },
+ "started": "2026-09-06T20:56:46",
+ "gates": {
+  "schema_validity": {
+   "value": 1.0,
+   "floor": 1.0,
+   "pass": true
+  },
+  "unscored_candidates": {
+   "value": 0,
+   "floor": 0,
+   "pass": true
+  },
+  "all_invocations_resolved": {
+   "value": 0,
+   "floor": 0,
+   "pass": true
+  }
+ },
+ "quality": {
+  "precision_at_10": 1.0,
+  "recall_at_10": 0.2273,
+  "recall_at_20": 0.4545,
+  "ndcg_at_20": 0.9628,
+  "precision_at_20": 1.0,
+  "precision_at_10_strict": 0.9,
+  "recall_at_10_strict": 0.36,
+  "recall_at_20_strict": 0.68,
+  "strict_candidates": 25,
+  "irrelevant_in_top_10": 0,
+  "clickbait_in_top_10": 0,
+  "authoritative_low_view_in_top_20": 5,
+  "popular_irrelevant_in_top_20": 0,
+  "relevant_candidates": 44,
+  "schema_validity": 1.0,
+  "batches": 1,
+  "failed_batches": 0,
+  "repaired_batches": 0,
+  "unscored_candidates": 0
+ },
+ "volume": {
+  "calls": 1,
+  "input_tokens": 5386,
+  "output_tokens": 2484,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "tokens_per_candidate": 68.2,
+  "canonical_input_tokens": 5386
+ },
+ "economics": {
+  "cost": 0.0356,
+  "cost_per_100_candidates": 0.0451
+ },
+ "performance": {
+  "rank_s": 21.9,
+  "s_per_batch": 21.9,
+  "s_per_100_candidates": 27.72,
+  "total_s": 22.82
+ },
+ "canonical_input_tokens": 5386,
+ "canonical_requests": 1,
+ "by_category": {
+  "authoritative_low_view": {
+   "n": 5,
+   "mean_rank": 9.0,
+   "mean_score": 89.6
+  },
+  "clickbait": {
+   "n": 7,
+   "mean_rank": 60.3,
+   "mean_score": 5.6
+  },
+  "duplicate": {
+   "n": 5,
+   "mean_rank": 38.0,
+   "mean_score": 44.4
+  },
+  "irrelevant": {
+   "n": 11,
+   "mean_rank": 69.6,
+   "mean_score": 0.0
+  },
+  "moderate": {
+   "n": 16,
+   "mean_rank": 31.6,
+   "mean_score": 55.3
+  },
+  "popular_irrelevant": {
+   "n": 5,
+   "mean_rank": 74.0,
+   "mean_score": 0.0
+  },
+  "relevant": {
+   "n": 18,
+   "mean_rank": 14.6,
+   "mean_score": 84.4
+  },
+  "weak": {
+   "n": 12,
+   "mean_rank": 49.9,
+   "mean_score": 20.0
+  }
+ },
+ "ordering": [
+  {
+   "pos": 1,
+   "id": "rank003",
+   "category": "relevant",
+   "grade": 3,
+   "score": 97,
+   "why": "Full HVAC deal walkthrough, exactly on target",
+   "title": "Full walkthrough: buying an HVAC company with an SBA loan"
+  },
+  {
+   "pos": 2,
+   "id": "rank000",
+   "category": "relevant",
+   "grade": 3,
+   "score": 95,
+   "why": "Core SBA financing structure and down payment details",
+   "title": "SBA 7(a) loans for buying a business: down payment, terms, guarantees"
+  },
+  {
+   "pos": 3,
+   "id": "rank001",
+   "category": "relevant",
+   "grade": 3,
+   "score": 95,
+   "why": "Direct diligence checklist, QoE, add-backs",
+   "title": "How to do due diligence on a small business (quality of earnings, add-"
+  },
+  {
+   "pos": 4,
+   "id": "rank050",
+   "category": "authoritative_low_view",
+   "grade": 3,
+   "score": 93,
+   "why": "Lender's detailed SBA SOP walkthrough, highly specific",
+   "title": "SBA SOP 50 10 change of ownership rules: a lender's walkthrough"
+  },
+  {
+   "pos": 5,
+   "id": "rank051",
+   "category": "authoritative_low_view",
+   "grade": 3,
+   "score": 92,
+   "why": "CPA panel on QoE for small acquisitions",
+   "title": "CPA panel: quality of earnings for sub-$5M acquisitions"
+  },
+  {
+   "pos": 6,
+   "id": "rank002",
+   "category": "relevant",
+   "grade": 3,
+   "score": 90,
+   "why": "Core valuation methodology for main street businesses",
+   "title": "Valuing a main street business: SDE multiples explained"
+  },
+  {
+   "pos": 7,
+   "id": "rank006",
+   "category": "relevant",
+   "grade": 3,
+   "score": 90,
+   "why": "Seller financing vs SBA structuring detail",
+   "title": "Seller financing vs SBA: structuring a small business acquisition"
+  },
+  {
+   "pos": 8,
+   "id": "rank052",
+   "category": "authoritative_low_view",
+   "grade": 3,
+   "score": 90,
+   "why": "Attorney on purchase agreement protective clauses",
+   "title": "M&A attorney: purchase agreement clauses that protect buyers"
+  },
+  {
+   "pos": 9,
+   "id": "rank078",
+   "category": "moderate",
+   "grade": 2,
+   "score": 90,
+   "why": "Bank insider on underwriting acquisition loans",
+   "title": "How lenders underwrite a business acquisition (bank insider)"
+  },
+  {
+   "pos": 10,
+   "id": "rank005",
+   "category": "relevant",
+   "grade": 3,
+   "score": 88,
+   "why": "First 90 days playbook, matches brief exactly",
+   "title": "The first 90 days after buying a business"
+  },
+  {
+   "pos": 11,
+   "id": "rank010",
+   "category": "relevant",
+   "grade": 3,
+   "score": 88,
+   "why": "Real deal numbers, SDE, multiple, diligence",
+   "title": "Buying a landscaping business: numbers from a real 2025 deal"
+  },
+  {
+   "pos": 12,
+   "id": "rank053",
+   "category": "authoritative_low_view",
+   "grade": 3,
+   "score": 88,
+   "why": "Certified appraiser valuation webinar, in-depth",
+   "title": "Small business valuation webinar (certified appraiser)"
+  },
+  {
+   "pos": 13,
+   "id": "rank004",
+   "category": "relevant",
+   "grade": 3,
+   "score": 85,
+   "why": "LOI terms directly relevant to deal structure",
+   "title": "Letter of intent for a business purchase: what to include"
+  },
+  {
+   "pos": 14,
+   "id": "rank008",
+   "category": "relevant",
+   "grade": 3,
+   "score": 85,
+   "why": "Working capital peg negotiation, core diligence item",
+   "title": "Working capital peg negotiation in an SMB deal"
+  },
+  {
+   "pos": 15,
+   "id": "rank009",
+   "category": "relevant",
+   "grade": 3,
+   "score": 85,
+   "why": "DSCR and lender underwriting mechanics",
+   "title": "DSCR explained: will the bank fund your acquisition?"
+  },
+  {
+   "pos": 16,
+   "id": "rank054",
+   "category": "authoritative_low_view",
+   "grade": 2,
+   "score": 85,
+   "why": "Lender Q&A on DSCR and underwriting specifics",
+   "title": "Lender Q&A: DSCR, collateral shortfalls and projections"
+  },
+  {
+   "pos": 17,
+   "id": "rank074",
+   "category": "moderate",
+   "grade": 2,
+   "score": 85,
+   "why": "Real searcher interview, plumbing acquisition financing",
+   "title": "Acquisition entrepreneurship podcast: buying a plumbing company"
+  },
+  {
+   "pos": 18,
+   "id": "rank075",
+   "category": "relevant",
+   "grade": 3,
+   "score": 85,
+   "why": "Standby seller note mechanics, SBA specific",
+   "title": "Standby seller notes: what 'full standby' means to the SBA"
+  },
+  {
+   "pos": 19,
+   "id": "rank062",
+   "category": "duplicate",
+   "grade": 3,
+   "score": 82,
+   "why": "Diligence part 2, legal contracts detail",
+   "title": "Due diligence checklist part 2: legal and contracts"
+  },
+  {
+   "pos": 20,
+   "id": "rank007",
+   "category": "relevant",
+   "grade": 3,
+   "score": 80,
+   "why": "Real diligence killer, customer concentration example",
+   "title": "Customer concentration killed my deal \u2014 here's what I learned"
+  },
+  {
+   "pos": 21,
+   "id": "rank014",
+   "category": "relevant",
+   "grade": 3,
+   "score": 80,
+   "why": "Add-back legitimacy, key diligence nuance",
+   "title": "Add-backs: the honest ones and the fantasy ones"
+  },
+  {
+   "pos": 22,
+   "id": "rank076",
+   "category": "relevant",
+   "grade": 3,
+   "score": 80,
+   "why": "Closing day checklist, first 90 days prep",
+   "title": "Closing day checklist for a business purchase"
+  },
+  {
+   "pos": 23,
+   "id": "rank013",
+   "category": "relevant",
+   "grade": 3,
+   "score": 78,
+   "why": "Seller transition and holdback structuring",
+   "title": "Transition period and seller holdbacks"
+  },
+  {
+   "pos": 24,
+   "id": "rank015",
+   "category": "relevant",
+   "grade": 3,
+   "score": 78,
+   "why": "Overlooked diligence item, assignable leases",
+   "title": "Assignable leases and contracts: the diligence item everyone skips"
+  },
+  {
+   "pos": 25,
+   "id": "rank011",
+   "category": "relevant",
+   "grade": 3,
+   "score": 75,
+   "why": "SBA lender document checklist, practical prep",
+   "title": "What the SBA lender will ask you for (document checklist)"
+  },
+  {
+   "pos": 26,
+   "id": "rank023",
+   "category": "moderate",
+   "grade": 2,
+   "score": 75,
+   "why": "Personal guarantee risk, key financing concern",
+   "title": "Personal guarantees: what you're really signing"
+  },
+  {
+   "pos": 27,
+   "id": "rank012",
+   "category": "relevant",
+   "grade": 3,
+   "score": 65,
+   "why": "Sourcing deals, adjacent to buying process",
+   "title": "Searching for a business to buy: brokers, BizBuySell, direct outreach"
+  },
+  {
+   "pos": 28,
+   "id": "rank026",
+   "category": "moderate",
+   "grade": 2,
+   "score": 65,
+   "why": "Earnouts and rollover equity, deal structure nuance",
+   "title": "Rollover of equity and earnouts in small deals"
+  },
+  {
+   "pos": 29,
+   "id": "rank016",
+   "category": "moderate",
+   "grade": 2,
+   "score": 60,
+   "why": "General SBA program overview, background context",
+   "title": "How SBA loans work (all programs overview)"
+  },
+  {
+   "pos": 30,
+   "id": "rank025",
+   "category": "moderate",
+   "grade": 2,
+   "score": 60,
+   "why": "Negotiation tactics relevant to deal closing",
+   "title": "Negotiation tactics for buying a company from a retiring owner"
+  },
+  {
+   "pos": 31,
+   "id": "rank020",
+   "category": "moderate",
+   "grade": 2,
+   "score": 55,
+   "why": "Broker mechanics relevant to sourcing deals",
+   "title": "Business brokers: how they work and how they get paid"
+  },
+  {
+   "pos": 32,
+   "id": "rank027",
+   "category": "moderate",
+   "grade": 2,
+   "score": 55,
+   "why": "Advisor roles, practical but secondary",
+   "title": "Hiring a CPA and attorney for an acquisition"
+  },
+  {
+   "pos": 33,
+   "id": "rank065",
+   "category": "moderate",
+   "grade": 2,
+   "score": 55,
+   "why": "Owner-operator vs absentee, relevant deal decision",
+   "title": "Owner-operator vs absentee owner: which businesses work"
+  },
+  {
+   "pos": 34,
+   "id": "rank019",
+   "category": "moderate",
+   "grade": 2,
+   "score": 50,
+   "why": "General financial literacy, useful but generic",
+   "title": "Reading a P&L and balance sheet for non-accountants"
+  },
+  {
+   "pos": 35,
+   "id": "rank064",
+   "category": "duplicate",
+   "grade": 3,
+   "score": 50,
+   "why": "Duplicate extended cut of valuation video",
+   "title": "SDE multiples explained \u2014 extended interview cut"
+  },
+  {
+   "pos": 36,
+   "id": "rank018",
+   "category": "moderate",
+   "grade": 2,
+   "score": 45,
+   "why": "Post-acquisition operations, somewhat tangential",
+   "title": "Running a home services company: pricing, crews, cash flow"
+  },
+  {
+   "pos": 37,
+   "id": "rank066",
+   "category": "moderate",
+   "grade": 2,
+   "score": 45,
+   "why": "Turnaround tactics, adjacent post-purchase topic",
+   "title": "Turnaround basics: fixing a business you just bought"
+  },
+  {
+   "pos": 38,
+   "id": "rank069",
+   "category": "weak",
+   "grade": 1,
+   "score": 45,
+   "why": "Cash flow forecasting, useful post-close tool",
+   "title": "Cash flow forecasting in a spreadsheet"
+  },
+  {
+   "pos": 39,
+   "id": "rank017",
+   "category": "moderate",
+   "grade": 2,
+   "score": 40,
+   "why": "Franchise comparison, tangential to main-street SBA deals",
+   "title": "Franchise vs independent business: which should you buy?"
+  },
+  {
+   "pos": 40,
+   "id": "rank024",
+   "category": "moderate",
+   "grade": 2,
+   "score": 40,
+   "why": "Insurance setup, minor first-90-days item",
+   "title": "Business insurance for a new owner: what to buy on day one"
+  },
+  {
+   "pos": 41,
+   "id": "rank063",
+   "category": "duplicate",
+   "grade": 2,
+   "score": 40,
+   "why": "Outdated diligence video, superseded version",
+   "title": "Due diligence checklist part 1 (old version, 2022)"
+  },
+  {
+   "pos": 42,
+   "id": "rank021",
+   "category": "moderate",
+   "grade": 2,
+   "score": 35,
+   "why": "Search funds differ from self-funded SBA buyer",
+   "title": "Search funds explained"
+  },
+  {
+   "pos": 43,
+   "id": "rank022",
+   "category": "moderate",
+   "grade": 2,
+   "score": 30,
+   "why": "Seller-side perspective, less directly useful",
+   "title": "Selling your small business: how to prepare for buyers"
+  },
+  {
+   "pos": 44,
+   "id": "rank029",
+   "category": "weak",
+   "grade": 1,
+   "score": 30,
+   "why": "High level buy vs start comparison",
+   "title": "Should you buy a business or start one?"
+  },
+  {
+   "pos": 45,
+   "id": "rank061",
+   "category": "duplicate",
+   "grade": 2,
+   "score": 30,
+   "why": "Short clip duplicate of full SBA explainer",
+   "title": "SBA loan down payment: 5 minute summary"
+  },
+  {
+   "pos": 46,
+   "id": "rank030",
+   "category": "weak",
+   "grade": 1,
+   "score": 25,
+   "why": "504 real estate program, off-target for main deal",
+   "title": "Real estate investing with SBA 504 loans"
+  },
+  {
+   "pos": 47,
+   "id": "rank035",
+   "category": "weak",
+   "grade": 1,
+   "score": 25,
+   "why": "Lease negotiation, minor diligence overlap",
+   "title": "Commercial lease negotiation for retail tenants"
+  },
+  {
+   "pos": 48,
+   "id": "rank067",
+   "category": "weak",
+   "grade": 1,
+   "score": 25,
+   "why": "Marketing plan, post-purchase operations tangent",
+   "title": "Marketing plan for a local service business"
+  },
+  {
+   "pos": 49,
+   "id": "rank033",
+   "category": "weak",
+   "grade": 1,
+   "score": 20,
+   "why": "Bookkeeping basics, not acquisition specific",
+   "title": "Bookkeeping basics for a small business"
+  },
+  {
+   "pos": 50,
+   "id": "rank060",
+   "category": "duplicate",
+   "grade": 3,
+   "score": 20,
+   "why": "Duplicate re-upload of video 0",
+   "title": "SBA 7(a) loans for buying a business: down payment, terms, guarantees "
+  },
+  {
+   "pos": 51,
+   "id": "rank068",
+   "category": "weak",
+   "grade": 1,
+   "score": 20,
+   "why": "Hiring basics, tangential to core financing",
+   "title": "How to hire your first employee"
+  },
+  {
+   "pos": 52,
+   "id": "rank031",
+   "category": "weak",
+   "grade": 1,
+   "score": 15,
+   "why": "Tax structure, tangential general topic",
+   "title": "Small business taxes: S corp vs LLC"
+  },
+  {
+   "pos": 53,
+   "id": "rank077",
+   "category": "weak",
+   "grade": 1,
+   "score": 15,
+   "why": "Retirement planning, tangential to acquisition",
+   "title": "Retirement planning for small business owners"
+  },
+  {
+   "pos": 54,
+   "id": "rank028",
+   "category": "weak",
+   "grade": 1,
+   "score": 10,
+   "why": "LLC formation, unrelated to acquisition financing",
+   "title": "How to start an LLC in 2026"
+  },
+  {
+   "pos": 55,
+   "id": "rank048",
+   "category": "clickbait",
+   "grade": 1,
+   "score": 10,
+   "why": "Listicle fluff, no actionable numbers",
+   "title": "Top 10 businesses to buy in 2026 (ranked)"
+  },
+  {
+   "pos": 56,
+   "id": "rank049",
+   "category": "clickbait",
+   "grade": 0,
+   "score": 8,
+   "why": "Vlog filler, minimal substantive content",
+   "title": "Day in the life of a business buyer (vlog)"
+  },
+  {
+   "pos": 57,
+   "id": "rank073",
+   "category": "clickbait",
+   "grade": 0,
+   "score": 8,
+   "why": "Ranty clickbait, no actionable content",
+   "title": "Business buying EXPOSED: the truth nobody tells you"
+  },
+  {
+   "pos": 58,
+   "id": "rank032",
+   "category": "weak",
+   "grade": 1,
+   "score": 5,
+   "why": "Motivational mindset content, no specifics",
+   "title": "Entrepreneurship mindset: 10 lessons from founders"
+  },
+  {
+   "pos": 59,
+   "id": "rank034",
+   "category": "weak",
+   "grade": 1,
+   "score": 5,
+   "why": "Business credit cards, irrelevant",
+   "title": "How to get a business credit card"
+  },
+  {
+   "pos": 60,
+   "id": "rank044",
+   "category": "clickbait",
+   "grade": 0,
+   "score": 5,
+   "why": "Clickbait reaction video, no real content",
+   "title": "I BOUGHT A BUSINESS FOR $0 (you won't believe this)"
+  },
+  {
+   "pos": 61,
+   "id": "rank047",
+   "category": "clickbait",
+   "grade": 0,
+   "score": 5,
+   "why": "Motivational clip, sponsored, no details",
+   "title": "This SBA loan HACK changed my life"
+  },
+  {
+   "pos": 62,
+   "id": "rank045",
+   "category": "clickbait",
+   "grade": 1,
+   "score": 3,
+   "why": "Clickbait no-money-down scam pitch",
+   "title": "Get RICH buying businesses with NO MONEY DOWN!!!"
+  },
+  {
+   "pos": 63,
+   "id": "rank036",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated vlog content",
+   "title": "Van life in Utah: solar, water and a sunrise hike"
+  },
+  {
+   "pos": 64,
+   "id": "rank037",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated cooking content",
+   "title": "Sourdough starter for beginners"
+  },
+  {
+   "pos": 65,
+   "id": "rank038",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated tech review",
+   "title": "Best budget mechanical keyboards 2026"
+  },
+  {
+   "pos": 66,
+   "id": "rank039",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated fitness content",
+   "title": "Marathon training plan: 16 weeks to your first race"
+  },
+  {
+   "pos": 67,
+   "id": "rank040",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated coffee content",
+   "title": "Home espresso: dialing in a grinder"
+  },
+  {
+   "pos": 68,
+   "id": "rank041",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated photography content",
+   "title": "iPhone camera tricks for travel photos"
+  },
+  {
+   "pos": 69,
+   "id": "rank042",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated language learning content",
+   "title": "Learn Spanish in 30 days: my method"
+  },
+  {
+   "pos": 70,
+   "id": "rank043",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated gardening content",
+   "title": "Building a raised garden bed"
+  },
+  {
+   "pos": 71,
+   "id": "rank046",
+   "category": "clickbait",
+   "grade": 0,
+   "score": 0,
+   "why": "Reaction entertainment, no substance",
+   "title": "Millionaire reacts to small business owners (hilarious)"
+  },
+  {
+   "pos": 72,
+   "id": "rank055",
+   "category": "popular_irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated YouTube monetization content",
+   "title": "How I made $1M on YouTube in one year"
+  },
+  {
+   "pos": 73,
+   "id": "rank056",
+   "category": "popular_irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated crypto pitch",
+   "title": "Crypto is about to EXPLODE (buy now)"
+  },
+  {
+   "pos": 74,
+   "id": "rank057",
+   "category": "popular_irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated dropshipping course",
+   "title": "Dropshipping in 2026: full beginner course"
+  },
+  {
+   "pos": 75,
+   "id": "rank058",
+   "category": "popular_irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated passive income listicle",
+   "title": "Passive income: 7 ideas that actually work"
+  },
+  {
+   "pos": 76,
+   "id": "rank059",
+   "category": "popular_irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated stock market commentary",
+   "title": "Stock market crash incoming? What to do"
+  },
+  {
+   "pos": 77,
+   "id": "rank070",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated motorcycle restoration content",
+   "title": "Restoring a 1970s motorcycle: part 4"
+  },
+  {
+   "pos": 78,
+   "id": "rank071",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated meal prep content",
+   "title": "Weekend meal prep: 5 high protein recipes"
+  },
+  {
+   "pos": 79,
+   "id": "rank072",
+   "category": "irrelevant",
+   "grade": 0,
+   "score": 0,
+   "why": "Unrelated chess content",
+   "title": "Chess opening traps every beginner falls for"
+  }
+ ],
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0
+ },
+ "returned_models": [
+  "claude-sonnet-5"
+ ],
+ "returned_model": "claude-sonnet-5",
+ "pass": true,
+ "project_id": "5e28ffa111744146bc08883c8a7bd615"
+}

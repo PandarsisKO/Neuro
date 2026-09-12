@@ -1,0 +1,65 @@
+{
+ "updates": [
+  {
+   "section": "approach.recommended",
+   "previous": "SBA 7(a) standard acquisition: 10% cash equity injection, 10% seller note on full standby, 80% SBA loan at prime + 2.5\u20133% over 10 years. Target a business priced $500K\u2013$1.5M with verified SDE of $150K\u2013$400K.",
+   "proposed": "At least one lender now requires 15% cash equity injection on deals over $500K, with no seller note credit toward it regardless of standby terms. This raises minimum cash-to-close and shrinks the executable deal size for a $120K cash buyer \u2014 likely capping deals near $800K rather than $1.2M+. Need to confirm whether this is lender-specific or an industry-wide shift by shopping additional lenders.",
+   "reason": "New lender guidance materially changes the cash injection assumption the entire plan is built on, directly affecting deal size ceiling for the user's stated $120K cash position."
+  },
+  {
+   "section": "decisions.deal size target",
+   "previous": "Recommended $700K\u2013$1.5M, requires $100\u2013175K liquid all-in, assuming seller note can offset half the cash injection.",
+   "proposed": "With $120K cash and a lender requiring 15% cash (no seller-note credit) on deals over $500K, max supportable deal size is roughly $800K (15% = $120K) unless a lender without this requirement is found. Sub-$500K deals may still allow the old 10%/seller-note structure. Deal size ceiling needs re-modeling against both lender types.",
+   "reason": "New lender term directly changes the math behind the recommended deal size range for this specific user's capital."
+  },
+  {
+   "section": "dependencies (blocking item: Industry experience or documented management plan)",
+   "previous": "If your background doesn't qualify, you need a partner or a business with an existing GM before lender conversations are productive.",
+   "proposed": "New blocking issue: the user's intended partner will not sign a personal guarantee. Since SBA 7(a) requires unlimited personal guarantees from all 20%+ owners, this partner cannot be a co-owner/co-borrower under the current structure. Must clarify whether the partner is meant to be a guarantor, a minority non-owner, an operating-only partner, or excluded from the deal structure entirely \u2014 this affects both experience-documentation strategy and equity structure.",
+   "proposed_reason": "New blocking dependency not previously known."
+  },
+  {
+   "section": "risks",
+   "previous": "Personal guarantee exposes all personal assets for the full 10-year loan term \u2014 mitigation: discuss with a financial advisor and family members who share assets.",
+   "proposed": "New risk: if a partner is involved in the deal (financially or operationally) but refuses to sign a personal guarantee, this could disqualify them from being a 20%+ equity owner under SBA rules, or could force the user to hold guarantee liability alone while sharing upside \u2014 a structural/legal question needing attorney input before proceeding with any partner-based deal structure.",
+   "reason": "New user fact surfaces a structural risk not previously addressed in the plan."
+  },
+  {
+   "section": "open_questions",
+   "previous": "No question addressed partner guarantee refusal or updated lender equity terms.",
+   "proposed": "Add: 'Given your partner will not sign a personal guarantee, what role will they play \u2014 non-owner advisor, minority equity holder under 20%, operating partner without ownership, or excluded entirely? And: does the 15% equity injection / no-seller-note-credit term apply broadly across SBA-preferred lenders, or is it specific to one lender \u2014 requiring a shop-around before finalizing deal size ceiling?'",
+   "reason": "Two new facts create unresolved blocking questions the plan must address before Phase 1 can be considered complete."
+  }
+ ],
+ "n_updates": 5,
+ "raw_updates": 5,
+ "addresses_new_finding": 1,
+ "addresses_new_fact": 1,
+ "well_formed": 0,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 1,
+ "output_chars": 3795,
+ "output_tokens": 1287,
+ "input_tokens": 11285,
+ "cache_read": 0,
+ "cost": 0.0354,
+ "seconds": 15.13,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-sonnet-5"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 11285,
+  "output_tokens": 1287,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "cost": 0.0354
+ }
+}

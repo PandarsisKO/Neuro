@@ -1,0 +1,21 @@
+  · adaptive planner arm skipped: claude-haiku-4-5 does not support adaptive thinking
+  · expected spend ≈ $2.21, maximum ≈ $3.32 (eval-only budget $20.00 in the temporary database; your real budget is untouched)
+  · preflight ok: claude-haiku-4-5 (10 tokens), claude-sonnet-4-6 (11 tokens)
+  · shared inputs ready: 9 sources, 58 approved findings (211.41s)
+  · [planner · baseline] claude-sonnet-4-6 thinking=disabled
+  · [planner.analysis · baseline] rubric 1.0 (11/11) · structure 1.0 · refs 74 · repaired 0 · truncated 0 · $0.1068 · 111.87s · returned claude-sonnet-4-6
+  · [planner.build · baseline] rubric 1.0 (24/24) · structure 1.0 · refs 42 · repaired 0 · truncated 0 · $0.1726 · 204.68s · returned claude-sonnet-4-6
+  · [planner · candidate] claude-haiku-4-5 thinking=disabled
+planner: output hit max_tokens (7000) — will repair
+planner: repairing malformed/truncated JSON (25370 chars)
+  · [planner.analysis · candidate] rubric 0.0 (0/11) · structure 0.0 · refs 0 · repaired 1 · truncated 1 · $0.0439 · 86.04s · returned claude-haiku-4-5-20251001
+  · [planner.build · candidate] rubric 0.0 (0/24) · structure 0.0 · refs 0 · repaired 0 · truncated 0 · $0.0000 · Nones · returned None
+  · [planner.update · baseline] claude-sonnet-4-6 thinking=disabled
+  · [planner.update · baseline] 9 updates · new finding addressed 1 · new fact 1 · repaired 0 · $0.0000 · 86.93s · returned claude-haiku-4-5-20251001
+  · [planner.update · candidate] claude-haiku-4-5 thinking=disabled
+  · [planner.update · candidate] 6 updates · new finding addressed 1 · new fact 1 · repaired 0 · $0.0000 · 41.31s · returned claude-haiku-4-5-20251001
+  · [export.synthesis · baseline] claude-sonnet-4-6 thinking=disabled
+  · [export.synthesis · baseline] 2840 words · sections 5/6 · links 41 (invented 0, coverage 0.9762) · truncated 1 · $0.1046 · 106.59s · returned claude-sonnet-4-6
+  · [export.synthesis · candidate] claude-haiku-4-5 thinking=disabled
+  · [export.synthesis · candidate] 2737 words · sections 6/6 · links 46 (invented 4, coverage 1.0) · truncated 0 · $0.0323 · 66.51s · returned claude-haiku-4-5-20251001
+  · [claims.extract · baseline] claude-sonnet-4-6 thinking=disabled

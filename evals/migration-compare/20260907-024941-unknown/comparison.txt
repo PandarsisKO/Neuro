@@ -1,0 +1,169 @@
+Neuro Search Sonnet 4.6 → Sonnet 5 migration comparison · fake · app 0.19.0-f3 @ unknown · rubric v1
+  shared inputs: 9 golden sources, 36 approved findings (findings on claude-sonnet-5); identical for every arm
+  expected spend ≈ $2.92 (max ≈ $4.39) · actual $0.9726 · 0.98s
+  excluded: discover.quick (no frozen exit test (judgement-based shortlist)); discover.verify (uses the live web_search tool; not freezable)
+
+== planner.analysis
+  metric                                                         4.6            5-disabled     5-adaptive-medium
+  rubric.score                                                0.1818                0.1818                0.1818
+  rubric.structure.score                                       0.375                 0.375                 0.375
+  grounding.fraction                                               —                     —                     —
+  evidence_refs                                                    8                     8                     8
+  dangling_after_removal                                           0                     0                     0
+  json_repaired                                                    0                     0                     0
+  truncated                                                        0                     0                     0
+  parse_failed                                                     0                     0                     0
+  thinking_tokens_est                                              0                     0                     0
+  output_chars                                                 1,311                 1,311                 1,311
+  input_tokens                                                    18                    18                    18
+  cache_read                                                       0                 5,751                 5,751
+  output_tokens                                                  327                   327                   327
+  cost                                                        0.0265                0.0067                0.0067
+  seconds                                                          0                     0                     0
+  rubric.by_kind [4.6]                         assumption 0/2, completeness 2/4, contradiction 0/1, risk 0/4
+  rubric.by_kind [5-disabled]                  assumption 0/2, completeness 2/4, contradiction 0/1, risk 0/4
+  rubric.by_kind [5-adaptive-medium]           assumption 0/2, completeness 2/4, contradiction 0/1, risk 0/4
+  rubric.failed [4.6]                          threat.customer_concentration, threat.add_backs_or_qoe, threat.overpaying_multiple, assumption.financing_terms, assumption.checkable, contra
+  rubric.failed [5-disabled]                   threat.customer_concentration, threat.add_backs_or_qoe, threat.overpaying_multiple, assumption.financing_terms, assumption.checkable, contra
+  rubric.failed [5-adaptive-medium]            threat.customer_concentration, threat.add_backs_or_qoe, threat.overpaying_multiple, assumption.financing_terms, assumption.checkable, contra
+  structure.failed [4.6]                       swot.opportunities: 1 < 2; swot.threats: 1 < 2; readiness: 2 < 3; assumptions: 1 < 2; failure_patterns: 1 < 2
+  structure.failed [5-disabled]                swot.opportunities: 1 < 2; swot.threats: 1 < 2; readiness: 2 < 3; assumptions: 1 < 2; failure_patterns: 1 < 2
+  structure.failed [5-adaptive-medium]         swot.opportunities: 1 < 2; swot.threats: 1 < 2; readiness: 2 < 3; assumptions: 1 < 2; failure_patterns: 1 < 2
+  returned_model                                         fake-claude           fake-claude           fake-claude
+  outcome_unknown                                                  0                     0                     0
+  VERDICT: PASS — migrate planner.analysis to claude-sonnet-5
+    note    adaptive/medium: rubric 0.1818 vs disabled 0.1818; ~0 thinking tokens; $0.0067 vs $0.0067; 0.0s vs 0.0s
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+    adaptive/medium not recommended: quality effectively equal (rubric 0.1818 vs 0.1818, structure 0.375 vs 0.375) — disabled is simpler, faster and cheaper
+
+== planner.build
+  metric                                                         4.6            5-disabled     5-adaptive-medium
+  rubric.score                                                     0                     0                     0
+  rubric.structure.score                                       0.125                 0.125                 0.125
+  grounding.fraction                                          0.6667                0.6667                0.6667
+  evidence_refs                                                   10                    10                    10
+  dangling_after_removal                                           0                     0                     0
+  json_repaired                                                    0                     0                     0
+  truncated                                                        0                     0                     0
+  parse_failed                                                     0                     0                     0
+  thinking_tokens_est                                              0                     0                     0
+  output_chars                                                 3,272                 3,272                 3,272
+  input_tokens                                                   396                   396                   396
+  cache_read                                                   6,543                 6,543                 6,543
+  output_tokens                                                  818                   818                   818
+  cost                                                        0.0154                0.0154                0.0154
+  seconds                                                          0                     0                     0
+  rubric.by_kind [4.6]                         assumption 0/3, completeness 0/4, contradiction 0/2, dependency 0/4, first_step 0/3, open_question 0/3, risk 0/5
+  rubric.by_kind [5-disabled]                  assumption 0/3, completeness 0/4, contradiction 0/2, dependency 0/4, first_step 0/3, open_question 0/3, risk 0/5
+  rubric.by_kind [5-adaptive-medium]           assumption 0/3, completeness 0/4, contradiction 0/2, dependency 0/4, first_step 0/3, open_question 0/3, risk 0/5
+  rubric.failed [4.6]                          risk.customer_concentration, risk.add_backs_or_qoe, risk.personal_guarantee, risk.seller_transition, risk.lease_assignment, assumption.dscr,
+  rubric.failed [5-disabled]                   risk.customer_concentration, risk.add_backs_or_qoe, risk.personal_guarantee, risk.seller_transition, risk.lease_assignment, assumption.dscr,
+  rubric.failed [5-adaptive-medium]            risk.customer_concentration, risk.add_backs_or_qoe, risk.personal_guarantee, risk.seller_transition, risk.lease_assignment, assumption.dscr,
+  structure.failed [4.6]                       this_week: 1 < 3; first_steps: 2 < 3; risks: 1 < 3; open_questions: 1 < 2; refine_questions: 2 < 4; phases: 1 < 2; gotchas: 1 < 2
+  structure.failed [5-disabled]                this_week: 1 < 3; first_steps: 2 < 3; risks: 1 < 3; open_questions: 1 < 2; refine_questions: 2 < 4; phases: 1 < 2; gotchas: 1 < 2
+  structure.failed [5-adaptive-medium]         this_week: 1 < 3; first_steps: 2 < 3; risks: 1 < 3; open_questions: 1 < 2; refine_questions: 2 < 4; phases: 1 < 2; gotchas: 1 < 2
+  returned_model                                         fake-claude           fake-claude           fake-claude
+  outcome_unknown                                                  0                     0                     0
+  plan_evidence_dangling_raw (both passes)                         0                     0                     0
+  VERDICT: PASS — migrate planner.build to claude-sonnet-5
+    note    adaptive/medium: rubric 0.0 vs disabled 0.0; ~0 thinking tokens; $0.0154 vs $0.0154; 0.0s vs 0.0s
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+    adaptive/medium not recommended: quality effectively equal (rubric 0.0 vs 0.0, structure 0.125 vs 0.125) — disabled is simpler, faster and cheaper
+
+== planner.update
+  metric                                                         4.6            5-disabled
+  n_updates                                                        1                     1
+  addresses_new_finding                                            0                     0
+  addresses_new_fact                                               0                     0
+  well_formed                                                      1                     1
+  json_repaired                                                    0                     0
+  truncated                                                        0                     0
+  parse_failed                                                     0                     0
+  input_tokens                                                 1,352                 1,352
+  output_tokens                                                   51                    51
+  cost                                                             0                     0
+  seconds                                                          0                     0
+  billed_calls                                                     1                     1
+  billed_input_tokens                                          1,352                 1,352
+  billed_output_tokens                                            51                    51
+  billed_cache_read_tokens                                         0                     0
+  billed_cache_write_tokens                                        0                     0
+  billed_cost                                                 0.0048                0.0048
+  returned_model                                         fake-claude           fake-claude
+  outcome_unknown                                                  0                     0
+  VERDICT: PASS WITH CAVEAT — claude-sonnet-5 holds quality on planner.update; review the caveats before migrating
+    caveat  neither arm proposed an update for the new lender finding
+    note    updates proposed: 1 → 1
+    note    single run per arm (n=1)
+
+== export.synthesis
+  metric                                                         4.6            5-disabled
+  words                                                        1,090                 1,090
+  sections_present                                                 6                     6
+  sections_missing                                                 —                     —
+  citation_links                                                  33                    33
+  given_links                                                     33                    33
+  link_coverage                                                    1                     1
+  n_invented_links                                                 0                     0
+  truncated                                                        0                     0
+  empty                                                            0                     0
+  seconds                                                          0                     0
+  billed_calls                                                     1                     1
+  billed_input_tokens                                          2,356                 2,356
+  billed_output_tokens                                         1,987                 1,987
+  billed_cache_read_tokens                                         0                     0
+  billed_cache_write_tokens                                        0                     0
+  billed_cost                                                 0.0369                0.0369
+  returned_model                                         fake-claude           fake-claude
+  outcome_unknown                                                  0                     0
+  VERDICT: PASS — migrate export.synthesis to claude-sonnet-5
+    note    words 1090 → 1090; citation links 33 → 33 of 33 given
+    note    single run per arm (n=1)
+
+== answer.chat
+  metric                                                         4.6            5-disabled
+  answers                                                         34                    34
+  failed_answers                                                   0                     0
+  citation_validity                                                1                     1
+  answers_cite_expected_source                                   0.9                   0.9
+  contradiction_surfaced                                      0.6667                0.6667
+  gap_detection                                                    0                     0
+  offtopic_handled                                                 1                     1
+  repair_rounds                                                    0                     0
+  repairs_succeeded                                                0                     0
+  answers_with_unrepaired_invalid_citations                        0                     0
+  truncated_answers                                                0                     0
+  tool_rounds                                                      0                     0
+  tool_calls                                                       0                     0
+  mean_answer_chars                                              220                   220
+  s_per_answer                                                     0                     0
+  seconds                                                       0.13                  0.15
+  billed_calls                                                    34                    34
+  billed_input_tokens                                         97,746                97,746
+  billed_output_tokens                                         1,855                 1,855
+  billed_cache_read_tokens                                    40,689                41,922
+  billed_cache_write_tokens                                    1,233                     0
+  billed_cost                                                 0.3379                0.3336
+  returned_model                                         fake-claude           fake-claude
+  outcome_unknown                                                  0                     0
+  repair.returned_model                                            —                     —
+  VERDICT: PASS — migrate answer.chat to claude-sonnet-5
+    note    answers 34 → 34; mean length 220 → 220 chars (wording differences are not failures)
+    note    single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+
+== answer.repair
+  VERDICT: PASS WITH CAVEAT — claude-sonnet-5 holds quality on answer.repair; review the caveats before migrating
+    caveat  no repair round was triggered on either arm — repair behaviour is unexercised; it shares chat's prompt family and contract, so it migrates with chat
+    note    repair rounds 0 → 0, succeeded 0 → 0
+
+RECOMMENDATIONS (nothing was changed; production contracts stay as they are until you migrate them)
+  PASS              planner.analysis   → claude-sonnet-5 thinking=disabled
+  PASS              planner.build      → claude-sonnet-5 thinking=disabled
+  PASS_WITH_CAVEAT  planner.update     → claude-sonnet-5 thinking=disabled
+  PASS              export.synthesis   → claude-sonnet-5 thinking=disabled
+  PASS              answer.chat        → claude-sonnet-5 thinking=disabled
+  PASS_WITH_CAVEAT  answer.repair      → claude-sonnet-5 thinking=disabled
+  stay on 4.6       discover.quick, discover.verify (excluded from this migration)
+  (billing categories differ between arms by design: each model has its own prompt cache, so cache read/write splits are not comparable; canonical token deltas were measured in E2.1/E2.2)
+
+  files: evals/migration-compare/20260907-024941-unknown/planner-4.6.json, evals/migration-compare/20260907-024941-unknown/planner-5-disabled.json, evals/migration-compare/20260907-024941-unknown/planner-5-adaptive-medium.json, evals/migration-compare/20260907-024941-unknown/planner.update-4.6.json, evals/migration-compare/20260907-024941-unknown/planner.update-5-disabled.json, evals/migration-compare/20260907-024941-unknown/export.synthesis-4.6.json, evals/migration-compare/20260907-024941-unknown/export.synthesis-5-disabled.json, evals/migration-compare/20260907-024941-unknown/answer.chat-4.6.json, evals/migration-compare/20260907-024941-unknown/answer.chat-5-disabled.json, evals/migration-compare/20260907-024941-unknown/comparison.json, evals/migration-compare/20260907-024941-unknown/comparison.txt

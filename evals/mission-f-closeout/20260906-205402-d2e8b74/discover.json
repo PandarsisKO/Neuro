@@ -1,0 +1,14 @@
+{
+ "pass": false,
+ "fails": [
+  "discover.quick raised: CONNECTION after 3 attempts: Connection error."
+ ],
+ "events": {
+  "schema_mismatch": 0,
+  "schema_fallback": 0,
+  "schema_failure": 0,
+  "output_truncated": 0,
+  "output_refused": 0,
+  "plan_assembly_failed": 0
+ }
+}

@@ -1,0 +1,26 @@
+Batch smoke (live) · app 0.20.0+g3 @ 70f55c9 · 20260907-091438 · 159.4s
+  model claude-sonnet-5 · schema findings-v2 · fixture yt01 · custom_id fw-0d63eedcd1c8-0-2b65a416a1ea
+  batch msgbatch_01JBuWiGC5fsCCHHGbAoXiUG · polls 11 · returned model claude-sonnet-5 · findings 10
+  tokens in 2434 / out 1135 / cache read 0 / cache write 0
+  standard model cost $0.016218 · expected batch $0.008109 · actual batch $0.008109 · saved $0.008109 · estimated before submission $0.0054
+  structured outputs: mismatches 0 · fallbacks 0 · truncated 0 · refused 0
+  PASS  fixture is one single-window findings item
+  PASS  contract allows batch execution and enforces findings-v2
+  PASS  preflight claude-sonnet-5
+  PASS  token-counted estimate (standard vs batch model cost)
+  PASS  job parked external_pending with the provider batch id persisted
+  PASS  exactly one submitted item with the expected custom_id
+  PASS  submission intent cleared once the handle was persisted
+  PASS  batch ended and the job was handed back to the queue
+  PASS  raw provider result persisted locally before materialisation
+  PASS  returned custom_id set matches the expected item exactly
+  PASS  ledger: one completed invocation on the batch provider carrying the batch id
+  PASS  job completed through findings.materialize
+  PASS  provenance: transport=batch with the provider batch id, analysis current
+  PASS  findings written with evidence
+  PASS  quote validator ran on every finding
+  PASS  zero schema mismatch / fallback / truncation / refusal events
+  PASS  actual batch cost = 50% of the standard model-rate calculation
+  PASS  pre-submission estimate within 2× of the actual batch cost
+  PASS  job history: planned → submitting → submitted → result → ended, no re-attach/retry/cancel
+Batch smoke PASS
