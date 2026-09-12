@@ -176,6 +176,10 @@ Three constraints from Kyle's review, all of which change the design:
   comparison. A bare BLOB is how a vector space quietly becomes two vector spaces the first time the embedding
   model changes; the same lesson as `usage.price_model` (0.59.3), where the missing basis made a per-model verdict
   wrong. A vector whose version does not match the current one is treated as absent and re-embedded, not compared.
+- **Corpus baseline.** Existing chunk vectors are legacy bare blobs. Before they become T1's comparison side, record a
+  versioned corpus-space attestation from the configured production model and a measured dimension/count check. If
+  that exact identity cannot be verified, exclude the affected chunks from similarity and report the gap; do not
+  infer compatibility from vector length alone.
 - **The first output is a measurement, not a feature.** Semantic coverage has never been computed here, so before
   anything is called a blind spot: compute each chunk's similarity to the nearest Claim and finding, publish the
   distribution, and compare it against the locator signal (25.5%). How much of the 74.5% is semantically close to
