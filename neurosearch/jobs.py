@@ -282,7 +282,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     media.set_progress_hook(progress)
     kind = job["kind"]
     from . import usage
-    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover"):
+    if kind in ("ingest_source", "ingest_file", "suggest_findings", "reembed", "rank_proposed", "discover", "t1_embed_derived"):
         usage.guard()   # cheap check first; transcription/findings re-check with a size-based estimate
     if kind == "ingest_url":
         ext = payload.get("_external_result") or {}
@@ -353,6 +353,13 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
             crash_point("external_result_before_done")
             return {"completed_with": payload["_external_result"]}
         submit_external("fake", "demo", {"x": payload.get("x")}, deadline=time.time() + 3600, ready_after=int(payload.get("ready_after", 2)))
+    if kind == "t1_embed_derived":
+        from . import embeddings
+        vec = embeddings.embed_texts([payload.get("text") or ""])[0]
+        db.set_derived_embedding(payload["table"], payload["object_id"], vec,
+                                 provider=payload["provider"], model=payload["model"],
+                                 version=payload["version"], input_hash=payload["input_hash"])
+        return {"embedded": payload["object_id"], "dimensions": int(vec.size), "version": payload["version"]}
     raise RuntimeError(f"unknown job kind {kind}")
 
 

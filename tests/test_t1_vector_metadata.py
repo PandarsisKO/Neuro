@@ -45,3 +45,38 @@ def test_t1_versioned_write_read_and_invalidation_fail_open(t1_db):
     db.invalidate_derived_embedding("project_notes", note_id)
     assert db.load_versioned_derived_embeddings("project_notes", project_id, provider="openai",
                                                 model="text-embedding-3-small", version="t1-v1", dimensions=3) == []
+
+
+def test_t1_backfill_queues_canonical_rows_in_low_lane(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 queue", "test")["id"]
+    db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
+                         (project_id, "queue me", "approved", db.now()))
+    db.connect().commit()
+    queued = t1.enqueue_backfill(project_id, limit=10)
+    assert len(queued) == 1 and queued[0]["lane"] == "low" and queued[0]["kind"] == "t1_embed_derived"
+
+
+def test_t1_job_writes_provider_versioned_vector(t1_db, monkeypatch):
+    from neurosearch import jobs
+    project_id = db.create_project("T1 job", "test")["id"]
+    db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
+                         (project_id, "embed me", "approved", db.now()))
+    db.connect().commit()
+    note_id = db.connect().execute("SELECT last_insert_rowid()").fetchone()[0]
+    monkeypatch.setattr("neurosearch.embeddings.embed_texts", lambda texts: [np.array([0., 1.], dtype=np.float32)])
+    job = {"id": "job-t1", "kind": "t1_embed_derived", "payload": {
+        "table": "project_notes", "object_id": note_id, "text": "embed me", "provider": "openai",
+        "model": "text-embedding-3-small", "version": "t1-v1", "input_hash": "h"}}
+    result = jobs.run_job(job)
+    assert result["dimensions"] == 2
+    assert db.load_versioned_derived_embeddings("project_notes", project_id, provider="openai",
+                                                model="text-embedding-3-small", version="t1-v1", dimensions=2)
+
+
+def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 coverage", "test")["id"]
+    report = t1.coverage_report(project_id)
+    assert report["status"] == "measurement_pending"
+    assert report["semantic_distributions"] is None
