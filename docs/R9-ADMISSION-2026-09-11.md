@@ -49,8 +49,9 @@ The adopted model is a routing candidate only; no production classifier or provi
 ## (c) Findings and claims extraction
 
 **Running as of 2026-09-12 16:12 PT.** Candidates remain a 70B Q4 model and gpt-oss-120b. Record prompt prefill and
-generation separately; adopt only if total wall clock beats the 10.9-second API reference. No findings or claims
-routing changes are allowed before that evidence exists. The first pull attempt hit inconsistent Ollama partial-cache
+generation separately; adopt only if total wall clock beats the 10.9-second API reference and the response is valid
+JSON with `findings` and `claims` arrays. No findings or claims routing changes are allowed before that evidence
+exists. The first pull attempt hit inconsistent Ollama partial-cache
 metadata; the missing reversible segment markers were reconstructed without deleting the downloaded blob, and the
 detached pull resumed from a fresh 42 GB layer download.
 
