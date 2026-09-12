@@ -12,8 +12,9 @@ The current worktree contains an uncommitted Claude-side Bootstrap/resources/UI 
 `neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`,
 `tests/test_k3_resources.py`, and `tests/test_s14_fix_pass.py`. The focused suite is **73 passed** (2026-09-12).
 These files are intentionally preserved and are not included in the R9/T1 documentation commits. Review, commit, or
-discard them as one coherent set before changing the same surfaces. `Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md`
-and the `INSPIRATION/` assets are also untracked handoff material; do not silently delete them.
+discard them as one coherent set before changing the same surfaces. `AUDIT.md`, `design.md`,
+`Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md`, and the `INSPIRATION/` assets are also untracked handoff material;
+do not silently delete them.
 
 ## NEXT — admitted priorities (maximum three)
 

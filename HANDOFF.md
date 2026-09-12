@@ -43,7 +43,10 @@ remain on local disk and are excluded from Git/GitHub. Do not add `VIDEOS/`, `da
 The worktree contains a preserved, uncommitted Claude-side Bootstrap, resources, UI and test set
 (`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`, `tests/test_k3_resources.py`,
 `tests/test_s14_fix_pass.py`); its focused suite is 73 passed. Do not stage or overwrite that set while continuing
-R9/T1. The tracked copy of Claude's design audit is `docs/T1-DESIGN-AUDIT-2026-09-12.md`.
+R9/T1. Additional untracked Claude/design material is present in `AUDIT.md`, `design.md`,
+`Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md`, and `INSPIRATION/`; preserve it and review it as one coherent set
+before touching the same surfaces. The tracked copy of Claude's design audit is
+`docs/T1-DESIGN-AUDIT-2026-09-12.md`.
 
 ## Protect the live app
 
