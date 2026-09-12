@@ -26,12 +26,19 @@ T1's canonical-active and project-relative requirements.
 
 | Need | Existing seam | T1 change after R9(a) selection |
 |---|---|---|
-| Chunk vectors | `chunks.embedding`, `embeddings.embed_texts`, `db.load_embedding_matrix` | Use the existing production `text-embedding-3-small` space for T1's first measurement; never silently mix dimensions or model versions. |
+| Chunk vectors | `chunks.embedding`, `embeddings.embed_texts`, `db.load_embedding_matrix` | Create a one-time corpus-space attestation from the configured production model and measured stored dimensions before comparison. Use the existing `text-embedding-3-small` space only when that attestation verifies it; otherwise fail open and report the chunks as unavailable for T1 similarity. Never silently mix dimensions or model versions. |
 | Derived-vector storage | Additive `project_notes.embedding` and `project_claims.embedding` columns already exist for compatibility | Add explicit model and embedding-version metadata; existing bare blobs are treated as unavailable, never trusted. |
 | Canonical scope | Findings have `approved`/`suggested` status; Claims have `proposed`/`accepted`/`rejected`/`superseded` status | Default to approved/suggested Findings and proposed/accepted Claims; dismissed/rejected/superseded objects require an explicit feature reason. |
 | Resumable backfill | `embeddings.embed_pending` commits in 96-row batches; chunk embeddings are idempotent | Create a derived-object equivalent keyed by object id, content/revision and embedding model/version. A restart resumes only stale or missing rows. |
 | Jobs and cost ledger | durable `jobs`, provider contracts and `usage.record("embed", ...)` | Submit a low-lane, durable, deduplicated backfill after R9 validates the model; retain provider and model provenance. |
 | Coverage computation | Chunk embeddings, `claim_evidence` locators, `project_notes` citations, R7's project-relative comparison patterns | Compute a read-only project-relative distribution first. Do not create coverage state or UI labels until the measurement is published. |
+
+`chunks.embedding` stores bare normalized float32 blobs and has no historical per-row provider/model field. The initial
+T1 migration must therefore record a versioned corpus-space attestation (provider, model, dimension, preparation tag,
+verification timestamp and a fixed count/dimension check) before derived vectors become comparable. `db.row_to_dict()`
+intentionally strips raw `embedding` blobs, so T1 needs dedicated raw-vector helpers rather than exposing them through
+existing list endpoints. `project_notes` has no `updated_at`; its derived-vector freshness key must include normalized
+content, citations and source/revision inputs rather than a timestamp alone.
 
 ## T1 acceptance gates
 
@@ -51,7 +58,8 @@ T1's canonical-active and project-relative requirements.
 
 ## First implementation slice after pre-T1 gate completion
 
-1. Add metadata columns and schema compatibility migrations for both derived tables.
+1. Add metadata columns and schema compatibility migrations for both derived tables, plus the corpus-space attestation
+   required to compare them with legacy chunk vectors.
 2. Add typed db helpers for selecting canonical rows, reading/writing versioned vectors, and invalidating only the
    changed object.
 3. Add a low-lane durable backfill adapter using the existing embedding provider and an explicit execution contract.

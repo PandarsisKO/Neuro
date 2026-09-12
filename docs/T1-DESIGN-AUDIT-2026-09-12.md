@@ -33,6 +33,9 @@ live database. The narrative decisions remain in `docs/R9-ADMISSION-2026-09-11.m
   per-project bucket. The report must refuse to label anything `unexplained` while required vector coverage is incomplete.
 - Vector metadata includes provider, model, dimension, preparation/version tag, content hash and timestamp. Comparisons
   require an exact space identity match.
+- Existing `chunks.embedding` rows are bare blobs, so T1 must create a verified corpus-space attestation before using
+  them as the comparison baseline. If the configured production model and observed chunk dimensions cannot establish one
+  exact identity, omit those rows from similarity and report the gap; never infer compatibility from a bare blob.
 - Local zero-cost embedding work still records provider/model provenance in the usage ledger if that later migration is
   admitted. A T1 backfill job id must be recorded so R8's retention sample is not misread as organic growth.
 
