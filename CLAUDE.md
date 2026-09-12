@@ -84,6 +84,7 @@ Reuse the existing invocation ledger, run ids, leases/heartbeats, provider polic
 Durable per-window/group work reuse (R4) is implemented in 0.63.40 and its consolidated 66-case abuse gate passes.
 Bounded concurrency (R5) is implemented in 0.63.41 and its deterministic concurrency gate passes. R6 Fast/Warm
 admission is implemented in 0.63.42 and its gate passes. R7 novelty/residual reading is implemented in 0.63.43 and
-its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. R9 local-model measurements remain a
-separate admitted rung. R9 is preflighted but cannot run
-until a supported local runtime and weights exist on this Mac.
+its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. T1 code is
+blocked on its governing R9 embedding-runtime prerequisite; the ready-to-execute design and gates are in
+`docs/T1-ADMISSION-2026-09-12.md`. R9 is preflighted but cannot run until a supported local runtime and weights
+exist on this Mac.

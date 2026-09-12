@@ -14,17 +14,19 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Begin Transcript Intelligence with a version-stamped, fresh cohort and baseline its quality, latency and cost.
-2. Keep historical provider-batch and queue wait separate from new-work measurements; optimize only after a bounded
-   experiment identifies a controllable bottleneck.
-3. Continue the non-blocking R8 retention observation and maintain R9's external local-runtime prerequisite.
+1. Complete R9's external local-runtime prerequisite and scorecard before writing T1 code; see
+   `docs/R9-ADMISSION-2026-09-11.md` and `docs/T1-ADMISSION-2026-09-12.md`.
+2. On an R9 pass, begin T1 with a fresh, version-stamped semantic-coverage cohort and keep its quality, latency and
+   cost separate from historical provider-batch and queue wait.
+3. Continue the non-blocking R8 retention observation; no retention cutoff is admitted yet.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
 
 ## PARKED
 
-- Transcript Intelligence: first major product mission after Foundation closeout; T1 depends on R9 measurements, T4 reuses R4/R5.
+- Transcript Intelligence: active program after Foundation closeout. T1 implementation is blocked on R9's external
+  runtime/weights prerequisite; its admission design is at `docs/T1-ADMISSION-2026-09-12.md`. T4 reuses R4/R5.
 - External AI access and multi-user/sharing: permissions boundary unresolved; no implementation admission.
 - Project Inbox, cloud/infrastructure expansion, new acquisition classes, additional Bootstrap, Research/Discover/Planner expansion.
 - Consolidated stale/risky Findings review and unrelated Findings redesign: real usability pain; revisit at Foundation admission checkpoint unless it blocks current work.
