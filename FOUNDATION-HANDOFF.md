@@ -158,15 +158,13 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Next: capture its authenticated live
-Health/Performance observation, resolve any reported failure, then admit Transcript Intelligence. R8's 30-day
-retention sample continues without blocking this ladder. R9 is
-preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
-
-Closeout observation boundary: live `/api/version` verified `0.63.43` and `fake_ai=false`; protected `/api/health`
-correctly returned HTTP 401. The existing browser performance tab was unresponsive to automation and a new tab was
-blocked by the browser client. Do not read credentials or the live database around this boundary; obtain the normal
-authenticated Health-console snapshot and append it to the closeout report.
+The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Its authenticated Health/Performance
+observation is complete: the refreshed console ran `0.63.43`, the 42-gate release check passed, integrity and backup
+were healthy, and the live queue was `0 queued · 0 running`. Interactive endpoint p90 was at most 0.58s in the
+captured sample. Historical provider-batch and queue waits remain explicitly recorded as old/provider-bound evidence,
+not as an R7 regression. Transcript Intelligence is now admitted. R8's 30-day retention sample continues without
+blocking this ladder. R9 is preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is
+authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
 bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable

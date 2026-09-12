@@ -7,12 +7,16 @@
 3. Read `FOUNDATION-HANDOFF.md` for changes, validation, delivery status and the exact restart point.
 4. Read only the active rung and relevant tests/HARDENING entries. `PRODUCT-SCHEDULER.md` owns priorities.
 
-The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
+The active program is Transcript Intelligence, admitted after the completed Foundation closeout. External AI access,
+expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations
+of a current mission are historical evidence only.
 
 Current execution state: 0.63.43 is release-checked at commit `bf8d595`. R7 adds project-relative embedding
 comparison to R6 scheduling and Findings reading: redundant material receives a bounded priority reduction, while
 its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
-leave existing order unchanged. Full pytest, Tier 1 and release-check pass. Foundation closeout is active.
+leave existing order unchanged. Full pytest, Tier 1 and release-check pass. The authenticated closeout observation
+also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. Start
+Transcript Intelligence with a fresh, version-stamped baseline; see `PRODUCT-SCHEDULER.md`.
 
 GitHub custody: `origin/main` is preserved at `82568d6` (Foundation R7 novelty residual reading and closeout), a
 compact descendant of the prior 0.63.42 checkpoint. It contains the R7 code, tests, release artifacts and active

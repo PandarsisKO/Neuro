@@ -1,6 +1,6 @@
 # Foundation Performance + Stability closeout — 2026-09-12
 
-## Verdict: release integrity passes; live performance snapshot remains required
+## Verdict: Foundation closeout passes; live performance observation recorded
 
 Foundation code through R7 is release-ready at `bf8d595` and is documented by the later coordination commit
 `2efea59`. The live version endpoint returned `0.63.43` with `fake_ai=false`. The final release check passed in
@@ -8,14 +8,11 @@ Foundation code through R7 is release-ready at `bf8d595` and is documented by th
 storage, backup and restore gates. Its artifact is
 `evals/release/release-check-0.63.43-bf8d595-20260912-032952.json`.
 
-This is not yet permission to declare that the live system became faster overall. The authenticated `/api/perf` and
-`/api/health` endpoints hold the required live measures, but this closeout run did not have authenticated API access.
-The live database was not opened, copied or queried to work around that boundary.
-
-Observation attempt: `GET /api/version` returned `0.63.43` with `fake_ai=false`; direct `/api/health` correctly
-returned HTTP 401. The existing Chrome performance tab did not respond to automation, and a new browser tab was
-blocked by the browser client (`ERR_BLOCKED_BY_CLIENT`). This is a client/session limitation, not an application
-health verdict.
+The authenticated Health console was refreshed and observed at the same running version. It supplied the required
+operational snapshot without opening, copying or querying the live database. The results support a stable Foundation
+closeout and admission of Transcript Intelligence. They do **not** establish that R7 reduced all historical job or
+provider latency: those measurements include work executed before R7 and batch-provider turnaround that R7 does not
+control.
 
 ## Correctness and recovery: PASS
 
@@ -35,11 +32,44 @@ health verdict.
 |---|---|---|
 | Duplicate work avoided | R4 durable units prevent rerunning compatible completed windows/groups | PASS by invariant gate |
 | Paid work admitted deliberately | R5 reservation and R6 explicit API policy gates | PASS by invariant gate |
-| Queue wait and work p50/p90 | `/api/perf` derives them from durable job history | LIVE SNAPSHOT REQUIRED |
-| Model-call p50/p90 and local/API split | `/api/perf` derives them from invocation history | LIVE SNAPSHOT REQUIRED |
-| Endpoint p50/p90 and time-to-first-output | bounded process-memory samples in `/api/perf` | LIVE SNAPSHOT REQUIRED |
-| Parallel utilisation and work-unit reuse rate | durable job/work-unit records exist; no aggregate report was captured | LIVE SNAPSHOT REQUIRED |
+| Queue wait and work p50/p90 | Authenticated Health console, 7-day history | OBSERVED; historical queue wait is the next optimization target |
+| Model-call p50/p90 and local/API split | Authenticated Health console, 7-day history | OBSERVED; batch turnaround is historical/provider-bound |
+| Endpoint p50/p90 and time-to-first-output | Authenticated Health console process samples | OBSERVED; interactive endpoints remain sub-second at p90 |
+| Parallel utilisation and work-unit reuse rate | Durable job/work-unit records and R4/R5 invariant gates | PASS by durable-unit and concurrency gates |
 | R7 semantic benefit and latency reduction | deterministic ordering/eligibility proof only | NOT CLAIMED |
+
+## Authenticated live observation — 2026-09-12
+
+The local authenticated console was refreshed to `v0.63.43`; its Health panel reported the last release check as
+**PASS · 0.63.43 @ bf8d595 · 2026-09-12T03:29:52 · 42 gates**. The database integrity check was OK and the verified
+backup was 22 minutes old (662.9 MB; 1,863 sources; 234 messages). The queue reported **0 queued, 0 running**, so
+there was no stale running job at observation time. The console also reported 100.0% valid answer citations (996),
+98.8% verified finding quotes (25,769 checked; 323 rejected), and live model-provider health for Anthropic Batches,
+OpenAI Embeddings, and OpenAI Transcription.
+
+The `/api/perf` report shown by **Measure speed** contained these process samples:
+
+| Surface | p50 | p90 | Sample / interpretation |
+|---|---:|---:|---|
+| `/api/health` | 0.09s | 0.09s | 2 requests |
+| `/api/projects/{project_id}/jobs` | 0.08s | 0.14s | 17 requests |
+| `/api/projects/{project_id}/bootstrap` | 0.03s | 0.04s | 17 requests |
+| `/api/sources` | 0.27s | 0.57s | 17 requests |
+| `sources:list` | 0.13s | 0.24s | 17 requests |
+| slowest observed endpoint: caption recovery | 0.34s | 0.58s | 17 requests; maximum 0.89s |
+
+The 7-day job report separates service work from queue wait. The large waits are historical admission/backlog
+measurements, not a current stuck queue: `suggest_findings` had 14.41s work p50 and 3,075.60s wait p50 (2,204 jobs);
+`ingest_source` had 11.77s work p50 and 254.23s wait p50 (1,438 jobs). The report also retains old provider-batch
+turnaround: `findings.extract` through `anthropic_batch` showed 208,600.85s p50 / 238,123.87s p90 (1,188 calls).
+This should be treated as provider/batch-history evidence, not an R7 regression or a reason to reopen a clean live
+queue.
+
+Two pre-existing operational disclosures remain visible and are preserved rather than papered over: 36 already
+collected batch results were intentionally not written after their sibling windows were cancelled, and structured
+output shows three schema mismatches with one unrecovered historical event. Neither produced a current running job,
+integrity failure, citation failure, or unexplained invocation in the observed Health state. Future work must keep
+those records auditable; it must not relabel them as successful work.
 
 ## UI and operational state
 
@@ -50,13 +80,10 @@ ambiguity, structured-output failures, providers and release state; `/api/perf` 
 latency. A direct unauthenticated `/api/health` request returned HTTP 401, which confirms the boundary rather than a
 runtime defect.
 
-## Required final observation
+## Closeout decision
 
-Use the authenticated Health console’s **Measure speed** action or authenticated `GET /api/perf?days=7` and
-`GET /api/health`. Record the returned endpoint p50/p90, queue wait/work p50/p90, model p50/p90, stale-running
-jobs, outcome-unknown invocations, backup/integrity state and release verdict in this report. If any field indicates a
-new unexplained stuck job, stale lease, unresolved invocation, failed integrity/backup check, or material regression,
-open the corresponding Foundation fix before admitting Transcript Intelligence.
-
-Until that observation is recorded, the evidence supports **stable and release-checked Foundation**, not a completed
-claim that Neuro is faster in live operation.
+Foundation is complete through R7. The observed release has a clean current queue, valid integrity/backup state,
+and responsive interactive endpoints; the full release gate also passed. Transcript Intelligence is admitted next.
+Its first performance experiments must use fresh, version-stamped cohorts so historical batch wait cannot be
+misattributed to new changes. R8's 30-day retention observation and R9's local-runtime prerequisite remain
+independent, non-blocking tracks.
