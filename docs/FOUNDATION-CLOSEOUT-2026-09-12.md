@@ -85,5 +85,5 @@ runtime defect.
 Foundation is complete through R7. The observed release has a clean current queue, valid integrity/backup state,
 and responsive interactive endpoints; the full release gate also passed. Transcript Intelligence is admitted next.
 Its first performance experiments must use fresh, version-stamped cohorts so historical batch wait cannot be
-misattributed to new changes. R8's 30-day retention observation and R9's active isolated-runtime scorecard remain
-independent, non-blocking tracks.
+misattributed to new changes. R8's 30-day retention observation remains deliberately deferred and non-blocking. R9's
+isolated-runtime scorecard is complete through R9(b); R9(c)'s long-window arm remains the final pre-T1 gate.

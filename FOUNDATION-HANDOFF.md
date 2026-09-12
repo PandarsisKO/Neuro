@@ -164,8 +164,9 @@ were healthy, and the live queue was `0 queued · 0 running`. Interactive endpoi
 captured sample. Historical provider-batch and queue waits remain explicitly recorded as old/provider-bound evidence,
 not as an R7 regression. Transcript Intelligence is now admitted, but its T1 implementation remains at the pre-T1
 measurement boundary. R9(a) selected local `bge-m3` in an isolated fixture (34.48 ms p50, recall@10 1.0000, MRR
-0.8898), and R9(b) is complete with Llama 3.1 8B adopted for short classification. R9(c)'s long-window benchmark and
-R8's 30-day retention observation remain open. Existing production chunks remain unchanged until versioned
+0.8898), and R9(b) is complete with Llama 3.1 8B adopted for short classification. R9(c)'s long-window benchmark
+remains before T1; R8's retention observation is deliberately deferred to after 2026-10-11 17:28 PT and is
+non-blocking. Existing production chunks remain unchanged until versioned
 migration/backfill gates exist. The complete handoff is `docs/T1-ADMISSION-2026-09-12.md`; the governing checkpoint is
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 `PRODUCT-SCHEDULER.md` is authoritative.
