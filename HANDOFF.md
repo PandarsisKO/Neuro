@@ -37,12 +37,10 @@ The Mac checkout is `/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO`. Codex
 
 Before editing, inspect current Git state and the Foundation handoff. Record the base commit, isolation path and touched files. Before delivery, compare against that base; preserve other changes and reconcile overlap instead of overwriting it. Never reset, broadly stage, remove Git locks, or delete files as a delivery shortcut. Do not assume a clean tree solely because an older handoff says so.
 
-Current custody note: the compact GitHub tree is protected and `git ls-files 'VIDEOS/**'` returns zero files. The
-checkout currently has a zero-byte `.git/index.lock` held by the macOS Virtualization VM process, with no Git process
-associated; do not delete it as a shortcut. The two most recent documentation commits were safely created with a
-temporary alternate index, and the working tree's real index should be reconciled only after that lock is released.
-The recordings remain on local disk and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/`
-to a snapshot.
+Current custody note: the compact GitHub tree is protected and `git ls-files 'VIDEOS/**'` returns zero files. A
+zero-byte `.git/index.lock` held by the macOS Virtualization VM process released at 16:08 PT; no Git process was
+associated, the real index was reconciled to `HEAD`, and no lock is present now. The recordings remain on local disk
+and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/` to a snapshot.
 
 The worktree contains a preserved, uncommitted Claude-side Bootstrap, resources, UI and test set
 (`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`, `tests/test_k3_resources.py`,

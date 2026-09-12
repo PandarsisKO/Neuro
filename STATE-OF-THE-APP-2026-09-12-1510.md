@@ -58,9 +58,9 @@ open measurement. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` for the evidence an
 - The worktree contains preserved uncommitted Claude-side runtime/UI/test changes and untracked design material in
   `AUDIT.md`, `design.md`, `Claude outputs/`, and `INSPIRATION/`. Review those as one coherent set before touching
   overlapping surfaces.
-- A zero-byte `.git/index.lock` is currently held by the macOS Virtualization VM process, with no Git process
-  associated. Do not delete it as a shortcut; the latest documentation commits were published through a temporary
-  alternate index and the GitHub tree is verified equal to the committed local tree.
+- A zero-byte `.git/index.lock` held by the macOS Virtualization VM process released at 16:08 PT, with no Git process
+  associated. The real index was then reconciled to `HEAD`; no lock is present now. The latest documentation commits
+  were published through a temporary alternate index and the GitHub tree is verified equal to the committed local tree.
 
 ## Safest next step
 
