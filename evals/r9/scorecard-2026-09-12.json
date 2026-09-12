@@ -35,6 +35,6 @@
   },
   "r9c": {
     "status": "OPEN",
-    "gate": "one real 15000-token window; report prefill and generation separately; total wall clock below 10.9 seconds"
+    "gate": "one real 15000-token window; report prefill and generation separately; total wall clock below 10.9 seconds; valid JSON with findings and claims arrays"
   }
 }
