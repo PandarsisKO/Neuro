@@ -1,6 +1,6 @@
 # R9 local-runtime scorecard — 2026-09-12
 
-## State: embedding decision complete; integration not yet started
+## State: R9(a) embedding decision complete; R9(b)/(c) remain open
 
 R9 is the admitted speed rung after the R8 immediate evidence checkpoint. The benchmark uses an isolated temporary database and the frozen retrieval fixture. It never opens, queries, changes, or re-embeds the live database.
 
