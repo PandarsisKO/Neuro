@@ -162,10 +162,12 @@ The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Its a
 observation is complete: the refreshed console ran `0.63.43`, the 42-gate release check passed, integrity and backup
 were healthy, and the live queue was `0 queued · 0 running`. Interactive endpoint p90 was at most 0.58s in the
 captured sample. Historical provider-batch and queue waits remain explicitly recorded as old/provider-bound evidence,
-not as an R7 regression. Transcript Intelligence is now admitted, but its T1 implementation remains correctly
-admitted for its first measurement slice after R9(a) selected local `bge-m3` in an isolated fixture (34.48 ms p50,
-recall@10 1.0000, MRR 0.8898). Existing production chunks remain unchanged until versioned migration/backfill gates
-exist. The complete handoff is `docs/T1-ADMISSION-2026-09-12.md`. R8's 30-day retention sample continues without blocking this ladder.
+not as an R7 regression. Transcript Intelligence is now admitted, but its T1 implementation remains at the pre-T1
+measurement boundary. R9(a) selected local `bge-m3` in an isolated fixture (34.48 ms p50, recall@10 1.0000, MRR
+0.8898), and R9(b) is complete with Llama 3.1 8B adopted for short classification. R9(c)'s long-window benchmark and
+R8's 30-day retention observation remain open. Existing production chunks remain unchanged until versioned
+migration/backfill gates exist. The complete handoff is `docs/T1-ADMISSION-2026-09-12.md`; the governing checkpoint is
+`docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 `PRODUCT-SCHEDULER.md` is authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
