@@ -11,7 +11,7 @@ The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 befo
 | R8 retention decision | Deliberately deferred, non-destructive observation | The 30-day `job_events` sample has not elapsed. Revisit after **2026-10-11 17:28 PT** with growth, consumers, and evidence-preserving options; no rollup, archive, or deletion is authorized before then. This is intentionally non-blocking under the existing scheduler. |
 | R9(a) embeddings | Complete | `bge-m3` selected after frozen latency, recall@10 and MRR gates; Nomic rejected. |
 | R9(b) short classification/triage | Complete | Fair 256-token-cap reruns produced a complete verdict for every declared candidate: Llama 3.1 8B adopted (343 ms p50, 15/15 valid); Qwen3 8B, Qwen3 14B, and gpt-oss-20b rejected on the measured speed and/or validity gates. |
-| R9(c) findings/claims extraction | **Open** | The declared 70B Q4 and MoE candidates still need one real 15k-token window, separately reporting prefill and generation, against the 10.9-second API gate. |
+| R9(c) findings/claims extraction | **Open** | The declared 70B Q4 and MoE candidates still need one real 15k-token window, separately reporting prefill and generation, returning valid `findings`/`claims` JSON, and meeting the 10.9-second API gate. |
 | Foundation R4, R4 recovery gate, R5, R5 concurrency gate, R6, R7, formal closeout | Complete | 0.63.40–0.63.43 and `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. |
 
 ## Phase-by-phase confirmation

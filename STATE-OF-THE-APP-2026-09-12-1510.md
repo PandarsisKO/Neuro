@@ -19,7 +19,8 @@ The immediate R9 decisions are complete where measured:
   candidate; Qwen3 8B, Qwen3 14B and gpt-oss-20b Q4 were rejected on the measured gates. No production routing change
   is admitted by this scorecard alone.
 - **R9(c) long-window extraction:** one real approximately 15k-token window remains to be measured for the declared
-  70B Q4 and `gpt-oss-120b` candidates, with prefill and generation reported separately against the 10.9-second gate.
+  70B Q4 and `gpt-oss-120b` candidates, with prefill and generation reported separately, valid `findings`/`claims`
+  JSON, and the 10.9-second gate.
 
 R8 storage hygiene, statistics, WAL policy and indexes are shipped. The `job_events` retention decision is deliberately
 deferred to a non-destructive observation trigger after **2026-10-11 17:28 PT**; no rollup, archive or deletion is
