@@ -84,8 +84,7 @@ Reuse the existing invocation ledger, run ids, leases/heartbeats, provider polic
 Durable per-window/group work reuse (R4) is implemented in 0.63.40 and its consolidated 66-case abuse gate passes.
 Bounded concurrency (R5) is implemented in 0.63.41 and its deterministic concurrency gate passes. R6 Fast/Warm
 admission is implemented in 0.63.42 and its gate passes. R7 novelty/residual reading is implemented in 0.63.43 and
-its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. T1 code is
-blocked on R9's governing embedding decision; the ready-to-execute design and gates are in
-`docs/T1-ADMISSION-2026-09-12.md`. Ollama 0.33.3 is now running only on loopback against an isolated fixture;
-`nomic-embed-text` is rejected because its frozen MRR misses the floor despite passing latency. Complete the
-remaining declared R9 candidates before changing production embeddings.
+its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. T1's first measurement slice is admitted after R9(a) selected local Ollama `bge-m3` (1024 dimensions) in an
+isolated fixture: 34.48 ms p50, recall@10 1.0000, MRR 0.8898. The ready-to-execute design and gates are in
+`docs/T1-ADMISSION-2026-09-12.md`. Do not change existing 1536-dimensional production chunk embeddings or
+re-embed the live corpus until versioned migration/backfill gates exist. R9(b)/(c) remain separate decisions.
