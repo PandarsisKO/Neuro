@@ -1748,4 +1748,4 @@ was accepted). Llama 3.1 8B **ADOPT**: 343.368 ms p50, 371.299 ms p90, 15/15 val
 p50, 9.198 s p90, 0/15 valid. Qwen3 14B **REJECT**: 10.974 s p50, 11.727 s p90, 0/15 valid. gpt-oss-20b Q4
 **REJECT**: 3.154 s p50, 3.307 s p90, 15/15 valid. The adopted model is a candidate for future routing only; no
 production classifier or provider path changed. R9(c), the real 15k-token findings/claims benchmark with separate
-prefill and generation timing, remains open.
+prefill and generation timing plus valid `findings`/`claims` JSON, remains open.
