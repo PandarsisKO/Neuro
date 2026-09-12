@@ -1,9 +1,10 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.42 R6 COMPLETE; R7 ACTIVE**, 2026-09-12.
+Status: **0.63.43 R7 COMPLETE; FOUNDATION CLOSEOUT ACTIVE**, 2026-09-12.
 
-Current restart point: commit `3fd0a2c` implements R6 Fast/Warm admission over durable jobs. The 0.63.42 full suite,
-Tier 1 and release-check pass. R6 is closed and R7 is active.
+Current restart point: commit `bf8d595` implements R7 project-relative novelty/residual reading over R6's durable
+Fast/Warm jobs. The 0.63.43 full suite, Tier 1 and release-check pass. R7 is closed; formal Foundation closeout is
+the next active work.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
@@ -61,6 +62,15 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
   occurred. R4 is committed and deterministically validated; its abuse-gate closeout is still active.
 
 ## Validation evidence
+
+- 0.63.43 R7 candidate: `novelty.py` compares a source's stored chunk embeddings against the complete project
+  corpus plus its submitted cohort, excluding itself. This makes comparison project-relative and independent of
+  arrival order. Redundancy subtracts at most 40 scheduling points; it never changes eligibility, so every
+  non-fast source remains a durable warm job. Findings reads least-similar chunk windows first but materializes in
+  original source order and retains the same durable work-unit keys. Missing, malformed or shape-incompatible
+  vectors fail open to existing priority/order. Final focused R7/R6/R4/R5 tests: **30 passed in 29.19 seconds**. The
+  commit-bound release-check passed in **229.7 seconds** with full pytest, Tier 1 and all Foundation gates:
+  `evals/release/release-check-0.63.43-bf8d595-20260912-032952.json`.
 
 - 0.63.42 R6 candidate: a bulk interactive request of six or more sources deterministically picks at most three
   high-value, diverse sources using project priority, existing value, reviewed relevance, open-target lexical fit,
@@ -148,8 +158,9 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-Next: implement R7 and pass its redundancy/eligibility gate, then follow formal
-closeout → Transcript Intelligence. R8's 30-day retention sample continues without blocking this ladder. R9 is
+The formal closeout report is at `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. Next: capture its authenticated live
+Health/Performance observation, resolve any reported failure, then admit Transcript Intelligence. R8's 30-day
+retention sample continues without blocking this ladder. R9 is
 preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776

@@ -850,7 +850,7 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
     This ranks only sources supplied by the bulk request. A high score changes scheduling order, never eligibility;
     every unselected source remains a warm job. Diversity is greedy but deterministic: source id breaks every tie.
     """
-    from . import knowledge, sources_value
+    from . import knowledge, novelty, sources_value
     ids = list(dict.fromkeys(source_ids))
     if not ids:
         return []
@@ -862,6 +862,7 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
         f"SELECT source_id, relevance FROM project_source_analysis WHERE project_id=? AND analysis_kind='relevance' AND source_id IN ({marks})",
         (project_id, *ids)).fetchall()}
     target_words = set().union(*(_wave_tokens(t.get("question") or "") for t in knowledge.list_targets(project_id, status="open")))
+    residuals = novelty.profiles(project_id, ids, comparison_source_ids=ids)
     candidates = []
     for sid in ids:
         source = rows.get(sid)
@@ -871,7 +872,9 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
         target_hits = len(words & target_words)
         value = int((values.get(sid) or {}).get("value_score") or 0)
         priority = bool((values.get(sid) or {}).get("priority"))
-        base = (1000 if priority else 0) + value * 10 + relevance.get(sid, 0) + min(40, target_hits * 8)
+        residual = residuals[sid]
+        novelty_adjustment = novelty.priority_adjustment(residual)
+        base = (1000 if priority else 0) + value * 10 + relevance.get(sid, 0) + min(40, target_hits * 8) + novelty_adjustment
         why = ([] if not priority else ["priority source"])
         if value:
             why.append(f"existing project value {value}")
@@ -879,6 +882,8 @@ def fast_wave_plan(project_id: str, source_ids: list[str], limit: int = FAST_WAV
             why.append(f"review score {relevance[sid]}")
         if target_hits:
             why.append(f"matches {target_hits} open-target term{'s' if target_hits != 1 else ''}")
+        if residual["available"]:
+            why.append(f"project-relative redundancy {int(float(residual['redundancy']) * 100)}%; residual chunks read first")
         candidates.append({"source_id": sid, "base": base, "creator": (source.get("channel") or "").strip().lower(),
                            "platform": source.get("platform") or "", "why": why or ["available source"]})
     selected, creators, platforms = [], set(), set()
