@@ -40,5 +40,6 @@ live database. The narrative decisions remain in `docs/R9-ADMISSION-2026-09-11.m
 
 R9(c) still needs one real 15k-token findings/claims window for a 70B Q4 candidate and `gpt-oss-120b`, with prefill and
 generation reported separately and total wall clock compared with the 10.9-second API reference. R8's 30-day retention
-observation remains non-destructive and non-blocking. T1 implementation starts only after the pre-T1 audit records those
-items as complete or deliberately deferred with numeric revisit triggers.
+observation is deliberately deferred to the dated trigger after 2026-10-11 17:28 PT; it remains non-destructive and
+non-blocking. T1 implementation starts only after the pre-T1 audit records R9(c) as complete or deliberately deferred
+with its numeric revisit trigger.
