@@ -42,4 +42,5 @@ R9(c) still needs one real 15k-token findings/claims window for a 70B Q4 candida
 generation reported separately and total wall clock compared with the 10.9-second API reference. R8's 30-day retention
 observation is deliberately deferred to the dated trigger after 2026-10-11 17:28 PT; it remains non-destructive and
 non-blocking. T1 implementation starts only after the pre-T1 audit records R9(c) as complete or deliberately deferred
-with its numeric revisit trigger.
+with its numeric revisit trigger. The active 70B pull and exact continuation command are recorded in the R9 scorecard;
+do not substitute a smaller model merely to bypass this gate.
