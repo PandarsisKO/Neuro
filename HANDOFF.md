@@ -25,10 +25,10 @@ remains before T1 implementation. R8 retention is deliberately deferred to its n
 unchanged until versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md`,
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
-GitHub custody: the next compact sync will publish this handoff at the current local documentation commit. The previous
-remote snapshot was `f0574f6` (Foundation R7 novelty residual reading, closeout, R9(a), and the pre-T1 audit). It contains
-the R7 code, tests, release artifacts and active handoffs. `VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked
-files.
+GitHub custody: the current documentation tree is published on GitHub as compact sync `89ed211` (local documentation
+commit `f1c8254`). The previous snapshot `f0574f6` contained the Foundation R7 closeout, R9(a), and the pre-T1 audit;
+the current snapshot adds the R9(b) scorecard, T1 vector-space reconciliation, R8 revisit trigger, and Claude handoff.
+`VIDEOS/`, `data/` and `_to_delete/` remain absent from tracked files.
 
 ## Shared checkout and coordination
 
