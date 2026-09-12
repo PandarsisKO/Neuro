@@ -1733,3 +1733,10 @@ The signal fails open: no vectors, corrupt vectors, and incompatible vector dime
 eligibility. Final focused R7/R6/R4/R5 coverage: **30 passed in 29.19 seconds**. Final commit `bf8d595` passed the complete
 release-check in **229.7 seconds**, including whole-suite pytest, Tier 1, recovery, retrieval, browser, UI and
 storage gates in **213.0 seconds**. Artifact: `evals/release/release-check-0.63.43-bf8d595-20260912-032952.json`.
+
+
+## R9 local-runtime scorecard — active, 2026-09-12
+
+Ollama 0.33.3 was installed through Homebrew and started only on loopback for an isolated, disposable benchmark. No live database was opened or changed, and no production provider routing or embedding corpus was modified. The first embedding candidate, `nomic-embed-text` (768 dimensions), was warmed three times and sampled fifteen times through the local `/api/embed` endpoint: p50 **13.94 ms**, p90 **15.22 ms**. It clears R9's sub-50-ms speed gate.
+
+The same candidate then rebuilt the frozen retrieval fixture through the production hybrid FTS-plus-vector RRF path. It achieved recall@10 **1.0000** but MRR **0.8087**, below the frozen 0.863835 floor (within 5% of the 0.9093 reference). It is therefore **rejected for adoption** despite its speed. OpenAI embeddings and the existing query cache remain the production path. `bge-m3` and, if necessary, `mxbai-embed-large` are pending the identical probe; short-classification and extraction arms remain unmeasured.

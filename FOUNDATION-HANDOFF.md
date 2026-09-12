@@ -163,7 +163,8 @@ observation is complete: the refreshed console ran `0.63.43`, the 42-gate releas
 were healthy, and the live queue was `0 queued · 0 running`. Interactive endpoint p90 was at most 0.58s in the
 captured sample. Historical provider-batch and queue waits remain explicitly recorded as old/provider-bound evidence,
 not as an R7 regression. Transcript Intelligence is now admitted, but its T1 implementation remains correctly
-blocked until R9 validates a supported local runtime and weights; the complete handoff is
+blocked until R9 records a validated embedding decision; local Ollama is active only against an isolated fixture,
+and `nomic-embed-text` is rejected on frozen MRR despite passing latency. The complete handoff is
 `docs/T1-ADMISSION-2026-09-12.md`. R8's 30-day retention sample continues without blocking this ladder.
 `PRODUCT-SCHEDULER.md` is authoritative.
 
