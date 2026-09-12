@@ -9,10 +9,10 @@
 
 The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
 
-Current execution state: 0.63.42 is release-checked at commit `3fd0a2c`. It implements R6 deterministic Fast/Warm
-admission: three diverse, high-value API-priority sources arrive first; remaining sources stay durable, enumerable
-and promotable on the local warm path. Fast results are visibly provisional and later analysis replaces that marker.
-The full suite, Tier 1, release-check and R6 gate pass. R7 is active.
+Current execution state: 0.63.43 is release-checked at commit `bf8d595`. R7 adds project-relative embedding
+comparison to R6 scheduling and Findings reading: redundant material receives a bounded priority reduction, while
+its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
+leave existing order unchanged. Full pytest, Tier 1 and release-check pass. Foundation closeout is active.
 
 ## Shared checkout and coordination
 

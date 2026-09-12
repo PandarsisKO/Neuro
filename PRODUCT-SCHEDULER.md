@@ -4,8 +4,8 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-11. This is
 
 ## NOW — one active effort
 
-Foundation R7 novelty-residual reading. Version 0.63.42 is release-checked at `3fd0a2c`; R6 Fast/Warm admission
-and its diversity, provisional-evidence, promotion and eligibility gate pass. R7 is admitted.
+Formal Foundation closeout. Version 0.63.43 is release-checked at `bf8d595`; R7 project-relative novelty-residual
+reading and its redundancy, eligibility, decisive-exception and fail-open gate pass.
 
 ## SUSPENDED — RESUME FIRST
 
@@ -13,9 +13,9 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Implement Speed R7 novelty-residual reading.
-2. Pass its redundancy, eligibility and decisive-exception gate.
-3. Formal Foundation closeout.
+1. Produce the formal Performance + Stability report using recorded release evidence and bounded runtime observations.
+2. Resolve any closeout gap that makes the Foundation speed claim unprovable.
+3. Admit Transcript Intelligence only after the closeout answer is supported.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
@@ -42,7 +42,8 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 0.63.36–0.63.39 are DONE. R8 immediate evidence is complete; its 30-day retention sample continues without
 blocking the ladder. R9 preflight is complete and the benchmark is blocked on a supported local runtime and weights.
 R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
-0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42.
+0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42. R7 and its novelty/residual gate are complete
+in 0.63.43.
 
 ## AUDIT ADDITIONS — 2026-09-11
 
@@ -61,7 +62,7 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
    integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
    and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
-The next execution order is R7 → Foundation closeout.
+The next execution order is Foundation closeout → Transcript Intelligence admission.
 The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 

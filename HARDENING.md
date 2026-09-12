@@ -1719,3 +1719,17 @@ investigations. `job_events` is 17.18 MB but the snapshot covers only 3.9 days, 
 defensible cutoff or rollup. Measure at least 30 days of growth and identify every history/debug consumer before
 admitting a terminal-job event rollup or archive. Existing terminal/orphan invocation cleanup and scheduled WAL
 checkpointing remain the owners; no duplicate reaper was added.
+
+## R7 novelty-residual reading — 0.63.43, 2026-09-12
+
+R7 reuses normalized chunk embeddings already held in SQLite. For every source, it compares each chunk against all
+other project members and the submitted cohort, never against itself. The mean nearest-neighbor similarity is only a
+bounded scheduling nudge (at most 40 points); it cannot remove a source from Fast/Warm admission. Within a source,
+the least-similar chunk windows are read first, while durable work-unit identities and final materialization retain
+their original transcript indexes. A source that repeats familiar material but contains a decisive exception therefore
+still has that exception reached early.
+
+The signal fails open: no vectors, corrupt vectors, and incompatible vector dimensions preserve the pre-R7 order and
+eligibility. Final focused R7/R6/R4/R5 coverage: **30 passed in 29.19 seconds**. Final commit `bf8d595` passed the complete
+release-check in **229.7 seconds**, including whole-suite pytest, Tier 1, recovery, retrieval, browser, UI and
+storage gates in **213.0 seconds**. Artifact: `evals/release/release-check-0.63.43-bf8d595-20260912-032952.json`.
