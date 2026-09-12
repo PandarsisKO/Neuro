@@ -1,9 +1,9 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.41 R5 COMPLETE; R6 ACTIVE**, 2026-09-12.
+Status: **0.63.42 R6 COMPLETE; R7 ACTIVE**, 2026-09-12.
 
-Current restart point: commit `9f46c79` implements bounded R5 concurrency for durable Findings windows and Claims
-groups. The 0.63.41 full suite, Tier 1 and release-check pass. R5 is closed and R6 is active.
+Current restart point: commit `3fd0a2c` implements R6 Fast/Warm admission over durable jobs. The 0.63.42 full suite,
+Tier 1 and release-check pass. R6 is closed and R7 is active.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
@@ -61,6 +61,15 @@ The release artifact identifies validated source snapshot `f345726-deb83f63`:
   occurred. R4 is committed and deterministically validated; its abuse-gate closeout is still active.
 
 ## Validation evidence
+
+- 0.63.42 R6 candidate: a bulk interactive request of six or more sources deterministically picks at most three
+  high-value, diverse sources using project priority, existing value, reviewed relevance, open-target lexical fit,
+  creator and source-type diversity. Fast jobs are `priority` + `api_requested`; all other sources become durable
+  `warm` + `local_preferred` jobs. Fast provenance remains visible as a provisional marker on the analysis until a
+  later warm/deep analysis replaces it. Warm promotion changes the existing job's policy/lane and never restarts
+  compatible R4 work. Focused R6/R4/R5 tests: **26 passed**; full pytest: **1,313 passed, one existing Starlette
+  warning in 147.38 seconds**. Tier 1 passes unchanged. Commit-bound release-check artifact:
+  `evals/release/release-check-0.63.42-3fd0a2c-20260912-030848.json`.
 
 - 0.63.41 R5 candidate: a bounded executor carries explicit job/run, policy and logging context into every child;
   child routes merge back into the parent job summary and each child closes its own database connection. Findings uses
@@ -139,7 +148,7 @@ facts below. Commit/tag only after that proof.
   inspect whether an owning Git process still exists; if none does, use the repository's approved stale-lock recovery
   procedure, then verify the recordings remain on disk and `git status` sees `VIDEOS/` only through `.gitignore`.
 
-Next: implement R6, pass its diversity/provenance/usability gate, then follow R7 → formal
+Next: implement R7 and pass its redundancy/eligibility gate, then follow formal
 closeout → Transcript Intelligence. R8's 30-day retention sample continues without blocking this ladder. R9 is
 preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 

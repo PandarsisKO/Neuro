@@ -9,9 +9,10 @@
 
 The active program is Foundation. Transcript Intelligence follows its formal closeout. External AI access, expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations of a current mission are historical evidence only.
 
-Current execution state: 0.63.41 is release-checked at commit `9f46c79`. It implements R5 bounded Findings-window and
-Claims-group concurrency with explicit child job/run/policy/log context, route aggregation and spend reservations.
-The full suite, Tier 1, release-check and R5 gate pass. R6 is active.
+Current execution state: 0.63.42 is release-checked at commit `3fd0a2c`. It implements R6 deterministic Fast/Warm
+admission: three diverse, high-value API-priority sources arrive first; remaining sources stay durable, enumerable
+and promotable on the local warm path. Fast results are visibly provisional and later analysis replaces that marker.
+The full suite, Tier 1, release-check and R6 gate pass. R7 is active.
 
 ## Shared checkout and coordination
 

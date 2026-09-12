@@ -5,8 +5,8 @@ implementation and delivery evidence is in FOUNDATION-HANDOFF.md.
 
 ## Current status and priority
 
-Candidate baseline: **0.63.41**, release-checked at `9f46c79`. It adds R5 bounded concurrency for durable Findings
-windows and Claims groups. Full pytest, Tier 1, commit-bound release-check and the R5 concurrency gate pass. It closes
+Candidate baseline: **0.63.42**, release-checked at `3fd0a2c`. It adds R6 Fast/Warm admission over durable jobs.
+Full pytest, Tier 1, commit-bound release-check and the R6 gate pass. It closes
 the Phase 1/2 gaps found during reconciliation: read-only surfaces no longer start hidden Claude CLI probes, tests
 cannot inherit experimental flags from the developer `.env`, and the native killed-worker gate waits for the
 provider invocation to be durably in flight before terminating it.
@@ -53,8 +53,8 @@ Consult FOUNDATION-HANDOFF.md for actual test results and whether these changes 
 
 1. Historical outcome_unknown attribution is NOT repaired or fully explained. HARDENING's 62 local unknown rows and lease-expiry hypothesis remain evidence to investigate. The available server log has no lost-lease/heartbeat-failure/recovery messages establishing that cause. Do not relabel unknown results as completed, widen sweeps, or repurchase work to hide the issue.
 2. Terminal/orphan invocation cleanup and scheduled WAL checkpointing ALREADY exist. R8 indexes/pragmas/statistics are implemented from copied-backup measurements; the first 16:28→17:28 backup pair passed integrity with `sqlite_stat1` present and no file/event growth. Live memory/query-plan observations and the evidence-preserving job-event retention decision remain. No second reaper is needed.
-3. General durable interactive work units (R4), bounded per-unit concurrency (R5), and both mandatory gates are
-   complete. R6 Fast/Warm/Deep is active.
+3. General durable interactive work units (R4), bounded per-unit concurrency (R5), R6 Fast/Warm admission, and
+   their gates are complete. R7 novelty-residual reading is active.
 4. R9 local-runtime/embedding measurements on the M3 Max have not been run. No new model, store, framework or embedding threshold was adopted.
 5. Phases 1/2 and R8's immediate evidence are complete. R8 retention remains observational. Formal Foundation
    Performance + Stability closeout remains required.
@@ -62,7 +62,7 @@ Consult FOUNDATION-HANDOFF.md for actual test results and whether these changes 
 
 ## Safest next step
 
-Implement R6 and pass its gate. Then continue R7 → formal closeout →
+Implement R7 and pass its gate. Then continue formal closeout →
 Transcript Intelligence. R9 remains open pending a supported local runtime and weights; its external prerequisite
 does not stop the software ladder.
 

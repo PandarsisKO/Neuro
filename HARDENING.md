@@ -70,6 +70,15 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.63.42 — R6 Fast/Warm admission (candidate).** Bulk interactive Findings requests with six or more sources now
+select at most three fast sources deterministically from existing project signals: priority, source value, reviewed
+relevance, open-target lexical fit, creator and source-type diversity. Fast jobs are explicit `api_requested`
+priority work; all remaining sources are warm `local_preferred` jobs, never dropped. The analysis persists fast/warm
+provenance and marks fast output provisional in the Sources UI until a later warm/deep analysis replaces it. Promotion
+changes the same warm job’s lane and policy, preserving R4 work. R6 focused evidence: **26 passed**; full pytest
+**1,313 passed** with one existing warning; Tier 1 and release-check pass. Artifact:
+`evals/release/release-check-0.63.42-3fd0a2c-20260912-030848.json`.
+
 **0.63.41 — R5 bounded durable-unit concurrency (candidate).** Findings windows and Claims groups run under a small,
 transport-sensitive bound only while executing a job: two local units or three API units, hard-capped at four.
 `concurrency.bounded_map` captures job/run identity, policy and log fields explicitly; child routes merge into the

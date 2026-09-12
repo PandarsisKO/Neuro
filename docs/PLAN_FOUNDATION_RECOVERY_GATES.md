@@ -1,7 +1,7 @@
 # Foundation recovery gates
 
-Status: Gates 1–3 immediate work, R4 recovery and R5 concurrency gates complete. Version 0.63.41 is release-checked;
-R6 is active.
+Status: Gates 1–3 immediate work, R4 recovery, R5 concurrency and R6 Fast/Warm gates complete. Version 0.63.42 is
+release-checked; R7 is active.
 
 ## Gate 1 — graceful shutdown during provider work — COMPLETE 2026-09-11
 
