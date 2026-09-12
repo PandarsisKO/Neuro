@@ -4,8 +4,8 @@ Python 3.11+ / FastAPI / SQLite FTS5 + numpy vectors / vanilla JavaScript UI / M
 
 Read the newest timestamped State-of-the-App first, then HANDOFF.md and the active Foundation handoff. `DEVELOPMENT-OPERATING-SYSTEM.md` records Kyle's governing priorities. `PRODUCT-SCHEDULER.md` is the product queue; `SCHEDULER.md` is a parked runtime design. Historical checklists are not assignments.
 
-Runtime: 0.63.40 is observed through `/api/version` with `fake_ai=false`. Its R4 candidate is committed at
-`3af9c37` and release-checked; authenticated product behavior has not been re-exercised for this candidate.
+Runtime: 0.63.43 is observed through the authenticated console with `fake_ai=false`. Its R7 candidate is committed
+at `bf8d595`, release-checked, and live-observed with a healthy backup/integrity state and `0 queued · 0 running`.
 Delivery and validation status live in FOUNDATION-HANDOFF.md; `PRODUCT-SCHEDULER.md` owns the current execution order.
 
 ## Standing rules (never break these)
@@ -84,6 +84,6 @@ Reuse the existing invocation ledger, run ids, leases/heartbeats, provider polic
 Durable per-window/group work reuse (R4) is implemented in 0.63.40 and its consolidated 66-case abuse gate passes.
 Bounded concurrency (R5) is implemented in 0.63.41 and its deterministic concurrency gate passes. R6 Fast/Warm
 admission is implemented in 0.63.42 and its gate passes. R7 novelty/residual reading is implemented in 0.63.43 and
-its gate passes; Foundation closeout is active. R9 local-model measurements remain a
+its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. R9 local-model measurements remain a
 separate admitted rung. R9 is preflighted but cannot run
 until a supported local runtime and weights exist on this Mac.

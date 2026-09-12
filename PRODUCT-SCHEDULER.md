@@ -14,9 +14,10 @@ None recorded. No evidence of uncommitted Claude work at base f345726. Do not in
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Capture the authenticated Health/Performance snapshot and append its measured operational values to the closeout report.
-2. Resolve any closeout failure that makes the Foundation speed claim unprovable.
-3. Admit Transcript Intelligence only after the report supports the conclusion.
+1. Begin Transcript Intelligence with a version-stamped, fresh cohort and baseline its quality, latency and cost.
+2. Keep historical provider-batch and queue wait separate from new-work measurements; optimize only after a bounded
+   experiment identifies a controllable bottleneck.
+3. Continue the non-blocking R8 retention observation and maintain R9's external local-runtime prerequisite.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
@@ -44,7 +45,8 @@ Retrieval reranker, batch-path findings prefilter and Planner v3 remain off. Use
 blocking the ladder. R9 preflight is complete and the benchmark is blocked on a supported local runtime and weights.
 R4 and its 66-case abuse gate are complete in 0.63.40. R5 and its deterministic concurrency gate are complete in
 0.63.41. R6 and its Fast/Warm admission gate are complete in 0.63.42. R7 and its novelty/residual gate are complete
-in 0.63.43.
+in 0.63.43. The authenticated Foundation closeout observation is complete: current queue was empty, integrity and
+backup were healthy, release check passed, and interactive endpoint p90 was at most 0.58s in the observed sample.
 
 ## AUDIT ADDITIONS — 2026-09-11
 
@@ -63,7 +65,7 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
    integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
    and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
-The next execution order is Foundation closeout → Transcript Intelligence admission.
+The next execution order is Transcript Intelligence baseline → bounded admission experiment.
 The 30-day job-event sample continues alongside those stages; no deletion or retention cutoff is admitted before it
 finishes. The cold derived-state change remains trigger-only.
 
