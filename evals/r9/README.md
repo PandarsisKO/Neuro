@@ -28,5 +28,6 @@ are in `docs/R9-ADMISSION-2026-09-11.md`.
 
 The long-window probe uses the real `yt03_deal_walkthrough_long.json` fixture, truncates only at the declared character
 budget (70,000 by default), sets a 32,768-token context and a 256-token output cap, and reports Ollama's actual
-`prompt_eval_count`, `prompt_eval_duration`, `eval_duration`, and `total_duration`. The reported token count is the
-acceptance evidence; adjust `--target-chars` and rerun if a model's tokenizer lands materially away from 15,000 tokens.
+`prompt_eval_count`, `prompt_eval_duration`, `eval_duration`, and `total_duration`. It also records whether the response
+is valid JSON with the required `findings` and `claims` arrays. The reported token count is the acceptance evidence;
+adjust `--target-chars` and rerun if a model's tokenizer lands materially away from 15,000 tokens.

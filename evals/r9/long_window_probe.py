@@ -54,6 +54,21 @@ def main() -> None:
         return round(float(value) / 1_000_000_000, 6) if value is not None else None
 
     content = payload.get("message", {}).get("content", "")
+    valid_json = False
+    valid_shape = False
+    validation_error: str | None = None
+    try:
+        extracted = json.loads(content)
+        valid_json = True
+        valid_shape = (
+            isinstance(extracted, dict)
+            and isinstance(extracted.get("findings"), list)
+            and isinstance(extracted.get("claims"), list)
+        )
+        if not valid_shape:
+            validation_error = "expected object with findings and claims arrays"
+    except (TypeError, ValueError) as exc:
+        validation_error = str(exc)[:240]
     print(json.dumps({
         "model": args.model,
         "runtime": "ollama",
@@ -68,6 +83,9 @@ def main() -> None:
         "reported_total_seconds": seconds("total_duration"),
         "wall_seconds": round(wall, 6),
         "response_chars": len(content),
+        "valid_json": valid_json,
+        "valid_shape": valid_shape,
+        "validation_error": validation_error,
     }, indent=2, sort_keys=True))
 
 
