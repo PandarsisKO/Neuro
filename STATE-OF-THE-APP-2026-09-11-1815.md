@@ -1,7 +1,8 @@
-# Neuro Search — State of the App
+# Neuro Search — State of the App (superseded)
 
-Updated 2026-09-11 after the Phase 0 roadmap reconciliation. This is the current orientation document;
-implementation and delivery evidence is in FOUNDATION-HANDOFF.md.
+Updated 2026-09-11 after the Phase 0 roadmap reconciliation. This snapshot is retained as historical evidence and is
+superseded by `STATE-OF-THE-APP-2026-09-12-1510.md`; implementation and delivery evidence is in
+`FOUNDATION-HANDOFF.md`.
 
 ## Current status and priority
 
