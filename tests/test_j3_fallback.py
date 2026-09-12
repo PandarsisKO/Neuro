@@ -162,7 +162,7 @@ def test_every_ai_artifact_and_invocation_carries_the_routing_audit():
     for sid in g["sources"].values():
         findings.suggest_for_source(pid, sid)
     planner.build_plan(pid)
-    discover.discover(pid, verify=False) if hasattr(discover, "discover") else None
+    discover.discover(pid, verify=False, mode="web_only")
     conn = db.connect()
     for table, task in (("project_source_analysis", "findings.extract"), ("project_notes", "findings.extract"), ("plans", "planner.build")):
         rows = conn.execute(f"SELECT routing FROM {table}").fetchall()
@@ -170,11 +170,16 @@ def test_every_ai_artifact_and_invocation_carries_the_routing_audit():
         for r in rows:
             rt = json.loads(r["routing"])
             assert rt["fallback_used"] is False and rt["fallback_reason"] is None and rt["fallback_policy_version"] == "fallback-policy-v1" and rt["requested_model"] == contracts.contract(task).model
-    disc = conn.execute("SELECT routing FROM discoveries").fetchall()
+    # Catalogue discoveries carry source provenance, not a model-routing audit. This gate
+    # specifically checks AI-generated discoveries and must exercise an actual model pass.
+    disc = conn.execute("SELECT routing FROM discoveries WHERE model IS NOT NULL").fetchall()
+    assert disc, "the fixture must exercise model-generated discovery"
     assert all(r["routing"] and json.loads(r["routing"])["fallback_used"] is False for r in disc)
     inv = conn.execute("SELECT fallback_used, fallback_policy_version, model, returned_model FROM invocations WHERE state='completed'").fetchall()
     assert inv and all(r["fallback_used"] == 0 and r["fallback_policy_version"] == "fallback-policy-v1" and r["model"] for r in inv)
-    assert not any("fallback" in str(k).lower() and "auto" in str(k).lower() for k in dir(providers))    # no automatic fallback code path exists
+    # Model substitution remains forbidden. Local-to-paid transport fallback is a distinct,
+    # explicit setting, off by default and gated in test_s43_foundation.py.
+    assert all(contracts.contract(task).fallback == "NO_FALLBACK" for task in ANTHROPIC_TASKS)
 
 
 # ---------------------------------------------------------------- closeout commands

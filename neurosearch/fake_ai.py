@@ -525,6 +525,11 @@ def _maybe_outage(operation: str) -> None:
 class _Msgs:
     def create(self, **kw: Any) -> Any:
         _maybe_outage("anthropic:messages")
+        # Native recovery tests need a provider call that is safely in flight
+        # when the worker process receives SIGTERM. Test-only and opt-in.
+        delay = float(os.environ.get("NEUROSEARCH_FAKE_AI_DELAY", "0") or 0)
+        if delay > 0:
+            time.sleep(delay)
         system, cache_hashes = _flatten(kw.get("system", ""))
         messages = kw.get("messages") or []
         user = _content_text(messages[-1]["content"]) if messages else ""

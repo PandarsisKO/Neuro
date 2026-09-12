@@ -1,3 +1,5 @@
+> PARTIALLY SHIPPED IDEA — remaining scope PARKED. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+
 # The source-capability rung — remembering where to look
 
 Filed 2026-09-10, from Kyle, immediately after FIELD-MAP-RUNG.md. Not built. The two are halves of the same

@@ -173,18 +173,13 @@ to it:
 Sources are stored once in a shared library and can belong to many projects, so ingesting the same channel into
 two projects doesn't download it twice. "Remove from project" unlinks; "Delete everywhere" removes the transcript.
 
-## Deploy to the cloud (Fly.io)
+## Supported operating model
 
-```bash
-brew install flyctl && fly auth signup
-fly launch --no-deploy --copy-config --name <your-app-name>   # accept defaults; keep the Dockerfile
-fly volumes create ns_data --size 3 --region sjc
-fly secrets set ANTHROPIC_API_KEY=sk-ant-... OPENAI_API_KEY=sk-... NEUROSEARCH_APP_TOKEN=<random>
-fly deploy
-```
-
-Then open `https://<your-app-name>.fly.dev` on your phone and sign in with the token. Railway/Render work
-the same way with the Dockerfile — just mount a persistent volume at `/data` and set the same env vars.
+Neuro Search is a single-user local application. Start it with `start.command` or `neurosearch start`, then use
+`http://localhost:8000`. Keep the data directory on the same Mac as the server. `Dockerfile`, `fly.toml` and the
+remote-ingest compatibility path are retained as historical evidence while cloud and multi-user architecture are
+parked; they are not supported deployment directions. The exact former README is preserved at
+`docs/archive/README-2026-09-11-pre-foundation.md`.
 
 ### The spending valve (and picking up where it left off)
 
@@ -222,37 +217,16 @@ them (`NEUROSEARCH_YT_DELAY`, default 4 s), and if YouTube throws the bot-check 
 tab. For a 300-video channel expect roughly half an hour of background work. Instagram is far stricter — treat it
 as one reel at a time, and avoid bulk pulls with your own login cookies.
 
-### If YouTube blocks the cloud server
+### If YouTube asks for sign-in
 
-YouTube frequently refuses caption/audio downloads from datacenter IPs ("Sign in to confirm you're not a
-bot"). Two fixes, use either or both:
+Use the app's local cookie directory and Health guidance. Account cookies stay server-side and bulk YouTube
+downloads do not use them by default. Instagram acquisition uses the browser extension's logged-in session.
 
-1. **Cookies.** Export your YouTube cookies with a browser extension such as "Get cookies.txt LOCALLY",
-   upload the file to the server's volume (`fly ssh sftp shell` → `put cookies.txt /data/cookies.txt`) and set
-   `NEUROSEARCH_COOKIES_FILE=/data/cookies.txt`. Same file makes Instagram work.
-2. **Extract on your Mac, store in the cloud.** Same CLI, one flag — extraction runs locally on your home IP
-   and only the transcript is shipped to the server:
-   ```bash
-   export NEUROSEARCH_REMOTE_URL=https://<your-app-name>.fly.dev NEUROSEARCH_REMOTE_TOKEN=<token>
-   neurosearch ingest --remote "$NEUROSEARCH_REMOTE_URL" "https://www.youtube.com/@somechannel" -p Pricing
-   ```
+## MCP on the local machine
 
-## Use it from Claude (desktop, mobile, Claude Code)
-
-The server exposes an MCP endpoint. In the Claude app go to **Settings → Connectors → Add custom connector**
-and enter:
-
-```
-https://<your-app-name>.fly.dev/mcp/<NEUROSEARCH_APP_TOKEN>
-```
-
-(The token in the URL is the authentication — the connector UI has no field for headers. Keep the URL private.)
-Claude then gets tools: `search_knowledge`, `ask`, `list_projects`, `create_project`, `add_to_project`,
-`list_sources`, `list_collections`, `get_transcript`, `ingest`, `job_status`, `findings`, `masterplan`, `update_brief`, `save_note`. So from your phone
-you can say "search my Pricing project for how they handle discount requests" or "ingest this playlist into
-the Pricing project" and get timestamped links back.
-
-For Claude Code: `claude mcp add --transport http neurosearch https://<app>.fly.dev/mcp --header "Authorization: Bearer <token>"`.
+The server exposes MCP for local integrations. Keep it bound to the local operating model and protect it with
+`NEUROSEARCH_APP_TOKEN`. Public/mobile connector access remains parked until project-scoped authorization exists.
+Current tool contracts live in `neurosearch/mcp_server.py` and are covered by the release gates.
 
 ## How retrieval works
 
@@ -272,7 +246,7 @@ For Claude Code: `claude mcp add --transport http neurosearch https://<app>.fly.
 
 YouTube captions are free. Whisper transcription is ~$0.006/min (~$0.36/hour of audio). Embeddings are
 negligible (a 1-hour video ≈ $0.0003). Each question costs one Claude call, typically a fraction of a cent to a
-couple of cents depending on the model. A Fly.io machine with 1 GB RAM that stays on runs about $6–8/month.
+couple of cents depending on the model. The app records actual routing and estimated spend in its usage ledger.
 
 ## Layout
 
@@ -295,7 +269,7 @@ neurosearch/
   courses.py     course import: cookies file + per-lesson ingest jobs (fed by extension/)
 extension/       Chromium extension: scans a logged-in course page and sends lessons + cookies to the app
   planner.py     Master Planner: plan generation, updates, statuses, markdown/HTML rendering
-  remote.py      extract locally, store on a remote server
+  remote.py      parked cloud-ingest compatibility path; investigate usage before archival
   api.py         FastAPI: REST, web UI, MCP mount, auth
   mcp_server.py  MCP tools
   cli.py         `neurosearch` command
@@ -303,10 +277,7 @@ extension/       Chromium extension: scans a logged-in course page and sends les
 tests/           offline tests (pytest)
 ```
 
-## Roadmap ideas
+## Product direction
 
-- Speaker diarization for interviews (Deepgram/AssemblyAI) so citations can say who said it
-- Per-source auto-summaries and topic tags on ingest
-- Scheduled re-scan of channels for new uploads
-- Google Sheets sync of the master sheet
-- Instagram profile-level ingest (all reels from an account)
+`PRODUCT-SCHEDULER.md` is the only current queue. Historical roadmap lists and mission documents are evidence,
+not assignments. Foundation stabilization is active; Transcript Intelligence follows its formal closeout.

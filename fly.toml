@@ -1,4 +1,6 @@
-# Fly.io config. First time:
+# HISTORICAL / UNSUPPORTED. The current product is local and single-user; public deployment lacks a project-scoped
+# authorization boundary. Preserved for evidence only. See PRODUCT-SCHEDULER.md before any cloud work.
+# Former Fly.io setup:
 #   fly launch --no-deploy --copy-config --name <your-app-name>
 #   fly volumes create ns_data --size 3 --region sjc
 #   fly secrets set ANTHROPIC_API_KEY=... OPENAI_API_KEY=... NEUROSEARCH_APP_TOKEN=...

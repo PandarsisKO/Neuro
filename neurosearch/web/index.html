@@ -258,6 +258,9 @@
     .src img,.src .ico{width:72px;height:40px}
     .msg{max-width:100%}
   }
+/* Foundation: native controls and action links share request acknowledgement without losing labels. */
+select[aria-busy="true"], input[aria-busy="true"], a[aria-busy="true"] { opacity:.55; cursor:progress; outline:2px solid var(--accent); }
+select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
 </style></head>
 <body>
 
@@ -634,9 +637,14 @@ const NSACK = {
 };
 // capture:true is load-bearing — without it this runs after the onclick has already blocked the thread
 document.addEventListener('click', e => {
-  const el = e.target && e.target.closest && e.target.closest('button');
+  const el = e.target && e.target.closest && e.target.closest('button, a[onclick], a[data-action]');
   if (!el || el.disabled || el.dataset.noack === '1' || el.getAttribute('aria-busy') === 'true') return;
   NSACK.press(el);
+}, true);
+
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el && el.matches('select[onchange], input[onchange]') && !el.disabled) NSACK.press(el);
 }, true);
 
 async function api(path, opts = {}) {
@@ -646,7 +654,7 @@ async function api(path, opts = {}) {
   const quiet = opts.ack === false;
   if (!quiet) NSACK.rise();
   try {
-    const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const r = await uiFetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
     if (r.status === 401) { location.reload(); return; }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
@@ -732,16 +740,45 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.35';
+const UI_VERSION = '0.63.39';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
   document.querySelectorAll('.verTag').forEach(e => { e.textContent = t; e.style.color = server && server !== UI_VERSION ? 'var(--warn)' : ''; });
 }
 showVersion();
+let staleClientVersion = null;
+function showStaleClient(server) {
+  staleClientVersion = server;
+  showVersion(server);
+  let banner = $('#verBanner');
+  if (!banner) {
+    banner = document.createElement('div'); banner.className = 'banner'; banner.id = 'verBanner';
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:999;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
+    banner.innerHTML = 'This page is out of date. Your saved work is safe. Reload the page to continue. <button type="button" id="reloadCurrentUI">Reload page</button>';
+    document.body.appendChild(banner);
+    $('#reloadCurrentUI').addEventListener('click', () => location.reload());
+  }
+}
+async function uiFetch(path, opts = {}) {
+  if (staleClientVersion && path !== '/api/version') throw new Error('This page is out of date. Reload it to continue.');
+  const headers = new Headers(opts.headers || {});
+  headers.set('X-Neurosearch-UI-Version', UI_VERSION);
+  const response = await fetch(path, { ...opts, headers });
+  const server = response.headers.get('X-Neurosearch-Version');
+  if (server && server !== UI_VERSION) {
+    showStaleClient(server);
+    if (path !== '/api/version') throw new Error('This page is out of date. Reload it to continue.');
+  }
+  return response;
+}
 async function checkVersion() {
   try {
-    const r = await fetch('/api/version'); const j = r.ok ? await r.json() : {}; const v = j.version || 'old';
+    const r = await uiFetch('/api/version', { cache: 'no-store' });
+    if (!r.ok) return;
+    const j = await r.json(); const v = j.version;
+    if (!v) return;
     showVersion(v);
     if (j.fake_ai && !$('#fakeBanner')) {
       const f = document.createElement('div'); f.id = 'fakeBanner';
@@ -749,15 +786,13 @@ async function checkVersion() {
       f.textContent = '⚠ FAKE AI MODE — no real model calls are being made (NEUROSEARCH_FAKE_AI=1). Answers, findings and plans are stand-ins.';
       document.body.appendChild(f);
     }
-    if (v !== UI_VERSION) {
-      const d = document.createElement('div'); d.className = 'banner'; d.id = 'verBanner';
-      d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:8px;z-index:99;max-width:720px;box-shadow:0 4px 16px rgba(0,0,0,.15)';
-      d.innerHTML = `⚠️ The page is version ${UI_VERSION} but the server is running ${v === 'old' ? 'an older version' : 'version ' + esc(v)}. Restart it to pick up the new code: in the terminal press <b>Ctrl+C</b>, then run <b>./start</b> (it will auto-restart on future updates), then reload this page.`;
-      document.body.appendChild(d);
-    }
-  } catch (e) { /* offline */ }
+    if (v !== UI_VERSION) showStaleClient(v);
+  } catch (e) { /* Offline is not a version verdict. Existing mismatch remains visible. */ }
 }
 checkVersion();
+setInterval(() => { if (!document.hidden) checkVersion(); }, 30000);
+window.addEventListener('focus', checkVersion);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
 function route() {
   const h = location.hash.slice(1).split('/');
   if (h[0] === 'p' && h[1]) openProject(h[1], h[2] || 'chats', h[3] || null);
@@ -1096,7 +1131,7 @@ async function attachFiles(files) {
     const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = `⏳ ${f.name}`; $('#qAttach').appendChild(chip);
     const fd = new FormData(); fd.append('file', f); fd.append('project_id', state.project.id); fd.append('immediate', 'true');
     try {
-      const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json();
+      const r = await uiFetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json();
       if (!r.ok) throw new Error(j.detail || j.error || 'upload failed');
       if (j.immediate) { state.attached.push({ id: j.source_id, name: j.title || f.name }); chip.textContent = `📎 ${j.title || f.name} ✓`; chip.title = 'read and added to this project — will be used in your next question'; }
       else { chip.textContent = `⏳ ${f.name} — transcribing in the background`; chip.title = j.note || ''; }
@@ -1108,7 +1143,7 @@ async function attachFiles(files) {
 // so the finished message is rendered from the real result (citations, actions, validation) — the streamed text is
 // only what the user reads while it is being written.
 async function askStream(payload, onEvent) {
-  const r = await fetch('/api/ask/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const r = await uiFetch('/api/ask/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   if (r.status === 401) { location.reload(); return; }
   if (!r.ok || !r.body) { const j = await r.json().catch(() => ({})); throw new Error(j.error || j.detail || r.statusText); }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
@@ -1776,7 +1811,7 @@ async function ingestFiles() {
   const files = [...$('#inFile').files]; if (!files.length) return;
   for (const f of files) {
     const fd = new FormData(); fd.append('file', f); if (files.length === 1) fd.append('title', $('#inFileTitle').value); fd.append('project_id', state.project.id); fd.append('tags', $('#inTags').value);
-    const r = await fetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) alert(j.error || j.detail);
+    const r = await uiFetch('/api/ingest/file', { method: 'POST', body: fd }); const j = await r.json(); if (!r.ok) alert(j.error || j.detail);
   }
   $('#inFile').value = ''; $('#inFileTitle').value = ''; loadJobs();
 }

@@ -1,3 +1,5 @@
+> PARKED RUNTIME DESIGN — not the product scheduler. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+
 # The Bidirectional Scheduler — a design exploration
 
 **Status: design, not built.** Nothing in this document is implemented. It exists to be argued with before any

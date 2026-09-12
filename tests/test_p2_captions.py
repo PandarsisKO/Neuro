@@ -98,5 +98,10 @@ def test_candidates_and_backfill_are_project_scoped():
     assert [c["id"] for c in cands] == [mine["id"]]
     assert api.api_caption_recovery_preview(p["id"])["count"] == 1
     assert api.api_caption_recovery(p["id"])["queued"] == 1
+    # A browser retry after losing the first response returns the same active
+    # unit of work instead of creating a second backfill job.
+    assert api.api_caption_recovery(p["id"])["queued"] == 1
     j = [x for x in db.list_jobs(limit=50) if x["kind"] == "recover_captions"]
     assert len(j) == 1 and j[0]["lane"] == "low"                           # never displaces work the user watches
+    events = db.job_events(j[0]["id"])
+    assert any(e["event_type"] == "deduplicated" for e in events)

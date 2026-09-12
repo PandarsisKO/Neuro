@@ -55,6 +55,12 @@ def last() -> dict[str, Any] | None:
     return getattr(_last, "info", None)
 
 
+def clear_last() -> None:
+    """Clear thread-local diagnostics before a search that does not use this experiment."""
+    if hasattr(_last, "info"):
+        delattr(_last, "info")
+
+
 def _candidate_line(i: int, h: dict[str, Any]) -> str:
     text = (h.get("text") or "").strip().replace("\n", " ")
     if len(text) > TEXT_CHARS:

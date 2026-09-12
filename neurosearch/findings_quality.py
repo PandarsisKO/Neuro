@@ -288,6 +288,36 @@ def clusters(notes: list[dict[str, Any]], usage: dict[int, dict[str, Any]] | Non
     return out
 
 
+def _clusters_for_project(project_id: str, status: str | None,
+                          notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cache the expensive lexical graph on findings alone.
+
+    Keeper selection is applied afterwards because plan/chat/Claim usage may change while cluster membership does
+    not. This prevents a new Claim or an unrelated job heartbeat from repeating millions of pair comparisons.
+    """
+    from . import cache
+    rev = db.project_notes_revision(project_id)
+    key = f"findings_clusters:{project_id}:{status}"
+    return cache.get_or_compute(key, rev, lambda: clusters(notes), label="findings_clusters")
+
+
+def _select_cluster_keepers(cluster_rows: list[dict[str, Any]], notes: list[dict[str, Any]],
+                            usage: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Apply current usage to cached membership without mutating the shared cached rows."""
+    by_id = {n["id"]: n for n in notes}
+    out: list[dict[str, Any]] = []
+    for row in cluster_rows:
+        ids = [row["keeper_id"], *row["duplicate_ids"]]
+        members = [by_id[i] for i in ids if i in by_id]
+        if len(members) < 2:
+            continue
+        keep = _keeper(members, usage)
+        out.append({**row, "keeper_id": keep,
+                    "keeper": by_id[keep]["content"],
+                    "duplicate_ids": sorted(i for i in ids if i != keep)})
+    return out
+
+
 # ------------------------------------------------------------------ the review surface
 
 def review(project_id: str, *, status: str | None = "approved", limit: int = 300,
@@ -303,7 +333,7 @@ def review(project_id: str, *, status: str | None = "approved", limit: int = 300
     says `as_of_current: False` so the screen can admit it is a moment behind rather than implying it is current.
     A duplicate count that is thirty seconds old is worth having; a locked application is not."""
     from . import cache, db as _db
-    rev = json.dumps(_db.project_view_revision(project_id), sort_keys=True)
+    rev = _db.project_usage_revision(project_id)
     key = f"findings_quality:{project_id}:{status}:{limit}:{int(include_used)}"
 
     def compute() -> dict[str, Any]:
@@ -336,7 +366,7 @@ def _review(project_id: str, *, status: str | None = "approved", limit: int = 30
         if s:
             titles[sid] = s.get("title") or ""
 
-    cl = clusters(notes, usage)
+    cl = _select_cluster_keepers(_clusters_for_project(project_id, status, notes), notes, usage)
     dup_of: dict[int, int] = {}
     corroborated: dict[int, dict[str, Any]] = {}
     for c in cl:
@@ -533,7 +563,7 @@ def corroborated_ids(project_id: str, status: str | None = None) -> set[int]:
 
     def compute() -> set[int]:
         notes = _db.list_project_notes(project_id, status=status)
-        cl = clusters(notes, findings_view.usage_map(project_id))
+        cl = _clusters_for_project(project_id, status, notes)
         out: set[int] = set()
         for c in cl:
             if c["kind"] == "corroborated":

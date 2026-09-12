@@ -1,3 +1,5 @@
+> PARKED — not admitted during Foundation. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+
 # MISSION — External AI Access + Bidirectional Project Intelligence
 
 **AMENDED 2026-09-11 — see §20–§37.** Kyle dictated an amendment while the fix queue was running: *"I have an

@@ -200,12 +200,21 @@ def resolve_capture(job_id: str, capture: dict[str, Any]) -> dict[str, Any]:
     ingest path with `_external_result` and completes the same source row — never a second one."""
     req = pending_capture(job_id)
     if not req:
+        # The extension may retry after the first response was lost. Once the
+        # capture is durably attached, return the original identity instead of
+        # turning a successful delivery into a misleading 404.
+        job = db.get_job(job_id)
+        payload = (job or {}).get("payload") or {}
+        ext = payload.get("_external_result") or {}
+        if isinstance(ext, dict) and ext.get("capture") is not None:
+            return {"ok": True, "job_id": job_id, "source_id": payload.get("source_id"),
+                    "project_id": payload.get("project_id"), "replayed": True}
         raise LookupError("no browser capture is waiting on that job (already captured, cancelled, or never requested)")
     if len(json.dumps(capture, default=str)) > 12_000_000:
         raise ValueError("capture too large")
     db.resume_external(job_id, {"capture": capture, "captured_at": time.time(), "via": "browser extension"})
     db.job_event(job_id, "browser_captured", method=capture.get("method"), contract=capture.get("contract"))
-    return {"ok": True, "job_id": job_id, "source_id": req.get("source_id"), "project_id": req.get("project_id")}
+    return {"ok": True, "job_id": job_id, "source_id": req.get("source_id"), "project_id": req.get("project_id"), "replayed": False}
 
 
 def request_for(url: str, project_id: str | None) -> dict[str, Any] | None:

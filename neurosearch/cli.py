@@ -55,8 +55,8 @@ def ingest(
     force: bool = typer.Option(False, help="Re-ingest even if already ready"),
     wait: bool = typer.Option(True, help="Run workers here and wait until done"),
     remote: Optional[str] = typer.Option(None, envvar="NEUROSEARCH_REMOTE_URL",
-                                         help="Extract here, store on this server URL (when the cloud can't reach YouTube)"),
-    token: Optional[str] = typer.Option(None, envvar="NEUROSEARCH_REMOTE_TOKEN", help="App token for --remote"),
+                                         help="Legacy unsupported compatibility: extract here, store on a remote server"),
+    token: Optional[str] = typer.Option(None, envvar="NEUROSEARCH_REMOTE_TOKEN", help="Legacy remote server token"),
 ) -> None:
     """Ingest URLs. Playlists and channels expand into every video."""
     from . import jobs

@@ -51,12 +51,12 @@ def fresh(tmp_path, monkeypatch):
 
 def _screenshot(tmp_path: Path, text: str = "Seller financing 10 percent\nSDE 350,000", name="shot.png") -> Path:
     """A plain, high-contrast image of text — what a screenshot is, for OCR purposes."""
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     im = Image.new("RGB", (900, 320), "white")
     d = ImageDraw.Draw(im)
     y = 40
     for line in text.split("\n"):
-        d.text((40, y), line, fill="black")
+        d.text((40, y), line, fill="black", font=ImageFont.load_default(size=32))
         y += 60
     p = tmp_path / name
     im.save(p)
@@ -113,6 +113,11 @@ def test_the_model_rung_is_used_when_there_is_no_local_engine(fresh, tmp_path, m
 def test_a_failing_engine_does_not_fail_the_upload(fresh, tmp_path, monkeypatch):
     monkeypatch.setattr(images, "_vision_available", lambda: True)
     monkeypatch.setattr(images, "_ocr_vision", lambda p: (_ for _ in ()).throw(RuntimeError("Vision exploded")))
+    # Unit test the engine-failure transition independently of optional tesseract installation.
+    # The other screenshot tests exercise the real local engine on this machine.
+    original_which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda binary: "test-tesseract" if binary == "tesseract" else original_which(binary))
+    monkeypatch.setattr(images, "_ocr_tesseract", lambda path: "Seller financing 10 percent")
     got = images.ocr(_screenshot(tmp_path), allow_model=False)
     assert any(t.get("error", "").startswith("Vision exploded") for t in got["engines_tried"])
     assert got["text"], "tesseract should still have read it"

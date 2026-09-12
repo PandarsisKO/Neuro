@@ -265,7 +265,7 @@ def triage(project_id: str) -> dict[str, Any]:
     # (0.45.14 keyed the fix on an override nobody sets, 0.63.30 made health per-model, 0.63.31 fixed the
     # background probe) and this was the site all three missed. A rebuild would be run by
     # findings.extract, so that is the model whose health decides whether to price it in hours or dollars.
-    local = claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings_profile_local()
+    local = claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings_profile_local()
     out_tiers = {}
     for k, rows in tiers.items():
         api_cost = round(sum(r["estimate"] for r in rows), 4)

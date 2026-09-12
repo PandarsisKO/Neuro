@@ -70,6 +70,17 @@ test or a frozen live measurement behind it, and `release-check` re-proves the d
 
 ## Post-closeout fixes
 
+**0.63.39 — Phase 1/2 closeout candidate (prepared, not delivered).** Read-only Health, Usage, backlog and staleness
+paths were still calling `claude_code.health(wait=False)`. Although those requests returned immediately, a cold or
+expired cache launched a Claude CLI probe in the background and spent subscription tokens merely because a status
+surface was read. They now use `health_snapshot()`, which reports cached, stale or unchecked state without external
+work; explicit Re-check and actual local-provider routing retain probe ownership. A cross-cutting request-purity gate
+fails if ordinary reads call a model, create a job or refresh provider health. Test collection now pins every
+experimental/rollback flag to its production-safe default before imports, so a developer `.env` cannot activate the
+reranker, prefilter, Planner V3 or another experiment in unrelated tests. The native killed-worker gate now waits for
+a durable `in_flight` invocation before terminating the worker, removing a race between job claim and provider-ledger
+creation. Combined Foundation/local-provider/frontend/fallback/crash validation: **115 passed in 37.59 seconds**.
+
 **0.36.0 — B3 candidate links (no frozen numbers changed).** New additive table `candidate_links`; the chat's `research_state` TOOL output gained a line (tool output is not in the frozen prefix; Tier 1 verified unchanged).
 
 **0.54.0 — the model decision engine (frozen ASSERTIONS changed; frozen NUMBERS unchanged).** Fourteen tasks sat on `claude-sonnet-4-6` ($3/$15) rather than the cheaper, newer `claude-sonnet-5` ($2/$10) because E2.3's comparison was never run (line 211 above). `contracts.TIERS` + `tier_reason` now require every task to be at the cheapest tier (`claude-haiku-4-5`) or name one of `capability:` / `evidence:` / `irreversible` / `user:`; `release-check` refuses anything else. Seven tasks moved to Haiku; the rest moved 4.6 → Sonnet 5. Changed assertions: `test_core.test_router_equivalence_fake_tier1` no longer asserts "every non-migrated task follows settings.answer_model" (it asserts `policy_violations() == []` and that no task is on 4.6); `test_core.test_migrated_contracts_are_sonnet_5_thinking_disabled`, `test_claude5_contract_adapter_and_validation`, `test_contract_reproduces_0_17_3_request_shape`, `test_migration_compare_one_command` and `test_j3_fallback.test_general_task_failure_never_substitutes_sonnet5` now assert against the contract's own model rather than a hardcoded one. Tier 1 totals unchanged (answer 34 / 196,951, findings 9 / 30,297, plan 2 / 11,026) — the fake prices at list and counts tokens from text, so a tier change does not move them. `rank.relevance` was reclassified `reversible=False` mid-implementation when its own frozen tests caught the error: it selects which sources enter the corpus, so its consequences are not undoable however cheap re-ranking is.
@@ -1646,3 +1657,34 @@ silence; if the log ends mid-request, get a thread dump (`kill -QUIT` on the uvi
 Python process built with faulthandler, or attach with `py-spy dump --pid`); check whether the uvicorn PARENT is
 alive while the child is gone, which is what would explain a held port with no answers. Do NOT restart before
 capturing one of those — the restart is what destroys the evidence, and it has now destroyed it twice.
+
+## R8 measured storage hygiene — candidate 0.63.36, 2026-09-11
+
+Measured only on `/private/tmp/neuro-r8-copy.db`, copied from the verified 10:52 backup. The live database was
+never opened. The copy passed `PRAGMA integrity_check` and contained 20,367 findings, 234 messages, 7,818 usage
+rows, 5,258 jobs, 105,025 job events and 7,294 invocations.
+
+SQLite was using its defaults: `cache_size=-2000` (2 MB), `mmap_size=0`, `temp_store=DEFAULT`, and no
+`sqlite_stat1`. Candidate connections use a bounded 64 MB cache per connection, a 1 GB mmap ceiling and memory
+temporary storage. The housekeeping owner now runs `ANALYZE` at most weekly and records the last success in `kv`;
+request paths never run it.
+
+The four proposed indexes occupy about 2.04 MB together. On warm repeated reads of the copy:
+
+| Query shape | Before | After | Planner change |
+|---|---:|---:|---|
+| Finding by project + status + source (236 rows) | 7.8725 ms | 0.4303 ms | full table scan → composite index |
+| Conversation history (28 rows) | 0.108 ms | 0.071 ms | full scan → conversation index |
+| Findings cost grouped by source (1,216 rows) | 1.445 ms | 1.200 ms | full scan + temp grouping → kind/source index |
+| Active findings jobs (none in snapshot) | 0.004 ms | 0.005 ms | status index → kind/status index; no latency claim |
+
+The broad 16,437-row Findings list remained a table scan and 84–87 ms because it returns roughly 80% of the
+table and sorts by importance/date; forcing the new index would not help. This is expected and recorded rather
+than advertised as a win.
+
+Retention is not implemented in this candidate. `usage` is the cost ledger and `invocations` is the execution
+audit trail; silently deleting either would remove evidence needed for billing, fallback and ambiguous-execution
+investigations. `job_events` is 17.18 MB but the snapshot covers only 3.9 days, too little history to choose a
+defensible cutoff or rollup. Measure at least 30 days of growth and identify every history/debug consumer before
+admitting a terminal-job event rollup or archive. Existing terminal/orphan invocation cleanup and scheduled WAL
+checkpointing remain the owners; no duplicate reaper was added.

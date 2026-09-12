@@ -62,6 +62,15 @@ def test_resuming_lets_the_held_work_through_again():
     assert db.claim_job()["id"] == bulk["id"]                          # picked up where it left off
 
 
+def test_metadata_backfill_replay_is_one_active_job():
+    payload = {"project_id": "p", "source_id": "s"}
+    first = db.create_job("refresh_skipped_metadata", payload, lane="low")
+    replay = db.create_job("refresh_skipped_metadata", payload, lane="low")
+    assert replay["id"] == first["id"]
+    assert len([j for j in db.list_jobs(limit=20) if j["kind"] == "refresh_skipped_metadata"]) == 1
+    assert any(e["event_type"] == "deduplicated" for e in db.job_events(first["id"]))
+
+
 def test_pausing_asks_a_running_background_job_to_stop_but_leaves_real_work_alone():
     """'allow interruption' — and it is safe because background work is idempotent: a claims group whose
     extraction_hash is stamped is skipped without spend, so resuming re-does no paid work."""

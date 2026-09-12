@@ -100,9 +100,18 @@ async def lifespan(app: FastAPI):
     if settings.fake_ai:
         logging.getLogger(__name__).warning("NEUROSEARCH_FAKE_AI=1 — every model call is served by the deterministic fakes")
     jobs.start_workers()
-    async with mcp.session_manager.run():
-        yield
-    jobs.stop_workers()
+    try:
+        async with mcp.session_manager.run():
+            yield
+    finally:
+        try:
+            jobs.stop_workers()
+        except RuntimeError as exc:
+            # A provider call can outlive the bounded drain timeout.  The worker
+            # generation remains fenced and startup recovery reconciles its job;
+            # do not turn an otherwise clean ASGI shutdown into an application
+            # traceback while preserving the survivor safety contract.
+            log.warning("worker drain exceeded shutdown timeout; startup recovery will reconcile it: %s", exc)
 
 
 LIST_DESCRIPTION_CHARS = 200      # R2: the Sources list shows one ellipsised line; the full text stays on /api/sources/{id}
@@ -130,6 +139,33 @@ class PerfMiddleware:
             perf.record(f"{scope.get('method', 'GET')} {key}", time.perf_counter() - t0)
 
 
+class ClientVersionMiddleware:
+    """Reject a versioned stale UI before endpoint side effects; API/extension clients stay compatible."""
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http" or not scope.get("path", "").startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        from . import __version__
+        headers = dict(scope.get("headers", []))
+        version = headers.get(b"x-neurosearch-ui-version", b"").decode("utf-8", errors="replace")
+        if version and version != __version__ and scope.get("path") != "/api/version":
+            response = JSONResponse({"error": "This page is out of date. Reload it to continue.",
+                                     "code": "client_version_mismatch", "server_version": __version__},
+                                    status_code=409, headers={"X-Neurosearch-Version": __version__})
+            await response(scope, receive, send)
+            return
+
+        async def versioned_send(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                message = {**message, "headers": [*message.get("headers", []),
+                                                  (b"x-neurosearch-version", __version__.encode())]}
+            await send(message)
+        await self.app(scope, receive, versioned_send)
+
+
 app = FastAPI(title="Neuro Search", lifespan=lifespan)
 mcp_app = mcp.streamable_http_app(
     streamable_http_path="/",
@@ -138,6 +174,7 @@ mcp_app = mcp.streamable_http_app(
 )
 app.mount("/mcp", mcp_app)
 app.add_middleware(PerfMiddleware)
+app.add_middleware(ClientVersionMiddleware)
 app.add_middleware(TokenPathMiddleware)
 # the browser extension calls the API from an extension origin; auth is the Bearer token, so open CORS is fine
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -547,7 +584,7 @@ def api_usage() -> dict[str, Any]:
     from . import claude_code
     t["background_paused"] = db.background_paused()
     t["rate"] = usage.rate_gate()
-    t["local_ai"] = {**claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(), "avoided_month": usage.avoided_this_month(),
+    t["local_ai"] = {**claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(refresh=False), "avoided_month": usage.avoided_this_month(),
                      "split": usage.local_split()}                       # L4: "N AI calls · % local · $ actual · $ avoided" (this month)
     return t
 
@@ -815,10 +852,15 @@ def api_ingest_with_session(project_id: str, body: SessionIngestIn) -> dict[str,
     browser's cookies for that host; they are kept server-side only, one file per request."""
     import hashlib
     from .courses import write_cookie_file
-    name = "session-" + hashlib.sha1(f"{body.url}{time.time()}".encode()).hexdigest()[:12]
+    from .media import canonical_url
+    url = canonical_url(body.url)
+    # Stable per project+resource: a transport retry refreshes the same private
+    # cookie file and resolves to the same active ingest job. A timestamped name
+    # leaked one orphaned credential file for every lost-response retry.
+    name = "session-" + hashlib.sha256(f"{project_id}\0{url}".encode()).hexdigest()[:16]
     cookies_file = write_cookie_file(body.cookies, name) if body.cookies else None
-    job = jobs.enqueue("ingest_url", {"url": body.url, "tags": body.tags, "project_id": project_id, "title": body.title,
-                                      "cookies_file": cookies_file, "referer": body.url, "review": False})
+    job = jobs.enqueue("ingest_url", {"url": url, "tags": body.tags, "project_id": project_id, "title": body.title,
+                                      "cookies_file": cookies_file, "referer": url, "review": False})
     return {"job_id": job["id"], "cookies": bool(cookies_file)}
 
 
@@ -916,7 +958,7 @@ def api_jobs(limit: int = 50) -> list[dict[str, Any]]:
     out = db.list_jobs(limit)
     for j in out:
         _decorate_job(j)
-    return out
+    return [_compact_job_for_list(j) for j in out]
 
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])
@@ -1084,7 +1126,7 @@ def api_health() -> dict[str, Any]:
     h["version"] = __import__("neurosearch").__version__
     from . import claude_code
     from . import usage
-    h["local_ai"] = {**claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(), "split": usage.local_split(),
+    h["local_ai"] = {**claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)), "profile": settings.ai_profile, "line": claude_code.status_line(refresh=False), "split": usage.local_split(),
                      "models": claude_code.states_by_model()}
     h["perf"] = {"slowest": perf.slowest(5), "caches": perf.snapshot()["caches"]}   # R0: in-memory, no query cost
     return h
@@ -1724,7 +1766,23 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
         if sids:
             j["label"] = titles.get(sids[0], sids[0]) + (f" +{len(sids) - 1} more" if len(sids) > 1 else "")
         _decorate_job(j, titles)
-    return out
+    return [_compact_job_for_list(j) for j in out]
+
+
+def _compact_job_for_list(j: dict[str, Any]) -> dict[str, Any]:
+    """Keep list polling small while the single-job endpoint retains the complete durable record.
+
+    Browser-assisted ingestion stores the captured page in ``payload._external_result``. Historical rows can hold
+    an entire HTML document there, but the Jobs panel only reads routing identifiers and display metadata. Sending
+    those page bodies every few seconds made a tiny status poll grow by hundreds of kilobytes.
+    """
+    payload = j.get("payload")
+    if not isinstance(payload, dict) or "_external_result" not in payload:
+        return j
+    compact = dict(j)
+    compact["payload"] = {k: v for k, v in payload.items() if k != "_external_result"}
+    compact["payload_omitted"] = ["_external_result"]
+    return compact
 
 
 def _decorate_job(j: dict[str, Any], titles: dict[str, str] | None = None) -> None:

@@ -123,9 +123,11 @@ def test_capture_resolves_the_same_job_and_source_after_restart(monkeypatch):
     assert len(posts) == 12 and {p["post_id"]: p["corrected_by"] for p in posts}["c1"] == "c2", "the DOM contract yields the same tree and corrections"
     assert not acquire.pending_captures(project_id=pid)
     assert db.connect().execute("SELECT 1 FROM project_sources WHERE project_id=? AND source_id=?", (pid, sid)).fetchone()
-    # a second delivery for the same job is refused (nothing is waiting), never a second acquisition
-    with pytest.raises(LookupError):
-        acquire.resolve_capture(j["id"], _capture_contract())
+    # A lost HTTP response may make the extension repeat the delivery. It gets
+    # the original durable identity, never a second acquisition or false 404.
+    replay = acquire.resolve_capture(j["id"], _capture_contract())
+    assert replay["replayed"] is True and replay["job_id"] == j["id"] and replay["source_id"] == sid
+    assert db.connect().execute("SELECT COUNT(*) FROM sources WHERE platform='community'").fetchone()[0] == 1
 
 
 def test_unsolicited_send_this_page_resolves_the_waiting_request(monkeypatch):

@@ -306,13 +306,13 @@ def _wrap_openai(client: Any) -> Any:
                  audio=_Attr(transcriptions=_Attr(create=_Ledgered(client.audio.transcriptions.create, "openai", "transcribe"))), _raw=client)
 
 
-# ------------------------------------------------------------------ Rung J3: routing provenance (no automatic fallback exists)
+# ------------------------------------------------------------------ Rung J3: model + transport routing provenance
 
 def routing_for(task: str, actual_model: Any) -> dict[str, Any]:
     """The routing decision to persist with an AI artifact. requested_model = the model Neuro Search intentionally
     selected for the task (contract + explicit overrides); actual_model = what the provider reported (a versioned
     snapshot of a requested alias is NOT a fallback); fallback_used reflects the router's decision — and the router has
-    exactly one decision available today: no fallback."""
+    model substitution is forbidden. Transport fallback is a separate, explicit setting and is off by default."""
     from . import contracts as C
     c = C.contract(task)
     r = getattr(_tl, "route", None) or {}
@@ -590,7 +590,7 @@ def invoke(task: str, *, system: Any = None, messages: list[dict[str, Any]] | No
                 raise
             CC.note_failure(e.cause if isinstance(e.cause, CC.LocalUnavailable) else CC.LocalUnavailable("error", str(e.cause)),
                             model=CC.local_model_for(task))
-            if current_policy() == "local_only":
+            if current_policy() == "local_only" or not settings.local_api_fallback:
                 _tl.route = {"executed_by": "none", "reason": reason, "fallback_reason": f"{e.error_type.lower()}: {str(e.cause)[:160]}"}
                 _accumulate_route()
                 raise
@@ -670,7 +670,7 @@ def route(task: str) -> tuple[str, str]:
     # the exact failure the comment above `_probe` claims 0.45.14 fixed, still live because that fix keyed on a
     # setting that is usually unset. This is what made a four-source re-analysis cost $0.59 instead of $0.
     h = CC.health(model=CC.local_model_for(task))
-    if h.get("state") == "ready" or pol == "local_only":
+    if h.get("state") == "ready" or pol == "local_only" or not settings.local_api_fallback:
         return "local", "local_preferred" if pol != "local_only" else "policy:local_only"
     return "api", f"local_{h.get('state')}"
 

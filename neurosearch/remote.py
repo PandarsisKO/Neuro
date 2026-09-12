@@ -1,7 +1,7 @@
-"""Run extraction on this machine, store on a remote Neuro Search server.
+"""Legacy remote-ingest compatibility path.
 
-Useful when the cloud host can't reach YouTube (datacenter IPs get blocked) but your laptop can:
-    neurosearch ingest --remote https://your-app.fly.dev --token <APP_TOKEN> <urls…>
+The supported product is local and single-user. Keep this module until command usage has been measured and any
+dependent workflow identified; do not present it as a supported cloud deployment architecture.
 """
 from __future__ import annotations
 

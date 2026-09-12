@@ -137,11 +137,11 @@ def usage_map(project_id: str) -> dict[int, dict[str, Any]]:
     note's locator (or, lacking a locator match, the same source); chat use = an assistant citation of the same source and
     locator; Claim = the note is a Claim's origin or evidence (claim_evidence.note_id / project_claims.origin_note_id).
 
-    Cached on the project's view revision (0.61.2). Every call walks every note, every plan evidence entry, every
-    chat citation and every claim, and it is called by the findings workbench, the quality pass and the source
-    drawer — so on a 17,000-note project the same walk was being repeated several times per screen."""
+    Cached on the usage inputs alone. Before 0.63.37 this used the Sources view revision, including the GLOBAL jobs
+    heartbeat. Every queue update therefore retired a walk over every note, plan entry, chat citation and Claim even
+    when none of those facts changed. Three screens ask for this map, so that unrelated invalidation multiplied."""
     from . import cache
-    rev = json.dumps(db.project_view_revision(project_id), sort_keys=True)
+    rev = db.project_usage_revision(project_id)
     return cache.get_or_compute(f"usage_map:{project_id}", rev, lambda: _usage_map(project_id), label="usage_map")
 
 

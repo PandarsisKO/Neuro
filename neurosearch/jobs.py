@@ -31,6 +31,8 @@ from .embeddings import embed_pending
 log = logging.getLogger(__name__)
 
 _stop = threading.Event()
+_lease_stop = threading.Event()
+_lifecycle_lock = threading.RLock()
 _threads: list[threading.Thread] = []
 _running: dict[str, str] = {}          # job_id -> run_id owned by this process (lease keeper extends these)
 _running_lock = threading.Lock()
@@ -258,7 +260,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     jid = job["id"]
     payload = job["payload"] or {}
     _current.job_id, _current.run_id = jid, job.get("run_id")
-    logctx.set_fields(job_id=jid, run_id=(job.get("run_id") or "")[:8] or None, project_id=payload.get("project_id"),
+    logctx.set_fields(job_id=jid, run_id=job.get("run_id"), project_id=payload.get("project_id"),
                       source_id=payload.get("source_id"), task=job["kind"])
 
     def progress(p: float | None, m: str) -> None:
@@ -346,6 +348,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     Used by the worker threads and, directly, by the crash-matrix tests (a SimulatedCrash propagates out untouched —
     exactly like a dead process: the row stays 'running' with a lease that will expire)."""
     jid, run_id = job["id"], job.get("run_id")
+    _current.job_id, _current.run_id = jid, run_id
     with _running_lock:
         _running[jid] = run_id or ""
     t0 = time.time()
@@ -406,6 +409,13 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             log.info("job %s requires the browser (%s/%s)", jid[:8], af.adapter, af.cls)
             return "external_pending"
         pe = e if isinstance(e, _PE) else (e.__cause__ if isinstance(getattr(e, "__cause__", None), _PE) else None)
+        if pe is not None and pe.error_type in providers.LOCAL_TYPES:
+            _record_execution(jid)
+            db.requeue_job(jid, delay=60, wait_reason="provider",
+                           message="paused: local AI unavailable — waiting locally; no paid API fallback. Use Accelerate to choose paid execution.")
+            if sid:
+                db.set_source_status(sid, "pending")
+            return "queued"
         if pe is not None and pe.error_type == "BILLING":
             # the account's credit balance, not a rate/usage cap — this will not clear itself on a schedule the way
             # SPEND_CAP's stated date does, so this parks (0 attempts, $0) and retries on a fixed interval; a plain
@@ -495,7 +505,7 @@ def _worker(n: int, kinds: tuple[str, ...] | None = None, exclude_kinds: tuple[s
 
 
 def _lease_loop(every: float = 30.0) -> None:
-    while not _stop.is_set():
+    while not _lease_stop.is_set():
         with _running_lock:
             items = list(_running.items())
         for jid, run_id in items:
@@ -504,7 +514,7 @@ def _lease_loop(every: float = 30.0) -> None:
                     log.warning("lost the lease on job %s — another worker owns it now", jid[:8])
             except Exception as e:  # noqa: BLE001
                 log.warning("heartbeat failed: %s", e)
-        _stop.wait(every)
+        _lease_stop.wait(every)
 
 
 def _recovery_loop(every: float = 60.0) -> None:
@@ -527,24 +537,44 @@ def _external_loop(every: float = 20.0) -> None:
         _stop.wait(every)
 
 
+def _thread_main(target: Any, db_path: Any, args: tuple = (), kwargs: dict | None = None) -> None:
+    """A worker generation owns its original database, even if a test changes global settings."""
+    db._local.db_path = db_path
+    try:
+        target(*args, **(kwargs or {}))
+    finally:
+        db.close_thread_connection()
+        db._local.__dict__.pop("db_path", None)
+        logctx.clear()
+
+
 def start_workers(n: int | None = None) -> None:
+    with _lifecycle_lock:
+        if any(t.is_alive() for t in _threads):
+            raise RuntimeError("Workers are already running or still shutting down; refusing a second generation")
+        _threads.clear()
+        _start_workers(n)
+
+
+def _start_workers(n: int | None = None) -> None:
     n = n or settings.workers
     db.init_db()
     requeued = db.requeue_stale_running_jobs()
     if requeued:
         log.info("re-queued %d interrupted jobs (they resume from their last completed stage)", requeued)
     _stop.clear()
+    _lease_stop.clear()
     local = settings.ai_profile == "local"
     for i in range(n):
         # local profile: general workers keep ingestion and leave the AI kinds to the two AI pools
-        t = threading.Thread(target=_worker, args=(i,), kwargs={"exclude_kinds": ANALYSIS_KINDS} if local else {}, daemon=True, name=f"ns-worker-{i}")
+        t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (i,), {"exclude_kinds": ANALYSIS_KINDS} if local else {}), daemon=True, name=f"ns-worker-{i}")
         t.start()
         _threads.append(t)
     if local:
         # L1: the local pool (busy = the job waits, never spends) and one API pool for api_requested / api_only jobs
         # 0.42.1: only the FIRST local worker takes the slow lane (Read deeper); the rest keep serving ordinary findings/ranking
         for i in range(max(1, settings.local_ai_workers)):
-            t = threading.Thread(target=_worker, args=(f"local-{i}", ANALYSIS_KINDS), kwargs={"policies": LOCAL_POLICIES, "lanes": None if i == 0 else ("normal", "priority", "low")},
+            t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (f"local-{i}", ANALYSIS_KINDS), {"policies": LOCAL_POLICIES, "lanes": None if i == 0 else ("normal", "priority", "low")}),
                                  daemon=True, name=f"ns-worker-local-ai-{i}")
             t.start()
             _threads.append(t)
@@ -553,18 +583,18 @@ def start_workers(n: int | None = None) -> None:
         # findings jobs ran this pool. Nothing about spend changes — the rate ceiling, budgets and account gates
         # are what bound cost, and a thread count was never the right instrument for it.
         for i in range(max(1, settings.api_ai_workers)):
-            t = threading.Thread(target=_worker, args=(f"api-{i}", ANALYSIS_KINDS), kwargs={"policies": API_POLICIES},
+            t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (f"api-{i}", ANALYSIS_KINDS), {"policies": API_POLICIES}),
                                  daemon=True, name=f"ns-worker-api-ai-{i}")
             t.start()
             _threads.append(t)
     else:
         # one extra worker that only does the cheap Claude jobs, so findings/ranking never wait behind slow downloads
-        t = threading.Thread(target=_worker, args=(n, ANALYSIS_KINDS), daemon=True, name="ns-worker-analysis")
+        t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (n, ANALYSIS_KINDS)), daemon=True, name="ns-worker-analysis")
         t.start()
         _threads.append(t)
     for target, name in ((_backup_loop, "ns-backup"), (_lease_loop, "ns-lease"), (_recovery_loop, "ns-recovery"),
                          (_external_loop, "ns-external"), (_housekeeping_loop, "ns-housekeeping")):
-        t = threading.Thread(target=target, daemon=True, name=name)
+        t = threading.Thread(target=_thread_main, args=(target, settings.db_path), daemon=True, name=name)
         t.start()
         _threads.append(t)
 
@@ -591,6 +621,10 @@ def _housekeeping_loop(every: float = 120.0) -> None:
             r = db.checkpoint_wal()
             if r.get("checkpointed"):
                 log.info("housekeeping: WAL %.1f MB -> %.1f MB", (r.get("was") or 0) / 1e6, r["wal_bytes"] / 1e6)
+            stats = db.analyze_if_due()
+            if stats.get("analyzed"):
+                log.info("housekeeping: planner statistics refreshed (%d rows, %.3f s)",
+                         stats["stat_rows"], stats["seconds"])
         except Exception as e:  # noqa: BLE001
             log.warning("housekeeping skipped: %s", e)
         _warm_quality()
@@ -674,11 +708,27 @@ def _backup_loop(every: float = 3600.0) -> None:
         _stop.wait(every)
 
 
-def stop_workers() -> None:
-    _stop.set()
-    for t in _threads:
-        t.join(timeout=2)
-    _threads.clear()
+def stop_workers(timeout: float = 10.0) -> None:
+    """Stop admission, drain work, then stop heartbeats. Never forget a surviving thread."""
+    with _lifecycle_lock:
+        _stop.set()
+        deadline = time.monotonic() + timeout
+        for t in _threads:
+            if t.name != "ns-lease":
+                t.join(timeout=max(0.0, deadline - time.monotonic()))
+        survivors = [t.name for t in _threads if t.name != "ns-lease" and t.is_alive()]
+        if survivors:
+            # Keep the lease keeper alive until draining finishes. A caller may retry shutdown;
+            # restarting in this process is refused while this generation still exists.
+            raise RuntimeError("Worker shutdown incomplete: " + ", ".join(survivors))
+        _lease_stop.set()
+        for t in _threads:
+            if t.name == "ns-lease":
+                t.join(timeout=max(0.0, deadline - time.monotonic()))
+        survivors = [t.name for t in _threads if t.is_alive()]
+        if survivors:
+            raise RuntimeError("Worker shutdown incomplete: " + ", ".join(survivors))
+        _threads.clear()
 
 
 def _after_done(job: dict[str, Any]) -> None:
@@ -814,7 +864,7 @@ def backlog(project_id: str | None = None) -> dict[str, Any]:
     local = [i for i in items if i["policy"] in LOCAL_POLICIES]
     api_side = [i for i in items if i["policy"] in API_POLICIES]
     minutes = sum(i["windows"] for i in local) * staleness.LOCAL_MINUTES_PER_WINDOW
-    ready = claude_code.health(wait=False, model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings.ai_profile == "local"
+    ready = claude_code.health_snapshot(model=claude_code.local_model_for(claude_code.DOMINANT_LOCAL_TASK)).get("state") == "ready" and settings.ai_profile == "local"
     return {"local_queued": len(local), "api_queued": len(api_side), "running": running, "jobs": local,
             "windows": sum(i["windows"] for i in local), "local_minutes": round(minutes) if ready else None,
             "local_eta": staleness._hm(minutes) if ready and local else None,

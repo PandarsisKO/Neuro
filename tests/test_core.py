@@ -142,13 +142,19 @@ def test_chat_url_ingest_and_exports(client, monkeypatch):
     assert {"README.md", "masterplan.md", "findings.md", "sources.csv", "context.json", "conversations.md"} <= set(names)
 
 
-def test_ask_tool_loop(monkeypatch):
+def test_ask_tool_loop(client, monkeypatch):
     """Claude calls save_finding + update_brief, then answers; citations resolve and notes are stored."""
     import anthropic
     from neurosearch import qa
     monkeypatch.setattr(qa.settings, "anthropic_api_key", "fake")
     p = db.create_project("Loop", "old brief")
     src = db.find_source("youtube", "abc123def45")
+    if not src:
+        src = db.upsert_source(platform="youtube", external_id="abc123def45",
+                               url="https://www.youtube.com/watch?v=abc123def45",
+                               title="Imported video", status="ready")
+        segs = [{"start": 0, "end": 9, "text": "They discuss retention tactics and onboarding."}]
+        db.replace_transcript(src["id"], segs, segs)
     db.add_project_sources(p["id"], [src["id"]])
 
     class Blk:
@@ -178,19 +184,13 @@ def test_ask_tool_loop(monkeypatch):
     assert "update_brief" in [t["name"] for t in calls[0]["tools"]]
 
 
-def test_document_upload_job(client):
-    import time
+def test_document_upload_job(client, run_queued_job):
     p = client.post("/api/projects", headers=H, json={"name": "Docs", "brief": None}).json()
     text = "Retention playbook.\n\nChurn drops when onboarding is personal.\n\n" + ("Filler paragraph about pricing anchors. " * 40 + "\n\n") * 6
     r = client.post("/api/ingest/file", headers=H, data={"project_id": p["id"]},
                     files={"file": ("playbook.txt", text.encode(), "text/plain")}).json()
     assert r["job"]
-    for _ in range(50):
-        j = client.get("/api/jobs/" + r["job"], headers=H).json()
-        if j["status"] in ("done", "failed"):
-            break
-        time.sleep(0.2)
-    assert j["status"] == "done", j
+    j = run_queued_job(r["job"])
     srcs = client.get("/api/sources", headers=H, params={"project_id": p["id"]}).json()
     assert srcs and srcs[0]["platform"] == "document" and srcs[0]["title"] == "playbook.txt"
     hits = client.get("/api/search", headers=H, params={"q": "onboarding personal", "project_id": p["id"]}).json()
@@ -245,8 +245,8 @@ def test_master_planner(client, monkeypatch):
     assert "master_plan.md" in z.namelist() and "master_plan.html" in z.namelist()
 
 
-def test_suggested_findings(client, monkeypatch):
-    import anthropic, time
+def test_suggested_findings(client, monkeypatch, run_queued_job):
+    import anthropic
     from tests.fake_claude import Anthropic
     from neurosearch import findings, jobs
     monkeypatch.setattr(anthropic, "Anthropic", Anthropic)
@@ -254,12 +254,11 @@ def test_suggested_findings(client, monkeypatch):
     monkeypatch.setattr(jobs.settings, "anthropic_api_key", "fake")
     p = client.post("/api/projects", headers=H, json={"name": "Suggest", "brief": "hosting"}).json()
     r = ingest.ingest_text("Hosting talk", "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks", project_id=p["id"])
-    # auto-queued suggestion job runs in the background worker
-    for _ in range(60):
-        pj = client.get(f"/api/projects/{p['id']}?notes=inline", headers=H).json()   # 0.63.12: rows are opt-in
-        if pj["suggested"]:
-            break
-        time.sleep(0.2)
+    queued = [j for j in db.list_jobs(limit=10000, statuses=("queued",))
+              if j["kind"] == "suggest_findings" and j["payload"].get("project_id") == p["id"]]
+    assert len(queued) == 1
+    run_queued_job(queued[0]["id"])
+    pj = client.get(f"/api/projects/{p['id']}?notes=inline", headers=H).json()
     assert len(pj["suggested"]) == 2 and pj["notes"] == []
     assert client.get(f"/api/projects/{p['id']}", headers=H).json()["counts"]["suggested"] == 2   # the count alone
     top = pj["suggested"][0]
@@ -506,7 +505,9 @@ def test_relevance_ranking(client, monkeypatch):
     assert rv["proposed"][0]["relevance_why"] == "on topic" and rv["proposed"][0]["description"].startswith("getting out of debt")
     assert res["batches"] == 1 and res["failed_batches"] == 0 and res["repaired_batches"] == 0
     # re-rank endpoint queues a job and resets the flag
-    assert "job_id" in client.post(f"/api/collections/{rv['id']}/rank", headers=H, json={"want": 3}).json()
+    first_rank = client.post(f"/api/collections/{rv['id']}/rank", headers=H, json={"want": 3}).json()
+    replay_rank = client.post(f"/api/collections/{rv['id']}/rank", headers=H, json={"want": 3}).json()
+    assert first_rank["job_id"] == replay_rank["job_id"]
     assert db.review_meta(rv["id"])["ranked"] is False and db.review_meta(rv["id"])["max_videos"] == 3
 
 
@@ -605,17 +606,12 @@ def test_ingest_html_from_extension(client):
 
 
 def test_blocked_site_message(monkeypatch):
-    import httpx
-    from neurosearch import webpage
-    class R:  # minimal httpx-like response
-        status_code = 403; headers = {}; content = b""; url = "https://x.com/a"
-    class C:
-        def __init__(self, **kw): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def get(self, url): return R()
-    monkeypatch.setattr(httpx, "Client", C)
-    import pytest
+    from types import SimpleNamespace
+    from neurosearch import webpage, safe_fetch
+    # Assert the user-facing 403 translation at the actual network boundary. The former
+    # httpx.Client patch stopped intercepting requests when safe_fetch moved to pinned sockets.
+    monkeypatch.setattr(safe_fetch, "safe_fetch", lambda url, **kw:
+                        SimpleNamespace(status=403, body=b"", url=url, content_type="text/html"))
     with pytest.raises(webpage.Blocked, match="blocks automated readers"):
         webpage.fetch("https://x.com/a")
 
@@ -631,6 +627,11 @@ def test_instagram_urls(client):
     r = client.post(f"/api/projects/{p['id']}/ingest/with-session", headers=H, json={"url": "https://www.instagram.com/reel/Cabc123/",
         "cookies": [{"domain": ".instagram.com", "name": "sessionid", "value": "abc", "path": "/", "secure": True}]}).json()
     j = db.get_job(r["job_id"]); assert r["cookies"] and j["payload"]["cookies_file"].endswith(".txt") and j["payload"]["review"] is False
+    again = client.post(f"/api/projects/{p['id']}/ingest/with-session", headers=H, json={"url": "https://www.instagram.com/reel/Cabc123/?utm_source=retry",
+        "cookies": [{"domain": ".instagram.com", "name": "sessionid", "value": "fresh", "path": "/", "secure": True}]}).json()
+    replay = db.get_job(again["job_id"])
+    assert again["job_id"] == r["job_id"] and replay["payload"]["cookies_file"] == j["payload"]["cookies_file"]
+    assert "fresh" in open(replay["payload"]["cookies_file"]).read()
 
 
 def test_instagram_profile_with_session(client, monkeypatch, tmp_path):

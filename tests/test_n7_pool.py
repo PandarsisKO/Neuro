@@ -44,6 +44,23 @@ def _skipped(pid, ext, title, desc, relevance=None, published="2021-03-01"):
     return s["id"]
 
 
+def test_job_lists_omit_captured_page_bodies_but_detail_keeps_them():
+    """The Jobs panel polls often and never reads a browser capture's full HTML document."""
+    p = db.create_project("compact jobs", "brief")
+    body = "<html>" + ("large page " * 5000) + "</html>"
+    job = db.create_job("ingest_url", {
+        "project_id": p["id"], "url": "https://example.test/page",
+        "_external_result": {"capture": {"html": body}},
+    })
+
+    project_row = next(j for j in api.api_project_jobs(p["id"]) if j["id"] == job["id"])
+    global_row = next(j for j in api.api_jobs() if j["id"] == job["id"])
+    assert "_external_result" not in project_row["payload"]
+    assert "_external_result" not in global_row["payload"]
+    assert project_row["payload_omitted"] == ["_external_result"]
+    assert api.api_job(job["id"])["payload"]["_external_result"]["capture"]["html"] == body
+
+
 def test_pool_unifies_skipped_and_candidates_with_a_potential_scan(monkeypatch):
     pid, ids = _fixture(monkeypatch)
     claims.ensure(pid); knowledge.refresh(pid)
@@ -211,6 +228,36 @@ def test_extract_claims_job_can_be_cancelled_mid_run(monkeypatch):
     html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
     assert "extract_claims" in html and "finding claims to track" in html
     assert "extract_claims" in jobs.RETRYABLE   # a transient provider hiccup retries like every other AI job kind, instead of failing outright
+
+
+def test_extract_claims_honours_a_cancel_after_the_model_returns(monkeypatch):
+    """A model response is a safe boundary too: cancellation must not wait for a whole historical backlog to assess."""
+    pid, ids = _fixture(monkeypatch)
+    from neurosearch import claims
+    claim = claims.add_claim(pid, "A distinct claim that the model will return", status="proposed", normalized=False)
+    job = db.create_job("extract_claims", {"project_id": pid, "reason": "test"})
+    job = db.claim_job(("extract_claims",))
+
+    def cancel_after_answer(*args, **kwargs):
+        db.request_cancel(job["id"])
+        return {"claims": [{"id": claim["id"], "text": claim["text"]}], "targets": []}
+
+    monkeypatch.setattr(__import__("neurosearch.providers", fromlist=["invoke_structured"]), "invoke_structured", cancel_after_answer)
+    assert jobs.execute(job) == "cancelled"
+    assert db.get_job(job["id"])["status"] == "cancelled"
+    assert not claims.get(claim["id"])["normalized"]
+
+
+def test_cancelled_queued_background_job_is_finalized_even_when_lane_is_paused(monkeypatch):
+    """A paused worker pool must not strand a user-requested cancellation in a non-terminal state."""
+    pid, ids = _fixture(monkeypatch)
+    job = db.create_job("extract_claims", {"project_id": pid, "reason": "test"})
+    assert db.request_cancel(job["id"]) == "cancelled"
+    # Simulate the durable recovery shape: a running job was requested, then startup returned it to queued.
+    db.connect().execute("UPDATE jobs SET status='queued', finished_at=NULL, cancel_requested_at=? WHERE id=?", (db.now(), job["id"]))
+    db.connect().commit()
+    assert db.claim_job(("reembed",), worker_id="ordinary") is None
+    assert db.get_job(job["id"])["status"] == "cancelled"
 
 
 def test_project_jobs_never_hides_an_active_job_behind_a_big_backlog(monkeypatch):

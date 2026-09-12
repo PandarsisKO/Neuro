@@ -22,6 +22,13 @@ from .config import settings
 
 FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
 
+# R8 storage hygiene, measured 2026-09-11 on a copied 630 MB verified backup. SQLite's default cache was only
+# 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac;
+# mmap pages are shared by the OS and a 1 GB ceiling covers the current database with room to grow.
+SQLITE_CACHE_KIB = 64 * 1024
+SQLITE_MMAP_BYTES = 1024 * 1024 * 1024
+ANALYZE_INTERVAL_S = 7 * 24 * 3600
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sources (
     id              TEXT PRIMARY KEY,
@@ -717,14 +724,27 @@ def connect() -> sqlite3.Connection:
     """Thread-local connection."""
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = sqlite3.connect(str(settings.db_path), timeout=30, check_same_thread=False)
+        conn = sqlite3.connect(str(getattr(_local, "db_path", settings.db_path)), timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA cache_size=-{SQLITE_CACHE_KIB}")
+        conn.execute(f"PRAGMA mmap_size={SQLITE_MMAP_BYTES}")
+        conn.execute("PRAGMA temp_store=MEMORY")
         conn.execute(f"PRAGMA journal_size_limit={WAL_LIMIT_BYTES}")   # 0.61.2: give the log file back after a checkpoint
         _local.conn = conn
     return conn
+
+
+def close_thread_connection() -> None:
+    """Close only the current thread's connection; never open a DB during cleanup."""
+    conn = getattr(_local, "conn", None)
+    try:
+        if conn is not None:
+            conn.close()
+    finally:
+        _local.conn = None
 
 
 MIGRATIONS = [
@@ -843,11 +863,9 @@ MIGRATIONS = [
     # 0.60.2: whether a suggested URL actually resolves. Discover proposes sources from a model's memory, and a
     # remembered address goes stale — Kyle: "discover is routinely suggesting content that has 404 issues".
     ("discoveries", "link_check", "ALTER TABLE discoveries ADD COLUMN link_check TEXT"),
-    # T1 (0.61.0) — vectors for the DERIVED objects. Chunks have had embeddings since the beginning; findings and
-    # Claims never did, which is why every semantic question about them ("which Claim does this passage support",
-    # "what have we never explained", "is this finding a paraphrase of that one") was unanswerable. Measured on
-    # Kyle's corpus: 13,371 Claims + 12,301 findings ~= 1.3 M tokens ~= $0.03 once. Same storage pattern as
-    # `chunks.embedding` — a BLOB on the row, never a second table.
+    # Schema compatibility: 0.61.0 added derived-object embedding columns. Its dormant semantic-scoring prototype
+    # was removed in 0.63.36 because it had no product/API path and contradicted current active-only, multi-signal
+    # research policy. Keep the additive columns so existing databases and downgrade paths remain compatible.
     ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
     ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
     # 0.60.5: which MATCHER produced this suggestion. 0.60.2 changed how library recall decides relevance, and the
@@ -893,6 +911,14 @@ def init_db() -> None:
     # indexes on migrated columns (must follow the column adds)
     conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_fingerprint ON sources(platform, content_fingerprint)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_canonical ON sources(platform, canonical_url)")
+    # R8: exact production predicates, measured on a copied verified backup before admission. The broad Findings
+    # list still chooses a scan because one project owns 80% of the table; the source-specific path moved from a
+    # table scan (7.87 ms median) to an indexed lookup (0.43 ms). The other indexes remove full scans or temp
+    # grouping from message history, cost attribution and kind-specific queue operations.
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_project_notes_project_status_source ON project_notes(project_id, status, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_usage_kind_source ON usage(kind, source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_status ON jobs(kind, status)")
     conn.commit()
     _migrate_source_analysis(conn)
     _backfill_job_lanes(conn)
@@ -1402,77 +1428,6 @@ def _unpack(blob: bytes) -> np.ndarray:
     return np.frombuffer(blob, dtype=np.float32)
 
 
-# ------------------------------------------------------------------ derived-object vectors (T1, 0.61.0)
-#
-# `kind` is "note" or "claim". Both live on their own row exactly as a chunk's vector does, so they inherit
-# identity, the project cascade and the revision columns that are already there, and nothing has to be kept in
-# step with a second table.
-DERIVED_KINDS = {"note": ("project_notes", "id"), "claim": ("project_claims", "id")}
-
-
-def _derived_text_sql(kind: str) -> str:
-    # a finding's headline carries most of its meaning, so it is embedded with the body rather than thrown away
-    return ("COALESCE(title,'') || CASE WHEN title IS NOT NULL AND title <> '' THEN '. ' ELSE '' END || content"
-            if kind == "note" else "text")
-
-
-def derived_missing_embeddings(kind: str, limit: int = 200, project_id: str | None = None) -> list[dict[str, Any]]:
-    """The same granular checkpoint chunks use: a row either has its vector or it does not, so resuming means
-    embedding the rest and never redoing what landed."""
-    table, idcol = DERIVED_KINDS[kind]
-    q = f"SELECT {idcol} id, {_derived_text_sql(kind)} text FROM {table} WHERE embedding IS NULL"
-    args: list[Any] = []
-    if project_id:
-        q += " AND project_id=?"
-        args.append(project_id)
-    q += " LIMIT ?"
-    args.append(int(limit))
-    return [dict(r) for r in connect().execute(q, args).fetchall() if (r["text"] or "").strip()]
-
-
-def set_derived_embeddings(kind: str, pairs: list[tuple[Any, np.ndarray]]) -> None:
-    table, idcol = DERIVED_KINDS[kind]
-    with tx() as conn:
-        conn.executemany(f"UPDATE {table} SET embedding=? WHERE {idcol}=?", [(_pack(v), i) for i, v in pairs])
-
-
-def load_derived_matrix(kind: str, project_id: str | None = None,
-                        where: str = "") -> tuple[np.ndarray, list[Any]]:
-    table, idcol = DERIVED_KINDS[kind]
-    q = f"SELECT {idcol} id, embedding FROM {table} WHERE embedding IS NOT NULL"
-    args: list[Any] = []
-    if project_id:
-        q += " AND project_id=?"
-        args.append(project_id)
-    if where:
-        q += f" AND ({where})"
-    rows = connect().execute(q, args).fetchall()
-    if not rows:
-        return np.zeros((0, 0), dtype=np.float32), []
-    return np.vstack([_unpack(r["embedding"]) for r in rows]), [r["id"] for r in rows]
-
-
-def derived_embedding_counts(project_id: str | None = None) -> dict[str, dict[str, int]]:
-    out: dict[str, dict[str, int]] = {}
-    for kind, (table, _) in DERIVED_KINDS.items():
-        q = f"SELECT COUNT(*) total, SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) done FROM {table}"
-        args: list[Any] = []
-        if project_id:
-            q += " WHERE project_id=?"
-            args.append(project_id)
-        r = connect().execute(q, args).fetchone()
-        total, done = int(r["total"] or 0), int(r["done"] or 0)
-        out[kind] = {"total": total, "embedded": done, "pending": total - done}
-    return out
-
-
-def clear_derived_embedding(kind: str, row_id: Any) -> None:
-    """A row whose text changed must lose its vector rather than keep a stale one."""
-    table, idcol = DERIVED_KINDS[kind]
-    with tx() as conn:
-        conn.execute(f"UPDATE {table} SET embedding=NULL WHERE {idcol}=?", (row_id,))
-
-
 def load_embedding_matrix(source_ids: list[str] | None = None) -> tuple[np.ndarray, list[int]]:
     """Return (matrix [n, d], chunk_ids). Fine for tens of thousands of chunks."""
     conn = connect()
@@ -1740,6 +1695,26 @@ def project_notes_revision(project_id: str) -> str:
     return f"{parts[0]}:{parts[1]}:{tail}"
 
 
+def project_usage_revision(project_id: str) -> str:
+    """Fingerprint only the inputs read by ``findings_view.usage_map``.
+
+    The old cache used ``project_view_revision``, whose global jobs component changes on every heartbeat. That made
+    a queue update retire a full notes/plan/chat/Claims walk even though no usage fact had changed. Keep this key
+    deliberately narrow: findings, the latest plan body, assistant citations, Claims, and finding-to-Claim links.
+    Counts sit beside timestamps because deletions and link-table changes have no timestamp of their own.
+    """
+    c = connect()
+    r = c.execute(
+        "SELECT (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM plans WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(m.created_at),0) FROM messages m "
+        "          JOIN conversations c ON c.id=m.conversation_id WHERE c.project_id=? AND m.role='assistant'),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_claims WHERE project_id=?),"
+        "       (SELECT COUNT(*) FROM claim_evidence_notes e JOIN project_claims c ON c.id=e.claim_id "
+        "          WHERE c.project_id=?)",
+        (project_id,) * 4).fetchone()
+    return project_notes_revision(project_id) + "|" + "|".join(str(x) for x in r)
+
+
 def project_pool_revision(project_id: str) -> str:
     """The fingerprint of the known-but-uncaptured pool ALONE (0.63.20).
 
@@ -1863,6 +1838,10 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
         return "profiles:batch"
     if kind == "ingest_source":
         return f"ingest_source:{payload.get('source_id')}"
+    if kind == "recover_captions":
+        return f"recover_captions:{payload.get('project_id')}:{payload.get('source_id')}"
+    if kind == "refresh_skipped_metadata":
+        return f"refresh_skipped_metadata:{payload.get('project_id')}:{payload.get('source_id')}"
     if kind == "suggest_findings" and len(payload.get("source_ids") or []) == 1:
         # D2: a deep read is its OWN unit of work — without the depth here, pressing "Read deeper" while an ordinary
         # findings job for that source is queued silently returns the shallow job (0.45.0 fix)
@@ -2085,6 +2064,17 @@ def claim_job(kinds: tuple[str, ...] | None = None, worker_id: str = "worker", l
     Claiming takes a lease (worker_id, run_id, lease_until); exactly one worker can win the UPDATE.
     L1 pools: `exclude_kinds` keeps general workers off the AI kinds; `policies` restricts a pool to jobs whose execution_policy is listed."""
     with tx() as conn:
+        # Cancellation is terminal for queued work even when a lane is paused or excluded from this worker pool.
+        # Without this sweep, a cancelled background job could remain forever in user-facing `cancelling` state while
+        # the very pause that protects it also kept claim_job from reaching the old per-candidate cleanup below.
+        pending_cancel = conn.execute(
+            "SELECT id, payload, kind FROM jobs WHERE status='queued' AND cancel_requested_at IS NOT NULL"
+        ).fetchall()
+        for cancelled in pending_cancel:
+            conn.execute("UPDATE jobs SET status='cancelled', finished_at=?, message='cancelled', updated_at=? WHERE id=? AND status='queued'",
+                         (now(), now(), cancelled["id"]))
+            job_event(cancelled["id"], "cancelled", conn=conn, was="queued")
+            _release_source_after_cancel(conn, cancelled)
         q = "SELECT id, blocked_by, dependency_policy, cancel_requested_at FROM jobs WHERE status='queued' AND (not_before IS NULL OR not_before<=?)"
         args: list[Any] = [now()]
         if kinds:
@@ -3539,6 +3529,29 @@ def checkpoint_wal(force: bool = False) -> dict[str, Any]:
                 "why": None if ok else "a reader still holds an older snapshot — it will be retried"}
     except Exception as e:  # noqa: BLE001 — a housekeeping step must never break a request
         return {"checkpointed": False, "wal_bytes": before, "why": str(e)[:160]}
+
+
+def analyze_if_due(force: bool = False) -> dict[str, Any]:
+    """Refresh SQLite planner statistics at most weekly.
+
+    `ANALYZE` had never run on the measured backup (`sqlite_stat1` was absent). The housekeeping thread owns this
+    maintenance so request paths never pay for it. A durable timestamp makes restarts cheap; failures leave the
+    timestamp untouched and are retried by the next housekeeping pass.
+    """
+    key = "storage:last_analyze"
+    try:
+        last = float(kv_get(key) or 0)
+    except (TypeError, ValueError):
+        last = 0
+    age = max(0.0, now() - last)
+    if not force and age < ANALYZE_INTERVAL_S:
+        return {"analyzed": False, "why": "not due", "age_s": age}
+    started = time.perf_counter()
+    conn = connect()
+    conn.execute("ANALYZE")
+    kv_set(key, str(now()))
+    rows = conn.execute("SELECT COUNT(*) FROM sqlite_stat1").fetchone()[0]
+    return {"analyzed": True, "seconds": round(time.perf_counter() - started, 3), "stat_rows": int(rows)}
 
 
 def chunk_count() -> int:

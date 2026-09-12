@@ -190,6 +190,69 @@ def test_the_usage_map_is_computed_once_per_revision():
     assert len(runs) == 1
 
 
+def test_unrelated_job_heartbeats_do_not_retire_usage_or_quality_clusters():
+    """A job heartbeat used to invalidate both caches through the global Sources revision.
+
+    On the live 17k-finding project that turned harmless queue activity into another eight-million-pair scan.
+    """
+    from neurosearch import findings_quality, findings_view
+    p = db.create_project("narrow revisions", brief="b")
+    _notes(p["id"], 8)
+    usage_runs = []
+    cluster_runs = []
+    orig_usage = findings_view._usage_map
+    orig_clusters = findings_quality.clusters
+
+    def counted_usage(pid):
+        usage_runs.append(1)
+        return orig_usage(pid)
+
+    def counted_clusters(*args, **kwargs):
+        cluster_runs.append(1)
+        return orig_clusters(*args, **kwargs)
+
+    findings_view._usage_map = counted_usage
+    findings_quality.clusters = counted_clusters
+    try:
+        findings_quality.review(p["id"])
+        j = db.create_job("reembed", {})
+        db.update_job(j["id"], progress=0.5, message="heartbeat")
+        findings_quality.review(p["id"])
+    finally:
+        findings_view._usage_map = orig_usage
+        findings_quality.clusters = orig_clusters
+    assert len(usage_runs) == 1
+    assert len(cluster_runs) == 1
+
+
+def test_usage_change_reselects_keeper_without_rebuilding_cluster_graph():
+    """Claims can change which duplicate is safest to keep, but cannot change lexical membership."""
+    from neurosearch import claims, findings_quality
+    p = db.create_project("keeper", brief="b")
+    n1 = db.add_project_note(p["id"], "Seller financing can cover ten percent of the purchase price.",
+                             citations=[], status="approved")
+    db.add_project_note(p["id"], "Seller financing can cover ten percent of the purchase price.",
+                        citations=[], status="approved")
+    runs = []
+    orig = findings_quality.clusters
+
+    def counted(*args, **kwargs):
+        runs.append(1)
+        return orig(*args, **kwargs)
+
+    findings_quality.clusters = counted
+    try:
+        first = findings_quality.review(p["id"])
+        claims.add_claim(p["id"], "Seller financing can cover ten percent of the purchase price.",
+                         origin_note_id=n1["id"])
+        second = findings_quality.review(p["id"])
+    finally:
+        findings_quality.clusters = orig
+    assert len(runs) == 1
+    assert first["cluster_count"] == second["cluster_count"] == 1
+    assert second["clusters"][0]["keeper_id"] == n1["id"]
+
+
 def test_the_summary_takes_the_previous_answer_when_something_is_stored():
     from neurosearch import findings_quality
     p = db.create_project("q", brief="b")

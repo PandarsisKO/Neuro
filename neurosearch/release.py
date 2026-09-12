@@ -264,6 +264,8 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
     fl = flags_state()
     r.check("experimental flags off by default", all(v["ok"] for v in fl.values() if v["status"] != "test mode (never in production)") and not settings.fake_ai,
             {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
+    ok, tail = _pytest(["tests/test_s43_foundation.py", "tests/test_s44_frontend_integrity.py", "tests/test_s45_storage_hygiene.py"])
+    r.check("Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity", ok, tail)
     # 1. unit + indestructible + boundary suites (includes the crash matrix, the 40-source equivalence, migrations, breakers, fallback)
     if not skip_pytest:
         progress("pytest (whole suite)…")
@@ -323,7 +325,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         r.check("deep content (D1–D3): the findings cap is length-aware with a per-window coverage floor; overflow is kept as reserve (promotable, never exported/planned/harvested); "
                 "a one-window source is the old top-12; Read deeper = smaller windows + a USER-message depth instruction, current on its own terms, staleness agrees; long sources are flagged under-read", ok, tail)
         ok, tail = _pytest(["tests/test_n2_local_ai.py"])
-        r.check("Local-First AI (L1): local runs when ready; unavailable/usage-limit → the API with the reason recorded and nothing else changed; local_only never touches the API; "
+        r.check("Local-First AI (L1): local runs when ready; unavailable/usage-limit reaches the API only with explicit fallback opt-in and records why; local_only never touches the API; "
                 "api_only/api_requested never touch local; cloud profile = local absent; the ledger carries provider + avoided spend; the stub CLI proves the subprocess contract", ok, tail)
         ok, tail = _pytest(["tests/test_n1_research_view.py"])
         r.check("Research view engine (R1/R3/R5/R6): a deterministic $0 priority order over questions and watch-outs (importance, planner dependence, impact, breadth, known sources); "
@@ -379,8 +381,12 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
                     (out.stderr or "")[:300] or f"{len(js)} chars of inline JS, UI_VERSION {ui_v}")
     except Exception as e:  # noqa: BLE001
         r.check("web/index.html parses", False, str(e)[:200])
-    was_fake, was_dir = settings.fake_ai, settings.data_dir
+    was_fake, was_dir, was_profile = settings.fake_ai, settings.data_dir, settings.ai_profile
+    # Deterministic release proofs must use the same cloud-shaped fake adapter
+    # as the test harness.  A developer .env may select local Claude Code; that
+    # profile changes prompt/cache accounting even when fake_ai is enabled.
     settings.fake_ai = True
+    settings.ai_profile = "cloud"
     try:
         # 3. Tier 1 with frozen numbers
         tmp = _fresh("ns_rc_tier1_")
@@ -449,7 +455,7 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
             db._local.conn = None; shutil.rmtree(tmp, ignore_errors=True)
     finally:
         db._local.conn = None
-        settings.fake_ai, settings.data_dir = was_fake, was_dir
+        settings.fake_ai, settings.data_dir, settings.ai_profile = was_fake, was_dir, was_profile
     rep = r.done()
     rep["baselines"] = baselines
     rep["flags"] = fl

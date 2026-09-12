@@ -50,7 +50,7 @@ def test_the_version_marker_is_present_and_matches_the_package():
 
 
 @pytest.mark.parametrize("fn", ["whereToLook", "poolFilter", "loadQuality", "openQuality", "sweepQuality"])
-def test_tonights_handlers_exist(fn):
+def test_high_value_workbench_handlers_exist(fn):
     """Every onclick added tonight must resolve to a defined function — an inline handler naming a missing function
     fails only when a human clicks it."""
     html = INDEX.read_text()
@@ -58,7 +58,7 @@ def test_tonights_handlers_exist(fn):
 
 
 @pytest.mark.parametrize("fn", ["accelerateOption", "loadBacklog"])
-def test_the_accelerate_handlers_exist(fn):
+def test_acceleration_handlers_exist(fn):
     html = INDEX.read_text()
     assert re.search(rf"(async )?function {fn}\b", html), f"{fn} is referenced but not defined"
 

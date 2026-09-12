@@ -149,6 +149,9 @@ def test_explore_job_lists_ranks_reviews_and_remembers(monkeypatch):
     best = ranked[0]["id"]
     out = ingest.approve_proposed(res["collection_id"], [best])
     assert out["started"] == 1 and out["dropped"] == 3
+    replay = ingest.approve_proposed(res["collection_id"], [best])
+    assert replay["started"] == 0 and replay["dropped"] == 0
+    assert len([j for j in db.list_jobs(50) if j["kind"] == "ingest_source" and j["payload"].get("source_id") == best]) == 1
     states = {x["title"]: x["state"] for x in candidates.list_for_project(pid)}
     assert list(states.values()).count("acquired") == 1 and all(s in ("skipped_limit", "skipped_low_relevance", "acquired") for s in states.values())
     acq = [x for x in candidates.list_for_project(pid, "acquired")][0]
@@ -220,8 +223,13 @@ def test_api_candidates_and_acquire():
     assert r["items"][0]["title"].startswith("Why New") and r["counts"]["total"] == 3
     cid = r["items"][0]["id"]
     assert api.api_candidate_dismiss(cid, api.CandidateActIn(project_id=pid, reason="not this creator"))["updated"] == 1
+    assert api.api_candidate_dismiss(cid, api.CandidateActIn(project_id=pid, reason="not this creator"))["updated"] == 1
     assert api.api_candidates(pid, state="user_dismissed")["items"][0]["reason"] == "not this creator"
+    api.api_candidate_restore(cid, api.CandidateActIn(project_id=pid))
     api.api_candidate_restore(cid, api.CandidateActIn(project_id=pid))
     r = api.api_candidate_acquire(cid, api.CandidateActIn(project_id=pid))
     assert r["job_id"] and db.get_job(r["job_id"])["kind"] == "ingest_url"                                    # the normal lifecycle
+    replay = api.api_candidate_acquire(cid, api.CandidateActIn(project_id=pid))
+    assert replay["job_id"] == r["job_id"]
+    assert len([j for j in db.list_jobs(50) if j["kind"] == "ingest_url" and j["payload"].get("project_id") == pid]) == 1
     assert candidates.list_for_project(pid, "acquired")[0]["id"] == cid

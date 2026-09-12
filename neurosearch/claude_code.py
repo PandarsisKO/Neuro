@@ -249,6 +249,36 @@ def health(force: bool = False, wait: bool = True, model: str | None = None) -> 
     return h
 
 
+def health_snapshot(model: str | None = None) -> dict[str, Any]:
+    """Return the last health verdict without starting a CLI probe.
+
+    API reads, polling views and cost estimates use this path.  A cold read is
+    allowed to say ``unchecked``; it is not allowed to launch hidden external
+    work merely because somebody opened Health, Usage, Jobs or Staleness.
+    Explicit Re-check still calls :func:`health` with ``force=True`` and real
+    provider routing calls it with ``wait=True``.
+    """
+    if settings.ai_profile != "local":
+        return {"state": "disabled", "detail": "AI profile is cloud (NEUROSEARCH_AI_PROFILE=local enables Claude Code)",
+                "checked_at": time.time()}
+    if model is None:
+        model = settings.claude_code_model or None
+    key = _hkey(model)
+    with _lock:
+        g = _state["health"]
+        h = g if (g and not g.get("probed_model")) else (_state["by_model"].get(key) if g else None)
+        probing = bool(_state.get("probing"))
+        if h:
+            out = dict(h)
+            out["stale"] = time.time() - float(h.get("checked_at") or 0) >= HEALTH_TTL
+            if probing:
+                out["checking"] = True
+            return out
+    return {"state": "checking" if probing else "unchecked",
+            "detail": "checking Claude Code…" if probing else "Claude Code has not been checked yet",
+            "checked_at": None, "checking": probing}
+
+
 def _probe_bg(model: str | None = None) -> None:
     """0.63.31 — it took the model and then called `_probe()` without it, and wrote only the global slot.
 
@@ -549,19 +579,23 @@ def create(**kw: Any) -> LocalResponse:
     return _run(_prompt_of(kw.get("messages")), system=_system_of(kw.get("system")), model=model, timeout=timeout, schema=schema)
 
 
-def status_line(wait: bool = False) -> str:
+def status_line(wait: bool = False, refresh: bool = True) -> str:
     """One line for doctor / the Jobs header (never blocks unless asked).
 
     About the model real work runs, not the CLI's own default (0.63.30) — a person reading "Claude Code: ready"
     while every findings job is falling back to the paid API has been told something useless."""
-    h = health(wait=wait, model=local_model_for(DOMINANT_LOCAL_TASK))
+    h = (health(wait=wait, model=local_model_for(DOMINANT_LOCAL_TASK)) if refresh
+         else health_snapshot(model=local_model_for(DOMINANT_LOCAL_TASK)))
     st = h.get("state")
     if st == "disabled":
         return "Claude Code: off (cloud profile)"
     if st == "checking":
         return "Claude Code: checking…"
+    if st == "unchecked":
+        return "Claude Code: not checked · use Re-check or start local work"
     if st == "ready":
         return f"Claude Code: ready{(' ' + h['version']) if h.get('version') else ''}"
+    transport = "API fallback enabled (paid)" if settings.local_api_fallback else "local work waits · paid fallback off"
     if st == "usage_limit":
-        return f"Claude Code: usage limit{(' — resets ' + h['reset_hint']) if h.get('reset_hint') else ''} · API fallback active"
-    return f"Claude Code: {str(st).replace('_', ' ')} — {h.get('detail') or ''} · API fallback active"
+        return f"Claude Code: usage limit{(' — resets ' + h['reset_hint']) if h.get('reset_hint') else ''} · {transport}"
+    return f"Claude Code: {str(st).replace('_', ' ')} — {h.get('detail') or ''} · {transport}"

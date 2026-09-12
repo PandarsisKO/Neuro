@@ -1,3 +1,5 @@
+> PARKED UNTIL FOUNDATION CLOSEOUT — first major product mission afterward. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+
 # Transcript Intelligence & Research State — evaluation and ladder
 
 *Filed 2026-09-10 against Kyle's brief on two connected goals: better organisation of research state, and cheaper

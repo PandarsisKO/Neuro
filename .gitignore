@@ -15,4 +15,6 @@ data/backups/
 _fixture_src/
 _update.tgz
 _to_delete/
+VIDEOS/
+data_backup_*/
 !tests/fixtures/db/*.db

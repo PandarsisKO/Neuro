@@ -32,6 +32,7 @@ def _fresh(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "fake_ai", True)
     monkeypatch.setattr(settings, "daily_budget", 1000)
     monkeypatch.setattr(settings, "ai_profile", "local")
+    monkeypatch.setattr(settings, "local_api_fallback", True)
     monkeypatch.setattr(settings, "claude_code_bin", "claude")
     monkeypatch.setattr(settings, "claude_code_model", None)
     monkeypatch.setenv(CC.FAKE_ENV, "ready")
@@ -259,16 +260,23 @@ def test_missing_binary_and_cloud_profile(monkeypatch, tmp_path):
     assert usage.avoided_this_month() == 0.0
 
 
-def test_api_surfaces_never_block_on_the_probe(monkeypatch, tmp_path):
-    """/api/health and /api/usage return at once with 'checking' while the probe runs in the background; the router waits."""
+def test_api_surfaces_do_not_start_a_hidden_probe(monkeypatch, tmp_path):
+    """Read-only API surfaces report cached state; only Re-check or real work may start the CLI."""
     _real(monkeypatch, tmp_path, "hang")
     monkeypatch.setattr(CC, "PROBE_TIMEOUT", 2.0)
     import time as _t
     t0 = _t.time()
-    h = CC.health(wait=False)
-    assert _t.time() - t0 < 0.5 and h["state"] == "checking" and CC.status_line().startswith("Claude Code: checking")
+    h = api.api_health()
+    u = api.api_usage()
+    assert _t.time() - t0 < 0.5
+    assert h["local_ai"]["state"] == u["local_ai"]["state"] == "unchecked"
+    assert CC._state["probing"] is False
+    assert CC.status_line(refresh=False).startswith("Claude Code: not checked")
+
+    started = CC.health(force=True, wait=False)
+    assert started["state"] == "checking" and CC._state["probing"] is True
     _t.sleep(3.0)                                            # the hung probe timed out in the background → a real verdict, no thread left probing
-    h2 = CC.health(wait=False)
+    h2 = CC.health_snapshot()
     assert h2["state"] == "error" and "timeout" in (h2.get("detail") or "") or h2["state"] in ("error",)
     assert CC._state["probing"] is False
 

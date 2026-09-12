@@ -1,3 +1,5 @@
+> PARKED IDEA. Priorities: DEVELOPMENT-OPERATING-SYSTEM.md and PRODUCT-SCHEDULER.md. Historical unfinished items are not a work queue.
+
 # The field-map rung — "I don't know what I don't know"
 
 Filed 2026-09-10, from Kyle, right after 0.57.0 shipped. Not built. This is the note that says why it is worth

@@ -82,9 +82,11 @@ class Settings:
     # already handled by `yt_delay` (4 s, randomised) rather than by how many workers exist, so 2 was throttling
     # his own machine rather than protecting anything. Revert with NEUROSEARCH_WORKERS=2.
     workers: int = field(default_factory=lambda: int_env("NEUROSEARCH_WORKERS", 3))
-    # L1 Local-First AI: ai_profile=local routes local-capable tasks through Claude Code (claude_code.py) with the API as fallback;
-    # cloud (default until verified live) keeps every call on the API. local_ai_workers = the size of the local pool (busy = wait, never spend).
+    # L1 Local-First AI: ai_profile=local routes eligible tasks through Claude Code. Local failure waits locally
+    # unless local_api_fallback is explicitly enabled; cloud keeps every call on the API.
     ai_profile: str = field(default_factory=lambda: (_env("NEUROSEARCH_AI_PROFILE", "cloud") or "cloud").lower())
+    # Foundation: local transport errors must not silently buy an API retry. Explicit opt-in only.
+    local_api_fallback: bool = field(default_factory=lambda: (_env("NEUROSEARCH_LOCAL_API_FALLBACK", "false") or "false").lower() in ("1", "true", "yes"))
     local_ai_workers: int = field(default_factory=lambda: int(_env("NEUROSEARCH_LOCAL_AI_WORKERS", "2") or 2))
     # 0.63.13 — the API analysis pool was ONE hard-coded thread, so work the user PAID to accelerate ran one job at
     # a time. Concurrency is not a rate limit: the spend-rate ceiling, the daily/weekly budgets and the account

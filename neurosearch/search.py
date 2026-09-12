@@ -188,9 +188,11 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
             break
     hits.sort(key=lambda h: -h["score"])
     use_rerank = settings.retrieval_rerank if rerank is None else rerank
+    from . import rerank as R
     if use_rerank and hits:
-        from . import rerank as R
         hits = R.rerank(query, hits)
+    else:
+        R.clear_last()
     return hits
 
 

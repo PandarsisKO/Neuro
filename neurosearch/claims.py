@@ -851,6 +851,9 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
         parsed = providers.invoke_structured("claims.extract", system=SYSTEM, messages=[{"role": "user", "content": user}], usage_kind="claims", project_id=project_id)
         calls += 1
         ran += 1
+        if transport == "job":
+            from .jobs import check_cancel
+            check_cancel()                                  # the paid call ended; do not materialise a cancelled group
         model = getattr(providers.last_response(), "model", None)
         prov = {"extraction_hash": ih, "model": str(model or ""), "prompt_version": PROMPT_VERSION, "schema_version": "claim-set-v1",
                 "routing": providers.routing_json("claims.extract", model), "transport": transport}
@@ -889,7 +892,10 @@ def extract(project_id: str, cands: list[dict[str, Any]] | None = None, transpor
             if knowledge.add_target(project_id, tgt.get("question") or "", topic=tgt.get("topic"), sufficiency=tgt.get("sufficiency") or "corroborative",
                                     preferred_classes=tgt.get("preferred_classes") or [], closure=tgt.get("closure"), origin="model", provenance=prov):
                 targets += 1
-    for c in cands:
+    for n, c in enumerate(cands):
+        if transport == "job" and n % EXTRACT_GROUP == 0:
+            from .jobs import check_cancel
+            check_cancel()                                  # assessment is $0 but can be large on an old backlog
         assess(c["id"])
     db.kv_set(f"claims:last_extract:{project_id}", str(time.time()))
     left = max(0, len(cands) - (ran * EXTRACT_GROUP)) if more else 0
