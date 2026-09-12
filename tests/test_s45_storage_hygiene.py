@@ -28,8 +28,9 @@ def test_every_connection_gets_bounded_storage_pragmas(fresh):
     conn = db.connect()
     assert conn.execute("PRAGMA cache_size").fetchone()[0] == -db.SQLITE_CACHE_KIB
     assert conn.execute("PRAGMA temp_store").fetchone()[0] == 2
-    # SQLite may cap mmap on a platform, but it must be enabled rather than left at the measured default of zero.
-    assert conn.execute("PRAGMA mmap_size").fetchone()[0] > 0
+    # The value is an explicit policy: 0 after the 2026-09-12 FTS5 sleep/wake investigation, rather than an
+    # accidental platform default. Keep the test coupled to the configured value so a future change is deliberate.
+    assert conn.execute("PRAGMA mmap_size").fetchone()[0] == db.SQLITE_MMAP_BYTES
 
 
 def test_measured_indexes_exist_and_cover_their_leading_predicates(fresh):
