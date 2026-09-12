@@ -7,10 +7,10 @@ R9 is the admitted speed rung after the R8 immediate evidence checkpoint. The be
 On 2026-09-12, Homebrew installed Ollama 0.33.3 and a local Ollama service was started on loopback. Its model cache is user-local (`~/.ollama/models`) and is not repository content. This supersedes the 2026-09-11 preflight statement that a runtime and weights were unavailable. Re-runnable probes and the compact JSON scorecard are in `evals/r9/`; the frozen retrieval fixture remains under `tests/fixtures/golden/retrieval/`.
 
 At the current checkpoint, the declared 70B candidate is downloading as the detached launchd job
-`com.neuro.r9pull70` (`ollama pull llama3.1:70b`), with output in `/tmp/neuro-r9-pull-70b.err`. When
-`ollama list` registers it, run `evals/r9/long_window_probe.py --model llama3.1:70b`, record the reported actual
-`prompt_eval_count`, `prefill_seconds`, `generation_seconds`, and `reported_total_seconds`, then pull and run the same
-probe for `gpt-oss:120b`. The pull process is external model-cache state and must never be committed.
+`com.neuro.r9pull70` (`ollama pull llama3.1:70b`), with output in `/tmp/neuro-r9-pull-70b.err`. The chained job
+`com.neuro.r9chain` waits for that model, runs the long-window probe, pulls `gpt-oss:120b`, and runs the second probe;
+outputs will be `/tmp/neuro-r9-long-70b.json` and `/tmp/neuro-r9-long-120b.json`. The pull process is external
+model-cache state and must never be committed.
 
 The acceptance criteria remain those frozen in `SPEED-MISSION.md` §R9. An embedding model is eligible only when p50 query latency is below 50 ms, recall@10 is at least 0.9000, and MRR is at least 0.863835 (within 5% of the 0.9093 reference). Passing a latency probe alone never authorizes an application change or corpus re-embed. `bge-m3` clears the full isolated fixture gate and is selected as a candidate for a later full-space local migration; the production corpus remains unchanged until its versioned migration and backfill exist.
 
