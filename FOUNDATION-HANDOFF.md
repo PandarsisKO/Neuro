@@ -163,6 +163,11 @@ Health/Performance observation, resolve any reported failure, then admit Transcr
 retention sample continues without blocking this ladder. R9 is
 preflighted and awaits a supported local runtime and weights. `PRODUCT-SCHEDULER.md` is authoritative.
 
+Closeout observation boundary: live `/api/version` verified `0.63.43` and `fake_ai=false`; protected `/api/health`
+correctly returned HTTP 401. The existing browser performance tab was unresponsive to automation and a new tab was
+blocked by the browser client. Do not read credentials or the live database around this boundary; obtain the normal
+authenticated Health-console snapshot and append it to the closeout report.
+
 R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
 bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable
 across that hour. The 30-day retention sample and live memory/query-plan observations remain open.
