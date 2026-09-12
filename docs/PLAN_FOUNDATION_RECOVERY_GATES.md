@@ -53,6 +53,12 @@ retention decision waits for the complete sample, but passive collection does no
 changes or deletes job-event evidence. No retention cutoff is admitted early. The cold quality optimization is
 measurement-triggered, not a parallel project.
 
+Evidence checkpoint 2026-09-11 17:28 PT: copied backups `neurosearch-20260911-1628.db` and
+`neurosearch-20260911-1728.db` both passed `PRAGMA integrity_check`; both contained `sqlite_stat1`, 161,831 pages
+at 4,096 bytes, and 662,859,776 bytes on disk. Both contained 105,048 `job_events` rows spanning the same recorded
+range and 4,394 distinct jobs. No event growth or file growth was measurable across that hourly pair. This is an
+initial observation, not the 30-day retention decision.
+
 ## Phase 1/2 closeout candidate — 0.63.39
 
 - Read-only Health, Usage, backlog and staleness paths now call `claude_code.health_snapshot()`. A cold or stale

@@ -60,6 +60,9 @@ These are bounded gaps found during the post-0.63.37 review. They are admitted a
    The five recordings remain tracked and on disk; earlier text claiming they were removed from the index was wrong.
    Resolve the lock through the approved Git-recovery step before an index-only removal. Review the ignored database
    backup and `_to_delete/` journals separately. Bind the next release artifact to a commit once Git is usable.
+6. **R8 evidence checkpoint — observed 2026-09-11 17:28 PT.** Copied verified backups at 16:28 and 17:28 both pass
+   integrity, contain `sqlite_stat1`, and are byte-identical in size (662,859,776 bytes) with 105,048 job-event rows
+   and 4,394 distinct jobs. No growth was measurable across that hour. The 30-day sample remains open.
 
 The next execution order is 0.63.39 delivery/verification → immediate R8 evidence → R9 → R4. The 30-day job-event
 sample continues alongside those measurement/design stages; no deletion or retention cutoff is admitted before it

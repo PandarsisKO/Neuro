@@ -51,7 +51,7 @@ Consult FOUNDATION-HANDOFF.md for actual test results and whether these changes 
 ## Known limits and unfinished work
 
 1. Historical outcome_unknown attribution is NOT repaired or fully explained. HARDENING's 62 local unknown rows and lease-expiry hypothesis remain evidence to investigate. The available server log has no lost-lease/heartbeat-failure/recovery messages establishing that cause. Do not relabel unknown results as completed, widen sweeps, or repurchase work to hide the issue.
-2. Terminal/orphan invocation cleanup and scheduled WAL checkpointing ALREADY exist. R8 indexes/pragmas/statistics are implemented from copied-backup measurements; live verification and an evidence-preserving job-event retention decision remain. No second reaper is needed.
+2. Terminal/orphan invocation cleanup and scheduled WAL checkpointing ALREADY exist. R8 indexes/pragmas/statistics are implemented from copied-backup measurements; the first 16:28→17:28 backup pair passed integrity with `sqlite_stat1` present and no file/event growth. Live memory/query-plan observations and the evidence-preserving job-event retention decision remain. No second reaper is needed.
 3. General durable interactive work units (R4), their interruption/compatibility abuse gate, bounded per-unit concurrency (R5) and its gate are unfinished. Job deduplication is not proof that completed windows survive an incomplete parent. Stored partial external batch results are not a completed source.
 4. R9 local-runtime/embedding measurements on the M3 Max have not been run. No new model, store, framework or embedding threshold was adopted.
 5. The Phase 1/2 cross-cutting suite is now complete in the prepared 0.63.39 candidate; delivery and one bounded live

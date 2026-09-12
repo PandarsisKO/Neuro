@@ -122,3 +122,7 @@ Next: deliver and live-verify 0.63.39, record Phase 1/2 closed, then collect R8'
 query-plan and cold/warm evidence. Begin the 30-day job-event sample without freezing unrelated measurement work.
 Then follow R9 → R4 → recovery abuse gate → R5 → concurrency gate → R6 → R7 → formal closeout → Transcript
 Intelligence. `PRODUCT-SCHEDULER.md` is authoritative; parked mission files are not assignments.
+
+R8 evidence checkpoint: copied verified backups from 16:28 and 17:28 PT both passed integrity; both were 662,859,776
+bytes with `sqlite_stat1`, 161,831 pages, 105,048 job-event rows and 4,394 distinct jobs. No growth was measurable
+across that hour. The 30-day retention sample and live memory/query-plan observations remain open.
