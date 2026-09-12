@@ -1,6 +1,6 @@
 # R9 local-runtime scorecard — 2026-09-12
 
-## State: R9(a) and R9(b) decisions complete; R9(c) remains open
+## State: R9(a) and R9(b) decisions complete; R9(c) explicitly deferred
 
 R9 is the admitted speed rung after the R8 immediate evidence checkpoint. The benchmark uses an isolated temporary database and the frozen retrieval fixture. It never opens, queries, changes, or re-embeds the live database.
 
@@ -48,16 +48,17 @@ The adopted model is a routing candidate only; no production classifier or provi
 
 ## (c) Findings and claims extraction
 
-**Running as of 2026-09-12 16:12 PT.** Candidates remain a 70B Q4 model and gpt-oss-120b. Record prompt prefill and
-generation separately; adopt only if total wall clock beats the 10.9-second API reference and the response is valid
-JSON with `findings` and `claims` arrays. No findings or claims routing changes are allowed before that evidence
-exists. The first pull attempt hit inconsistent Ollama partial-cache
+**Deferred 2026-09-12 16:38 PT.** The 70B pull stalled at approximately 29 KB/s with an ETA beyond 99 hours, so the
+external dependency was released without deleting its partial cache. Revisit only when the model is locally available:
+record prompt prefill and generation separately; adopt only if total wall clock beats the 10.9-second API reference and
+the response is valid JSON with `findings` and `claims` arrays. The first pull attempt hit inconsistent Ollama partial-cache
 metadata; the missing reversible segment markers were reconstructed without deleting the downloaded blob, and the
 detached pull resumed from a fresh 42 GB layer download.
 
 ## Remaining R9 arms
 
-Long-window findings/claims measurement remains open and must be recorded here and in `HARDENING.md`. The short
+Long-window findings/claims measurement is deferred with the numeric trigger above and must be recorded here and in
+`HARDENING.md` when revisited. The short
 classification decision is closed: Llama 3.1 8B is the only local candidate that clears the speed and validity gates;
 the other three are rejected. No findings or claims routing changes are authorized until R9(c) is measured. A negative
 result remains a valid closeout: retain the present provider path rather than compromising the frozen quality or latency

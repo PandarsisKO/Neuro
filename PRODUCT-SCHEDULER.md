@@ -4,7 +4,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-12. This is
 
 ## NOW — one active effort
 
-Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark remains open. R8 retention is deliberately deferred to the non-destructive observation trigger after 2026-10-11 17:28 PT and is non-blocking. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark is explicitly deferred after an external 70B pull stalled; its exact revisit trigger is in `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`. R8 retention is deliberately deferred to the non-destructive observation trigger after 2026-10-11 17:28 PT and is non-blocking. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 
 The design-system work is currently at D0 (instruments frozen) and is subordinate to this gate. Its next rung is a
 read-only rendered evidence audit (D1), documented in `DESIGN-MISSION.md`; it must not displace R9(c) or start T1.
@@ -21,11 +21,11 @@ do not silently delete them.
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Complete R9(c), or record an owner-approved deferral with the mission's numeric revisit trigger; see
+1. Begin T1's versioned-vector measurement slice while preserving R9(c)'s numeric revisit trigger; see
    `docs/R9-ADMISSION-2026-09-11.md` and `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 2. Continue the deliberately deferred, non-blocking R8 retention observation; revisit after 2026-10-11 17:28 PT and admit no retention cutoff before then.
-3. Only then begin T1's versioned-vector measurement slice in the existing production `text-embedding-3-small` space;
-   `bge-m3` is reserved for a later full-space migration gate. See `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
+3. Continue D1's read-only rendered evidence audit after the T1 slice is bounded; `bge-m3` remains reserved for a
+   later full-space migration gate. See `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.

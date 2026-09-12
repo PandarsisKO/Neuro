@@ -1,10 +1,11 @@
 # Transcript Intelligence T1 admission — 2026-09-12
 
-## State: design complete; implementation awaits the final pre-T1 gate
+## State: T1 first schema slice in progress
 
 Foundation closed through R7 with an authenticated live observation on 2026-09-12. Transcript Intelligence is now
-the active product program. Its first rung, T1 has a defined shared-space design, but implementation remains gated on the
-complete pre-T1 audit. The design reconciliation is recorded in `docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
+the active product program. Its first rung, T1 has a defined shared-space design. R9(c) is explicitly deferred with the numeric revisit trigger in
+`docs/PRE-T1-GATE-AUDIT-2026-09-12.md`. The design reconciliation is recorded in
+`docs/T1-DESIGN-RECONCILIATION-2026-09-12.md`.
 
 R9(a) is complete in an isolated fixture: Ollama 0.33.3 runs on loopback and `bge-m3` (1024 dimensions) clears
 the frozen latency, recall@10, and MRR gates. `nomic-embed-text` was rejected on MRR. The live database was not opened, queried,
@@ -14,9 +15,12 @@ in `docs/R9-ADMISSION-2026-09-11.md`. T1's first derived-object vectors stay in 
 
 R9(b) is also complete. The fair 256-token-cap classification probe adopted Llama 3.1 8B (343 ms p50, 15/15 valid)
 and rejected Qwen3 8B, Qwen3 14B, and gpt-oss-20b Q4 on the measured speed and/or validity gates. R9(c)'s real
-15k-token findings/claims benchmark remains open. R8 retention is deliberately deferred to its non-destructive
+15k-token findings/claims benchmark is explicitly deferred after the external 70B pull stalled; its numeric revisit
+trigger is recorded in the pre-T1 audit. R8 retention is deliberately deferred to its non-destructive
 observation trigger after 2026-10-11 17:28 PT and does not block T1.
-Follow `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` before starting the implementation slice below.
+The first bounded schema slice is now underway: additive metadata columns and typed fail-open read/write/invalidation
+helpers have been added to both derived-object tables, with focused coverage in `tests/test_t1_vector_metadata.py`.
+No live database was opened or re-embedded.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with

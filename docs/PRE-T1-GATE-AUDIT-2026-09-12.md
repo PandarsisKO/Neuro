@@ -1,6 +1,6 @@
 # Pre-T1 gate audit — 2026-09-12
 
-## Verdict: do not begin T1 implementation yet
+## Verdict: T1 implementation may begin after the R9(c) deferral recorded below
 
 The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 before Transcript Intelligence. Foundation R4–R7 and its formal authenticated closeout are complete. That does not make every earlier measurement requirement complete.
 
@@ -11,7 +11,7 @@ The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 befo
 | R8 retention decision | Deliberately deferred, non-destructive observation | The 30-day `job_events` sample has not elapsed. Revisit after **2026-10-11 17:28 PT** with growth, consumers, and evidence-preserving options; no rollup, archive, or deletion is authorized before then. This is intentionally non-blocking under the existing scheduler. |
 | R9(a) embeddings | Complete | `bge-m3` selected after frozen latency, recall@10 and MRR gates; Nomic rejected. |
 | R9(b) short classification/triage | Complete | Fair 256-token-cap reruns produced a complete verdict for every declared candidate: Llama 3.1 8B adopted (343 ms p50, 15/15 valid); Qwen3 8B, Qwen3 14B, and gpt-oss-20b rejected on the measured speed and/or validity gates. |
-| R9(c) findings/claims extraction | **Open** | The declared 70B Q4 and MoE candidates still need one real 15k-token window, separately reporting prefill and generation, returning valid `findings`/`claims` JSON, and meeting the 10.9-second API gate. |
+| R9(c) findings/claims extraction | **Explicitly deferred, non-blocking** | The 70B pull stalled at approximately 29 KB/s with an ETA beyond 99 hours. Revisit only when locally available: one real 15k-token window must separately report prefill/generation, return valid `findings`/`claims` JSON, and meet the 10.9-second API gate. |
 | Foundation R4, R4 recovery gate, R5, R5 concurrency gate, R6, R7, formal closeout | Complete | 0.63.40–0.63.43 and `docs/FOUNDATION-CLOSEOUT-2026-09-12.md`. |
 
 ## Phase-by-phase confirmation
@@ -22,7 +22,7 @@ The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 befo
 | Phase 1 — measurement environment | Complete | R8 copied-backup measurement and the loopback Ollama R9 environment are recorded; live `data/neurosearch.db` was not opened. |
 | Phase 2 — systemic regression gates | Complete | 0.63.39 request-path purity, test isolation, recovery and release checks. |
 | Phase 3 — R8 storage hygiene | Immediate gate complete; retention deferred | Statistics, WAL policy and indexes are shipped. The 30-day `job_events` observation has a dated revisit trigger and no destructive cutoff. |
-| Phase 4 — R9 local runtime | R9(a)/(b) complete; R9(c) open | `bge-m3` selected for a later full-space migration; Llama 3.1 8B adopted for short classification; long-window extraction is still measured. |
+| Phase 4 — R9 local runtime | R9(a)/(b) complete; R9(c) deferred | `bge-m3` selected for a later full-space migration; Llama 3.1 8B adopted for short classification; long-window extraction has an exact numeric revisit trigger. |
 | Phase 5 — R4 durable work units | Complete | 0.63.40 and its 66-case recovery abuse gate. |
 | Phase 6 — R4 recovery gate | Complete | Graceful shutdown and mutation replay/idempotency evidence in `docs/PLAN_FOUNDATION_RECOVERY_GATES.md`. |
 | Phase 7 — R5 bounded concurrency | Complete | 0.63.41 deterministic concurrency gate. |
@@ -32,8 +32,8 @@ The governing roadmap in `DEVELOPMENT-OPERATING-SYSTEM.md` places R8 and R9 befo
 
 ## Consequence
 
-T1 must remain at design/admission preparation until R9(c)'s remaining benchmark arm is complete or deliberately deferred
-with its numeric revisit trigger. R8 is already deliberately deferred with the dated observation trigger above; it remains
+R9(c) is deliberately deferred with its numeric revisit trigger: complete the same fixture only when the model is local,
+then require valid `findings`/`claims` arrays and total latency below 10.9 seconds. R8 is already deliberately deferred with the dated observation trigger above; it remains
 non-blocking and no retention mutation is admitted. R9(a)'s embedding decision and R9(b)'s complete candidate scorecard
 are necessary for T1, but R9(c) still requires the declared long-window measurement before the pre-T1 gate is closed.
 
