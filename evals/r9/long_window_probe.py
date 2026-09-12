@@ -28,7 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--text-file", type=Path, default=DEFAULT_TEXT)
-    parser.add_argument("--target-chars", type=int, default=60000)
+    parser.add_argument("--target-chars", type=int, default=70000)
     parser.add_argument("--num-predict", type=int, default=256)
     args = parser.parse_args()
 
