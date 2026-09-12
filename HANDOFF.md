@@ -39,6 +39,11 @@ Before editing, inspect current Git state and the Foundation handoff. Record the
 Current custody note: `.git/index.lock` is absent and `git ls-files 'VIDEOS/**'` returns zero files. The recordings
 remain on local disk and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/` to a snapshot.
 
+The worktree contains a preserved, uncommitted Claude-side Bootstrap, resources, UI and test set
+(`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`, `tests/test_k3_resources.py`,
+`tests/test_s14_fix_pass.py`); its focused suite is 73 passed. Do not stage or overwrite that set while continuing
+R9/T1. The tracked copy of Claude's design audit is `docs/T1-DESIGN-AUDIT-2026-09-12.md`.
+
 ## Protect the live app
 
 Never open or copy the live `data/neurosearch.db`, even read-only. Never delete it. Never run tests, doctor, eval, release-check or a second server against it. Use the running app's supported API for observations. For raw SQL use a verified backup copied into a private temporary workspace, never the original backup in place.
