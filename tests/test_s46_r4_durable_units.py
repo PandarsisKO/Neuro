@@ -21,6 +21,13 @@ def fresh(tmp_path, monkeypatch):
     data = tmp_path / "data"
     data.mkdir()
     monkeypatch.setattr(settings, "data_dir", data)
+    # Module-level environment assignments are too late when another test has
+    # already imported the cached settings object. Keep this suite deterministic
+    # in every collection order and prevent accidental live-provider calls.
+    monkeypatch.setattr(settings, "fake_ai", True)
+    # Direct `jobs.run_job` tests leave the thread-local execution marker set;
+    # clear it before this interactive path decides whether to fan out windows.
+    jobs._current.job_id = jobs._current.run_id = None
     db.close_thread_connection()
     db.init_db()
     yield
