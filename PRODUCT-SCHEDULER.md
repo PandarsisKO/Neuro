@@ -150,6 +150,11 @@ Claude's F2 browser/W1 design work: only `neurosearch/findings_quality.py`, its 
 documentation are touched. The full suite and commit-bound release gate are required before this bounded fix closes;
 no new service or unmeasured threshold change is admitted.
 
+The 12M findings-quality ceiling is now released at `fd476f5`. Full pytest passed 1,364 tests (one existing Starlette
+warning), and the deterministic release gate passed at app `0.63.61`; artifact:
+`evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. This bounded Codex rung is closed. Reassess the
+admitted queue at the next safe checkpoint; do not change the ceiling again without a new measured corpus trigger.
+
 The validated current tree is also backed up remotely on `backup/2026-09-13-clean` (snapshot commit
 `aff2e407b5faae5ee8d193168bfc094f9dfabf7f`). A normal `main` push is blocked by retired historical `VIDEOS/` blobs and
 was not retried destructively; local history remains intact pending an explicit history-rewrite decision.

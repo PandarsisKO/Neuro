@@ -837,6 +837,11 @@ changed. The large project completes without the 8M partial warning; a fresh cop
 on stable cache hits, with 1,776 duplicate findings. Focused quality tests pass (42); the full suite passes 1,364
 tests with one existing Starlette warning. The commit-bound release gate is being run after this checkpoint.
 
+The gate is now closed: full pytest passed **1,364 tests** with one existing Starlette deprecation warning, and
+`release-check --no-pytest` passed every deterministic proof at `0.63.61 @ fd476f5`. Artifact:
+`evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. The 12M ceiling rung is complete and the next
+Codex action is a fresh priority checkpoint; no further findings-quality changes are admitted without new evidence.
+
 ## GitHub backup checkpoint — 2026-09-13
 
 The ordinary `git push origin main` could not complete because the historical graph contains several gigabytes of

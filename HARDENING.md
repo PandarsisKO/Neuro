@@ -1975,3 +1975,8 @@ blocking semantics are unchanged. Against the verified backup, the large 16,450-
 cache hits took 0.054 s. The exact comparison showed identical clusters at 12M and 16M (11.862 s and 11.937 s), so
 12M is the smallest measured complete ceiling for the current corpus. The revision-keyed cache and exact cap remain in
 place; this is a bounded completeness fix, not an unbounded quadratic expansion.
+
+The implementation closeout passed the full suite (**1,364 tests**, one existing Starlette deprecation warning) and the
+commit-bound deterministic release gate at `0.63.61 @ fd476f5`. Artifact:
+`evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. All frozen Tier 1, retrieval, cache, economic,
+frontend, schema, and backup/restore proofs remained green.
