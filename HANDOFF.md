@@ -1356,3 +1356,56 @@ Claude's audit instance is actively running from the checkout and keeps its copi
 unexpected root entry, causing the release test to fail. Codex added `data-audit` to the hygiene allowlist with an
 explicit isolation comment. `repo-check` and the affected release test now pass. Claude's active uncommitted frontend,
 package, and UI-test changes were not staged or modified.
+
+## Design ladder — Rung W2 landed (Findings review hub) + startup-crash fix — 2026-09-13
+
+Landed on `main` at `d5ee795`, finishing work Codex started before hitting its usage limit. Codex's own
+combined F2/W1 audit-instance pass had found current `main` crashing at startup (`ReferenceError:
+lastClassified is not defined` in `sources.js`, blocking every project from rendering) and had begun
+implementing Rung W2 before running out of usage mid-edit. Picked up the uncommitted working-tree state,
+reviewed it in full, verified and fixed one gap, ran it through the same test discipline as every other
+rung this session, and landed it.
+
+**Startup crash.** Root cause: `globalThis.lastRev = null, ticksSinceFull = 0;`-style comma-assignments
+(three sites, `research.js` ×2 and `sources.js` ×1) only declare the *first* name as a `globalThis`
+property in a strict ES module — the second name becomes a bare, undeclared identifier, which throws on
+its first read rather than silently creating an implicit global (the old sloppy-mode behavior these lines
+were written assuming). Codex's fix split each into two explicit `globalThis.` assignments and added a
+permanent regression test in `test_s5_ui_syntax.py` (`test_module_state_assignments_do_not_create_implicit_globals`)
+that scans all module JS for the pattern. Re-verified no other instances of the pattern remain anywhere in
+`neurosearch/web/js/`.
+
+**Rung W2** (H-3/RC-A/RC-C, scoped in `docs/design-audit/2026-09-13-b85c222/w2-scope.md`): Findings' five
+independent banner-shaped regions — stale-source triage, low-value sweep, quality/repeat check,
+reserve-promotable, and the legacy-suggestions + analysing-in-progress pair that lived in `#suggestedWrap`
+— now render as collapsible `<details class="review-item">` entries inside one `#findingsReview` hub
+(`reviewItem()`/`syncFindingsReview()` in `research.js`), each showing its own reason text before its
+actions. Checked the implementation against the w2-scope doc's 9-item "must stay reachable" checklist:
+all 9 are present — rebuild variants, retry, accept, sweep review/dismiss, quality review, reserve
+review/approve-all, legacy re-analyse, first-wave start-now. The legacy re-analyse control is now a real
+`<button>` routed through `analyzeChooser(true)` instead of the bare `<a>` link W1 step 4 had already
+fixed for disclosure — closing the small "not even a button" inconsistency the scope note flagged. The hub
+self-hides when nothing needs attention and shows a live count otherwise.
+
+**Bug found and fixed while reviewing:** the new count pill (`#findingsReviewCount`) used `class="tag"`,
+but the only `.tag` CSS rule was scoped `.plan .tag{...}` — so it, and several *pre-existing* bare `.tag`
+usages already in `sources.js`/`research.js` (the "under-read", "provisional", and "stale source" tags),
+rendered completely unstyled outside the Plan tab. Promoted the base rule to bare `.tag{...}`; the
+`.high`/`.medium`/`.blocking`/`.soon`/`.now` color modifiers stay scoped to `.plan` since nothing outside
+Plan currently combines `.tag` with them (verified by grep before changing anything). Pure specificity
+widening — nothing that worked before stops working.
+
+`UI_VERSION` bumped to `0.63.66` (4-way sync, continuing Codex's in-progress bump). Ran the targeted
+design/frontend gates plus the full `n1`-`n9` findings-adjacent suite and `s3`/`s37`: 148 passed. The one
+failure seen in a broader run (`test_s43_foundation`'s native-worker-restart timing test) reproduces
+identically with these changes `git stash`ed out — confirmed pre-existing/environment, not a regression.
+
+Left untouched: `neurosearch/t3.py` and `tests/test_t3_adversarial.py`, which were also modified in the
+working tree but are Codex's own separate, unrelated in-progress T3 work — not part of this rung, not
+reviewed or tested by this pass, left exactly as Codex left them for it to resume.
+
+**Still open:** W2's own behavioral gate (does every priced action really render reachable within ≤2
+clicks on the actual rendered app, per the ladder's own "rung most likely to hide a priced action" warning)
+has not had a fresh visual pass since this landing — Codex's browser check was against the pre-fix,
+pre-.tag-scope-repair build. Worth a look next time the audit instance is up, alongside whatever's left of
+F2/W1's re-scoring.
