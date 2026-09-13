@@ -1,6 +1,6 @@
 # Transcript Intelligence T1 admission — 2026-09-12
 
-## State: T1 first schema slice in progress
+## State: T1 measurement slice in progress
 
 Foundation closed through R7 with an authenticated live observation on 2026-09-12. Transcript Intelligence is now
 the active product program. Its first rung, T1 has a defined shared-space design. R9(c) is explicitly deferred with the numeric revisit trigger in
@@ -19,7 +19,8 @@ and rejected Qwen3 8B, Qwen3 14B, and gpt-oss-20b Q4 on the measured speed and/o
 trigger is recorded in the pre-T1 audit. R8 retention is deliberately deferred to its non-destructive
 observation trigger after 2026-10-11 17:28 PT and does not block T1.
 The first bounded schema slice is now underway: additive metadata columns, typed fail-open read/write/invalidation
-helpers, a low-lane durable backfill adapter, a measured versioned corpus-space attestation, and a read-only
+helpers, a low-lane durable backfill adapter, a measured versioned corpus-space attestation, a project-relative
+similarity distribution engine, and a read-only
 `/api/projects/{id}/transcript/coverage` scaffold have been added to both derived-object tables, with focused coverage
 in `tests/test_t1_vector_metadata.py`. The endpoint reports explicit `measurement_pending` until attestation exists;
 it never invents semantic coverage.
