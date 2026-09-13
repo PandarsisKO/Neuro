@@ -1914,3 +1914,5 @@ The post-cleanup commit-bound release gate also passes at `0.63.59 @ a825175`; a
 The full suite then passed **1,364 tests** with one existing Starlette deprecation warning. The S52 test now calls
 the endpoint function against its isolated connection, avoiding the session TestClient's unrelated portal-thread
 connection retained across focused modules.
+Final commit-bound `release-check --no-pytest` passes at `0.63.59 @ 95e2f3f`; artifact:
+`evals/release/release-check-0.63.59-95e2f3f-20260913-123840.json`.

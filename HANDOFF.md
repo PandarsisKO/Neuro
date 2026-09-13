@@ -683,3 +683,6 @@ The post-cleanup commit-bound release gate is green at `0.63.59 @ a825175`; arti
 The full suite passes **1,364 tests** with one existing Starlette deprecation warning. The S52 contract test was
 made independent of the session-scoped TestClient's portal-thread connection, so its isolated temporary database
 is the connection under test even after the entire suite has run.
+
+Final commit-bound `release-check --no-pytest` passes at `0.63.59 @ 95e2f3f`; artifact:
+`evals/release/release-check-0.63.59-95e2f3f-20260913-123840.json`.
