@@ -1214,3 +1214,10 @@ and boundaries before any persistence, selector, T4, or user-facing trust. Claud
 includes phone/ZIP/address identifier rejection, bare cue rejection, numeric subspan protection, explicit ISBNs,
 entity/URL punctuation, and markdown empties. This strengthens the extractor while the larger seeded hand-label gate
 remains pending.
+
+## State-file hygiene repair — 2026-09-13 15:00 PT
+
+The full suite exposed repository hygiene rejecting the superseded root `STATE-OF-THE-APP-2026-09-13-1436.md` after
+`STATE-OF-THE-APP-2026-09-13-1450.md` became authoritative. The old state was moved to
+`docs/archive/state/STATE-OF-THE-APP-2026-09-13-1436.md`; no content was lost. This keeps one current root
+orientation file and lets `repo-check`/release-check enforce the boundary.

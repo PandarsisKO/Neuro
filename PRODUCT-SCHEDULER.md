@@ -305,3 +305,8 @@ seeded/adversarial hand-label gate closes.
 Seven new deterministic negative/boundary tests protect T3 from phone/ZIP/address identifiers, bare cues, numeric
 subspan double counts, and punctuation leaks. Focused T3 coverage is 15 passed; no scheduling or downstream trust is
 admitted.
+
+## State-file hygiene repair — 2026-09-13 15:00 PT
+
+Moved superseded `STATE-OF-THE-APP-2026-09-13-1436.md` into `docs/archive/state/` so the release hygiene gate sees
+one authoritative root state file. No scheduler behavior changed.

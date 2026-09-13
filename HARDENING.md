@@ -2088,3 +2088,9 @@ provider, queue, or UI path may rely on current provisional metrics.
 
 Added seven regression tests for identifier, duration, numeric-overlap, cue, entity, URL, and markdown-boundary
 false-positive paths. Focused T3 suite is 15 passed. Larger seeded hand-label review remains the admission gate.
+
+## State-file hygiene repair — 2026-09-13 15:00 PT
+
+Archived superseded root state `STATE-OF-THE-APP-2026-09-13-1436.md` under `docs/archive/state/` after the release
+hygiene gate correctly rejected multiple root orientation files. The current authoritative root is
+`STATE-OF-THE-APP-2026-09-13-1450.md`.
