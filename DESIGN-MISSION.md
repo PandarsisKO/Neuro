@@ -20,9 +20,9 @@ accessibility gates. Preserve feature-mission behavior and keep every change doc
 
 ## Ordering and handoff
 
-R9(c) remains the only open pre-T1 measurement. D1 may be prepared while it runs, but it must not change the active
-priority or start a T1 migration. Once R9(c) is closed or explicitly deferred with a numeric revisit trigger, the
-product scheduler owns the next rung. Claude and Codex should read this file, the newest `STATE-OF-THE-APP-*.md`,
+R9(c) is explicitly deferred with a numeric revisit trigger after its external pull stalled. D1 may be prepared while
+T1's measurement cohort is assembled, but it must not displace the active T1 rung. Claude and Codex should read this
+file, the newest `STATE-OF-THE-APP-*.md`,
 `PRODUCT-SCHEDULER.md`, and `HANDOFF.md` before continuing.
 
 ## Acceptance evidence
