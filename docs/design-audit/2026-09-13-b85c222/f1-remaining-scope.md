@@ -138,3 +138,33 @@ twice" is the stated reason, and it applies just as much to the `width:auto`/`di
 to the inline-style retirement. Recommend landing items 2–4 above, in that order (lowest to highest risk), as
 three more `f1-step2n`/`2o`/`2p`-style sub-units once it's safe to touch `index.html` again — then Rung F1 is
 genuinely closed and F2 (the `H-2` loading-state fix) can begin.
+
+## Addendum — 2026-09-13, after the frontend split landed
+
+Codex's frontend decomposition landed on `main` at `5f667a1` (then `6e81e36` for the closeout
+note), splitting the former single-file `neurosearch/web/index.html` into `index.html` (a
+302-line markup shell), `styles.css`, and nine JS modules under `neurosearch/web/js/`. Content is
+byte-identical, only relocated — confirmed by re-grepping all three remaining F1 targets against
+the new layout: all 14 `width:auto` sites and all 8 emoji-only buttons are present, unchanged,
+just in different files. `MAX_INLINE_STYLE_ATTRS` stays 301, counted across the new file set per
+the frontend-split HANDOFF entries.
+
+Both of items 2 and 3 (width:auto, icon sprite) have been rewritten against the new layout and
+verified by running them against a real copy of the current files:
+
+- **width:auto**: `.w-auto{width:auto}` now goes in `styles.css` (not an inline `<style>` block);
+  the 14 attribute swaps stay in `index.html`.
+- **icon sprite**: the `<symbol>` sprite and `.ic`/`.icon-sprite` CSS still go in `index.html` /
+  `styles.css`; the button-site conversions moved — `sourceDrawer`'s `group()` helper and the job
+  cancel/dismiss buttons are now in `js/research.js` (not `js/sources.js`, despite the name);
+  `discStatus`'s dismiss button is in `js/sources.js`. The glyph count itself was also corrected
+  while re-verifying: 5 sites use ✕ (not 6 as first estimated), 2 use ✓, 1 uses 📌 — still 8 total.
+
+Item 3, `display:none` → `hidden`, has not been re-scoped against the new layout yet — its JS
+toggle sites are now scattered across whichever module owns each surface, so it needs a fresh
+element-by-element pass once it's next in line, not a blind carry-forward of the old line numbers.
+
+Updated scripts: `f1_step2n_width_auto.py`, `f1_step2o_icon_sprite.py` — both re-verified clean
+against the split layout (301 → 287 inline `style=` attributes total, all 8 emoji buttons
+converted, no leftovers). Still not run against the real repo — that's the next step once Kyle
+confirms it's clear to proceed.
