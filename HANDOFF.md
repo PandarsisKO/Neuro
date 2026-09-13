@@ -1078,3 +1078,31 @@ an implementation: the derived read-only view preserves independent `extracted`,
 project-relative T1 distributions, and fails open when inputs are unavailable. It adds no UI, route, table, provider
 call, or live-data mutation. T2 implementation remains unadmitted until the state-model semantics are reviewed; if
 accepted, the next step is to implement only the existing T1 coverage seam and run the named gates.
+
+## Design ladder — Rung W1 step 3 landed: re-rank disclosure (H-5)
+
+Landed on `main` at merge commit `6a17b9e` (source `a086fb5` on branch `design/w1-step3-rerank-disclosure`,
+now deleted).
+
+"Re-rank" is one of the actions `ladder.md` names by name in its opening problem statement ("Rebuild /
+Re-analyse / Re-rank / Suggest / Re-check ..."), and it was the last of the five still fully
+undisclosed after steps 1-2: Sources' proposed-videos review has two "re-rank" buttons (scored and
+unscored states) that call `rvRerank()` -> `POST /api/collections/{id}/rank` -> the `rank_proposed`
+job -> `relevance.py`'s `rank_collection`, which calls the model in batches to score proposed videos
+against the project brief. Neither button had a `title`. Both now carry the same static-mode
+disclosure established in W1 step 1 ("uses your model budget"), plus what it actually scores against
+(titles & descriptions only — matching the card's own existing copy one line above, so the new text
+doesn't contradict what the surface already says).
+
+`UI_VERSION` bumped to `0.63.64` (4-way sync). No `MAX_INLINE_STYLE_ATTRS` change. Targeted suites
+(`test_s50_design_drift`, `test_s44_frontend_integrity`, `test_s5_ui_syntax`, `test_n9_source_drawer`):
+28 passed, before and after the merge. Worktree and branch removed cleanly, verified gone.
+
+**Rung W1 status:** all five named actions from `ladder.md`'s opening line (Rebuild, Re-analyse,
+Re-rank, Suggest, Re-check) now disclose their cost mode before commitment somewhere in their surface.
+Re-check (Sources' job-recovery banner) already had good disclosure before this rung started and was
+left untouched. Remaining scope is entirely the ladder's Human gate — re-scoring Sources/Chats/
+Findings/Plan's "What that will do" ratings needs a live or audit-instance click-through, the same
+limitation as F2's still-open browser-verification gate. No further code-only disclosure or
+button-role gaps are apparent from reading alone at this point; continuing further without the visual
+pass risks speculative churn rather than evidenced fixes.
