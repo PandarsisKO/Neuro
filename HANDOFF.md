@@ -172,3 +172,28 @@ restart this session wasn't positioned to trigger unprompted. Separately, its th
 the attribute via devtools produced correct `getComputedStyle` values without a visual repaint in this browser
 session — likely a screenshot-capture staleness quirk. Whoever restarts the audit instance next should do the
 before/after rendered check for this commit as the first order of business, before F1 continues to step 2.
+
+## Design ladder — F1 step 2a landed — 2026-09-13
+
+Step 2's first bounded sub-unit is done, on `main` at merge commit `f11fd57` (source commit `3e6b4c1` on branch
+`design/f1-step2`, now deleted). Fixes the base-input `width:auto` defect audit.md calls out by name: adds
+`input[type=checkbox],input[type=radio]{width:auto}` to the base CSS rule in `neurosearch/web/index.html`, then
+retires the six now-redundant inline `style="width:auto"` overrides on checkboxes (useWeb, inForce,
+srcGroupToggle, cwNeeds, cwGroupToggle, bootPick). This also silently fixed six other checkboxes that had no
+inline override at all and were rendering full-width before this landed — no HTML change needed for those, the
+base rule now covers them too. All 12 `<input type="checkbox">` elements in the app confirmed (via grep, not
+visual — see the rendered-verification gap noted above, still open) to resolve to `width:auto`; zero inline
+`width:auto` remains on any checkbox. `UI_VERSION` bumped to `0.63.45` in all three sites.
+`test_s50_design_drift.py`/`test_s44_frontend_integrity.py`/`test_s5_ui_syntax.py` pass (24 tests).
+
+**Deliberately deferred, not a defect:** the 19 `<select>` elements (17 have an inline `width:auto` override, 2
+don't — one `style="flex:1"`, one unstyled and currently full-width). Two of them don't fit this same pattern
+cleanly, and there's still no working rendered-visual-verification path in this environment to confirm a blanket
+select fix is safe, so this was left as its own future sub-unit rather than forced through.
+
+**Still remaining in F1 step 2:** the shared spacing/flex-row/type-scale/status-modifier utility classes and
+retiring inline styles on the ranked offender surfaces (Sources, Research, Jobs/Health/boot, Master Plan, per
+audit.md's ranking), the deferred `<select>` decision above, and the `style="display:none"` → `hidden`-attribute
+conversion. Step 3 (the inline SVG sprite) has not started. Per Kyle's serialization instruction, these proceed
+as further bounded sub-units, one at a time, each with its own worktree/commit/test/merge cycle — not as one
+large step-2 commit.
