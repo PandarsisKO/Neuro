@@ -1264,3 +1264,9 @@ manual exact-span gold labels. Do not persist or start T4 until per-kind floors 
 
 Fixed `_NUMBER` decimal-component leakage (`00` from `1.00`) and added a regression test; focused T3 is 16 passed.
 Evidence artifacts were refreshed. Manual gold review remains pending before persistence or T4.
+
+## T3 decimal-boundary release checkpoint — 2026-09-13 15:08 PT
+
+T3 decimal guard and refreshed evidence are committed at `f1533c6`; full pytest 1,383 passed, focused T3 16 passed,
+and release-check is green with artifact `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`. Continue
+with manual gold adjudication of the 60-row queue; persistence/T4 remain gated.

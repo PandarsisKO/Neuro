@@ -346,3 +346,8 @@ adjudication of the pending 60-row queue remains required.
 
 Numeric decimal boundaries are hardened and covered by focused tests; scheduler behavior is unchanged and downstream
 trust remains gated.
+
+## T3 decimal-boundary release checkpoint — 2026-09-13 15:08 PT
+
+T3 numeric boundary hardening is green at `f1533c6`; no scheduler behavior changed. Manual gold review remains the
+next gate.

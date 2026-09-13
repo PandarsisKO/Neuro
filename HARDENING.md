@@ -2132,3 +2132,8 @@ Corpus-driven cue narrowing is green under 1,383 tests and the deterministic rel
 
 Added a regression for fractional numeric subspan leakage and refreshed read-only evidence. Focused T3 is 16 passed;
 manual gold review remains required.
+
+## T3 decimal-boundary release checkpoint — 2026-09-13 15:08 PT
+
+Decimal subspan leakage is fixed and release-checked at `f1533c6`. The 60-row seeded queue still requires exact-span
+gold adjudication before downstream trust.

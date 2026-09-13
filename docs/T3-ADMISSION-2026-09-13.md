@@ -157,3 +157,9 @@ The seeded review surfaced one remaining numeric boundary error: `_NUMBER` could
 larger decimal (`00` from `1.00`). Its left boundary now rejects a preceding period, with a regression test. Focused
 T3 coverage is 16 passed. The sample and pending manifest were refreshed to match the committed extractor; downstream
 trust remains gated.
+
+## T3 decimal-boundary release checkpoint — 2026-09-13 15:08 PT
+
+Decimal-boundary hardening is committed at `f1533c6`; focused T3 is 16 passed, full pytest is 1,383 passed, and
+`repo-check` plus commit-bound release-check pass. Artifact: `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`.
+The seeded queue remains pending manual gold adjudication; no downstream trust or persistence is admitted.
