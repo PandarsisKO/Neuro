@@ -141,3 +141,15 @@ def test_t1_measurement_publishes_project_relative_distribution(t1_db):
     db.connect().commit()
     report = t1.measure_project(project_id, provider="openai", model="m", dimensions=2)
     assert report["status"] == "measured" and report["claims"]["vector_count"] == 1 and report["claims"]["distribution"]["p50"] == 1.0
+
+
+def test_t1_read_filters_status_version_and_dimension(t1_db):
+    project_id = db.create_project("T1 filters", "test")["id"]
+    rows = [("accepted", "v1", 2), ("rejected", "v1", 2), ("proposed", "old", 2), ("proposed", "v1", 3)]
+    for i, (status, version, dim) in enumerate(rows):
+        cid = f"c{i}"
+        db.connect().execute("INSERT INTO project_claims (id, project_id, text, status, created_at, updated_at, embedding_provider, embedding_model, embedding_dimensions, embedding_version, embedding) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                             (cid, project_id, "claim", status, db.now(), db.now(), "openai", "m", dim, version, np.zeros(dim, dtype=np.float32).tobytes()))
+    db.connect().commit()
+    out = db.load_versioned_derived_embeddings("project_claims", project_id, provider="openai", model="m", version="v1", dimensions=2)
+    assert [r["id"] for r in out] == ["c0"]
