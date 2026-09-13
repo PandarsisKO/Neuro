@@ -82,8 +82,9 @@ not mean safe to delete without evidence.
 - The historical `outcome_unknown` rows: candidate attribution prevents adapters from dropping run context,
   but no log evidence proves the old lease-expiry hypothesis. Observe fresh runs before relabeling anything.
 - Startup `pip install -e '.[dev]'` on every launch: convenient for self-updating dependencies, but it adds
-  startup latency and couples normal use to packaging/network state. Measure warm launch time and failures;
-  consider an install fingerprint only if this is material.
+  startup latency and couples normal use to packaging/network state. Measured exact warm command three times on
+  2026-09-13: 2.11–2.17 s with no failures. This is not currently material enough to justify changing the launcher;
+  revisit only if warm launch latency or install failures become user-visible.
 - `run-findings-haiku-test.command` and `run-haiku-comparison.command`: comparison helpers may be superseded by
   the current eval commands. Compare flags/output against `neurosearch eval` before archiving.
 - Large single-file UI: static gates reduce regressions, but parse/review cost and global namespace collisions

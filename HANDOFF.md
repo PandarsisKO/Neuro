@@ -1062,3 +1062,10 @@ checked-out source and runtime were `0.63.63`. Refreshed the editable install wi
 check at `0.63.63`. The remaining doctor warnings are historical structured-output, ambiguous-invocation, model-
 substitution, network, and optional-Reddit-credential records; those are retained for provenance and are not cleared
 as a cosmetic health change. `neurosearch repo-check` also passes with no findings.
+
+## Maintenance-friction measurement — startup editable install — 2026-09-13 14:12 PT
+
+The exact launcher command, `./.venv/bin/pip install -q -e '.[dev]'`, was timed three warm runs at 2.11–2.17
+seconds with no failures. This is not currently a material startup trigger, so the launcher remains unchanged; its
+self-update behavior continues to protect dependency/version drift. The corresponding vestigial-inventory item now
+has a measured revisit condition rather than an unbounded suspicion.
