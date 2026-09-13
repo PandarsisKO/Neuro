@@ -6,6 +6,11 @@
 
 Neuro Search should feel like a well-made research instrument: calm, precise, trustworthy, and dense when density helps.
 
+**Calm at first glance, powerful on demand.** The interface must never dump its entire internal state onto the
+screen at once, and it must never make the user excavate a simple answer through menus, tabs, drawers, and modals.
+Every layer of disclosure must earn the click it adds. See section 3's "Progressive disclosure without interaction
+tax" for the governing rule and interaction-depth heuristic this implies.
+
 The interface should make complex research feel smaller. Within about five seconds, a reasonable first-time user should understand:
 
 1. where they are
@@ -44,6 +49,67 @@ Do not restructure a feature whose mission explicitly locks its behavior or layo
 8. **Preserve uncertainty.** Weak, stale, partial, conflicting, or incomplete evidence must not look settled.
 9. **Real progress only.** A click acknowledges immediately. Show real counts, stages, queue state, or honest indeterminate progress. Never invent a percentage.
 10. **Default views are curated.** Surface no more than 3 to 5 priority items before the user asks for more.
+
+### Progressive disclosure without interaction tax
+
+Neuro currently tends to lay information, controls, metadata, warnings, and secondary detail directly onto the
+page all at once. The redesign must reveal information more intentionally — but the opposite failure is equally
+bad: hiding useful information behind layers of buttons, menus, tabs, drawers, and modals until a simple task
+requires five clicks.
+
+**Governing rule: surface conclusions and actions; collapse explanation and machinery; never collapse the result
+itself.**
+
+1. **The primary result should usually require zero clicks.** When Neuro already knows the thing the user came to
+   the surface to understand — what matters, current status, recommended next action, an important warning, a
+   plan recommendation, a research conclusion, whether something needs attention, whether a job succeeded or
+   failed — show it immediately. Do not make the user open a card or drawer merely to discover a result's primary
+   meaning.
+2. **Supporting explanation should usually be one reveal away.** Why this matters, why Neuro thinks this,
+   supporting evidence, what changed, secondary statistics, freshness reasoning, related Claims, source details,
+   and consequences of an action belong behind inline expansion, an accordion, a drawer, a popover, or a
+   contextual "See why" / "Details" control — chosen by the amount and importance of the information, never
+   defaulted to a modal.
+3. **Deep machinery may live another level down.** Provenance, evidence lineage, model/debug information, raw
+   Claim internals, job diagnostics, research diagnostics, historical state, and large filter/control sets can sit
+   two levels deep. A normal user should not have to traverse this layer to complete a normal workflow.
+4. **Common actions stay close to the result.** Do not hide a frequently used action inside an overflow menu
+   merely to make the page look cleaner. If an action is the likely next step from a result, it stays directly
+   available on that result; secondary or rare actions move behind an overflow control, a drawer, or an expanded
+   state.
+5. **Interaction-depth heuristic.** For ordinary workflows, design toward 0 clicks to understand the result, 1
+   click to understand it deeply, and ≤ 2 clicks to perform the normal next action. This is a heuristic, not a
+   mechanical test — complexity, safety, expense, or irreversibility can genuinely require more steps — but any
+   workflow requiring 3+ sequential interactions should be examined for unnecessary interaction depth. Avoid
+   `result -> menu -> modal -> tab -> detail -> action`; prefer `result -> action` or
+   `result -> See why -> supporting detail`.
+6. **Hide complexity, not usefulness.** Progressive disclosure should hide what is secondary, advanced,
+   contextual, diagnostic, infrequently needed, or only relevant after another decision. It must never hide the
+   answer, the recommended action, meaningful status, an important warning or cost, a failure state, or whatever
+   needs the user's attention.
+7. **Reveal mechanisms have different jobs.** Inline disclosure/accordion for supporting content that belongs to
+   the current context. A drawer for inspecting an object while preserving where the user was (source, Claim,
+   finding, question, watch-out, plan item). A popover for a small contextual explanation (a definition, "why?",
+   a freshness or cost explanation). A modal only when the user is making a contained decision that deserves
+   interruption — a destructive action, significant spend, permissions, an irreversible or high-impact
+   configuration. Do not use a modal as ordinary navigation.
+8. **Animation explains state changes; it does not decorate them.** Motion should help the user understand what
+   expanded, what collapsed, where new information came from, where an object moved, that an action completed, or
+   that state changed — kept short and functional. It must never delay access to information, become required to
+   understand state, make a repetitive workflow slower, or exist only to look modern. Respect reduced-motion
+   preferences.
+9. **Do not solve density solely with cards.** Not every object deserves its own large rounded card. Prefer
+   hierarchy, grouping, rows, compact summaries, nested disclosure, drawers, whitespace, typography, dividers, and
+   contextual controls before turning every piece of information into another card.
+10. **Applying this while implementing an existing audit rung** (not re-auditing): for each surface, ask what must
+    be visible immediately; what is useful but secondary and can be revealed; what is advanced machinery that can
+    move deeper; what the normal next action is and whether it is directly accessible; whether reducing visual
+    density accidentally increased click depth; whether the user can understand the result without interacting;
+    whether the explanation is one reveal away; and whether the normal action completes within roughly two
+    interactions. If improving one dimension harms the other, prioritize the user's workflow over visual
+    cleanliness — a visually sparse interface that makes the user hunt is not an improvement, and a visually dense
+    interface that exposes every internal detail at once is not an improvement either. The target is calm at
+    first glance, powerful on demand.
 
 ## 4. Shell and page hierarchy
 
