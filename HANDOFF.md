@@ -56,10 +56,9 @@ zero-byte `.git/index.lock` held by the macOS Virtualization VM process released
 associated, the real index was reconciled to `HEAD`, and no lock is present now. The recordings remain on local disk
 and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/` to a snapshot.
 
-The worktree contains a preserved, uncommitted Claude-side Bootstrap, resources, UI and test set
-(`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`, `tests/test_k3_resources.py`,
-`tests/test_s14_fix_pass.py`); its focused suite is 73 passed. Do not stage or overwrite that set while continuing
-R9/T1. `AUDIT.md` and `DESIGN.md` are no longer untracked oddities: they are the canonical, tracked design
+The former preserved Bootstrap/resources/UI/test set is committed on `main`
+(`21bb117`, `5fc2ad6`, `d95f4b3`) and covered by the full release suite. `AUDIT.md` and `DESIGN.md` are canonical,
+tracked design
 source-of-truth and audit contract on `main` (merged from the `design/f0` branch at `79c4446`, which also carries
 `APPLE-DESIGN-REFERENCES.md` and the `docs/design-audit/2026-09-13-b85c222/` evidence set). See `DESIGN-MISSION.md`
 for current D0/D1/D2 status. `Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md` and `INSPIRATION/` remain untracked

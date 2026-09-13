@@ -14,20 +14,22 @@ touch T1's active surfaces.
 
 ## SUSPENDED — RESUME FIRST
 
-The current worktree contains an uncommitted Codex Bootstrap/resources/UI fix set and its tests (begun the afternoon of 2026-09-12; Claude did not touch these files):
-`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`,
-`tests/test_k3_resources.py`, and `tests/test_s14_fix_pass.py`. The focused suite is **73 passed** (2026-09-12).
-These files are intentionally preserved and are not included in the R9/T1 documentation commits. Review, commit, or
-discard them as one coherent set before changing the same surfaces. Claude's uncommitted work is separate: the mmap
-reversal in `neurosearch/db.py` plus two `HARDENING.md` entries (D0 tokens/drift baseline; FTS5 mmap), `DESIGN.md`,
-`AUDIT.md`, `tests/test_s50_design_drift.py`, `docs/FTS5-CORRUPTION-2026-09-12.md`. The `INSPIRATION/` assets and
-`Claude outputs/` are untracked handoff material;
-do not silently delete them.
+This section is now historical. The previously uncommitted Codex
+Bootstrap/resources/UI fix set is committed on `main` (`21bb117`, `5fc2ad6`,
+`d95f4b3`) and its focused tests are part of the full release suite. Claude's
+F0/D1 design work is likewise merged (`79c4446`); `DESIGN.md`, `AUDIT.md`,
+`DESIGN-MISSION.md`, the Apple reference sourcebook, and the evidence baseline
+are tracked. Local `INSPIRATION/`, `Claude outputs/`, `SCREENSHOT AUDIT/`, and
+`.audit-compare-tmp/` material remains preserved as non-authoritative evidence;
+do not silently delete it.
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Begin T1's versioned-vector measurement slice while preserving R9(c)'s numeric revisit trigger; see
-   `docs/R9-ADMISSION-2026-09-11.md` and `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+1. Continue T1's versioned-vector measurement slice. The implementation and
+   zero-cost preview are complete; the remaining derived-object backfill is
+   explicitly authorization-gated. Preserve R9(c)'s numeric revisit trigger;
+   see `docs/R9-ADMISSION-2026-09-11.md` and
+   `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
 2. Continue the deliberately deferred, non-blocking R8 retention observation; revisit after 2026-10-11 17:28 PT and admit no retention cutoff before then.
 3. D1 is complete. Begin D2 (`ladder.md` F1–P1) one bounded surface at a time, after the T1 slice is bounded on
    any surface F1/F2 would also touch; `bge-m3` remains reserved for a later full-space migration gate. See
