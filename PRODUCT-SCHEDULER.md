@@ -112,3 +112,5 @@ loading, clear-on-data, clear-on-error, and an explicit failed state on the audi
 Codex's FTS5 recovery and test-isolation work remains complete and does not block F2.
 The dead root-level `main/` worktree copy was moved intact out of the checkout in `45428d2`; `repo-check` and the
 release-check for the cleaned tree are green at `82765db` (details in `HANDOFF.md`).
+The follow-up isolation cleanup is validated at `d9e2914`: full pytest 1,364 passed, and the commit-bound release
+gate is green. No Codex-owned rung is admitted while Claude's F2 design work is pending its boundary.
