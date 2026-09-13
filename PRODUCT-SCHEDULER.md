@@ -110,3 +110,5 @@ Claude's F1 final item (`display:none` → native `hidden`, including the CSS sp
 deterministic gates are `test_s44`, `test_s5`, and UI version checks; its behavioral gate requires first-paint
 loading, clear-on-data, clear-on-error, and an explicit failed state on the audit instance. Claude owns this lane.
 Codex's FTS5 recovery and test-isolation work remains complete and does not block F2.
+The dead root-level `main/` worktree copy was moved intact out of the checkout; `repo-check` and release-check are
+green again at `45428d2` (details in `HANDOFF.md`).
