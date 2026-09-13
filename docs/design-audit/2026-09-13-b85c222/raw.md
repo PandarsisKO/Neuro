@@ -186,7 +186,8 @@ Mode: F0 preflight per `ladder.md`. Audit instance: `tools/audit-instance.comman
 `neurosearch-20260912-1907.db` (the newest verified backup), `NEUROSEARCH_FAKE_AI=1`, both budgets $0, no API
 keys, login token `audit`. Both the live project set and a new empty project ("F0 empty-state probe") were
 inspected. Chrome window resize to ~390px did not change the captured frame — the narrow-viewport limitation from
-the read-only pass reproduces here too; **still no narrow-viewport evidence exists**. Dark theme, login, empty
+the read-only pass reproduces here too; **no narrow-viewport evidence exists from this addendum's own tooling**
+(closed instead by a second addendum below, using Kyle's own hand-captured screenshots). Dark theme, login, empty
 states, one real failure state, and the Health panel were inspected and are new in this pass.
 
 ### New states inspected
@@ -267,6 +268,50 @@ separate from the design-audit track; it is not added to `ladder.md`.
 
 Jobs/Health inspected (above). Empty/default states for every surface inspected (above). One real failure state
 inspected (Sources). Dark theme inspected across Home, Settings, Sources, new-project surfaces, and login — no
-contrast or token defects observed beyond the already-measured `--ok`/`--warn` values. Narrow viewport remains
-**unsupported / not applicable this pass** — the resize tool does not change the captured frame in this browser
-automation setup; a real device or a different tool would be needed to close this row honestly.
+contrast or token defects observed beyond the already-measured `--ok`/`--warn` values. Narrow viewport was
+**unsupported / not applicable with this addendum's own tooling** — the resize tool does not change the captured
+frame in this browser automation setup — but see the second addendum immediately below, which closes it partially
+by a different route.
+
+---
+
+## F0 addendum 2 — evidence recovery via Kyle's own screenshots (2026-09-13)
+
+The six canonical screenshots from the addendum above were lost (sandboxed browser-automation temp path
+unreachable by any shell — see `evidence/baseline/manifest.md` history). Separately, and unprompted by any
+request in this pass, Kyle had already captured 12 of his own screenshots the previous evening (2026-09-12,
+7:46–7:51 PM) directly on his Mac against the same audit instance, saved in a `SCREENSHOT AUDIT` folder at the
+repo root: 4 at full desktop window size, 8 with Chrome narrowed to ~390pt CSS width (labeled "PHONE" but not
+actual phone captures — a narrowed desktop Chrome window sitting beside his other apps on his real monitor, not
+cropped to isolate the browser).
+
+**What they show.** The 4 desktop ones are dark-theme, full-window captures of Home, Sources, Findings, and
+Research overview, all on the real "buying businesses" project (not a clean empty project). The 8 narrow ones are
+the same audit instance narrowed to phone width: Sources (numbers panel, twice), Sources (filter bar + list),
+Sources (job-queue detail, twice more), Research overview, and — the most valuable single image in the set — a
+chat answer with inline citation markers (`[1][6][12]`, etc.) rendered at narrow width, closing the "chat with an
+answer + citations, narrow viewport" gap directly.
+
+**Handling.** All 12 originals sat inside a macOS App Sandbox path that neither `device_stage_files` nor a
+literal-filename `cp` could reach (both failed "No such file or directory" against files `ls -la` had just
+listed) — worked around with a shell glob (`cp "$DIR"/Screenshot*7.46.04*` in place of the exact filename),
+which succeeded for all 12 files. Before using any of them as evidence: the 8 narrow ones were cropped to the
+app's own column (0–498px of the original 2560px-wide capture), removing Kyle's real iMessage window and desktop
+wallpaper that the original, uncropped capture also contained — those are his personal messages, not part of the
+product, and have no place in a tracked evidence folder. The 4 desktop ones were cropped to remove Chrome's own
+browser chrome (tabs, address bar), leaving only the app. No other edits were made to any image.
+
+**What was kept.** 8 of the 12, one per distinct state: the 4 desktop screenshots as-is, and 4 of the 8 narrow
+ones (numbers panel, filter+list, Research overview, chat-with-citations) — the remaining 4 narrow screenshots
+were near-duplicates of the job-queue widget mid-countdown and were dropped rather than kept per `AUDIT.md`'s
+evidence-retention policy (one canonical set, not a screenshot-per-interaction log). All 8 are now in
+`evidence/baseline/`; see that folder's `manifest.md` for the full breakdown.
+
+**What this closes and what it doesn't.** Narrow viewport moves from *no evidence* to *partial evidence*: Sources,
+Research overview, and a chat-with-citations are now visually confirmed to render without clipping, overflow, or
+horizontal scroll at ~390pt width. It does **not** cover Home, login, empty-project, or failure states at narrow
+width, and it is image evidence only — no interaction (scroll, tap, open nav) was exercised at this width, so it
+does not stand in for a real narrow-viewport interaction pass. The dark-theme desktop set replaces the images lost
+above, but stays single-project and single-theme rather than the fuller light/dark × empty/populated matrix a
+from-scratch baseline would have. No finding's severity or the ladder's ordering changes because of this addendum
+— it upgrades evidence quality, not diagnosis.

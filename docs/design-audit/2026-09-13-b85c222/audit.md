@@ -103,7 +103,20 @@ Scored on the F0 audit-instance pass, 2026-09-13, same reviewer:
 | New/empty project (any surface) | Yes | Yes — explicit "nothing yet, do X" copy on every surface | Yes | Yes | Yes |
 | Login | Yes | n/a | n/a | Yes | Yes |
 
-Not yet scored: narrow viewport (still unreachable with this tooling), a failed job, a failed poll.
+Not yet scored: a failed job, a failed poll.
+
+**Narrow viewport — image evidence only, not an interactive scorecard pass (F0 evidence-recovery addendum, 2026-09-13).**
+Kyle captured Sources, Research and a chat-with-citations at ~390pt width by hand (the browser-automation resize
+tool still does not work). Judged from the static images alone, not an interactive walk, so scored conservatively:
+
+| Surface (narrow) | Where am I | Current state | What matters | What to do next | What that will do |
+|---|---|---|---|---|---|
+| Sources (numbers + list) | Yes | Yes — no visible overflow or clipped text | Partly — same dense numbers grid as desktop, unranked | n/a (static capture) | n/a |
+| Research overview | Yes | Yes | Yes — "Do these next" cards already rank by consequence | Yes | Yes |
+| Chat with citations | Yes | Yes | Yes — citation markers render inline, unclipped | n/a (static capture) | n/a |
+
+No layout break, clipped text, or horizontal scroll is visible in any of the three; this is a positive signal, not
+a substitute for an actual interaction pass (scrolling, tapping a citation, opening the nav) at this width.
 
 ## Critical findings
 
@@ -423,10 +436,13 @@ Full entry-point notes: `raw.md` Phase 3.
 
 - **`--ok`/`--warn` AA contrast failure** — see `H-7`. This is the only accessibility finding with hard measurement
   behind it in this pass.
-- **No narrow-viewport evidence exists.** A resize to 400×800 did not take (capture frame stayed at 1436×840);
-  every layout/responsive question is unanswered. Per `AUDIT.md` §4.3's mobile severity cap, any future
-  narrow-viewport finding is capped at Medium unless it also breaks a desktop workflow or the layout is unusable
-  rather than cramped.
+- **Narrow-viewport evidence is now partial, not absent.** The browser-automation resize tool still does not work
+  (a 400×800 attempt did not take), but Kyle captured four states by hand at ~390pt width on 2026-09-13
+  (Sources ×2, Research overview, a chat with citations) — see `evidence/baseline/`. None show a layout break,
+  clipped text, or horizontal scroll. Home, login, empty-project, and failure states remain uncaptured at narrow
+  width, so the layout/responsive question is answered for some surfaces, not all. Per `AUDIT.md` §4.3's mobile
+  severity cap, any future narrow-viewport finding is still capped at Medium unless it also breaks a desktop
+  workflow or the layout is unusable rather than cramped.
 - No first-party console errors were observed in the sampled window (one Chrome-extension exception, not
   first-party). `[Runtime]` — recorded as a clean result, not a finding.
 
@@ -488,8 +504,8 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 | 3 | Surfaces inventoried by intent | met |
 | 4 | Load-bearing workflows walked end to end | partly — project creation, empty-state review across all surfaces, and a Master Plan build were exercised on the audit instance; acquisition, findings triage, chat, and discover walks remain observed-not-exercised |
 | 5 | Important states incl. failure and empty inspected | met — every surface's empty state, one real failure state (a failed source), and the Health panel inspected (F0 addendum, `raw.md`) |
-| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed; narrow viewport still unreachable with this tooling |
-| 7 | Major findings carry reproducible evidence | partly — reproduction steps written for every finding; the six screenshots taken this pass were lost to a sandboxed temp path neither this session nor Kyle's Terminal could reach (see `evidence/baseline/manifest.md`), so no image evidence survives this pass |
+| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed |
+| 7 | Major findings carry reproducible evidence | partly — reproduction steps written for every finding; the original six screenshots from the audit-instance pass were lost to a sandboxed temp path (see `evidence/baseline/manifest.md` history), but eight canonical images taken directly by Kyle now cover Home/Sources/Findings/Research (desktop, dark) and Sources/Research/chat-with-citations (narrow) — not every individual finding has a matching image, so this stays partly, not met |
 | 8 | Drift audited separately | met — measured, ratcheted, per-surface table above |
 | 9 | Cross-surface interactions reviewed | met (as observed) |
 | 10 | Raw observations preserved | met — `raw.md` |
@@ -500,13 +516,15 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 | 15 | No product code changed | met |
 
 Closed by the F0 audit-instance pass (2026-09-13): Jobs/Health, dark theme, empty project states, one failed
-source. **Still not inspected: a failed job, a failed poll, and narrow viewport** (the browser-automation resize
-tool does not change the captured frame; this row stays **unsupported / not applicable with current tooling**
-rather than silently unmet — a real device or a different automation path would be needed).
+source. Narrow viewport went from **unsupported / not applicable** to **partly evidenced**: Kyle's own
+2026-09-13 screenshots cover Sources and Research overview and a chat with citations at ~390pt width (see
+`evidence/baseline/`), but not Home, login, empty-project, or failure states, and not as an interactive walk —
+the browser-automation resize tool itself still does not work. **Still not inspected at all: a failed job, a
+failed poll.**
 
 ## Assumptions / cannot verify
 
-Narrow-viewport rendering (resize attempt failed to change the capture frame); polling/refresh flicker over time;
+Narrow-viewport rendering beyond the four hand-captured states in `evidence/baseline/` (resize-tool attempts still fail to change the capture frame); polling/refresh flicker over time;
 Health/Jobs surfaces (not opened this pass); every Phase 3 interaction walk (acquisition, findings triage, chat,
 discover, plan rebuild, job monitoring) — filed as observed-not-exercised, deferred to the audit-instance pass;
 whether Findings' blank period (`H-2`) is network-bound or render-bound (needs timing instrumentation); dark theme
