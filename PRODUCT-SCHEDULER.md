@@ -101,3 +101,12 @@ scope still needs Claude's element-by-element design pass. Codex's backend relia
 `c513a46` with the explicit authenticated FTS5 recovery endpoint and health history, and its deterministic release
 gate is recorded at `evals/release/release-check-0.63.59-c513a46-20260913-123106.json`. Keep the ownership split:
 Claude advances frontend/design surfaces; Codex takes backend/reliability work and appends shared handoff notes.
+
+## CURRENT CHECKPOINT — 2026-09-13
+
+Claude's F1 final item (`display:none` → native `hidden`, including the CSS specificity guard) is now landed on
+`main` at `696a0c6`/`509dad2`. UI version is `0.63.60`, and Rung F1 is closed. The next eligible design rung is
+**F2**, the shared loading/empty/failed-state primitive for Findings first, then Sources and Chat history. Its
+deterministic gates are `test_s44`, `test_s5`, and UI version checks; its behavioral gate requires first-paint
+loading, clear-on-data, clear-on-error, and an explicit failed state on the audit instance. Claude owns this lane.
+Codex's FTS5 recovery and test-isolation work remains complete and does not block F2.
