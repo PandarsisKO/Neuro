@@ -65,3 +65,10 @@ The next agent should read this file, then `DEVELOPMENT-OPERATING-SYSTEM.md`, `C
 `HANDOFF.md`, `PRODUCT-SCHEDULER.md`, and `HARDENING.md`. If Claude's browser evidence has landed, inspect the exact
 commit and run the affected gates. If no new evidence exists, do not invent a Codex rung: preserve the ownership
 boundary and wait for the T2 admission gate or a measured backend/reliability trigger.
+
+## Operational verification addendum — 2026-09-13 14:08 PT
+
+The editable virtualenv was refreshed from the repository metadata; `neurosearch doctor` now passes the installed
+package/version check at `0.63.63`. `neurosearch repo-check` passes with no findings. Doctor still reports historical
+structured-output, ambiguous-execution, model-substitution, network, and optional-Reddit-credential warnings; those
+are retained as provenance and do not represent a newly admitted implementation rung.
