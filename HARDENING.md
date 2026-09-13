@@ -1903,3 +1903,9 @@ The independent copied-backup audit remains clean: Python 3.14 links SQLite 3.53
 `DEFAULT_MMAP_SIZE=0`; full `PRAGMA integrity_check` returned `ok` in 0.11s with no foreign-key violations.
 Commit-bound `release-check --no-pytest` passed at `0.63.59 @ c513a46`; artifact:
 `evals/release/release-check-0.63.59-c513a46-20260913-123106.json`.
+
+## Test isolation cleanup — 2026-09-13
+
+The hard-set `NEUROSEARCH_DATA_DIR` guard in `tests/conftest.py` had been duplicated by overlapping safety fixes.
+The duplicate allocation was removed; one unconditional temporary directory remains before test-module imports.
+`tests/test_s51_test_isolation.py` and the FTS5 recovery contract both pass after the cleanup.

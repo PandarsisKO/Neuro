@@ -672,3 +672,7 @@ full-suite import order.
 Next owner split: Claude continues the suspended D2/F1 design lane and updates the scheduler at its next committed
 frontend boundary. Codex should keep backend/reliability work off Claude-owned design surfaces and append any shared
 handoff or hardening notes before committing.
+
+The same pass removed a duplicated hard-set test-data-directory block from `tests/conftest.py`; the isolation guard
+now has one source of truth. `tests/test_s51_test_isolation.py` plus `tests/test_s52_fts5_recovery.py` pass (4 tests,
+one existing Starlette deprecation warning).

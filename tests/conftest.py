@@ -32,15 +32,6 @@ os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 import tempfile
 os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_pytest_")
 
-# 2026-09-13 — the data directory is HARD-SET here, unconditionally, before any test module is imported. Seventy-eight
-# modules still say `os.environ.setdefault("NEUROSEARCH_DATA_DIR", tmp)`; Kyle's `.env` sets that variable, so on
-# his Mac `setdefault` loses and a focused run (`pytest tests/test_k3_resources.py`) wrote ten projects and their jobs
-# into the LIVE database on 2026-09-12 — jobs the live server then executed with real providers. The full suite was
-# only ever safe because `test_core.py` hard-sets the variable and happens to import first. Conftest runs before every
-# module, so this is the one place the guarantee belongs; `tests/test_s51_test_isolation.py` keeps it true.
-import tempfile
-os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_pytest_")
-
 
 @pytest.fixture(scope="session")
 def client():
