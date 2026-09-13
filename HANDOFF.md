@@ -508,3 +508,45 @@ offender ranking table named individually** (Sources, Research, Jobs/Health/boot
 Findings, Chats all exhausted across steps 2c-2l). Remaining scope per `audit.md` is Home/wizard/shell/remainder
 (~74 instances, scattered rather than concentrated in a single surface) — the next sub-unit should scope that
 territory before continuing the mechanical pass further.
+
+## Design ladder — F1 step 2m landed — 2026-09-13
+
+Scoped and closed the last `audit.md` bucket: "Home / wizard, shell, remainder | ~74 | scattered." Rather than
+reading surface-by-surface (this territory has no single concentrated surface — that's what "scattered"
+means), ran a full-file regex scan for bare single-declaration `style="..."` attributes exactly matching an
+already-landed utility class or token. It turned up 10 real candidates across six otherwise-unrelated
+functions, plus the `loadReviews` folded-card dynamic-class case already flagged and deferred in step 2k (still
+untouched, same reason). On `main` at merge commit `071ac12` (source commit `90b1019` on branch
+`design/f1-step2m`, now deleted).
+
+Substitutions (all bare, single-declaration, onto an existing utility): `funCard`'s title-row spacer span
+`flex:1` -> `.grow` (shared by Home's "Your research in numbers" and the project workspace's "This project in
+numbers" — the first cross-surface instance of a single template being touched once); `ask()`'s thinking-bubble
+error span `color:var(--bad)` -> `.status-bad`; `renderShell`'s `resAreaBar` "Showing only &lt;area&gt;" span
+`flex:1` -> `.grow`; `showKnown`'s evidence-target candidate-row span `flex:1` -> `.grow`;
+`loadRetireChannels`' channel-checkbox label span `flex:1` -> `.grow`; `renderFacts`' fact-content span
+`flex:1` -> `.grow` (its sibling tag span's `flex:0 0 auto` is combined/uncovered and stays); `retPreview`'s two
+bare `margin-top:4px` divs -> `.mt-1`; `checkUpdates`' "no material changes" banner `margin-bottom:8px` ->
+`.mb-2`; `liveTag`'s job quiet-for-a-while warning span `color:var(--warn)` -> `.status-warn`. Every touched
+element checked first for JS reading/setting its `style` property (none does — all are anonymous
+template-literal elements with no `id`). 10 style attributes eliminated (311 -> 301);
+`MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.57`. 24 tests pass.
+
+Left untouched, same discipline as every prior sub-unit: combined declarations with an uncovered property
+(`gap`, `display:flex`, border/padding shorthand, `cursor`, `position:relative`, `flex:0 0 auto`), every
+off-scale margin/font-size (2px, 3px, 5px/5.5px/6px/10px/11px/11.5px/13px/14px, 20px — `--space-5` doesn't
+exist so nothing bridges `--space-4`(16px) and `--space-6`(24px)), `display:none` state toggles, and
+`loadReviews`' dynamic `class="card rv${folded ? ' folded' : ''}" style="border-color:var(--warn)"` (unchanged
+from step 2k — still needs a non-static conversion approach, not a mechanical find/replace).
+
+**This closes out the entire `audit.md` offender ranking table** — every named surface (Sources, Research,
+Jobs/Health/boot, Master Plan, Settings, Findings, Chats) plus the scattered Home/wizard/shell/remainder bucket
+is now exhausted for this exact-match-only mechanical pass, across steps 2c through 2m. 301 inline `style="..."`
+attributes remain, all either combined-with-uncovered-properties, off the `--space-*`/`--text-*` scale,
+dynamic (ternary-driven color or class), or `display:none`/`display:block` state toggles — none are further
+mechanical exact matches onto an existing utility. Per Kyle's serialization instruction not to start
+subsequent steps while still inside F1, the next sub-unit is **F1 step 3**: the inline `<svg><symbol>` sprite
+naming the eight emoji-only controls that `audit.md` flagged. A fresh decision is needed before resuming F1
+step 2's *further* retirement (a `display:none`→`hidden`-attribute conversion pass, and/or new spacing/
+font-size tokens to cover the off-scale values found throughout) — that work should wait for explicit
+direction rather than being assumed as the automatic next sub-unit.
