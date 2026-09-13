@@ -663,6 +663,11 @@ FTS5 `rebuild` command in a `BEGIN IMMEDIATE` transaction, runs a full integrity
 `{"confirm": true}` body, so health and backup paths remain read-only. `tests/test_s52_fts5_recovery.py` covers the
 confirmation guard and post-rebuild search/integrity contract.
 
+The commit-bound deterministic release gate passed at `0.63.59 @ c513a46` (all checks PASS), with artifact
+`evals/release/release-check-0.63.59-c513a46-20260913-123106.json`. The focused S52 test passes; the selected
+`test_core.py` backup test still has the pre-existing focused-invocation fixture-order failure when run outside the
+full-suite import order.
+
 Next owner split: Claude continues the suspended D2/F1 design lane and updates the scheduler at its next committed
 frontend boundary. Codex should keep backend/reliability work off Claude-owned design surfaces and append any shared
 handoff or hardening notes before committing.

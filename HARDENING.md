@@ -1901,3 +1901,5 @@ for an operator after a persistent integrity failure, not as an automatic respon
 
 The independent copied-backup audit remains clean: Python 3.14 links SQLite 3.53.4 with `ENABLE_FTS5` and
 `DEFAULT_MMAP_SIZE=0`; full `PRAGMA integrity_check` returned `ok` in 0.11s with no foreign-key violations.
+Commit-bound `release-check --no-pytest` passed at `0.63.59 @ c513a46`; artifact:
+`evals/release/release-check-0.63.59-c513a46-20260913-123106.json`.
