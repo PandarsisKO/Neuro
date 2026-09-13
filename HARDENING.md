@@ -2063,3 +2063,7 @@ The T2 derived coverage view is release-checked at `280146a`; artifact `evals/t2
 ## W1 step 4 — legacy Sources re-analysis disclosure — 2026-09-13
 
 Claude's `f143266` landing brings UI/package version to `0.63.65` and discloses model-budget use on the legacy “Re-analyse all” action. Frontend custody remains with Claude; the remaining browser/human re-score is open.
+
+## T3 admission — 2026-09-13 14:40 PT
+
+The next Codex rung is deterministic Tier-0 extraction. Its contract and precision floors are in `docs/T3-ADMISSION-2026-09-13.md`; it is model-free, versioned, fail-open, and initially read-only. No extraction output may influence T4 or a user-facing state until the stratified hand-labeled sample and full release gate pass.

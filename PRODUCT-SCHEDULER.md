@@ -279,3 +279,7 @@ T2 is release-checked at `280146a`; the existing authenticated coverage route no
 ## Claude W1 step 4 landing — 2026-09-13
 
 Claude's W1 step 4 (`f143266`) discloses model-budget use on the legacy Sources “Re-analyse all” control and synchronizes UI/package version `0.63.65`. This frontend change remains Claude-owned; Codex's T2 work stayed in backend/tests/docs.
+
+## T3 admission — 2026-09-13 14:40 PT
+
+T2 is closed. The next single Codex-owned rung is deterministic Tier-0 extraction under `docs/T3-ADMISSION-2026-09-13.md`: pure versioned spans, exact offsets, reuse of existing identifier/URL extractors, and a copied-backup precision gate. No persistence, UI, provider call, or live mutation is admitted before the sample and release gates pass.

@@ -1183,3 +1183,7 @@ T2 is implemented and release-checked at `280146a`. The authenticated T1 coverag
 ## Claude W1 step 4 landing — 2026-09-13
 
 Claude's `design/w1-step4-legacy-suggestions` landed on `main` at `f143266`, bumping UI/package version to `0.63.65` and disclosing the model budget on the legacy Sources “Re-analyse all” action. Codex did not edit Claude-owned frontend files. W1/F2 browser and human re-score evidence remains Claude's lane.
+
+## T3 admission proposal — 2026-09-13 14:40 PT
+
+With T2 closed, Codex admitted the next bounded rung: deterministic Tier-0 extraction. Proposal: `docs/T3-ADMISSION-2026-09-13.md`. The first slice is a pure, versioned extractor with exact half-open spans, reusing existing URL and identifier helpers; no table, endpoint, UI, provider call, queue, or live-data write. A stratified hand-labeled sample from the three retained projects must meet per-kind precision floors before any downstream selector trusts the output.
