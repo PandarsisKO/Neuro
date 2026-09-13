@@ -323,3 +323,25 @@ inline styles are the deliberately-deferred categories logged throughout — off
 `style="color:${...ternary...}"` badges, `display:none`/`display:block` state toggles, and `transportChoiceHtml`'s
 combined declarations — each needing its own considered (non-mechanical) sub-unit rather than a drop-in
 substitution. Per `audit.md`'s ranking, the next sub-unit should move to the next-ranked surface: Research.
+
+## Design ladder — F1 step 2g landed — 2026-09-13
+
+Moved the retirement pass onto Research (the next surface in `audit.md`'s ranking after Sources), covering the
+`view-research` static markup and its render functions: `renderOverview`, `woCard`, `qCard`, `whereToLook`,
+`areaCard`, `renderQuestionsPane`, `renderWatchoutsPane`, `renderAreasPane`. On `main` at merge commit `cfec636`
+(source commit `abe7ab1` on branch `design/f1-step2g`, now deleted). Substitutions: 2x `margin-top:8px` -> `mt-2`
+(Claims pager row, tools "Refresh" button row); a `font-size:12px` merge into an existing `muted` class ->
+`text-xs` (stat tile label); 3x `margin-top:16px` -> `mt-4` (renderOverview's three section headers); 4x lone
+`flex:1;min-width:0` -> `class="grow min-w-0"` (one each in woCard/qCard/whereToLook/areaCard's row-card
+wrappers); 3x `margin-top:12px` -> `mt-3` (the leading heading/wrapper in each of renderQuestionsPane,
+renderWatchoutsPane, renderAreasPane). Every touched element checked first for JS reading/setting its `style`
+property (none does). 13 style attributes eliminated (373 -> 360); `MAX_INLINE_STYLE_ATTRS` lowered to match in
+the same commit. `UI_VERSION` bumped to `0.63.51`. 24 tests pass.
+
+Left untouched in Research, same discipline as Sources: the row/gap/flex-wrap combinations that have no covering
+class (e.g. `gap:14px;flex-wrap:wrap`), off-scale margins (6px, 10px, 14px), `claimCard`'s off-scale/combined
+declarations (`margin-top:3px`, `margin-top:2px`, the `margin-left:auto;display:flex;gap:6px;...` combo), the
+`<select>` `width:auto` cases across the Claims workbench filters (still the deferred selects decision), and
+`display:none` state toggles on the research panes (deferred with the rest of that work). Research is now
+similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to
+Jobs/Health/boot.
