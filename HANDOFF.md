@@ -143,6 +143,18 @@ global queue is pre-existing non-T1 work that is draining concurrently.
 OpenAI Embeddings remained closed/Healthy with no new failures. This is an
 observation checkpoint only; no jobs were cancelled, re-enqueued, or reprioritized.
 
+### Stale-input reconciliation admission — 2026-09-13 09:49 PDT
+
+The first 39,951-job cohort reached terminal state with zero T1 failures. Its
+post-run preview showed 14,742 changed claims in the buying-businesses project
+and 3,602 changed claims in the design project; all notes and all real-estate
+rows were current. The claims had legitimately returned `skipped: stale_input`
+because revision metadata moved while the live app continued its own work.
+With the background queue paused, Codex admitted exactly 18,344 fresh claim
+jobs through the bounded offset endpoint (14,742 + 3,602), observed 18,325
+queued and three running after resume, and left the four pre-existing
+`extract_claims` jobs outside this T1 cohort untouched.
+
 ## QA stabilization handoff — 2026-09-13
 
 The repository-control mission is archived at

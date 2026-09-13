@@ -103,6 +103,18 @@ difference is pre-existing non-T1 work in the global queue. OpenAI Embeddings
 was closed/Healthy with no new failures. Workers were left running; the cohort
 was not cancelled or re-enqueued.
 
+### Stale-input reconciliation admission — 2026-09-13 09:49 PDT
+
+The first 39,951-job cohort reached terminal state with zero T1 failures. Its
+post-run preview showed 14,742 changed claims in the buying-businesses project
+and 3,602 changed claims in the design project; all notes and all real-estate
+rows were current. Those claims returned `skipped: stale_input` because their
+revision metadata moved while the live app continued its own work. With the
+background queue paused, the bounded offset endpoint admitted exactly 18,344
+fresh claim jobs (14,742 + 3,602), then resumed the queue. The four queued or
+running `extract_claims` jobs visible in global health are pre-existing work
+outside the T1 cohort and were left untouched.
+
 The first full-suite run after adding the enqueue endpoint exposed only a test
 fixture mismatch (the API client is session-scoped while the module fixture
 swapped its database directory); the endpoint was correct and returned 404 for
