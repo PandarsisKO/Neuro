@@ -358,47 +358,47 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
         </div>
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist, channel or <b>search link</b> (results are listed for review) · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
-          <textarea id="inUrls" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel" style="margin-top:8px"></textarea>
+          <textarea id="inUrls" class="mt-2" placeholder="https://www.youtube.com/watch?v=…&#10;https://www.youtube.com/playlist?list=…&#10;https://www.youtube.com/@channel"></textarea>
           <div id="inDetect" class="muted" style="margin-top:6px;font-size:13px"></div>
-          <div class="row" style="margin-top:8px">
+          <div class="row mt-2">
             <label class="muted" title="For channels and playlists">Channels/playlists: only the last
               <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
             <label class="muted">best <input id="inMax" type="number" min="0" value="20" style="width:70px;padding:4px 6px"> videos</label>
-            <span style="flex:1"></span>
+            <span class="grow"></span>
             <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
         </div>
         <div class="pane" id="pane-upload">
           <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is. <b>Spreadsheets (xlsx, csv)</b> become searchable <i>and</i> usable as calculators: the chat can change the inputs and read what the workbook's own formulas compute.</div>
-          <div class="row" style="margin-top:8px"><input type="file" id="inFile" multiple accept="audio/*,video/*,image/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv,.epub,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.heic"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
+          <div class="row mt-2"><input type="file" id="inFile" multiple accept="audio/*,video/*,image/*,.pdf,.docx,.txt,.md,.srt,.vtt,.html,.xlsx,.xlsm,.csv,.epub,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.heic"><input id="inFileTitle" placeholder="title (optional, single file)"><button class="primary" onclick="ingestFiles()">Upload</button></div>
         </div>
         <div class="pane" id="pane-paste">
           <div class="row"><input id="inTextTitle" placeholder="title"><input id="inTextUrl" placeholder="source url (optional)"></div>
-          <textarea id="inText" style="margin-top:8px" placeholder="Paste a transcript or notes… lines like `12:34 text` keep their timestamps"></textarea>
-          <div class="row" style="margin-top:8px"><button class="primary" onclick="ingestText()">Save</button></div>
+          <textarea id="inText" class="mt-2" placeholder="Paste a transcript or notes… lines like `12:34 text` keep their timestamps"></textarea>
+          <div class="row mt-2"><button class="primary" onclick="ingestText()">Save</button></div>
         </div>
         <div class="pane" id="pane-library">
           <div class="muted">Sources already ingested in other projects. Adding one here doesn't re-download anything.</div>
-          <div class="row" style="margin-top:8px"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
+          <div class="row mt-2"><input id="libQ" placeholder="filter…" oninput="debounce(loadLibrary)"></div>
           <div id="library" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Seen, not added</b> <span class="muted" id="candCounts"></span>
             <div class="muted">Everything a channel, playlist, feed or site listing showed you that you didn't pick — kept as cheap metadata (no downloads), so a later gap can find it without searching the web again. Not evidence until added.</div>
-            <div class="row" style="margin-top:8px"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" style="width:auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
+            <div class="row mt-2"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" style="width:auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Communities</b> <span class="muted" id="commCounts"></span><div id="commAccess"></div>
             <div class="muted">Lived experience, failure modes and practitioner knowledge — never authority. A thread is one source; its posts are the citations. Missions come from what the research is <i>missing</i> (owner regret, unexpected costs, disagreement), not from topics. Exploring lists candidate threads as cheap metadata; you choose what to acquire.</div>
-            <div class="row" style="margin-top:8px"><input id="commName" placeholder="r/smallbusiness" style="max-width:220px"><select id="commMission" style="flex:1"><option value="">— pick a mission from the research state —</option></select><input id="commQ" placeholder="or a manual query" style="max-width:260px"><button class="small" onclick="exploreCommunity()">Explore</button></div>
-            <div class="muted" id="commMsg" style="margin-top:4px"></div>
+            <div class="row mt-2"><input id="commName" placeholder="r/smallbusiness" style="max-width:220px"><select id="commMission" class="grow"><option value="">— pick a mission from the research state —</option></select><input id="commQ" placeholder="or a manual query" style="max-width:260px"><button class="small" onclick="exploreCommunity()">Explore</button></div>
+            <div class="muted mt-1" id="commMsg"></div>
             <div id="commResults" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
-            <div id="commSynth" style="margin-top:8px"></div>
+            <div id="commSynth" class="mt-2"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Works</b> <span class="muted" id="workCounts"></span>
             <div class="muted">Canonical documents behind your sources — an SBA SOP, an IRS publication, a statute, a book — with their versions and every copy you own or have seen. Copies of one Work count as <i>one</i> line of evidence in Research. Paste an identifier (e.g. <code>SOP 50 10 8</code>, <code>IRS Publication 946</code>, an ISBN or DOI) to resolve it against what you already own.</div>
-            <div class="row" style="margin-top:8px"><input id="workQ" placeholder="resolve an identifier or filter Works…" oninput="debounce(loadWorks)"><button class="small" onclick="resolveWork()">Resolve</button></div>
-            <div class="muted" id="workMsg" style="margin-top:4px"></div>
+            <div class="row mt-2"><input id="workQ" placeholder="resolve an identifier or filter Works…" oninput="debounce(loadWorks)"><button class="small" onclick="resolveWork()">Resolve</button></div>
+            <div class="muted mt-1" id="workMsg"></div>
             <div id="works" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
         </div>
@@ -410,12 +410,12 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
             <li>Click the extension once to set it up: app address <code id="appAddr">…</code>, and the app password.</li>
             <li>For an article: open it, click the extension → <b>Send this page</b>. For a course: log in, open the page listing all lessons, click the extension → <b>Scan this course</b> → check the list → <b>Send to Neuro Search</b>.</li>
           </ol>
-          <div class="muted" style="margin-top:8px">Videos land below as “Module › Lesson” and are transcribed and analysed like any other source. Session cookies are stored only on this server, in <code>data/cookies/</code>, and are used solely to download those videos.</div>
+          <div class="muted mt-2">Videos land below as “Module › Lesson” and are transcribed and analysed like any other source. Session cookies are stored only on this server, in <code>data/cookies/</code>, and are used solely to download those videos.</div>
           <div id="courseList" style="margin-top:10px"></div>
         </div>
         <div class="pane" id="pane-discover">
           <div class="muted">Who should this project learn from? <b>Library first:</b> what you already own (in other projects) is checked at no cost before the web is searched for creators, channels and podcasts.</div>
-          <div class="row" style="margin-top:8px"><select id="discMode" style="width:auto" title="Where to look"><option value="library_first">Library first</option><option value="library_only">Library only ($0)</option><option value="web_first">Web first</option><option value="web_only">Web only</option></select><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
+          <div class="row mt-2"><select id="discMode" style="width:auto" title="Where to look"><option value="library_first">Library first</option><option value="library_only">Library only ($0)</option><option value="web_first">Web first</option><option value="web_only">Web only</option></select><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
           <div class="muted" id="discMsg" style="margin-top:6px"></div>
           <div id="discResearch" style="margin-top:10px"></div>
           <div id="discSeen" style="margin-top:10px"></div>
@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.46';
+const UI_VERSION = '0.63.47';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
