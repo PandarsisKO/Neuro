@@ -1253,3 +1253,9 @@ Seeded corpus review found heading-label, `I don't know`, and bare-`to` cue fals
 punctuation for cue sentences, suppresses heading-prefixed segments, removes bare-`to` procedures, and restricts
 negative warning cues to explicit imperative verbs. Full pytest is 1,383 passed; focused T3 is 15 passed. The sample
 and 60-row pending manifest were regenerated; gold labels remain pending and downstream trust is still gated.
+
+## T3 precision-fix release checkpoint — 2026-09-13 15:07 PT
+
+T3 cue narrowing is committed at `452804e`; full pytest 1,383 passed, focused T3 15 passed, and release-check passes
+with artifact `evals/release/release-check-0.63.65-452804e-20260913-150713.json`. The 60-row manifest remains pending
+manual exact-span gold labels. Do not persist or start T4 until per-kind floors close.

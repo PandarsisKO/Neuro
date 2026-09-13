@@ -142,3 +142,11 @@ pass 15 and the full suite passes 1,383 with one existing Starlette warning.
 Both evidence artifacts were regenerated from the same copied read-only backup. The provisional sample now contains
 63 manually reviewed spans; the 60-row seeded manifest retains `gold: null` and pending status, with updated triage
 counts. This narrows precision risk but does not close the larger hand-label gate or authorize downstream trust.
+
+## T3 precision-fix release checkpoint — 2026-09-13 15:07 PT
+
+The corpus-driven cue narrowing is committed at `452804e`. Full pytest passes 1,383 with one existing Starlette
+warning; focused T3 is 15 passed; `repo-check` and commit-bound `release-check --no-pytest` pass. Release artifact:
+`evals/release/release-check-0.63.65-452804e-20260913-150713.json`. The regenerated 15-row sample and 60-row pending
+manifest are read-only evidence. Manual gold adjudication remains the next gate; no persistence, selector, provider,
+queue, or T4 work is admitted.

@@ -2122,3 +2122,8 @@ manual exact-span gold labels and adversarial review before downstream trust.
 Observed corpus false positives led to terminal-punctuation sentence cues, heading suppression, removal of bare-`to`
 procedures, and imperative-only negative warning cues. Full pytest is 1,383 passed. Evidence artifacts were regenerated
 read-only; no downstream trust is granted.
+
+## T3 precision-fix release checkpoint — 2026-09-13 15:07 PT
+
+Corpus-driven cue narrowing is green under 1,383 tests and the deterministic release gate at `452804e`. The pending
+60-row queue still requires exact-span gold review before downstream trust.

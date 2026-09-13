@@ -336,3 +336,8 @@ behavior changed. Manual gold adjudication remains the next gate.
 
 Corpus review narrowed cue matching to avoid heading, narration, and bare-fragment false positives. Full pytest remains
 1,383 passed; no scheduler or downstream extraction path changed. Manual gold review is still required.
+
+## T3 precision-fix release checkpoint — 2026-09-13 15:07 PT
+
+Cue precision narrowing is release-checked at `452804e`; scheduler and downstream behavior are unchanged. Manual gold
+adjudication of the pending 60-row queue remains required.
