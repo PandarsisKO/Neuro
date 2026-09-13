@@ -609,3 +609,44 @@ The requested initial direction checkpoint is therefore complete as an informati
 decomposition is complete in the same structural pass. Runtime visual repaint verification remains the only
 environmental limitation recorded by the existing audit path; no CSS values, markup content, or interaction logic
 were intentionally changed.
+
+## Design ladder — F1 items 2-3 landed (width:auto + icon sprite) — 2026-09-13
+
+With Codex's frontend decomposition delivered (5f667a1 / 6e81e36), re-scoped and landed the two
+remaining tokenizable F1 items from `docs/design-audit/2026-09-13-b85c222/f1-remaining-scope.md`
+against the new split layout. On `main` at merge commit `a914cbf` (source commits `12d62cc` +
+`20a775d` on branch `design/f1-step2n-width-icon`, now deleted).
+
+**width:auto (14 sites)**: added `.w-auto{width:auto}` to `styles.css`; swapped all 14 bare
+`style="width:auto"` `<select>` elements in `index.html` onto it (Sources' `#candState`,
+Research's `#discMode`, six Findings filter-bar selects, four Claims-workbench selects, Evidence
+Target's `#resTargetS`, Settings' `#factKind`).
+
+**Icon sprite (8 emoji-only buttons -> named SVG icons)**: added an inline `<symbol>` sprite
+right after `<body>` in `index.html` with three original stroke-based glyphs (`ic-dismiss`,
+`ic-approve`, `ic-flag` — an X, a checkmark, and a flag replacing the pushpin) plus `.ic`/
+`.icon-sprite` utility classes in `styles.css`. Converted all 8 sites to
+`<svg class="ic"><use href="#...">` with matching `title` + `aria-label`: `discStatus`'s dismiss
+button (`js/sources.js`), and `sourceDrawer`'s `group()` helper (5 sites: reserve/suggested/
+approved branches) plus the job cancel/dismiss buttons (2 sites), both in `js/research.js`
+despite the name split.
+
+301 -> 287 inline `style="..."` attributes; `MAX_INLINE_STYLE_ATTRS` lowered to match.
+`UI_VERSION` bumped to `0.63.59` in package/pyproject/index.html/state.js (a follow-up commit,
+`20a775d`, was needed after the first commit missed staging the `state.js` edit — caught before
+merge). 35 tests pass across `test_s50_design_drift`, `test_s44_frontend_integrity`,
+`test_s5_ui_syntax`, and the directly-related surface suites (`test_n8_research_shell`,
+`test_n9_source_drawer`, `test_o1_accelerate`); `node --check` passes on both touched JS modules.
+A full-suite run separately showed 7 pre-existing failures (golden-eval tier1, router
+equivalence, mission-closeout, native-worker-restart, spreadsheet calculator, doctor/
+release-check artifact) — all confirmed present identically on unmodified `main` before this
+change, environment-dependent (missing `.venv` in fresh worktrees; a couple fail even on the
+primary checkout in this sandbox), not caused by this patch.
+
+This closes out Rung F1's remaining tokenizable items. The last piece of F1 —
+`display:none` -> `hidden` attribute conversion — is still deferred: it needs a fresh
+element-by-element scope pass against the new module boundaries (the old line-number map no
+longer applies now that JS toggle logic is spread across separate surface files), not a blind
+carry-forward of the pre-split scope. Once that lands, Rung F1 is genuinely closed and F2 (the
+shared loading/empty/failure-state primitive, fixing `H-2`) becomes eligible per `ladder.md`'s
+sequencing.
