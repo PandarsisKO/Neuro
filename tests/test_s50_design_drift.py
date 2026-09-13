@@ -106,6 +106,40 @@ def test_every_colour_token_exists_in_both_themes():
     assert not missing, f'colour tokens with no dark value: {missing}'
 
 
+def _hex_to_rgb(value):
+    h = value.strip().lstrip('#')
+    if len(h) == 3:
+        h = ''.join(c * 2 for c in h)
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _relative_luminance(rgb):
+    def lin(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast_ratio(fg_hex, bg_hex):
+    l1 = _relative_luminance(_hex_to_rgb(fg_hex))
+    l2 = _relative_luminance(_hex_to_rgb(bg_hex))
+    lighter, darker = max(l1, l2), min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_status_text_colours_meet_aa_on_panel():
+    """DESIGN.md's frozen palette treats --ok/--warn/--bad as text-first status colour on --panel. WCAG 2.1 AA for
+    normal text requires >= 4.5:1. This is the deterministic half of ladder.md rung F1's H-7 fix; the F0 baseline
+    measured --ok and --warn failing this in the light theme before the frozen tokens landed."""
+    for theme_name, block in (('light', ROOT), ('dark', DARK)):
+        t = tokens(block)
+        panel = t['--panel']
+        for name in ('--ok', '--warn', '--bad'):
+            ratio = _contrast_ratio(t[name], panel)
+            assert ratio >= 4.5, f'{theme_name} {name} ({t[name]}) on --panel ({panel}) is {ratio:.2f}:1, needs >= 4.5:1'
+
+
 def test_the_ratchet_would_catch_a_regression():
     """The gate must fail on the thing it exists to prevent, not merely pass today."""
     assert COLOUR.search('color:#ff0000'), 'literal detector is broken'
