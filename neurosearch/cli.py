@@ -621,3 +621,10 @@ def release_check_cmd(no_pytest: bool = typer.Option(False, "--no-pytest", help=
     typer.echo("")
     typer.echo(rep["text"])
     raise typer.Exit(code=0 if rep["verdict"] == "PASS" else 1)
+
+
+@app.command("repo-check")
+def repo_check_cmd(as_json: bool = typer.Option(False, "--json", help="Emit stable machine-readable JSON")) -> None:
+    """Report deterministic repository hygiene findings without opening the database or making network calls."""
+    from .repo_check import check_repo, render
+    typer.echo(render(check_repo(Path.cwd()), as_json=as_json), nl=False)

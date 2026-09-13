@@ -18,22 +18,6 @@ from typing import Any
 from .fake_ai import _Blk
 
 
-def _to_dict(msg: Any) -> Any:
-    if isinstance(msg, _Blk):
-        return {k: _to_dict(v) for k, v in msg.__dict__.items()}
-    if isinstance(msg, list):
-        return [_to_dict(i) for i in msg]
-    return msg
-
-
-def _from_dict(d: Any) -> Any:
-    if isinstance(d, dict):
-        return _Blk(**{k: _from_dict(v) for k, v in d.items()})
-    if isinstance(d, list):
-        return [_from_dict(x) for x in d]
-    return d
-
-
 class FakeBatches:
     def __init__(self, msgs: Any) -> None:
         self._msgs = msgs
@@ -151,5 +135,4 @@ def _from_dict(d: Any) -> Any:
     if isinstance(d, list):
         return [_from_dict(x) for x in d]
     return d
-
 

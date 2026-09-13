@@ -1023,7 +1023,7 @@ def _retry_source(src: dict[str, Any]) -> dict[str, Any]:
     return {"job": jobs.enqueue("ingest_source", {"source_id": source_id})["id"]}
 
 
-class ProjectIn(BaseModel):
+class RetryProjectIn(BaseModel):
     project_id: str
 
 
@@ -1043,13 +1043,13 @@ def _requeue_sources(project_id: str, status: str) -> dict[str, Any]:
 
 
 @app.post("/api/sources/retry-skipped", dependencies=[Depends(require_auth)])
-def api_retry_skipped(body: ProjectIn) -> dict[str, Any]:
+def api_retry_skipped(body: RetryProjectIn) -> dict[str, Any]:
     """Queue every skipped (older-than-cutoff) source of a project anyway."""
     return _requeue_sources(body.project_id, "skipped")
 
 
 @app.post("/api/sources/retry-failed-in-project", dependencies=[Depends(require_auth)])
-def api_retry_failed_in_project(body: ProjectIn) -> dict[str, Any]:
+def api_retry_failed_in_project(body: RetryProjectIn) -> dict[str, Any]:
     return _requeue_sources(body.project_id, "failed")
 
 
@@ -1096,7 +1096,7 @@ def api_clear_failed_in_project(body: ProjectRefIn) -> dict[str, Any]:
 
 
 @app.post("/api/retry-failed", dependencies=[Depends(require_auth)])
-def api_retry_failed() -> dict[str, Any]:
+def api_retry_failed_sources() -> dict[str, Any]:
     failed = db.list_sources(status="failed", limit=10000)
     for s in failed:
         db.set_source_status(s["id"], "pending")
