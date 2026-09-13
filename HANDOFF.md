@@ -374,3 +374,31 @@ class, the dynamic `${rt.blocked ? ... }` inline-color ternary in `loadJobs`, an
 instance (off the current `--text-*` scale — a candidate for a future token, not a mechanical substitution).
 Jobs/Health/boot is now similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit
 should move to Master Plan.
+
+## Design ladder — F1 step 2i landed — 2026-09-13
+
+Moved the retirement pass onto Master Plan (the next surface in `audit.md`'s ranking after Jobs/Health/boot):
+`renderTriageCard`, `renderStaleCard`, `renderPlan`. On `main` at merge commit `06bfb75` (source commit
+`37e2ad8` on branch `design/f1-step2i`, now deleted). `renderNoPlan` was reviewed and found to have zero
+exact-match candidates — all four of its inline styles are off the `--space-*` scale or combined with an
+uncovered property (`min-height:100px`).
+
+Substitutions: `renderTriageCard`'s lone `flex:1;min-width:0` -> `class="grow min-w-0"`; 2x `font-size:12px`
+merges into existing `muted` classes -> `.text-xs`; a bare `margin-top:8px` row plus its nested
+`flex:1;font-size:12px` span (both fully covered by existing utilities) -> `class="row mt-2"` /
+`class="muted grow text-xs"`, eliminating both style attributes in one substitution. `renderStaleCard`'s 3x
+`class="card" style="border-color:var(--warn)"` -> `class="card status-warn-border"`; a lone budget-exceeded
+`color:var(--warn)` span -> `class="status-warn"`. `renderPlan`'s bare `margin-bottom:12px` header row ->
+`class="row mb-3"`; a bare `margin-top:8px` accepted-updates row -> `class="row mt-2"`; a lone
+`color:var(--bad)` on a bare `<b>` -> `class="status-bad"`; a `flex:1` merge into the existing `starth` class
+-> `.grow`; a lone `color:var(--warn)` on a bare `<td>` -> `class="status-warn"`; 2x bare `margin-top:4px`
+(Discuss/Research-this action wrappers in the Decide tab) -> `class="mt-1"`. Every touched element checked
+first for JS reading/setting its `style` property (none does). 16 style attributes eliminated (344 -> 328);
+`MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.53`. 24 tests pass.
+
+Left untouched, same discipline: `margin-top:6px` throughout, shorthand `margin:0`/`h2 style="margin:0;flex:1"`,
+`font-weight:400`/`font-size:13px` combinations (13px is off the current `--text-*` scale), `flex-wrap:wrap`/
+`gap:*` combinations with no covering class, `min-width:180px`/`min-width:100px`, and `flex:0 0 22px;color:var(--muted)`
+(neither part maps onto an existing utility — `--muted` isn't one of the status tokens). Master Plan is now
+similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to
+Settings.
