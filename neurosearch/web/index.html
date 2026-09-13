@@ -548,36 +548,36 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
         <input id="epTags">
         <label class="muted" style="display:block;margin-top:10px">Project context for the Master Planner — goals, budget, deadline, your experience level, tools/accounts you already have, anything already decided.</label>
         <textarea id="epContext" style="min-height:110px" placeholder="e.g. Budget ~$500. Need it live by end of October. I've never set up DNS before. We already pay for Google Workspace and Squarespace."></textarea>
-        <div class="row" style="margin-top:12px"><button class="primary" onclick="saveProject()">Save</button><span class="muted" id="saveMsg"></span></div>
+        <div class="row mt-3"><button class="primary" onclick="saveProject()">Save</button><span class="muted" id="saveMsg"></span></div>
       </div>
       <div class="card"><b>Decisions, constraints & requirements</b>
         <div class="muted">Recorded automatically when you state them in a chat ("we're going with X", "budget is Y"). Add or remove here.</div>
-        <div id="facts" style="margin-top:8px"></div>
-        <div class="row" style="margin-top:8px"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
+        <div id="facts" class="mt-2"></div>
+        <div class="row mt-2"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
       </div>
       <div id="projFun"></div>
       <div class="card"><b>Spending valve</b>
         <div class="muted">Estimated API spend across all projects. When a budget is reached the background queue pauses (nothing fails or is lost) and resumes when the window rolls over or you raise the limit. Chat answers and plan builds you start yourself are still allowed.</div>
-        <div class="row" style="margin-top:8px"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
+        <div class="row mt-2"><label class="muted">Daily budget $<input id="bDaily" type="number" step="0.5" min="0" style="width:90px"></label><label class="muted">Monthly budget $<input id="bMonthly" type="number" step="1" min="0" style="width:90px"></label><button class="small primary" onclick="saveBudget()">Save</button><span class="muted" id="bMsg"></span></div>
         <div class="muted" id="bBreak" style="margin-top:6px"></div>
       </div>
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row" style="margin-top:8px"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" style="display:none" title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row mt-2"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" style="display:none" title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
         <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
       <div class="card"><b>🧹 Retire a direction</b>
         <div class="muted">Stopped pursuing something? Retire the channels that covered it. The sources leave this project (they stay in your library), their findings are dismissed, and Claims left with no evidence are rejected with the reason recorded. Nothing is deleted.</div>
-        <div class="row" style="margin-top:8px"><button class="small" onclick="loadRetireChannels()">Show channels in this project</button>
+        <div class="row mt-2"><button class="small" onclick="loadRetireChannels()">Show channels in this project</button>
           <input id="retReason" placeholder="why, in your words — recorded as a project decision" style="flex:1;min-width:240px">
         </div>
         <div id="retList" style="margin-top:8px;font-size:12.5px;max-height:320px;overflow:auto"></div>
         <div id="retPreview" style="margin-top:8px;font-size:12.5px"></div>
       </div>
       <div class="card"><b>Danger zone</b><div class="muted">Deleting the project removes its chats and findings. Sources stay in the library.</div>
-        <div class="row" style="margin-top:8px"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
+        <div class="row mt-2"><button class="danger" onclick="deleteProject()">Delete project</button></div></div>
     </div>
   </div>
 </div>
@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.53';
+const UI_VERSION = '0.63.54';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
