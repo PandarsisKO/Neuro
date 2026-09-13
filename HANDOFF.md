@@ -455,3 +455,30 @@ selects/inputs decision), `#fbBar`'s combined `gap:6px;flex-wrap:wrap;margin:14p
 reasons. Findings is now similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next
 sub-unit should move to Chats — noting `whyThisAnswer` was already partially processed during step 2e's
 Sources pass, so it should be checked for remaining exact matches rather than assumed untouched.
+
+## Design ladder — F1 step 2l landed — 2026-09-13
+
+Moved the retirement pass onto Chats (the next surface in `audit.md`'s ranking after Findings):
+`#view-chats`'s static markup plus `addMsg`. On `main` at merge commit `06be10c` (source commit `c5e8b39` on
+branch `design/f1-step2l`, now deleted). `whyThisAnswer` was re-checked, as flagged in the prior handoff entry
+(it was already partially processed during step 2e's Sources pass) — it has zero remaining exact-match
+candidates: its `style="${c.matched_here ? '' : 'opacity:.75'}"` is a dynamic ternary, its
+`margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end` is combined with uncovered
+properties beyond the margin-left half, and its lone `margin-top:10px` is off the `--space-*` scale.
+
+Substitutions: static markup's bare `#shareChatMsg` `font-size:12px` -> `.text-xs`; the askbar's bare
+`<div style="flex:1">` wrapping the question textarea -> `class="grow"`. `addMsg`: a lone `color:var(--warn)`
+on the validation-warning `.web` div -> `class="web status-warn"`; a bare `font-size:12px` on the
+`.muted copied` toast span -> merged in as `.text-xs`. Every touched element checked first for JS
+reading/setting its `style` property (none does — `#shareChatMsg` and `.copied` are only ever touched via
+`.textContent`). 4 style attributes eliminated (315 -> 311); `MAX_INLINE_STYLE_ATTRS` lowered to match in the
+same commit. `UI_VERSION` bumped to `0.63.56`. 24 tests pass.
+
+Left untouched, same discipline: the share-menu wrapper's `position:relative` (uncovered property), the ask
+row's combined `margin-top:6px;gap:14px` (6px is off the `--space-*` scale and `gap` is uncovered), the
+attach-label's `cursor:pointer`, and the file input's `display:none` (deferred with other `display:none`
+cases). Chats is now similarly exhausted for the mechanical pass — **this closes out every surface `audit.md`'s
+offender ranking table named individually** (Sources, Research, Jobs/Health/boot, Master Plan, Settings,
+Findings, Chats all exhausted across steps 2c-2l). Remaining scope per `audit.md` is Home/wizard/shell/remainder
+(~74 instances, scattered rather than concentrated in a single surface) — the next sub-unit should scope that
+territory before continuing the mechanical pass further.
