@@ -2,7 +2,8 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- `main` is `81f2cd9`; app/package version `0.63.65`.
+- Tested code baseline is `81f2cd9`; the current `main` tip may advance with documentation-only checkpoints. App/package
+  version is `0.63.65`.
 - `repo-check` and commit-bound `release-check --no-pytest` pass; artifact:
   `evals/release/release-check-0.63.65-81f2cd9-20260913-152248.json`.
 - Full pytest passes **1,393 tests**, one existing Starlette warning. Focused T3/review coverage is 25 passed.
