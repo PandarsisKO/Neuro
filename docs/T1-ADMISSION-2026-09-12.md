@@ -93,6 +93,13 @@ failures, and zero stale leases. The cohort remains under observation until the
 queue reaches a terminal state; only then will the version-stamped semantic
 coverage report be accepted.
 
+The first full-suite run after adding the enqueue endpoint exposed only a test
+fixture mismatch (the API client is session-scoped while the module fixture
+swapped its database directory); the endpoint was correct and returned 404 for
+the client's separate database. The test now creates its project through that
+same client boundary. Focused T1 coverage is 16 passed, and the corrected full
+suite is 1,362 passed with one existing Starlette deprecation warning.
+
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
 T1's canonical-active and project-relative requirements.
