@@ -138,3 +138,9 @@ projects take 0.319 s and 0.152 s. Warm-cache times are below 0.055 s for all th
 optimization investigation after the current design boundary: compare an exact indexed/blocking or persisted
 derived-graph candidate against frozen duplicate counts. No implementation is admitted yet, and no blind budget
 increase or new service is allowed. Claude's F2 behavioral gate remains the current design ownership boundary.
+
+The exact-budget experiment then tested 8M, 12M, and 16M pairs on the same backup. Twelve million and sixteen
+million produced identical 1,503-cluster signatures; eight million differed by two missing and one extra cluster.
+Measured runtimes were 10.066 s, 11.862 s, and 11.937 s. A 12M ceiling is therefore the smallest measured complete
+candidate for the current corpus, pending a deterministic regression fixture and memory check after the active design
+boundary. The constant remains unchanged.
