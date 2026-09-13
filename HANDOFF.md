@@ -59,10 +59,42 @@ and are excluded from Git/GitHub. Do not add `VIDEOS/`, `data/` or `_to_delete/`
 The worktree contains a preserved, uncommitted Claude-side Bootstrap, resources, UI and test set
 (`neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`, `tests/test_k3_resources.py`,
 `tests/test_s14_fix_pass.py`); its focused suite is 73 passed. Do not stage or overwrite that set while continuing
-R9/T1. Additional untracked Claude/design material is present in `AUDIT.md`, `design.md`,
-`Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md`, and `INSPIRATION/`; preserve it and review it as one coherent set
-before touching the same surfaces. The tracked copy of Claude's design audit is
-`docs/T1-DESIGN-AUDIT-2026-09-12.md`.
+R9/T1. `AUDIT.md` and `DESIGN.md` are no longer untracked oddities: they are the canonical, tracked design
+source-of-truth and audit contract on `main` (merged from the `design/f0` branch at `79c4446`, which also carries
+`APPLE-DESIGN-REFERENCES.md` and the `docs/design-audit/2026-09-13-b85c222/` evidence set). See `DESIGN-MISSION.md`
+for current D0/D1/D2 status. `Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md` and `INSPIRATION/` remain untracked
+reference material; preserve them. The tracked copy of Claude's design audit is `docs/T1-DESIGN-AUDIT-2026-09-12.md`.
+
+## Operating model
+
+The repo is the control plane, not either agent's chat history or Kyle. Claude and Codex coordinate through Git
+state, `ladder.md`, `PRODUCT-SCHEDULER.md`, `DESIGN-MISSION.md` and this file, and through commits and their
+messages — never by relaying messages through Kyle, and never by assuming the other agent's chat context. Assume
+either agent's session can end at any time: at any reasonable stopping point, a fresh agent must be able to recover
+the active mission, current rung, what's done and remaining, changed files, test/gate results, and the next safe
+action from repository evidence alone.
+
+Either agent may inspect, diagnose, implement, test, exercise, verify, commit and advance eligible work
+independently, without waiting for the other and without making the other wait. Roles are specialties, not locks:
+Claude for design judgment, UX diagnosis, and verification; Codex for sustained implementation, refactors and
+long-running engineering. Neither "the other agent owns this" nor "I need the other agent's context" is a valid
+reason to block on eligible work. Before editing, check current Git state and recent commits for overlap: if another
+agent is working an unrelated area, proceed; if the same files or surface, do not overwrite — pick another eligible
+task or reconcile from actual diffs and commits, never assumptions.
+
+Execution loop for a meaningful unit of work: inspect, implement, test, exercise, verify, commit, record state in
+the existing docs, continue. A progress update is not a stopping point. Prefer small coherent commits over one large
+uncommitted change; after a coherent milestone, leave a breadcrumb in the existing state/handoff docs rather than a
+new document. Do not expand `DESIGN.md`/`AUDIT.md` for ordinary one-off implementation choices — that doctrine is
+frozen unless a genuine contradiction or repeated failure appears; execution-specific judgment belongs in the
+rung/state/handoff docs instead. Verification happens at meaningful rung/closure boundaries, not on every commit —
+deterministic tests protect the space between them.
+
+Stop for Kyle only for a genuine product decision, a destructive or irreversible choice, an architectural conflict,
+a credential only he controls, or a blocker that cannot reasonably be resolved from repository evidence. Otherwise
+make the best safe decision and continue. Coordination stays lightweight: no agent-lock files, no duplicate TODO
+systems, no separate Claude/Codex plans, no new orchestration framework — Git state plus the existing ladder and
+state docs are the memory.
 
 ## Protect the live app
 
