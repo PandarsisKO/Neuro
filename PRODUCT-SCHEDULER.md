@@ -214,3 +214,11 @@ The running app is now verified at `0.63.62` (`fake_ai=false`). Authenticated He
 leased, or external-pending jobs; the newest verified backup has full `integrity: ok` and 38,038 chunks. The two
 historical unsettled batches (36 collected-but-unwritten items) remain deliberately untouched while Claims is paused.
 The current clean GitHub snapshot is `backup/2026-09-13-clean @ 3bf21f05403c4f7c50781e6ec1ee2107c0b49b8d`.
+
+## W1 STEP 2 RELEASE CHECKPOINT — 2026-09-13 13:54 PT
+
+W1 step 2 is released at `1a7ff71`: Master Plan's primary `Rebuild plan` action now carries the same inline cost
+label as Findings. Focused checks (86), full pytest (1,364), and the commit-bound release gate all pass at
+`0.63.63`; artifact `evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json`. W1's remaining work is
+human re-scoring and any evidence-backed label sweep; F2 browser evidence remains open. Codex has no new independent
+rung to admit while T2's state-model gate and the recorded R8/R9(c) triggers remain unmet.

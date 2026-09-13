@@ -1026,3 +1026,10 @@ F2's still-open browser-verification gate. No further code changes are obviously
 that visual pass; the next candidate is a broader label sweep (Rebuild/Re-analyse/Re-rank/Suggest/
 Re-check wording across the four surfaces per DESIGN.md's outcome-label rule), which is lower-confidence
 without seeing the rendered result first.
+
+## W1 step 2 release validation — 2026-09-13 13:54 PT
+
+The merged W1 step-2 tree `1a7ff71` passed the focused frontend/design checks (86 tests), full pytest (**1,364
+passed**, one existing Starlette warning), and the deterministic release gate at `0.63.63`. Artifact:
+`evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json` (and matching `.txt`). This validates the Plan
+cost-label change together with the prior W1 step-1 fixes; no backend behavior or live data changed.

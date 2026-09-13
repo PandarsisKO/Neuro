@@ -2012,3 +2012,11 @@ tree. Full pytest passed **1,364 tests** with one existing Starlette deprecation
 Authenticated API reads confirm the running `0.63.62` app has no queued/running/stale/leased/external-pending jobs.
 Health reports the newest verified 1.15 GB backup with full `integrity: ok` and 38,038 chunks. The 36 collected-but-
 unwritten results in two historical batches remain documented and untouched under the paused Claims decision.
+
+## W1 step 2 release validation — 2026-09-13 13:54 PT
+
+Claude's W1 step 2 makes the Master Plan primary action disclose its estimate inline (`Rebuild plan · $X`), matching
+Findings' `Rebuild now · $X`; cost, endpoint, and behavior are unchanged. The merged tree is `0.63.63 @ 1a7ff71`.
+Focused W1/frontend checks passed (86 tests), full pytest passed **1,364 tests** with one existing Starlette
+warning, and the deterministic release gate passed all checks. Artifact:
+`evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json`.
