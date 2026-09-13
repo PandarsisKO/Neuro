@@ -2094,3 +2094,9 @@ false-positive paths. Focused T3 suite is 15 passed. Larger seeded hand-label re
 Archived superseded root state `STATE-OF-THE-APP-2026-09-13-1436.md` under `docs/archive/state/` after the release
 hygiene gate correctly rejected multiple root orientation files. The current authoritative root is
 `STATE-OF-THE-APP-2026-09-13-1450.md`.
+
+## Release hygiene correction — 2026-09-13 14:57 PT
+
+The existing release test caught multiple root state files after the T3 checkpoint. Superseded `1436` and `1450`
+state files are archived; one authoritative root state remains. Focused release test and deterministic release gate pass
+at `e4cf07f`.

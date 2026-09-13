@@ -310,3 +310,9 @@ admitted.
 
 Moved superseded `STATE-OF-THE-APP-2026-09-13-1436.md` into `docs/archive/state/` so the release hygiene gate sees
 one authoritative root state file. No scheduler behavior changed.
+
+## Release hygiene correction — 2026-09-13 14:57 PT
+
+Archived the superseded root state file that caused the release hygiene test to fail. The affected test now passes and
+`release-check --no-pytest` is green at `e4cf07f`; no scheduler behavior changed. Current root state:
+`STATE-OF-THE-APP-2026-09-13-1457.md`.

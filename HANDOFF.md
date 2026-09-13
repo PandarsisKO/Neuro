@@ -1221,3 +1221,10 @@ The full suite exposed repository hygiene rejecting the superseded root `STATE-O
 `STATE-OF-THE-APP-2026-09-13-1450.md` became authoritative. The old state was moved to
 `docs/archive/state/STATE-OF-THE-APP-2026-09-13-1436.md`; no content was lost. This keeps one current root
 orientation file and lets `repo-check`/release-check enforce the boundary.
+
+## Release hygiene correction — 2026-09-13 14:57 PT
+
+A full run reached 1,382 passed and found the existing release test correctly rejecting a superseded root state file.
+`STATE-OF-THE-APP-2026-09-13-1436.md` is now archived under `docs/archive/state/`; the focused test passes and the
+commit-bound release gate is green at `e4cf07f` (`evals/release/release-check-0.63.65-e4cf07f-20260913-145704.json`).
+The authoritative root orientation is now `STATE-OF-THE-APP-2026-09-13-1457.md`.

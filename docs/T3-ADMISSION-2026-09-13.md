@@ -100,3 +100,11 @@ Added `tests/test_t3_adversarial.py` (7 tests) for phone/ZIP/address false ident
 subspan double counting, explicit-ISBN gating, punctuation-safe entity and URL spans, and markdown-label empties.
 The focused T3 suite now passes 15 tests. These tests are regression protection only; the larger seeded hand-label gate
 is still required before downstream trust.
+
+## Release hygiene correction — 2026-09-13 14:57 PT
+
+The first post-hardening full run reported 1,382 passed and one failure in the existing release-check test because the
+superseded root state file `STATE-OF-THE-APP-2026-09-13-1436.md` was still present alongside the new authoritative
+state. That file was archived under `docs/archive/state/`; the focused release test now passes and
+`release-check --no-pytest` is green at `e4cf07f`, artifact `evals/release/release-check-0.63.65-e4cf07f-20260913-145704.json`.
+This was a documentation hygiene fix; T3 code remains unchanged.
