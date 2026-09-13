@@ -1331,3 +1331,8 @@ covers this; focused T3/review tests are 24 passed. Pending gold rows remain exc
 The row-by-row review scorer fix is committed at `2c815e7`; full pytest 1,392 passed, focused review/T3 24 passed, and
 release-check is green with artifact `evals/release/release-check-0.63.65-2c815e7-20260913-151605.json`. Continue
 manual gold adjudication of the 60-row queue; persistence/T4 remain gated.
+
+## T3 interrogative/procedure overlap fix — 2026-09-13 16:05 PT
+
+Questions ending in `?` no longer receive an overlapping procedure label; imperative `Do ... .` remains supported. Focused
+T3/review tests are 25 passed and evidence artifacts are refreshed. Continue pending gold adjudication.

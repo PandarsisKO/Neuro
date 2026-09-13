@@ -1,7 +1,7 @@
 {
   "artifact": "T3 Tier-0 extraction hand-labeled sample",
   "schema_version": "t3-sample-v1",
-  "generated_at_utc": "2026-09-13T22:10:49.955238+00:00",
+  "generated_at_utc": "2026-09-13T22:20:08.571162+00:00",
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
   "read_mode": "copied backup opened SQLite mode=ro; live database untouched",

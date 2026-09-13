@@ -2166,3 +2166,8 @@ Fixed cross-row metric undercounting in review scoring and added regression cove
 
 Review scoring now preserves identical spans across chunks and passes the full 1,392-test suite. The pending queue
 still requires exact-span gold adjudication before downstream trust.
+
+## T3 interrogative/procedure overlap fix — 2026-09-13 16:05 PT
+
+Interrogative `Do ...?` spans no longer become procedures; imperative sentences remain covered. Evidence was refreshed
+read-only and remains pending gold review.

@@ -140,7 +140,12 @@ def extract(text: str, *, extractor_version: str = EXTRACTOR_VERSION) -> dict[st
             continue
         if raw.rstrip().endswith("?"):
             records.append(_span_record(text, start, end, "question"))
-        if _PROCEDURE.search(raw): records.append(_span_record(text, start, end, "procedure"))
+        # Interrogatives such as "Do you trust them?" are questions, not
+        # imperative procedures.  Keep legitimate imperative "Do ... ."
+        # sentences while preventing this cue overlap from inflating procedure
+        # precision errors.
+        if not raw.rstrip().endswith("?") and _PROCEDURE.search(raw):
+            records.append(_span_record(text, start, end, "procedure"))
         for kind, cue in (("warning", _WARNING), ("exception", _EXCEPTION), ("comparative", _COMPARATIVE), ("hedge", _HEDGE)):
             if cue.search(raw): records.append(_span_record(text, start, end, kind))
     for match in _ENTITY.finditer(text):

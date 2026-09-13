@@ -381,3 +381,7 @@ the gate.
 
 Cross-row review metrics are corrected and release-checked at `2c815e7`; scheduler behavior is unchanged. Manual gold
 review remains the next gate.
+
+## T3 interrogative/procedure overlap fix — 2026-09-13 16:05 PT
+
+Procedure/question overlap is corrected under focused tests; scheduler and downstream behavior remain unchanged.

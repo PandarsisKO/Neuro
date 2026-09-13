@@ -203,3 +203,9 @@ Cross-row metric preservation is committed at `2c815e7`; focused T3/review tests
 passed with one existing Starlette warning, and repo/release checks pass. Artifact:
 `evals/release/release-check-0.63.65-2c815e7-20260913-151605.json`. The pending 60-row queue still requires manual
 exact-span gold adjudication; no downstream trust or persistence is admitted.
+
+## T3 interrogative/procedure overlap fix — 2026-09-13 16:05 PT
+
+Seeded review found questions such as `Do you trust them?` receiving a second `procedure` label. Procedure emission
+now excludes terminal interrogatives while preserving imperative `Do ... .` sentences. Focused T3/review coverage is
+25 passed; both evidence artifacts were refreshed. The larger gold-label gate remains open.
