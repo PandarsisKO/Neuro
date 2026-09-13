@@ -844,3 +844,35 @@ future main-history cleanup needs an explicit decision because it would rewrite 
 
 The snapshot branch is refreshed after each documentation checkpoint so its tree includes the latest committed
 documentation; inspect `git ls-remote origin refs/heads/backup/2026-09-13-clean` for its current tip.
+
+## Worktree metadata cleanup — 2026-09-13
+
+The earlier F0 worktree directory was already absent, but Git retained a prunable entry pointing at its deleted
+session path and the merged `design/f0` branch still existed locally. `git worktree prune` removed only the stale
+metadata, and the fully merged branch was deleted with `git branch -d`; `git worktree list` now shows only the active
+main checkout. No Claude worktree contents or active branch were touched.
+
+## Audit-instance restart attempt — 2026-09-13 (deferred)
+
+Before starting W1, checked whether F2's outstanding behavioral gate (real-browser check of the loading/failed
+states on Findings/Sources/Chats) could be closed. The running audit instance at `localhost:8788` was serving a
+stale pre-split `index.html` (365KB single-file, no `bootstrap.js`/`styles.css` reference) — port 8788 was not
+even listening, so the open browser tab was showing a dead page from an earlier session, not a live one.
+
+With Kyle's authorization, fast-forwarded the pinned `.worktrees/f0` audit baseline from `bb2507e` to `main`'s
+`36ad3ae` (includes F1 in full and F2). Attempting to start the server from the agent's sandboxed shell failed:
+`.venv/bin/python` resolves (via `python3.14`) to `/opt/homebrew/opt/python@3.14/bin/python3.14`, which lives
+outside the folder mounted into that shell and is unreachable from it. This is a sandbox limitation, not a repo
+problem — `RUN THIS - Audit Instance.command` will work normally from a real double-click on Kyle's Mac.
+
+Per Kyle's direction, this check is deferred rather than pursued further right now (no full computer-control
+session was requested for a one-click action). **F2's behavioral gate remains open.** Whoever restarts the audit
+instance next (double-click `RUN THIS - Audit Instance.command` at the repo root) should do the F2 click-through
+first: fresh navigation to Findings, Sources, and Chats should each show a loading state within one frame and
+clear correctly on both real data and a forced failure (e.g. by faking a 500 on the relevant endpoint).
+
+The `.worktrees/f0` baseline is now at `36ad3ae` — worth noting for anyone relying on it staying pinned at
+`bb2507e` for an in-progress RE-AUDIT comparison; none was in progress at the time of this move.
+
+Proceeding to scope Rung W1 (reprocessing vocabulary/disclosure contract) in the meantime — investigation only,
+no implementation, pending Kyle's direction and F2's eventual close-out.
