@@ -489,7 +489,7 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 | 4 | Load-bearing workflows walked end to end | partly — project creation, empty-state review across all surfaces, and a Master Plan build were exercised on the audit instance; acquisition, findings triage, chat, and discover walks remain observed-not-exercised |
 | 5 | Important states incl. failure and empty inspected | met — every surface's empty state, one real failure state (a failed source), and the Health panel inspected (F0 addendum, `raw.md`) |
 | 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed; narrow viewport still unreachable with this tooling |
-| 7 | Major findings carry reproducible evidence | met — reproduction steps plus a canonical `evidence/baseline/` screenshot set (6 images, both themes, empty/populated/failure/login states) with a manifest |
+| 7 | Major findings carry reproducible evidence | partly — reproduction steps written for every finding; the six screenshots taken this pass were lost to a sandboxed temp path neither this session nor Kyle's Terminal could reach (see `evidence/baseline/manifest.md`), so no image evidence survives this pass |
 | 8 | Drift audited separately | met — measured, ratcheted, per-surface table above |
 | 9 | Cross-surface interactions reviewed | met (as observed) |
 | 10 | Raw observations preserved | met — `raw.md` |
