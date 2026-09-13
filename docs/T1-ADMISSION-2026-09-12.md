@@ -22,7 +22,7 @@ The first bounded schema slice is now underway: additive metadata columns, typed
 helpers, a low-lane durable backfill adapter, a measured versioned corpus-space attestation, a project-relative
 similarity distribution engine with content/revision freshness keys and stale-job refusal, and a read-only
 `/api/projects/{id}/transcript/coverage` scaffold have been added to both derived-object tables, with focused coverage
-in `tests/test_t1_vector_metadata.py`. The endpoint reports explicit `measurement_pending` until attestation exists;
+in `tests/test_t1_vector_metadata.py` (9 focused tests). The endpoint reports explicit `measurement_pending` until attestation exists;
 it never invents semantic coverage.
 No live database was opened or re-embedded.
 
