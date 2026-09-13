@@ -194,7 +194,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -224,7 +227,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -237,7 +241,10 @@
       "text": "[How I found the property] I've got to replace a sewer line. And so, that's something that I'm always looking for. I came out here and walked it. And when I'm walking around the properties, let me just show you guys. If I'm looking at this property for the first time, we're in the Midwest. We see",
       "predicted": [],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -275,7 +282,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -353,7 +361,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -411,7 +422,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "canonical_identifier_review",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -457,7 +472,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -503,7 +519,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -533,7 +550,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -597,7 +617,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "cue_entity_review",
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -627,7 +651,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -713,7 +740,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -791,7 +821,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -821,7 +854,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -899,7 +933,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -945,7 +983,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -991,7 +1030,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -1109,7 +1149,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -1139,7 +1182,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -1177,7 +1221,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1223,7 +1268,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1287,7 +1333,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "cue_entity_review",
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1300,7 +1350,10 @@
       "text": "[Sponsor: Northwest Registered Agent] LLC today and get your home address off of public record. Just go to northwestregisteredagent.com to get started today. That's northwestregisteredagent.com or click the link down below in the description to get your LLC filed. Thank you so much to Northwestregistered agent",
       "predicted": [],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1386,7 +1439,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1436,7 +1492,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "canonical_identifier_review"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1514,7 +1573,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1576,7 +1639,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1662,7 +1728,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1716,7 +1785,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1794,7 +1864,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -1872,7 +1945,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2166,7 +2243,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2228,7 +2308,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2241,7 +2324,10 @@
       "text": "this episode of Accounting for Growth powered by your CMO. We help accounting leaders break the status quo. Please subscribe, share, and stay sharp. Your next big growth move starts now.",
       "predicted": [],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2263,7 +2349,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2293,7 +2380,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2355,7 +2443,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2401,7 +2492,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2503,7 +2595,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -2589,7 +2684,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2627,7 +2726,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2657,7 +2757,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2687,7 +2788,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2700,7 +2802,10 @@
       "text": "[Plan: baseline site → skill redesign → reference-based redesign] What I'm going to do is I'm going to set up a very basic website that we can kind of see the standard AI design style in. And then we're going to use the Claude Code front-end skill to redesign that page. Maybe based on a reference or maybe just to kind of redesign it based on a bit of information that it would know about our website. And so let's go",
       "predicted": [],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2794,7 +2899,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2864,7 +2972,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2910,7 +3022,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -2940,7 +3055,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3002,7 +3118,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3042,7 +3161,11 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "cue_entity_review",
+        "sentence_boundary_review"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3088,7 +3211,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3110,7 +3234,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3164,7 +3289,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3186,7 +3312,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3199,7 +3326,10 @@
       "text": "[Grid Systems and Alignment: Eliminating Jagged Visual Friction] really sparingly, but just bring the site to life. Enough that it's not repetitive. It just has enough visual interest throughout the page that keeps the user engaged and shows them where to go in a really subtle manner. One thing just to note when choosing your colors as well is contrast. So, you need enough contrast between colors for accessibility, readability. Your site shouldn't have, let's say, you know, this white background here with a really, really light gray text. Or it shouldn't have, let's say, this yellow button with a green um green text within it. There should be enough legibility between those, so enough contrast between your colors that screen readers can pick it up and it can tell people who are using screen readers, for instance. Okay, this is what this content is. And obviously, your color palette is part of a wider accessibility push that should be implemented on your site. But, contrast",
       "predicted": [],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3221,7 +3351,8 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3283,7 +3414,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3353,7 +3487,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3415,7 +3552,10 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3509,7 +3649,20 @@
         }
       ],
       "gold": null,
-      "review_status": "pending_manual_label"
+      "review_status": "pending_manual_label",
+      "review_flags": [
+        "dense_multi_span"
+      ]
     }
-  ]
+  ],
+  "triage": {
+    "flags": [
+      "negative_empty_row",
+      "dense_multi_span",
+      "sentence_boundary_review",
+      "canonical_identifier_review",
+      "cue_entity_review"
+    ],
+    "meaning": "Flags prioritize manual review only; they do not change predictions or gold labels."
+  }
 }
