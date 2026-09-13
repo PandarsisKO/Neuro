@@ -823,3 +823,8 @@ that the documented optimization trigger is crossed, not authorization to change
 F2 behavioral gate. The next Codex checkpoint is a reversible candidate comparison for exact blocking/indexing or a
 persisted derived graph, with frozen duplicate-count tests and a release gate; no live database access or product data
 mutation occurred.
+
+The follow-up exact-budget experiment tested 8M, 12M, and 16M pairs on that same backup. Runtime was 10.066 s,
+11.862 s, and 11.937 s; 12M and 16M yielded identical 1,503-cluster signatures, while 8M differed by two missing
+and one extra cluster. This supports evaluating a 12M ceiling as the smallest measured complete result for the current
+corpus. It remains a candidate after the active design boundary, with no constant, schema, or threshold changed.

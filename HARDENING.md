@@ -1951,3 +1951,9 @@ complete duplicate scan. No `PAIR_BUDGET`, threshold, schema, or live data was c
 investigation is to profile an indexed/blocking or persisted derived-graph candidate against frozen duplicate counts;
 it requires its own focused tests, before/after measurement, and release gate before admission. Do not raise the budget
 blindly or add a new service.
+
+An exact-budget comparison on the same copied backup tested 8M, 12M, and 16M pairs for the large project. The runs
+took 10.066 s, 11.862 s, and 11.937 s respectively. The 8M result had 1,502 clusters and differed from the 16M
+result by two missing and one extra cluster; 12M and 16M both produced 1,503 clusters with identical cluster
+signatures. This makes a measured 12M ceiling a plausible small follow-up, but it is not yet admitted: the next
+checkpoint must add a deterministic regression fixture and confirm memory/latency before changing the constant.
