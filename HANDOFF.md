@@ -687,6 +687,11 @@ is the connection under test even after the entire suite has run.
 Final commit-bound `release-check --no-pytest` passes at `0.63.59 @ 95e2f3f`; artifact:
 `evals/release/release-check-0.63.59-95e2f3f-20260913-123840.json`.
 
+The next hygiene pass found and moved a dead root-level `main/` worktree copy to
+`/tmp/neuro-stale-main-worktree-20260913-1246`; its `.git` pointer referenced a nonexistent session path. This was
+reversible and preserved the contents. `repo-check` and the post-cleanup release gate are green at
+`0.63.60 @ 82765db`; artifact: `evals/release/release-check-0.63.60-82765db-20260913-124752.json`.
+
 ## Design ladder — F1's last item landed (display:none -> hidden) — closes Rung F1 — 2026-09-13
 
 Landed the final piece of F1: converted every `display:none` toggle to the native `hidden`

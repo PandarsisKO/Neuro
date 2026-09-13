@@ -1916,3 +1916,11 @@ the endpoint function against its isolated connection, avoiding the session Test
 connection retained across focused modules.
 Final commit-bound `release-check --no-pytest` passes at `0.63.59 @ 95e2f3f`; artifact:
 `evals/release/release-check-0.63.59-95e2f3f-20260913-123840.json`.
+
+## Stale worktree cleanup — 2026-09-13
+
+The F1 checkpoint exposed an unexpected root entry, `main/`, which was a dead Git worktree copy. Its `.git` file
+pointed to a pruned session path, and its contents duplicated the repository rather than serving as user data. The
+directory was moved intact to `/tmp/neuro-stale-main-worktree-20260913-1246` for reversibility; no tracked or
+protected evidence was deleted. `repo-check` is clean again, and the post-cleanup release gate passes at
+`0.63.60 @ 82765db`; artifact: `evals/release/release-check-0.63.60-82765db-20260913-124752.json`.
