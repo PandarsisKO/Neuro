@@ -6,9 +6,7 @@ from __future__ import annotations
 import os
 import pathlib
 import shutil
-import tempfile
 
-os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_test_")
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 os.environ.pop("OPENAI_API_KEY", None)
 
@@ -867,7 +865,10 @@ def test_canonical_url_dedupes_variants():
     assert a["source_id"] == b["source_id"]
 
 
-def test_backup_is_verified_and_health_reports_it(client):
+def test_backup_is_verified_and_health_reports_it(client, monkeypatch):
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    ingest.ingest_text("Backup fixture", "A small transcript that makes the backup count assertion self-contained.")
     p = db.backup()
     assert p.exists() and db.verify_database(p)["ok"]
     h = client.get("/api/health", headers=H).json()

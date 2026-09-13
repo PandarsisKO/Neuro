@@ -739,3 +739,7 @@ The supported authenticated Health API was rechecked after the cleanup: live app
 backup present at `data/backups/neurosearch-20260913-1239.db` (three retained projects, 38,038 chunks). No live
 recovery or claims work is pending. Claude's `design/f2-step1-list-state` worktree is present; no F2 implementation
 commit is visible yet, so the ownership boundary remains unchanged and Codex has no admitted overlapping task.
+
+The isolation cleanup also removed `tests/test_core.py`'s module-level `NEUROSEARCH_DATA_DIR` override. The backup
+test now creates its own fake-AI source fixture; the focused S51 plus backup checks pass without relying on collection
+order.
