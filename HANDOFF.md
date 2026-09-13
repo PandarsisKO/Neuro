@@ -176,7 +176,7 @@ top-level coverage `status` remains the compatibility readiness label; the
 nested `semantic_distributions.status` is the measured result.
 
 The full release gate passed at
-`evals/release/release-check-0.63.56-6a9f1ce-20260913-110344.json`: 1,362 tests
+`evals/release/release-check-0.63.57-9c15f36-20260913-110852.json`: 1,362 tests
 plus all migration, crash/recovery, identity, retrieval, frontend, backup, and
 repository-hygiene gates passed in 198.5 seconds, with the one existing
 Starlette deprecation warning.

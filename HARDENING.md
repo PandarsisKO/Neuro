@@ -1882,6 +1882,6 @@ findings, design 3,602 / 3,834, and real estate 589 / 605. Similarity
 distributions are project-relative and measured separately for claims and
 findings; no universal cut point or persisted coverage state was introduced.
 The full release gate passed at
-`evals/release/release-check-0.63.56-6a9f1ce-20260913-110344.json` (1,362 tests,
+`evals/release/release-check-0.63.57-9c15f36-20260913-110852.json` (1,362 tests,
 all gates PASS). A duplicate T1 helper block in `neurosearch/db.py` was
 removed before that gate; `neurosearch repo-check` now reports no findings.
