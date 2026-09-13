@@ -2621,7 +2621,7 @@ function bootWhy(h) {
 function bootRow(h) {
   const open = BOOT.open.has(h.source_id);
   return `<div class="job" style="flex-wrap:wrap;align-items:flex-start">
-    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="margin-top:5px">
+    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="width:auto;margin-top:5px">
     <div style="flex:1;min-width:0">
       <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted" style="font-size:12px">· ${esc(h.channel)}</span>` : ''}</div>
       ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
@@ -2639,37 +2639,28 @@ async function loadBoot() {
 function renderBoot() {
   const el = $('#bootCard'); if (!el) return;
   const b = BOOTSTATE;
-  const live = (b?.sources || []).filter(h => h.state === 'suggested');
-  if (!b || (!live.length && !b.run)) { el.style.display = 'none'; return; }
+  const pending = (b?.sources || []).filter(h => h.state === 'suggested');
+  const live = pending.filter(h => !h.weak_query_only);
+  if (!b || (!pending.length && !b.run)) { el.style.display = 'none'; return; }
   const c = b.counts, run = b.run || {};
-  if (!live.length) {                       // the scan ran and there is nothing left to decide
-    if (!c.attached) { el.style.display = 'none'; return; }
-    el.style.display = ''; el.innerHTML = `<b>Starting research</b><div class="muted" style="margin-top:4px">Added ${c.attached} source${c.attached === 1 ? '' : 's'} you already owned to this project. ${run.scope ? `Searched ${run.scope} source${run.scope === 1 ? '' : 's'} you already had.` : ''}</div>` +
-      `<div class="row" style="margin-top:8px"><button class="small ghost" onclick="rescanBoot()">🔄 Scan my library again</button></div>`;
-    return;
-  }
-  // 0.61.0: a source that only matched a clause made of generic words is held back — it is a real match to words
-  // your goal happens to contain, not to the subject. Available under "Show all", never silently deleted.
-  const weakOnly = live.filter(h => h.weak_query_only);
-  const useful = live.filter(h => !h.weak_query_only);
-  const shown = BOOT.showAll ? live : useful.filter(h => h.band === 'strong').concat(useful.filter(h => h.band !== 'strong').slice(0, 5));
+  const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
   const projs = (b.projects || []).slice(0, 4);
   el.style.display = '';
-  el.innerHTML = `<b>Neuro Search already found research you have</b>
-    <div class="muted" style="margin-top:4px">${c.strong} strong match${c.strong === 1 ? '' : 'es'}${c.possible ? ` · ${c.possible} more may be useful` : ''}${run.scope ? ` · searched ${run.scope} source${run.scope === 1 ? '' : 's'} outside this project` : ''}${run.found > run.shown ? ` · showing the best ${run.shown} of ${run.found}` : ''}. Nothing is downloaded or transcribed again — these are sources you already own.</div>
-    ${b.stale ? `<div class="banner" style="margin:8px 0">The goal changed since this scan. <button class="small" onclick="rescanBoot()">Scan again</button></div>` : ''}
+  el.innerHTML = `<b>${live.length ? 'Research in your library that may help this project' : 'No specific matches in the last library scan'}</b>
+    <div class="muted" style="margin-top:4px">${c.strong} strong matches${c.possible ? ` · ${c.possible} possible matches` : ''}${run.scope ? ` · searched ${run.scope} sources outside this project` : ''}. These are sources you already own.</div>
+    ${c.attached ? `<div class="muted">Already added ${c.attached} sources from your library.</div>` : ''}
+    ${b.stale ? `<div class="banner" style="margin:8px 0">The project brief or open research gaps changed. Scan again for current suggestions.</div>` : ''}
     ${b.matcher_stale ? `<div class="banner" style="margin:8px 0">${esc(b.matcher_note || '')} <button class="small primary" onclick="rescanBoot()">Scan again — free</button></div>` : ''}
-    ${weakOnly.length && !BOOT.showAll ? `<div class="muted" style="font-size:12px;margin-top:6px">${weakOnly.length} more matched only the generic parts of your goal (words like "improving" or "designing" that most of your library uses) — <a href="#" onclick="BOOT.showAll=true;renderBoot();return false">show them anyway</a>.</div>` : ''}
-    ${projs.length ? `<div class="muted" style="font-size:12px;margin-top:8px">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
+    ${c.weak_query_only ? `<div class="muted" style="margin-top:6px">Excluded ${c.weak_query_only} sources that matched only generic wording, without a specific connection to this project.</div>` : ''}
+    ${projs.length ? `<div class="muted" style="margin-top:8px">Where it lives: ${projs.map(p => `<span class="tag" title="${esc(p.line)}">${esc(p.name)} — ${p.relevant} of ${p.total}</span>`).join(' ')}</div>` : ''}
     <div style="margin-top:8px">${shown.map(bootRow).join('')}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap">
-      <button class="small primary" onclick="bootDecide('attach')">Add selected</button>
-      <button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>
+      ${shown.length ? `<button class="small primary" onclick="bootDecide('attach')">Add selected</button><button class="small ghost" onclick="bootDecide('dismiss')">Not useful</button>` : ''}
       ${live.length > shown.length ? `<button class="small ghost" onclick="BOOT.showAll=true;renderBoot()">Show all ${live.length}</button>` : ''}
-      <span style="flex:1"></span>
-      <button class="small ghost" onclick="rescanBoot()">🔄 Scan again</button>
+      <span style="flex:1"></span><button class="small ghost" onclick="rescanBoot()">🔄 Scan again</button>
     </div>`;
 }
+
 async function bootDecide(decision) {
   if (BOOT.busy) return;
   const ids = [...document.querySelectorAll('#bootCard .bootPick:checked')].map(i => i.value);
