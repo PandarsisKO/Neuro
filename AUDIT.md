@@ -448,8 +448,9 @@ surfaces and re-measurable in a later RE-AUDIT:
 | Surface | Where am I | Current state | What matters | What to do next | What that will do |
 |---|---|---|---|---|---|
 
-Each cell is **Yes / Partly / No** plus the one observation that decided it. This is the audit's cheapest
-cross-surface comparison and its best regression metric; it belongs in both `raw.md` and `audit.md`.
+Each cell is **Yes / Partly / No** plus the one observation that decided it. This is a structured human UX
+evaluation, not a measurement: it is re-scored by a person after a change and recorded before → after, alongside —
+never instead of — the deterministic gates in §4.3. It belongs in both `raw.md` and `audit.md`.
 
 ## Phase 3: Walk load-bearing workflows end to end
 

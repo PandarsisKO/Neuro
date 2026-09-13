@@ -79,6 +79,24 @@ converge to consistency — they need the same shared components.
 
 Full per-surface intent/action/risk table: `raw.md` Phase 1.
 
+### Five-second scorecard (structured human evaluation, not a measurement)
+
+Scored 2026-09-13 from the interface alone, live instance, 1440×900, light theme. Yes / Partly / No are a
+reviewer's judgments; they are recorded so a RE-AUDIT can re-score the same cells and show before → after, not
+because they are objective. Deciding observations are in `raw.md` Phase 2.
+
+| Surface | Where am I | Current state | What matters | What to do next | What that will do |
+|---|---|---|---|---|---|
+| Home | Partly | No | No | Partly | Partly |
+| Chats | Yes | Partly | Yes | Yes | Partly |
+| Sources | Yes | Partly | No | No | Partly |
+| Findings | Yes | Partly | Partly | Partly | Yes (Rebuild) / No (Dismiss) |
+| Research | Yes | Yes | Yes | Yes | Yes |
+| Master Plan | Yes | Partly | Yes | Yes | Partly |
+| Settings | Yes | n/a | Partly | Yes | Partly |
+
+Not yet scored: Jobs / Health, dark theme, narrow viewport, empty and failure states — F0 in `ladder.md`.
+
 ## Critical findings
 
 None found in this pass. Nothing observed rises to AUDIT.md §7's bar (a core workflow that cannot be completed, a
@@ -325,6 +343,40 @@ Measured 2026-09-12/13 against `neurosearch/web/index.html`, held as a ratchet i
 | colour tokens missing a dark value | 0 | 0 |
 | `--ok` / `--warn` contrast on `--panel` | 3.47 / 3.64 (fail) | ≥4.5 (frozen fix: 5.29 / 5.24) |
 
+### Where the inline styles are (measured 2026-09-13, working tree at `b85c222` + Codex's uncommitted diff)
+
+`AUDIT.md` Phase 5 asks for the worst offending surfaces, not the global number. Each `style="` was attributed to
+the static view container or the JS render function that contains it; surfaces below aggregate those owners
+(function names in parentheses). The global count is a ratchet, not a target — what matters is that the drift is
+concentrated in a few surfaces and a few repeated declaration families, which is what makes it tokenizable.
+
+| Surface / component | Inline `style=` | Repeated, tokenizable patterns | Likely intentional one-offs |
+|---|---:|---|---|
+| **Sources** — static `#view-sources` markup (51), `srcRowHtml` (13), `sourceDrawer` (9), `renderBook` (7), `transportChoiceHtml` (7), capture queue / library suggestions / seen (25), quality & promotable drawers, value report (20), `browserBlock`, `classifyInput` (9) | **~141** | spacing stack, flex-row utilities, `font-size:12/12.5px` overrides, `width:auto` on checkboxes/buttons, `display:none` toggles | `max-height:40vh;overflow:auto` scroll regions (4); a handful of drawer alignments |
+| **Research** — static markup (27), `renderOverview` (9), `claimCard` (5), `woCard`, `renderQuestionsPane`, `whereToLook` (12) | **~53** | flex-row utilities, spacing stack, status colours on cards | none obvious |
+| **Jobs / Health / boot** — `loadJobs` (14), `renderBoot` (8), `bootRow` (8), `loadPool` (6), `loadWorkbench` (5), `loadBacklog`, `perfReport`, `loadNotes` (12) | **~53** | spacing stack, `color:var(--warn)` / `var(--bad)` status text, `font-size:11px` | none obvious; this surface was not visually audited (F0) |
+| **Master Plan** — `renderPlan` (18), `renderTriageCard` (8), `renderStaleCard` (8), `renderNoPlan` (4) | **~38** | banner spacing, `border-color:var(--warn)` on stale cards, `display:flex;gap` rows | none obvious |
+| **Settings** — static markup | **30** | `margin-top` stack between form rows, `width:auto` on inputs | none — this is a form that should be a form component |
+| **Findings** — static markup (12), `loadReviews` (14) | **~26** | banner spacing and status colours | none |
+| **Chats** — static (7), `addMsg`, `whyThisAnswer` (8) | **~15** | spacing | — |
+| Home / wizard, shell, remainder | ~74 | scattered | — |
+
+**The six declaration families** that account for most of the 430, counted across all owners:
+
+| Family | Declarations | What it says about the system |
+|---|---:|---|
+| vertical spacing (`margin-top:` 2/3/4/6/8/10/12/14px, `margin-bottom`, `margin:4px 0`) | ~135 | no spacing stack utility or component spacing; every gap is hand-set |
+| flex rows (`display:flex`, `flex:1`, `gap:6/8px`, `align-items`, `flex-wrap`, `min-width:0`, `justify-content`, `margin-left:auto`) | ~150 | no `.row` / `.grow` / `.push-right` utilities — the same five-declaration row is retyped |
+| type overrides (`font-size:` 11/12/12.5/13px) | ~66 | the type scale exists in `DESIGN.md` §4 but not as classes, so every secondary line overrides inline |
+| `width:auto` | 27 | the base input rule sets `width:100%`; every checkbox and button must undo it — a defect in one rule, not twenty-seven |
+| status colour (`color:var(--warn)`/`var(--bad)`, `border-color:var(--warn)`) | ~23 | no status modifier class; tokens are used, roles are not |
+| visibility (`display:none` / `display:block`) | ~28 | state toggled by style instead of the `hidden` attribute |
+
+Everything else is long-tail. Reading: the drift is not 430 independent decisions; it is roughly six missing
+shared rules plus one wrong base rule, concentrated in Sources and the three renderers that draw Jobs/boot, Plan
+and Research. That is what F1 in `ladder.md` retires, ranked in that order. Codex's uncommitted diff to
+`renderBoot` is net-neutral on this count (it removes lines and adds one `width:auto`).
+
 Unmeasured but observed: at least four distinct "primary button" treatments (Research cards, Chat composer, Plan
 banner, Sources "Add"); red used both for destructive actions and for a plain count badge; pill styling reused
 across statuses, filters, chip-inputs, and the version tag with no visual distinction between the four roles. See
@@ -402,6 +454,31 @@ and does not affect any finding above).
 - **"What this gave" meaning-line on Sources rows**, decisions/constraints table on Settings, light-default with a
   working dark theme, inline chat citations, and Research's chip-style "Make this plan yours" answers — all named
   explicitly so implementation does not erase them incidentally.
+
+## Completion criteria status (`AUDIT.md` §12)
+
+F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n/a* with a reason.
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Product and version identified | met — 0.63.43, `b85c222`; baseline SHA to be re-pinned after Codex's UI diff lands (F0 step 2) |
+| 2 | Live product inspected read-only **and** interactions exercised on an audit instance | **unmet** — read-only half only; no audit instance exists |
+| 3 | Surfaces inventoried by intent | met |
+| 4 | Load-bearing workflows walked end to end | **unmet** — all observed, none exercised |
+| 5 | Important states incl. failure and empty inspected | **unmet** — only the populated state of the largest project |
+| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed, not under narrow viewport |
+| 7 | Major findings carry reproducible evidence | partly — reproduction steps yes; `evidence/` empty, no screenshots saved |
+| 8 | Drift audited separately | met — measured, ratcheted, per-surface table above |
+| 9 | Cross-surface interactions reviewed | met (as observed) |
+| 10 | Raw observations preserved | met — `raw.md` |
+| 11 | Symptoms consolidated into root causes | met |
+| 12 | Materiality filter applied | met |
+| 13 | Closure pass found no new unpropagated consequence | met for the read-only evidence; must be re-run after F0 step 4 |
+| 14 | Ladder turns the biggest problems into coherent rungs | met — `ladder.md` |
+| 15 | No product code changed | met |
+
+Not yet inspected at all: Jobs / Health / cost feedback, dark theme (supported per `DESIGN.md` §3 — in scope),
+narrow viewport, empty project, failed source, failed job, failed poll.
 
 ## Assumptions / cannot verify
 

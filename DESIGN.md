@@ -161,9 +161,9 @@ Most of this UI's styling does not live in the stylesheet. At the 2026-09-12 bas
 
 ### Icons
 
-One inline SVG `<symbol>` sprite at the top of `index.html` — roughly twenty glyphs, one stroke weight, 16px and 20px sizes, `stroke:currentColor`, referenced as `<svg class="ic"><use href="#ic-refresh"></use></svg>`. No icon font, no icon package, no remote asset: the single-file constraint and the frontend gates both still apply. Every icon-only control carries an `aria-label` and a `title`.
+The rule is consistent, recognisable, accessible iconography — not an icon system. Use the smallest zero-dependency approach the single-file app allows: an inline SVG `<symbol>` block holding only the glyphs controls actually need, one stroke weight, `stroke:currentColor`, referenced as `<svg class="ic"><use href="#ic-refresh"></use></svg>`. Add a glyph when a control needs one, never a library in advance. No icon font, no icon package, no remote asset: the single-file constraint and the frontend gates both still apply. Every icon-only control carries an `aria-label` and a `title`.
 
-Emoji are content, not iconography. They are fine inside project names, briefs, chat text and anything the user typed. They are not control glyphs: eight buttons still use one at the baseline, and each becomes a sprite glyph with a name when its surface is touched.
+Emoji are content, not iconography. They are fine inside project names, briefs, chat text and anything the user typed. They are not control glyphs: eight buttons still use one at the baseline; ladder rung F1 gives each a named glyph and an accessible name, and nothing more.
 
 ## 7. Responsive behaviour and accessibility
 

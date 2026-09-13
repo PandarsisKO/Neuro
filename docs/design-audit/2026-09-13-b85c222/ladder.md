@@ -5,375 +5,363 @@ Derived from `docs/design-audit/2026-09-13-b85c222/audit.md`. This is a sequence
 needs Foundation §34 UI scope or a `DEVELOPMENT-OPERATING-SYSTEM.md` §13 override before implementation begins.
 Nothing in this document has been built.
 
-Four groups, in the order they should be attempted: system foundations, then workflow/IA changes, then component
-consistency, then polish. Do not start a workflow/IA rung before its dependent foundation rung has landed — the
-audit's closure pass found that vocabulary and token fixes converge on the same surfaces, so building the workflow
-change first would mean redoing its styling and copy a second time.
+The standard each rung is held to is `DESIGN.md`; the inspection procedure that verifies each rung is `AUDIT.md`
+(RE-AUDIT mode). This file does not restate either — it names sections. The current shell is the starting point
+(`DESIGN.md` §2); a rung may change information hierarchy and interaction where the audit shows the current
+structure is accidental, and may not change feature semantics or hardened behavior.
+
+Groups, in order: preflight, system foundations, workflow/IA, component consistency, polish. Do not start a rung
+before the rung it names as a precondition has landed — the audit's closure pass found that vocabulary and token
+fixes converge on the same surfaces, so building the workflow change first would mean restyling it a second time.
+
+## How a rung is gated
+
+Every W-rung carries three gate types, applied where they fit:
+
+- **Deterministic / system gate** — a test or measurement that passes or fails without judgment: the frontend
+  gates named in `AUDIT.md` §4.3 (`test_s44`, `test_s5`, `test_s50`, `UI_VERSION`), contrast, token use, state
+  semantics, request-path purity.
+- **Behavioral / workflow regression gate** — the affected workflow still does what it did: existing workflow tests,
+  plus a walk on the audit instance confirming every action the rung touched still calls the same endpoint with the
+  same payload and the same price.
+- **Human UX re-score** — the five-second scorecard (`AUDIT.md` Phase 2) is a structured human evaluation,
+  Yes / Partly / No, not a measurement. Each rung names the specific cells it intends to improve; after
+  implementation those cells are re-scored and recorded before → after. A cell that the evidence does not move
+  stays where it is; the rung is not failed for honesty.
+
+Scorecard cells are written `Surface › column` using the columns in `raw.md` Phase 2: Where am I · Current state ·
+What matters · What to do next · What that will do.
+
+---
+
+## Preflight
+
+### `Rung F0` — Design preflight: a trustworthy baseline
+
+**Problem being solved:** neither `audit.md` nor this ladder can be verified against the product as it is, because
+(a) the UI file has an uncommitted diff from another session, (b) half of `AUDIT.md`'s coverage was never inspected,
+and (c) `evidence/` is empty, so a RE-AUDIT has no before-state to compare with.
+
+**Affected surfaces:** none changed. This rung changes no product design and no product code.
+
+**What F0 does, in order:**
+
+1. **No design implementation while any UI diff is uncommitted.** Codex's current T1 set (`bootstrap.py`,
+   `resources.py`, `index.html`, `test_k3_resources.py`, `test_s14_fix_pass.py`) is finished and committed, or
+   abandoned, by its owner. Not by this ladder.
+2. **Pin the baseline.** Record the resulting commit SHA as the design/audit baseline in `audit.md` Phase 0 and in
+   `HARDENING.md`'s drift entry. Re-run the `test_s50` measurement against that SHA; if the counts moved, the
+   ceilings and the table in `audit.md` are corrected to the pinned SHA in the same commit.
+3. **Build the minimum disposable audit instance** per `AUDIT.md` §3 ("the audit does not spend money or change the
+   user's research"): private `NEUROSEARCH_DATA_DIR` restored from a copied verified backup, `NEUROSEARCH_FAKE_AI=1`
+   or a zero budget, a different port. A `.command` launcher is enough. It is disposable and never tracked.
+4. **Finish the missing coverage** on that instance, following `AUDIT.md` Phase 3–4 and appending to `raw.md`:
+   normal/default states of every surface; the important failure and empty states (new project with nothing in
+   it, a failed source, a failed job, a failed poll); Jobs / Health / cost feedback; narrow viewport (~390px,
+   under the `AUDIT.md` §4.3 severity cap); dark theme, which `DESIGN.md` §3 declares supported and is therefore
+   in scope. Anything that cannot be reached is marked **unsupported / not applicable** explicitly, not skipped.
+5. **Capture a small canonical screenshot baseline into `evidence/`.** One representative before-state per major
+   surface and per important state — on the order of fifteen to twenty images, light and dark — named
+   `<surface>-<state>-<theme>.png`. Not one per interaction. These are what RE-AUDIT compares against.
+6. **Update `audit.md`** with any new material finding the coverage produces, and re-run the Phase 9 closure pass
+   if one appears. Re-score the scorecard for any surface first seen in this step.
+
+**Exit criterion:** `AUDIT.md` §12's completion criteria 1–15 are each marked *met*, or *unsupported / not
+applicable* with a one-line reason, in `audit.md`. Until that table exists, no F1 work starts.
+
+**Non-goals:** no token change, no copy change, no layout change, no new component, no refactor "while in there."
+If step 4 finds a defect in a state nobody has seen, it is filed, not fixed.
+
+**Effort:** M (mostly inspection time) **Risk:** Low — nothing is changed.
 
 ---
 
 ## System foundations
 
-### `Rung F1` — Land the frozen design tokens and reduce inline-style drift
+### `Rung F1` — Land the frozen tokens, retire the tokenizable inline patterns, name the eight controls
 
-**Problem being solved:** `H-7`. Two status colors (`--ok`, `--warn`) fail WCAG AA today; 430 inline `style=`
-attributes, 28+3 stray color literals, 16 font sizes and 11 radii mean every other surface's styling was authored
-locally rather than through a shared system.
+**Problem being solved:** `H-7` (RC-G). `--ok`/`--warn` fail AA today; 430 inline `style=` attributes carry most of
+the UI's visual language outside the stylesheet. The per-surface measurement in `audit.md` "Design-system drift"
+shows the drift is concentrated, not diffuse: Sources markup and drawers, Research, the Jobs/Health/boot renderers,
+and Plan account for roughly two-thirds of it, and six repeated declaration families account for most of those.
 
-**Affected surfaces:** `neurosearch/web/index.html` globally — this rung touches the token block and as many inline
-sites as can be retired in one bounded pass, not necessarily all 430.
+**Affected surfaces:** `index.html` token block; then the worst offenders in the order the table ranks them.
 
-**Proposed system-level change:** replace the live `:root`/`[data-theme=dark]` token blocks with the frozen,
-AA-validated set recorded in `HARDENING.md` (D0). Retire inline styling surface-by-surface in the same pass where
-practical, lowering the `tests/test_s50_design_drift.py` ceilings in the same commit per its own ratchet rule.
+**Proposed change:**
 
-**Why this rung precedes the next:** every workflow/IA and component rung below (banners, buttons, badges) depends
-on a correct, complete token set existing first — building a consolidated banner component against the current
-drifted styles would mean re-styling it again once the tokens land.
+1. Replace the `:root` / `[data-theme=dark]` token blocks with the frozen set in `DESIGN.md` §3 / `HARDENING.md`
+   (D0). This alone fixes the two AA failures.
+2. Add the small set of shared rules the offender table shows are missing — the spacing stack, the flex-row
+   utilities, the type-scale classes, the status modifiers — and retire inline occurrences of those families on the
+   ranked surfaces. Fix the base-input rule that forces `width:auto` onto twenty-seven checkboxes and buttons.
+   Replace `style="display:none"` state toggles with the `hidden` attribute where the JS toggles them.
+3. **Give the eight emoji-only controls a name.** The smallest maintainable approach that fits a single-file app:
+   an inline `<svg><symbol>` block holding *only the glyphs those eight controls need* (likely five distinct
+   shapes), `stroke:currentColor`, each control gaining an `aria-label` and `title`. Not an icon system, not a
+   framework, not a twenty-glyph library — `DESIGN.md` §6 asks for consistent, accessible iconography, and eight
+   controls need eight names. Emoji that sit beside a text label stay as they are.
 
-**Explicit non-goals:** this rung does not redesign any surface's layout, copy, or information architecture — token
-and literal-style substitution only. It does not attempt to retire all 430 inline styles in one pass; partial
-progress that lowers the ratchet is the expected outcome, not full elimination.
+**Why this precedes W1:** every workflow rung restyles buttons, banners and badges; doing that against drifted
+tokens means doing it twice.
 
-**Implementation seam / likely modules:** `neurosearch/web/index.html` `<style>` block (token definitions), then
-the highest-inline-style surfaces identified in `raw.md` Phase 4/5 (Sources, Findings row markup).
+**Non-goals:** no layout, copy, or hierarchy change; no attempt to reach zero inline styles in one pass — the
+intentional one-offs in the offender table (scroll-region heights, a few genuine single-use alignments) are left
+alone and the ratchet is lowered to whatever was actually retired.
 
-**Acceptance test:** `--ok`/`--warn` measure ≥4.5:1 on `--panel` in both themes; `tests/test_s50_design_drift.py`
-ceilings for inline styles and color literals decrease from their current values (430 / 28 / 3) in the same commit.
+**Seam:** `<style>` block; Sources static markup (`#view-sources`), `srcRowHtml`, `sourceDrawer`, `renderBook`;
+Research static markup and `renderOverview`; `loadJobs`, `renderBoot`, `bootRow`; `renderPlan`,
+`renderStaleCard`, `renderTriageCard`; Settings static markup.
 
-**Regression risks:** a token rename or value shift that isn't reflected everywhere it's read could produce a
-visually broken surface that the drift ratchet wouldn't catch (it counts literals and sprawl, not correctness).
-Visual spot-check in both themes is required, not just the automated gate.
+**Gates.** *Deterministic:* `--ok`/`--warn` ≥ 4.5:1 on `--panel` in both themes; `test_s50` ceilings for inline
+styles, colour literals and emoji-only controls lowered in the same commit; `test_s44`, `test_s5`; `UI_VERSION`
+bumped in all three sites; every icon-only control has an accessible name (add this check to `test_s50`).
+*Behavioral:* click acknowledgement and sustained busy state intact on every surface touched; no handler renamed.
+*Human:* rendered check of every touched surface in both themes against the `evidence/` baseline — the goal is
+"nothing looks different except the two status colours and the eight glyphs."
 
-**Tests / runtime checks required:** `tests/test_s50_design_drift.py`, `tests/test_s44_frontend_integrity.py`,
-`tests/test_s5_ui_syntax.py`, `UI_VERSION` bump in all three version sites, click-acknowledgement and sustained-busy
-state spot-check (`AUDIT.md` §4.3 protected contracts).
+**Regression risks:** a token value read somewhere the ratchet does not count; the base-input fix changing the
+width of a text input that relied on the old rule. Both are caught only by looking, hence the rendered check.
 
-**Visual re-audit required:** yes — a rendered-UI check in both themes before this rung is considered done; computed
-contrast alone (D0's method) is not sufficient once the values are actually live.
-
-**Effort:** L **Risk:** Medium — touches every surface indirectly through the token block, but the mechanism
-(substitution against a pre-validated table) is low-judgment.
+**Visual re-audit:** yes, DRIFT AUDIT mode, both themes. **Effort:** L **Risk:** Medium.
 
 ---
 
 ### `Rung F2` — Shared loading / empty / failure list-state primitive
 
-**Problem being solved:** `H-2` and RC-E. Findings renders a blank content area for 5–8 seconds with no loading
-indicator; this is likely present on any large list, unmeasured elsewhere.
+**Problem being solved:** `H-2` (RC-E). Findings renders blank for 5–8 s; `DESIGN.md` §11 forbids it and says
+skeletons appear on first paint only, never on a poll.
 
-**Affected surfaces:** Findings first (highest severity, largest list); Sources and Chat history checked for the
-same gap.
+**Affected surfaces:** Findings first; Sources and Chat history checked on the audit instance (F0 step 4 will
+have timed them).
 
-**Proposed system-level change:** one shared component (skeleton rows or a labeled spinner, consistently styled via
-F1's tokens) used by every surface that renders a list from a fetch, replacing whatever ad hoc handling (or absence
-of handling) each surface currently has between navigation and data arrival.
+**Proposed change:** one shared three-state primitive — loading, empty, failed — used by every list that renders
+from a fetch, styled from F1's tokens, with an explicit failure branch so a stuck fetch reads as "failed", never as
+"still loading."
 
-**Why this rung precedes the next:** the workflow/IA rungs below (Findings banner consolidation, Sources row
-reduction) change what renders once data arrives; this rung fixes what renders before data arrives, and doing it
-first means the workflow rungs don't have to separately solve "what does this look like while loading."
+**Why this precedes W1:** the workflow rungs change what renders once data arrives; this fixes what renders before
+it does, so they inherit it instead of each solving it.
 
-**Explicit non-goals:** does not address polling/refresh behavior after initial load (unmeasured, flagged in the
-audit as needing timing instrumentation) — that is a separate, not-yet-scoped concern.
+**Non-goals:** polling behaviour after first paint (`DESIGN.md` §11 already specifies it; F0 measures whether it is
+violated; a separate rung if so).
 
-**Implementation seam / likely modules:** the fetch/render path for Findings, Sources and Chat history lists in
-`neurosearch/web/index.html`'s JS.
+**Seam:** the fetch/render paths for Findings, Sources and Chat history lists.
 
-**Acceptance test:** on a fresh navigation to a large project's Findings, a loading indicator is visible within one
-frame and remains until real content or a real, visually distinct empty state replaces it.
+**Gates.** *Deterministic:* request-path purity — showing a loading state starts no job; `test_s44`, `test_s5`,
+`UI_VERSION`. *Behavioral:* on the audit instance, a fresh navigation to the large project's Findings shows the
+loading state within one frame and clears on data or on error; a forced fetch failure shows the failed state.
+*Human:* re-score `Findings › Current state` (Partly → expected Yes).
 
-**Regression risks:** a loading state that never clears (a fetch-completion signal that's wired wrong) would be
-worse than the current blank period because it actively asserts "still working" — needs explicit timeout/error
-handling, not just a happy-path skeleton.
+**Regression risks:** a loading state that never clears is worse than a blank; the failure branch is not optional.
 
-**Tests / runtime checks required:** request-path purity check (a read-only surface must not start a job as a side
-effect of showing a loading state), manual timing verification on the largest available project.
-
-**Visual re-audit required:** yes, on Findings specifically, since `H-2`'s evidence was time-based (observed, not
-timed precisely).
-
-**Effort:** M **Risk:** Low — additive UI state, no change to existing successful-load rendering.
+**Visual re-audit:** Findings, plus whichever other lists gained the primitive. **Effort:** M **Risk:** Low.
 
 ---
 
 ## Workflow / information-architecture changes
 
-### `Rung W1` — One reprocessing action/state vocabulary and disclosure rule
+### `Rung W1` — One reprocessing action vocabulary and one disclosure rule
 
-**Problem being solved:** `H-5` (RC-B). Rebuild/Re-analyse/Re-rank/Suggest/Re-check are worded, priced, and styled
-inconsistently across Findings, Plan, Sources and Chat.
+**Problem being solved:** `H-5` (RC-B). Rebuild / Re-analyse / Re-rank / Suggest / Re-check / "in background"
+vs "on the API" are worded, priced and styled independently on Findings, Plan, Sources and Chat.
 
 **Affected surfaces:** Findings (Rebuild banner), Master Plan (Re-analyse banner), Sources ("Suggest findings"),
 Chat ("also search the web").
 
-**Proposed system-level change:** define one action/state contract — a fixed verb set, a fixed rule for when a cost
-or consequence must be shown inline (any action that spends money or changes durable state discloses it, full stop),
-and one shared button treatment per role (primary / secondary / destructive / paid) built on F1's tokens — then
-apply it to all four surfaces in the same rung, per `AUDIT.md` §9's own worked example for this exact problem.
+**Proposed change:** one contract — a fixed verb set following `DESIGN.md` §1 rule 5 (outcome labels), one rule
+for disclosure (any action that spends money or changes durable state says so inline, next to the control, before
+the click), and one button treatment per role from `DESIGN.md` §5 (primary / secondary / tertiary / danger, with
+paid actions carrying their price as part of the label region). Applied to all four surfaces in one rung.
 
-**Why this rung precedes the next:** `H-3` and `H-6` (banner consolidation on Findings and Plan) both depend on
-having a settled vocabulary and disclosure rule to consolidate around — building the merged banner first would mean
-choosing ad hoc wording that this rung would immediately have to revisit.
+**Precondition:** F1 landed. **Why before W2/W3:** the banner consolidations need settled wording to consolidate
+around.
 
-**Explicit non-goals:** does not change what any action actually does or what it costs — wording, disclosure and
-styling only. Does not yet merge Findings' and Plan's banners into one component (that's `W2`).
+**Non-goals:** what any action does or costs is unchanged; Findings' and Plan's banners are not yet merged (W2/W3).
 
-**Implementation seam / likely modules:** the action-button markup on Findings/Plan/Sources/Chat, plus a shared
-button/badge component in the CSS token layer landed by F1.
+**Seam:** action-button markup on the four surfaces; the shared button rules F1 added.
 
-**Acceptance test:** given any reprocessing action's label alone, a person who has seen it on one surface can
-predict whether it costs money and roughly what it does on another surface, without having used that surface
-before. Sources' "Suggest findings" and Chat's "also search the web" both gain cost/consequence disclosure they
-currently lack entirely.
+**Gates.** *Deterministic:* a new check in `test_s44` or `test_s50`: every control whose handler names a paid
+endpoint (enumerate them once from `routes.py`) renders a price or a `data-cost` element — no unpriced paid control
+in the DOM; `test_s5`, `UI_VERSION`. *Behavioral:* on the audit instance, each of the four surfaces' reprocessing
+actions is clicked once and the network log confirms the same endpoint and payload as before the rung; existing
+workflow tests (`test_s14_fix_pass`, the Findings/Plan rebuild tests) pass. *Human:* re-score
+`Sources › What that will do` (Partly), `Chats › What that will do` (Partly), `Findings › What that will do`
+(Yes for Rebuild / No for Dismiss — record the Dismiss half), `Plan › What that will do` (Partly). Expected:
+each moves toward Yes; Dismiss's reversibility must be stated or the cell stays No.
 
-**Regression risks:** relabeling an action a user already has muscle memory for (e.g., "Rebuild") risks momentary
-confusion; mitigate by keeping the closest-matching existing term where it already fits the new contract rather than
-renaming for its own sake.
+**Regression risks:** relabelling a control users have muscle memory for — keep the closest existing term where it
+already fits the contract.
 
-**Tests / runtime checks required:** `tests/test_s44_frontend_integrity.py` (inline handlers still name declared
-functions after any markup change), manual verification that every priced action still fires the correct
-provider/cost path unchanged.
-
-**Visual re-audit required:** yes, across all four affected surfaces together, since consistency is the acceptance
-criterion.
-
-**Effort:** M **Risk:** Medium — copy and disclosure changes across four surfaces at once; sequencing all four in
-one rung is deliberate (per the audit's root-cause note) but raises the blast radius of a single rung.
+**Visual re-audit:** all four surfaces together. **Effort:** M **Risk:** Medium.
 
 ---
 
-### `Rung W2` — Consolidate Findings' three stacked banners into one Review entry point
+### `Rung W2` — Findings: three stacked banners become one Review entry point
 
-**Problem being solved:** `H-3`. Stale-sources, "nothing waiting," and "4,805 never used" render as three
-independently-worded banners stacked above every finding.
+**Problem being solved:** `H-3` (RC-A, RC-C). `DESIGN.md` §8 (Findings) forbids stacked warning banners above the
+work; three are there.
 
 **Affected surfaces:** Findings.
 
-**Proposed system-level change:** one Review entry point that explains why each item needs attention, separates
-system-detectable cleanup (stale, unused) from user judgment (curation), and exposes no bulk destructive action
-until the affected set is understood — using `W1`'s settled vocabulary and disclosure rule for every action inside
-it.
+**Proposed change:** one Review entry point that explains why each item needs attention, separates
+system-detectable cleanup (stale, never-used) from user judgment, and exposes no bulk destructive action until the
+affected set is understood — `AUDIT.md` §9's own worked example. Every action inside it uses W1's contract.
 
-**Why this rung precedes the next:** `H-6` (Plan's banner) is very likely the same underlying "stale" state
-presented a second way; this rung should land and be validated on Findings first, then `W3` decides whether Plan's
-banner merges into the same component or stays separate with shared styling only.
+**Precondition:** W1 landed. **Why before W3:** Plan's banner is most likely the same "stale" state; prove the
+component here first, then decide in W3 whether Plan shares it.
 
-**Explicit non-goals:** does not change the underlying stale-detection logic, pricing, or what triggers a rebuild —
-presentation and consolidation only. Does not touch the finding rows themselves (that's `C1`).
+**Non-goals:** stale detection, pricing, and rebuild triggers unchanged; finding rows untouched (C1).
 
-**Implementation seam / likely modules:** the Findings banner-rendering block in `neurosearch/web/index.html`.
+**Seam:** the Findings banner-rendering block (`loadReviews` and the static `#view-findings` markup).
 
-**Acceptance test:** a returning user sees at most one system-prompted review entry point above the finding list;
-the "822 stale sources," "nothing waiting," and "4,805 never used" states are reachable from within it rather than
-each claiming independent top-of-page space.
+**Gates.** *Deterministic:* `test_s50` (banner markup is a common inline-style source); `test_s44`, `test_s5`,
+`UI_VERSION`. *Behavioral:* every priced option previously visible (four Rebuild variants, "Accept N as still
+usable", "Review them", "Dismiss all N") is reachable from the new entry point and fires the same endpoint at the
+same price — checked on the audit instance with the network log; a bulk-dismiss cannot be reached without the count
+of affected items on screen. *Human:* re-score `Findings › Current state` (Partly) and `Findings › What matters`
+(Partly). Expected: both toward Yes.
 
-**Regression risks:** merging three banners into one could bury a state a user currently notices immediately (e.g.,
-the priced stale-rebuild options) — the acceptance test should specifically confirm pricing visibility is not
-regressed, per the "strengths worth preserving" list in the audit.
+**Regression risks:** this is the rung most likely to hide a priced action a user currently sees at once — the
+behavioral gate exists for exactly that. The strengths list in `audit.md` names explicit dollar amounts as the
+product's core trust behaviour; visibility of price may not regress.
 
-**Tests / runtime checks required:** `tests/test_s50_design_drift.py`, manual check that all four previously-visible
-priced options remain reachable and priced identically.
-
-**Visual re-audit required:** yes.
-
-**Effort:** M **Risk:** Medium — this is the rung most likely to accidentally hide a currently-visible priced
-action; needs deliberate acceptance-test verification, not just a visual pass.
+**Visual re-audit:** yes. **Effort:** M **Risk:** Medium.
 
 ---
 
-### `Rung W3` — Master Plan: default to one recommended stale-remediation action
+### `Rung W3` — Master Plan: one recommended stale action, the plan above the fold
 
-**Problem being solved:** `H-6`. Four priced/unpriced options render as co-equal choices before the plan itself is
-visible.
+**Problem being solved:** `H-6`. Four co-equal options before the plan is visible.
 
 **Affected surfaces:** Master Plan.
 
-**Proposed system-level change:** default to a single recommended action (matching Research's own "one primary,
-others plain" hierarchy, a strength named in the audit), with the other three reachable but visually subordinate;
-decide in this rung whether the underlying banner shares a component with Findings' (`W2`) or stays visually
-separate.
+**Proposed change:** one recommended action by default, the others one step away — the "one primary, others
+plain" hierarchy Research already uses. The recommendation follows an explicit, stated rule (e.g. the cheapest
+option that fully resolves staleness), never an arbitrary pick. Decide here whether the banner shares W2's
+component or only its styling.
 
-**Why this rung precedes the next:** row/badge-level component consistency (`C1`, `C2`) is lower-leverage than
-fixing the two banner surfaces first, since the banners are what a user sees before anything else on both pages.
+**Precondition:** W2 landed.
 
-**Explicit non-goals:** does not change which remediation options exist or their prices — ranking and default
-presentation only.
+**Non-goals:** the four options and their prices are unchanged; "Start here / This week" ordering (a named
+strength) is not moved.
 
-**Implementation seam / likely modules:** the Master Plan stale-banner block in `neurosearch/web/index.html`.
+**Seam:** `renderStaleCard`, `renderPlan` banner block.
 
-**Acceptance test:** the plan is visible above the fold with at most one prominent stale-remediation action shown by
-default; the remaining three are one interaction away, not hidden entirely.
+**Gates.** *Deterministic:* `test_s44`, `test_s5`, `test_s50`, `UI_VERSION`. *Behavioral:* all four options still
+reachable and priced identically (audit instance, network log); the plan's first section is visible without
+scrolling at 1440×900. *Human:* re-score `Plan › Current state` (Partly) and `Plan › What that will do` (Partly).
 
-**Regression risks:** picking the wrong default recommended action could push a user toward a more expensive choice
-than they'd have picked themselves — the "recommended" logic needs an explicit, defensible rule (e.g., cheapest
-option that fully resolves staleness), not an arbitrary pick.
+**Regression risks:** a default that steers toward a more expensive choice — the rule must be written down in the
+rung's handoff note.
 
-**Tests / runtime checks required:** manual verification that all four options remain fully functional and priced
-identically after the rung.
-
-**Visual re-audit required:** yes.
-
-**Effort:** S **Risk:** Low — smaller surface than `W2`, same pattern already validated there.
+**Visual re-audit:** yes. **Effort:** S **Risk:** Low.
 
 ---
 
-### `Rung W4` — Sources: progressive disclosure for row actions
+### `Rung W4` — Sources: one primary row action, the rest disclosed
 
-**Problem being solved:** `H-4`. Six actions per row, including an unshielded destructive one, at 1,348 rows.
+**Problem being solved:** `H-4` (RC-D). Six actions per row, a red irreversible one adjacent to a reversible one,
+× 1,348 rows.
 
 **Affected surfaces:** Sources.
 
-**Proposed system-level change:** surface one primary action per row by task context; move secondary actions,
-"Delete everywhere" especially, behind an overflow control with confirmation scaled to irreversibility (cross-
-project delete gets a stronger confirmation than "Remove from project").
+**Proposed change:** one primary action per row by task context; secondary actions behind an overflow control;
+"Delete everywhere" behind a confirmation scaled to its irreversibility and never adjacent at equal weight to
+"Remove from project". `DESIGN.md` §5 (danger role) governs the treatment.
 
-**Why this rung precedes the next:** this is the highest-severity remaining workflow rung after the two banner
-surfaces; it should land before `C1` (badge/pill consistency) since it changes row structure, and a consistency pass
-on soon-to-be-restructured rows would be wasted work.
+**Precondition:** W1 landed, **and** F0's interaction walk of Sources exists — this rung does not ship on
+observation alone.
 
-**Explicit non-goals:** does not change what any action does, only its default visibility and confirmation weight.
-Does not address the add-source panel's placement (`P1`, polish) in this rung.
+**Non-goals:** what any action does is unchanged; the add-source panel's placement (`M-7`) is P1.
 
-**Implementation seam / likely modules:** the source-row action markup in `neurosearch/web/index.html`.
+**Seam:** `srcRowHtml`, `renderBook`, the static `#view-sources` row template.
 
-**Acceptance test:** a source row exposes one primary action by default; "Delete everywhere" requires one
-additional deliberate step and is never adjacent, at equal visual weight, to "Remove from project."
+**Gates.** *Deterministic:* `test_s44` (handlers), `test_s50` (row markup is the single largest inline-style
+source), `test_s5`, `UI_VERSION`. *Behavioral:* on the audit instance every one of the six actions still functions
+from its new position and calls the same endpoint; a bulk-review pass of twenty rows is timed before and after and
+is not materially slower for the common (non-destructive) case. *Human:* re-score `Sources › What matters` (No)
+and `Sources › What to do next` (No). Expected: toward Partly or Yes; the Findings row density strength must be
+matched, not traded away.
 
-**Regression risks:** hiding actions behind an overflow could slow down a power user's bulk-review workflow if not
-given a shortcut; the interaction-pass audit (not yet run) should validate this before considering the rung closed.
+**Regression risks:** slowing a power user's bulk workflow — the timing gate exists for this.
 
-**Tests / runtime checks required:** `tests/test_s44_frontend_integrity.py`, `tests/test_s50_design_drift.py`,
-manual verification every action still functions once relocated.
-
-**Visual re-audit required:** yes, plus an interaction-pass check once the audit-instance walk is available.
-
-**Effort:** M **Risk:** Medium — destructive-action placement changes carry real consequence if done wrong; this
-rung should not ship without the deferred interaction-pass validation.
+**Visual re-audit:** yes, plus the interaction walk. **Effort:** M **Risk:** Medium.
 
 ---
 
-### `Rung W5` — Home and status-line reorientation toward attention, not totals
+### `Rung W5` — Home and the status line: attention before totals
 
-**Problem being solved:** `H-1`, `M-1`, `M-2`, `M-3` (RC-A, RC-F). No attention signal on project cards; the stat
-block outweighs project titles; status is an unscannable sentence; card-click affordance is inconsistent.
+**Problem being solved:** `H-1`, `M-1`, `M-2`, `M-3` (RC-A, RC-F).
 
-**Affected surfaces:** Home, Chat sidebar footer (shares the status-line component).
+**Affected surfaces:** Home; the Chat sidebar footer (shares the status component).
 
-**Proposed system-level change:** a status component with independently legible parts (health indicator, spend),
-ordered by what needs noticing first, replacing the single narrated sentence in both locations; project cards gain
-a last-activity or attention signal and de-emphasized stat block relative to project titles; the whole card becomes
-a consistent click target.
+**Proposed change:** a status component with independently legible parts (health, today's spend, period spend)
+ordered by what needs noticing first — `DESIGN.md` §5 stat-tile and §8 Home direction apply; project cards gain a
+last-activity/attention signal; the stat block is subordinated to project titles; the whole card is the click
+target.
 
-**Why this rung precedes the next:** this is the last of the high-severity findings and the most speculative in
-scope (it touches Home's whole layout) — sequenced after the three more surgical rungs above so the token and
-vocabulary systems are already in place to build it on.
+**Precondition:** W1 landed (the status line contains an instruction — "use Re-check" — that W1's vocabulary
+governs). Sequenced last among W-rungs because it has the widest layout scope and the least dependency on the
+others.
 
-**Explicit non-goals:** does not add cross-project search, sort or archive to Home (raised as a scale risk in
-`raw.md` Phase 1 but not evidenced as a current problem at 13 projects) — that is a separate, larger IA question
-outside this ladder's scope.
+**Non-goals:** no cross-project search, sort or archive (a scale question not evidenced at 13 projects).
 
-**Implementation seam / likely modules:** Home's project-card markup and the shared status-line component (also
-used by Chat's sidebar footer).
+**Seam:** Home card markup, `renderWizard`/`funCard`, the status-line renderer used by both Home and the Chat
+sidebar footer.
 
-**Acceptance test:** a user can state whether local AI is healthy and roughly what they've spent by glancing at
-Home for under a second; a 0-source test project and an 876-source real project are visually distinguishable;
-clicking anywhere on a card body navigates.
+**Gates.** *Deterministic:* `test_s44`, `test_s5`, `test_s50`, `UI_VERSION`; the status component renders the same
+three numbers the current sentence does (a test comparing its DOM to the `/api/…` status payload). *Behavioral:*
+card-body click navigates (a `test_s44`-style handler check plus an audit-instance click); Re-check still fires the
+same probe. *Human:* re-score `Home › Where am I` (Partly), `Home › Current state` (No), `Home › What matters`
+(No), `Chats › Current state` (Partly).
 
-**Regression risks:** none identified beyond standard layout-change risk; lowest-dependency rung in this group since
-it doesn't touch pricing or destructive actions.
+**Regression risks:** ordinary layout risk; nothing priced or destructive is touched.
 
-**Tests / runtime checks required:** `tests/test_s44_frontend_integrity.py`, `tests/test_s50_design_drift.py`.
-
-**Visual re-audit required:** yes.
-
-**Effort:** M **Risk:** Low.
+**Visual re-audit:** yes, both themes (the status colours matter here). **Effort:** M **Risk:** Low.
 
 ---
 
-## Component-consistency changes
+## Component consistency
 
-### `Rung C1` — Unified badge/pill and banner component
+### `Rung C1` — One badge/pill primitive, roles distinguishable; Findings rows to two badges
 
-**Problem being solved:** the visual-drift portion of `H-3`/`H-5`/`H-6`/`M-4`/`M-6` — pills and banners currently
-share styling across four unrelated roles (status, filter, chip-input, version tag) with no visual distinction, and
-Findings rows carry 4–5 badges against a 2-badge target.
+**Problem being solved:** the styling half of `H-3`/`H-5`/`H-6`, and `M-4`/`M-6`. Pills serve four roles (status,
+filter, chip-input, metadata) with one look; Findings rows carry four to five badges.
 
-**Affected surfaces:** Findings (row badges, sidebar count badge), Sources (filter chips), Research/Plan (chip
-answers), sidebar (version tag).
+**Affected surfaces:** Findings rows and sidebar badge, Sources filter chips, Research/Plan chip answers, the
+version tag.
 
-**Proposed system-level change:** one badge/pill primitive with distinct visual treatments per role (status vs.
-filter vs. input vs. metadata), built on `F1`'s tokens; reduce Findings' per-row badge count toward the two-badge
-target by folding lower-value badges into the row's existing meaning-line text.
+**Proposed change:** one primitive with a distinct treatment per role (`DESIGN.md` §5 badges); Findings rows show
+two badges by default, the rest folded into the meaning line or expansion.
 
-**Why this rung precedes the next:** this is lower-severity than the workflow rungs above but higher-leverage than
-pure polish, since it's referenced by multiple High findings as a contributing (not root) cause.
+**Precondition:** W1–W5 landed and a cross-cutting RE-AUDIT done (see sequencing).
 
-**Explicit non-goals:** does not change which information each badge conveys, only how many render and how visually
-distinct the roles are.
+**Non-goals:** what a badge conveys is unchanged.
 
-**Implementation seam / likely modules:** shared badge/pill CSS classes, Findings row markup.
+**Seam:** shared badge rules; Findings row template; the sidebar `.n` count badge.
 
-**Acceptance test:** the four badge roles (status, filter, input, metadata) are visually distinguishable from each
-other; Findings rows render at most two badges by default with the rest available on expansion or in the meaning
-line.
+**Gates.** *Deterministic:* `test_s50`; `test_s44`, `test_s5`, `UI_VERSION`. *Behavioral:* filters still filter,
+chip answers still submit. *Human:* re-score `Findings › What matters` (from W2's after-state) and check the
+Findings density strength against the `evidence/` before-image.
 
-**Regression risks:** removing a badge a power user currently scans for (e.g., "weak") could reduce information
-density that raw.md names as a strength — verify against the strengths list before removing any badge outright.
-
-**Tests / runtime checks required:** `tests/test_s50_design_drift.py`.
-
-**Visual re-audit required:** yes.
-
-**Effort:** M **Risk:** Low.
+**Visual re-audit:** yes. **Effort:** M **Risk:** Low.
 
 ---
 
 ## Polish
 
-### `Rung P1` — Small, independent surface fixes
+### `Rung P1` — Small independent fixes, folded into whichever rung is already in the file
 
-**Problem being solved:** `L-1` through `L-5`, `M-7`, `M-9`, `M-10`, `M-11` — a set of small, uncorrelated findings
-that don't require a shared system change.
-
-**Affected surfaces:** Sources (thumbnail fallback, export placement, add-panel real estate), Chat (menu-item
-weight, sidebar grouping), Master Plan (footer tab placement), sidebar (version tag size), Settings (brief textarea
-height, Save consequence text), sidebar mode toggle (Research/Plan affordance mismatch).
-
-**Proposed system-level change:** none — each item is fixed independently, in whichever surface's other rung is
-already touching that file, to avoid a standalone low-value commit.
-
-**Why this rung comes last:** none of these findings block understanding of a core workflow; `AUDIT.md` §10
-explicitly warns against starting with polish when a structural problem makes the screen confusing, and several
-structural problems precede this list.
-
-**Explicit non-goals:** no new shared component is introduced for this rung; if two items turn out to need the same
-fix (e.g., Chat menu weight and any other destructive/non-destructive adjacency), fold that into `W1`'s button
-treatment instead of solving it twice.
-
-**Implementation seam / likely modules:** scattered — Sources row/panel markup, Chat header menu, Master Plan
-footer, sidebar version tag, Settings textarea, sidebar mode toggle.
-
-**Acceptance test:** each item's specific defect (missing fallback glyph, misplaced export, equal-weight delete,
-buried footer nav, tiny version tag, truncated brief, missing consequence text, mismatched toggle affordance) is
-independently verifiable as fixed; no shared acceptance test across the group.
-
-**Regression risks:** low individually; the main risk is scope creep if "polish while I'm in the file" expands
-beyond the specific items listed here.
-
-**Tests / runtime checks required:** `tests/test_s44_frontend_integrity.py`, `tests/test_s50_design_drift.py` where
-applicable per item.
-
-**Visual re-audit required:** spot-check only, not a full pass.
-
-**Effort:** S (aggregate; each item is trivial individually) **Risk:** Low.
+`L-1` – `L-5`, `M-7`, `M-9`, `M-10`, `M-11`. No shared change; each is fixed inside the rung that already touches
+that surface, never as a standalone commit. Gates are the touched rung's gates. If two items want the same fix,
+that fix belongs in W1 or C1, not here. **Effort:** S aggregate **Risk:** Low.
 
 ---
 
-## Sequencing summary
+## Sequencing
 
-F1 → F2 → W1 → W2 → W3 → W4 → W5 → C1 → P1, with the note that F1 and F2 could run in parallel (both are additive,
-non-conflicting foundation work) if two implementers are available, but W1 must not start until F1 has landed, and
-W2/W3 must not start until W1 has landed, per the closure-pass finding that vocabulary and token fixes converge on
-the same surfaces. Every rung requires a RE-AUDIT (`AUDIT.md` "RE-AUDIT" mode) of its affected surfaces before the
-next rung in the same group begins; a cross-cutting RE-AUDIT across all affected surfaces is due after `W5`, before
-`C1` starts, to confirm no unpropagated consequence was introduced across the five preceding workflow rungs.
+F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 → [cross-cutting RE-AUDIT] → C1 → P1.
+
+F1 and F2 may run in parallel after F0. W1 waits for F1. W2 and W3 wait for W1; W4 waits for W1 and for F0's
+Sources walk. After W5, one RE-AUDIT across every touched surface, against the `evidence/` baseline, before C1 —
+to catch a consequence that five workflow rungs propagated without anyone noticing. Each rung leaves a handoff note
+naming the next incomplete rung (`DESIGN-MISSION.md`, acceptance evidence).
