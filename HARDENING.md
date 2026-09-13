@@ -1929,3 +1929,10 @@ pointed to a pruned session path, and its contents duplicated the repository rat
 directory was moved intact to `/tmp/neuro-stale-main-worktree-20260913-1246` for reversibility; no tracked or
 protected evidence was deleted. `repo-check` is clean again, and the post-cleanup release gate passes at
 `0.63.60 @ 82765db`; artifact: `evals/release/release-check-0.63.60-82765db-20260913-124752.json`.
+
+## Test isolation migration batch — 2026-09-13
+
+An additional eight-module migration removed redundant import-time `setdefault("NEUROSEARCH_DATA_DIR", ...)`
+overrides from the resource, exploration, pool, shell, drawer, acceleration, Claims workbench, and storage-hygiene
+test modules. The S51 ratchet is now **71 remaining modules** (down from 79); the focused batch passed 81 tests with
+one existing Starlette warning. `tests/conftest.py` remains the sole hard-set owner.

@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import os
-import tempfile
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_storage_"))
 os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest

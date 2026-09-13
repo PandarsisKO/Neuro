@@ -5,10 +5,8 @@ from __future__ import annotations
 
 import os
 import re
-import tempfile
 from pathlib import Path
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_drawer_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 

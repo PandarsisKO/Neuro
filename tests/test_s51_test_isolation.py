@@ -19,10 +19,10 @@ def test_conftest_hard_sets_the_data_dir_before_any_module():
 
 def test_no_module_relies_on_setdefault_for_the_data_dir():
     # setdefault is harmless now that conftest wins, but a future removal of the conftest line would silently
-    # re-open the hole; keep the count visible so it only ever goes down.
+    # re-open the hole; keep the ratchet visible so it only ever goes down from the current 71-module baseline.
     offenders = sorted(p.name for p in TESTS.glob("test_*.py")
                        if p.name != Path(__file__).name and 'setdefault("NEUROSEARCH_DATA_DIR"' in p.read_text(encoding="utf-8"))
-    assert len(offenders) <= 78, f"new module uses setdefault for the data dir: {offenders}"
+    assert len(offenders) <= 71, f"new module uses setdefault for the data dir: {offenders}"
 
 
 def test_resolved_data_dir_is_a_private_temp_dir_not_the_repo():

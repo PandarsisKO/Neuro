@@ -5,11 +5,9 @@ from __future__ import annotations
 import json
 import os
 import socket
-import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_g3_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 os.environ.pop("OPENAI_API_KEY", None)

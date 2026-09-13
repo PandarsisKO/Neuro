@@ -3,9 +3,7 @@ website / repository / community / Work identity never falls through to naive pa
 from __future__ import annotations
 
 import os
-import tempfile
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_g2_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 

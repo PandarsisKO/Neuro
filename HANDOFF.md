@@ -744,6 +744,10 @@ The isolation cleanup also removed `tests/test_core.py`'s module-level `NEUROSEA
 test now creates its own fake-AI source fixture; the focused S51 plus backup checks pass without relying on collection
 order.
 
+The next isolation batch removed the same redundant import-time override from eight high-traffic test modules
+(`k3`, `k4`, `n7`, `n8`, `n9`, `o1`, `o2`, `s45`). S51 now ratchets at **71 remaining modules**; the batch passed
+81 tests with one existing Starlette warning. No product or Claude-owned design files were touched.
+
 Full pytest passes **1,364 tests** with one existing Starlette deprecation warning. The commit-bound release gate
 passes at `0.63.60 @ d9e2914`; artifact:
 `evals/release/release-check-0.63.60-d9e2914-20260913-125804.json`.
