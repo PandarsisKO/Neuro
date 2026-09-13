@@ -37,6 +37,8 @@ SHEET_EXT = (".xlsx", ".xlsm", ".csv", ".tsv")
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".tif", ".tiff", ".bmp", ".heic")
 COMMUNITY_HOSTS = ("reddit.com", "old.reddit.com", "news.ycombinator.com", "lemmy.world", "discourse.org", "stackexchange.com", "stackoverflow.com", "quora.com")
 REPO_HOSTS = ("github.com", "gitlab.com", "bitbucket.org", "codeberg.org")
+SECTION_PATHS = {"blog", "news", "articles", "posts", "resources", "publications", "topics",
+                 "categories", "archive", "archives", "docs", "documentation", "forms-instructions"}
 URL_RE = re.compile(r"^(https?://)?([a-z0-9-]+\.)+[a-z]{2,}(/[^\s]*)?$", re.I)
 ISBN_RE = re.compile(r"^(?:isbn[:\s-]*)?((?:97[89][- ]?)?(?:\d[- ]?){9}[\dXx])$", re.I)
 DOI_RE = re.compile(r"^(?:doi[:\s]*|https?://(?:dx\.)?doi\.org/)?(10\.\d{4,9}/\S+)$", re.I)
@@ -167,7 +169,9 @@ def classify(text: str) -> Classification:
         return Classification("website", raw, url=url, label="Website detected",
                               detail=f"{host} is a whole site. Explore lists its pages (sitemap first, never a crawl), ranks them against your brief and lets you pick; or add just the home page.",
                               actions=[_act("explore", "Explore website"), _act("page", "Add home page only")], default_action="explore", host=host)
-    if len(segs) == 1 and (raw.rstrip().endswith("/") or "." not in segs[0]) and not u.query and not low.endswith(DOC_EXT + SHEET_EXT + IMAGE_EXT):
+    # A shallow path (even with a trailing slash) can be a complete article.
+    # Only recognizable section names justify enumerating instead of reading it.
+    if len(segs) == 1 and segs[0].lower() in SECTION_PATHS and not u.query:
         return Classification("website_section", raw, url=url, label="Website section detected",
                               detail=f"A section of {host}. Explore lists the pages under it for review, or add just this page.",
                               actions=[_act("explore", "Explore section"), _act("page", "Add this page only")], default_action="explore", host=host)

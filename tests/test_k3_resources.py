@@ -125,3 +125,28 @@ def test_chat_pasted_container_is_detected_not_ingested():
     assert res2["ingest_jobs"][0]["job_id"] and "Queued 1 link" in res2["answer"]
     res3 = qa.ask("https://www.youtube.com/@BenKelly", project_id=pid, conversation_id=db.new_id())
     assert res3["ingest_jobs"][0]["review"] and "approval" in res3["answer"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://medium.muz.li/why-every-ai-built-app-looks-the-same-and-how-to-escape-ai-slop-919bf2dc6fc0",
+    "https://example.com/a-single-article",
+    "https://example.com/a-single-article/",
+    "https://example.com/about",
+])
+def test_shallow_pages_queue_ingestion_not_exploration(client, url):
+    detected = client.post("/api/classify", json={"input": url}, headers=H).json()["items"][0]
+    assert detected["kind"] == "page" and detected["default_action"] == "page"
+    pid = db.create_project("Article routing", "brief")["id"]
+    result = client.post(f"/api/projects/{pid}/add", json={"input": url}, headers=H)
+    assert result.status_code == 200
+    job = db.get_job(result.json()["jobs"][0])
+    assert job["kind"] == "ingest_url"
+    assert job["payload"]["url"].rstrip("/") == url.rstrip("/")
+    assert job["payload"]["review"] is False
+
+
+@pytest.mark.parametrize("path", ["blog", "news/", "articles", "resources/", "forms-instructions/"])
+def test_known_sections_still_offer_exploration(path):
+    c = resources.classify("https://example.com/" + path)
+    assert c.kind == "website_section" and c.default_action == "explore"
+    assert any(a["action"] == "page" for a in c.actions)
