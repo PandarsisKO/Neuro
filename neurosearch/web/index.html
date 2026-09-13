@@ -458,7 +458,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
     <!-- findings -->
     <div class="view" id="view-findings">
       <h2>Findings</h2>
-      <div class="row" style="margin-bottom:10px"><span class="muted" style="flex:1">What's worth keeping. Approved findings feed the exports and the Master Plan.</span>
+      <div class="row" style="margin-bottom:10px"><span class="muted grow">What's worth keeping. Approved findings feed the exports and the Master Plan.</span>
         <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
         <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
         <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
@@ -482,7 +482,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
         <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
       </div>
       <div id="notes"></div>
-      <div class="row" id="fbPager" style="margin-top:8px"></div>
+      <div class="row mt-2" id="fbPager"></div>
     </div>
 
     <!-- plan -->
@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.54';
+const UI_VERSION = '0.63.55';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1289,19 +1289,19 @@ async function loadReviews() {
     const rankLine = !ranked
       ? `<span class="muted">⏳ Ranking these by relevance to your brief… (titles &amp; descriptions only, nothing downloaded)</span>`
       : scored
-        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.${meta.rank_note ? ` <span style="color:var(--warn)">${esc(meta.rank_note)}</span>` : ''}</span>
+        ? `<span class="muted">✨ Sorted by relevance to your brief — the best ${want ? Math.min(want, n) : n} are pre-selected.${meta.rank_note ? ` <span class="status-warn">${esc(meta.rank_note)}</span>` : ''}</span>
            <span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto;white-space:nowrap"><span class="muted">pick top</span><input type="number" min="1" max="${n}" value="${want || n}" style="width:64px;flex:none;padding:4px 6px" onchange="rvTop('${c.id}', +this.value)"><button class="small ghost" onclick="rvRerank('${c.id}')">re-rank</button></span>`
-        : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost" style="margin-left:auto" onclick="rvRerank('${c.id}')">re-rank</button>`;
+        : `<span class="muted">${esc(meta.rank_note || 'Newest first.')} Add a goal or brief in Settings and re-rank to sort by relevance.</span><button class="small ghost push-right" onclick="rvRerank('${c.id}')">re-rank</button>`;
     // Only the FIRST review card is open. Three of them (107 + 93 + 398 videos) stacked to a page whose queue
     // controls could not be scrolled to at all — the inner lists swallow the wheel, so "further down" was
     // unreachable. A folded card still shows what it is and how much is selected; opening it is one click.
     const folded = RVFOLD[c.id] !== undefined ? RVFOLD[c.id] : idx > 0;
     return `<div class="card rv${folded ? ' folded' : ''}" style="border-color:var(--warn)" id="rv-${c.id}">
-      <div class="row"><b style="flex:1">Review before starting: ${esc(c.title || c.kind)}<span class="rvfold" onclick="RVFOLD['${c.id}']=!(RVFOLD['${c.id}'] !== undefined ? RVFOLD['${c.id}'] : ${idx > 0});rvSig=null;loadReviews()">${folded ? '▸ show' : '▾ hide'}</span></b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
+      <div class="row"><b class="grow">Review before starting: ${esc(c.title || c.kind)}<span class="rvfold" onclick="RVFOLD['${c.id}']=!(RVFOLD['${c.id}'] !== undefined ? RVFOLD['${c.id}'] : ${idx > 0});rvSig=null;loadReviews()">${folded ? '▸ show' : '▾ hide'}</span></b><span class="muted"><span id="rvsel-${c.id}">${nSel}</span> of ${n} selected${mins ? ` · ${Math.round(mins / 6) / 10} h listed` : ''}</span></div>
       <div style="margin-top:3px;font-size:13px">💵 <span id="rvest-${c.id}">${est}</span></div>
       ${meta.counts ? `<div class="muted" style="margin-top:2px">🗂 ${(meta.counts.already_in_project || 0) + (meta.counts.already_in_library || 0) + (meta.counts.new || 0)} found · <b>${meta.counts.already_in_library || 0}</b> already in your library (reused, not re-downloaded) · <b>${meta.counts.already_in_project || 0}</b> already in this project · <b>${meta.counts.new || 0}</b> new — the estimate below covers only new work</div>` : ''}
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
-      <div class="row" style="margin-top:4px">${rankLine}</div>
+      <div class="row mt-1">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
       <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
