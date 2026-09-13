@@ -41,6 +41,18 @@ def test_the_module_javascript_parses():
         assert r.returncode == 0, f"{path.name} has a JavaScript syntax error:\n{r.stderr[:2000]}"
 
 
+def test_module_state_assignments_do_not_create_implicit_globals():
+    """ES modules are strict: assigning a second bare name crashes startup even when `node --check` passes."""
+    js = "\n".join(p.read_text() for p in _module_paths())
+    implicit_second_assignment = re.compile(
+        r"globalThis\.[A-Za-z_$][\w$]*\s*=\s*(?:null|undefined|\d+)\s*,\s*"
+        r"(?!globalThis\.)[A-Za-z_$][\w$]*\s*=(?!=|>)"
+    )
+    assert not implicit_second_assignment.search(js), "comma assignment creates a bare strict-mode global"
+    sources = (INDEX.parent / "js" / "sources.js").read_text()
+    assert "globalThis.lastClassified = null" in sources
+
+
 def test_the_version_marker_is_present_and_matches_the_package():
     from neurosearch import __version__
     m = re.search(r"globalThis\.UI_VERSION = '([^']+)'", (INDEX.parent / "js/state.js").read_text())

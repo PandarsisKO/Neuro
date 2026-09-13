@@ -549,24 +549,25 @@ globalThis.removeFromProject = async function removeFromProject(id) { await del(
 globalThis.delSource = async function delSource(id) { if (!confirm('Delete this source and its transcript from every project?')) return; await del('/api/sources/' + id); loadSources(); }
 globalThis.exportCsv = function exportCsv(seg) { location.href = `/api/export/${seg ? 'segments' : 'sources'}.csv?project_id=${state.project.id}`; }
 // ---- G2: understand what was pasted before deciding what to run
-globalThis.classifyTimer = null, lastClassified = null;
+globalThis.classifyTimer = null;
+globalThis.lastClassified = null;
 globalThis.classifyInput = async function classifyInput() {
   const text = $('#inUrls').value.trim(); const box = $('#inDetect');
-  if (!text) { box.innerHTML = ''; lastClassified = null; return; }
+  if (!text) { box.innerHTML = ''; globalThis.lastClassified = null; return; }
   try {
-    const r = await post('/api/classify', { input: text }); lastClassified = r.items;
+    const r = await post('/api/classify', { input: text }); globalThis.lastClassified = r.items;
     box.innerHTML = r.items.map((c, i) => {
       const acts = c.actions.map(a => `<label style="margin-right:10px;cursor:pointer" title="${esc(a.note || '')}"><input type="radio" name="act${i}" value="${a.action}" ${a.available ? '' : 'disabled'} ${a.action === c.default_action ? 'checked' : ''}> ${esc(a.label)}${a.available ? '' : ' <span class="muted">(coming)</span>'}</label>`).join('');
       return `<div class="mt-1"><b>${esc(c.label)}</b>${c.host ? ` <span class="muted">${esc(c.host)}</span>` : ''} — ${esc(c.detail)}<div style="margin-top:2px">${acts || '<span class="muted">nothing to do yet</span>'}</div></div>`;
     }).join('');
   } catch (e) { box.textContent = ''; }
 }
-$('#inUrls').addEventListener('input', () => { clearTimeout(classifyTimer); globalThis.classifyTimer = setTimeout(classifyInput, 350); });
+$('#inUrls').addEventListener('input', () => { clearTimeout(globalThis.classifyTimer); globalThis.classifyTimer = setTimeout(classifyInput, 350); });
 globalThis.ingestUrls = async function ingestUrls() {
   const text = $('#inUrls').value.trim(); if (!text) return;
   const tags = $('#inTags').value.split(',').map(t => t.trim()).filter(Boolean);
-  if (!lastClassified) await classifyInput();
-  const items = lastClassified || [];
+  if (!globalThis.lastClassified) await classifyInput();
+  const items = globalThis.lastClassified || [];
   let queued = 0, skipped = [];
   for (let i = 0; i < items.length; i++) {
     const c = items[i]; const chosen = document.querySelector(`input[name="act${i}"]:checked`);
@@ -579,7 +580,7 @@ globalThis.ingestUrls = async function ingestUrls() {
   }
   if (queued) toast(`▶ ${queued} queued`);
   if (skipped.length) toast(skipped.join(' · '));
-  $('#inUrls').value = ''; $('#inDetect').innerHTML = ''; lastClassified = null; loadJobs();
+  $('#inUrls').value = ''; $('#inDetect').innerHTML = ''; globalThis.lastClassified = null; loadJobs();
 }
 globalThis.ingestFiles = async function ingestFiles() {
   const files = [...$('#inFile').files]; if (!files.length) return;

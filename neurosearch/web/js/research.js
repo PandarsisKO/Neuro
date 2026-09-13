@@ -612,17 +612,18 @@ globalThis.loadJobs = async function loadJobs() {
 // R2: the poll asks "did anything change?" (~6 ms) before rebuilding the Sources view (~440 ms). Panes refresh
 // only when the revision they depend on has actually moved. A full reconcile every RECONCILE_EVERY ticks means a
 // fingerprint that ever missed a change self-corrects within about a minute instead of leaving a stale screen.
-globalThis.lastRev = null, ticksSinceFull = 0;
+globalThis.lastRev = null;
+globalThis.ticksSinceFull = 0;
 globalThis.RECONCILE_EVERY = 20;
 globalThis.pollTick = async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
   let t;
   try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); }
   catch (e) { loadJobs(); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
-  const rev = t.rev, prev = lastRev;
+  const rev = t.rev, prev = globalThis.lastRev;
   const changed = k => !prev || prev[k] !== rev[k];
-  const full = ++ticksSinceFull >= RECONCILE_EVERY;
-  if (full) ticksSinceFull = 0;
+  const full = ++globalThis.ticksSinceFull >= RECONCILE_EVERY;
+  if (full) globalThis.ticksSinceFull = 0;
   globalThis.lastRev = rev;
   const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
   if (full || changed('jobs')) loadJobs(); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
@@ -640,6 +641,15 @@ globalThis.jobHistory = async function jobHistory(id, btn) {
 }
 // ---- findings ----
 globalThis.STALE = { data: null };
+globalThis.reviewItem = function reviewItem(title, why, body, open = false) {
+  return `<details class="review-item" ${open ? 'open' : ''}><summary><span class="grow"><b>${title}</b><span class="muted text-xs"> — ${why}</span></span></summary><div class="review-item-body">${body}</div></details>`;
+}
+globalThis.syncFindingsReview = function syncFindingsReview() {
+  const hub = $('#findingsReview'); if (!hub) return;
+  const n = hub.querySelectorAll('.review-item').length;
+  hub.hidden = !n;
+  const count = $('#findingsReviewCount'); if (count) count.textContent = n ? `${n} item${n === 1 ? '' : 's'}` : '';
+}
 globalThis.loadStaleness = async function loadStaleness() {
   try { STALE.data = await api(`/api/projects/${state.project.id}/staleness`); } catch (e) { STALE.data = null; return; }
   const s = STALE.data;
@@ -654,9 +664,9 @@ globalThis.renderTriageCard = async function renderTriageCard(elId) {
   const el = $('#' + elId); if (!el) return;
   const s = STALE.data; if (!s) { el.innerHTML = ''; return; }
   const reb = s.sources.filter(x => x.status === 'rebuilding');
-  if (!s.stale_sources && !s.legacy_sources && !reb.length) { el.innerHTML = ''; return; }
-  if (STALE.left) { el.innerHTML = ''; return; }
-  let t; try { t = await api(`/api/projects/${state.project.id}/staleness/triage`); } catch (e) { el.innerHTML = ''; return; }
+  if (!s.stale_sources && !s.legacy_sources && !reb.length) { el.innerHTML = ''; syncFindingsReview(); return; }
+  if (STALE.left) { el.innerHTML = ''; syncFindingsReview(); return; }
+  let t; try { t = await api(`/api/projects/${state.project.id}/staleness/triage`); } catch (e) { el.innerHTML = ''; syncFindingsReview(); return; }
   STALE.triage = t;
   const T = t.tiers;
   const row = (key, label, btn, danger) => { const x = T[key]; if (!x || !x.count) return '';
@@ -679,13 +689,15 @@ globalThis.renderTriageCard = async function renderTriageCard(elId) {
   const head = t.stale_total
     ? `⚠ ${t.stale_total} source${t.stale_total === 1 ? '' : 's'} analysed against older inputs`
     : (reb.length ? `⟳ Re-analysing ${reb.length} source${reb.length === 1 ? '' : 's'}` : 'Source analysis');
-  el.innerHTML = `<div class="card" style="border-color:var(--${t.stale_total ? 'warn' : 'line'})"><b>${head}</b>${t.accepted ? ` <span class="muted">· ${t.accepted} accepted as still usable</span>` : ''}${t.stale_total && reb.length ? ` <span class="muted">· ${reb.length} re-analysing</span>` : ''}
-    <div class="muted">${t.stale_total ? 'Their findings stay readable and usable. ' : ''}Every option below shows both prices — hours on Claude Code, or dollars on the API — and nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
+  const body = `${t.accepted ? `<span class="muted">${t.accepted} accepted as still usable.</span>` : ''}${t.stale_total && reb.length ? ` <span class="muted">${reb.length} re-analysing.</span>` : ''}
+    <div class="muted">Every option below shows both prices — hours on Claude Code, or dollars on the API — and nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
     ${row('rebuild_matters', 'stale AND carrying weight', x => rebuildBtns(x, 'rebuild_matters'))}
     ${row('rebuild_transcript', 'whose transcript changed', x => rebuildBtns(x, 'rebuild_transcript'))}
     ${row('retry_failed', 'whose last rebuild failed', retryBtns)}
     ${row('accept', 'stale only because the brief changed, carrying no weight', acceptBtns)}
-    <div class="row mt-2"><span class="muted grow text-xs">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div></div>`;
+    <div class="row mt-2"><span class="muted grow text-xs">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div>`;
+  el.innerHTML = reviewItem(head, t.stale_total ? 'source inputs changed; existing findings remain usable until you decide' : 'source analysis is currently running', body, true);
+  syncFindingsReview();
 }
 globalThis.rebuildTier = async function rebuildTier(tier, mode) {
   const T = (STALE.triage && STALE.triage.tiers && STALE.triage.tiers[tier]) || {};
@@ -749,14 +761,15 @@ globalThis.rebuildStale = async function rebuildStale(what, transport = 'interac
 // (`/tick`); Findings never got it. The revision covers notes, sources, jobs and research, which is everything
 // this tab draws, so an unchanged revision means there is nothing to redraw. A full reconcile still runs every
 // RECONCILE_EVERY ticks, so a fingerprint that ever missed a change self-corrects within a minute.
-globalThis.notesRev = null, notesTicks = 0;
+globalThis.notesRev = null;
+globalThis.notesTicks = 0;
 globalThis.notesTick = async function notesTick() {
   if (state.view !== 'findings' || !state.project) return;
   let t;
   try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); } catch (e) { scheduleNotesTick(); return; }
   const rev = JSON.stringify(t.rev);
-  notesTicks++;
-  if (rev !== notesRev || notesTicks >= RECONCILE_EVERY) { notesTicks = 0; await loadNotes(); }
+  globalThis.notesTicks++;
+  if (rev !== globalThis.notesRev || globalThis.notesTicks >= RECONCILE_EVERY) { globalThis.notesTicks = 0; await loadNotes(); }
   else scheduleNotesTick();
 }
 globalThis.scheduleNotesTick = function scheduleNotesTick() {
@@ -788,8 +801,9 @@ globalThis.loadNotes = async function loadNotes() {
   const bySrc = {}; sug.forEach(n => { const k = n.source_title || (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
   const legacy = sug.filter(n => !n.title).length;
   const shownIds = sug.map(n => n.id);
-  $('#suggestedWrap').innerHTML = (legacy ? `<div class="banner">${legacy} suggestion${legacy === 1 ? ' was' : 's were'} generated by an older version and read as run-on sentences. <a href="#" onclick="analyzeChooser(true);return false"><b>Re-analyse all</b></a> to regenerate them as clean headlines — shows the cost before it runs.</div>` : '') + (analysing ? `<div class="banner"><span class="spin"></span> Reading ${analysing} source${analysing === 1 ? '' : 's'} for findings — each one appears here the moment it finishes.${FWAVE.queued ? ` <button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button>` : ''}</div>` : '') +
-    `<div class="row mb-2"><h3 style="margin:0;flex:1">Suggested ${sugTotal ? `(${sugTotal})` : ''}</h3>
+  $('#suggestedReview').innerHTML = (legacy ? reviewItem(`${legacy} legacy suggestion${legacy === 1 ? '' : 's'}`, 'older analysis produced run-on text', `<button class="small" onclick="analyzeChooser(true)">Re-analyse all…</button> <span class="muted text-xs">Cost is shown before anything runs.</span>`) : '') + (analysing ? reviewItem(`Reading ${analysing} source${analysing === 1 ? '' : 's'}`, 'new findings will appear as each source finishes', `${FWAVE.queued ? `<button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button> <span class="muted text-xs">Free — changes queue order only.</span>` : '<span class="muted text-xs">No action needed.</span>'}`) : '');
+  syncFindingsReview();
+  $('#suggestedWrap').innerHTML = `<div class="row mb-2"><h3 style="margin:0;flex:1">Suggested ${sugTotal ? `(${sugTotal})` : ''}</h3>
       ${sug.length ? `<button class="small primary" title="${sugTotal > sug.length ? `Approve the ${sug.length} shown here (of ${sugTotal})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(shownIds)},'approved')">Approve ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button><button class="small" onclick="bulkNotes(${JSON.stringify(shownIds)},'dismissed')">Dismiss ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button>` : ''}
       <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new…</button><button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button></div>
     ${sugTotal > sug.length ? `<div class="muted" style="margin-bottom:6px">Showing the ${sug.length} most important of ${sugTotal}. The workbench below pages through the rest — set Show to <b>suggested</b>.</div>` : ''}
@@ -847,7 +861,8 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   try { const q = loadQuality(st); if (q && q.catch) q.catch(() => { const el = $('#fbQual'); if (el) el.innerHTML = ''; }); }
   catch (e) { const el = $('#fbQual'); if (el) el.innerHTML = ''; }
   const sw = r.low_value_sweep || {};
-  $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">${esc(sw.line)}.</span><button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button></div>` : '';
+  $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? reviewItem(`${sw.count} low-value finding${sw.count === 1 ? '' : 's'}`, `${esc(sw.line)}; nothing has used them`, `<button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button>`) : '';
+  syncFindingsReview();
   const rows = r.findings || [];
   const bySrc = []; const idx = {};
   for (const n of rows) { const k = n.source_title || 'Pinned from chat'; if (!(k in idx)) { idx[k] = bySrc.length; bySrc.push([k, n.source_id, []]); } bySrc[idx[k]][2].push(n); }
@@ -888,8 +903,8 @@ globalThis.loadQuality = async function loadQuality(st) {
   // pile grows now that 0.58.1 raised the cap. Same surface, same door, one extra status.
   if (st !== 'approved' && st !== 'suggested') { el.innerHTML = ''; return; }
   let s; try { s = await api(`/api/projects/${state.project.id}/findings/quality?summary=1&status=${st}`); } catch (e) { el.innerHTML = ''; return; }
-  if (s && s.pending) { el.innerHTML = `<div class="banner muted" style="font-size:12.5px">🧽 The repeat check runs in the background — it appears here within a couple of minutes. It is never computed while you wait, because on a 12,000-finding project it takes about ten seconds.</div>`; return; }
-  if (!s || !s.flagged) { el.innerHTML = ''; return; }
+  if (s && s.pending) { el.innerHTML = reviewItem('Checking for repeats', 'the check runs in the background and never blocks this page', '<span class="muted text-xs">It normally appears within a couple of minutes.</span>'); syncFindingsReview(); return; }
+  if (!s || !s.flagged) { el.innerHTML = ''; syncFindingsReview(); return; }
   const bits = [];
   // 0.59.0, Kyle: "even duplicate data is useful somehow". Right — and this app already agrees: claims.assess
   // counts independent sources agreeing as corroborative sufficiency. So a repeat WITHIN one source is redundancy,
@@ -897,16 +912,17 @@ globalThis.loadQuality = async function loadQuality(st) {
   if (s.duplicates) bits.push(`${s.duplicates} the same source said twice`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
   const corr = (s.corroborated || {}).findings || 0;
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.${s.as_of_current === false ? ' <span class="muted">Counted a moment ago; refreshing.</span>' : ''}</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
+  el.innerHTML = reviewItem(`${s.flagged} finding${s.flagged === 1 ? '' : 's'} need a quality check`, `${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · ${corr} independently confirmed and kept` : ''}`, `<button class="small" onclick="openQuality('${st}')">Review</button>${s.as_of_current === false ? ' <span class="muted text-xs">Counted a moment ago; refreshing.</span>' : ''}`);
+  syncFindingsReview();
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
 // The filter can now say which of them are not repeats of something approved and do name something specific.
 globalThis.loadPromotable = async function loadPromotable(el) {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { el.innerHTML = ''; return; }
-  if (!r.reserve) { el.innerHTML = ''; return; }
+  if (!r.reserve) { el.innerHTML = ''; syncFindingsReview(); return; }
   const sk = Object.entries(r.skipped || {}).map(([k, v]) => `${v} ${k === 'already_covered' ? 'already covered by an approved finding' : (r.rules ? '' : '') + k.replace(/_/g, ' ')}`).join(' · ');
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">📥 ${r.promotable} of ${r.reserve} withheld findings look worth keeping${sk ? ` · skipping ${esc(sk)}` : ''}.</span>` +
-    (r.promotable ? `<button class="small" onclick="openPromotable()">Review</button><button class="small primary" onclick="promoteReserve(${JSON.stringify(r.rows.map(x => x.id))})">Approve all ${r.promotable}</button>` : '') + `</div>`;
+  el.innerHTML = reviewItem(`${r.promotable} of ${r.reserve} withheld findings may be worth keeping`, `they were extracted beyond the cap${sk ? `; skipping ${esc(sk)}` : ''}`, r.promotable ? `<button class="small" onclick="openPromotable()">Review</button><button class="small primary" onclick="promoteReserve(${JSON.stringify(r.rows.map(x => x.id))})">Approve all ${r.promotable}</button>` : '<span class="muted text-xs">Nothing is ready to promote.</span>');
+  syncFindingsReview();
 }
 globalThis.openPromotable = async function openPromotable() {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { return toast('could not load them'); }
