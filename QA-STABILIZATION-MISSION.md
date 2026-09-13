@@ -121,6 +121,16 @@ release integration's focused gate passes 14 tests. Remaining work is R6 design
 integration (Claude-owned), then R7 operational proof and a final full
 release-check before R9/R10 closeout.
 
+### R7 operational evidence — 2026-09-12
+
+`neurosearch doctor --no-smoke` passed in the isolated
+`/tmp/neuro-doctor-20260912b` data directory with all experimental flags off,
+contracts valid, provider/model routing coherent, and no substitutions. The
+only warnings were expected: a new private directory has no database until the
+first app run, and optional Reddit credentials are unset. No live database was
+opened and no paid model evaluation was run. Existing crash/recovery, breaker,
+retry, backup, and stale-client gates remain part of the release ritual.
+
 # R0 - Establish the truth
 
 Before editing production code:
