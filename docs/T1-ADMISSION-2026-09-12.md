@@ -121,8 +121,8 @@ as requested, and no claims job remained active at closeout.
 After the claims lane was explicitly cancelled, the final 14,742-claim pass
 reached terminal state with no T1 failures. The supported preview returned
 `total_rows: 0` for all three retained projects. The accepted, version-stamped
-cohort is `evals/t1/cohort-20260913-105835.json`, collected from live app
-0.63.51 at repository HEAD `cfec636`.
+cohort is `evals/t1/cohort-20260913-105835.json`, collected from live and
+repository version 0.63.56 at commit `c0d2054`.
 
 The artifact records 73,037 T1 job attempts: 41,477 embedded writes and
 31,560 stale-input skips across the initial admission and two reconciliations;
