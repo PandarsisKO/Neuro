@@ -373,6 +373,89 @@ Do not invent analytics, user behavior, conversion data, or frequency numbers.
 
 Clearly label assumptions.
 
+## 4.5 Minimum runtime verification matrix
+
+Static reading does not satisfy a full audit for load-bearing workflows. Runtime verification is **mandatory
+whenever a flow can be safely reproduced**. Before F0/a full audit closes, use the audit instance defined in §2
+(never the live instance) and exercise, end to end, at minimum:
+
+1. **Add/acquire research** — submit one safe source or file on the audit instance and observe
+   admission/acknowledgement, queued state, active/progress state, and usable completion or a controlled failure.
+2. **Findings** — approve or dismiss one disposable finding and verify immediate feedback plus durable
+   resulting state.
+3. **Chat** — send one real project question and observe acknowledgement/progress/answer plus one evidence or
+   research-gap path.
+4. **Discover** — run one bounded Discover operation, observe its states/results, and safely add or dismiss one
+   candidate.
+5. **Master Planner** — exercise the real Planner workflow far enough to verify progress/state behavior and the
+   resulting UI. `NEUROSEARCH_FAKE_AI=1`'s canned response is an accepted stand-in for the model's actual output,
+   but the queue/progress/state mechanics around it must still be genuinely exercised, not read.
+6. **Jobs / background work** — observe one job from admission through active work to completion or recovery.
+
+Also verify, using existing safe mechanisms (§4.5.1):
+
+- one failed or recoverable background job;
+- one interrupted, stale, or non-updating poll/refresh condition.
+
+**BLOCKED / CANNOT VERIFY is a valid terminal evidence state**, not a failure of the audit, when a flow cannot
+reasonably be exercised without modifying the product, risking real data, introducing artificial behavior solely
+for the audit, or incurring unnecessary paid spend. Document the limitation and why runtime evidence isn't
+obtainable rather than manufacturing it — and never silently downgrade a walk to a code reading and present it
+as a walk (§2 already forbids this).
+
+For every important workflow/finding, classify the evidence as one of:
+
+- **RUNTIME VERIFIED** — exercised live on the audit instance, this pass.
+- **SIMULATED RUNTIME** — exercised against a fake/fixture path (e.g. `NEUROSEARCH_FAKE_AI=1`) standing in for
+  real backend behavior.
+- **STATIC ONLY** — read from code, documentation, or a non-interactive screenshot; no interaction performed.
+- **BLOCKED / CANNOT VERIFY** — could not be safely exercised this pass; state why.
+
+A Critical or High finding that remains STATIC ONLY carries reduced confidence and must say so explicitly in its
+**Confidence** field (§6) — it cannot be reported at High confidence on the strength of a code reading or a
+screenshot alone.
+
+### 4.5.1 Failure-state verification uses existing safe mechanisms only
+
+For failed jobs, stale polling, interrupted refreshes, or similar states: prefer existing fixtures, fake
+providers, test controls, deterministic failure paths already in the codebase, or a naturally occurring failure
+encountered during the pass. Do not corrupt state, kill a valuable real job, add temporary production behavior,
+or incur paid API usage solely to produce audit evidence. When no safe mechanism exists, the state is
+**BLOCKED / CANNOT VERIFY**, documented as such — not skipped silently.
+
+## 4.6 Timing baseline
+
+Any proposed rung that changes perceived response time, row-action feedback, polling, queue acknowledgement, or
+progress disclosure must begin from measured current behavior rather than an invented threshold. Record, where
+possible:
+
+- `T_ack` — user action → visible acknowledgement;
+- `T_state` — action → truthful queued/running/progress state;
+- `T_result` — action → first usable result or completion;
+- relevant poll cadence.
+
+Prefer three repetitions when the operation is cheap and reversible on the audit instance. For long or expensive
+operations, one representative runtime sample plus existing timing evidence (§4.4) is sufficient if labeled
+honestly.
+
+## 4.7 Narrow-viewport verification
+
+For a full audit, exercise at least one realistic narrow viewport **interactively** when tooling permits —
+screenshots alone do not satisfy this requirement, whatever their source. Verify:
+
+- scrolling;
+- navigation;
+- primary actions;
+- tap/click reachability;
+- drawers/dialogs;
+- blocking horizontal overflow.
+
+This works alongside, not instead of, Phase 4.J's severity cap: do not let a narrow-viewport finding outrank a
+higher-impact desktop workflow problem merely because it was the thing most recently and thoroughly inspected.
+When tooling cannot exercise a narrow viewport interactively, this requirement is BLOCKED / CANNOT VERIFY; static
+screenshots may still be recorded as rendering evidence (SIMULATED RUNTIME at best, more often STATIC ONLY) but
+do not close this requirement on their own.
+
 ---
 
 # 5. Audit sequence
@@ -396,7 +479,9 @@ Record:
 - viewport sizes used;
 - projects / fixtures used as test cases;
 - major limitations of the audit environment;
-- relevant known product constraints.
+- relevant known product constraints;
+- evidence classification used this pass (RUNTIME VERIFIED / SIMULATED RUNTIME / STATIC ONLY / BLOCKED / CANNOT
+  VERIFY, §4.5).
 
 Confirm the app is functional enough to audit before treating symptoms caused by a broken environment as product findings.
 
@@ -459,7 +544,9 @@ never instead of — the deterministic gates in §4.3. It belongs in both `raw.m
 
 ## Phase 3: Walk load-bearing workflows end to end
 
-Component correctness does not prove workflow quality.
+The minimum runtime verification matrix (§4.5) is the operative rule for what "walk" means here: these
+workflows are exercised on the audit instance, not read, wherever that's safely possible, and each is tagged with
+its evidence classification. Component correctness does not prove workflow quality.
 
 Audit complete workflows, including the handoffs between surfaces.
 
@@ -690,7 +777,8 @@ Do not merely shrink the desktop view.
 
 **Severity cap.** Mobile is deliberately deprioritised for this product: UI and flow clarity come first. A
 narrow-viewport finding is capped at Medium unless a desktop workflow is also broken, or the layout is unusable
-rather than merely cramped.
+rather than merely cramped. See §4.7 for the interactive-verification requirement this severity cap works
+alongside — it caps severity, not the obligation to actually exercise the viewport.
 
 Check:
 
@@ -943,11 +1031,34 @@ Look for:
 - stale references to behavior that changed during the audit period;
 - recommendations that conflict with current product invariants;
 - recommendations that accidentally introduce parallel architecture;
-- acceptance criteria that do not actually prove the proposed improvement.
+- acceptance criteria that do not actually prove the proposed improvement;
+- whether runtime verification disproved or weakened a static diagnosis;
+- whether any remaining uninspected surface would plausibly change a Critical/High root cause or reorder the
+  first implementation rung.
 
 Repeat the affected review until one closure pass produces no new material finding or unpropagated consequence.
 
 This is a review-completion criterion, not a claim that future audits will never find more.
+
+### Bounded stopping rule
+
+Once the runtime verification matrix (§4.5) is complete or every unmet flow is honestly classified BLOCKED /
+CANNOT VERIFY; failure-state verification (§4.5.1) is complete or blocked with a documented reason; timing
+evidence (§4.6) has been captured for any timing-sensitive first rung; narrow-width interaction (§4.7) has been
+exercised or blocked with a documented reason; and this closure pass produces no new material root cause or
+ladder reorder — **F0 closes.**
+
+Remaining gaps go into Residual Coverage (§8.2) rather than keeping F0 open. The existence of an additional
+uninspected surface is not, by itself, a reason to hold F0 open. F0 stays open only if the remaining uncertainty
+could plausibly:
+
+- change a Critical or High finding;
+- change a root-cause diagnosis;
+- change a material acceptance criterion; or
+- reorder the implementation ladder.
+
+This is the same closure-completeness test as §12's completion criteria; it exists here to say explicitly when
+to stop, not only what "done" contains.
 
 ---
 
@@ -960,7 +1071,10 @@ Every material finding in the polished audit should use this structure.
 **Severity:** Critical / High / Medium / Low  
 **Scope:** Systemic / Cross-surface / Workflow / Local  
 **Confidence:** High / Medium / Low  
-**Evidence:** Runtime / Visual / Code / Test / Documentation / Measurement  
+**Evidence:** Runtime / Visual / Code / Test / Documentation / Measurement — and, for any finding describing
+workflow behavior, its verification level per §4.5: RUNTIME VERIFIED / SIMULATED RUNTIME / STATIC ONLY / BLOCKED
+/ CANNOT VERIFY. A Critical or High finding tagged STATIC ONLY is capped at Medium confidence and says so in
+**Confidence** below, regardless of how certain the reasoning feels.  
 **Affected surfaces:** ...
 
 ### What I observed
@@ -1041,7 +1155,7 @@ Examples:
 
 ## Priority ladder
 
-When creating `design-audit-ladder.md`, rank work using these factors:
+When creating `ladder.md`, rank work using these factors:
 
 1. **User impact**: how much the problem harms understanding, trust, or task completion.
 2. **Reach**: one edge state vs many screens/core flows.
@@ -1059,7 +1173,7 @@ Do not prioritize merely because something is visually easy to change.
 
 # 8. Required audit deliverables
 
-## 8.1 `design-audit-raw.md`
+## 8.1 `raw.md`
 
 This is the exhaustive evidence notebook.
 
@@ -1080,13 +1194,15 @@ Include:
 - edge cases;
 - measurements;
 - assumptions;
-- things that looked suspicious but were later disproven.
+- things that looked suspicious but were later disproven;
+- each workflow note's evidence classification (RUNTIME VERIFIED / SIMULATED RUNTIME / STATIC ONLY / BLOCKED /
+  CANNOT VERIFY, §4.5).
 
 Do not remove detail to make this file elegant.
 
 Do not change the product while creating it.
 
-## 8.2 `design-audit.md`
+## 8.2 `audit.md`
 
 This is the reviewed, evidence-backed audit.
 
@@ -1125,11 +1241,17 @@ Recommended structure:
 ## Strengths worth preserving
 
 ## Assumptions / cannot verify
+
+## Residual Coverage
 ```
+
+**Residual Coverage** lists remaining low-risk, uninspected, or BLOCKED / CANNOT VERIFY gaps that don't meet the
+bounded-stopping-rule bar (Phase 9) for keeping F0 open — recorded so they stay visible rather than silently
+dropped, without reopening the audit to chase them.
 
 Do not turn the polished report into a vague executive summary. Preserve enough evidence for another engineer or model to reproduce the conclusions.
 
-## 8.3 `design-audit-ladder.md`
+## 8.3 `ladder.md`
 
 Convert the audit into an implementation sequence, but do not implement it yet.
 
@@ -1213,7 +1335,9 @@ Do not:
 - add confirmation modals everywhere;
 - automate user judgment the product cannot safely infer;
 - make claims of "final" or "perfect" after one audit;
-- create a hundred-item backlog with no root-cause grouping.
+- create a hundred-item backlog with no root-cause grouping;
+- manufacture runtime verification evidence, corrupt state, or spend real API budget merely to satisfy §4.5's
+  matrix — use BLOCKED / CANNOT VERIFY instead.
 
 ---
 
@@ -1248,18 +1372,30 @@ The audit is complete when all of the following are true:
 2. The auditor inspected the live rendered product read-only, and exercised interactions on an audit instance,
    exactly as Phase 0 recorded. A run without browser access cannot tick this.
 3. Major surfaces were inventoried by user intent, not only navigation name.
-4. Load-bearing workflows were walked end to end.
-5. Important states, including failure and empty states, were inspected.
-6. Real-content and large-project behavior was tested where available.
-7. Major findings contain reproducible evidence.
-8. Design-system drift was audited separately from general UX judgment.
-9. Cross-surface interactions were reviewed.
-10. Raw observations were preserved in `design-audit-raw.md`.
-11. Symptoms were consolidated into root causes in `design-audit.md`.
-12. Recommendations were filtered for materiality.
-13. A fixed-point closure pass found no new material unpropagated consequence in the current audit.
-14. `design-audit-ladder.md` turns the biggest problems into coherent implementation rungs.
-15. No product code was changed unless the user separately authorized implementation.
+4. Load-bearing workflows were walked end to end, with the minimum runtime verification matrix (§4.5) completed
+   or each unmet flow explicitly classified BLOCKED / CANNOT VERIFY with reason.
+5. Important states, including failure and empty states, were inspected — including at least one
+   failed/recoverable background job and one interrupted/stale/non-updating poll where safely reproducible
+   (§4.5.1), or each is explicitly BLOCKED / CANNOT VERIFY.
+6. Timing-sensitive proposed rungs have a measured baseline (`T_ack`/`T_state`/`T_result`, §4.6) rather than an
+   invented threshold.
+7. At least one realistic narrow viewport was exercised interactively where tooling allowed (§4.7); static
+   screenshots alone do not satisfy this criterion.
+8. Real-content and large-project behavior was tested where available.
+9. Major findings contain reproducible evidence, tagged with its verification level (§4.5); Critical/High
+   findings that remain STATIC ONLY carry reduced (capped at Medium) confidence and say so explicitly.
+10. Design-system drift was audited separately from general UX judgment.
+11. Cross-surface interactions were reviewed.
+12. Raw observations were preserved in `raw.md`.
+13. Symptoms were consolidated into root causes in `audit.md`.
+14. Recommendations were filtered for materiality.
+15. A fixed-point closure pass found no new material unpropagated consequence in the current audit, including
+    whether runtime verification disproved a static diagnosis and whether any remaining uninspected surface would
+    plausibly change a Critical/High finding or reorder the first rung.
+16. Remaining low-risk or BLOCKED gaps are recorded under Residual Coverage rather than left implicit or used to
+    keep the audit open indefinitely (the bounded stopping rule, Phase 9).
+17. `ladder.md` turns the biggest problems into coherent implementation rungs.
+18. No product code was changed unless the user separately authorized implementation.
 
 ---
 
@@ -1269,7 +1405,7 @@ The audit is complete when all of the following are true:
 
 Use this exact instruction:
 
-> Follow `AUDIT.md` in FULL AUDIT mode. Audit the current Neuro Search product as it exists now, using the live rendered application plus the current repository and tests. Do not change the product. Produce `design-audit-raw.md`, `design-audit.md`, and `design-audit-ladder.md`. Prioritize substantial, system-level improvements over cosmetic churn. Do not stop at generic UI/UX feedback. Reproduce important findings, connect them to their mechanics when useful, consolidate symptoms into root causes, and complete the closure pass required by `AUDIT.md`.
+> Follow `AUDIT.md` in FULL AUDIT mode. Audit the current Neuro Search product as it exists now, using the live rendered application plus the current repository and tests. Do not change the product. Use the audit instance (§2) for all state-changing verification. Complete the minimum runtime verification matrix (§4.5), inspect the required failure/poll states via existing safe mechanisms (§4.5.1), capture a timing baseline (§4.6) before proposing timing thresholds, and interactively exercise at least one narrow viewport where tooling permits (§4.7) — classify any flow that cannot be safely exercised as BLOCKED / CANNOT VERIFY rather than skipping it silently. Produce `raw.md`, `audit.md` (including Residual Coverage), and `ladder.md`. Prioritize substantial, system-level improvements over cosmetic churn. Do not stop at generic UI/UX feedback. Reproduce important findings, connect them to their mechanics when useful, consolidate symptoms into root causes, and complete the closure pass required by `AUDIT.md`, including the bounded stopping rule (Phase 9): once the matrix, failure states, timing baseline, and narrow-viewport check are satisfied or honestly blocked, and the closure pass finds nothing that would change a Critical/High finding, root cause, or the ladder's first rung, close the audit rather than continuing to inspect low-risk surfaces.
 
 ## Targeted audit
 
@@ -1287,7 +1423,7 @@ Use this exact instruction:
 
 # 14. Separate implementation handoff
 
-After the audit is reviewed and implementation is authorized, create or use a separate mission based on `design-audit-ladder.md`.
+After the audit is reviewed and implementation is authorized, create or use a separate mission based on `ladder.md`.
 
 The implementation agent should:
 
