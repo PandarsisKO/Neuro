@@ -15,8 +15,11 @@ release-check **PASS in 231.5s** (artifact `evals/release/release-check-0.63.43-
 No live database was opened, queried, changed, or re-embedded. Claude’s uncommitted runtime/UI/design batch remains
 preserved separately.
 
-Remaining T1 acceptance work is a fresh version-stamped cohort and evidence review on real project data through the
-supported app path. T2 persisted coverage states and UI work remain out of scope until that cohort passes.
+A fresh read-only cohort across all 13 visible projects is recorded at
+`evals/t1/cohort-20260912-1718.json`; all reports correctly remain `measurement_pending` until attestation is admitted.
+Remaining T1 acceptance work is the explicit attestation measurement, a version-stamped semantic cohort, and evidence
+review on real project data through the supported app path. T2 persisted coverage states and UI work remain out of scope
+until that cohort passes.
 
 Read this file, `DEVELOPMENT-OPERATING-SYSTEM.md`, `PRODUCT-SCHEDULER.md`, `docs/T1-ADMISSION-2026-09-12.md`, and
 `HANDOFF.md` before resuming. Protected paths remain `data/`, `VIDEOS/`, and `_to_delete/`.
