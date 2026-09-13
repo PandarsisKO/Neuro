@@ -28,7 +28,7 @@ globalThis.claimCard = function claimCard(c) {
 }
 globalThis.claimSel = function claimSel(id, on) { if (on) CW.sel.add(id); else CW.sel.delete(id); renderClaimsBulkBar(); }
 globalThis.renderClaimsBulkBar = function renderClaimsBulkBar() {
-  $('#cwBulk').style.display = CW.sel.size ? '' : 'none';
+  $('#cwBulk').hidden = !CW.sel.size;
   $('#cwBulk').innerHTML = CW.sel.size ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow"><b>${CW.sel.size}</b> selected</span><button class="small" onclick="claimsBulk('accepted')">Accept all</button><button class="small ghost" onclick="claimsBulk('rejected')">Reject all</button><button class="small ghost" onclick="CW.sel.clear();renderClaimsBulkBar();loadClaimsWorkbench()">Clear</button></div>` : '';
 }
 globalThis.claimsBulk = async function claimsBulk(status) {
@@ -48,7 +48,7 @@ globalThis.loadClaimsWorkbench = async function loadClaimsWorkbench() {
   const grouping = $('#cwGroupToggle') && $('#cwGroupToggle').checked && !RES.area;
   const byArea = []; const aidx = {};
   if (grouping) for (const c of r.claims) { const k = c.area || 'Everything else'; if (!(k in aidx)) { aidx[k] = byArea.length; byArea.push([k, []]); } byArea[aidx[k]][1].push(c); }
-  $('#cwGroupCtl').style.display = grouping && byArea.length > 1 ? '' : 'none';
+  $('#cwGroupCtl').hidden = !(grouping && byArea.length > 1);
   if (!r.claims.length) {
     $('#resClaims').innerHTML = `<div class="empty">Nothing matches this filter${RES.area ? ' in this area' : ''}.</div>`;
   } else if (!grouping || byArea.length <= 1) {
@@ -183,7 +183,7 @@ globalThis.renderShell = function renderShell() {
   $('#resHead').innerHTML = v.empty ? 'nothing to research yet — approve some findings first'
     : `<b>${v.attention}</b> need${v.attention === 1 ? 's' : ''} you${v.attention_capped ? '+' : ''} · ${s.claims_total} Claim${s.claims_total === 1 ? '' : 's'} from your findings, all built at no cost`;
   $('#resAreaBar').innerHTML = RES.area ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">Showing only <b>${esc(RES.area)}</b></span><button class="small ghost" onclick="resClearArea()">✕ show everything</button></div>` : '';
-  for (const [k] of tabs) { const el = $('#pane' + k[0].toUpperCase() + k.slice(1)); if (el) el.style.display = RES.pane === k ? '' : 'none'; }
+  for (const [k] of tabs) { const el = $('#pane' + k[0].toUpperCase() + k.slice(1)); if (el) el.hidden = RES.pane !== k; }
   if (RES.pane === 'overview') renderOverview();
   if (RES.pane === 'questions') renderQuestionsPane();
   if (RES.pane === 'watchouts') renderWatchoutsPane();
@@ -225,7 +225,7 @@ globalThis.woCard = function woCard(w, i) {
       <button class="small ghost" title="This is handled — clear it" onclick="resWo(${i},'resolved')">Resolved</button>
       <button class="small ghost" title="Never bring this up again for this project. A later refresh will not reopen it." onclick="resWo(${i},'dismissed')">Not important to my project</button>
     </div>
-    <div id="${oid}" style="display:none;margin-top:6px">${(w.underlying || []).map(u => `<div class="why" style="padding:5px 0;border-top:1px solid var(--line)">${esc(u.claim || u.description)}</div>`).join('')}</div>
+    <div id="${oid}" style="margin-top:6px" hidden>${(w.underlying || []).map(u => `<div class="why" style="padding:5px 0;border-top:1px solid var(--line)">${esc(u.claim || u.description)}</div>`).join('')}</div>
   </div></div>`;
 }
 
@@ -327,7 +327,7 @@ globalThis.renderAreasPane = function renderAreasPane() {
      <div class="mt-3">${(v.areas || []).map(areaCard).join('') || '<div class="empty">No areas yet.</div>'}</div>`;
 }
 
-globalThis.resToggle = function resToggle(id) { const el = $('#' + id); if (el) el.style.display = el.style.display === 'none' ? '' : 'none'; }
+globalThis.resToggle = function resToggle(id) { const el = $('#' + id); if (el) el.hidden = !el.hidden; }
 globalThis.resWo = async function resWo(i, status) {
   const w = RES.wos[i]; if (!w) return;
   if (status === 'dismissed' && !confirm(`Dismiss "${w.title}" for good? It covers ${w.claims} Claim${w.claims === 1 ? '' : 's'} and a later refresh will not bring it back.`)) return;
@@ -482,11 +482,11 @@ globalThis.renderBoot = function renderBoot() {
   const b = BOOTSTATE;
   const pending = (b?.sources || []).filter(h => h.state === 'suggested');
   const live = pending.filter(h => !h.weak_query_only);
-  if (!b || (!pending.length && !b.run)) { el.style.display = 'none'; return; }
+  if (!b || (!pending.length && !b.run)) { el.hidden = true; return; }
   const c = b.counts, run = b.run || {};
   const shown = BOOT.showAll ? live : live.filter(h => h.band === 'strong').concat(live.filter(h => h.band !== 'strong').slice(0, 5));
   const projs = (b.projects || []).slice(0, 4);
-  el.style.display = '';
+  el.hidden = false;
   el.innerHTML = `<b>${live.length ? 'Research in your library that may help this project' : 'No specific matches in the last library scan'}</b>
     <div class="muted mt-1">${c.strong} strong matches${c.possible ? ` · ${c.possible} possible matches` : ''}${run.scope ? ` · searched ${run.scope} sources outside this project` : ''}. These are sources you already own.</div>
     ${c.attached ? `<div class="muted">Already added ${c.attached} sources from your library.</div>` : ''}
@@ -584,7 +584,7 @@ globalThis.loadJobs = async function loadJobs() {
   const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling'
     || (j.state || j.status) === 'external_pending' || j.bumped;
   const st = await api('/api/stats'); const u = await loadSpend();
-  $('#jobsCard').style.display = show.length || st.youtube?.paused || u?.blocked ? '' : 'none';
+  $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
   loadBacklog();
@@ -861,7 +861,7 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // way to collapse a group, so a project with many sources was still one long scroll of open groups.
   if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
   const grpSearching = !!($('#fbQ').value || $('#fbImp').value || $('#fbUsed').value || $('#fbStale').value || $('#fbArea').value);
-  $('#fbGroupCtl').style.display = bySrc.length > 1 ? '' : 'none';
+  $('#fbGroupCtl').hidden = !(bySrc.length > 1);
   $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
     const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
     const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');

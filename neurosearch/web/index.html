@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.59">
+<meta name="neurosearch-ui-version" content="0.63.60">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -56,7 +56,7 @@
         <div class="grow">
           <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
           <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb"> also search the web</label>
-            <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
+            <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple hidden onchange="attachFiles(this.files)"></label>
             <span id="qAttach"></span><span class="muted" id="askStatus"></span></div>
         </div>
         <button class="primary" id="askBtn" onclick="ask()">Ask</button>
@@ -143,10 +143,10 @@
           <div id="discList" style="margin-top:10px"></div>
         </div>
       </div>
-      <div id="bootCard" class="card" style="display:none;border-color:var(--accent)"></div>
-      <div id="jobsCard" class="card" style="display:none"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
+      <div id="bootCard" class="card hidden" style="border-color:var(--accent)"></div>
+      <div id="jobsCard" class="card hidden"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
       <div id="reviewWrap"></div>
-      <div id="captureCard" class="card" style="display:none;border-color:var(--accent)"></div>
+      <div id="captureCard" class="card hidden" style="border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
@@ -168,7 +168,7 @@
         <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
         <button class="small" onclick="exportCsv(true)">Segments CSV</button>
       </div>
-      <div class="row" id="srcGroupCtl" style="display:none;gap:8px;margin:-4px 0 6px;font-size:12.5px">
+      <div class="row hidden" id="srcGroupCtl" style="gap:8px;margin:-4px 0 6px;font-size:12.5px">
         <a href="#" onclick="SRCG.collapsed=new Set();renderSourceList();return false">Expand all</a>
         <a href="#" onclick="SRCG.collapsed='all';renderSourceList();return false">Collapse all</a>
       </div>
@@ -197,7 +197,7 @@
       <div id="fbSrcChip"></div>
       <div id="fbSweep"></div>
       <div id="fbQual"></div>
-      <div class="row" id="fbGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
+      <div class="row hidden" id="fbGroupCtl" style="gap:8px;margin:-2px 0 6px;font-size:12.5px">
         <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
         <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
       </div>
@@ -213,10 +213,10 @@
       <div id="resAreaBar"></div>
       <div class="muted" id="resMsg" style="margin:4px 0"></div>
       <div id="paneOverview"></div>
-      <div id="paneQuestions" style="display:none"></div>
-      <div id="paneWatchouts" style="display:none"></div>
-      <div id="paneAreas" style="display:none"></div>
-      <div id="paneClaims" style="display:none">
+      <div id="paneQuestions" hidden></div>
+      <div id="paneWatchouts" hidden></div>
+      <div id="paneAreas" hidden></div>
+      <div id="paneClaims" hidden>
         <div class="row" style="gap:6px;margin:2px 0 8px;flex-wrap:wrap">
           <input id="cwQ" placeholder="Search Claims…" oninput="CW.q=this.value;CW.offset=0;loadClaimsWorkbench()" style="min-width:180px">
           <select id="cwStatus" onchange="CW.status=this.value;CW.offset=0;loadClaimsWorkbench()" class="w-auto"><option value="all">all statuses</option><option value="proposed">not yet decided</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
@@ -227,15 +227,15 @@
           <label class="row" style="gap:4px;width:auto" title="Group Claims by the same Areas the Overview and Areas panes use"><input type="checkbox" id="cwGroupToggle" checked onchange="loadClaimsWorkbench()"> Group by area</label>
           <span class="muted" id="cwCount"></span>
         </div>
-        <div id="cwBulk" style="display:none"></div>
-        <div class="row" id="cwGroupCtl" style="display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px">
+        <div id="cwBulk" hidden></div>
+        <div class="row hidden" id="cwGroupCtl" style="gap:8px;margin:-2px 0 6px;font-size:12.5px">
           <a href="#" onclick="CWG.collapsed=new Set();loadClaimsWorkbench();return false">Expand all</a>
           <a href="#" onclick="CWG.collapsed='all';loadClaimsWorkbench();return false">Collapse all</a>
         </div>
         <div id="resClaims"></div>
         <div class="row mt-2" id="cwPager"></div>
       </div>
-      <div id="paneTools" style="display:none">
+      <div id="paneTools" hidden>
       <div class="muted">What the project currently <b>believes</b>, how well each belief is evidenced, and what a competent researcher would establish next. Everything here is proposed research state built from your findings at no cost; <b>Accept</b> makes a Claim yours. Strong is not decision-ready: whether a rule applies to <i>your</i> situation is a separate judgement.</div>
       <div class="row mt-2"><button class="small" onclick="refreshResearch(false)">Refresh ($0)</button><button class="small ghost" onclick="refreshResearch(true)" title="One bounded model pass: normalises candidate Claims (qualifiers, type, topic, freshness) and proposes evidence targets you have not named">Normalise Claims (model)</button><button class="small ghost" onclick="evaluateNormalisation()" title="Durable, bounded: ~150 decision-relevant Claims + a stratified sample are normalised and measured (merges, qualifiers kept, topics, tensions, cost) — normalisation has to earn wider use">Evaluate normalisation (≈150)</button><span class="muted" id="resMsgTool"></span></div>
       <div id="resEval" class="muted" style="margin-top:6px"></div>
@@ -284,7 +284,7 @@
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row mt-2"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" style="display:none" title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row mt-2"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" hidden title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
         <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>
