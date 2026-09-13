@@ -31,6 +31,11 @@ def test_t3_numeric_boundaries_do_not_double_count_money_percent_or_duration():
     ]
 
 
+def test_t3_number_does_not_capture_decimal_fraction_component():
+    rows = _rows("Use a 1.00 scale and 900.", "number")
+    assert [r["raw"] for r in rows] == ["1.00", "900"]
+
+
 def test_t3_identifier_gate_keeps_explicit_isbn_and_rejects_ambiguous_digits():
     text = "ISBN 978-0-13-468599-1; possible book code 0134685991; phone 2155551797."
     rows = _rows(text, "identifier")

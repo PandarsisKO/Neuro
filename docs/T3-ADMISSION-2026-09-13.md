@@ -150,3 +150,10 @@ warning; focused T3 is 15 passed; `repo-check` and commit-bound `release-check -
 `evals/release/release-check-0.63.65-452804e-20260913-150713.json`. The regenerated 15-row sample and 60-row pending
 manifest are read-only evidence. Manual gold adjudication remains the next gate; no persistence, selector, provider,
 queue, or T4 work is admitted.
+
+## T3 decimal-boundary hardening — 2026-09-13 15:16 PT
+
+The seeded review surfaced one remaining numeric boundary error: `_NUMBER` could emit the fractional component of a
+larger decimal (`00` from `1.00`). Its left boundary now rejects a preceding period, with a regression test. Focused
+T3 coverage is 16 passed. The sample and pending manifest were refreshed to match the committed extractor; downstream
+trust remains gated.

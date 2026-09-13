@@ -2127,3 +2127,8 @@ read-only; no downstream trust is granted.
 
 Corpus-driven cue narrowing is green under 1,383 tests and the deterministic release gate at `452804e`. The pending
 60-row queue still requires exact-span gold review before downstream trust.
+
+## T3 decimal-boundary hardening — 2026-09-13 15:16 PT
+
+Added a regression for fractional numeric subspan leakage and refreshed read-only evidence. Focused T3 is 16 passed;
+manual gold review remains required.

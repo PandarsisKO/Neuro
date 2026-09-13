@@ -341,3 +341,8 @@ Corpus review narrowed cue matching to avoid heading, narration, and bare-fragme
 
 Cue precision narrowing is release-checked at `452804e`; scheduler and downstream behavior are unchanged. Manual gold
 adjudication of the pending 60-row queue remains required.
+
+## T3 decimal-boundary hardening — 2026-09-13 15:16 PT
+
+Numeric decimal boundaries are hardened and covered by focused tests; scheduler behavior is unchanged and downstream
+trust remains gated.
