@@ -5,7 +5,8 @@ snapshots remain archived evidence.
 
 ## Current release and custody
 
-- `main` is `307b593`; the released application is UI/package version `0.63.64`.
+- `main` is `178d64d` (the W1 step-3 release plus documentation-only archive cleanup); the released application is
+  UI/package version `0.63.64`.
 - Claude's W1 step 3 is landed: both Sources re-rank controls disclose that they score titles/descriptions against
   the brief and use the model budget.
 - The focused W1 step-3 suite passed 28 tests. Commit-bound `release-check --no-pytest` passed every deterministic
