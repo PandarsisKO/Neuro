@@ -169,3 +169,6 @@ with the actual repository state.
 The later audit-instance restart note in `HANDOFF.md` is historical and does not reopen the removed `.worktrees/f0`
 checkout. The merged `design/f0` branch and stale metadata were pruned after verifying ancestry; `36ad3ae` is only a
 historical baseline reference. F2's behavioral browser gate remains open and W1 remains investigation-only.
+
+The later `design/w1-step1-vocab-disclosure` worktree was likewise a dead session pointer with no unique commits. It
+was pruned and its merged local branch removed after verifying ancestry; only `main` remains as an active checkout.

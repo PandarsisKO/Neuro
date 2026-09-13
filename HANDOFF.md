@@ -907,3 +907,10 @@ metadata plus merged `design/f0` branch were subsequently pruned; `git worktree 
 checkout. The `36ad3ae` baseline reference in that note is retained as history, not as a live audit checkout. F2's
 browser behavioral gate remains open, and Claude's W1 work is investigation-only until that gate closes; no active
 frontend worktree exists for Codex or Claude to resume.
+
+## W1 worktree metadata reconciliation — 2026-09-13
+
+A later state check found the `design/w1-step1-vocab-disclosure` entry was also prunable: its directory was absent and
+its branch pointed to the already-merged `b5b922a` with no unique commits. Git removed only the stale worktree metadata,
+then deleted that fully merged local branch after ancestry verification. The active checkout remains only `main`; no
+Claude-owned files or unmerged work were removed.
