@@ -5,7 +5,7 @@ import hashlib
 import json
 from typing import Any
 
-from . import db, jobs
+from . import db
 from .config import settings
 
 VECTOR_VERSION = "t1-derived-v1"
@@ -28,11 +28,13 @@ def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]
                           (project_id, *statuses, max(0, limit - len(out)))).fetchall()
         for row in rows:
             ih = input_hash(row["text"] or "", row["metadata"] or "")
-            out.append(jobs.enqueue("t1_embed_derived", {
+            payload = {
                 "project_id": project_id, "table": table, "object_id": row["id"], "text": row["text"] or "",
                 "input_hash": ih, "provider": "openai", "model": settings.embedding_model,
                 "version": VECTOR_VERSION,
-            }, lane="low"))
+            }
+            out.append(db.create_job("t1_embed_derived", payload,
+                                     dedupe_key=f"t1-embed:{table}:{row['id']}:{ih}:{VECTOR_VERSION}", lane="low"))
     return out
 
 

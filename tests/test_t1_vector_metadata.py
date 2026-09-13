@@ -55,6 +55,8 @@ def test_t1_backfill_queues_canonical_rows_in_low_lane(t1_db):
     db.connect().commit()
     queued = t1.enqueue_backfill(project_id, limit=10)
     assert len(queued) == 1 and queued[0]["lane"] == "low" and queued[0]["kind"] == "t1_embed_derived"
+    again = t1.enqueue_backfill(project_id, limit=10)
+    assert again[0]["id"] == queued[0]["id"]
 
 
 def test_t1_job_writes_provider_versioned_vector(t1_db, monkeypatch):
