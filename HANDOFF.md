@@ -1002,3 +1002,27 @@ Authenticated API verification after Claude's W1 step-1 merge reports `/api/vers
 newest verified snapshot `neurosearch-20260913-1345.db` (38,038 chunks, 1.15 GB). The two historical unsettled
 batches remain 36 collected-but-unwritten items; no settlement was triggered while the claims lane is paused.
 The clean GitHub snapshot branch was refreshed to `3bf21f05403c4f7c50781e6ec1ee2107c0b49b8d` after the closeout.
+
+## Design ladder — Rung W1 step 2 landed: Plan's Rebuild button now shows cost inline (H-5)
+
+Landed on `main` at merge commit `1a7ff71` (source `f17c7dc` on branch `design/w1-step2-plan-cost-label`,
+now deleted).
+
+Findings' primary rebuild button already reads "Rebuild now · $X". Master Plan's equivalent primary
+button just said "Rebuild plan," with the estimate shown once in a separate muted line above the
+button row instead of on the button itself — a real vocabulary/style split between the two surfaces
+this rung exists to remove. The button now reads "Rebuild plan · $X," matching Findings exactly. Cost
+and behavior are unchanged.
+
+`UI_VERSION` bumped to `0.63.63` (4-way sync). Targeted suites (`test_s50_design_drift`,
+`test_s44_frontend_integrity`, `test_s5_ui_syntax`, `test_n8_research_shell`, `test_s14_fix_pass`):
+63 passed, before and after the merge. Worktree and branch removed cleanly, verified gone.
+
+**Rung W1 status:** steps 1 and 2 both landed (disclosure gaps on Sources/Chat, the missing drawer
+Restore action, the double-primary bug, and now Plan/Findings button-label parity on their primary
+rebuild action). Remaining scope, per `ladder.md`'s Human gate: re-scoring Sources/Chats/Findings/
+Plan's "What that will do" ratings needs a live or audit-instance click-through — same limitation as
+F2's still-open browser-verification gate. No further code changes are obviously scoped for W1 without
+that visual pass; the next candidate is a broader label sweep (Rebuild/Re-analyse/Re-rank/Suggest/
+Re-check wording across the four surfaces per DESIGN.md's outcome-label rule), which is lower-confidence
+without seeing the rendered result first.
