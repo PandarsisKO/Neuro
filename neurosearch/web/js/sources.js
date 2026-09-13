@@ -48,7 +48,7 @@ globalThis.loadReviews = async function loadReviews() {
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row mt-1">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
-      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' style="display:none"' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
+      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }
@@ -69,9 +69,9 @@ globalThis.rvCount = function rvCount(id) {
   if (b) b.innerHTML = rvEstimate((rvData[id] || []).filter(s => on.has(s.id)));
 }
 globalThis.rvRemember = function rvRemember(id, input) { const off = rvUnchecked[id] || (rvUnchecked[id] = new Set()); if (input.checked) off.delete(input.dataset.id); else off.add(input.dataset.id); rvCount(id); }
-globalThis.rvAll = function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (l.style.display !== 'none') { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
+globalThis.rvAll = function rvAll(id, on) { document.querySelectorAll(`#rv-${id} .li`).forEach(l => { if (!l.hidden) { const i = l.querySelector('input'); i.checked = on; rvRemember(id, i); } }); }
 globalThis.rvTop = function rvTop(id, n) { document.querySelectorAll(`#rv-${id} .li`).forEach((l, i) => { const inp = l.querySelector('input'); inp.checked = i < n; rvRemember(id, inp); }); }
-globalThis.rvFilter = function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.style.display = l.textContent.toLowerCase().includes(q) ? '' : 'none'); }
+globalThis.rvFilter = function rvFilter(id, q) { rvFilterText[id] = q; q = q.toLowerCase(); document.querySelectorAll(`#rv-${id} .li`).forEach(l => l.hidden = !l.textContent.toLowerCase().includes(q)); }
 globalThis.rvRerank = async function rvRerank(id) { delete rvAutoApplied[id]; await post(`/api/collections/${id}/rank`, { project_id: state.project.id }); globalThis.rvSig = null; loadReviews(); setTimeout(loadReviews, 4000); }
 globalThis.rvStart = async function rvStart(id, btn) {
   const ids = [...document.querySelectorAll(`#rv-${id} input:checked`)].map(i => i.dataset.id);
@@ -135,7 +135,7 @@ globalThis.srcRowHtml = function srcRowHtml(s) {
       ${completenessLine(s)}
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
       ${s.summary ? `<div class="muted mt-1">${s.legacy_analysis ? `<span class="tag status-warn" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
-      ${s.status === 'ready' ? `<div class="muted mt-1">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="openSourceSuggestions('${s.id}','suggested');return false" class="status-warn">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag status-warn" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" style="display:none"></div>` : ''}
+      ${s.status === 'ready' ? `<div class="muted mt-1">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="openSourceSuggestions('${s.id}','suggested');return false" class="status-warn">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag status-warn" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" hidden></div>` : ''}
       <div class="actions">
         ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" onclick="suggestSource('${s.id}')">Suggest findings</button>${(() => {
           // 0.63.17 — offer only what is NOT already in the library, and say when it is: the row went on saying
@@ -157,8 +157,8 @@ globalThis.renderSourceList = function renderSourceList() {
   const rows = SRCG.rows;
   const empty = '<div class="empty">No sources yet. Add a link, upload a file, paste text, or pull from the library above.</div>';
   const grouping = $('#srcGroupToggle') ? $('#srcGroupToggle').checked : true;
-  if (!rows.length) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = empty; SRCG.keys = []; return; }
-  if (!grouping) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
+  if (!rows.length) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = empty; SRCG.keys = []; return; }
+  if (!grouping) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   const groups = {};
   rows.forEach(s => { const k = srcGroupKey(s); (groups[k] = groups[k] || []).push(s); });
   // Kyle, live: "the grouped items don't sort properly if I am sorting by newest — it should also move the groups".
@@ -171,11 +171,11 @@ globalThis.renderSourceList = function renderSourceList() {
   const keys = sortSel === 'default'
     ? Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b))
     : seen;
-  if (keys.length <= 1) { $('#srcGroupCtl').style.display = 'none'; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
+  if (keys.length <= 1) { $('#srcGroupCtl').hidden = true; $('#srcList').innerHTML = rows.map(srcRowHtml).join(''); SRCG.keys = []; return; }
   if (SRCG.collapsed === 'all') SRCG.collapsed = new Set(keys);
   // a search or an active chip/value filter means the user is hunting for something specific — never hide a match
   const searching = !!($('#srcQ') && $('#srcQ').value) || Object.values(state.srcFilters || {}).some(Boolean);
-  $('#srcGroupCtl').style.display = '';
+  $('#srcGroupCtl').hidden = false;
   SRCG.byKey = groups;
   const wrap = $('#srcList');
   // build each group's content once; a CLOSED group builds nothing at all (see srcGroupToggled)
@@ -480,7 +480,7 @@ globalThis.completenessLine = function completenessLine(s) {
   const what = c.status === 'partial' ? `⚠ Partial capture: ${c.captured} comment${c.captured === 1 ? '' : 's'} captured${c.expected != null ? `, the thread reports ~${c.expected}` : ''}${c.missing ? ` · ${c.missing} may not be loaded` : ''}${c.partial_reason && !c.missing ? ` · ${esc(c.partial_reason)}` : ''}` : `Completeness unknown: ${c.captured} comment${c.captured === 1 ? '' : 's'} captured, no count reported by the platform`;
   return `<div class="muted" style="margin-top:3px;color:var(--warn)">${what}${c.accepted ? ' <span class="muted">· accepted as is</span>' : ''} <button class="small ghost" onclick="recapture('${s.id}')">Reopen and capture more</button>${c.accepted ? '' : ` <button class="small ghost" onclick="acceptPartial('${s.id}')">Accept partial</button>`}</div>`;
 }
-globalThis.recapture = async function recapture(id) { const r = await post(`/api/sources/${id}/recapture`, { project_id: state.project.id }); $('#captureCard').style.display = ''; setTimeout(() => { loadSources(); loadJobs(); }, 1500); }
+globalThis.recapture = async function recapture(id) { const r = await post(`/api/sources/${id}/recapture`, { project_id: state.project.id }); $('#captureCard').hidden = false; setTimeout(() => { loadSources(); loadJobs(); }, 1500); }
 globalThis.acceptPartial = async function acceptPartial(id) { await post(`/api/sources/${id}/accept-partial`); loadSources(); }
 globalThis.browserBlock = function browserBlock(s) {
   const a = s.acquisition || {};
@@ -492,24 +492,24 @@ globalThis.browserBlock = function browserBlock(s) {
       ${a.job_id ? `<button class="small ghost" onclick="cancelCapture('${a.job_id}')">Cancel</button>` : ''}
       <span class="muted text-xs">${extLine()}</span>
     </div>
-    <div class="muted" style="display:none;margin-top:6px;font-size:12px">Open & Capture opens the page in a new tab. The Neuro Search extension recognizes it (its icon shows a blue dot): press the extension button, then <b>Capture for Neuro Search</b>. The page arrives here as the same source — nothing to paste or re-select. No extension yet? Download it from Settings → Extension, load it in chrome://extensions, and pair it with this app's address and password.</div>
+    <div class="muted" style="margin-top:6px;font-size:12px" hidden>Open & Capture opens the page in a new tab. The Neuro Search extension recognizes it (its icon shows a blue dot): press the extension button, then <b>Capture for Neuro Search</b>. The page arrives here as the same source — nothing to paste or re-select. No extension yet? Download it from Settings → Extension, load it in chrome://extensions, and pair it with this app's address and password.</div>
   </div>`;
 }
 // D1: findings extracted beyond the cap ("reserve") — shown inline under the source card, promotable one by one or all at once
 globalThis.toggleReserve = async function toggleReserve(sid, a) {
   const box = $(`#reserve-${sid}`); if (!box) return;
-  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
-  box.style.display = ''; box.innerHTML = '<span class="muted">loading…</span>';
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false; box.innerHTML = '<span class="muted">loading…</span>';
   const r = await api(`/api/projects/${state.project.id}/notes?status=reserve&source_id=${sid}`);
   const notes = r.notes || [];
   box.innerHTML = `<div class="row" style="margin:6px 0 2px"><span class="muted" style="flex:1;font-size:12px">${notes.length} more extracted (lower importance for this brief). They are not exported or planned on until you promote them.</span>
     <button class="small" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'suggested', '${sid}')">Send all to Suggested</button><button class="small ghost" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'dismissed', '${sid}')">Dismiss all</button></div>` +
     notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="reserveVerdict(${n.id}, 'approved', '${sid}')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="reserveVerdict(${n.id}, 'suggested', '${sid}')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="reserveVerdict(${n.id}, 'dismissed', '${sid}')">✕ Dismiss</button>`)).join('');
 }
-globalThis.reserveVerdict = async function reserveVerdict(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.style.display = 'none'; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
+globalThis.reserveVerdict = async function reserveVerdict(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.hidden = true; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
 globalThis.bulkReserve = async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
 globalThis.extLine = function extLine() { return EXT.state === 'ready' ? '✓ extension ready' : EXT.state === 'stale' ? `extension last seen ${ago(EXT.last_seen)} ago` : EXT.state === 'not_detected' ? '⚠ extension not detected — see How this works' : ''; }
-globalThis.toggleCaptureHelp = function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.style.display = d.style.display === 'none' ? '' : 'none'; }
+globalThis.toggleCaptureHelp = function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.hidden = !d.hidden; }
 globalThis.openAndCapture = function openAndCapture(url) { window.open(url, '_blank'); }
 globalThis.cancelCapture = async function cancelCapture(jobId) { await del(`/api/capture/${jobId}`); loadSources(); loadJobs(); }
 globalThis.loadCaptureQueue = async function loadCaptureQueue(rows) {
@@ -532,8 +532,8 @@ globalThis.loadCaptureQueue = async function loadCaptureQueue(rows) {
         else outcome += `<div class="banner" style="margin:4px 0">✗ “${esc(src.title || it.title)}”: ${esc(src.error || 'the capture could not be used')}</div>`;
       } catch (e) {}
     }
-    if (!items.length) { if (outcome) { card.style.display = ''; card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· nothing waiting</span>${outcome}`; } else card.style.display = 'none'; clearTimeout(CAPTURE_TIMER); return; }
-    card.style.display = '';
+    if (!items.length) { if (outcome) { card.hidden = false; card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· nothing waiting</span>${outcome}`; } else card.hidden = true; clearTimeout(CAPTURE_TIMER); return; }
+    card.hidden = false;
     const first = items.find(i => i.status !== 'expired') || items[0];
     card.innerHTML = `<b>🌐 Browser capture</b> <span class="muted">· ${items.length} source${items.length === 1 ? '' : 's'} need${items.length === 1 ? 's' : ''} your browser · ${extLine() || 'extension state unknown'}</span>${outcome}
       <div style="margin:6px 0;padding:8px 10px;border:1px solid var(--accent);border-radius:8px;background:var(--user)"><b>Next — ${items.indexOf(first) + 1} of ${items.length}:</b> ${esc(first.title || first.canonical_url)}<div class="muted" style="font-size:12px;margin-top:2px">Open it in Chrome, press the Neuro Search extension button, then <b>Capture for Neuro Search</b>. This list advances by itself when the capture lands.</div>
@@ -741,7 +741,7 @@ globalThis.loadHealth = async function loadHealth() {
         + ' — full picture: Cost per unit of value'
       ]] : []),
     ];
-    const sb = $('#settleBtn'); if (sb) sb.style.display = (h.batches && h.batches.unsettled) ? '' : 'none';
+    const sb = $('#settleBtn'); if (sb) sb.hidden = !(h.batches && h.batches.unsettled);
     $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
 }

@@ -6,7 +6,7 @@ globalThis.loadSpend = async function loadSpend() {
 globalThis.goHome = async function goHome() {
   loadSpend();
   state.project = null; state.conv = null;
-  $('#ws').classList.remove('active'); $('#home').style.display = '';
+  $('#ws').classList.remove('active'); $('#home').hidden = false;
   if (location.hash) history.replaceState(null, '', location.pathname);
   const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
   $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
@@ -70,7 +70,7 @@ globalThis.openProject = async function openProject(id, view, conv) {
   if (!p) return goHome();
   const fresh = !state.project || state.project.id !== id;
   state.project = p;
-  $('#home').style.display = 'none'; $('#ws').classList.add('active');
+  $('#home').hidden = true; $('#ws').classList.add('active');
   $('#wsName').textContent = p.name; loadSpend();
   // 0.63.12 — the exact count, not the length of a capped list: this said "200" for a project with 17,845.
   $('#nSources').textContent = p.n_sources;

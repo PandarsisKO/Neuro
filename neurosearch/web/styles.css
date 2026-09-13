@@ -287,3 +287,5 @@
 /* Foundation: native controls and action links share request acknowledgement without losing labels. */
 select[aria-busy="true"], input[aria-busy="true"], a[aria-busy="true"] { opacity:.55; cursor:progress; outline:2px solid var(--accent); }
 select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
+/* F1: the hidden attribute must always win over component display rules (e.g. .row{display:flex}). */
+[hidden]{display:none!important}
