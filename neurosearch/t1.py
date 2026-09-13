@@ -5,6 +5,8 @@ import hashlib
 import json
 from typing import Any
 
+import numpy as np
+
 from . import db
 from .config import settings
 
@@ -45,13 +47,41 @@ def coverage_report(project_id: str) -> dict[str, Any]:
     claims = conn.execute("SELECT COUNT(*) FROM project_claims WHERE project_id=? AND status IN ('proposed','accepted')", (project_id,)).fetchone()[0]
     findings = conn.execute("SELECT COUNT(*) FROM project_notes WHERE project_id=? AND status IN ('approved','suggested')", (project_id,)).fetchone()[0]
     claim_locators = conn.execute("SELECT COUNT(*) FROM claim_evidence ce JOIN project_claims pc ON pc.id=ce.claim_id WHERE pc.project_id=? AND pc.status IN ('proposed','accepted')", (project_id,)).fetchone()[0]
+    finding_locators = conn.execute("SELECT COUNT(*) FROM project_notes WHERE project_id=? AND status IN ('approved','suggested') AND citations IS NOT NULL AND citations NOT IN ('', '[]')", (project_id,)).fetchone()[0]
     chunk_count = conn.execute("SELECT COUNT(*) FROM chunks c JOIN project_sources ps ON ps.source_id=c.source_id WHERE ps.project_id=? AND ps.excluded=0", (project_id,)).fetchone()[0]
     attestation = get_chunk_space_attestation()
-    return {"project_id": project_id, "status": "ready_for_measurement" if attestation else "measurement_pending", "chunks": chunk_count,
+    report = {"project_id": project_id, "status": "ready_for_measurement" if attestation else "measurement_pending", "chunks": chunk_count,
             "canonical_claims": claims, "canonical_findings": findings,
-            "claim_locator_rows": claim_locators, "semantic_distributions": None,
+            "claim_locator_rows": claim_locators, "finding_locator_rows": finding_locators, "semantic_distributions": None,
             "corpus_space": attestation,
             "reason": None if attestation else "corpus-space attestation required before similarity comparisons"}
+    if attestation:
+        report["semantic_distributions"] = measure_project(project_id, provider=attestation["provider"],
+                                                             model=attestation["model"], dimensions=int(attestation["dimensions"]))
+    return report
+
+
+def measure_project(project_id: str, *, provider: str, model: str, dimensions: int,
+                    version: str = VECTOR_VERSION) -> dict[str, Any]:
+    """Compare canonical derived vectors with attested chunks and publish project-relative percentile distributions."""
+    att = get_chunk_space_attestation()
+    if not att or (att.get("provider"), att.get("model"), int(att.get("dimensions", 0))) != (provider, model, dimensions):
+        return {"status": "unavailable", "reason": "corpus-space attestation does not match requested space"}
+    chunk_mat, _ = db.load_embedding_matrix(db.project_source_ids(project_id))
+    if not len(chunk_mat):
+        return {"status": "measured", "chunk_count": 0, "claims": {}, "findings": {}}
+    out: dict[str, Any] = {"status": "measured", "chunk_count": int(len(chunk_mat)), "claims": {}, "findings": {}}
+    for table, key in (("project_claims", "claims"), ("project_notes", "findings")):
+        vectors = db.load_versioned_derived_embeddings(table, project_id, provider=provider, model=model,
+                                                       version=version, dimensions=dimensions)
+        scores = [float(np.max(chunk_mat @ row["embedding"])) for row in vectors]
+        out[key] = {"vector_count": len(scores), "distribution": {
+            "min": float(np.min(scores)) if scores else None,
+            "p50": float(np.percentile(scores, 50)) if scores else None,
+            "p90": float(np.percentile(scores, 90)) if scores else None,
+            "max": float(np.max(scores)) if scores else None,
+        }}
+    return out
 
 
 def attest_chunk_space(*, provider: str, model: str, dimensions: int, preparation_tag: str) -> dict[str, Any]:
