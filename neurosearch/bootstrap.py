@@ -27,6 +27,7 @@ points at global sources. See BOOTSTRAP-MISSION.md §B2.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -37,7 +38,7 @@ from . import db, library
 
 log = logging.getLogger(__name__)
 
-MAX_QUERIES = 6          # each is one library.recall; the goal itself is always the first
+MAX_QUERIES = 6          # bounded recalls; open gaps first, then interleaved goal/brief facets
 PER_QUERY = 14
 MIN_QUERY_TOKENS = 3     # a fragment shorter than this retrieves noise
 STRONG_QUERIES = 2       # matched by two independent queries = strong
@@ -73,12 +74,22 @@ def _content_tokens(q: str) -> set[str]:
     return _tokens(q or "")
 
 
-def queries_for(project: dict[str, Any]) -> list[str]:
-    """The searches a goal implies, at $0: the goal's own facets, then the project's starting questions.
+def queries_for(project: dict[str, Any], targets: list[dict[str, Any]] | None = None) -> list[str]:
+    """Bounded searches from open gaps, goal/brief facets, starting questions and tags.
     Deduplicated by content tokens — two phrasings of one idea must not spend two recalls."""
     goal = (project.get("goal") or "").strip()
     brief = (project.get("brief") or "").strip()
-    cands = _clauses(goal) or _clauses(brief)
+    # Reserve half the bounded search budget for current gaps; keep the full question
+    # so clause splitting cannot turn a domain-specific gap into a generic fragment.
+    gaps = [t["question"] for t in (targets or []) if t.get("status") == "open" and t.get("question")]
+    gaps = [q for q in gaps if len(_content_tokens(q)) >= MIN_QUERY_TOKENS][:MAX_QUERIES // 2]
+    goal_parts, brief_parts = _clauses(goal), _clauses(brief)
+    cands = list(gaps)
+    for i in range(max(len(goal_parts), len(brief_parts))):
+        if i < len(goal_parts):
+            cands.append(goal_parts[i])
+        if i < len(brief_parts):
+            cands.append(brief_parts[i])
     cands += [q for q in (project.get("questions") or []) if q]
     # 0.60.2 (Kyle: "global library is useful but only if its utilizing the projects criteria/brief/tags/chat").
     # Tags are the cheapest of those and were simply never read: a project tagged "ux, design systems" said so
@@ -114,7 +125,7 @@ def queries_for(project: dict[str, Any]) -> list[str]:
 #
 # Bump this string whenever the matcher's decisions change. Rows from an older version are reported as stale and
 # never pre-ticked; they are not deleted, because the user may already have decided on them.
-SCAN_VERSION = "recall-2"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor)
+SCAN_VERSION = "recall-3"        # recall-1 = before 0.60.2 (3-char tokens, union coverage, no anchor)
 
 
 # 0.61.0 — A CLAUSE MADE ONLY OF GENERIC WORDS CANNOT DISCRIMINATE, AND MUST NOT PRODUCE A "STRONG" MATCH.
@@ -177,7 +188,7 @@ def query_strength(queries: list[str]) -> dict[str, Any]:
     if cut is not None:
         note = ((note + "; ") if note else "") + (
             f"a search whose rarest word appears in more than {int(cut)} of your sources is generic for this goal, "
-            "so it can suggest but never call something a strong match")
+            "so its matches are excluded from project suggestions")
     return {"rarity": rarity, "weak": sorted(set(weak)), "cut": cut, "too_common": too_common,
             "note": note or "too few searches to tell a distinctive one from a generic one"}
 
@@ -199,16 +210,30 @@ def _band(hit: dict[str, Any]) -> str:
     return "strong" if (len(hit["queries"]) >= STRONG_QUERIES or hit["coverage"] >= STRONG_COVERAGE) else "possible"
 
 
+def _open_targets(project_id: str) -> list[dict[str, Any]]:
+    from . import knowledge
+    return sorted(knowledge.list_targets(project_id, status="open"),
+                  key=lambda t: (t.get("origin") != "user", -float(t.get("updated_at") or 0), t["id"]))
+
+
+def _target_revision(targets: list[dict[str, Any]]) -> str:
+    return hashlib.sha256(json.dumps([(t["id"], t["question"], t.get("updated_at")) for t in targets],
+                                     sort_keys=True).encode()).hexdigest()
+
+
 def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
     """Run the bootstrap scan and persist its suggestions. Pure recall + bookkeeping: no generation call, no
     writes to `project_sources`, no writes to any other project."""
     project = db.get_project(project_id)
     if not project:
         raise ValueError("no such project")
-    qs = queries_for(project)
+    targets = _open_targets(project_id)
+    qs = queries_for(project, targets)
     brev = db.brief_revision(project_id)
     if not qs:
-        db.record_bootstrap_run(project_id, {"queries": [], "scanned": 0, "found": 0, "reason": "the goal is too short to search from"}, brev)
+        db.retire_project_reuse(project_id, [])
+        db.record_bootstrap_run(project_id, {"queries": [], "scanned": 0, "found": 0, "target_revision": _target_revision(targets),
+                                              "reason": "the goal is too short to search from"}, brev)
         return {"queries": [], "sources": [], "projects": [], "found": 0, "scope": 0,
                 "note": "Tell Neuro Search a little more about the goal and it can search your library for it."}
 
@@ -226,6 +251,10 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
             log.warning("bootstrap: recall failed for %r: %s", q[:60], e)
             continue
         scope = max(scope, int(r.get("scope") or 0))
+        # Generic-only recall is diagnostic, not a source recommendation. Never let
+        # its scores or passage coverage promote a separate, weaker subject match.
+        if q in weak_qs or (r.get("anchor") or {}).get("all_generic") or (r.get("anchor") or {}).get("too_common"):
+            continue
         for s in r["suggestions"]:
             m = merged.setdefault(s["source_id"], {
                 "source_id": s["source_id"], "title": s.get("title"), "channel": s.get("channel"),
@@ -273,7 +302,7 @@ def scan(project_id: str, progress: Any = None) -> dict[str, Any]:
     projects = related_projects(project_id, hits)
     if progress:
         progress(0.98, "done")
-    summary = {"queries": qs, "scope": scope, "found": total_found, "shown": len(hits), "retired": retired,
+    summary = {"queries": qs, "target_revision": _target_revision(targets), "scope": scope, "found": total_found, "shown": len(hits), "retired": retired,
                "strong": sum(1 for h in hits if h["band"] == "strong"),
                "possible": sum(1 for h in hits if h["band"] == "possible"),
                "weak_query_only": sum(1 for h in hits if h["weak_query_only"]),
@@ -342,21 +371,23 @@ def state(project_id: str) -> dict[str, Any]:
         h["why"] = _why(h)
         hits.append(h)
     run = db.last_bootstrap_run(project_id)
-    live = [h for h in hits if h["state"] == "suggested"]
+    pending = [h for h in hits if h["state"] == "suggested"]
+    live = [h for h in pending if not h["weak_query_only"]]
     return {"run": run, "sources": hits, "projects": related_projects(project_id, live),
             "counts": {"suggested": len(live), "attached": sum(1 for h in hits if h["state"] == "attached"),
                        "dismissed": sum(1 for h in hits if h["state"] == "dismissed"),
                        "retired": sum(1 for h in hits if h["state"] == "retired"),
-                       "weak_query_only": sum(1 for h in live if h["weak_query_only"]),
+                       "weak_query_only": sum(1 for h in pending if h["weak_query_only"]),
                        "strong": sum(1 for h in live if h["band"] == "strong"),
                        "possible": sum(1 for h in live if h["band"] == "possible")},
-            "stale": bool(run and run.get("brief_revision") and run["brief_revision"] != db.brief_revision(project_id)),
+            "stale": bool(run and ((run.get("brief_revision") and run["brief_revision"] != db.brief_revision(project_id))
+                                   or run.get("target_revision") != _target_revision(_open_targets(project_id)))),
             "scan_version": SCAN_VERSION,
-            "matcher_stale": any(h["from_old_matcher"] for h in live),
-            "matcher_note": ("These were matched before the library search was fixed (0.60.2): two-letter words "
-                             "like \"ux\" were being dropped, and a source could match by mentioning different "
-                             "words in three unrelated passages. Scan again to re-judge them — it is free."
-                             if any(h["from_old_matcher"] for h in live) else None)}
+            "matcher_stale": any(h["from_old_matcher"] for h in pending),
+            "matcher_note": ("These suggestions predate the current relevance check. Generic-only matches are excluded; "
+                             "the scan now uses the brief and open research gaps. Scan again to re-judge them — free. "
+                             "The earlier two-letter subject-token fix is retained."
+                             if any(h["from_old_matcher"] for h in pending) else None)}
 
 
 def decide(project_id: str, source_ids: list[str], decision: str) -> dict[str, Any]:

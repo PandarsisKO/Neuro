@@ -98,10 +98,11 @@ def test_an_older_row_without_the_measure_is_unaffected():
 
 def test_the_card_holds_back_a_generic_only_match():
     ui = open(UI, encoding="utf-8").read()
-    assert "const weakOnly = live.filter(h => h.weak_query_only)" in ui
-    assert "matched only the generic parts of your goal" in ui
-    assert "show them anyway" in ui                     # held back, never deleted
-    assert "generic match" in ui
+    assert "const live = pending.filter(h => !h.weak_query_only)" in ui
+    assert "without a specific connection to this project" in ui
+    assert "show them anyway" not in ui
+    assert "No specific matches in the last library scan" in ui
+
 
 
 # ------------------------------------------------------------------ 2. a re-scan can take a suggestion away
@@ -287,3 +288,52 @@ def test_the_findings_tab_asks_whether_anything_changed_first():
     assert "async function notesTick()" in ui and "/tick`" in ui
     body = ui[ui.index("async function notesTick()"):ui.index("async function loadNotes()")]
     assert "notesTicks >= RECONCILE_EVERY" in body       # and it still reconciles on a slow interval
+
+
+def test_scan_rejects_generic_hits_without_promoting_specific_hits(fresh, monkeypatch):
+    p = db.create_project("UX", brief="progressive disclosure cognitive load")
+    qs = ["progressive disclosure cognitive load", "improving existing applications"]
+    monkeypatch.setattr(bootstrap, "queries_for", lambda *a: qs)
+    monkeypatch.setattr(bootstrap, "query_strength", lambda q: {"weak": [qs[1]], "cut": 10, "note": "", "rarity": {}})
+    def recall(pid, query, **kw):
+        return {"scope": 100, "suggestions": [
+            {"source_id": "ux" if query == qs[0] else "airbnb", "score": 1,
+             "coverage": .4 if query == qs[0] else 1, "passage_coverage": .4 if query == qs[0] else 1},
+            *([{ "source_id": "ux", "score": 5, "coverage": 1, "passage_coverage": 1}] if query == qs[1] else [])]}
+    monkeypatch.setattr(bootstrap.library, "recall", recall)
+    db.upsert_project_reuse(p["id"], [{"object_kind": "source", "object_id": "airbnb", "band": "possible",
+        "score": 1, "why": '{"weak_query_only": true}', "origin": "{}"}], "old", scan_version="recall-2")
+    before = bootstrap.state(p["id"])
+    assert before["counts"]["possible"] == 0 and before["counts"]["suggested"] == 0
+    assert before["projects"] == []
+    result = bootstrap.scan(p["id"])
+    assert [s["source_id"] for s in result["sources"]] == ["ux"]
+    assert result["sources"][0]["band"] == "possible"
+    assert result["sources"][0]["score"] == 1
+    assert result["retired"] == 1
+
+
+def test_queries_include_open_gaps_and_brief_even_with_goal():
+    project = {"goal": "Evaluate progressive disclosure patterns. Reduce interface cognitive load.",
+               "brief": "Research accessible keyboard navigation."}
+    targets = [{"id": "open", "status": "open", "question": "How do screen reader landmarks support dashboard navigation?"},
+               {"id": "closed", "status": "satisfied", "question": "How can obsolete question matches leak?"}]
+    qs = bootstrap.queries_for(project, targets)
+    assert qs[0] == targets[0]["question"]
+    assert any("accessible keyboard" in q for q in qs)
+    assert any("progressive disclosure" in q for q in qs)
+    assert not any("obsolete" in q for q in qs)
+    assert len(qs) <= bootstrap.MAX_QUERIES
+
+
+def test_gap_change_invalidates_stored_scan(fresh, monkeypatch):
+    p = db.create_project("UX", brief="progressive disclosure cognitive load")
+    targets = [{"id": "gap", "status": "open", "question": "How do screen reader landmarks support navigation?", "updated_at": 1}]
+    monkeypatch.setattr(bootstrap, "_open_targets", lambda pid: targets)
+    seen = []
+    monkeypatch.setattr(bootstrap.library, "recall", lambda pid, q, **kw: seen.append(q) or {"scope": 10, "suggestions": []})
+    bootstrap.scan(p["id"])
+    assert targets[0]["question"] in seen
+    assert not bootstrap.state(p["id"])["stale"]
+    targets.clear()
+    assert bootstrap.state(p["id"])["stale"]
