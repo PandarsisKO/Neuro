@@ -184,3 +184,17 @@ reliability fix: make verified backups use full SQLite `integrity_check` so FTS5
 missed by `quick_check`. A copied current backup measured `integrity_check: ok` in 1.479 s; all migration fixtures
 passed. The implementation is committed with a focused 5-test pass; full pytest and the commit-bound release gate
 must pass before the rung is closed. No live database was opened and no unsettled batch was mutated.
+
+## CURRENT CHECKPOINT — 2026-09-13, W1 step 1 supersedes the prune note above
+
+The `design/w1-step1-vocab-disclosure` prune note above was premature: that worktree was mid-edit (patch applied,
+not yet committed) when it was pruned as a "dead session pointer with no unique commits" — at that instant true,
+but the worktree was actively in use, not abandoned. Kyle had explicitly authorized starting Rung W1 ahead of F2's
+still-open browser-verification gate. The worktree was recreated, the patch re-verified against `main`'s
+then-current content, and landed cleanly: commit `b7c2422`, merged to `main` at `f0ca4b5` (86 targeted tests pass,
+before and after). Details in `HANDOFF.md`'s "Rung W1 step 1 landed" entry, including a note asking that future
+worktree pruning confirm a worktree is not actively in use before removing it, not only that its branch is merged
+or commit-less.
+
+F2's behavioral browser gate remains open and separately tracked. W1 is no longer investigation-only — step 1 has
+landed; remaining W1 scope (Findings/Plan button-role and label consistency) is still open.
