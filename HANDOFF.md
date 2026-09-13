@@ -676,3 +676,6 @@ handoff or hardening notes before committing.
 The same pass removed a duplicated hard-set test-data-directory block from `tests/conftest.py`; the isolation guard
 now has one source of truth. `tests/test_s51_test_isolation.py` plus `tests/test_s52_fts5_recovery.py` pass (4 tests,
 one existing Starlette deprecation warning).
+
+The post-cleanup commit-bound release gate is green at `0.63.59 @ a825175`; artifact:
+`evals/release/release-check-0.63.59-a825175-20260913-123249.json`.
