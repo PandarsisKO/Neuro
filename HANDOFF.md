@@ -1114,3 +1114,7 @@ Codex measured T2's existing inputs read-only from a copy of `data/backups/neuro
 ## T2 locator reconciliation follow-up — 2026-09-13 14:23 PT
 
 The pre-admission artifact `evals/t2/pre-admission-baseline-20260913-141959.json` now classifies unmatched Claim locators under the proposed `[start, end)` interval. Buying Businesses has 293 exact chunk-end rows (valid half-open boundary misses), 615 internal gaps, 166 before-first, 5 after-last, and 12 excluded/non-member; Design has 23 before-first, 2 after-last, and 12 internal gaps; Real Estate has no unmatched rows. This is evidence for T2's response-level reconciliation reasons, not a license to widen ranges or mutate data.
+
+## T2 state-model review admitted — 2026-09-13 14:26 PT
+
+The T2 state-model review is closed and the derived read-only implementation is admitted through the existing T1 coverage seam. `[start, end)` locator semantics and typed reconciliation reasons are fixed. The implementation may report `claim_covered`, `finding_covered`, and valid T1 `represented`; it must keep source-level relevance, findings-only redundancy, and pre-T3 extraction explicitly unavailable and must never assert `unexplained` while required inputs are unknown. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` is the measured baseline. No new table, provider call, UI, or live-data mutation is allowed.

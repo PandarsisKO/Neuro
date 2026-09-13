@@ -2051,3 +2051,7 @@ Read-only measurement on a copied verified backup (`data/backups/neurosearch-202
 ## T2 locator boundary evidence — 2026-09-13 14:23 PT
 
 The copied-backup baseline `evals/t2/pre-admission-baseline-20260913-141959.json` classifies unmatched Claim locators under `[start, end)`: exact chunk-end positions are separated from before/after bounds, internal gaps, and excluded/non-member sources. Buying Businesses has 293 exact-end, 615 internal-gap, and 12 excluded/non-member rows; Design has 12 internal gaps and 25 edge rows; Real Estate has none. This protects the locator invariant from a tempting but incorrect range-widening fix.
+
+## T2 state-model gate — 2026-09-13 14:26 PT
+
+The T2 admission review fixed half-open locator semantics and fail-open signal handling. The derived view can assert only evidence supported by canonical locators or a valid attested T1 vector; source-level relevance, findings-only duplicate output, and pre-T3 extraction remain unknown at chunk level. `unexplained` is therefore withheld whenever any required input is unavailable. Implementation is confined to the existing T1 read-only seam with no table, provider call, UI, or live-data write. Baseline artifact: `evals/t2/pre-admission-baseline-20260913-141959.json`.

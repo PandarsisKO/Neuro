@@ -267,3 +267,7 @@ Codex produced `evals/t2/pre-admission-baseline-20260913-141959.json` from a cop
 ## T2 locator reconciliation follow-up — 2026-09-13 14:23 PT
 
 The baseline artifact `evals/t2/pre-admission-baseline-20260913-141959.json` distinguishes exact half-open-boundary misses from internal gaps and membership problems. Buying Businesses contains 293 locators exactly at chunk ends, 615 internal gaps, and 12 excluded/non-member rows; Design contains 12 internal gaps and 25 edge misses; Real Estate matches all 603. T2 must preserve `[start, end)` semantics and report unavailable/reconciliation reasons rather than silently broadening coverage.
+
+## T2 state-model admission — 2026-09-13 14:26 PT
+
+The internal state-model gate is closed. T2 is now the single active Codex rung, implemented only through the existing T1 read-only coverage seam. The fixed rules are finite locators with `[start, end)` chunk boundaries, typed boundary/membership gaps, project-relative attested T1 representation, and explicit unknowns for source-level relevance, findings-only redundancy, and pre-T3 extraction. `unexplained` remains unavailable whenever a required input is unavailable. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` is the baseline; no UI, table, provider call, or live-data mutation is admitted.
