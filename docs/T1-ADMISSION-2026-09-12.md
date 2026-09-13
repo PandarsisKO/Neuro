@@ -73,6 +73,26 @@ changes after that artifact affect T1. The remaining T1 action is an explicit sp
 backfill, followed by a fresh version-stamped semantic cohort. Until that decision, only zero-cost tests, previews,
 and documentation work may proceed.
 
+## Authorized backfill execution — 2026-09-13
+
+Kyle explicitly authorized the paid derived-object backfill. Before admission,
+the running app was re-attested through `POST /api/transcript/corpus-attestation`:
+38,038 chunk vectors, 1,536 dimensions, zero malformed rows, canonical embedding
+revision 10. The supported enqueue path was added as a bounded authenticated
+endpoint, `POST /api/projects/{project_id}/transcript/backfill`, with 1–5,000 row
+pages and an explicit offset. The offset was necessary to avoid repeatedly
+returning the same deduplicated first page while workers were paused.
+
+The queue was paused during admission and resumed immediately afterward. The
+current live preview was 39,951 rows across the three retained projects: 31,319,
+7,438, and 1,194, or 418 project-bounded 96-row accounting batches. All 39,951
+`t1_embed_derived` jobs were admitted with low lane, provider `openai`, model
+`text-embedding-3-small`, and version `t1-derived-v1`; no duplicate page gaps were
+observed. Initial monitoring showed 188 completed, 39,763 queued, zero new
+failures, and zero stale leases. The cohort remains under observation until the
+queue reaches a terminal state; only then will the version-stamped semantic
+coverage report be accepted.
+
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
 T1's canonical-active and project-relative requirements.
