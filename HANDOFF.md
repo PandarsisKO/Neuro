@@ -1207,3 +1207,10 @@ Starlette warning, focused T1/T2/T3 checks are 28 passed, and `release-check --n
 0.63.65. Release artifact: `evals/release/release-check-0.63.65-46f0a5e-20260913-145001.json`. The 15-row/64-span
 sample is provisional and read-only. Next Codex gate: expand to a seeded hand-label sample with adversarial negatives
 and boundaries before any persistence, selector, T4, or user-facing trust. Claude's design/audit custody is unchanged.
+
+## T3 adversarial boundary hardening — 2026-09-13 14:56 PT
+
+`tests/test_t3_adversarial.py` adds 7 boundary/negative regressions; the focused T3 suite is 15 passed. Coverage
+includes phone/ZIP/address identifier rejection, bare cue rejection, numeric subspan protection, explicit ISBNs,
+entity/URL punctuation, and markdown empties. This strengthens the extractor while the larger seeded hand-label gate
+remains pending.

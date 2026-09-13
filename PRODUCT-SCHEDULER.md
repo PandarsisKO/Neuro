@@ -299,3 +299,9 @@ T3 is implemented and release-checked at `46f0a5e`; full pytest 1,376 passed and
 is `evals/release/release-check-0.63.65-46f0a5e-20260913-145001.json`. The extractor remains outside scheduling,
 queues, providers, persistence, and UI. Do not schedule extraction or downstream selector work until the larger
 seeded/adversarial hand-label gate closes.
+
+## T3 adversarial tests — 2026-09-13 14:56 PT
+
+Seven new deterministic negative/boundary tests protect T3 from phone/ZIP/address identifiers, bare cues, numeric
+subspan double counts, and punctuation leaks. Focused T3 coverage is 15 passed; no scheduling or downstream trust is
+admitted.

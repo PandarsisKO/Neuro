@@ -2083,3 +2083,8 @@ The pure T3 extractor is green under the full 1,376-test suite and commit-bound 
 provisional 15-row/64-span read-only sample is recorded with a copied-backup hash. The next hardening requirement is
 a larger seeded sample with adversarial negatives and offset-boundary cases; no persisted extraction, selector, T4,
 provider, queue, or UI path may rely on current provisional metrics.
+
+## T3 adversarial tests — 2026-09-13 14:56 PT
+
+Added seven regression tests for identifier, duration, numeric-overlap, cue, entity, URL, and markdown-boundary
+false-positive paths. Focused T3 suite is 15 passed. Larger seeded hand-label review remains the admission gate.

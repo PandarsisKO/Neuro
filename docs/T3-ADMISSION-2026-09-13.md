@@ -93,3 +93,10 @@ Commit-bound `release-check --no-pytest` passes every deterministic proof at UI/
 The provisional sample remains evidence only. A larger seeded hand-label set with adversarial negatives and boundary
 cases is the next gate. No T3 output is persisted or trusted by T4, a selector, or user-facing state until that gate is
 closed.
+
+## T3 adversarial boundary hardening — 2026-09-13 14:56 PT
+
+Added `tests/test_t3_adversarial.py` (7 tests) for phone/ZIP/address false identifiers, bare cue words, numeric
+subspan double counting, explicit-ISBN gating, punctuation-safe entity and URL spans, and markdown-label empties.
+The focused T3 suite now passes 15 tests. These tests are regression protection only; the larger seeded hand-label gate
+is still required before downstream trust.
