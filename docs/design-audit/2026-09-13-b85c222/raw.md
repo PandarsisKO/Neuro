@@ -177,3 +177,96 @@ citations inline in chat; "Make this plan yours" chip answers.
 
 Narrow viewport (resize did not take); polling flicker; Health/Jobs surfaces; every Phase 3 walk; whether the
 Findings blank period is network or render (needs timing); dark theme not screenshotted this pass.
+
+---
+
+## F0 addendum — audit-instance pass (2026-09-13, baseline `21bb117`)
+
+Mode: F0 preflight per `ladder.md`. Audit instance: `tools/audit-instance.command`, port 8788, data copied from
+`neurosearch-20260912-1907.db` (the newest verified backup), `NEUROSEARCH_FAKE_AI=1`, both budgets $0, no API
+keys, login token `audit`. Both the live project set and a new empty project ("F0 empty-state probe") were
+inspected. Chrome window resize to ~390px did not change the captured frame — the narrow-viewport limitation from
+the read-only pass reproduces here too; **still no narrow-viewport evidence exists**. Dark theme, login, empty
+states, one real failure state, and the Health panel were inspected and are new in this pass.
+
+### New states inspected
+
+**Login page** (`/`, unauthenticated). Simple centered card, dark-theme-aware (persisted before authentication, so
+the toggle's `localStorage` read happens pre-login). No findings — clean, minimal, on-brand.
+
+**New/empty project — Sources, Findings, Research, Master Plan, Chats.** Each surface's zero-state has explicit,
+actionable copy ("No sources yet. Add a link, upload a file, paste text, or pull from the library above.";
+"Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.";
+"No Claims yet. Approve findings in 📌 Findings — the research state builds itself from them at no cost.") — these
+are strengths, consistent with `DESIGN.md` §1.7 (honest states) and worth explicit protection in any rung that
+touches these surfaces. One new chat view was blank with no guidance on first click, then showed full guidance
+copy ("Every chat here only sees this project's sources...") on a later visit to what appeared to be the same
+"New chat" — inconsistent, possibly a render-timing race of the same class as `H-2` (loading masquerading as
+permanently blank). Filed as **`[F0-1]` New-chat placeholder inconsistently renders its guidance text** — Low
+confidence, not reproduced a second time, flagged for the interaction-pass audit to confirm or rule out.
+
+**Master Plan build on zero evidence.** Clicking "Build Master Plan" on the empty project showed a truthful,
+well-specified pending state ("reading the research... · 0s (analysis first, then the plan — usually 1–3 min)")
+— a strength consistent with the protected click-acknowledgement contract. However, `NEUROSEARCH_FAKE_AI=1`
+returns a fixed canned plan (a Squarespace-migration scenario) regardless of the actual project brief or the
+absence of sources — **this is a fake-AI fixture limitation, not a validated product behavior**: F0 cannot
+observe what a zero-evidence Master Plan build genuinely produces, because the fake responder does not vary with
+input. This should be logged as an audit-tooling gap, not closed as "inspected."
+
+**A real failure state (Sources, `Failed 1` filter, live-backup project).** One row: a Facebook post, `media ·
+failed`, red text `[facebook] 1763098265823974: Cannot parse data retryable · other`. Two observations: (1) a
+failed row shows only four actions (Retry, Make priority, Remove from project, Delete everywhere) rather than the
+six on a healthy row — a reasonable, undocumented simplification, worth naming explicitly if `ladder.md` rung W4
+touches row actions, so it isn't accidentally reverted to six. (2) the error text is a raw internal exception
+string (`Cannot parse data retryable · other`) surfaced verbatim to the user with no translation — filed as
+**`[F0-2]` Failure rows surface raw internal error strings** — Low severity, Local scope (Sources), consistent
+with `DESIGN.md`'s honesty principle in spirit but not in execution; a real user cannot act on "Cannot parse data
+retryable · other" the way they can act on the Health panel's plain-language equivalents.
+
+**The Health panel** (Settings → scroll → "Health"). This is the single most important discovery of the F0 pass
+and changes how `H-1` should be read. Health is not a missing surface — it is a rich, well-structured panel: ~20
+labeled cards (Database integrity, Verified backup, Queue, Finding quotes verified, Model the provider actually
+ran, Structured-output fallbacks, Spend recorded vs. likely charged, Who pays for local calls, Provider batches:
+work paid for and not written, Cost per kept finding, and more), each with a ✅/⚠️/🧪 glyph, a plain-language
+label, and a detail line. Several of these are strengths worth explicit protection: "Model the provider actually
+ran" proactively surfaces silent model substitution; "Provider batches" warns about paid-and-uncollected work;
+"Who pays for local calls" explains billing attribution in plain language. **The problem `H-1` describes is not
+that this data doesn't exist — it's that the only versions of it visible outside Settings are the single
+compressed log-line sentence on Home and the Chat sidebar footer.** The good, readable version is three clicks
+deep (Settings → scroll past the project form, decisions table and spending valve) with no nav entry of its own.
+This sharpens `H-1`'s improvement direction: the fix is not to invent new health data, it is to surface the
+existing Health panel's best rows earlier and more prominently, and to treat Settings' current Health section as
+the source of truth the new status component reads from — not something to redesign from scratch. `H-1` in
+`audit.md` should be read with this addendum; no severity or ladder-ordering change follows from it, since `W5`
+already targets the same status-line rework.
+
+**The project brief, echoed unlabeled in the sidebar.** Both the light and dark passes on the empty project show
+the project's Goal/Brief text ("Inspecting empty states only, no real acquisition.") repeated verbatim in the
+bottom-left sidebar, directly above the spend/status footer, with no heading distinguishing it from anything
+else there. On a project with a long brief this text wraps and visually crowds the already-dense status line.
+Filed as **`[F0-3]` The project brief renders unlabeled in the sidebar, crowding the status footer** — Medium
+severity, Local scope (sidebar, all views), Visual evidence. This is additive to `H-1`/`RC-F`, not a new root
+cause: whatever status component `W5` builds needs to either give this line a label or move it, not just
+reflow the spend text around it.
+
+### Incidental finding — not a design defect, a data-handling note
+
+The audit instance is a full, byte-for-byte copy of the live backup, deliberately so per `AUDIT.md` §3. Its
+Settings → Decisions & constraints table on the real "buying businesses" project contains Kyle's actual Morgan
+Stanley account numbers and balances, verbatim, because that table stores whatever free text a chat or the user
+recorded as a "decision" — the product does not distinguish a project decision from a financial account number
+typed into the same field. Two screenshots taken during this pass captured that table before it was noticed;
+both were deleted immediately and are not part of the evidence set (see manifest). No design-audit finding is
+filed for this — it sits outside `AUDIT.md`'s scope (data handling/security, not visual/UX design) — but it is
+recorded here as a procedural note for any future F0/RE-AUDIT pass: **do not screenshot a real project's
+Decisions & constraints table**, and consider whether the live backup used for future audit instances should
+have that table redacted before copying. Kyle should decide whether this is worth a security/privacy review
+separate from the design-audit track; it is not added to `ladder.md`.
+
+### Completion coverage this addendum closes
+
+Jobs/Health inspected (above). Empty/default states for every surface inspected (above). One real failure state
+inspected (Sources). Dark theme inspected across Home, Settings, Sources, new-project surfaces, and login — no
+contrast or token defects observed beyond the already-measured `--ok`/`--warn` values. Narrow viewport remains
+**unsupported / not applicable this pass** — the resize tool does not change the captured frame in this browser
+automation setup; a real device or a different tool would be needed to close this row honestly.

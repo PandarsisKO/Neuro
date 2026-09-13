@@ -95,7 +95,15 @@ because they are objective. Deciding observations are in `raw.md` Phase 2.
 | Master Plan | Yes | Partly | Yes | Yes | Partly |
 | Settings | Yes | n/a | Partly | Yes | Partly |
 
-Not yet scored: Jobs / Health, dark theme, narrow viewport, empty and failure states — F0 in `ladder.md`.
+Scored on the F0 audit-instance pass, 2026-09-13, same reviewer:
+
+| Surface | Where am I | Current state | What matters | What to do next | What that will do |
+|---|---|---|---|---|---|
+| Settings → Health | Partly (no nav entry; reached only by scrolling Settings) | Yes — once found, the panel itself is clear and well-labeled | Partly — no ranking of which warning matters most | n/a (read-only panel) | n/a |
+| New/empty project (any surface) | Yes | Yes — explicit "nothing yet, do X" copy on every surface | Yes | Yes | Yes |
+| Login | Yes | n/a | n/a | Yes | Yes |
+
+Not yet scored: narrow viewport (still unreachable with this tooling), a failed job, a failed poll.
 
 ## Critical findings
 
@@ -317,8 +325,22 @@ depends on this rung landing first or alongside — see ladder ordering.
   in code). `[Visual/Code]`
 - **`[M-11]`** The Chat sidebar's chat list is unbounded (20+ visible) with no grouping by recency. `[Visual]`
 
+## Medium findings (F0 addendum)
+
+- **`[F0-3]`** The project's Goal/Brief text renders unlabeled in the sidebar directly above the spend/status
+  footer, with no heading distinguishing it from system state — on a long brief it wraps and crowds the already
+  dense status line. Additive to `H-1`/`RC-F`, not a new root cause: `W5`'s status component must label or
+  relocate this line, not just reflow around it. `[Visual]` — audit instance, 2026-09-13.
+
 ## Low / polish findings
 
+- **`[F0-1]`** A new chat's placeholder guidance rendered blank on first visit, then showed full guidance copy on
+  a later visit to what appeared to be the same view — not reproduced a second time, low confidence, possibly the
+  same class of defect as `H-2` (a brief loading gap read as permanently empty). Flagged for the interaction-pass
+  audit to confirm or rule out, not yet a confirmed finding. `[Runtime]`
+- **`[F0-2]`** A failed source's error text is a raw internal exception string (`Cannot parse data retryable ·
+  other`) surfaced verbatim, not translated into something a user can act on — inconsistent with the plain-language
+  standard the Health panel otherwise holds to. `[Visual/Copy]`
 - **`[L-1]`** Every source-row thumbnail observed was an empty grey rectangle with no fallback glyph. `[Visual]`
 - **`[L-2]`** "Master sheet CSV" and "Segments CSV" exports are placed among Sources' filter controls rather than
   with other export/utility actions. `[Visual]`
@@ -462,23 +484,25 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 | # | Criterion | Status |
 |---|---|---|
 | 1 | Product and version identified | met — 0.63.43; **baseline pinned at `21bb117`** (2026-09-13, F0 step 2): Codex's standalone `index.html` commit, drift counts re-measured there and identical (430 / 28 / 3 / 16 / 11 / 8) |
-| 2 | Live product inspected read-only **and** interactions exercised on an audit instance | **unmet** — read-only half only; no audit instance exists |
+| 2 | Live product inspected read-only **and** interactions exercised on an audit instance | met — audit instance built (`tools/audit-instance.command`), a new project created and driven through every surface, a Master Plan build triggered, dark theme and login exercised (F0, 2026-09-13) |
 | 3 | Surfaces inventoried by intent | met |
-| 4 | Load-bearing workflows walked end to end | **unmet** — all observed, none exercised |
-| 5 | Important states incl. failure and empty inspected | **unmet** — only the populated state of the largest project |
-| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed, not under narrow viewport |
-| 7 | Major findings carry reproducible evidence | partly — reproduction steps yes; `evidence/` empty, no screenshots saved |
+| 4 | Load-bearing workflows walked end to end | partly — project creation, empty-state review across all surfaces, and a Master Plan build were exercised on the audit instance; acquisition, findings triage, chat, and discover walks remain observed-not-exercised |
+| 5 | Important states incl. failure and empty inspected | met — every surface's empty state, one real failure state (a failed source), and the Health panel inspected (F0 addendum, `raw.md`) |
+| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed; narrow viewport still unreachable with this tooling |
+| 7 | Major findings carry reproducible evidence | met — reproduction steps plus a canonical `evidence/baseline/` screenshot set (6 images, both themes, empty/populated/failure/login states) with a manifest |
 | 8 | Drift audited separately | met — measured, ratcheted, per-surface table above |
 | 9 | Cross-surface interactions reviewed | met (as observed) |
 | 10 | Raw observations preserved | met — `raw.md` |
 | 11 | Symptoms consolidated into root causes | met |
 | 12 | Materiality filter applied | met |
-| 13 | Closure pass found no new unpropagated consequence | met for the read-only evidence; must be re-run after F0 step 4 |
+| 13 | Closure pass found no new unpropagated consequence | met — F0's three new findings (`F0-1` low-confidence, `F0-2`, `F0-3`) fold into existing root causes (RC-E, RC-F) with no contradiction; see F0 close-out |
 | 14 | Ladder turns the biggest problems into coherent rungs | met — `ladder.md` |
 | 15 | No product code changed | met |
 
-Not yet inspected at all: Jobs / Health / cost feedback, dark theme (supported per `DESIGN.md` §3 — in scope),
-narrow viewport, empty project, failed source, failed job, failed poll.
+Closed by the F0 audit-instance pass (2026-09-13): Jobs/Health, dark theme, empty project states, one failed
+source. **Still not inspected: a failed job, a failed poll, and narrow viewport** (the browser-automation resize
+tool does not change the captured frame; this row stays **unsupported / not applicable with current tooling**
+rather than silently unmet — a real device or a different automation path would be needed).
 
 ## Assumptions / cannot verify
 
