@@ -144,3 +144,7 @@ million produced identical 1,503-cluster signatures; eight million differed by t
 Measured runtimes were 10.066 s, 11.862 s, and 11.937 s. A 12M ceiling is therefore the smallest measured complete
 candidate for the current corpus, pending a deterministic regression fixture and memory check after the active design
 boundary. The constant remains unchanged.
+
+The validated current tree is also backed up remotely on `backup/2026-09-13-clean` (snapshot commit
+`aff2e407b5faae5ee8d193168bfc094f9dfabf7f`). A normal `main` push is blocked by retired historical `VIDEOS/` blobs and
+was not retried destructively; local history remains intact pending an explicit history-rewrite decision.

@@ -828,3 +828,16 @@ The follow-up exact-budget experiment tested 8M, 12M, and 16M pairs on that same
 11.862 s, and 11.937 s; 12M and 16M yielded identical 1,503-cluster signatures, while 8M differed by two missing
 and one extra cluster. This supports evaluating a 12M ceiling as the smallest measured complete result for the current
 corpus. It remains a candidate after the active design boundary, with no constant, schema, or threshold changed.
+
+## GitHub backup checkpoint — 2026-09-13
+
+The ordinary `git push origin main` could not complete because the historical graph contains several gigabytes of
+retired `VIDEOS/` blobs; GitHub returned HTTP 500 and `origin/main` remains at `67520c9`. The current tree itself has
+no tracked `VIDEOS/`, `data/`, or `_to_delete/` path. Failed transfer pack files (about 4.4 GiB of temporary objects)
+were moved intact to `/tmp/neuro-git-push-leftovers-20260913.29jVU4`; nothing in the working tree or protected evidence
+was deleted.
+
+To preserve a reviewable remote copy without rewriting shared history, the current `main` tree was written as a
+history-free snapshot commit `aff2e407b5faae5ee8d193168bfc094f9dfabf7f` and pushed successfully to GitHub branch
+`backup/2026-09-13-clean`. That branch is the current remote backup target; local `main` history is unchanged. Any
+future main-history cleanup needs an explicit decision because it would rewrite commit ancestry shared with Claude.
