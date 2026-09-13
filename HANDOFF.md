@@ -1228,3 +1228,10 @@ A full run reached 1,382 passed and found the existing release test correctly re
 `STATE-OF-THE-APP-2026-09-13-1436.md` is now archived under `docs/archive/state/`; the focused test passes and the
 commit-bound release gate is green at `e4cf07f` (`evals/release/release-check-0.63.65-e4cf07f-20260913-145704.json`).
 The authoritative root orientation is now `STATE-OF-THE-APP-2026-09-13-1457.md`.
+
+## T3 seeded review manifest — 2026-09-13 15:01 PT
+
+A larger review queue is prepared at `evals/t3/seeded-review-manifest-20260913-150111.json`: 60 copied-backup rows,
+20 per retained project, fixed kind strata plus seeded random fill (`seed=20260913`), all 15 targeted kinds present.
+Gold labels are intentionally null and status is `pending_manual_label`; this is not a gate pass. Exact span
+adjudication is required before downstream selector, persistence, or T4 work.

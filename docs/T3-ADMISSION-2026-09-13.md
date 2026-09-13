@@ -108,3 +108,12 @@ superseded root state file `STATE-OF-THE-APP-2026-09-13-1436.md` was still prese
 state. That file was archived under `docs/archive/state/`; the focused release test now passes and
 `release-check --no-pytest` is green at `e4cf07f`, artifact `evals/release/release-check-0.63.65-e4cf07f-20260913-145704.json`.
 This was a documentation hygiene fix; T3 code remains unchanged.
+
+## T3 seeded review manifest prepared — 2026-09-13 15:01 PT
+
+Prepared `evals/t3/seeded-review-manifest-20260913-150111.json` from a temporary copy of the verified 14:10
+backup opened in SQLite `mode=ro` (same recorded SHA-256 as the provisional sample). The manifest contains 60 rows,
+20 per retained project, selected by fixed kind-strata IDs plus seeded random fill (`seed=20260913`). Every targeted
+kind is represented; each row includes the source text and predicted records but `gold: null` and
+`review_status: pending_manual_label`. It is a review queue, not a pass/fail result. A reviewer must adjudicate exact
+kind, normalized value, and `[start,end)` spans before T3 can feed any selector, persistence, or T4.

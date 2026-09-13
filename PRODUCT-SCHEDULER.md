@@ -316,3 +316,8 @@ one authoritative root state file. No scheduler behavior changed.
 Archived the superseded root state file that caused the release hygiene test to fail. The affected test now passes and
 `release-check --no-pytest` is green at `e4cf07f`; no scheduler behavior changed. Current root state:
 `STATE-OF-THE-APP-2026-09-13-1457.md`.
+
+## T3 seeded review manifest — 2026-09-13 15:01 PT
+
+Prepared a 60-row, project-balanced T3 hand-label queue with deterministic seed and all targeted kinds. Rows remain
+pending manual gold labels; no scheduler or downstream extraction work is admitted from this manifest.

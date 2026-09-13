@@ -1,0 +1,3515 @@
+{
+  "artifact": "T3 seeded hand-label review manifest",
+  "schema_version": "t3-review-manifest-v1",
+  "generated_at_utc": "2026-09-13T22:01:11.788567+00:00",
+  "seed": 20260913,
+  "source_backup": "data/backups/neurosearch-20260913-1410.db",
+  "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
+  "read_mode": "copied backup opened SQLite mode=ro; live database untouched",
+  "extractor_version": "t3-tier0-v1",
+  "selection": {
+    "method": "project-balanced fixed strata plus seeded random fill",
+    "projects": 3,
+    "rows_per_project": 20,
+    "rows_total": 60,
+    "fixed_strata_ids": {
+      "5b9b2a3b25e343a6bdcf3bad90ced5a4": [
+        2415,
+        2466,
+        2408,
+        2411,
+        3345,
+        4945,
+        2412,
+        2406,
+        2425,
+        2699
+      ],
+      "c752ed152ec942dd97b9a94c3f1b3b96": [
+        3,
+        664,
+        22,
+        72,
+        2169,
+        55,
+        7,
+        1,
+        4,
+        699,
+        18,
+        18737,
+        10
+      ],
+      "d7a9f585076e49649b561649d71238c3": [
+        30523,
+        36705,
+        30323,
+        30324,
+        31593,
+        30357,
+        30344,
+        30339,
+        30631,
+        32100,
+        30322
+      ]
+    },
+    "candidate_kinds_targeted": [
+      "money",
+      "percentage",
+      "url",
+      "identifier",
+      "number",
+      "date",
+      "duration",
+      "unit",
+      "question",
+      "procedure",
+      "warning",
+      "exception",
+      "comparative",
+      "hedge",
+      "entity"
+    ]
+  },
+  "review_contract": {
+    "gold": null,
+    "required_fields": [
+      "kind",
+      "raw",
+      "normalized",
+      "start",
+      "end",
+      "attributes"
+    ],
+    "matching": "exact kind, normalized value, and half-open [start,end) offsets",
+    "status": "review required before T3 downstream trust; this manifest is not a pass/fail result"
+  },
+  "rows": [
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2415,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 9,
+      "chunk_start": 416.96,
+      "chunk_end": 475.36,
+      "text": "[Exterior Walkthrough] they're not great. They're not horrible. Windows are expensive. And so technically, yeah, should I be replacing them? The best thing to do would be to replace them, but but aluminum windows are fine. You know, they do the job. They're just not the best for installation. And so, the best you can have is going to be vinyl windows. And uh vinyl windows are typically anywhere on the low end from $150 to $350 per window. And then for me, I typically pay if I'm going to replace a window, I'm going to pay $150 to $200 per window to replace a window, do any framing that we need to do, etc. And so this house here, three bed, one and a half bath, onecar garage. I bought this at 100,000. The rehab I had at 15,000 which we should be like right at 15. We're at 10 right now. I'll pull up the numbers here in a few.",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "And so technically, yeah, should I be replacing them?",
+          "normalized": "And so technically, yeah, should I be replacing them?",
+          "start": 87,
+          "end": 140,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "The best thing to do would be to replace them, but but aluminum windows are fine.",
+          "normalized": "The best thing to do would be to replace them, but but aluminum windows are fine.",
+          "start": 141,
+          "end": 222,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "They're just not the best for installation.",
+          "normalized": "They're just not the best for installation.",
+          "start": 250,
+          "end": 293,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "And so, the best you can have is going to be vinyl windows.",
+          "normalized": "And so, the best you can have is going to be vinyl windows.",
+          "start": 294,
+          "end": 353,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$150",
+          "normalized": "$150",
+          "start": 418,
+          "end": 422,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$350",
+          "normalized": "$350",
+          "start": 426,
+          "end": 430,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$150",
+          "normalized": "$150",
+          "start": 527,
+          "end": 531,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$200",
+          "normalized": "$200",
+          "start": 535,
+          "end": 539,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100,000",
+          "normalized": "100000",
+          "start": 700,
+          "end": 707,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "15,000",
+          "normalized": "15000",
+          "start": 728,
+          "end": 734,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "15",
+          "normalized": "15",
+          "start": 768,
+          "end": 770,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 781,
+          "end": 783,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2466,
+      "source_id": "1033a62a412b415a8221b00230e62ac8",
+      "chunk_idx": 2,
+      "chunk_start": 82.32,
+      "chunk_end": 140.64000000000001,
+      "text": "[Alex's House Flip] first house flip that I took on the majority of the work for. This was a three-bedroom, two bath, single family house with 1358 ft located in Poway, California, which is in San Diego County. And as you can see, the condition of the property wasn't that bad. It was just a bit outdated with some repairs needed, but it pretty much needed a full cosmetic renovation. And finding properties consistently like this one is a vital task of any professional fix and flipper, but it can also be challenging for some. So, the first thing you have to do is get out there and do whatever it takes to find the deal. Some people like to door knock, put out bandit signs, or spend a lot of money on marketing. But what I did was utilize the MLS and built relationships with real estate agents in order to get this deal. Now, the MLS is the multiple listing service, and it's the database of all leads on the market in your area. Now, here's how I found this deal. So, we found this house flip from using our MLS approach to getting on market deals. This is what we've been utilizing for 12 years now and is hands down one of our favorite strategies.",
+      "predicted": [
+        {
+          "kind": "unit",
+          "raw": "1358 ft",
+          "normalized": "1358 ft",
+          "start": 143,
+          "end": 150,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "12 years",
+          "normalized": "12 years",
+          "start": 1093,
+          "end": 1101,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2408,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 2,
+      "chunk_start": 101.119,
+      "chunk_end": 115.04,
+      "text": "[How I found the property] I've got to replace a sewer line. And so, that's something that I'm always looking for. I came out here and walked it. And when I'm walking around the properties, let me just show you guys. If I'm looking at this property for the first time, we're in the Midwest. We see",
+      "predicted": [],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2411,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 5,
+      "chunk_start": 213.04,
+      "chunk_end": 272.4,
+      "text": "[Exterior Walkthrough] settling issues, some areas aren't. Oklahoma is prone to a lot of foundation issues, and so that's something that will make or break a deal. I'm looking all the way across the brick. In this case, like I said, there's Okay, here we go. Little bit of settling here. So, you can see we've got a little bit of separation. This doesn't necessarily concern me. Once again, I'm not a foundation guy, but this isn't enough for me personally to get my foundation company out. May need a couple peers, might be a thousand bucks, couple thousand bucks. But if there was a wide gap here where I could fit like my finger through it, then I'm going to be pretty concerned. I'm going to get my structural engineer out here. I'm going to get my foundation company out and we'll look at it from there. Um, sewer lines are super important. This is a sewer cleanout. If you don't know what it is, this is where all your waste goes. We're in the city, so typically you're going to have one of two things. You're going to have a septic tank. If you're like out in the country, if you flip houses in the country, you'll have a septic tank. Those can get pricey. You want to make sure if you're looking at a",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "May need a couple peers, might be a thousand bucks, couple thousand bucks.",
+          "normalized": "May need a couple peers, might be a thousand bucks, couple thousand bucks.",
+          "start": 491,
+          "end": 565,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "But if there was a wide gap here where I could fit like my finger through it, then I'm going to be pretty concerned.",
+          "normalized": "But if there was a wide gap here where I could fit like my finger through it, then I'm going to be pretty concerned.",
+          "start": 566,
+          "end": 682,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "If you don't know what it is, this is where all your waste goes.",
+          "normalized": "If you don't know what it is, this is where all your waste goes.",
+          "start": 872,
+          "end": 936,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 3345,
+      "source_id": "b627aaac60a5468094d1a11bbb648b0d",
+      "chunk_idx": 24,
+      "chunk_start": 1047.12,
+      "chunk_end": 1083.1999999999998,
+      "text": "[How to Calculate Cash Flow (Real Property)] think it through. That's it. In the Bigger Pockets calculator, if you're watching this on YouTube, you could see that there are other fees like HOA fees, electricity, gas, but because this is metered separately, the tenants will pay this. I do pay garbage. It's like less than 50 bucks a month, but I'm just going to round up to 50 bucks a month. That's all the input that we need to do. Hopefully, you could see that this is not so difficult. Like, you just need to think through each of these steps. The Cash Flow Road Show is back. Bigger Pockets is coming to Texas January 13 to 17, 2026. Me, Henry Washington, and",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "In the Bigger Pockets calculator, if you're watching this on YouTube, you could see that there are other fees like HOA fees, electricity, gas, but because this is metered separately, the tenants will pay this.",
+          "normalized": "In the Bigger Pockets calculator, if you're watching this on YouTube, you could see that there are other fees like HOA fees, electricity, gas, but because this is metered separately, the tenants will pay this.",
+          "start": 74,
+          "end": 283,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's like less than 50 bucks a month, but I'm just going to round up to 50 bucks a month.",
+          "normalized": "It's like less than 50 bucks a month, but I'm just going to round up to 50 bucks a month.",
+          "start": 302,
+          "end": 391,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "50",
+          "normalized": "50",
+          "start": 322,
+          "end": 324,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "50",
+          "normalized": "50",
+          "start": 374,
+          "end": 376,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Hopefully, you could see that this is not so difficult.",
+          "normalized": "Hopefully, you could see that this is not so difficult.",
+          "start": 433,
+          "end": 488,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "January 13",
+          "normalized": "January 13",
+          "start": 614,
+          "end": 624,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "17",
+          "normalized": "17",
+          "start": 628,
+          "end": 630,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2026",
+          "normalized": "2026",
+          "start": 632,
+          "end": 636,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 4945,
+      "source_id": "048139eeed8a49f29cd48a39f4ad11a0",
+      "chunk_idx": 16,
+      "chunk_start": 795.2,
+      "chunk_end": 853.519,
+      "text": "math, people are gonna be like, \"What?\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right? That is the big thing. If you own this property and you give it to a property manager, you're not materially participating. you have to there there's like very specific definitions that say you have to do this thing for it to be considered material participation. Yeah. So there's this IRS publication 925 that kind of breaks out what is material participation and what is a real estate pro. You should go you should go read it. It's great reading. Yeah. Give us one second. I'm going to go read it. Thank you. Three days later. All right. And we're back. I read it. Wow. That was that was really insightful. Yeah, that was good. A little dense, but I liked it. So no but uh material participation there are five ways you can meet it if you meet any of the ways and I don't know every single way right off hand but yeah just give us the main ones",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "math, people are gonna be like, \"What?",
+          "normalized": "math, people are gonna be like, \"What?",
+          "start": 0,
+          "end": 38,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "normalized": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "start": 38,
+          "end": 208,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "normalized": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "start": 38,
+          "end": 208,
+          "attributes": {}
+        },
+        {
+          "kind": "identifier",
+          "raw": "IRS publication 925",
+          "normalized": "irs-pub-925",
+          "start": 495,
+          "end": 514,
+          "attributes": {
+            "scheme": "pub",
+            "title": "IRS Publication 925",
+            "family": "IRS Publication 925"
+          }
+        },
+        {
+          "kind": "warning",
+          "raw": "So no but uh material participation there are five ways you can meet it if you meet any of the ways and I don't know every single way right off hand but yeah just give us the main ones",
+          "normalized": "So no but uh material participation there are five ways you can meet it if you meet any of the ways and I don't know every single way right off hand but yeah just give us the main ones",
+          "start": 871,
+          "end": 1055,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2412,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 6,
+      "chunk_start": 264.32,
+      "chunk_end": 323.84,
+      "text": "[Exterior Walkthrough] you're like out in the country, if you flip houses in the country, you'll have a septic tank. Those can get pricey. You want to make sure if you're looking at a property on a septic tank that you look at the septic to make sure that there's nothing wrong with it. or when you're in the city, this just drains to a city main somewhere around here. I don't know where this one's at exactly, but I did have my uh plumber come out here. He scoped this. We had no issues with it. I'll open this up. A lot of times they don't lift like this, but and look, I just got leaves up in there. You definitely don't want to reach down in here typically, but um what they'll do is they'll stick a camera in there and check it out. Make sure, you know, we got a tree right here. So, we want to make sure that there's no roots growing into the sewer line. Stuff like that can make or break a deal that you're flipping. And a lot of guys who haven't flipped a couple houses and have gotten bent on having to replace the sewer line. You wouldn't know that. So, definitely ask about the plumbing. Windows. You know, we'll touch",
+      "predicted": [
+        {
+          "kind": "warning",
+          "raw": "I don't know where this one's at exactly, but I did have my uh plumber come out here.",
+          "normalized": "I don't know where this one's at exactly, but I did have my uh plumber come out here.",
+          "start": 370,
+          "end": 455,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "A lot of times they don't lift like this, but and look, I just got leaves up in there.",
+          "normalized": "A lot of times they don't lift like this, but and look, I just got leaves up in there.",
+          "start": 517,
+          "end": 603,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "You definitely don't want to reach down in here typically, but um what they'll do is they'll stick a camera in there and check it out.",
+          "normalized": "You definitely don't want to reach down in here typically, but um what they'll do is they'll stick a camera in there and check it out.",
+          "start": 604,
+          "end": 738,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Make sure, you know, we got a tree right here.",
+          "normalized": "Make sure, you know, we got a tree right here.",
+          "start": 739,
+          "end": 785,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2406,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 0,
+      "chunk_start": 0.0,
+      "chunk_end": 54.879,
+      "text": "[Intro] All right, so I've been getting asked a lot. How to flip a house. What's it look like to flip a house? We're going to run through all the numbers on this deal. I'm going to share as much as info as I can on this. I'm not here to gatekeep. You know, there's a lot of guys online that are saying, you know, that they flip houses, and a lot of them do, but if they're not showing you what their houses look like, if they're never in front of the house or they're just in a Lamborghini or in a nice vehicle, I would think twice before you take their advice. This is a house we bought three weeks ago. Uh, this is actually one of the easiest flips that we'll do this year. Not much involved with it. We came through here. This is what I would consider more of like a wholesale. You know, you've got a wholesale deal where if I find this house and I call an investor and I sell it to an investor before it closes and I don't ever close on it, that's a wholesale deal. A wholesale deal is where you take it down and you do like a light rehab. That's what this would be. So, how'd I get the",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "What's it look like to flip a house?",
+          "normalized": "What's it look like to flip a house?",
+          "start": 74,
+          "end": 110,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "You know, there's a lot of guys online that are saying, you know, that they flip houses, and a lot of them do, but if they're not showing you what their houses look like, if they're never in front of the house or they're just in a Lamborghini or in a nice vehicle, I would think twice before you take their advice.",
+          "normalized": "You know, there's a lot of guys online that are saying, you know, that they flip houses, and a lot of them do, but if they're not showing you what their houses look like, if they're never in front of the house or they're just in a Lamborghini or in a nice vehicle, I would think twice before you take their advice.",
+          "start": 247,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "This is what I would consider more of like a wholesale.",
+          "normalized": "This is what I would consider more of like a wholesale.",
+          "start": 725,
+          "end": 780,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "You know, you've got a wholesale deal where if I find this house and I call an investor and I sell it to an investor before it closes and I don't ever close on it, that's a wholesale deal.",
+          "normalized": "You know, you've got a wholesale deal where if I find this house and I call an investor and I sell it to an investor before it closes and I don't ever close on it, that's a wholesale deal.",
+          "start": 781,
+          "end": 969,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2425,
+      "source_id": "e64161c881da49d5af84f2e63ecb9c16",
+      "chunk_idx": 19,
+      "chunk_start": 881.44,
+      "chunk_end": 939.519,
+      "text": "[Interior Walkthrough] Something I'll point out here, we just did this quarter round around this window. So, last week we were coming through here and we have to check our projects. our contractors aren't going to catch everything and they're not going to do something unless we tell them to. So we coming around here and there was just like orange foam just looked real shoddy. So I told them, let's go ahead and frame something in. So they put the quarter round in here and that just helps clean up this window a little bit. And so anyways, that's that on the bathroom. Like I said, super easy project on this. We really didn't do anything. I think we got that bedroom. And then this is considered like the primary bedroom because it has the the bathroom on suite. So, this is something I didn't catch until just now. And I was just here the other day, but we've got a luxury vinyl plank up against this is glue down. You can tell because there's no seam. And so, I'm going to go ahead and tell our guys, let's pull this out. I don't want to be",
+      "predicted": [
+        {
+          "kind": "exception",
+          "raw": "our contractors aren't going to catch everything and they're not going to do something unless we tell them to.",
+          "normalized": "our contractors aren't going to catch everything and they're not going to do something unless we tell them to.",
+          "start": 182,
+          "end": 292,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "I don't want to be",
+          "normalized": "I don't want to be",
+          "start": 1028,
+          "end": 1046,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2699,
+      "source_id": "1033a62a412b415a8221b00230e62ac8",
+      "chunk_idx": 235,
+      "chunk_start": 11655.439,
+      "chunk_end": 11712.88,
+      "text": "[Do You Need An LLC To Flip Houses] and that could be an easier option. You might pay an extra couple of hundred dollar, not much, but that's the easiest route to go. Yeah, I've I've used the California state government website to start an LLC. I've used an attorney to start an LLC. I've used Legal Zoom to start an LLC. And then also, we like this company called Prime Corporate Services as well. We'll put a link in the description. They'll help you set up an LLC. It's been my favorite way to set it up. So, it's pretty it's pretty simple to do it. U you just need to bite the bullet. You need just go ahead do it. protect yourself. There's really not a risk to doing it. It does cost some money. Like when I used an attorney before, uh I paid them $1,500. Uh Legal Zoom might be a few hundred dollars, but it's well worth it for the protection that you get. It's like there's really no risk. It's it's the smart thing to do. Any company that's, you know, traded publicly, they're a corporation or an LLC to some degree. It's just what you need to do to be in business. And people are going",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "Do You Need An LLC To Flip Houses] and that could be an easier option.",
+          "normalized": "Do You Need An LLC To Flip Houses] and that could be an easier option.",
+          "start": 1,
+          "end": 71,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Do You Need An LLC To Flip Houses] and that could be an easier option.",
+          "normalized": "Do You Need An LLC To Flip Houses] and that could be an easier option.",
+          "start": 1,
+          "end": 71,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "You might pay an extra couple of hundred dollar, not much, but that's the easiest route to go.",
+          "normalized": "You might pay an extra couple of hundred dollar, not much, but that's the easiest route to go.",
+          "start": 72,
+          "end": 166,
+          "attributes": {}
+        },
+        {
+          "kind": "entity",
+          "raw": "Prime Corporate Services",
+          "normalized": "Prime Corporate Services",
+          "start": 365,
+          "end": 389,
+          "attributes": {
+            "cue": "company called"
+          }
+        },
+        {
+          "kind": "money",
+          "raw": "$1,500",
+          "normalized": "$1500",
+          "start": 753,
+          "end": 759,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Uh Legal Zoom might be a few hundred dollars, but it's well worth it for the protection that you get.",
+          "normalized": "Uh Legal Zoom might be a few hundred dollars, but it's well worth it for the protection that you get.",
+          "start": 761,
+          "end": 862,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2892,
+      "source_id": "9dd82229190b473fa75bfaf9bb807919",
+      "chunk_idx": 43,
+      "chunk_start": 1985.6,
+      "chunk_end": 2028.6129999999998,
+      "text": "[James and Dave on TV!] to make this look good. And for everyone listening, if you want to learn how to flip from James, obviously you can hear him here on Bigger Pockets, but also check out his TV show on A&E MillionDollar Zombie Flip. >> Well, and you got to make a special guest appearance. >> I'm also going to be on it this season. So, come check it out. >> Yeah, you guys not only talking about flipping the house, you get to watch us. >> Yeah, you can actually see the house I'm going to be flipping. >> That's why the pressure is extra for me. >> Yeah, cuz it's going on TV for both of us. >> Yeah, TV podcast world. Yeah, it definitely better go well, but I have confidence that it's going to. Well, thanks so much, man. And thank you so much for listening to this episode of the Bigger Pockets Podcast. We'll see you next time.",
+      "predicted": [
+        {
+          "kind": "procedure",
+          "raw": "to make this look good.",
+          "normalized": "to make this look good.",
+          "start": 24,
+          "end": 47,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Yeah, it definitely better go well, but I have confidence that it's going to.",
+          "normalized": "Yeah, it definitely better go well, but I have confidence that it's going to.",
+          "start": 625,
+          "end": 702,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 4249,
+      "source_id": "4f871bab953a4908848d2a4d70347e37",
+      "chunk_idx": 10,
+      "chunk_start": 471.52,
+      "chunk_end": 531.28,
+      "text": "[How Equity Builds Long-Term Wealth] build equity for retirement that you can sell the houses or pay them off or put the money in a stock account or bonds or whatever you want to do. And then have some stuff right now that provides cash flow in case you lose your job or in case you need to help with your expenses. >> Yeah, so all right, let's go back a little bit because I want to I want to break down equity maybe some misconceptions that people had. So, if you buy a property, let's say you put 20% down on a $500,000 house. That's $100,000. You even though you paid that $100,000 to buy the house, you would still have I guess effectively $100,000 of equity, but it doesn't mean that that's your profit. >> Mhm. >> That's just you know, the recoup you could get if you were to turn around and sell it that day. >> Right. >> However, when you say buying equity, cuz I think this is an interesting strategy that that people don't consider, does that mean that you're going out and you're buying a property like, you know, if the property is worth half a million, it's been on the market for 60 days, and",
+      "predicted": [
+        {
+          "kind": "percentage",
+          "raw": "20%",
+          "normalized": "20%",
+          "start": 500,
+          "end": 503,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$500,000",
+          "normalized": "$500000",
+          "start": 514,
+          "end": 522,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 537,
+          "end": 545,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 577,
+          "end": 585,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 645,
+          "end": 653,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": ">> That's just you know, the recoup you could get if you were to turn around and sell it that day.",
+          "normalized": ">> That's just you know, the recoup you could get if you were to turn around and sell it that day.",
+          "start": 718,
+          "end": 816,
+          "attributes": {}
+        },
+        {
+          "kind": "exception",
+          "raw": ">> However, when you say buying equity, cuz I think this is an interesting strategy that that people don't consider, does that mean that you're going out and you're buying a property like, you know, if the property is worth half a million, it's been on the market for 60 days, and",
+          "normalized": ">> However, when you say buying equity, cuz I think this is an interesting strategy that that people don't consider, does that mean that you're going out and you're buying a property like, you know, if the property is worth half a million, it's been on the market for 60 days, and",
+          "start": 827,
+          "end": 1107,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": ">> However, when you say buying equity, cuz I think this is an interesting strategy that that people don't consider, does that mean that you're going out and you're buying a property like, you know, if the property is worth half a million, it's been on the market for 60 days, and",
+          "normalized": ">> However, when you say buying equity, cuz I think this is an interesting strategy that that people don't consider, does that mean that you're going out and you're buying a property like, you know, if the property is worth half a million, it's been on the market for 60 days, and",
+          "start": 827,
+          "end": 1107,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "60 days",
+          "normalized": "60 days",
+          "start": 1095,
+          "end": 1102,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 10111,
+      "source_id": "23f903944da84e8a91bae3bdd62421ee",
+      "chunk_idx": 59,
+      "chunk_start": 2953.28,
+      "chunk_end": 3013.2000000000003,
+      "text": "probably say you're probably going to get it closer to 75% and in this market I would not buy personally I would not buy Above 75% right I would try to get closer to that 70 not only because it's going to limit you're out of pocket but also the more Equity that you have built into this property the more it's going to allow you to be able to fluctuate your sales price when you need to and by that if you list it for 230 and it's not moving well I have quite a lot of equity in there I I of course I want to make more money but most importantly it's velocity of capital so I want to get the property sold and I want to take my money I have invested in that property and move on to the next one right I just want to keep keep the cycle going and the money churning rather than always hoping for that best price and sitting on it for 90 150 days and then being well oh crap now I've got to reduce it right so by buying closer to 70 it gives",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "probably say you're probably going to get it closer to 75% and in this market I would not buy personally I would not buy Above 75% right I would try to get closer to that 70 not only because it's going to limit you're out of pocket but also the more Equity that you have built into this property the more it's going to allow you to be able to fluctuate your sales price when you need to and by that if you list it for 230 and it's not moving well I have quite a lot of equity in there I I of course I want to make more money but most importantly it's velocity of capital so I want to get the property sold and I want to take my money I have invested in that property and move on to the next one right I just want to keep keep the cycle going and the money churning rather than always hoping for that best price and sitting on it for 90 150 days and then being well oh crap now I've got to reduce it right so by buying closer to 70 it gives",
+          "normalized": "probably say you're probably going to get it closer to 75% and in this market I would not buy personally I would not buy Above 75% right I would try to get closer to that 70 not only because it's going to limit you're out of pocket but also the more Equity that you have built into this property the more it's going to allow you to be able to fluctuate your sales price when you need to and by that if you list it for 230 and it's not moving well I have quite a lot of equity in there I I of course I want to make more money but most importantly it's velocity of capital so I want to get the property sold and I want to take my money I have invested in that property and move on to the next one right I just want to keep keep the cycle going and the money churning rather than always hoping for that best price and sitting on it for 90 150 days and then being well oh crap now I've got to reduce it right so by buying closer to 70 it gives",
+          "start": 0,
+          "end": 939,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "75%",
+          "normalized": "75%",
+          "start": 55,
+          "end": 58,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "75%",
+          "normalized": "75%",
+          "start": 127,
+          "end": 130,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "70",
+          "normalized": "70",
+          "start": 171,
+          "end": 173,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "230",
+          "normalized": "230",
+          "start": 418,
+          "end": 421,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "90",
+          "normalized": "90",
+          "start": 833,
+          "end": 835,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "150 days",
+          "normalized": "150 days",
+          "start": 836,
+          "end": 844,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "70",
+          "normalized": "70",
+          "start": 928,
+          "end": 930,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 10055,
+      "source_id": "23f903944da84e8a91bae3bdd62421ee",
+      "chunk_idx": 3,
+      "chunk_start": 150.44,
+      "chunk_end": 209.48000000000002,
+      "text": "in your Market you can just email me invest atre agent now.com or we are getting the website set up of giard money.com uh it's it's getting there uh but we're going to be able to have a free resource for you to connect with a hard money lender in your Market this is the kind of stuff once you watch this video you're going to go yep that's the first call I need to make so anyways hard money let's get after it and what I'm trying to do now is just give give kind of a rough estimation if that rehab is going to fall in line with that you know that kind of 70,000 now as I mentioned this house sits pretty close to the front of the lot line so if you look back it actually goes all the way back over there um so it's an acre so that's really what's going to be able to sell this property you can tell here you know one of the major is definitely going to need a new roof so I'm going to estimate about about 8,000 for the new roof give or take it's going to need new windows now this sighting is vinyl",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "70,000",
+          "normalized": "70000",
+          "start": 558,
+          "end": 564,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "8,000",
+          "normalized": "8000",
+          "start": 909,
+          "end": 914,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2774,
+      "source_id": "0617e44ed5b548c6a78f101ed27e2a91",
+      "chunk_idx": 15,
+      "chunk_start": 674.16,
+      "chunk_end": 734.0,
+      "text": "[When to Hire Property Management] that was bothering me. And I started when I was 23, so I had nothing to do. I could just go. It was very easy for me to just go take care of stuff all the time. We were cashing checks. We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable. John asks why did you do it? The reason I made the change is cuz I moved out of Denver so I had to do it. I was moving to Europe and that's been great because yeah, I now paid 10% of my revenue to a property manager to take care of it. And this property manager is good. It's not he's not like they're not the best to be honest, but it's good enough. They take care of the tenants. The tenants like them, which is what I care about, right? And they're communicative enough. They do a good enough job and allows me to focus on acquiring new properties or renovating properties or doing all the other stuff",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "23",
+          "normalized": "23",
+          "start": 83,
+          "end": 85,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "I could just go.",
+          "normalized": "I could just go.",
+          "start": 111,
+          "end": 127,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "normalized": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "start": 220,
+          "end": 381,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "normalized": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "start": 220,
+          "end": 381,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "John asks why did you do it?",
+          "normalized": "John asks why did you do it?",
+          "start": 382,
+          "end": 410,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "10%",
+          "normalized": "10%",
+          "start": 558,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's not he's not like they're not the best to be honest, but it's good enough.",
+          "normalized": "It's not he's not like they're not the best to be honest, but it's good enough.",
+          "start": 653,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "The tenants like them, which is what I care about, right?",
+          "normalized": "The tenants like them, which is what I care about, right?",
+          "start": 764,
+          "end": 821,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 4068,
+      "source_id": "4529fb0454444d369229deef8b1ee056",
+      "chunk_idx": 5,
+      "chunk_start": 223.56,
+      "chunk_end": 255.0,
+      "text": "[How Dave Got Started] honestly, a friend of mine bought a deal and he had no idea what he was doing and he was crushing it. And I was like if this guy could do it, I'm going to do it, too. >> >> And so, I relied a lot on my agent and my lender at the time cuz I didn't know what a mortgage was. Like, I just kind of went with the ignorance is bliss approach. Then I joined BiggerPockets and I was like, \"Oh my god, I've been doing everything wrong for six straight years. I could have grown so much faster, been so much more efficient, so many fewer headaches.\"",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "And I was like if this guy could do it, I'm going to do it, too.",
+          "normalized": "And I was like if this guy could do it, I'm going to do it, too.",
+          "start": 125,
+          "end": 189,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Then I joined BiggerPockets and I was like, \"Oh my god, I've been doing everything wrong for six straight years.",
+          "normalized": "Then I joined BiggerPockets and I was like, \"Oh my god, I've been doing everything wrong for six straight years.",
+          "start": 360,
+          "end": 472,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "normalized": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "start": 473,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "normalized": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "start": 473,
+          "end": 561,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 2911,
+      "source_id": "1584d90da5724cf79fd48994edb8f4cc",
+      "chunk_idx": 18,
+      "chunk_start": 864.16,
+      "chunk_end": 924.16,
+      "text": "[Watch Out If a CPA Says This] >> And I will say one other thing since we're on the topic of of someone who is not a real estate professional. You may have been told by your accountant that there is no tax benefit to you investing in real estate because either you work full-time or you make too much money. And when you hear that from an accountant, they're doing what I called tunnel visioning because all they're saying is, for example, Dave, you're not going to see a huge benefit this year in owning rental real estate because you're still going to pay taxes on your W2 income. >> But what they're not factoring in are the different benefits, which is I generated rental cash flow that I'm not paying taxes on, >> right? >> And also in the future when I generate future cash flow, I may not have to pay taxes on. And also the most important part which is at the end of my investment with this specific property if I were to sell it at that point I can actually use all of the accumulated losses from that property to reduce not",
+      "predicted": [
+        {
+          "kind": "warning",
+          "raw": "Watch Out If a CPA Says This] >> And I will say one other thing since we're on the topic of of someone who is not a real estate professional.",
+          "normalized": "Watch Out If a CPA Says This] >> And I will say one other thing since we're on the topic of of someone who is not a real estate professional.",
+          "start": 1,
+          "end": 142,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "You may have been told by your accountant that there is no tax benefit to you investing in real estate because either you work full-time or you make too much money.",
+          "normalized": "You may have been told by your accountant that there is no tax benefit to you investing in real estate because either you work full-time or you make too much money.",
+          "start": 143,
+          "end": 307,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> But what they're not factoring in are the different benefits, which is I generated rental cash flow that I'm not paying taxes on, >> right?",
+          "normalized": ">> But what they're not factoring in are the different benefits, which is I generated rental cash flow that I'm not paying taxes on, >> right?",
+          "start": 583,
+          "end": 725,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": ">> And also in the future when I generate future cash flow, I may not have to pay taxes on.",
+          "normalized": ">> And also in the future when I generate future cash flow, I may not have to pay taxes on.",
+          "start": 726,
+          "end": 817,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 4849,
+      "source_id": "760970f4362b4016b570e78e62ca2bf9",
+      "chunk_idx": 27,
+      "chunk_start": 1276.0,
+      "chunk_end": 1333.44,
+      "text": "[WATERFALL STRUCTURE] basically is a very investor forward way of saying hey we're going to try to get you paid back since you're the one with all the skin in the game i'm going to take a little bit off the top but then once we've paid you back then we're true partners and you can structure that here a few different ways so i have it here the partner split what they're going to get in that first year if this is what you can sell them on is 80 profits that investor will get 80 of the profits and you can see that it actually drops the payback from 40 months about 41 months down to 33 and a half months so it shaves off over six months in their payback schedule now you could also do 75 if you want a little bit more skin in the game and that drops them down to 34 and then you get 25 percent of the profits you can mess around with this so many different ways it's obviously gonna depend on your investor but remember that property okay i said was going to bring in a base of 600 anywhere from 600 to let's say a thousand dollars so if we could average an 800 nightly rate on something like this just take a look at how these numbers change okay so now the net profit goes up to one hundred and forty three",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "WATERFALL STRUCTURE] basically is a very investor forward way of saying hey we're going to try to get you paid back since you're the one with all the skin in the game i'm going to take a little bit off the top but then once we've paid you back then we're true partners and you can structure that here a few different ways so i have it here the partner split what they're going to get in that first year if this is what you can sell them on is 80 profits that investor will get 80 of the profits and you can see that it actually drops the payback from 40 months about 41 months down to 33 and a half months so it shaves off over six months in their payback schedule now you could also do 75 if you want a little bit more skin in the game and that drops them down to 34 and then you get 25 percent of the profits you can mess around with this so many different ways it's obviously gonna depend on your investor but remember that property okay i said was going to bring in a base of 600 anywhere from 600 to let's say a thousand dollars so if we could average an 800 nightly rate on something like this just take a look at how these numbers change okay so now the net profit goes up to one hundred and forty three",
+          "normalized": "WATERFALL STRUCTURE] basically is a very investor forward way of saying hey we're going to try to get you paid back since you're the one with all the skin in the game i'm going to take a little bit off the top but then once we've paid you back then we're true partners and you can structure that here a few different ways so i have it here the partner split what they're going to get in that first year if this is what you can sell them on is 80 profits that investor will get 80 of the profits and you can see that it actually drops the payback from 40 months about 41 months down to 33 and a half months so it shaves off over six months in their payback schedule now you could also do 75 if you want a little bit more skin in the game and that drops them down to 34 and then you get 25 percent of the profits you can mess around with this so many different ways it's obviously gonna depend on your investor but remember that property okay i said was going to bring in a base of 600 anywhere from 600 to let's say a thousand dollars so if we could average an 800 nightly rate on something like this just take a look at how these numbers change okay so now the net profit goes up to one hundred and forty three",
+          "start": 1,
+          "end": 1211,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "WATERFALL STRUCTURE] basically is a very investor forward way of saying hey we're going to try to get you paid back since you're the one with all the skin in the game i'm going to take a little bit off the top but then once we've paid you back then we're true partners and you can structure that here a few different ways so i have it here the partner split what they're going to get in that first year if this is what you can sell them on is 80 profits that investor will get 80 of the profits and you can see that it actually drops the payback from 40 months about 41 months down to 33 and a half months so it shaves off over six months in their payback schedule now you could also do 75 if you want a little bit more skin in the game and that drops them down to 34 and then you get 25 percent of the profits you can mess around with this so many different ways it's obviously gonna depend on your investor but remember that property okay i said was going to bring in a base of 600 anywhere from 600 to let's say a thousand dollars so if we could average an 800 nightly rate on something like this just take a look at how these numbers change okay so now the net profit goes up to one hundred and forty three",
+          "normalized": "WATERFALL STRUCTURE] basically is a very investor forward way of saying hey we're going to try to get you paid back since you're the one with all the skin in the game i'm going to take a little bit off the top but then once we've paid you back then we're true partners and you can structure that here a few different ways so i have it here the partner split what they're going to get in that first year if this is what you can sell them on is 80 profits that investor will get 80 of the profits and you can see that it actually drops the payback from 40 months about 41 months down to 33 and a half months so it shaves off over six months in their payback schedule now you could also do 75 if you want a little bit more skin in the game and that drops them down to 34 and then you get 25 percent of the profits you can mess around with this so many different ways it's obviously gonna depend on your investor but remember that property okay i said was going to bring in a base of 600 anywhere from 600 to let's say a thousand dollars so if we could average an 800 nightly rate on something like this just take a look at how these numbers change okay so now the net profit goes up to one hundred and forty three",
+          "start": 1,
+          "end": 1211,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "80",
+          "normalized": "80",
+          "start": 444,
+          "end": 446,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "80",
+          "normalized": "80",
+          "start": 478,
+          "end": 480,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "40 months",
+          "normalized": "40 months",
+          "start": 552,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "41 months",
+          "normalized": "41 months",
+          "start": 568,
+          "end": 577,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "33",
+          "normalized": "33",
+          "start": 586,
+          "end": 588,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "75",
+          "normalized": "75",
+          "start": 688,
+          "end": 690,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "34",
+          "normalized": "34",
+          "start": 766,
+          "end": 768,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "25 percent",
+          "normalized": "25 percent",
+          "start": 786,
+          "end": 796,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 981,
+          "end": 984,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 999,
+          "end": 1002,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "800",
+          "normalized": "800",
+          "start": 1061,
+          "end": 1064,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 3125,
+      "source_id": "958ed3bc849547d885127a56f6b1558a",
+      "chunk_idx": 60,
+      "chunk_start": 2927.64,
+      "chunk_end": 2985.16,
+      "text": "[Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
+          "normalized": "Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
+          "start": 1,
+          "end": 739,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
+          "normalized": "Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
+          "start": 1,
+          "end": 739,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "chunk_id": 10394,
+      "source_id": "507bd9d1775a4d2a9e2b666e0b3e9b9d",
+      "chunk_idx": 58,
+      "chunk_start": 2903.44,
+      "chunk_end": 2960.92,
+      "text": "organized to a certain extent so again some people don't have issues with you know staying organized I tend to uh but I will guarantee you at some point you're going to be doing multiple projects and so just keeping that straight is is really important but guys I wanted to give you this top 10 list pause the video screenshot that I know these are your biggest fears these were mine also you know again comment down below what is your biggest sphere what is your Market that you're in try and connect with other flippers that are you know in the comment section in your area and you guys can kind of work together to find the deals and do everything so um I also promised you this video right here this is the second video I've ever had on my YouTube channel and this goes through how I found wholesalers how I found hard money Joe the stupid questions that I asked in Facebook groups but exactly how you can get started and again that free hard money calculator is down below and if you're",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "organized to a certain extent so again some people don't have issues with you know staying organized I tend to uh but I will guarantee you at some point you're going to be doing multiple projects and so just keeping that straight is is really important but guys I wanted to give you this top 10 list pause the video screenshot that I know these are your biggest fears these were mine also you know again comment down below what is your biggest sphere what is your Market that you're in try and connect with other flippers that are you know in the comment section in your area and you guys can kind of work together to find the deals and do everything so um I also promised you this video right here this is the second video I've ever had on my YouTube channel and this goes through how I found wholesalers how I found hard money Joe the stupid questions that I asked in Facebook groups but exactly how you can get started and again that free hard money calculator is down below and if you're",
+          "normalized": "organized to a certain extent so again some people don't have issues with you know staying organized I tend to uh but I will guarantee you at some point you're going to be doing multiple projects and so just keeping that straight is is really important but guys I wanted to give you this top 10 list pause the video screenshot that I know these are your biggest fears these were mine also you know again comment down below what is your biggest sphere what is your Market that you're in try and connect with other flippers that are you know in the comment section in your area and you guys can kind of work together to find the deals and do everything so um I also promised you this video right here this is the second video I've ever had on my YouTube channel and this goes through how I found wholesalers how I found hard money Joe the stupid questions that I asked in Facebook groups but exactly how you can get started and again that free hard money calculator is down below and if you're",
+          "start": 0,
+          "end": 991,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "organized to a certain extent so again some people don't have issues with you know staying organized I tend to uh but I will guarantee you at some point you're going to be doing multiple projects and so just keeping that straight is is really important but guys I wanted to give you this top 10 list pause the video screenshot that I know these are your biggest fears these were mine also you know again comment down below what is your biggest sphere what is your Market that you're in try and connect with other flippers that are you know in the comment section in your area and you guys can kind of work together to find the deals and do everything so um I also promised you this video right here this is the second video I've ever had on my YouTube channel and this goes through how I found wholesalers how I found hard money Joe the stupid questions that I asked in Facebook groups but exactly how you can get started and again that free hard money calculator is down below and if you're",
+          "normalized": "organized to a certain extent so again some people don't have issues with you know staying organized I tend to uh but I will guarantee you at some point you're going to be doing multiple projects and so just keeping that straight is is really important but guys I wanted to give you this top 10 list pause the video screenshot that I know these are your biggest fears these were mine also you know again comment down below what is your biggest sphere what is your Market that you're in try and connect with other flippers that are you know in the comment section in your area and you guys can kind of work together to find the deals and do everything so um I also promised you this video right here this is the second video I've ever had on my YouTube channel and this goes through how I found wholesalers how I found hard money Joe the stupid questions that I asked in Facebook groups but exactly how you can get started and again that free hard money calculator is down below and if you're",
+          "start": 0,
+          "end": 991,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 292,
+          "end": 294,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 3,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 2,
+      "chunk_start": 98.079,
+      "chunk_end": 156.879,
+      "text": "[Intro] briefly on my channel. It was called Undercover Millionaire where what I did is I worked these jobs that you would have no idea made a whole bunch of money. Yeah. >> Uh window washing. This kid made $1,000 a day car washing. This kid made $500 a day dog walking and running a dog business that was making $1,500 a day. And so I found these jobs that were making a whole bunch of money. And then from doing that, people would reach out to me, incredible businesses. And uh you were the inspiration for that. >> Well, wow. Thank you. Um, you know, that was a big part of the thesis of the show, uh, that didn't get talked about enough. It was the underpinning of entrepreneurship. Like, first and foremost, it was a TV show, right? Like, it had to have >> some entertainment spectacle to it. So, it was always an exploding toilet or some misadventure and animal husbandry or, you know, some crazy thing that would get you to watch. But if you",
+      "predicted": [
+        {
+          "kind": "money",
+          "raw": "$1,000",
+          "normalized": "$1000",
+          "start": 207,
+          "end": 213,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$500",
+          "normalized": "$500",
+          "start": 247,
+          "end": 251,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$1,500",
+          "normalized": "$1500",
+          "start": 313,
+          "end": 319,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Like, first and foremost, it was a TV show, right?",
+          "normalized": "Like, first and foremost, it was a TV show, right?",
+          "start": 687,
+          "end": 737,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 664,
+      "source_id": "d1be51a3dba9461e9e4d3efeda393c65",
+      "chunk_idx": 4,
+      "chunk_start": 174.28,
+      "chunk_end": 231.39999999999998,
+      "text": "[The job] this job where are we at today all right we're at uh Dr sein's office it's going to be an orthodontist office office U I do work for a company called Beacon construction this is one of their projects roughly about 5,500 ft of uh carpati luxury vinyl plank and obviously we did what's called The Mill base in here it's uh it looks like wood but it's actually a plastic composite base how much was this job uh roughly about $55,000 55,000 okay and H how long for you guys this take to start to finish uh we were in here actually only 4 days this particular construction company I met about 8 years ago um they were actually in need uh the company Pro source went out of business locally here and inevitably they had a project in the works and I jumped in helped out and they sort of liked me and I hung around for a last years so they're a big Builder you build a relationship with them and then they've got a project like this they're the GC they're hiring Subs they sub this type of stuff out to you guys okay how do you find the guys to do the job are these all your employees uh",
+      "predicted": [
+        {
+          "kind": "entity",
+          "raw": "Beacon",
+          "normalized": "Beacon",
+          "start": 160,
+          "end": 166,
+          "attributes": {
+            "cue": "company called"
+          }
+        },
+        {
+          "kind": "unit",
+          "raw": "5,500 ft",
+          "normalized": "5500 ft",
+          "start": 224,
+          "end": 232,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$55,000",
+          "normalized": "$55000",
+          "start": 432,
+          "end": 439,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "55,000",
+          "normalized": "55000",
+          "start": 440,
+          "end": 446,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "4 days",
+          "normalized": "4 days",
+          "start": 542,
+          "end": 548,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "8 years",
+          "normalized": "8 years",
+          "start": 598,
+          "end": 605,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 22,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 21,
+      "chunk_start": 966.32,
+      "chunk_end": 983.6,
+      "text": "[Sponsor: Northwest Registered Agent] LLC today and get your home address off of public record. Just go to northwestregisteredagent.com to get started today. That's northwestregisteredagent.com or click the link down below in the description to get your LLC filed. Thank you so much to Northwestregistered agent",
+      "predicted": [],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 72,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 71,
+      "chunk_start": 3266.72,
+      "chunk_end": 3325.28,
+      "text": "[Fired Three Times & Saved By The Viewers] I learned in the middle of the night selling stuff on the QVC cable shopping channel, including Dirty Jobs. All the ideas for the show were suggested by viewers. >> When people come to you, what's the question you hate answering the most? >> So, uh, and you have to ask it the right way. >> You like like you have to ask it like you've been thinking about this for a long time and you've now you've got >> I already know what it is. >> Hit me. >> What's the dirtiest job? >> That's it, dude. That's it. >> You know, it's the same exact thing. People come to me and they always like, \"Yeah, I've been I've been wanting to ask you, man. Who's your favorite guest you ever had on the podcast?\" I'm like, \"Dude, >> always.\" >> I've had 350 people like so many people on the show. I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast? >> And then it's always followed up with, \"How do you like Vegas? >> How do you like living in Vegas?\"",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": ">> When people come to you, what's the question you hate answering the most?",
+          "normalized": ">> When people come to you, what's the question you hate answering the most?",
+          "start": 205,
+          "end": 281,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> What's the dirtiest job?",
+          "normalized": ">> What's the dirtiest job?",
+          "start": 487,
+          "end": 514,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Who's your favorite guest you ever had on the podcast?",
+          "normalized": "Who's your favorite guest you ever had on the podcast?",
+          "start": 678,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "350 people",
+          "normalized": "350 people",
+          "start": 775,
+          "end": 785,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> And then it's always followed up with, \"How do you like Vegas?",
+          "normalized": ">> And then it's always followed up with, \"How do you like Vegas?",
+          "start": 943,
+          "end": 1008,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> How do you like living in Vegas?",
+          "normalized": ">> How do you like living in Vegas?",
+          "start": 1009,
+          "end": 1044,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 2169,
+      "source_id": "d11c68148a414b47bccc871342572a2f",
+      "chunk_idx": 21,
+      "chunk_start": 1046.64,
+      "chunk_end": 1102.679,
+      "text": "or compensation being paid by the Michael what's a form 159 yes that closes out round one Michael is leading by 2500 ly's 24 Darren you have 900 everybody Welcome to round two the four categories are stuff AJ sent to me Santa's SBA application process season greetings SBA lending SBA parade of questions Darren uh let's go with the uh season greetings for what is it",
+      "predicted": [
+        {
+          "kind": "identifier",
+          "raw": "form 159",
+          "normalized": "form-159",
+          "start": 51,
+          "end": 59,
+          "attributes": {
+            "scheme": "docnum",
+            "title": "Form 159",
+            "family": "Form 159"
+          }
+        },
+        {
+          "kind": "number",
+          "raw": "2500",
+          "normalized": "2500",
+          "start": 112,
+          "end": 116,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "24",
+          "normalized": "24",
+          "start": 122,
+          "end": 124,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 141,
+          "end": 144,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 55,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 54,
+      "chunk_start": 2435.28,
+      "chunk_end": 2494.96,
+      "text": "[Paid To Be Likable, Not To Sell] they asked their most loyal customers to evaluate each host based on all sorts of things that didn't have anything to do with sales. In a way, it was the opposite of commission, right? Do you trust them? Do you find them amusing? Would you trust them to do this or that? It's like a lot of trust questions. Would you like to hang out with them in real life? >> So, the bonus was based on trust and likability, not sales. So, when I realized that, I I hijacked my three-hour shift and I didn't worry about selling at all because back then, the network was saying, \"Don't worry about the sale. The the programmers know what they're doing, and the items themselves are of quality. They'll sell themselves.\" you know, just",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "In a way, it was the opposite of commission, right?",
+          "normalized": "In a way, it was the opposite of commission, right?",
+          "start": 167,
+          "end": 218,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Do you trust them?",
+          "normalized": "Do you trust them?",
+          "start": 219,
+          "end": 237,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Do you trust them?",
+          "normalized": "Do you trust them?",
+          "start": 219,
+          "end": 237,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Do you find them amusing?",
+          "normalized": "Do you find them amusing?",
+          "start": 238,
+          "end": 263,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Do you find them amusing?",
+          "normalized": "Do you find them amusing?",
+          "start": 238,
+          "end": 263,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Would you trust them to do this or that?",
+          "normalized": "Would you trust them to do this or that?",
+          "start": 264,
+          "end": 304,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Would you like to hang out with them in real life?",
+          "normalized": "Would you like to hang out with them in real life?",
+          "start": 341,
+          "end": 391,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So, when I realized that, I I hijacked my three-hour shift and I didn't worry about selling at all because back then, the network was saying, \"Don't worry about the sale.",
+          "normalized": "So, when I realized that, I I hijacked my three-hour shift and I didn't worry about selling at all because back then, the network was saying, \"Don't worry about the sale.",
+          "start": 455,
+          "end": 625,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 7,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 6,
+      "chunk_start": 260.079,
+      "chunk_end": 318.63899999999995,
+      "text": "[The Secret Millionaires Of Dirty Jobs] And and we went to clean out a pumping station on the side of the road, which you would never recognize as a thing. It's just a It looks like a concrete bunker. You probably drove past a couple on your way in, >> but when you go in, they go down four or five stories sometimes, and that's where all the the crap accumulates in a given zip code, and it's just an unspeakable level of of hell at a glance, right? It's like 104°, crazy hot in Wisconsin. We were standing up to our nipples in the the filthiest of the filth, knocking cholesterol off the walls, talking. That's really what Dirty Jobs was. It was it was an interview. It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+      "predicted": [
+        {
+          "kind": "warning",
+          "raw": "The Secret Millionaires Of Dirty Jobs] And and we went to clean out a pumping station on the side of the road, which you would never recognize as a thing.",
+          "normalized": "The Secret Millionaires Of Dirty Jobs] And and we went to clean out a pumping station on the side of the road, which you would never recognize as a thing.",
+          "start": 1,
+          "end": 155,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "You probably drove past a couple on your way in, >> but when you go in, they go down four or five stories sometimes, and that's where all the the crap accumulates in a given zip code, and it's just an unspeakable level of of hell at a glance, right?",
+          "normalized": "You probably drove past a couple on your way in, >> but when you go in, they go down four or five stories sometimes, and that's where all the the crap accumulates in a given zip code, and it's just an unspeakable level of of hell at a glance, right?",
+          "start": 201,
+          "end": 450,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "104",
+          "normalized": "104",
+          "start": 461,
+          "end": 464,
+          "attributes": {}
+        },
+        {
+          "kind": "exception",
+          "raw": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "normalized": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "start": 669,
+          "end": 913,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "normalized": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "start": 669,
+          "end": 913,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 722,
+          "end": 724,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 1,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 0,
+      "chunk_start": 0.0,
+      "chunk_end": 58.0,
+      "text": "[Intro] People say to me, \"Mike Will, are you ever going to run out of dirty jobs?\" And I say, \"Not this season.\" I know you love that, America. >> The great dirty secret of dirty jobs. We probably featured 45 multi-millionaires on that show. You would have never known it >> cuz they were covered in or something worse. >> Now, you became famous showing America the jobs that we all depend on. Why did we stop respecting these jobs? I think the fault has to do with our tendency to resent that which we rely upon. What about the fact that for every five trades people who retire to replace them? I don't have to be an economist to tell you that. That's not sustainable. There are 7 million able-bodied men right now who are not only not working, they're not looking for work. That's never happened in our country. Not in peace time",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "Intro] People say to me, \"Mike Will, are you ever going to run out of dirty jobs?",
+          "normalized": "Intro] People say to me, \"Mike Will, are you ever going to run out of dirty jobs?",
+          "start": 1,
+          "end": 82,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "45",
+          "normalized": "45",
+          "start": 207,
+          "end": 209,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "You would have never known it >> cuz they were covered in or something worse.",
+          "normalized": "You would have never known it >> cuz they were covered in or something worse.",
+          "start": 243,
+          "end": 320,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "You would have never known it >> cuz they were covered in or something worse.",
+          "normalized": "You would have never known it >> cuz they were covered in or something worse.",
+          "start": 243,
+          "end": 320,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Why did we stop respecting these jobs?",
+          "normalized": "Why did we stop respecting these jobs?",
+          "start": 395,
+          "end": 433,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "What about the fact that for every five trades people who retire to replace them?",
+          "normalized": "What about the fact that for every five trades people who retire to replace them?",
+          "start": 515,
+          "end": 596,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "I don't have to be an economist to tell you that.",
+          "normalized": "I don't have to be an economist to tell you that.",
+          "start": 597,
+          "end": 646,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "7",
+          "normalized": "7",
+          "start": 681,
+          "end": 682,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "That's never happened in our country.",
+          "normalized": "That's never happened in our country.",
+          "start": 777,
+          "end": 814,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 4,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 3,
+      "chunk_start": 147.04,
+      "chunk_end": 206.959,
+      "text": "[Intro] it was always an exploding toilet or some misadventure and animal husbandry or, you know, some crazy thing that would get you to watch. But if you really paid attention, as you obviously did over time, you know, we did 350 of those things. And you would almost always find in every episode, not in every segment, but in every episode, you would find a buried love letter to entrepreneurship. And you would find uh a rumination on the dignity of work and you would find humor that often exists on job sites but doesn't get baked into a lot of popular portrayals of work. The great dirty secret of dirty jobs which nobody really believes to this day but but you will because you watch for all these reasons. We probably featured 40 to 45 multi-millionaires on that show. You would you would have never known it cuz they were covered or something",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "350",
+          "normalized": "350",
+          "start": 227,
+          "end": 230,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "And you would find uh a rumination on the dignity of work and you would find humor that often exists on job sites but doesn't get baked into a lot of popular portrayals of work.",
+          "normalized": "And you would find uh a rumination on the dignity of work and you would find humor that often exists on job sites but doesn't get baked into a lot of popular portrayals of work.",
+          "start": 400,
+          "end": 577,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "40",
+          "normalized": "40",
+          "start": 735,
+          "end": 737,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "45",
+          "normalized": "45",
+          "start": 741,
+          "end": 743,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "You would you would have never known it cuz they were covered or something",
+          "normalized": "You would you would have never known it cuz they were covered or something",
+          "start": 777,
+          "end": 851,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 699,
+      "source_id": "dbd6d8fef4f94a74902e835efe799697",
+      "chunk_idx": 14,
+      "chunk_start": 703.88,
+      "chunk_end": 763.4399999999999,
+      "text": "line at the end of the year so and that's with uh a manager kind of running a lot of the day today yep yeah manager running it whether it was me or Bobby who took the Reigns closer to the end of 2024 yep um Bobby being our turf Pro okay awesome then let's talk about San Antonio when did you launch that one so San Antonio officially launched right at the end of 2023 but really the beginning of 2024 I guess first month January 24 and then how much did he do down in San Antonio in San Antonio for 2024 we did a little over 600,000 and that's in his first year right first year with a manager down there running all the day today yeah manager running it full time getting paid obviously yep um yeah a little over 600,000 and it was profitable too which was a good a good sign that was a good validating sign and part of the reason that I was trying to decide okay now what I want to do with water do I want to continue to build this out more corporately Yep or do I want to take it the franchising route which obviously we ended up taking it the franchising",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "line at the end of the year so and that's with uh a manager kind of running a lot of the day today yep yeah manager running it whether it was me or Bobby who took the Reigns closer to the end of 2024 yep um Bobby being our turf Pro okay awesome then let's talk about San Antonio when did you launch that one so San Antonio officially launched right at the end of 2023 but really the beginning of 2024 I guess first month January 24 and then how much did he do down in San Antonio in San Antonio for 2024 we did a little over 600,000 and that's in his first year right first year with a manager down there running all the day today yeah manager running it full time getting paid obviously yep um yeah a little over 600,000 and it was profitable too which was a good a good sign that was a good validating sign and part of the reason that I was trying to decide okay now what I want to do with water do I want to continue to build this out more corporately Yep or do I want to take it the franchising route which obviously we ended up taking it the franchising",
+          "normalized": "line at the end of the year so and that's with uh a manager kind of running a lot of the day today yep yeah manager running it whether it was me or Bobby who took the Reigns closer to the end of 2024 yep um Bobby being our turf Pro okay awesome then let's talk about San Antonio when did you launch that one so San Antonio officially launched right at the end of 2023 but really the beginning of 2024 I guess first month January 24 and then how much did he do down in San Antonio in San Antonio for 2024 we did a little over 600,000 and that's in his first year right first year with a manager down there running all the day today yeah manager running it full time getting paid obviously yep um yeah a little over 600,000 and it was profitable too which was a good a good sign that was a good validating sign and part of the reason that I was trying to decide okay now what I want to do with water do I want to continue to build this out more corporately Yep or do I want to take it the franchising route which obviously we ended up taking it the franchising",
+          "start": 0,
+          "end": 1058,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 195,
+          "end": 199,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2023",
+          "normalized": "2023",
+          "start": 363,
+          "end": 367,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 396,
+          "end": 400,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "January 24",
+          "normalized": "January 24",
+          "start": 421,
+          "end": 431,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 499,
+          "end": 503,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600,000",
+          "normalized": "600000",
+          "start": 525,
+          "end": 532,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600,000",
+          "normalized": "600000",
+          "start": 714,
+          "end": 721,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 18,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 17,
+      "chunk_start": 758.639,
+      "chunk_end": 817.1999999999999,
+      "text": "[Spending Problem vs Earning Problem] >> If someone's not where they want to be in life financially, would you mostly attribute it to an earning problem or a spending problem? >> Spending. >> What? Like 90% of the time, 80% of the time, like like by and large, you would say that people have a much greater spending problem than it is an earning problem. Well, I would start by saying what's more in control of the average American's life right now? How much they're earning in whatever job they happen to be in or how much they're spending in whatever lifestyle they've chosen to embrace. Again, apologies. I'm not talking about people who are who are in poverty who are or who are literally struggling to get their next meal or their basic needs met. I'm talking about, you know, the poor sucker. If your whole personal economy is rooted in your W2 and you and you continue to grow and and",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Spending Problem vs Earning Problem] >> If someone's not where they want to be in life financially, would you mostly attribute it to an earning problem or a spending problem?",
+          "normalized": "Spending Problem vs Earning Problem] >> If someone's not where they want to be in life financially, would you mostly attribute it to an earning problem or a spending problem?",
+          "start": 1,
+          "end": 175,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Spending Problem vs Earning Problem] >> If someone's not where they want to be in life financially, would you mostly attribute it to an earning problem or a spending problem?",
+          "normalized": "Spending Problem vs Earning Problem] >> If someone's not where they want to be in life financially, would you mostly attribute it to an earning problem or a spending problem?",
+          "start": 1,
+          "end": 175,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> What?",
+          "normalized": ">> What?",
+          "start": 189,
+          "end": 197,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Like 90% of the time, 80% of the time, like like by and large, you would say that people have a much greater spending problem than it is an earning problem.",
+          "normalized": "Like 90% of the time, 80% of the time, like like by and large, you would say that people have a much greater spending problem than it is an earning problem.",
+          "start": 198,
+          "end": 354,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "90%",
+          "normalized": "90%",
+          "start": 203,
+          "end": 206,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "80%",
+          "normalized": "80%",
+          "start": 220,
+          "end": 223,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "normalized": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "start": 355,
+          "end": 449,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "normalized": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "start": 355,
+          "end": 449,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 18737,
+      "source_id": "83ce72d033054fcc95f7f19547aef3a5",
+      "chunk_idx": 6,
+      "chunk_start": 7.0,
+      "chunk_end": 8.0,
+      "text": "## South Central Region\nTexas Veterans Commission: San Antonio VBOC\nSt. Philips College Good Samaritan Veteran Transition Center\nCoverage: South Texas (San Antonio and surrounding area)\nAddress: 202 Connely St., San Antonio, TX 78203\nVeterans Business Outreach Center at University of Texas Rio Grande Valley\nAddress: 1407 E Freddy Gonzalez Dr., Ste 1200, Edinburg, TX 78539\nVeterans Business Outreach Center at University of Texas Arlington College of Business\nCoverage: Arkansas, Northern Texas, Oklahoma\nAddress: 701 S West St., Ste 635, Arlington, TX 76019\nNew Mexico Veterans Business Outreach Center\nAddress: 4801 Indian School Rd. NE, Building 2, Second Floor, Albuquerque, NM 87110\n## Great Plains Region\nAddresses:\n4220 Duncan Ave., Suite 201, St. Louis, MO 63110\n1000 Walnut St., 5th Floor, Kansas City, MO 64101\nNebraska Veterans Business Outreach Center\nAddress: 2112 N. 30th St., Suite 103, Omaha, NE 68111\n## Rocky Mountain Region\nAddress: 201 N. Broadway, Billings, MT 59101\nAddress: 4200 James Ray Dr., Grand Forks, ND 58202\nColorado Veterans Business Outreach Center\nAddress: 530 Communication Cir., Colorado Springs, CO 80905\nWebsite: https://www.veteranscenter.org/vboc/\n## Pacific Region\nCoverage: Northern California (all counties north of Santa Barbara, Ventura, Los Angeles, and San Bernardino), Oregon, and Washington\nAddresses:\n1792 Tribute Rd., Suite 400, Sacramento, CA 95815\nAddress: 3333 Manchester Ave., Suite 800, Cardiff, CA 92007\nVeterans Business Outreach Center of the Pacific\nAddress: 2800 Woodlawn Dr., Suite 165, Honolulu, HI 96822",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "202",
+          "normalized": "202",
+          "start": 195,
+          "end": 198,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "78203",
+          "normalized": "78203",
+          "start": 228,
+          "end": 233,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1407",
+          "normalized": "1407",
+          "start": 318,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1200",
+          "normalized": "1200",
+          "start": 350,
+          "end": 354,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "78539",
+          "normalized": "78539",
+          "start": 369,
+          "end": 374,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "701",
+          "normalized": "701",
+          "start": 516,
+          "end": 519,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "635",
+          "normalized": "635",
+          "start": 536,
+          "end": 539,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "76019",
+          "normalized": "76019",
+          "start": 555,
+          "end": 560,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4801",
+          "normalized": "4801",
+          "start": 615,
+          "end": 619,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2",
+          "normalized": "2",
+          "start": 651,
+          "end": 652,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "87110",
+          "normalized": "87110",
+          "start": 684,
+          "end": 689,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4220",
+          "normalized": "4220",
+          "start": 724,
+          "end": 728,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "201",
+          "normalized": "201",
+          "start": 748,
+          "end": 751,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "63110",
+          "normalized": "63110",
+          "start": 767,
+          "end": 772,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1000",
+          "normalized": "1000",
+          "start": 773,
+          "end": 777,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "64101",
+          "normalized": "64101",
+          "start": 817,
+          "end": 822,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2112",
+          "normalized": "2112",
+          "start": 875,
+          "end": 879,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "103",
+          "normalized": "103",
+          "start": 899,
+          "end": 902,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "68111",
+          "normalized": "68111",
+          "start": 914,
+          "end": 919,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "201",
+          "normalized": "201",
+          "start": 954,
+          "end": 957,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "59101",
+          "normalized": "59101",
+          "start": 984,
+          "end": 989,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4200",
+          "normalized": "4200",
+          "start": 999,
+          "end": 1003,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "58202",
+          "normalized": "58202",
+          "start": 1035,
+          "end": 1040,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "530",
+          "normalized": "530",
+          "start": 1093,
+          "end": 1096,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "80905",
+          "normalized": "80905",
+          "start": 1138,
+          "end": 1143,
+          "attributes": {}
+        },
+        {
+          "kind": "url",
+          "raw": "https://www.veteranscenter.org/vboc/",
+          "normalized": "https://www.veteranscenter.org/vboc/",
+          "start": 1153,
+          "end": 1189,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1792",
+          "normalized": "1792",
+          "start": 1353,
+          "end": 1357,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "400",
+          "normalized": "400",
+          "start": 1377,
+          "end": 1380,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "95815",
+          "normalized": "95815",
+          "start": 1397,
+          "end": 1402,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "3333",
+          "normalized": "3333",
+          "start": 1412,
+          "end": 1416,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "800",
+          "normalized": "800",
+          "start": 1440,
+          "end": 1443,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "92007",
+          "normalized": "92007",
+          "start": 1457,
+          "end": 1462,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2800",
+          "normalized": "2800",
+          "start": 1521,
+          "end": 1525,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "165",
+          "normalized": "165",
+          "start": 1546,
+          "end": 1549,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "96822",
+          "normalized": "96822",
+          "start": 1564,
+          "end": 1569,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 10,
+      "source_id": "55a3c8ab8efe43eeb702ece1c9aaa5a9",
+      "chunk_idx": 9,
+      "chunk_start": 413.28,
+      "chunk_end": 472.71999999999997,
+      "text": "[The Secret Millionaires Of Dirty Jobs] list. Like my foundation has helped train hundreds of welders. Some of them are making $300,000 a year right now. Others are making $58,000 a year. So, the thing about the trades, and I think it's probably true of everything else, too, is you can't paint with too broad a brush. Actually, you can, but you shouldn't. I was just in Plano, Texas, and touring a data center. I met three electricians, uh, all making north of $240,000 a year, 240 to 280 electricians, no college. Uh, two of them were former submarine guys out of the Navy and the other just went through the typical trade school process. Um, no debt. And the craziest part of the stat is they were all poached three times >> in the prior uh, 18 months. Now, what's",
+      "predicted": [
+        {
+          "kind": "money",
+          "raw": "$300,000",
+          "normalized": "$300000",
+          "start": 127,
+          "end": 135,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$58,000",
+          "normalized": "$58000",
+          "start": 172,
+          "end": 179,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$240,000",
+          "normalized": "$240000",
+          "start": 462,
+          "end": 470,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "240",
+          "normalized": "240",
+          "start": 479,
+          "end": 482,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "280",
+          "normalized": "280",
+          "start": 486,
+          "end": 489,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "18 months",
+          "normalized": "18 months",
+          "start": 745,
+          "end": 754,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 35292,
+      "source_id": "46cb8b86d0b647a995bf5d93aca9517a",
+      "chunk_idx": 23,
+      "chunk_start": 1146.72,
+      "chunk_end": 1159.84,
+      "text": "this episode of Accounting for Growth powered by your CMO. We help accounting leaders break the status quo. Please subscribe, share, and stay sharp. Your next big growth move starts now.",
+      "predicted": [],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 8284,
+      "source_id": "e1a3cee1b5394044bf537e7c22ae1c5d",
+      "chunk_idx": 5,
+      "chunk_start": 216.799,
+      "chunk_end": 275.919,
+      "text": "[Analysis Calculator] show number three for you that i mean that's kind of a big deal first time i think i've had somebody on three times hey just trying to keep up with you man just trying to keep up with you doing some good things guys if you haven't checked out the library of knowledge i have and you're missing out so just a plug for uh for jordan there he's doing some good stuff and i'm excited about anybody that wants to teach others so super excited for that keep doing it man i appreciate that man i appreciate your time at library i'm super excited about it too there's like it's good stuff it's a lot of good information there's pretty crazy i don't know anything realized any place you can take i mean you've put together so much like content in a short period of time anytime you can take a place and put that all in one place but make it searchable so we don't have to just like spend an hour looking for something the value in that's ridiculous i mean it's ridiculous and obviously as long as you keep doing this you're going to keep",
+      "predicted": [
+        {
+          "kind": "warning",
+          "raw": "Analysis Calculator] show number three for you that i mean that's kind of a big deal first time i think i've had somebody on three times hey just trying to keep up with you man just trying to keep up with you doing some good things guys if you haven't checked out the library of knowledge i have and you're missing out so just a plug for uh for jordan there he's doing some good stuff and i'm excited about anybody that wants to teach others so super excited for that keep doing it man i appreciate that man i appreciate your time at library i'm super excited about it too there's like it's good stuff it's a lot of good information there's pretty crazy i don't know anything realized any place you can take i mean you've put together so much like content in a short period of time anytime you can take a place and put that all in one place but make it searchable so we don't have to just like spend an hour looking for something the value in that's ridiculous i mean it's ridiculous and obviously as long as you keep doing this you're going to keep",
+          "normalized": "Analysis Calculator] show number three for you that i mean that's kind of a big deal first time i think i've had somebody on three times hey just trying to keep up with you man just trying to keep up with you doing some good things guys if you haven't checked out the library of knowledge i have and you're missing out so just a plug for uh for jordan there he's doing some good stuff and i'm excited about anybody that wants to teach others so super excited for that keep doing it man i appreciate that man i appreciate your time at library i'm super excited about it too there's like it's good stuff it's a lot of good information there's pretty crazy i don't know anything realized any place you can take i mean you've put together so much like content in a short period of time anytime you can take a place and put that all in one place but make it searchable so we don't have to just like spend an hour looking for something the value in that's ridiculous i mean it's ridiculous and obviously as long as you keep doing this you're going to keep",
+          "start": 1,
+          "end": 1050,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 29107,
+      "source_id": "35efead104bc406dbf57a797b8dbc4d8",
+      "chunk_idx": 58,
+      "chunk_start": 2908.0,
+      "chunk_end": 2966.4,
+      "text": "a franchise is not for you. If you're someone that is uh not very comfortable with marketing and sales and operations, then a franchise could be a great way, right, for you to kind of step into ownership and build that comfort level up. Uh there are pros and cons with franchises that you have to decide, right, cost benefit if you're comfortable with them. We have talks in the lab from franchise consultants that you can go and kind of watch. We have members that have bought franchises. We have adviserss that have bought franchises. Um, and so we just deal with it on a case by case basis, but franchises are reviewed all the time in the lab. It's just a it's right for some people and not for others. One of your your members that's been on on Inquire Minds twice, Doug John's in Portland, bought a Mr. Router franchise, a $10 million plumbing business, existing Mr. Rooter franchise. So, um, that's a name. You can Google. Yes, Doug. Doug John's Acquiring Minds. Google that people. Um, the, uh, you mentioned a lot when we were going through all those numbers. Is",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "If you're someone that is uh not very comfortable with marketing and sales and operations, then a franchise could be a great way, right, for you to kind of step into ownership and build that comfort level up.",
+          "normalized": "If you're someone that is uh not very comfortable with marketing and sales and operations, then a franchise could be a great way, right, for you to kind of step into ownership and build that comfort level up.",
+          "start": 28,
+          "end": 236,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$10 million",
+          "normalized": "$10 million",
+          "start": 828,
+          "end": 839,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 13688,
+      "source_id": "6954f2fafab3405eb5592290acb85dfc",
+      "chunk_idx": 35,
+      "chunk_start": 1748.68,
+      "chunk_end": 1808.2,
+      "text": "you said, it's drink through a fire hose. So, kind of how's it been? How's the transition in the first few weeks? Kind of how are you feeling? >> Literally, like I said earlier, it's like jumping on a train that's moving 100 miles per hour and just making sure that it still continues to move 100 miles per hour. And it's, you know, one of those things where before when I was working in corporate America, it's like if something didn't get done, it like It's like it wasn't the biggest, you know, deal in the world. Now, it's like I have no one to call and say, \"Hey, you know, what do we need to do for this decision?\" It's like, \"Oh, wait, that that's just on me now.\" You know, like now I have to make those very, very quick decisions and kind of in the way that we're going and everything. And uh >> Yep. >> The the transition has been uh pretty good. You know, I kept that relationship with the seller, obviously. So, for the first couple of weeks, he was riding with me. He was showing me how to do quotes. He was showing me how to do estimates. Obviously, he introduced me to the team and kind of led them into my vision, which was really nice, you know, he kind of gave a spiel of, \"Hey, this is where the",
+      "predicted": [
+        {
+          "kind": "question",
+          "raw": "So, kind of how's it been?",
+          "normalized": "So, kind of how's it been?",
+          "start": 42,
+          "end": 68,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "How's the transition in the first few weeks?",
+          "normalized": "How's the transition in the first few weeks?",
+          "start": 69,
+          "end": 113,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Kind of how are you feeling?",
+          "normalized": "Kind of how are you feeling?",
+          "start": 114,
+          "end": 142,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "100 miles",
+          "normalized": "100 miles",
+          "start": 221,
+          "end": 230,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "100 miles",
+          "normalized": "100 miles",
+          "start": 293,
+          "end": 302,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Now, it's like I have no one to call and say, \"Hey, you know, what do we need to do for this decision?",
+          "normalized": "Now, it's like I have no one to call and say, \"Hey, you know, what do we need to do for this decision?",
+          "start": 517,
+          "end": 619,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 11016,
+      "source_id": "559438c56dbb4be1b1116f8da76698b2",
+      "chunk_idx": 233,
+      "chunk_start": 11565.92,
+      "chunk_end": 11624.16,
+      "text": "[I Read 1800 Books - These 10 Will Make You Rich] times so why is this book so powerful here are a few things that I learned number one is that desire is the starting point of all achievement most of us don't want to give ourselves permission to actually want more because we think for some reason that makes us not appreciate what we have but desire is required to move forward the other one is faith in your abilities is crucial to success if you don't have belief in your ability to succeed you'll never get a penny more than you think you deserve the concept of Auto suggestions speaking out loud what you want to achieve helped me in a big way to internalize my financial goals the other thing is specialized knowledge is more valuable than general knowledge a lot of people major in minor things they know a lot about stuff that doesn't really move the needle and what I decided after reading this book is becoming worldclass at a topic for me it was software it was startups it's technology and finally persistence in",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "I Read 1800 Books - These 10 Will Make You Rich] times so why is this book so powerful here are a few things that I learned number one is that desire is the starting point of all achievement most of us don't want to give ourselves permission to actually want more because we think for some reason that makes us not appreciate what we have but desire is required to move forward the other one is faith in your abilities is crucial to success if you don't have belief in your ability to succeed you'll never get a penny more than you think you deserve the concept of Auto suggestions speaking out loud what you want to achieve helped me in a big way to internalize my financial goals the other thing is specialized knowledge is more valuable than general knowledge a lot of people major in minor things they know a lot about stuff that doesn't really move the needle and what I decided after reading this book is becoming worldclass at a topic for me it was software it was startups it's technology and finally persistence in",
+          "normalized": "I Read 1800 Books - These 10 Will Make You Rich] times so why is this book so powerful here are a few things that I learned number one is that desire is the starting point of all achievement most of us don't want to give ourselves permission to actually want more because we think for some reason that makes us not appreciate what we have but desire is required to move forward the other one is faith in your abilities is crucial to success if you don't have belief in your ability to succeed you'll never get a penny more than you think you deserve the concept of Auto suggestions speaking out loud what you want to achieve helped me in a big way to internalize my financial goals the other thing is specialized knowledge is more valuable than general knowledge a lot of people major in minor things they know a lot about stuff that doesn't really move the needle and what I decided after reading this book is becoming worldclass at a topic for me it was software it was startups it's technology and finally persistence in",
+          "start": 1,
+          "end": 1024,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "I Read 1800 Books - These 10 Will Make You Rich] times so why is this book so powerful here are a few things that I learned number one is that desire is the starting point of all achievement most of us don't want to give ourselves permission to actually want more because we think for some reason that makes us not appreciate what we have but desire is required to move forward the other one is faith in your abilities is crucial to success if you don't have belief in your ability to succeed you'll never get a penny more than you think you deserve the concept of Auto suggestions speaking out loud what you want to achieve helped me in a big way to internalize my financial goals the other thing is specialized knowledge is more valuable than general knowledge a lot of people major in minor things they know a lot about stuff that doesn't really move the needle and what I decided after reading this book is becoming worldclass at a topic for me it was software it was startups it's technology and finally persistence in",
+          "normalized": "I Read 1800 Books - These 10 Will Make You Rich] times so why is this book so powerful here are a few things that I learned number one is that desire is the starting point of all achievement most of us don't want to give ourselves permission to actually want more because we think for some reason that makes us not appreciate what we have but desire is required to move forward the other one is faith in your abilities is crucial to success if you don't have belief in your ability to succeed you'll never get a penny more than you think you deserve the concept of Auto suggestions speaking out loud what you want to achieve helped me in a big way to internalize my financial goals the other thing is specialized knowledge is more valuable than general knowledge a lot of people major in minor things they know a lot about stuff that doesn't really move the needle and what I decided after reading this book is becoming worldclass at a topic for me it was software it was startups it's technology and finally persistence in",
+          "start": 1,
+          "end": 1024,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1800",
+          "normalized": "1800",
+          "start": 8,
+          "end": 12,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 27,
+          "end": 29,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 22229,
+      "source_id": "07cdfe9c4bd540bdb67ee8bdd5ab86d4",
+      "chunk_idx": 3,
+      "chunk_start": 109.6,
+      "chunk_end": 169.2,
+      "text": "[Method 1: Using ChatGPT to identify tedious workflows] thing you can do if you want to start up idea is you can literally go into chat GPT and say give me 10 tedious workflows and then you insert a job title for example social media marketer does that AI could automate and then you just rinse and niche down. So let's actually go and cook that up and see what what you know how I would approach it. So, uh, I'm going to go ahead and, uh, copy the prompt. Give me t 10 tedious workflows that a social media manager does that AI could automate. Now, you're going to want to uh, make sure that 03 is clicked here. Sometimes, by default, I think 40 is clicked. Um, but I find for for questions like this, you're going to want to use 03. It's just going to be a bit more effective. So it it's going to give you I don't know around 10 I think uh of ideas. Uh so daily content",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "Method 1: Using ChatGPT to identify tedious workflows] thing you can do if you want to start up idea is you can literally go into chat GPT and say give me 10 tedious workflows and then you insert a job title for example social media marketer does that AI could automate and then you just rinse and niche down.",
+          "normalized": "Method 1: Using ChatGPT to identify tedious workflows] thing you can do if you want to start up idea is you can literally go into chat GPT and say give me 10 tedious workflows and then you insert a job title for example social media marketer does that AI could automate and then you just rinse and niche down.",
+          "start": 1,
+          "end": 310,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1",
+          "normalized": "1",
+          "start": 8,
+          "end": 9,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 156,
+          "end": 158,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Give me t 10 tedious workflows that a social media manager does that AI could automate.",
+          "normalized": "Give me t 10 tedious workflows that a social media manager does that AI could automate.",
+          "start": 457,
+          "end": 544,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 467,
+          "end": 469,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "03",
+          "normalized": "03",
+          "start": 593,
+          "end": 595,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "40",
+          "normalized": "40",
+          "start": 644,
+          "end": 646,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "03",
+          "normalized": "03",
+          "start": 731,
+          "end": 733,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's just going to be a bit more effective.",
+          "normalized": "It's just going to be a bit more effective.",
+          "start": 735,
+          "end": 778,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So it it's going to give you I don't know around 10 I think uh of ideas.",
+          "normalized": "So it it's going to give you I don't know around 10 I think uh of ideas.",
+          "start": 779,
+          "end": 851,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 828,
+          "end": 830,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "chunk_id": 11692,
+      "source_id": "a15a65352dc84ad89810919cb949d85e",
+      "chunk_idx": 55,
+      "chunk_start": 2494.16,
+      "chunk_end": 2552.72,
+      "text": "[Sweaty Startup] confidence to go try more stuff. Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff. We always joke we put forks into electrical sockets. We learned a lot and then we started investing. And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.\" And do you remember how much capital you started doing that with? Once you once you stop starting new businesses, you said decided to go start buying? I think it was like four four or five million bucks. We We basically sat down and said, um \"Okay, we're going to start this thing called Tiny. Um I'm going to own 80%, you're going to own 20%.\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it. We never put any",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Sweaty Startup] confidence to go try more stuff.",
+          "normalized": "Sweaty Startup] confidence to go try more stuff.",
+          "start": 1,
+          "end": 49,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff.",
+          "normalized": "Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff.",
+          "start": 50,
+          "end": 214,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.",
+          "normalized": "And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.",
+          "start": 316,
+          "end": 497,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "\" And do you remember how much capital you started doing that with?",
+          "normalized": "\" And do you remember how much capital you started doing that with?",
+          "start": 497,
+          "end": 564,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Once you once you stop starting new businesses, you said decided to go start buying?",
+          "normalized": "Once you once you stop starting new businesses, you said decided to go start buying?",
+          "start": 565,
+          "end": 649,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "80%",
+          "normalized": "80%",
+          "start": 813,
+          "end": 816,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "20%",
+          "normalized": "20%",
+          "start": 838,
+          "end": 841,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it.",
+          "normalized": "\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it.",
+          "start": 842,
+          "end": 1011,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "We never put any",
+          "normalized": "We never put any",
+          "start": 1012,
+          "end": 1028,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30523,
+      "source_id": "78148e17331d484a9e1578446bb46c36",
+      "chunk_idx": 0,
+      "chunk_start": 0.08,
+      "chunk_end": 56.8,
+      "text": "Today you're going to learn to set up Claw Design and build a brand new website. The scary thing is I had someone tell me the other day they just spent $5,000 and it took them about 5 months to get their brand new business website which seems crazy to me because we can do it in a couple of hours in Claude Design. And I've been waiting until today to make this video because I'm actually launching my brand new company Halfday Thursdays. And I want to show you exactly step by step how I'm setting it up and how I build and launch my website for my company step by step so that you can do the same thing too. And we're going to jump straight in. Now the first thing to say is you can use Claude Design on either the website app of Claude.ai or the desktop app. I prefer the Claude desktop app. This is where I do all my work anyway, so it makes sense to use it in there. The second place is you need to actually find where it is. So you need to open up your left sidebar here and scroll down to the bottom. You'll see in the bottom left here we've got design and this opens a whole new page. So you can see",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "The scary thing is I had someone tell me the other day they just spent $5,000 and it took them about 5 months to get their brand new business website which seems crazy to me because we can do it in a couple of hours in Claude Design.",
+          "normalized": "The scary thing is I had someone tell me the other day they just spent $5,000 and it took them about 5 months to get their brand new business website which seems crazy to me because we can do it in a couple of hours in Claude Design.",
+          "start": 81,
+          "end": 314,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$5,000",
+          "normalized": "$5000",
+          "start": 152,
+          "end": 158,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "5 months",
+          "normalized": "5 months",
+          "start": 182,
+          "end": 190,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 36705,
+      "source_id": "93f8daf7fa0d45e19677d6d71f5a3e76",
+      "chunk_idx": 1,
+      "chunk_start": 2.0,
+      "chunk_end": 2.0,
+      "text": "## Written by Usman Writes\nLet's make the internet less boring than it already is. https://www.linkedin.com/in/muhammad-usman-strategist/",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Let's make the internet less boring than it already is.",
+          "normalized": "Let's make the internet less boring than it already is.",
+          "start": 27,
+          "end": 82,
+          "attributes": {}
+        },
+        {
+          "kind": "url",
+          "raw": "https://www.linkedin.com/in/muhammad-usman-strategist/",
+          "normalized": "https://www.linkedin.com/in/muhammad-usman-strategist/",
+          "start": 83,
+          "end": 137,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30323,
+      "source_id": "64b598608129434990a57034f8d1baf7",
+      "chunk_idx": 1,
+      "chunk_start": 33.6,
+      "chunk_end": 83.119,
+      "text": "[Examples and install overview] >> So before we get started here, I just want to show you the tweets that I found this skill from. And this is a tweet that has got over 235,000 views so far on X. This is from a few days ago. So this is a little bit old now if you're following stuff on X, but I wanted to show for everyone else who hasn't seen this how to use this Claude code skill to basically build incredible, beautiful UIs for your application. And you can see here's basically the output for like for use this front-end design skill in claude code. Create a music player app and it's designed it like this which kind of looks like something similar to maybe teenage engineering but it's a pretty high quality like level of design just from that one prompt. And underneath here is basically the instructions to get started with this. And I'll put them in the description of the video down below so that you can get started with these front-end skills in Claude Code.",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "235,000",
+          "normalized": "235000",
+          "start": 169,
+          "end": 176,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Create a music player app and it's designed it like this which kind of looks like something similar to maybe teenage engineering but it's a pretty high quality like level of design just from that one prompt.",
+          "normalized": "Create a music player app and it's designed it like this which kind of looks like something similar to maybe teenage engineering but it's a pretty high quality like level of design just from that one prompt.",
+          "start": 555,
+          "end": 762,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30324,
+      "source_id": "64b598608129434990a57034f8d1baf7",
+      "chunk_idx": 2,
+      "chunk_start": 81.759,
+      "chunk_end": 104.88000000000001,
+      "text": "[Plan: baseline site → skill redesign → reference-based redesign] What I'm going to do is I'm going to set up a very basic website that we can kind of see the standard AI design style in. And then we're going to use the Claude Code front-end skill to redesign that page. Maybe based on a reference or maybe just to kind of redesign it based on a bit of information that it would know about our website. And so let's go",
+      "predicted": [],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 31593,
+      "source_id": "cfec688ecf50482883229208fd2b8d7c",
+      "chunk_idx": 122,
+      "chunk_start": 5737.76,
+      "chunk_end": 5797.5199999999995,
+      "text": "[Transaction Component Prep] or 100 or whatever that round value is. Because one thing that you're going to notice is that when we put it on the actual page itself as it stands right now, it sort of adds like sort of like that white border around it. Okay. It just offers additional differentiation. That's really the only purpose of it. Okay. So, um, so I see the logo. Uh, what else we got here? And then also the date at the bottom. So, like September uh 10th, 2024. And we can even make this a little bit smaller if we want for like um uh 09 10 2025. And what's the format that they have here? So I actually have a different format. Sorry. Uh so 10th of September 10 Sept 2025 uh 310 p.m. Okay. Something like that",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 32,
+          "end": 35,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Uh, what else we got here?",
+          "normalized": "Uh, what else we got here?",
+          "start": 371,
+          "end": 397,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 464,
+          "end": 468,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "09",
+          "normalized": "09",
+          "start": 543,
+          "end": 545,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 546,
+          "end": 548,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2025",
+          "normalized": "2025",
+          "start": 549,
+          "end": 553,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "And what's the format that they have here?",
+          "normalized": "And what's the format that they have here?",
+          "start": 555,
+          "end": 597,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "September 10",
+          "normalized": "September 10",
+          "start": 658,
+          "end": 670,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2025",
+          "normalized": "2025",
+          "start": 676,
+          "end": 680,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "310",
+          "normalized": "310",
+          "start": 684,
+          "end": 687,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30357,
+      "source_id": "08a5573caf0b4e49983a0ec450072306",
+      "chunk_idx": 14,
+      "chunk_start": 623.52,
+      "chunk_end": 682.5999999999999,
+      "text": "[Level 3] probably some cool stuff I found on Pinterest or Godly.Website, and I'm like, \"Hmm, let me pull this from here, and let me pull this from there, right?\" I want to take the best of all these different sites and combine it. However, it's very easy to get stuck in this particular trap on this level. And I would say most people kind of stop here at level three, where they understand, \"Yeah, I got to use skills. CloudCode sucks off the bat, but with skills and with screenshots, I can get pretty far.\" The truth is, there is a ceiling here, because we're going to we're going to get kind of stuck at the vibe gap, like you're going to see with what it comes out with. It's going to be like kind of close, right? But it's not going to be perfect. Because again, there's still that effect, that like lossy effect of me telling CloudCode, which is very much, right? It does everything in code, showing it a visual image and saying, \"Hey, translate the visual to code.\" And that's kind of the problem with a lot of front-end design. It's like, it's a visual medium, yet I'm trying to type it out to text. Yet at the same time, if I throw it visual screenshots, there's still that translation piece. Like, how does it actually do it properly? Well,",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "3",
+          "normalized": "3",
+          "start": 7,
+          "end": 8,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Website, and I'm like, \"Hmm, let me pull this from here, and let me pull this from there, right?",
+          "normalized": "Website, and I'm like, \"Hmm, let me pull this from here, and let me pull this from there, right?",
+          "start": 65,
+          "end": 161,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "\" I want to take the best of all these different sites and combine it.",
+          "normalized": "\" I want to take the best of all these different sites and combine it.",
+          "start": 161,
+          "end": 231,
+          "attributes": {}
+        },
+        {
+          "kind": "exception",
+          "raw": "However, it's very easy to get stuck in this particular trap on this level.",
+          "normalized": "However, it's very easy to get stuck in this particular trap on this level.",
+          "start": 232,
+          "end": 307,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "It's going to be like kind of close, right?",
+          "normalized": "It's going to be like kind of close, right?",
+          "start": 677,
+          "end": 720,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Because again, there's still that effect, that like lossy effect of me telling CloudCode, which is very much, right?",
+          "normalized": "Because again, there's still that effect, that like lossy effect of me telling CloudCode, which is very much, right?",
+          "start": 755,
+          "end": 871,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Like, how does it actually do it properly?",
+          "normalized": "Like, how does it actually do it properly?",
+          "start": 1204,
+          "end": 1246,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30344,
+      "source_id": "08a5573caf0b4e49983a0ec450072306",
+      "chunk_idx": 1,
+      "chunk_start": 31.28,
+      "chunk_end": 90.28,
+      "text": "[Level 1] study for today's video is going to be our fake SaaS web app known as Argus. Argus is going to be a social media intelligence application. So, essentially, a place that content creators, or really whoever, can go to and find trending topics in their niche. And it is through Argus we're going to go through the entire seven-level process. So, let's begin with level one. And sadly, a lot of people are actually stuck here. This is just you and a prompt. You're going to have Claude code open, and you're just going to say something like, \"Hey, let's create a landing page for Argus, my social media web app, that acts as an intelligence app for content creators to find and identify trending topics in their niche.\" Now, even if I do this and I put it into plan mode, what we are going to get is something very, very generic. Why? Because we've really given it no design direction, and we're kind of relying on Claude code to fill in the gaps of like, \"What looks good?\" You hear this often, like, \"AI has no taste.\" True, but actually most people",
+      "predicted": [
+        {
+          "kind": "number",
+          "raw": "1",
+          "normalized": "1",
+          "start": 7,
+          "end": 8,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Why?",
+          "normalized": "Why?",
+          "start": 836,
+          "end": 840,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Because we've really given it no design direction, and we're kind of relying on Claude code to fill in the gaps of like, \"What looks good?",
+          "normalized": "Because we've really given it no design direction, and we're kind of relying on Claude code to fill in the gaps of like, \"What looks good?",
+          "start": 841,
+          "end": 979,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "\" You hear this often, like, \"AI has no taste.",
+          "normalized": "\" You hear this often, like, \"AI has no taste.",
+          "start": 979,
+          "end": 1025,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30339,
+      "source_id": "64b598608129434990a57034f8d1baf7",
+      "chunk_idx": 17,
+      "chunk_start": 611.839,
+      "chunk_end": 644.0790000000001,
+      "text": "[Final result: smooth scroll, soft shadows, hovers, remaining issues] of pastel gradient background is super nice. I really really like that. There's some issues here with the text over this, but to be honest, like this this version of the website, this is better than 99% of or this is better than a very large percentage of designs that you're going to get from other AI tools without using this front-end skill. And so, you can see just in this short video kind of me demoing this front-end skill here, even just by providing a simple screenshot. If you wanted to do this a",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "There's some issues here with the text over this, but to be honest, like this this version of the website, this is better than 99% of or this is better than a very large percentage of designs that you're going to get from other AI tools without using this front-end skill.",
+          "normalized": "There's some issues here with the text over this, but to be honest, like this this version of the website, this is better than 99% of or this is better than a very large percentage of designs that you're going to get from other AI tools without using this front-end skill.",
+          "start": 142,
+          "end": 414,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "99%",
+          "normalized": "99%",
+          "start": 269,
+          "end": 272,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30631,
+      "source_id": "4222bc4d491e4c02ba44856037696957",
+      "chunk_idx": 17,
+      "chunk_start": 759.519,
+      "chunk_end": 818.399,
+      "text": "[Claude and Design Systems] with your design system connected. It's just not. As I said earlier, there's ways that we can sort of work around this. When we push things to Figma, it uses our variables and styles. when we iterate. Sure, it might make our designs a little bit more on brand, but it's not going to be perfect. And there's this expectation that it's going to adhere to your design system exactly one to one. It's just not the case. I want to get the point across here that just because Claude can do something does not mean that you should use it. What I had Claude do is build a simple button component set. You can see here it's taken 22 minutes so far and it's still running in about 90,000 tokens to build a simple button component set. If you know anything about design systems, you'll be able to build not just a button, not just a field or input or menu component, but like 10 components in 22 minutes. And I have a full video on building a design system. I will link that in the video description. But beyond the",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "normalized": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "start": 229,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "normalized": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "start": 229,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "22 minutes",
+          "normalized": "22 minutes",
+          "start": 649,
+          "end": 659,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "90,000 tokens",
+          "normalized": "90000 tokens",
+          "start": 699,
+          "end": 712,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 893,
+          "end": 895,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "22 minutes",
+          "normalized": "22 minutes",
+          "start": 910,
+          "end": 920,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 32100,
+      "source_id": "1914061e54ad49ff81cf58c51d3e800d",
+      "chunk_idx": 7,
+      "chunk_start": 349.44,
+      "chunk_end": 408.0,
+      "text": "that's pretty cool. I'm not going to lie. And these guides aren't just basic hello world tutorials. They're basically deep dives into how these technologies actually work under the hood. If you follow any of these tutorials that they have here, you're definitely going to understand why things work the way they do. Now, if you're interested in this and you want to take this even further, the people behind this repo actually created a platform called Code Crafters. Not sponsored, by the way, but I am an affiliate. So, if you want to fund my McDonald's addiction and get 40% off this, you can use my link right here. Okay. Okay. I've been selling out a little too much. I've been a little rude. I also apologize for jump scaring you at the beginning. As an apology, I'm going to share this repo that'll save you some dollars. Free for dev. This repo is going to save you some money. It's a repo that contains platforms or services that are free or have a really nice free tier. The list has a lot of useful things like cloud management, analytics, APIs, databases, hosting services. Basically, any type of service you think you need for your project, you'll probably find it in this repo and hopefully it helps you out in your project. Wow, this repo really does have a lot of stuff. You could easily spend",
+      "predicted": [
+        {
+          "kind": "entity",
+          "raw": "Code Crafters",
+          "normalized": "Code Crafters",
+          "start": 453,
+          "end": 466,
+          "attributes": {
+            "cue": "platform called"
+          }
+        },
+        {
+          "kind": "percentage",
+          "raw": "40%",
+          "normalized": "40%",
+          "start": 574,
+          "end": 577,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "You could easily spend",
+          "normalized": "You could easily spend",
+          "start": 1287,
+          "end": 1309,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30322,
+      "source_id": "64b598608129434990a57034f8d1baf7",
+      "chunk_idx": 0,
+      "chunk_start": 0.16,
+      "chunk_end": 32.278999999999996,
+      "text": "[Why this Claude Code skill matters and the viral X post] This might be the best Claude code skill I've ever used. And it all came from this viral post on X which teaches you how to install it in just a few minutes. And in this video, I'm going to show you how to set up this skill and use it with Claude Code to create incredible UI designs in minutes. If you don't know me, my name is Chris and for the last 15 years, I've been designing apps and advising startups on product and design. With that said, let's jump straight into this Claude code skill and show you exactly how to use it. >> >> build.",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Why this Claude Code skill matters and the viral X post] This might be the best Claude code skill I've ever used.",
+          "normalized": "Why this Claude Code skill matters and the viral X post] This might be the best Claude code skill I've ever used.",
+          "start": 1,
+          "end": 114,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Why this Claude Code skill matters and the viral X post] This might be the best Claude code skill I've ever used.",
+          "normalized": "Why this Claude Code skill matters and the viral X post] This might be the best Claude code skill I've ever used.",
+          "start": 1,
+          "end": 114,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "If you don't know me, my name is Chris and for the last 15 years, I've been designing apps and advising startups on product and design.",
+          "normalized": "If you don't know me, my name is Chris and for the last 15 years, I've been designing apps and advising startups on product and design.",
+          "start": 354,
+          "end": 489,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "15 years",
+          "normalized": "15 years",
+          "start": 410,
+          "end": 418,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 36591,
+      "source_id": "bb6c2ae135884d3884e428bcf6bb64c7",
+      "chunk_idx": 3,
+      "chunk_start": 102.16,
+      "chunk_end": 137.959,
+      "text": "[Putting it into a real product] like uh developers who are using Claude code. It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this. I wanted to know what happens when you took this idea of generating HTML and put it into like a real product in a chat application, what it looks like. And in this video I wanted to share with you how you can actually render this HTML in your chat application and instead of the markdown. Some downsides of that, uh some quirks that you are going to face if you are going to try to do this yourself. So, if you're interested in",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this.",
+          "normalized": "It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this.",
+          "start": 79,
+          "end": 184,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 31517,
+      "source_id": "cfec688ecf50482883229208fd2b8d7c",
+      "chunk_idx": 46,
+      "chunk_start": 2135.52,
+      "chunk_end": 2195.1189999999997,
+      "text": "[Circle Graph Component Prep] Yeah, there we go. There it sort of achieves the look uh that we're going for. Okay, so basically what I do is I just simply just keep copying these, set it to like a different color inside of one of our collections. Maybe this one here is a purple. And then maybe this one here. And again, the color combination I don't know if it's going to look like the best at the end of the day. Um, and then this here can maybe be like a I don't know. We'll set this to something like a where's a green or or emerald? I forget what I what color my greens were in here. Um, this is like a 600 something like that. And let's make sure just add the same the same border treatment uh on the outside. How many we had it set to five. So let's set this to also five. And then uh white. So this will be like our border on color. There we go. And then",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "normalized": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "start": 310,
+          "end": 414,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "normalized": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "start": 310,
+          "end": 414,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "Um, and then this here can maybe be like a I don't know.",
+          "normalized": "Um, and then this here can maybe be like a I don't know.",
+          "start": 415,
+          "end": 471,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "We'll set this to something like a where's a green or or emerald?",
+          "normalized": "We'll set this to something like a where's a green or or emerald?",
+          "start": 472,
+          "end": 537,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 608,
+          "end": 611,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 34753,
+      "source_id": "c32bce828d60493a9aa4a055f4dc424e",
+      "chunk_idx": 8,
+      "chunk_start": 276.479,
+      "chunk_end": 288.52,
+      "text": "[Outro] for you today. The files for the full web app on Dualite will be the first link in the description, and the Figma files will be down there, too. Other than that, I hope you learned something, and I'll see you in the next one.",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "Other than that, I hope you learned something, and I'll see you in the next one.",
+          "normalized": "Other than that, I hope you learned something, and I'll see you in the next one.",
+          "start": 153,
+          "end": 233,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 34349,
+      "source_id": "d02fb50197824206ad0c081fb4d3252d",
+      "chunk_idx": 49,
+      "chunk_start": 2255.04,
+      "chunk_end": 2314.2400000000002,
+      "text": "[Grid Systems and Alignment: Eliminating Jagged Visual Friction] really sparingly, but just bring the site to life. Enough that it's not repetitive. It just has enough visual interest throughout the page that keeps the user engaged and shows them where to go in a really subtle manner. One thing just to note when choosing your colors as well is contrast. So, you need enough contrast between colors for accessibility, readability. Your site shouldn't have, let's say, you know, this white background here with a really, really light gray text. Or it shouldn't have, let's say, this yellow button with a green um green text within it. There should be enough legibility between those, so enough contrast between your colors that screen readers can pick it up and it can tell people who are using screen readers, for instance. Okay, this is what this content is. And obviously, your color palette is part of a wider accessibility push that should be implemented on your site. But, contrast",
+      "predicted": [],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 30747,
+      "source_id": "7ce11f0d19a64c4b8cddd8650ebddebb",
+      "chunk_idx": 58,
+      "chunk_start": 2732.48,
+      "chunk_end": 2791.32,
+      "text": "[Building Design Tokens with AI] that's just it's not just to say that AI can't do anything relating to your design system entirely. But what I'm going to show you, I'm going to talk about why it's not the best, is I want to enter a link to just a empty Figma file. It's just called variables test. Please build me type styles uh H1, H2, H2, H3, H4, H5, H6, uh P1, paragraph one, paragraph medium, I spelled paragraph wrong. Paragraph medium, paragraph large, paragraph small. Inside of this Figma file, inside of this Figma file, inside each style, there should be variables. This file",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "But what I'm going to show you, I'm going to talk about why it's not the best, is I want to enter a link to just a empty Figma file.",
+          "normalized": "But what I'm going to show you, I'm going to talk about why it's not the best, is I want to enter a link to just a empty Figma file.",
+          "start": 133,
+          "end": 265,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 31050,
+      "source_id": "510b02315acb48deac7dceeaf4051bdd",
+      "chunk_idx": 65,
+      "chunk_start": 3136.079,
+      "chunk_end": 3194.319,
+      "text": "[Mapped Collection] of have uh a default text color. So let me just assign our hello everyone our default text. So our text uh default. Okay. So there we have the default applied. But if this is sitting that text color is sitting on sort of an action button or a black background. This is similar to sort of like the on action that I used in the past. But again just going into some more complex topics. We need an on color associated with that with me. Perfect. Because it's going to get a little bit more complex. We also need an on color subtle subtle and an on color subtle hover. Subtle hover. So in this case, we're going to match what we did before. So primary 900 and then a primary uh 1,00. So, what this is saying is that if we have a subtle background color, I don't know, I'm just going to pick something like that. What's the color",
+      "predicted": [
+        {
+          "kind": "comparative",
+          "raw": "But again just going into some more complex topics.",
+          "normalized": "But again just going into some more complex topics.",
+          "start": 352,
+          "end": 403,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Because it's going to get a little bit more complex.",
+          "normalized": "Because it's going to get a little bit more complex.",
+          "start": 463,
+          "end": 515,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 668,
+          "end": 671,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1",
+          "normalized": "1",
+          "start": 694,
+          "end": 695,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "00",
+          "normalized": "00",
+          "start": 696,
+          "end": 698,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So, what this is saying is that if we have a subtle background color, I don't know, I'm just going to pick something like that.",
+          "normalized": "So, what this is saying is that if we have a subtle background color, I don't know, I'm just going to pick something like that.",
+          "start": 700,
+          "end": 827,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 31264,
+      "source_id": "5f372288d1644e26b620d05675fa692f",
+      "chunk_idx": 90,
+      "chunk_start": 4222.08,
+      "chunk_end": 4280.719,
+      "text": "[Using Chat GPT to Generate an Illustration] of these things. And let's just align everything at the top for now. And align that left. Oops. With the exception of this. Anyways, uh let's group these together. And then left align this. And let's make some adjustments. to set this like a 24 padding. Choose your language and then set these maybe like 36. Choose your language. Uh we're also going to need a selected state so you can see like which one is actually selected. So maybe we bring these out here and we start to make it a component. So we can create the component of this. Um and just bring this down. And for this one thing we might want to do is add the um vertical padding of 12. uh and also 12. Uh and sure, we'll roll with that. And let's bring in uh a check mark if it will load. So, let's bring in just one of these checks so you can see which one is",
+      "predicted": [
+        {
+          "kind": "exception",
+          "raw": "With the exception of this.",
+          "normalized": "With the exception of this.",
+          "start": 141,
+          "end": 168,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "to set this like a 24 padding.",
+          "normalized": "to set this like a 24 padding.",
+          "start": 268,
+          "end": 298,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "24",
+          "normalized": "24",
+          "start": 287,
+          "end": 289,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "36",
+          "normalized": "36",
+          "start": 350,
+          "end": 352,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "And for this one thing we might want to do is add the um vertical padding of 12.",
+          "normalized": "And for this one thing we might want to do is add the um vertical padding of 12.",
+          "start": 612,
+          "end": 692,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 689,
+          "end": 691,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 705,
+          "end": 707,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 34003,
+      "source_id": "3868a65a76a242e5a5aca8d8c2d374b7",
+      "chunk_idx": 16,
+      "chunk_start": 765.04,
+      "chunk_end": 822.24,
+      "text": "[how to create color variables] to do now uh we need to uh make duplicates of this color of this uh variable I'm sorry. Uh so to do that I can um just copy and paste over here but it doesn't work. So uh let's try to um oh uh press duplicate right. So we duplicate it like this. And we need to create nine duplicates as as you may understand. and one more and uh and break. All right, so it's nine. Uh we'll be using the system um of the 100 value. Uh I believe it's used in the tail CSS and tailwind CSS. Uh and it's really easy to understand uh once you begin to use it. So the lightest one is going to be 100 and the darkest one is going to be 900 and the main the middle one is going to be 500 value. Um, these are going",
+      "predicted": [
+        {
+          "kind": "hedge",
+          "raw": "And we need to create nine duplicates as as you may understand.",
+          "normalized": "And we need to create nine duplicates as as you may understand.",
+          "start": 278,
+          "end": 341,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "and one more and uh and break.",
+          "normalized": "and one more and uh and break.",
+          "start": 342,
+          "end": 372,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 437,
+          "end": 440,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 607,
+          "end": 610,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 646,
+          "end": 649,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "500",
+          "normalized": "500",
+          "start": 693,
+          "end": 696,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    },
+    {
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "chunk_id": 31008,
+      "source_id": "510b02315acb48deac7dceeaf4051bdd",
+      "chunk_idx": 23,
+      "chunk_start": 1094.08,
+      "chunk_end": 1153.2800000000002,
+      "text": "[Scales] then all of a sudden there's a break and a downstream disconnect. So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve. Some things do change. Okay, so a little bit of a preamble there just some common push back that I'm going to get. So I do have a cheat sheet here so bear with me because the scale is quite long and I don't want to lead you astray. Okay. So, I always do like to use a 4 pixel grid. So, in this case, our 200 would be 8. Uh, a 300 uh would be 12. But in the context of like our radiuses and our widths, it's very rare to just simply only have a border width that's one. Okay, I know that, you know. So, this is where using our 100 scale value, we can get into some more use smaller values. So in the case of uh uh a value of one,",
+      "predicted": [
+        {
+          "kind": "exception",
+          "raw": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "normalized": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "start": 75,
+          "end": 402,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "normalized": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "start": 75,
+          "end": 402,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So I do have a cheat sheet here so bear with me because the scale is quite long and I don't want to lead you astray.",
+          "normalized": "So I do have a cheat sheet here so bear with me because the scale is quite long and I don't want to lead you astray.",
+          "start": 518,
+          "end": 634,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4",
+          "normalized": "4",
+          "start": 671,
+          "end": 672,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "200",
+          "normalized": "200",
+          "start": 707,
+          "end": 710,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "8",
+          "normalized": "8",
+          "start": 720,
+          "end": 721,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "300",
+          "normalized": "300",
+          "start": 729,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 745,
+          "end": 747,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "So, this is where using our 100 scale value, we can get into some more use smaller values.",
+          "normalized": "So, this is where using our 100 scale value, we can get into some more use smaller values.",
+          "start": 901,
+          "end": 991,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 929,
+          "end": 932,
+          "attributes": {}
+        }
+      ],
+      "gold": null,
+      "review_status": "pending_manual_label"
+    }
+  ]
+}

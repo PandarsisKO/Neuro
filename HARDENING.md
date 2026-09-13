@@ -2100,3 +2100,9 @@ hygiene gate correctly rejected multiple root orientation files. The current aut
 The existing release test caught multiple root state files after the T3 checkpoint. Superseded `1436` and `1450`
 state files are archived; one authoritative root state remains. Focused release test and deterministic release gate pass
 at `e4cf07f`.
+
+## T3 seeded review manifest — 2026-09-13 15:01 PT
+
+The larger 60-row seeded review manifest records predicted spans with `gold: null` and exact-span matching rules.
+It was generated from a copied verified backup in SQLite read-only mode and is explicitly non-authoritative until manual
+adjudication closes the per-kind precision floors.
