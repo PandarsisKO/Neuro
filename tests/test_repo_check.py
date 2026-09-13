@@ -42,3 +42,9 @@ def test_render_is_stable_and_json_is_structured(tmp_path):
     findings = check_repo(root)
     assert render(findings) == render(findings)
     assert '"rule": "broken-reference"' in render(findings, as_json=True)
+
+
+def test_direct_database_connection_outside_db_module_is_reported(tmp_path):
+    root = _repo(tmp_path)
+    (root / "neurosearch" / "bad.py").write_text("import sqlite3\nsqlite3.connect('x.db')\n")
+    assert any(f.rule == "direct-db-connection" and f.severity == "error" for f in check_repo(root))

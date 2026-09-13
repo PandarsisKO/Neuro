@@ -114,6 +114,17 @@ def _broken_markdown_links(root: Path, out: list[Finding]) -> None:
                                        f"local Markdown target does not exist: {target}"))
 
 
+def _forbidden_boundaries(root: Path, out: list[Finding]) -> None:
+    """Catch the one boundary that is unambiguous without architecture heuristics."""
+    for path in _py_files(root):
+        if path.name in {"db.py", "repo_check.py"}:
+            continue
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "sqlite3.connect(" in line:
+                out.append(Finding(str(path.relative_to(root)), str(line_no), "direct-db-connection", "error",
+                                   "SQLite connections belong to neurosearch/db.py so lifecycle and isolation rules stay centralized"))
+
+
 def check_repo(root: str | Path = ".") -> list[Finding]:
     """Return stable findings sorted by file, location, rule, and message."""
     base = Path(root).resolve()
@@ -123,6 +134,7 @@ def check_repo(root: str | Path = ".") -> list[Finding]:
     _root_hygiene(base, findings)
     _suspicious_names(base, findings)
     _broken_markdown_links(base, findings)
+    _forbidden_boundaries(base, findings)
     return sorted(findings, key=lambda f: (f.file, f.location, f.rule, f.why))
 
 
