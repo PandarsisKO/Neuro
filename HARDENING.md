@@ -2006,3 +2006,9 @@ tree. Full pytest passed **1,364 tests** with one existing Starlette deprecation
 `release-check --no-pytest` passed all deterministic gates at `ec6b5e7`, including backup/restore; artifact:
 `evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. Verified backups now include the full
 `integrity: "ok"` result, so the FTS5 virtual-table check is part of the product's verification contract.
+
+## Runtime verification after backup-integrity closeout — 2026-09-13 13:52 PT
+
+Authenticated API reads confirm the running `0.63.62` app has no queued/running/stale/leased/external-pending jobs.
+Health reports the newest verified 1.15 GB backup with full `integrity: ok` and 38,038 chunks. The 36 collected-but-
+unwritten results in two historical batches remain documented and untouched under the paused Claims decision.

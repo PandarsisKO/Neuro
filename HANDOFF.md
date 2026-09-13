@@ -994,3 +994,11 @@ Closed at `de4697e` and validated on the current Claude-merged tree `ec6b5e7` (`
 check, including backup/restore, at `evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. The full
 SQLite integrity walk is now required before a backup is recorded as verified. No live database or unsettled batch
 was mutated.
+
+## Current runtime and backup reconciliation — 2026-09-13 13:52 PT
+
+Authenticated API verification after Claude's W1 step-1 merge reports `/api/version` `0.63.62`, `fake_ai=false`.
+`/api/health` reports zero queued/running/stale/leased/external-pending jobs, database backup integrity `ok`, and the
+newest verified snapshot `neurosearch-20260913-1345.db` (38,038 chunks, 1.15 GB). The two historical unsettled
+batches remain 36 collected-but-unwritten items; no settlement was triggered while the claims lane is paused.
+The clean GitHub snapshot branch was refreshed to `3bf21f05403c4f7c50781e6ec1ee2107c0b49b8d` after the closeout.

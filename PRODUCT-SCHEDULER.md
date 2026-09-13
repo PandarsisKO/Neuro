@@ -207,3 +207,10 @@ release gate passed on the current `0.63.62 @ ec6b5e7` tree with artifact
 `evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. No additional Codex implementation is admitted
 until a new backend/reliability trigger appears; Claude's W1 step 1 is landed and its remaining design/browser gates
 remain the active shared boundary.
+
+## RUNTIME RECONCILIATION — 2026-09-13 13:52 PT
+
+The running app is now verified at `0.63.62` (`fake_ai=false`). Authenticated Health shows no queued, running, stale,
+leased, or external-pending jobs; the newest verified backup has full `integrity: ok` and 38,038 chunks. The two
+historical unsettled batches (36 collected-but-unwritten items) remain deliberately untouched while Claims is paused.
+The current clean GitHub snapshot is `backup/2026-09-13-clean @ 3bf21f05403c4f7c50781e6ec1ee2107c0b49b8d`.
