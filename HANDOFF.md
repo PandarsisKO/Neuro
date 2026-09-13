@@ -197,3 +197,23 @@ audit.md's ranking), the deferred `<select>` decision above, and the `style="dis
 conversion. Step 3 (the inline SVG sprite) has not started. Per Kyle's serialization instruction, these proceed
 as further bounded sub-units, one at a time, each with its own worktree/commit/test/merge cycle — not as one
 large step-2 commit.
+
+## Design ladder — F1 step 2b landed — 2026-09-13
+
+The "add the small set of shared rules" half of step 2 is done, on `main` at merge commit `903bccc` (source
+commit `d5c8a4d` on branch `design/f1-step2b`, now deleted). Purely additive, nothing retired yet: added the
+non-colour frozen tokens from `DESIGN.md` §5 (`--space-1..16`, `--text-xs..2xl`, `--radius-sm/md/lg/pill`,
+`--motion-*`, `--ease-standard`) that F1 step 1 didn't land (it was colour-only), plus the utility classes
+`audit.md`'s "six declaration families" table names as missing: `.grow`/`.push-right`/`.min-w-0` (flex-row
+helpers beyond the existing `.row`), `.mt-1`..`.mt-6`/`.mb-1`..`.mb-6` (the spacing stack, at the frozen scale —
+retiring surfaces should snap each surface's odd margin value, e.g. `margin-top:10px`, to the nearest of these,
+not add a new one-off), `.text-xs`..`.text-2xl` (the type scale as classes), and `.status-ok`/`-warn`/`-bad` plus
+`-border` variants (status modifiers). No existing rule, class or inline style was touched, so the drift ratchet
+in `test_s50_design_drift.py` is unchanged (24 tests still pass). `UI_VERSION` bumped to `0.63.46` in all three
+sites.
+
+**Next F1 step 2 sub-unit: retire inline occurrences of these families on Sources**, `audit.md`'s top-ranked
+offender (~141 of the 430 total). Use the classes just landed; where a surface's inline `margin-top`/`font-size`
+value doesn't sit exactly on the new scale, snap to nearest rather than adding a bespoke class. This is expected
+to move `test_s50`'s inline-style-count ceiling down, which the rung's own gate requires happen in the same
+commit that retires them.
