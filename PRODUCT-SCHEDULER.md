@@ -155,3 +155,7 @@ The backup branch is refreshed after each documentation checkpoint; its current 
 The stale, already-merged `design/f0` worktree metadata was pruned and its local branch removed after verifying it was
 an ancestor of `main`; only the active main checkout remains. This reconciles the scheduler's stated worktree cleanup
 with the actual repository state.
+
+The later audit-instance restart note in `HANDOFF.md` is historical and does not reopen the removed `.worktrees/f0`
+checkout. The merged `design/f0` branch and stale metadata were pruned after verifying ancestry; `36ad3ae` is only a
+historical baseline reference. F2's behavioral browser gate remains open and W1 remains investigation-only.

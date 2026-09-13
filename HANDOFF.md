@@ -886,3 +886,11 @@ The `.worktrees/f0` baseline is now at `36ad3ae` — worth noting for anyone rel
 
 Proceeding to scope Rung W1 (reprocessing vocabulary/disclosure contract) in the meantime — investigation only,
 no implementation, pending Kyle's direction and F2's eventual close-out.
+
+## Current-state reconciliation after audit restart note — 2026-09-13
+
+The preceding audit-instance restart note is historical. The `.worktrees/f0` directory was absent and its stale Git
+metadata plus merged `design/f0` branch were subsequently pruned; `git worktree list` now shows only the active `main`
+checkout. The `36ad3ae` baseline reference in that note is retained as history, not as a live audit checkout. F2's
+browser behavioral gate remains open, and Claude's W1 work is investigation-only until that gate closes; no active
+frontend worktree exists for Codex or Claude to resume.
