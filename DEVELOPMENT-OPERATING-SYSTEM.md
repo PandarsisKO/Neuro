@@ -1377,6 +1377,12 @@ Publish distributions.
 
 Compare semantic coverage with locator coverage.
 
+Current checkpoint (2026-09-12): R9(c) is explicitly deferred with the numeric trigger in
+`docs/PRE-T1-GATE-AUDIT-2026-09-12.md`. T1's first schema slice is implemented: derived-vector metadata, canonical
+fail-open helpers, a low-lane durable backfill job, and a read-only coverage scaffold are present and covered by
+`tests/test_t1_vector_metadata.py`. The scaffold remains `measurement_pending` until corpus-space attestation and the
+project-relative measurement are implemented.
+
 Do not define "unexplained" as simply "has no claim evidence."
 
 Do not choose universal cosine thresholds by intuition if project-relative distributions are available.
