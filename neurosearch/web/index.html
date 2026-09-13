@@ -11,6 +11,7 @@
   a{color:var(--link)}
   select,input,textarea,button{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px}
   input,textarea,select{width:100%}
+  input[type=checkbox],input[type=radio]{width:auto}
   textarea{min-height:80px;resize:vertical}
   button{cursor:pointer;white-space:nowrap}
 
@@ -308,7 +309,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
       <div id="askbar"><div class="inner">
         <div style="flex:1">
           <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
-          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb" style="width:auto"> also search the web</label>
+          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb"> also search the web</label>
             <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
             <span id="qAttach"></span><span class="muted" id="askStatus"></span></div>
         </div>
@@ -338,7 +339,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
               <select id="inSince" style="width:auto;padding:4px 6px"><option value="1">1 year</option><option value="2" selected>2 years</option><option value="3">3 years</option><option value="5">5 years</option><option value="0">everything</option></select></label>
             <label class="muted">best <input id="inMax" type="number" min="0" value="20" style="width:70px;padding:4px 6px"> videos</label>
             <span style="flex:1"></span>
-            <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce" style="width:auto"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
+            <input id="inTags" placeholder="tags (optional)" style="max-width:220px"><label class="muted"><input type="checkbox" id="inForce"> re-ingest</label><button class="primary" onclick="ingestUrls()">Add</button></div>
         </div>
         <div class="pane" id="pane-upload">
           <div class="muted">Audio/video (mp3, m4a, wav, mp4, mov …) is transcribed with Whisper. PDF, Word, text and markdown are read as documents (citations point at page numbers). SRT/VTT are used as-is. <b>Spreadsheets (xlsx, csv)</b> become searchable <i>and</i> usable as calculators: the chat can change the inputs and read what the workbook's own formulas compute.</div>
@@ -416,7 +417,7 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
         <span class="chipf" data-f="unused" onclick="toggleSrcFilter('unused')" title="No plan step, chat answer or Claim ever used it">Never used</span>
         <select id="srcLen" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
         <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">sort: activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
-        <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()" style="width:auto"> Group by origin</label>
+        <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()"> Group by origin</label>
         <span class="muted" id="srcFilterNote"></span>
         <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
         <button class="small" onclick="exportCsv(true)">Segments CSV</button>
@@ -475,9 +476,9 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
           <select id="cwStatus" onchange="CW.status=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="all">all statuses</option><option value="proposed">not yet decided</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
           <select id="cwStrength" onchange="CW.strength=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">any evidence level</option><option value="strong">well evidenced</option><option value="developing">building evidence</option><option value="weak">thin evidence</option><option value="unsupported">no evidence yet</option></select>
           <select id="cwFresh" onchange="CW.freshness=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">still current or not</option><option value="stale">likely outdated</option><option value="needs_refresh">may need a refresh</option><option value="uncertain">unclear if current</option></select>
-          <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" id="cwNeeds" onchange="CW.needs_decision=this.checked;CW.offset=0;loadClaimsWorkbench()" style="width:auto"> needs your decision</label>
+          <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" id="cwNeeds" onchange="CW.needs_decision=this.checked;CW.offset=0;loadClaimsWorkbench()"> needs your decision</label>
           <select id="cwSort" onchange="CW.sort=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="priority">sort: needs a decision first</option><option value="strength">most evidenced first</option><option value="newest">newest</option><option value="topic">by topic</option></select>
-          <label class="row" style="gap:4px;width:auto" title="Group Claims by the same Areas the Overview and Areas panes use"><input type="checkbox" id="cwGroupToggle" checked onchange="loadClaimsWorkbench()" style="width:auto"> Group by area</label>
+          <label class="row" style="gap:4px;width:auto" title="Group Claims by the same Areas the Overview and Areas panes use"><input type="checkbox" id="cwGroupToggle" checked onchange="loadClaimsWorkbench()"> Group by area</label>
           <span class="muted" id="cwCount"></span>
         </div>
         <div id="cwBulk" style="display:none"></div>
@@ -740,7 +741,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.44';
+const UI_VERSION = '0.63.45';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2621,7 +2622,7 @@ function bootWhy(h) {
 function bootRow(h) {
   const open = BOOT.open.has(h.source_id);
   return `<div class="job" style="flex-wrap:wrap;align-items:flex-start">
-    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="width:auto;margin-top:5px">
+    <input type="checkbox" class="bootPick" value="${h.source_id}" ${h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''} style="margin-top:5px">
     <div style="flex:1;min-width:0">
       <div style="overflow:hidden;text-overflow:ellipsis">${esc(h.title || h.source_id)}${h.channel ? ` <span class="muted" style="font-size:12px">· ${esc(h.channel)}</span>` : ''}</div>
       ${open ? bootWhy(h) : `<div class="muted" style="font-size:12px;margin-top:3px">${esc((h.why || [])[0] || '')}</div>`}
