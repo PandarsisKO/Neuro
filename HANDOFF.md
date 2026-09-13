@@ -130,3 +130,30 @@ hygiene findings. The merged-design release artifact is
 PASS. R9 found no safe unmeasured cleanup candidate; R10 closeout is the next
 action once the mission status is archived. Claude-owned design files remain
 canonical and must not be duplicated.
+
+## Design ladder — F1 step 1 landed — 2026-09-13
+
+`ladder.md` rung F1 ("Land the frozen tokens, retire the tokenizable inline patterns, name the eight controls")
+has three steps; step 1 only is done, on `main` at merge commit `9dfbc15` (source commit `f77e673` on branch
+`design/f1`, now safe to delete). It replaces the drifted `:root`/`[data-theme=dark]` colour tokens in
+`neurosearch/web/index.html` with the frozen palette from `DESIGN.md` §5, fixing the two measured AA failures
+(`--ok`, `--warn` both now >= 4.5:1 on `--panel` in light theme; dark theme's only change is `--accent-text`
+going near-black per DESIGN.md's own rule). No existing token name was renamed; the frozen set's new names
+(`--panel-strong`, `--text-faint`, `--line-strong`, `--accent-hover`, `--accent-soft`, `--ok-soft`, `--warn-soft`,
+`--bad-soft`, `--focus`) were added for steps 2/3 and later rungs to use. `UI_VERSION` bumped to `0.63.44` in all
+three sites. A new deterministic gate, `test_status_text_colours_meet_aa_on_panel` in `test_s50_design_drift.py`,
+holds this; it and the existing `test_s50`/`test_s44`/`test_s5` suites pass (24 tests).
+
+**Not done yet, still part of the same F1 rung:** step 2 (the shared spacing/flex/type-scale/status-modifier
+utility classes, retiring inline styles on the ranked offender surfaces, the base-input `width:auto` fix, the
+`hidden`-attribute conversion) and step 3 (the inline SVG sprite naming the eight emoji-only controls). Do not
+start F2/W1 work while inside `index.html` for this — see `ladder.md`'s own sequencing note.
+
+**Owed, not completed this session: the human rendered re-audit in both themes against `evidence/`.** The
+already-running audit instance (`localhost:8788`) did not reflect this merge on reload — it kept serving
+`v0.63.43`, so whatever process is behind it is not reading this checkout's `main` live, or needs an explicit
+restart this session wasn't positioned to trigger unprompted. Separately, its theme toggle does not flip
+`[data-theme]` on click (pre-existing, unrelated to this change, not fixed here per F1's non-goals), and forcing
+the attribute via devtools produced correct `getComputedStyle` values without a visual repaint in this browser
+session — likely a screenshot-capture staleness quirk. Whoever restarts the audit instance next should do the
+before/after rendered check for this commit as the first order of business, before F1 continues to step 2.
