@@ -217,3 +217,27 @@ offender (~141 of the 430 total). Use the classes just landed; where a surface's
 value doesn't sit exactly on the new scale, snap to nearest rather than adding a bespoke class. This is expected
 to move `test_s50`'s inline-style-count ceiling down, which the rung's own gate requires happen in the same
 commit that retires them.
+
+## Design ladder — F1 step 2c landed — 2026-09-13
+
+First real inline-style retirement pass, on `main` at merge commit `f7aa121` (source commit `d085d6c` on branch
+`design/f1-step2c`, now deleted). Scope was deliberately narrow — this session still has no working rendered-
+visual-verification path (see the F1 step 1 note above), so only `style="..."` attributes whose entire content is
+a single declaration sitting exactly on a frozen scale value (`margin-top:8px`/`4px` -> `.mt-2`/`.mt-1`, lone
+`flex:1` -> `.grow`) were converted; every substitution produces the identical computed style it replaces, and
+each touched element was checked for JS that reads/sets its `style` property before landing (none does). 16
+style attributes eliminated in Sources' static `#view-sources` markup (425 -> 409, counting step 2a's earlier
+-5). `MAX_INLINE_STYLE_ATTRS` in `test_s50_design_drift.py` lowered `430` -> `409` in the same commit, per the
+rung's own gate. `UI_VERSION` bumped to `0.63.47`.
+
+**Deliberately left alone in this pass, still counted in the 409:** combined/multi-declaration style attributes
+(e.g. `margin-top:14px;border-top:1px solid var(--line);padding-top:10px`), non-scale spacing values (10px, 6px)
+and non-scale font sizes (12.5px) — converting these would move the rendered result by a couple of pixels, not
+verifiable without rendered checking — one-off geometry (explicit pixel widths, which `DESIGN.md` §5 explicitly
+allows to stay inline), `display:none` state toggles, and the deferred `<select>` `width:auto` question.
+
+**Still remaining for Sources:** the rest of its static markup's non-exact-match cases above, then its JS render
+functions (`srcRowHtml`, `sourceDrawer`, `renderBook`, `transportChoiceHtml`, capture-queue/library-suggestions/
+seen, quality & promotable drawers, value report, `browserBlock`, `classifyInput`) — the majority of Sources'
+~141 total. Each is its own future bounded sub-unit. After Sources, `audit.md`'s ranking continues: Research,
+Jobs/Health/boot, Master Plan, Settings, Findings, Chats.
