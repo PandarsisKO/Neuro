@@ -24,6 +24,11 @@ been added to both derived-object tables, with focused coverage in `tests/test_t
 reports explicit `measurement_pending` until corpus-space attestation exists; it never invents semantic coverage.
 No live database was opened or re-embedded.
 
+The affected Foundation/storage gate and the deterministic release check were rerun after the slice; release-check
+passed with experimental flags off (artifact generated 2026-09-12 16:54 PT). The full pytest gate remains a separate
+release-boundary action; the prior attempt was interrupted after an unbounded multiprocessing stall and is not counted
+as a pass.
+
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
 T1's canonical-active and project-relative requirements.
