@@ -1,9 +1,19 @@
 # Design Implementation Ladder
 
-Derived from `docs/design-audit/2026-09-13-b85c222/audit.md`. This is a sequence, not an authorization: per
-`DESIGN-MISSION.md`, D2 rungs are admitted only from D1 evidence, one bounded surface at a time, and each still
-needs Foundation §34 UI scope or a `DEVELOPMENT-OPERATING-SYSTEM.md` §13 override before implementation begins.
-Nothing in this document has been built.
+Derived from `docs/design-audit/2026-09-13-b85c222/audit.md`. This is a sequence, not a blanket authorization: D1
+(rung F0) is complete, and D2 rungs are admitted one bounded surface at a time (`DESIGN-MISSION.md`,
+`PRODUCT-SCHEDULER.md`). The repo is the control plane (see `HANDOFF.md`'s "Operating model" section) — a rung may
+execute when its own preconditions below are satisfied, `PRODUCT-SCHEDULER.md` considers it eligible, a collision
+analysis against current Git state has been performed for any surface it shares with active work, the work stays
+bounded to the rung, and its required deterministic, behavioral and visual gates can be run. User approval is not a
+routine implementation gate; stop only for a genuine unresolved product decision, a destructive or costly action
+needing consent, an architectural conflict, or a semantic collision that cannot be safely reconciled. (This replaces
+an earlier reference to a "Foundation §34 UI scope" and "`DEVELOPMENT-OPERATING-SYSTEM.md` §13 override" — neither
+document defines those sections; that was stale manual-admission language from before the repo-as-control-plane
+model.) Shared files such as `neurosearch/web/index.html` are not permanently owned by either agent: inspect current
+Git state and any active changes touching the same file, compare the exact regions/functions each unit intends to
+modify, work from an isolated branch/worktree, preserve unrelated changes, and reconcile against current `main`
+before landing — do not overwrite or reset another agent's work. Nothing in this document has been built.
 
 The standard each rung is held to is `DESIGN.md`; the inspection procedure that verifies each rung is `AUDIT.md`
 (RE-AUDIT mode). This file does not restate either — it names sections. The current shell is the starting point
