@@ -34,7 +34,11 @@ as a pass. A later full suite run passed 1,345 tests in 171.90 seconds.
 A fresh read-only cohort was collected through the supported localhost API at 17:18 PT across all 13 visible
 projects (`evals/t1/cohort-20260912-1718.json`). Every report returned `measurement_pending` because no corpus-space
 attestation has been admitted; canonical and locator counts were preserved. No live write or re-embed was performed.
-The remaining gate is an explicitly admitted attestation measurement followed by a version-stamped semantic cohort.
+The attestation was then admitted through the authenticated measurement route at 17:19 PT: all 37,583 stored chunk
+vectors measured 1,536 dimensions with zero malformed rows. The resulting cohort is
+`evals/t1/cohort-20260912-1719.json`, with all 13 reports `ready_for_measurement`; derived-vector counts remain zero
+because no paid backfill was queued or run. The remaining gate is the version-stamped semantic cohort after an
+explicitly authorized derived-object backfill.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
