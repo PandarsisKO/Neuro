@@ -177,6 +177,10 @@ Read the current front-door material first, especially:
 
 Use historical mission documents to understand design intent and hard-won reasoning, not as proof that the current product still behaves that way.
 
+Read `APPLE-DESIGN-REFERENCES.md` when evaluating simplicity, interaction depth, progressive disclosure, interface
+writing, familiarity, and craft. Treat it as an external design lens, not as an audit authority or a mandate to
+imitate Apple aesthetics — the audit still evaluates Neuro against Neuro's own product goals and `DESIGN.md`.
+
 ### Hard rule: do not open the live SQLite database from an external session
 
 Use the running application's API, supported CLI paths, or a safe copied backup according to the repository's current rules.

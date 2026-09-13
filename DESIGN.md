@@ -37,6 +37,18 @@ Do not restructure a feature whose mission explicitly locks its behavior or layo
 
 `DESIGN.md` is the design source of truth. `AUDIT.md` checks whether the implementation follows it. The audit does not invent a new design language or override feature semantics. This file is `DESIGN.md` — capitalised, matching `CLAUDE.md`, `HANDOFF.md`, `AUDIT.md`. Do not create a second lowercase copy; the working disk is case-insensitive and Git will eventually track two names for one file.
 
+`APPLE-DESIGN-REFERENCES.md` contains first-party Apple design sources and Neuro-specific interpretation for
+progressive disclosure, simplicity, interaction depth, interface writing, familiarity, craft, and onboarding. It is
+supporting reference material, not a second design system. `DESIGN.md` remains authoritative for Neuro; where the
+two conflict, `DESIGN.md` wins until the conflict is deliberately reviewed.
+
+**What "Apple-like" means here, and what it does not.** It means principles: intention, agency, familiarity,
+simplicity that is not emptiness, concise contextual language, craft, restrained motion, predictable consequences,
+and delight through competence. It does **not** mean copying Apple's visual chrome, recreating macOS/iOS, adding
+glass effects or Apple-style marketing language, blindly adopting platform components, making every screen sparse,
+hiding functionality, increasing click depth, or replacing Neuro's own tokens. Neuro keeps its own identity and
+research-tool density.
+
 ## 3. Product UX rules
 
 1. **Meaning before metadata.** Show outcomes and user meaning before engine detail. Internal terminology belongs in advanced inspectors when plain language is available.
@@ -110,6 +122,16 @@ itself.**
     cleanliness — a visually sparse interface that makes the user hunt is not an improvement, and a visually dense
     interface that exposes every internal detail at once is not an improvement either. The target is calm at
     first glance, powerful on demand.
+11. **Simplicity is not minimalism.** An interface can look visually empty while still making the user hunt
+    through layers of controls — that is not simple, only sparse. Neuro may stay dense where density genuinely
+    helps understanding, comparison, or work (rule 9 above already says not to solve this with cards). Simplicity
+    means removing friction and cognitive burden, never removing useful capability.
+12. **Complexity appears just in time, not just in case.** Do not expose configuration, advanced controls,
+    internal research machinery, or an additional decision before it is actually useful to the task at hand.
+13. **Context should reduce copy, not the other way around.** Layout, state, hierarchy, and surrounding content
+    should do most of the explaining, so a label can stay short (`Review`, `Retry`, `Continue`) without becoming
+    vague — this is the same semantic test as rule 5 above, applied to brevity: a short label is good only when
+    context makes its consequence predictable, not because shorter is inherently better.
 
 ## 4. Shell and page hierarchy
 
@@ -280,6 +302,23 @@ Action before analysis. `Start here` and `This week` stay above deeper analysis,
 
 Operational tools may be denser and more technical. Factual state, tables, filters, and clear controls over decorative cards.
 
+### Project creation — the canonical progressive-disclosure exemplar
+
+This flow is the clearest test of section 3's progressive-disclosure rules and the reference other surfaces should
+be judged against, not a one-off exception.
+
+Ask for the minimum needed to begin — conceptually close to project name, goal, create — and start useful work
+immediately. This is a direction, not a frozen copy/layout spec; a rung that ships this still owns its own exact
+wording and field set.
+
+Behind that simple surface Neuro may do substantial work: checking the existing library, finding reusable research,
+finding related projects or sources, ranking material, identifying gaps, preparing the project. None of that
+orchestration needs to be exposed merely because it exists — show human-readable progress and results as they
+become useful, in the product's own language, never internal job names.
+
+The desired feeling: **the product prepared the room before the user walked into it.** That is a behavioral
+standard for what the flow accomplishes, not a request for decorative animation.
+
 ## 9. Content and microcopy
 
 Voice: plain, concise, specific, non-performative.
@@ -287,6 +326,10 @@ Voice: plain, concise, specific, non-performative.
 Prefer `3 sources still need review`, `This may change your financing plan`, `Search my existing research`, `No major evidence problems need your attention`.
 
 Avoid `Unlock powerful insights`, `AI-powered intelligence`, `Supercharge your research`, `Magic`, generic praise such as `Great question`, and engineering labels when a user outcome can be named.
+
+Project creation *feeling* surprisingly capable — because real, substantial work happens smoothly with
+little burden on the user — is a legitimate experience goal (see section 8's Project creation direction); it is
+never license to literally label a feature "magic," "magical," or "AI magic" in the interface.
 
 Use real product content while designing and testing. No lorem ipsum, generic fake analytics, or decorative AI-generated imagery in functional UI.
 
