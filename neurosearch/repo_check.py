@@ -76,10 +76,13 @@ def _duplicate_routes(root: Path, out: list[Finding]) -> None:
 
 
 def _root_hygiene(root: Path, out: list[Finding]) -> None:
+    # The audit launcher deliberately keeps its copied, read-only runtime data
+    # in this gitignored directory.  It is an allowed operational surface, not
+    # a source-tree appendage; the launcher remains responsible for isolation.
     states = sorted(root.glob("STATE-OF-THE-APP-*.md"), key=lambda p: p.name)
     newest_state = states[-1].name if states else None
     for path in sorted(root.iterdir()):
-        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "tools", "data", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", "SCREENSHOT AUDIT", ".venv", ".worktrees", "neurosearch.egg-info"}:
+        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "tools", "data", "data-audit", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", "SCREENSHOT AUDIT", ".venv", ".worktrees", "neurosearch.egg-info"}:
             continue
         out.append(Finding(path.name, "1", "unexpected-root-entry", "warning",
                            "root-level entry is not in the documented repository allowlist"))

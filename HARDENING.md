@@ -2181,3 +2181,9 @@ requires exact-span gold adjudication before downstream trust.
 
 Generic `Then`, `Other than`, and `one more` cue paths are hardened; evidence was refreshed read-only and remains pending
 gold review.
+
+## Audit runtime allowlist repair — 2026-09-13
+
+The documented gitignored `data-audit/` runtime is now allowed by repository hygiene. Its copied database remains
+separate from live `data/`; the allowlist change does not permit source-tree appendages. `repo-check` and the affected
+release test pass.

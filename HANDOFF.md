@@ -1348,3 +1348,11 @@ Continue manual gold review; persistence/T4 remain gated.
 Removed generic narrative `Then` procedures and bare comparative matches for `Other than`/`one more`; explicit
 imperatives/comparisons remain. Focused T3/review tests are 26 passed and evidence is refreshed. Gold adjudication remains
 pending.
+
+## Audit runtime allowlist repair — 2026-09-13
+
+Claude's audit instance is actively running from the checkout and keeps its copied, read-only database/runtime under
+`data-audit/` (gitignored). The existing repository hygiene checker treated that documented operational directory as an
+unexpected root entry, causing the release test to fail. Codex added `data-audit` to the hygiene allowlist with an
+explicit isolation comment. `repo-check` and the affected release test now pass. Claude's active uncommitted frontend,
+package, and UI-test changes were not staged or modified.

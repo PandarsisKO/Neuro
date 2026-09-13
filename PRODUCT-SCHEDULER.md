@@ -394,3 +394,7 @@ review remains the next gate.
 ## T3 narrative cue narrowing — 2026-09-13 16:20 PT
 
 Narrative procedure/comparative false positives are narrowed under focused tests; scheduler behavior is unchanged.
+
+## Audit runtime allowlist repair — 2026-09-13
+
+The hygiene checker now recognizes the documented `data-audit/` audit runtime; scheduler behavior is unchanged.
