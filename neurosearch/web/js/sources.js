@@ -922,7 +922,7 @@ globalThis.loadDiscoveries = async function loadDiscoveries(keepMsg = false) {
         ${searches.length ? `<button class="small primary" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true, this)">🔍 Search YouTube</button>` : ''}
         ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length && !dead ? `<button class="small primary" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false, this)">＋ Add page</button>` : ''}
         ${dead && lc.suggested_url ? `<button class="small primary" title="${esc(lc.suggested_why || '')}" onclick="discAdd(${d.id}, ${JSON.stringify(lc.suggested_url).replace(/"/g, '&quot;')}, false, this)">＋ Add the site instead</button>` : ''}
-        ${d.status !== 'added' ? `<button class="small ghost" onclick="discStatus(${d.id},'dismissed')">✕</button>` : ''}
+        ${d.status !== 'added' ? `<button class="small ghost" title="Dismiss" aria-label="Dismiss" onclick="discStatus(${d.id},'dismissed')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}
       </div>
     </div>
     ${(d.start_with || []).length || d.url ? `<div class="dlinks">${(d.start_with || []).map(v => v.url ? `<a href="${esc(v.url)}" target="_blank">▶ ${esc(v.title)}</a>` : `<span>▶ ${esc(v.title)}</span>`).join(' · ')}${d.url ? `${(d.start_with || []).length ? ' · ' : ''}<a href="${esc(d.url)}" target="_blank">open ${KIND[d.kind] ? KIND[d.kind].replace(/^\S+ /, '') : 'page'} ↗</a>` : ''}</div>` : ''}
