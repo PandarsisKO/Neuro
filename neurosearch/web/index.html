@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.61">
+<meta name="neurosearch-ui-version" content="0.63.62">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -55,7 +55,7 @@
       <div id="askbar"><div class="inner">
         <div class="grow">
           <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
-          <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb"> also search the web</label>
+          <div class="row" style="margin-top:6px;gap:14px"><label title="May use your model and web-search budget"><input type="checkbox" id="useWeb"> also search the web</label>
             <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple hidden onchange="attachFiles(this.files)"></label>
             <span id="qAttach"></span><span class="muted" id="askStatus"></span></div>
         </div>
