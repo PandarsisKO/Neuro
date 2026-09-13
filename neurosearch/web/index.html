@@ -328,12 +328,12 @@ select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
         <div class="title" id="chatTitle">New chat</div>
         <button class="small ghost" onclick="renameChat()">Rename</button>
         <div style="position:relative"><button class="small ghost" title="Retell this whole chat as one readable piece — for someone who wants to know what came out of it, not where it came from" onclick="shareChatMenu(this)">↗ Share this chat ▾</button></div>
-        <span class="muted" id="shareChatMsg" style="font-size:12px"></span>
+        <span class="muted text-xs" id="shareChatMsg"></span>
         <button class="small ghost danger" onclick="deleteChat()">Delete</button>
       </div>
       <div id="chat"></div>
       <div id="askbar"><div class="inner">
-        <div style="flex:1">
+        <div class="grow">
           <textarea id="q" placeholder="Ask this project… (paste a link to add it as a source, or attach a document)" rows="1"></textarea>
           <div class="row" style="margin-top:6px;gap:14px"><label><input type="checkbox" id="useWeb"> also search the web</label>
             <label class="muted" style="cursor:pointer" title="PDF, DOCX, EPUB, TXT, MD, XLSX, CSV and images (screenshots are read with OCR) are read right away and used in this answer; audio/video is transcribed in the background">📎 attach a document or screenshot<input type="file" id="qFile" multiple style="display:none" onchange="attachFiles(this.files)"></label>
@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.55';
+const UI_VERSION = '0.63.56';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1000,7 +1000,7 @@ function addMsg(role, text, cites = [], extra = {}) {
     let h = renderAnswer(text, cites);
     if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>` + (c.source_id ? ` <a href="#" class="chip" title="See the Claims resting on this source" onclick="whyThisAnswer('${esc(c.source_id)}','${esc(c.timestamp || '')}');return false">🧠 why</a>` : '')).join('') + `</div>`;
     const val = extra.validation || extra.meta || {};
-    if (val.warning) h += `<div class="web" style="color:var(--warn)">⚠ ${esc(val.warning)}</div>`;
+    if (val.warning) h += `<div class="web status-warn">⚠ ${esc(val.warning)}</div>`;
     else if (val.repaired) h += `<div class="web muted">✓ citations were corrected after a validation check</div>`;
     if (extra.web_sources?.length) h += `<div class="web">Web: ` + extra.web_sources.map(w => `<a href="${esc(w.url)}" target="_blank">${esc(w.title)}</a>`).join(' · ') + `</div>`;
     for (const a of extra.actions || []) {
@@ -1022,7 +1022,7 @@ function addMsg(role, text, cites = [], extra = {}) {
     const warns = [];
     if (val.warning) warns.push(val.warning);
     for (const a of extra.actions || []) if (a.type === 'gap_noted') warns.push('Research gap recorded: this answer identified something the sources do not yet cover.');
-    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied" style="font-size:12px"></span></div>`;
+    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied text-xs"></span></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);
   }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });
