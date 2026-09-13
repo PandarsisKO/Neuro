@@ -11,6 +11,11 @@ The active program is Transcript Intelligence, admitted after the completed Foun
 expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations
 of a current mission are historical evidence only.
 
+Live-project hygiene was completed on 2026-09-12 18:51 PT through the authenticated API: ten synthetic `G2`/`G2
+chat`/`G2 api`/`Article routing` fixtures were deleted. The three remaining projects are the two protected user
+projects and the Claude/chatGPT design project. See `docs/LIVE-PROJECT-CLEANUP-2026-09-12.md`; this cleanup did not
+touch the database directly or alter the T1 spend boundary.
+
 Current execution state: Foundation 0.63.43 is release-checked at `bf8d595`; the active T1 slice is release-checked
 on the current T1 commit chain. R7 adds project-relative embedding
 comparison to R6 scheduling and Findings reading: redundant material receives a bounded priority reduction, while

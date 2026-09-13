@@ -1749,3 +1749,117 @@ p50, 9.198 s p90, 0/15 valid. Qwen3 14B **REJECT**: 10.974 s p50, 11.727 s p90, 
 **REJECT**: 3.154 s p50, 3.307 s p90, 15/15 valid. The adopted model is a candidate for future routing only; no
 production classifier or provider path changed. R9(c), the real 15k-token findings/claims benchmark with separate
 prefill and generation timing plus valid `findings`/`claims` JSON, remains open.
+
+
+## Design system — frozen tokens and drift baseline (D0, 2026-09-12)
+
+`DESIGN.md` and `AUDIT.md` were admitted as the design source of truth and the inspection contract. Rung D0 of
+`DESIGN-MISSION.md` fixed both instruments before either was used. No product code changed.
+
+**Two current accessibility defects, measured.** The live token set fails WCAG 2.1 AA for normal text on the two
+status colours it uses most:
+
+| Token | Current value | Contrast on `--panel` | AA needs | Verdict |
+|---|---|---:|---:|---|
+| `--ok` | `#1a9d63` | 3.47:1 | 4.5:1 | **FAIL** |
+| `--warn` | `#b7791f` | 3.64:1 | 4.5:1 | **FAIL** |
+| `--bad` | `#d2413a` | 4.61:1 | 4.5:1 | marginal pass |
+| `--text` / `--muted` / `--accent` | — | 16.51 / 5.62 / 5.52 | 4.5:1 | pass |
+
+Green and amber status text — the colours that carry "healthy" and "needs attention" — have been below AA for the
+life of the product. This is recorded as a defect found by measurement, not as a styling preference.
+
+**The frozen set.** Kyle's proposed palette was validated pair by pair in both themes; five values failed and were
+corrected by solving for the contrast floor while preserving hue and saturation. Token *names* extend the existing
+scheme (no rename, so no call-site churn); token *values* are Kyle's synthesis with the five corrections.
+
+| Token | Light | Dark | Note |
+|---|---|---|---|
+| `--bg` / `--panel` / `--panel2` | `#F6F7F9` / `#FFFFFF` / `#F1F3F6` | `#0F1115` / `#171A21` / `#1D212B` | unchanged in spirit from the live set |
+| `--panel-strong` | `#E9EDF2` | `#232834` | new |
+| `--text` | `#18212B` | `#E8E8EA` | 16.26 / 14.23 |
+| `--muted` | `#515B66` | `#9AA3B2` | **corrected** from `#5F6B78` (5.44 → 6.91) to open the ramp |
+| `--text-faint` | `#65707D` | `#828B9A` | **corrected** from `#87929E` (3.16 FAIL → 5.04) |
+| `--line` | `#DDE3EA` | `#262B36` | separation only; no contrast requirement (1.4.11 exempts non-identifying borders) |
+| `--line-strong` | `#7A8EA5` | `#5E6B86` | **corrected** from `#C5CED8` (1.59 → 3.37); this is the *control* border, where 3:1 is required |
+| `--accent` / `--accent-hover` / `--accent-soft` | `#3156D3` / `#2747B8` / `#EEF2FF` | `#5F88FF` / `#7D9DFF` / `#141C34` | 6.17 on surface |
+| `--accent-text` | `#FFFFFF` | `#0F1115` | **corrected**: a bright dark-theme fill needs a dark label (white on `#5F88FF` was 3.25) |
+| `--ok` / `--ok-soft` | `#187A5A` / `#EAF7F1` | `#3ECF8E` / `#143425` | fixes the 3.47 defect above → 5.29 |
+| `--warn` / `--warn-soft` | `#946200` / `#FFF6D8` | `#F5B642` / `#342814` | fixes the 3.64 defect above → 5.24 |
+| `--bad` / `--bad-soft` | `#B42318` / `#FEF0EE` | `#FF6B6B` / `#341414` | 6.57 |
+| `--focus` | `#6184FF` | `#6E8EFF` | **corrected** from `#6E8EFF` (2.81 on canvas FAIL → 3.13) |
+
+Every text pair meets 4.5:1 on `--bg`, `--panel` and `--panel2`; every control border and focus ring meets 3:1;
+every `-soft` background carries its own colour's text at ≥4.5:1; every filled button label meets 4.5:1 in both
+themes. Focus is specified as a two-part ring (`0 0 0 2px var(--panel), 0 0 0 4px var(--focus)`) because a
+single-colour ring measures 1.84:1 against the primary-button fill and would be invisible exactly where it matters.
+
+Changing any of these values requires re-running the validation and replacing this table. The method is plain
+WCAG 2.1 relative luminance; the decision it encodes is that a status colour nobody can read is not a status.
+
+**Drift baseline, commit `19d858b`; working-tree correction recorded 2026-09-12.** The pre-D0 measurement had 432
+inline style attributes. Claude's currently preserved, uncommitted UI work has already reduced that count to 430; the
+ratchet therefore uses 430 as its current ceiling. The remaining values below are the measured pre-D0 ceilings:
+
+| Measure | Baseline | `DESIGN.md` asks for |
+|---|---:|---|
+| inline `style="` attributes | 430 (432 pre-D0; 430 current worktree) | none in new UI |
+| lines of CSS | 259 | — |
+| colour literals outside the token blocks (CSS / JS) | 24 / 1 | none |
+| distinct `font-size` values | 16 | 6 |
+| distinct `border-radius` values | 11 | 4 (+50% for circles) |
+| buttons whose only glyph is an emoji | 8 | 0 |
+| colour tokens missing a dark value | 0 | 0 |
+
+Roughly four-fifths of this UI's styling lives in inline attributes rather than the stylesheet, which is the
+structural reason a correct token and an inconsistent screen can coexist. `tests/test_s50_design_drift.py` holds
+these as ceilings: a count may fall, never rise. The ratchet is lowered when a surface is cleaned, in the same
+commit; raising one requires a decision recorded here.
+
+Not claimed: that the palette has been seen on screen. These are computed contrast ratios, not a rendered review.
+The first visual verification happens in rung D1 (audit) and the first implementation in D2.
+
+## R8 reversal — mmap off after a sleep/wake corruption report (2026-09-12)
+
+`PRAGMA mmap_size` is back to 0. R8 (0.63.36) enabled a 1 GB mmap ceiling alongside the cache, temp-store and
+index work; on 2026-09-12 the live database reported `fts5: corruption found reading blob 824633720836 from table
+"chunks_fts"` three times — 13:43, 14:44, 15:44 — always the same blob id, always with 0 foreign-key violations.
+
+The log shows no activity at all between 09:32 and 13:43: four hourly backups missed, no line written. The Mac was
+asleep, and the first integrity check after it woke is the one that failed. Before that gap the app had run
+continuously all night with every hourly check passing. A restart cleared it. Every backup verified clean
+throughout, and `verify_database` opens its own read-only connection with no mmap set.
+
+Read together that is a stale memory-mapped page surviving sleep/wake rather than damage on disk: the b-tree is
+intact, one specific page reads as garbage, a fresh process maps it correctly. The consequence is not a noisy log
+— a page that can be served to `quick_check` can be served to a query, so search, findings and chat citations
+could read a stale page silently.
+
+Two alternatives were considered and rejected: the unclean worker drains at 08:41 and 08:48 (Codex's file saves
+triggering uvicorn reloads while local-AI workers were mid-job) are ruled out because the 08:48:35 integrity check
+passed after them; and WAL size is not implicated, since the WAL is a file rather than a mapping.
+
+**Causation is not proven.** R8's measured win was the composite index (7.87 ms -> 0.43 ms); mmap was bundled into
+that rung and never isolated, so nothing measured is being given up. The test is observational: if corruption
+recurs across a sleep with mmap at 0, this hypothesis is wrong and the line costs nothing to restore. Watch the
+hourly integrity line in Health after the next few sleeps.
+
+## Test isolation gap — focused runs wrote to the live database (2026-09-13)
+
+Ten projects named `G2`, `G2 api`, `G2 chat` and `Article routing` appeared in the live database at 16:40:44 and
+16:49:48 PT on 2026-09-12: the two focused runs of `tests/test_k3_resources.py`. That module — and 78 others — set
+the data directory with `os.environ.setdefault("NEUROSEARCH_DATA_DIR", tmp)`. Kyle's `.env` sets that variable, so
+`setdefault` loses and a module run on its own resolves to production. The full suite was only ever safe because
+`test_core.py` hard-sets the variable and happens to import first.
+
+The consequence was not only junk rows. The tests queued `ingest_url`, `explore`, `discover` and `suggest_findings`
+jobs into the **live** queue, and the live server executed them with real providers: OpenAI embedding calls, Claude
+Code calls, a YouTube fetch of `@BenKelly`, and one `discover` job that requested sonnet-4-6 and was answered by
+haiku-4-5 — a model mismatch on production. The test process had `FAKE_AI=1`; the server that ran its jobs did
+not. 0.63.38's "test ownership" fix covered the shared `client` fixture and could not cover this path.
+
+Fix: `tests/conftest.py` now hard-sets `NEUROSEARCH_DATA_DIR` to a fresh temp dir before any module imports —
+conftest is the one place that runs first for every invocation. `tests/test_s51_test_isolation.py` asserts the
+hard-set exists, that the resolved data dir is never the repo's `data/`, and that `settings.data_dir` agrees; it also
+holds the `setdefault` count at 78 so it only ever goes down. The ten projects were **not** deleted by the agent;
+that is Kyle's action from the UI.

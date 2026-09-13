@@ -23,10 +23,24 @@ from .config import settings
 FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
 
 # R8 storage hygiene, measured 2026-09-11 on a copied 630 MB verified backup. SQLite's default cache was only
-# 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac;
-# mmap pages are shared by the OS and a 1 GB ceiling covers the current database with room to grow.
+# 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac.
+#
+# 0.63.44 — mmap is OFF again, and this is a deliberate reversal of one part of R8. On 2026-09-12 the Mac slept
+# from 09:32 to 13:43 (four missed hourly backups, no log line in between) and the FIRST integrity check after it
+# woke reported `fts5: corruption found reading blob 824633720836 from table "chunks_fts"`. It repeated at 14:44
+# and 15:44 with the SAME blob id, always with 0 foreign-key violations, and was gone after a restart. Every
+# hourly backup verified clean throughout — `verify_database` opens its own read-only connection, which never had
+# mmap set. That is the signature of a stale memory-mapped page surviving sleep/wake, not of damage on disk: the
+# b-tree is intact, one specific mapped page reads as garbage, and a fresh process maps it correctly.
+#
+# It matters beyond a noisy log. A page that can be served to `quick_check` can be served to a query, so search —
+# and therefore findings and chat citations — could read a stale page and nobody would know. R8's measured win was
+# the composite index (7.87 ms -> 0.43 ms); mmap was bundled into that rung and never isolated, so there is no
+# recorded benefit being given up here. Causation is not proven: the test is whether corruption recurs across a
+# sleep with this at 0. If it does, this hypothesis is wrong and the line costs nothing to restore.
+# (WAL mode still memory-maps the -shm file regardless of this setting; only table-page reads change.)
 SQLITE_CACHE_KIB = 64 * 1024
-SQLITE_MMAP_BYTES = 1024 * 1024 * 1024
+SQLITE_MMAP_BYTES = 0
 ANALYZE_INTERVAL_S = 7 * 24 * 3600
 
 SCHEMA = """
@@ -896,6 +910,17 @@ MIGRATIONS = [
     # research policy. Keep the additive columns so existing databases and downgrade paths remain compatible.
     ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
     ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
+    # T1: versioned derived vectors. Legacy bare blobs remain unreadable for similarity until these fields are set.
+    ("project_notes", "embedding_provider", "ALTER TABLE project_notes ADD COLUMN embedding_provider TEXT"),
+    ("project_notes", "embedding_model", "ALTER TABLE project_notes ADD COLUMN embedding_model TEXT"),
+    ("project_notes", "embedding_dimensions", "ALTER TABLE project_notes ADD COLUMN embedding_dimensions INTEGER"),
+    ("project_notes", "embedding_input_hash", "ALTER TABLE project_notes ADD COLUMN embedding_input_hash TEXT"),
+    ("project_notes", "embedding_version", "ALTER TABLE project_notes ADD COLUMN embedding_version TEXT"),
+    ("project_claims", "embedding_provider", "ALTER TABLE project_claims ADD COLUMN embedding_provider TEXT"),
+    ("project_claims", "embedding_model", "ALTER TABLE project_claims ADD COLUMN embedding_model TEXT"),
+    ("project_claims", "embedding_dimensions", "ALTER TABLE project_claims ADD COLUMN embedding_dimensions INTEGER"),
+    ("project_claims", "embedding_input_hash", "ALTER TABLE project_claims ADD COLUMN embedding_input_hash TEXT"),
+    ("project_claims", "embedding_version", "ALTER TABLE project_claims ADD COLUMN embedding_version TEXT"),
     # 0.60.5: which MATCHER produced this suggestion. 0.60.2 changed how library recall decides relevance, and the
     # rows already stored were produced by the old one — so Kyle's screen still offered an Airbnb video as a strong
     # match for AI UI/UX work after the fix shipped. A stored judgement has to know what made it.
@@ -1444,6 +1469,59 @@ def chunks_missing_embeddings(limit: int = 500, source_id: str | None = None) ->
 def set_embeddings(pairs: list[tuple[int, np.ndarray]]) -> None:
     with tx() as conn:
         conn.executemany("UPDATE chunks SET embedding=? WHERE id=?", [(_pack(e), cid) for cid, e in pairs])
+
+
+_T1_DERIVED_TABLES = {
+    "project_notes": ("approved", "suggested"),
+    "project_claims": ("proposed", "accepted"),
+}
+
+
+def set_derived_embedding(table: str, object_id: str, vector: np.ndarray, *, provider: str, model: str,
+                          version: str, input_hash: str) -> None:
+    """Write one versioned T1 vector; callers cannot accidentally write an unlabelled space."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    v = np.asarray(vector, dtype=np.float32).reshape(-1)
+    if not len(v) or not np.isfinite(v).all():
+        raise ValueError("derived vector must be finite and non-empty")
+    with tx() as conn:
+        conn.execute(f"""UPDATE {table} SET embedding=?, embedding_provider=?, embedding_model=?,
+                       embedding_dimensions=?, embedding_input_hash=?, embedding_version=? WHERE id=?""",
+                     (_pack(v), provider, model, int(v.size), input_hash, version, object_id))
+
+
+def invalidate_derived_embedding(table: str, object_id: str) -> None:
+    """Clear a derived vector and all identity fields when its source content changes."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    with tx() as conn:
+        conn.execute(f"""UPDATE {table} SET embedding=NULL, embedding_provider=NULL, embedding_model=NULL,
+                       embedding_dimensions=NULL, embedding_input_hash=NULL, embedding_version=NULL WHERE id=?""", (object_id,))
+
+
+def load_versioned_derived_embeddings(table: str, project_id: str, *, provider: str, model: str,
+                                      version: str, dimensions: int) -> list[dict[str, Any]]:
+    """Return only canonical vectors from the requested space; legacy or corrupt rows fail open."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    statuses = _T1_DERIVED_TABLES[table]
+    qs = ",".join("?" for _ in statuses)
+    rows = connect().execute(f"""SELECT id, project_id, embedding, embedding_input_hash, embedding_dimensions
+        FROM {table} WHERE project_id=? AND status IN ({qs}) AND embedding IS NOT NULL
+          AND embedding_provider=? AND embedding_model=? AND embedding_version=? AND embedding_dimensions=?""",
+        (project_id, *statuses, provider, model, version, dimensions)).fetchall()
+    out = []
+    for row in rows:
+        try:
+            vec = _unpack(row["embedding"])
+            if vec.size != dimensions or not np.isfinite(vec).all():
+                continue
+        except (TypeError, ValueError):
+            continue
+        out.append({"id": row["id"], "project_id": row["project_id"], "embedding": vec,
+                    "input_hash": row["embedding_input_hash"], "dimensions": row["embedding_dimensions"]})
+    return out
 
 
 def _pack(vec: Any) -> bytes | None:
