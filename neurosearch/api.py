@@ -3049,10 +3049,14 @@ def api_list_notes(project_id: str, status: str = "reserve", source_id: str | No
 
 
 @app.get("/api/projects/{project_id}/transcript/coverage", dependencies=[Depends(require_auth)])
-def api_t1_coverage(project_id: str) -> dict[str, Any]:
-    """T1 read-only coverage measurement; never queues work or invents semantic coverage."""
+def api_t1_coverage(project_id: str, detail: str = "summary", limit: int = 200, offset: int = 0) -> dict[str, Any]:
+    """T1/T2 read-only coverage; ``detail=chunks`` adds the derived seven-signal page."""
     if not db.get_project(project_id):
         raise HTTPException(404)
+    if detail not in ("summary", "chunks") or limit < 0 or limit > 5000 or offset < 0:
+        raise HTTPException(400, "detail must be summary or chunks; limit must be 0-5000 and offset non-negative")
+    if detail == "chunks":
+        return t1.coverage_view(project_id, limit=limit, offset=offset)
     return t1.coverage_report(project_id)
 
 
