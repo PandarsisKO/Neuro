@@ -596,3 +596,16 @@ check because the current environment has no reliable browser repaint path; no v
 
 Before delivery, inspect `main` HEAD again, review the generated module diff for accidental declaration rewrites,
 run the full release ritual from the isolated checkout, and commit this as the frontend decomposition milestone.
+
+## Frontend split — delivered — 2026-09-13
+
+The decomposition milestone is delivered on `main` at `5f667a1` (rebased onto concurrent docs commit `d14e13d`).
+Post-merge full pytest passed **1,363 tests** with one existing Starlette deprecation warning. The commit-bound
+`release-check --no-pytest` passed every deterministic proof, including repository hygiene, frontend integrity,
+all Tier 1/retrieval/cache/economic/backup gates, and parsing all 10 JavaScript modules; artifact:
+`evals/release/release-check-0.63.58-5f667a1-20260913-115812.json`.
+
+The requested initial direction checkpoint is therefore complete as an informational milestone, and the full
+decomposition is complete in the same structural pass. Runtime visual repaint verification remains the only
+environmental limitation recorded by the existing audit path; no CSS values, markup content, or interaction logic
+were intentionally changed.
