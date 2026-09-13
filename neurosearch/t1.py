@@ -9,6 +9,7 @@ from . import db
 from .config import settings
 
 VECTOR_VERSION = "t1-derived-v1"
+CORPUS_ATTESTATION_KEY = "t1:corpus-space-attestation"
 
 
 def input_hash(*parts: Any) -> str:
@@ -45,7 +46,39 @@ def coverage_report(project_id: str) -> dict[str, Any]:
     findings = conn.execute("SELECT COUNT(*) FROM project_notes WHERE project_id=? AND status IN ('approved','suggested')", (project_id,)).fetchone()[0]
     claim_locators = conn.execute("SELECT COUNT(*) FROM claim_evidence ce JOIN project_claims pc ON pc.id=ce.claim_id WHERE pc.project_id=? AND pc.status IN ('proposed','accepted')", (project_id,)).fetchone()[0]
     chunk_count = conn.execute("SELECT COUNT(*) FROM chunks c JOIN project_sources ps ON ps.source_id=c.source_id WHERE ps.project_id=? AND ps.excluded=0", (project_id,)).fetchone()[0]
-    return {"project_id": project_id, "status": "measurement_pending", "chunks": chunk_count,
+    attestation = get_chunk_space_attestation()
+    return {"project_id": project_id, "status": "ready_for_measurement" if attestation else "measurement_pending", "chunks": chunk_count,
             "canonical_claims": claims, "canonical_findings": findings,
             "claim_locator_rows": claim_locators, "semantic_distributions": None,
-            "reason": "corpus-space attestation required before similarity comparisons"}
+            "corpus_space": attestation,
+            "reason": None if attestation else "corpus-space attestation required before similarity comparisons"}
+
+
+def attest_chunk_space(*, provider: str, model: str, dimensions: int, preparation_tag: str) -> dict[str, Any]:
+    """Measure and persist the legacy chunk-vector space; mixed or malformed blobs fail closed."""
+    if dimensions <= 0:
+        raise ValueError("dimensions must be positive")
+    rows = db.connect().execute("SELECT embedding FROM chunks WHERE embedding IS NOT NULL").fetchall()
+    bad = 0
+    for row in rows:
+        try:
+            if db._unpack(row["embedding"]).size != dimensions:
+                bad += 1
+        except (TypeError, ValueError):
+            bad += 1
+    attestation = {"provider": provider, "model": model, "dimensions": dimensions,
+                   "count": len(rows), "bad_dimensions": bad, "preparation_tag": preparation_tag,
+                   "verified": bool(rows) and bad == 0}
+    db.kv_set(CORPUS_ATTESTATION_KEY, json.dumps(attestation, sort_keys=True))
+    return attestation
+
+
+def get_chunk_space_attestation() -> dict[str, Any] | None:
+    raw = db.kv_get(CORPUS_ATTESTATION_KEY)
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) and value.get("verified") else None

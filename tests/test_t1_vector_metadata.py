@@ -82,3 +82,23 @@ def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
     report = t1.coverage_report(project_id)
     assert report["status"] == "measurement_pending"
     assert report["semantic_distributions"] is None
+    assert report["corpus_space"] is None
+
+
+def test_t1_chunk_space_attestation_measures_and_fails_mixed_space(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 attest", "test")["id"]
+    source_id = db.upsert_source(platform="manual", external_id="attest", url="manual://attest", title="attest")['id']
+    db.connect().execute("INSERT INTO project_sources (project_id, source_id) VALUES (?,?)", (project_id, source_id))
+    db.connect().execute("INSERT INTO chunks (source_id, idx, start, end, text, embedding) VALUES (?,?,?,?,?,?)",
+                         (source_id, 0, 0, 1, "ok", np.array([1., 0.], dtype=np.float32).tobytes()))
+    db.connect().execute("INSERT INTO chunks (source_id, idx, start, end, text, embedding) VALUES (?,?,?,?,?,?)",
+                         (source_id, 1, 1, 2, "bad", np.array([1., 0., 0.], dtype=np.float32).tobytes()))
+    db.connect().commit()
+    att = t1.attest_chunk_space(provider="openai", model="text-embedding-3-small", dimensions=2, preparation_tag="t1-test")
+    assert att["count"] == 2 and att["bad_dimensions"] == 1 and not att["verified"]
+    assert t1.get_chunk_space_attestation() is None
+    db.connect().execute("DELETE FROM chunks WHERE idx=1 AND source_id=?", (source_id,))
+    db.connect().commit()
+    att = t1.attest_chunk_space(provider="openai", model="text-embedding-3-small", dimensions=2, preparation_tag="t1-test")
+    assert att["verified"] and t1.get_chunk_space_attestation()["dimensions"] == 2
