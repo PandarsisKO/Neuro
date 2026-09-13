@@ -2147,3 +2147,8 @@ refreshed read-only and remains non-authoritative pending gold labels.
 
 Malformed-comma and decimal-period protections are green under 1,386 tests and release-check at `763c8eb`. The pending
 60-row queue still requires exact-span gold adjudication before downstream trust.
+
+## T3 review scoring infrastructure — 2026-09-13 15:35 PT
+
+Manifest validation now enforces exact offsets, raw text, ordering, duplicates, and pending-row exclusion from metrics.
+The helper is pure and cannot touch live data.

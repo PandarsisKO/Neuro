@@ -361,3 +361,8 @@ gold review remains required.
 
 Numeric and decimal sentence boundaries are release-checked at `763c8eb`; scheduler behavior is unchanged. Manual gold
 review remains the next gate.
+
+## T3 review scoring infrastructure — 2026-09-13 15:35 PT
+
+Pure review validation/scoring helpers are available for the pending queue; scheduler behavior and downstream trust are
+unchanged.

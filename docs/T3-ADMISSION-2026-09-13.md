@@ -177,3 +177,10 @@ Malformed-comma and decimal-period protections are committed at `763c8eb`; focus
 1,386 passed, and `repo-check` plus commit-bound release-check pass. Artifact:
 `evals/release/release-check-0.63.65-763c8eb-20260913-151330.json`. The seeded queue remains pending manual gold
 adjudication; no persistence, selector, provider, queue, or T4 work is admitted.
+
+## T3 review scoring infrastructure — 2026-09-13 15:35 PT
+
+Added pure `neurosearch/t3_review.py` helpers to validate exact record structure and score labeled rows by kind. The
+validator checks required fields, raw-text/offset agreement, half-open bounds, duplicate keys, and stable ordering;
+the scorer requires exact kind, normalized value, and offsets, and keeps `gold: null` rows out of metrics. Five focused
+review tests plus the existing T3 suites pass (23 total). The helper has no database, provider, queue, UI, or write path.

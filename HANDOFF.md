@@ -1308,3 +1308,9 @@ artifacts are refreshed. Gold adjudication remains pending before persistence or
 T3 numeric boundary hardening is committed at `763c8eb`; full pytest 1,386 passed, focused T3 18 passed, and release
 check is green with artifact `evals/release/release-check-0.63.65-763c8eb-20260913-151330.json`. Continue manual gold
 adjudication of the 60-row queue; persistence/T4 remain gated.
+
+## T3 review scoring infrastructure — 2026-09-13 15:35 PT
+
+`neurosearch/t3_review.py` now provides pure manifest validation and exact span scoring; 23 focused T3/extraction tests
+pass. Pending rows remain excluded from metrics, and no DB/provider/queue/UI path was added. Use this helper when
+adjudicating the 60-row queue.
