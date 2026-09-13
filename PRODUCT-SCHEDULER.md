@@ -198,3 +198,12 @@ or commit-less.
 
 F2's behavioral browser gate remains open and separately tracked. W1 is no longer investigation-only — step 1 has
 landed; remaining W1 scope (Findings/Plan button-role and label consistency) is still open.
+
+## CODEX RELIABILITY CHECKPOINT — closeout — 2026-09-13 13:51 PT
+
+The bounded backup-integrity rung is complete. `verify_database()` now requires full SQLite `integrity_check`,
+including FTS5 virtual-table validation. Focused tests passed, full pytest passed **1,364**, and the deterministic
+release gate passed on the current `0.63.62 @ ec6b5e7` tree with artifact
+`evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. No additional Codex implementation is admitted
+until a new backend/reliability trigger appears; Claude's W1 step 1 is landed and its remaining design/browser gates
+remain the active shared boundary.

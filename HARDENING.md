@@ -1998,3 +1998,11 @@ legacy migration fixtures also returned `integrity_check: ok`.
 is invisible to the check. The read remains confined to standalone backup files; it never opens the live database or
 its WAL/`-shm` sidecars. Focused backup, FTS5 recovery, and storage-hygiene tests pass (5, one existing Starlette
 warning). The full suite and commit-bound release gate remain required before this rung closes.
+
+## Backup FTS5 integrity verification — closeout — 2026-09-13 13:51 PT
+
+The full backup-verification change is closed at `de4697e`, carried into Claude's current `0.63.62 @ ec6b5e7`
+tree. Full pytest passed **1,364 tests** with one existing Starlette deprecation warning. The commit-bound
+`release-check --no-pytest` passed all deterministic gates at `ec6b5e7`, including backup/restore; artifact:
+`evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. Verified backups now include the full
+`integrity: "ok"` result, so the FTS5 virtual-table check is part of the product's verification contract.

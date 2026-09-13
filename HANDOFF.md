@@ -986,3 +986,11 @@ work there is closer to the "one button treatment per role" / outcome-label rule
 disclosure). `ladder.md`'s Human gate re-scores are not done (Sources/Chats/Findings/Plan "What that
 will do" ratings) — those need a live or audit-instance click-through, same limitation as F2's open
 gate.
+
+## Codex reliability follow-up — full backup integrity walk — closeout — 2026-09-13 13:51 PT
+
+Closed at `de4697e` and validated on the current Claude-merged tree `ec6b5e7` (`0.63.62`). Full pytest passed
+**1,364 tests** with one existing Starlette deprecation warning. The commit-bound release gate passed every
+check, including backup/restore, at `evals/release/release-check-0.63.62-ec6b5e7-20260913-134844.json`. The full
+SQLite integrity walk is now required before a backup is recorded as verified. No live database or unsettled batch
+was mutated.
