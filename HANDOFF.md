@@ -751,3 +751,56 @@ The next isolation batch removed the same redundant import-time override from ei
 Full pytest passes **1,364 tests** with one existing Starlette deprecation warning. The commit-bound release gate
 passes at `0.63.60 @ d9e2914`; artifact:
 `evals/release/release-check-0.63.60-d9e2914-20260913-125804.json`.
+
+## Design ladder — Rung F2 landed: shared loading/empty/failed list-state primitive (fixes H-2)
+
+Findings, Sources, and Chat history each rendered blank for 5-8s on first paint with no loading
+indicator (`DESIGN.md` §11 requires skeletons on first paint), and had inconsistent or entirely
+absent failure handling: `loadWorkbench` (Findings) silently swallowed fetch errors, `loadSources`
+had no try/catch at all (an error would throw uncaught), and `selectChat` (Chats) blanked the panel
+to `''` before the fetch even started, with no failure branch either.
+
+Added one shared three-state primitive, `globalThis.listState(kind, opts)` in `js/utils.js` —
+`loading`, `empty`, `failed` — styled from F1's frozen tokens (reuses the existing `.empty` class
+and `.spin` animation; adds a small `.listfail` modifier for the failure color). Wired all three
+surfaces to it:
+
+- `loadWorkbench` (`js/research.js`): `FB` gets a `loaded` flag so the loading skeleton shows only
+  on first paint, never on a filter change; failure now shows an explicit retry.
+- `loadSources` (`js/sources.js`): `SRCG` gets the same `loaded` flag; the fetch is now wrapped in
+  try/catch (previously unguarded — a network error would have thrown).
+- `selectChat` (`js/chats.js`): shows the loading state instead of blanking the panel to `''`;
+  failure shows a retry. `addMsg()`'s existing `.empty`-removal logic clears the loading placeholder
+  for free on success, so no extra reset line was needed.
+
+Scope matches `ladder.md`'s Rung F2 non-goal boundary exactly: first paint only, not general
+poll/refresh behavior — `DESIGN.md` §7 governs that separately ("a poll never replaces rendered
+content with a spinner or skeleton"). The one exception is the failure branch, which applies to
+every fetch on these three functions (not just first paint), per §7's "if a poll fails, say the
+view is stale; do not silently show old numbers as current, and do not blank them" — previously
+two of the three surfaces did neither.
+
+`UI_VERSION` bumped to `0.63.61` (4-way sync: `neurosearch/__init__.py`, `pyproject.toml`,
+`index.html`'s meta tag, `js/state.js`). No `MAX_INLINE_STYLE_ATTRS` change — this item doesn't
+touch inline `style=` attribute counts. `node --check` passes on all four touched JS modules
+(`utils.js`, `research.js`, `sources.js`, `chats.js`). Targeted suites
+(`test_s50_design_drift`, `test_s44_frontend_integrity`, `test_s5_ui_syntax`,
+`test_n8_research_shell`, `test_n9_source_drawer`, `test_o1_accelerate`): 35 passed. Full suite
+showed 15 pre-existing failures unrelated to this change — confirmed by reproducing two of them
+in isolation against unmodified `main` before this branch existed.
+
+Landed via worktree `.worktrees/f2-step1-list-state` → commit `bc1aba1` → merged to `main` at
+`49e2b62` (`--no-ff`); targeted suites re-passed on `main` post-merge; worktree and branch removed
+cleanly (verified the directory no longer exists, unlike an earlier worktree-creation mishap this
+session).
+
+**Human/visual verification still needed** — this is F2's own behavioral gate, not a nice-to-have:
+a real browser check that a fresh navigation to Findings/Sources/Chats shows the loading state
+within one frame and clears correctly on both success and a forced failure, for all three
+surfaces. This environment has no reliable browser repaint path to confirm that directly (same
+limitation Codex flagged for its own frontend-split work).
+
+**This closes Rung F2.** Per `ladder.md`'s sequencing (`F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 →
+RE-AUDIT → C1 → P1`), Rung W1 ("Reprocessing vocabulary/disclosure contract," fixing `H-5`) is now
+eligible to start — not begun; awaiting Kyle's direction per this engagement's established pattern
+of not assuming the next rung is automatically authorized.
