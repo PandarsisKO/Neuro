@@ -5,6 +5,7 @@
 <style>
   :root{--bg:#F6F7F9;--panel:#FFFFFF;--panel2:#F1F3F6;--panel-strong:#E9EDF2;--line:#DDE3EA;--line-strong:#7A8EA5;--text:#18212B;--muted:#515B66;--text-faint:#65707D;--accent:#3156D3;--accent-hover:#2747B8;--accent-soft:#EEF2FF;--accent-text:#FFFFFF;--link:#2f5bea;--ok:#187A5A;--ok-soft:#EAF7F1;--warn:#946200;--warn-soft:#FFF6D8;--bad:#B42318;--bad-soft:#FEF0EE;--focus:#6184FF;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
   [data-theme=dark]{--bg:#0F1115;--panel:#171A21;--panel2:#1D212B;--panel-strong:#232834;--line:#262B36;--line-strong:#5E6B86;--text:#E8E8EA;--muted:#9AA3B2;--text-faint:#828B9A;--accent:#5F88FF;--accent-hover:#7D9DFF;--accent-soft:#141C34;--accent-text:#0F1115;--link:#8fb0ff;--ok:#3ECF8E;--ok-soft:#143425;--warn:#F5B642;--warn-soft:#342814;--bad:#FF6B6B;--bad-soft:#341414;--focus:#6E8EFF;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
+  :root{--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-6:24px;--space-8:32px;--space-12:48px;--space-16:64px;--text-xs:12px;--text-sm:13px;--text-base:15px;--text-lg:17px;--text-xl:20px;--text-2xl:26px;--radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;--motion-fast:100ms;--motion-normal:160ms;--motion-slow:220ms;--ease-standard:cubic-bezier(.2,.8,.2,1)}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
@@ -67,6 +68,31 @@
   .row>*{flex:1;min-width:0}
   .row>input{min-width:140px}
   .row>button,.row>label,.row>.fixed{flex:0 0 auto}
+  .grow{flex:1}
+  .push-right{margin-left:auto}
+  .min-w-0{min-width:0}
+  .mt-1{margin-top:var(--space-1)}
+  .mt-2{margin-top:var(--space-2)}
+  .mt-3{margin-top:var(--space-3)}
+  .mt-4{margin-top:var(--space-4)}
+  .mt-6{margin-top:var(--space-6)}
+  .mb-1{margin-bottom:var(--space-1)}
+  .mb-2{margin-bottom:var(--space-2)}
+  .mb-3{margin-bottom:var(--space-3)}
+  .mb-4{margin-bottom:var(--space-4)}
+  .mb-6{margin-bottom:var(--space-6)}
+  .text-xs{font-size:var(--text-xs)}
+  .text-sm{font-size:var(--text-sm)}
+  .text-base{font-size:var(--text-base)}
+  .text-lg{font-size:var(--text-lg)}
+  .text-xl{font-size:var(--text-xl)}
+  .text-2xl{font-size:var(--text-2xl)}
+  .status-ok{color:var(--ok)}
+  .status-warn{color:var(--warn)}
+  .status-bad{color:var(--bad)}
+  .status-ok-border{border-color:var(--ok)}
+  .status-warn-border{border-color:var(--warn)}
+  .status-bad-border{border-color:var(--bad)}
   .muted{color:var(--muted);font-size:13px}
   h2{font-size:18px;margin:0 0 10px}
   h3{font-size:14px;margin:16px 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
@@ -741,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.45';
+const UI_VERSION = '0.63.46';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
