@@ -36,6 +36,15 @@ def test_t3_number_does_not_capture_decimal_fraction_component():
     assert [r["raw"] for r in rows] == ["1.00", "900"]
 
 
+def test_t3_number_rejects_malformed_comma_subspans():
+    assert not _rows("A malformed token 1,00 should remain untouched.", "number")
+
+
+def test_t3_sentence_boundary_does_not_split_decimal_periods():
+    text = "Use a 1.00 scale and 900."
+    assert not _rows(text, "procedure")
+
+
 def test_t3_identifier_gate_keeps_explicit_isbn_and_rejects_ambiguous_digits():
     text = "ISBN 978-0-13-468599-1; possible book code 0134685991; phone 2155551797."
     rows = _rows(text, "identifier")

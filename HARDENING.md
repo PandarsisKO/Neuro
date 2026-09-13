@@ -2137,3 +2137,8 @@ manual gold review remains required.
 
 Decimal subspan leakage is fixed and release-checked at `f1533c6`. The 60-row seeded queue still requires exact-span
 gold adjudication before downstream trust.
+
+## T3 malformed-number and decimal-sentence hardening — 2026-09-13 15:24 PT
+
+Added protections for malformed comma numbers and decimal-period cue splitting; focused T3 is 18 passed. Evidence was
+refreshed read-only and remains non-authoritative pending gold labels.

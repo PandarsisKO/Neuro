@@ -1297,3 +1297,8 @@ Also spot-checked six `Rung P1` findings from `audit.md` against current `main` 
 
 No code changed by this note. Saves whoever lands W2/W3/W4/W5/C1 from re-discovering which P1 items are already
 closed.
+
+## T3 malformed-number and decimal-sentence hardening — 2026-09-13 15:24 PT
+
+Fixed malformed `1,00` number fragments and decimal-period sentence splitting; focused T3 is 18 passed and both
+artifacts are refreshed. Gold adjudication remains pending before persistence or T4.

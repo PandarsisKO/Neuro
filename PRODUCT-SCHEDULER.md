@@ -351,3 +351,8 @@ trust remains gated.
 
 T3 numeric boundary hardening is green at `f1533c6`; no scheduler behavior changed. Manual gold review remains the
 next gate.
+
+## T3 malformed-number and decimal-sentence hardening — 2026-09-13 15:24 PT
+
+Numeric and sentence decimal boundaries are hardened under focused tests; scheduler behavior is unchanged and manual
+gold review remains required.

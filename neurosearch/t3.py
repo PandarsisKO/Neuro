@@ -16,9 +16,9 @@ _MONEY = re.compile(r"(?<![\w])(?:[$€£]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|b|mi
 _PERCENT = re.compile(r"(?<![\w])\d[\d,]*(?:\.\d+)?\s?%(?!\w)|(?<![\w])\d[\d,]*(?:\.\d+)?\s?percent(?:age)?(?!\w)", re.I)
 _DURATION = re.compile(r"(?<![\w])\d+(?:\.\d+)?\s?(?:milliseconds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?)(?!\w)", re.I)
 _DATE = re.compile(r"(?<![\w])(?:20\d{2}-\d{1,2}-\d{1,2}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:,\s*20\d{2})?|\d{1,2}[/-]\d{1,2}[/-]20\d{2})(?!\w)", re.I)
-_NUMBER = re.compile(r"(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\w)")
+_NUMBER = re.compile(r"(?<![\w.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\w,])")
 _UNIT = re.compile(r"(?<![\w])\d[\d,]*(?:\.\d+)?\s?(?:kg|g|lb|lbs|mile|miles|km|ft|sq\.?\s?ft|tokens?|pages?|people|employees?|customers?|sources?|chunks?|windows?)(?!\w)", re.I)
-_SENTENCE = re.compile(r"(?m)(?<!\w)[^\n.!?]{2,}[.!?]")
+_SENTENCE = re.compile(r"(?m)(?<!\w)[^\n.!?]{2,}(?:[!?]|(?<!\d)\.)")
 _PROCEDURE = re.compile(r"(?i)^(?:first\s+off\b|(?:first|second|third)\s+step\b|step\s+\d+|then\b|next\b|make sure|ensure|use\b|do\b|avoid\b|never\b|always\b|check\b|calculate\b|contact\b|file\b|submit\b|review\b|keep\b|create\b|add\b|remove\b|set\b|start\b|stop\b)")
 # Generic "don't"/"never" also occur in harmless narration ("I don't know").
 # Admit only explicit warning words or a small imperative verb list after them.

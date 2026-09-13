@@ -163,3 +163,10 @@ trust remains gated.
 Decimal-boundary hardening is committed at `f1533c6`; focused T3 is 16 passed, full pytest is 1,383 passed, and
 `repo-check` plus commit-bound release-check pass. Artifact: `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`.
 The seeded queue remains pending manual gold adjudication; no downstream trust or persistence is admitted.
+
+## T3 malformed-number and decimal-sentence hardening — 2026-09-13 15:24 PT
+
+The pending corpus also exposed malformed comma fragments (`1,00`) and sentence splitting inside decimal values
+(`1.00`). Numeric boundaries now reject comma/period subspans, and cue sentence termination treats a period after a
+digit as decimal content. Focused T3 coverage is 18 passed; both read-only evidence artifacts were refreshed again.
+The larger hand-label gate remains open.

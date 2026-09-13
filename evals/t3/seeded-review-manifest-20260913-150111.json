@@ -1,7 +1,7 @@
 {
   "artifact": "T3 seeded hand-label review manifest",
   "schema_version": "t3-review-manifest-v1",
-  "generated_at_utc": "2026-09-13T22:08:25.385139+00:00",
+  "generated_at_utc": "2026-09-13T22:10:50.006856+00:00",
   "seed": 20260913,
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
@@ -343,14 +343,6 @@
           "normalized": "January 13",
           "start": 614,
           "end": 624,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "17",
-          "normalized": "17",
-          "start": 628,
-          "end": 630,
           "attributes": {}
         },
         {
@@ -760,14 +752,6 @@
       "chunk_end": 734.0,
       "text": "[When to Hire Property Management] that was bothering me. And I started when I was 23, so I had nothing to do. I could just go. It was very easy for me to just go take care of stuff all the time. We were cashing checks. We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable. John asks why did you do it? The reason I made the change is cuz I moved out of Denver so I had to do it. I was moving to Europe and that's been great because yeah, I now paid 10% of my revenue to a property manager to take care of it. And this property manager is good. It's not he's not like they're not the best to be honest, but it's good enough. They take care of the tenants. The tenants like them, which is what I care about, right? And they're communicative enough. They do a good enough job and allows me to focus on acquiring new properties or renovating properties or doing all the other stuff",
       "predicted": [
-        {
-          "kind": "number",
-          "raw": "23",
-          "normalized": "23",
-          "start": 83,
-          "end": 85,
-          "attributes": {}
-        },
         {
           "kind": "hedge",
           "raw": "I could just go.",
@@ -1741,14 +1725,6 @@
         },
         {
           "kind": "number",
-          "raw": "1200",
-          "normalized": "1200",
-          "start": 350,
-          "end": 354,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
           "raw": "78539",
           "normalized": "78539",
           "start": 369,
@@ -1761,14 +1737,6 @@
           "normalized": "701",
           "start": 516,
           "end": 519,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "635",
-          "normalized": "635",
-          "start": 536,
-          "end": 539,
           "attributes": {}
         },
         {
@@ -1789,14 +1757,6 @@
         },
         {
           "kind": "number",
-          "raw": "2",
-          "normalized": "2",
-          "start": 651,
-          "end": 652,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
           "raw": "87110",
           "normalized": "87110",
           "start": 684,
@@ -1809,14 +1769,6 @@
           "normalized": "4220",
           "start": 724,
           "end": 728,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "201",
-          "normalized": "201",
-          "start": 748,
-          "end": 751,
           "attributes": {}
         },
         {
@@ -1849,14 +1801,6 @@
           "normalized": "2112",
           "start": 875,
           "end": 879,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "103",
-          "normalized": "103",
-          "start": 899,
-          "end": 902,
           "attributes": {}
         },
         {
@@ -1933,14 +1877,6 @@
         },
         {
           "kind": "number",
-          "raw": "400",
-          "normalized": "400",
-          "start": 1377,
-          "end": 1380,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
           "raw": "95815",
           "normalized": "95815",
           "start": 1397,
@@ -1957,14 +1893,6 @@
         },
         {
           "kind": "number",
-          "raw": "800",
-          "normalized": "800",
-          "start": 1440,
-          "end": 1443,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
           "raw": "92007",
           "normalized": "92007",
           "start": 1457,
@@ -1977,14 +1905,6 @@
           "normalized": "2800",
           "start": 1521,
           "end": 1525,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "165",
-          "normalized": "165",
-          "start": 1546,
-          "end": 1549,
           "attributes": {}
         },
         {
@@ -3037,22 +2957,6 @@
           "start": 668,
           "end": 671,
           "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "1",
-          "normalized": "1",
-          "start": 694,
-          "end": 695,
-          "attributes": {}
-        },
-        {
-          "kind": "number",
-          "raw": "00",
-          "normalized": "00",
-          "start": 696,
-          "end": 698,
-          "attributes": {}
         }
       ],
       "gold": null,
@@ -3094,14 +2998,6 @@
           "attributes": {}
         },
         {
-          "kind": "hedge",
-          "raw": "And for this one thing we might want to do is add the um vertical padding of 12.",
-          "normalized": "And for this one thing we might want to do is add the um vertical padding of 12.",
-          "start": 612,
-          "end": 692,
-          "attributes": {}
-        },
-        {
           "kind": "number",
           "raw": "12",
           "normalized": "12",
@@ -3120,9 +3016,7 @@
       ],
       "gold": null,
       "review_status": "pending_manual_label",
-      "review_flags": [
-        "dense_multi_span"
-      ]
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
