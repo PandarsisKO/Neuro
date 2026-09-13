@@ -117,3 +117,9 @@ backup opened in SQLite `mode=ro` (same recorded SHA-256 as the provisional samp
 kind is represented; each row includes the source text and predicted records but `gold: null` and
 `review_status: pending_manual_label`. It is a review queue, not a pass/fail result. A reviewer must adjudicate exact
 kind, normalized value, and `[start,end)` spans before T3 can feed any selector, persistence, or T4.
+
+## T3 review triage — 2026-09-13 15:04 PT
+
+The pending manifest now carries non-authoritative triage flags: 26 dense multi-span rows, 10 sentence-boundary
+reviews, 5 empty-negative rows, 3 cue-entity reviews, and 2 canonical-identifier reviews. Flags only prioritize
+human work; they do not alter predictions or create gold labels.

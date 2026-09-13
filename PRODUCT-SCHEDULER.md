@@ -321,3 +321,8 @@ Archived the superseded root state file that caused the release hygiene test to 
 
 Prepared a 60-row, project-balanced T3 hand-label queue with deterministic seed and all targeted kinds. Rows remain
 pending manual gold labels; no scheduler or downstream extraction work is admitted from this manifest.
+
+## T3 review triage — 2026-09-13 15:04 PT
+
+Pending T3 rows carry review-priority flags only; scheduling and downstream selector work remain gated on manual gold
+labels and precision floors.

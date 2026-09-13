@@ -2106,3 +2106,8 @@ at `e4cf07f`.
 The larger 60-row seeded review manifest records predicted spans with `gold: null` and exact-span matching rules.
 It was generated from a copied verified backup in SQLite read-only mode and is explicitly non-authoritative until manual
 adjudication closes the per-kind precision floors.
+
+## T3 review triage — 2026-09-13 15:04 PT
+
+Review-only triage flags prioritize dense spans, sentence boundaries, empty negatives, entities, and identifiers in the
+pending manifest. They do not modify extraction or promote any state.

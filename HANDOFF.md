@@ -1235,3 +1235,8 @@ A larger review queue is prepared at `evals/t3/seeded-review-manifest-20260913-1
 20 per retained project, fixed kind strata plus seeded random fill (`seed=20260913`), all 15 targeted kinds present.
 Gold labels are intentionally null and status is `pending_manual_label`; this is not a gate pass. Exact span
 adjudication is required before downstream selector, persistence, or T4 work.
+
+## T3 review triage — 2026-09-13 15:04 PT
+
+The 60-row pending manifest now includes review-only triage flags (dense rows, sentence boundaries, empty negatives,
+cue entities, and canonical identifiers). No gold labels were inferred and no downstream trust changed.
