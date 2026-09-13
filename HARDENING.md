@@ -1911,6 +1911,9 @@ The duplicate allocation was removed; one unconditional temporary directory rema
 `tests/test_s51_test_isolation.py` and the FTS5 recovery contract both pass after the cleanup.
 The same pass removed `tests/test_core.py`'s module-level data-directory override. Its backup test now creates its own
 fake-AI source fixture, so the backup assertion no longer depends on another test importing first.
+Full pytest passes **1,364 tests** with one existing Starlette deprecation warning. The commit-bound release gate
+passes at `0.63.60 @ d9e2914`; artifact:
+`evals/release/release-check-0.63.60-d9e2914-20260913-125804.json`.
 The post-cleanup commit-bound release gate also passes at `0.63.59 @ a825175`; artifact:
 `evals/release/release-check-0.63.59-a825175-20260913-123249.json`.
 The full suite then passed **1,364 tests** with one existing Starlette deprecation warning. The S52 test now calls

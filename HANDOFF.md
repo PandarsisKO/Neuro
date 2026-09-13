@@ -743,3 +743,7 @@ commit is visible yet, so the ownership boundary remains unchanged and Codex has
 The isolation cleanup also removed `tests/test_core.py`'s module-level `NEUROSEARCH_DATA_DIR` override. The backup
 test now creates its own fake-AI source fixture; the focused S51 plus backup checks pass without relying on collection
 order.
+
+Full pytest passes **1,364 tests** with one existing Starlette deprecation warning. The commit-bound release gate
+passes at `0.63.60 @ d9e2914`; artifact:
+`evals/release/release-check-0.63.60-d9e2914-20260913-125804.json`.
