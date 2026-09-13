@@ -1187,3 +1187,15 @@ Claude's `design/w1-step4-legacy-suggestions` landed on `main` at `f143266`, bum
 ## T3 admission proposal — 2026-09-13 14:40 PT
 
 With T2 closed, Codex admitted the next bounded rung: deterministic Tier-0 extraction. Proposal: `docs/T3-ADMISSION-2026-09-13.md`. The first slice is a pure, versioned extractor with exact half-open spans, reusing existing URL and identifier helpers; no table, endpoint, UI, provider call, queue, or live-data write. A stratified hand-labeled sample from the three retained projects must meet per-kind precision floors before any downstream selector trusts the output.
+
+## T3 implementation and provisional sample — 2026-09-13 14:47 PT
+
+Codex implemented the pure `t3-tier0-v1` extractor in `neurosearch/t3.py` with 8 focused tests in
+`tests/test_t3_extraction.py`. It has no DB/provider/queue/UI/write path. Two precision fixes are included: ISBNs need
+an explicit label or 978/979 prefix before canonical normalization (prevents phone-shaped ten-digit false identifiers),
+and cue entities stop before punctuation/next sentences; duration matching rejects comma-separated address fragments.
+The provisional read-only corpus artifact is `evals/t3/tier0-sample-20260913-144650.json`: 15 chunks across the three
+retained projects, all candidate kinds represented, 64 manually reviewed exact spans, 1.00 provisional precision and
+recall. Source is a copied `neurosearch-20260913-1410.db` backup with SHA-256
+`bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220`; live DB untouched. The small purposive sample
+is evidence only and does not admit T4 or persistence; expand and seed a larger review before downstream trust.

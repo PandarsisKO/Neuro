@@ -2067,3 +2067,12 @@ Claude's `f143266` landing brings UI/package version to `0.63.65` and discloses 
 ## T3 admission — 2026-09-13 14:40 PT
 
 The next Codex rung is deterministic Tier-0 extraction. Its contract and precision floors are in `docs/T3-ADMISSION-2026-09-13.md`; it is model-free, versioned, fail-open, and initially read-only. No extraction output may influence T4 or a user-facing state until the stratified hand-labeled sample and full release gate pass.
+
+## T3 extraction hardening — 2026-09-13 14:47 PT
+
+T3's first slice is deliberately model-free and read-only. Exact half-open offsets, stable versioning, and fail-closed
+identifier/entity admission are covered by focused tests. The ISBN gate prevents the permissive legacy canonical regex
+from promoting phone-shaped ten-digit strings; punctuation-safe entity spans and comma-safe durations remove observed
+false-positive paths. Evidence artifact `evals/t3/tier0-sample-20260913-144650.json` was generated from a copied verified
+backup in SQLite read-only mode; no live DB or WAL sidecar was touched. The 15-row/64-span sample is provisional and
+cannot authorize T4 or persistence by itself.

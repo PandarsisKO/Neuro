@@ -59,3 +59,26 @@ No extractor output is written to the live database during this rung.
 No Evidence Atom table, per-chunk extraction matrix, model-assisted entity recognition, language expansion, Claim
 promotion, Finding mutation, batch executor, UI, or universal relevance/quality score. Those require a separate measured
 admission.
+
+## T3 implementation and provisional sample — 2026-09-13 14:47 PT
+
+The pure extractor is implemented in `neurosearch/t3.py` at version `t3-tier0-v1`, with focused coverage in
+`tests/test_t3_extraction.py` (8 tests). It emits deterministic, sorted, exact half-open spans for numeric values,
+money, percentages, units, dates, durations, URLs, canonical identifiers, sentence cues, and cue-gated entities;
+output is read-only and has no database, queue, provider, UI, or persistence path.
+
+The admission review found and fixed two precision hazards before any downstream use: T3 now requires an explicit ISBN
+label or unambiguous 978/979 prefix before passing text to the existing canonical ISBN normalizer, preventing
+phone-shaped ten-digit strings from becoming identifiers; and cue-entity names no longer absorb periods or the next
+sentence. Duration matching also rejects comma-separated address fragments such as `2, Second`. Regression tests cover
+these cases.
+
+A provisional, project-balanced corpus sample is recorded at
+`evals/t3/tier0-sample-20260913-144650.json`. It was produced from a temporary copy of verified backup
+`data/backups/neurosearch-20260913-1410.db` (SHA-256
+`bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220`) opened with SQLite `mode=ro`; the live database
+was not opened. The sample contains 15 chunks across all three retained projects, includes positive and empty rows,
+and represents every emitted kind. Codex manually reviewed exact kind, normalized value, and `[start,end)` span for
+64 candidates: provisional precision/recall are 1.00 overall and for each represented kind. This is a purposive,
+small sample, so it does **not** authorize T4 or persisted extraction; a larger seeded sample and release gate remain
+required before downstream trust.

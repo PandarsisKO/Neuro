@@ -283,3 +283,12 @@ Claude's W1 step 4 (`f143266`) discloses model-budget use on the legacy Sources 
 ## T3 admission — 2026-09-13 14:40 PT
 
 T2 is closed. The next single Codex-owned rung is deterministic Tier-0 extraction under `docs/T3-ADMISSION-2026-09-13.md`: pure versioned spans, exact offsets, reuse of existing identifier/URL extractors, and a copied-backup precision gate. No persistence, UI, provider call, or live mutation is admitted before the sample and release gates pass.
+
+## T3 extractor checkpoint — 2026-09-13 14:47 PT
+
+The next Codex rung is implemented as a pure `t3-tier0-v1` extractor with exact spans and no scheduler, provider,
+queue, persistence, or UI effect. Focused tests cover deterministic ordering, overlap, malformed input, URL and
+identifier normalization, phone-shaped ISBN rejection, punctuation-safe entities, and comma-safe durations. The
+read-only provisional sample `evals/t3/tier0-sample-20260913-144650.json` covers 15 chunks across all retained projects
+and 64 manually reviewed candidates (1.00 provisional precision/recall). This is not a downstream admission: T4 and
+stored extraction remain blocked until a larger seeded sample and commit-bound release gate pass.
