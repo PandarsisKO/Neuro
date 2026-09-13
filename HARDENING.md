@@ -1936,3 +1936,18 @@ An additional eight-module migration removed redundant import-time `setdefault("
 overrides from the resource, exploration, pool, shell, drawer, acceleration, Claims workbench, and storage-hygiene
 test modules. The S51 ratchet is now **71 remaining modules** (down from 79); the focused batch passed 81 tests with
 one existing Starlette warning. `tests/conftest.py` remains the sole hard-set owner.
+
+## Cold findings-quality budget follow-up — 2026-09-13 13:09 PT
+
+A read-only benchmark against the verified backup `data/backups/neurosearch-20260913-1239.db` was run through a
+temporary copy; the live database was never opened. On the three retained projects, `findings_quality.review()`
+completed cold/warm in 11.871 s / 0.054 s for the 16,450-finding buying-businesses project, 0.319 s / 0.0048 s for
+the 2,183-finding design project, and 0.152 s / 0.0009 s for the 519-finding real-estate project. The large project
+hit the existing 8,000,000 pair budget and logged that duplicate detection was partial; the smaller projects did not.
+
+This crosses the existing cold-budget observation trigger: the current exact blocking implementation is still safe
+and revision-cached, but its largest retained project now exceeds the earlier 3.8 s measured pass and cannot promise a
+complete duplicate scan. No `PAIR_BUDGET`, threshold, schema, or live data was changed. The next bounded Codex
+investigation is to profile an indexed/blocking or persisted derived-graph candidate against frozen duplicate counts;
+it requires its own focused tests, before/after measurement, and release gate before admission. Do not raise the budget
+blindly or add a new service.

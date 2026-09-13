@@ -812,3 +812,14 @@ with no findings; `release-check --no-pytest` passed every deterministic proof a
 integrity, JavaScript parsing, frozen Tier 1, retrieval/cache/economic baselines, and backup/restore. The artifact is
 `evals/release/release-check-0.63.61-23f0b70-20260913-130727.json`. A clean full pytest run immediately before this
 gate passed 1,364 tests with one existing Starlette deprecation warning.
+
+## Cold findings-quality measurement — 2026-09-13 13:09 PT
+
+Codex measured the explicitly open R8 cold-derived-state question against a temporary copy of the verified
+`neurosearch-20260913-1239.db` backup. The large buying-businesses project (16,450 approved findings) takes 11.871 s
+cold and 0.054 s warm; the design project (2,183) takes 0.319 s / 0.0048 s; real estate (519) takes 0.152 s /
+0.0009 s. The large scan reaches the 8,000,000 pair budget and reports partial duplicate detection. This is evidence
+that the documented optimization trigger is crossed, not authorization to change the algorithm during Claude's open
+F2 behavioral gate. The next Codex checkpoint is a reversible candidate comparison for exact blocking/indexing or a
+persisted derived graph, with frozen duplicate-count tests and a release gate; no live database access or product data
+mutation occurred.

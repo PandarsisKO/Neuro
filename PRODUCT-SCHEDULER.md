@@ -129,3 +129,12 @@ state-model gate. R8 retention remains observational until 2026-10-11 17:28 PT, 
 numeric trigger. Preserve the ownership boundary and do not edit Claude-owned frontend or design-audit files while F2
 behavioral evidence is open. The earlier mixed full-suite result was order-dependent noise; the clean rerun and focused
 checks are green.
+
+## Codex measurement checkpoint — 2026-09-13 13:09 PT
+
+The previously trigger-only cold `findings_quality` observation has new evidence: on a temporary copy of the verified
+backup, the largest retained project takes 11.871 s cold and hits the 8,000,000 pair budget, while the two smaller
+projects take 0.319 s and 0.152 s. Warm-cache times are below 0.055 s for all three. This qualifies a bounded Codex
+optimization investigation after the current design boundary: compare an exact indexed/blocking or persisted
+derived-graph candidate against frozen duplicate counts. No implementation is admitted yet, and no blind budget
+increase or new service is allowed. Claude's F2 behavioral gate remains the current design ownership boundary.
