@@ -933,3 +933,56 @@ returned `ok` in 1.479 s; all legacy migration fixtures passed the full check.
 The focused backup/FTS5/storage suite is 5 passed. This change is Codex-owned (`neurosearch/db.py` plus the backup
 assertion in `tests/test_core.py`) and does not touch Claude's frontend or design-audit surfaces. Full pytest and the
 commit-bound release gate are the remaining closeout evidence.
+
+## Design ladder — Rung W1 step 1 landed: reprocessing disclosure + double-primary fix (H-5)
+
+Kyle explicitly authorized starting W1 now, ahead of F2's still-open browser-verification gate (the
+gate itself is unaffected — it is a separate piece of evidence, not a blocker on further design work
+once he says so). Landed on `main` at merge commit `f0ca4b5` (source `b7c2422` on branch
+`design/w1-step1-vocab-disclosure`, now deleted).
+
+**Sources' "Suggest findings" and Chat's "also search the web"** fired/toggled with zero cost
+disclosure — audit.md names both by name as `H-5` evidence, in contrast with Findings/Plan's
+explicit-dollar-amount rebuild banners (called out in the same audit as "the product's core trust
+behavior"). Both now carry a static-mode disclosure via `title` ("uses your model budget" / "may use
+your model and web-search budget") rather than a live per-click estimate — a per-row network call on
+a list that can run to thousands of sources was rejected as a real perf risk, and `ladder.md`
+explicitly sanctions a mode-level disclosure ("may use model/web-search budget") as valid alongside a
+computed dollar figure.
+
+**The source drawer's Dismissed group had no way to undo a dismissal** — the Findings tab's own
+`act()` helper already offers a "↩ Restore" button for exactly this state (dismissed → suggested,
+reusing `noteStatus`), but the drawer's separate `group()` helper never got the equivalent, so the two
+surfaces disagreed about whether Dismiss is reversible. Added the same Restore button to `group()`,
+reusing the existing `drawerNote()` call every other status transition already uses — no new endpoint,
+no new pattern, per `AUDIT.md`'s "fixes must extend existing product systems."
+
+**One-dominant-primary-per-region fix:** `rebuildBtns` in the stale-rebuild tiers could render two
+`.primary` buttons in the same row — its own "Rebuild ·" button and `fastBtn`'s "⏩ Rebuild now ·"
+button — whenever a tier had both a local ($0, slow) and API (paid, fast) option. `DESIGN.md` §6:
+"One dominant primary action per decision region." Fixed so only the faster path is primary when both
+exist.
+
+`UI_VERSION` bumped to `0.63.62` (4-way sync). No `MAX_INLINE_STYLE_ATTRS` change — no new inline
+styles. Targeted suites (`test_s50_design_drift`, `test_s44_frontend_integrity`, `test_s5_ui_syntax`,
+`test_n8_research_shell`, `test_n9_source_drawer`, `test_o1_accelerate`, `test_s11_findings_tab`,
+`test_s14_fix_pass`): 86 passed, before and after the merge.
+
+**Incident during landing, worth flagging:** partway through this change, the worktree's own Git
+metadata (`.git/worktrees/w1-step1-vocab-disclosure` and the branch itself) disappeared out from
+under it — `git worktree list` showed only `main`, and `git add` failed with "not a git repository."
+`main` itself was unaffected throughout (confirmed unchanged before and after). This is consistent
+with an external `git worktree prune` (or similar) running concurrently against the shared repo while
+this worktree was still in use — the same category of thing the earlier `.worktrees/f0` cleanup
+(`b5b922a`) did. No work was lost — the patch was simply reapplied to a freshly recreated worktree
+after re-verifying every target string against `main`'s then-current content — but a prune that races
+against another agent's in-progress worktree is worth being careful about going forward. Suggest
+pruning only worktrees confirmed to be both merged AND no longer listed as in-progress by their owner,
+rather than proactively.
+
+**Not done yet, still part of Rung W1:** button-role and label consistency across Findings' Rebuild
+banner and Master Plan's Re-analyse banner (both already have solid cost disclosure; W1's remaining
+work there is closer to the "one button treatment per role" / outcome-label rule than to
+disclosure). `ladder.md`'s Human gate re-scores are not done (Sources/Chats/Findings/Plan "What that
+will do" ratings) — those need a live or audit-instance click-through, same limitation as F2's open
+gate.
