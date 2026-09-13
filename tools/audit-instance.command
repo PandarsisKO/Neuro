@@ -28,7 +28,7 @@ if [ ! -f data-audit/neurosearch.db ]; then
   if [ -z "$SRC" ]; then echo "No verified backup found in $MAIN/data/backups — start the live app once first."; read -r -n 1 -s; exit 1; fi
   echo "Copying $(basename "$SRC") ($(du -h "$SRC" | cut -f1)) into data-audit/ …"
   cp "$SRC" data-audit/neurosearch.db
-  echo "$(basename "$SRC")  copied $(date '+%Y-%m-%d %H:%M')  baseline 21bb117" > data-audit/PROVENANCE.txt
+  echo "$(basename "$SRC")  copied $(date '+%Y-%m-%d %H:%M')  baseline $(git rev-parse --short HEAD 2>/dev/null || echo unknown)" > data-audit/PROVENANCE.txt
 else
   echo "Using existing data-audit/ ($(cat data-audit/PROVENANCE.txt 2>/dev/null))"
 fi
@@ -47,7 +47,7 @@ export NEUROSEARCH_LOCAL_API_FALLBACK=0
 
 echo
 echo "Audit instance  →  http://localhost:${PORT}   (login token: audit)"
-echo "Baseline commit: 21bb117   data: $HERE/data-audit   fake AI, \$0 budgets"
+echo "Baseline commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)   data: $HERE/data-audit   fake AI, \$0 budgets"
 echo "Close this window to stop it."
 echo
 # `python -m` puts THIS directory first on sys.path, so the pinned worktree code runs — not the editable install
