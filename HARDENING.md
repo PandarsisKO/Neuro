@@ -2116,3 +2116,9 @@ pending manifest. They do not modify extraction or promote any state.
 
 Triage metadata is release-checked at `2b460ae`; no extractor behavior changed. The 60-row pending queue still needs
 manual exact-span gold labels and adversarial review before downstream trust.
+
+## T3 precision narrowing — 2026-09-13 15:12 PT
+
+Observed corpus false positives led to terminal-punctuation sentence cues, heading suppression, removal of bare-`to`
+procedures, and imperative-only negative warning cues. Full pytest is 1,383 passed. Evidence artifacts were regenerated
+read-only; no downstream trust is granted.

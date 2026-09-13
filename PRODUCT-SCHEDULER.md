@@ -331,3 +331,8 @@ labels and precision floors.
 
 The pending review triage metadata is green under `repo-check` and release-check at `2b460ae`; no scheduler or queue
 behavior changed. Manual gold adjudication remains the next gate.
+
+## T3 precision narrowing — 2026-09-13 15:12 PT
+
+Corpus review narrowed cue matching to avoid heading, narration, and bare-fragment false positives. Full pytest remains
+1,383 passed; no scheduler or downstream extraction path changed. Manual gold review is still required.

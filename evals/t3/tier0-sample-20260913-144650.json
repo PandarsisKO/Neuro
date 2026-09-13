@@ -1,20 +1,20 @@
 {
   "artifact": "T3 Tier-0 extraction hand-labeled sample",
   "schema_version": "t3-sample-v1",
-  "generated_at_utc": "2026-09-13T21:46:50.624636+00:00",
+  "generated_at_utc": "2026-09-13T22:04:20.464323+00:00",
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
   "read_mode": "copied backup opened SQLite mode=ro; live database untouched",
   "extractor_version": "t3-tier0-v1",
   "selection": {
-    "method": "fixed stratified IDs, project-balanced positive and negative chunks with every candidate kind represented",
+    "method": "fixed stratified IDs, project-balanced positive and negative chunks with every emitted kind represented where available",
     "project_count": 3,
     "chunks_total": 15,
     "positive_and_negative_rows": true
   },
   "adjudication": {
     "reviewer": "Codex",
-    "method": "manual review of each emitted record against exact source text",
+    "method": "manual re-review after cue precision narrowing",
     "gold_definition": "record matches kind, normalized value, and exact half-open [start,end) span",
     "downstream_status": "provisional; sample is too small and purposive for production promotion"
   },
@@ -89,16 +89,6 @@
       "recall": 1.0,
       "f1": 1.0
     },
-    "warning": {
-      "predicted": 1,
-      "gold": 1,
-      "tp": 1,
-      "fp": 0,
-      "fn": 0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
-    },
     "entity": {
       "predicted": 1,
       "gold": 1,
@@ -161,9 +151,9 @@
     }
   },
   "metrics_overall": {
-    "predicted": 64,
-    "gold": 64,
-    "tp": 64,
+    "predicted": 63,
+    "gold": 63,
+    "tp": 63,
     "fp": 0,
     "fn": 0,
     "precision": 1.0,
@@ -376,7 +366,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -423,7 +413,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -436,7 +426,7 @@
       "text": "[How I found the property] I've got to replace a sewer line. And so, that's something that I'm always looking for. I came out here and walked it. And when I'm walking around the properties, let me just show you guys. If I'm looking at this property for the first time, we're in the Midwest. We see",
       "predicted": [],
       "gold": [],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
@@ -463,14 +453,6 @@
           "start": 566,
           "end": 682,
           "attributes": {}
-        },
-        {
-          "kind": "warning",
-          "raw": "If you don't know what it is, this is where all your waste goes.",
-          "normalized": "If you don't know what it is, this is where all your waste goes.",
-          "start": 872,
-          "end": 936,
-          "attributes": {}
         }
       ],
       "gold": [
@@ -489,17 +471,9 @@
           "start": 566,
           "end": 682,
           "attributes": {}
-        },
-        {
-          "kind": "warning",
-          "raw": "If you don't know what it is, this is where all your waste goes.",
-          "normalized": "If you don't know what it is, this is where all your waste goes.",
-          "start": 872,
-          "end": 936,
-          "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -578,7 +552,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -693,7 +667,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -706,7 +680,7 @@
       "text": "[Sponsor: Northwest Registered Agent] LLC today and get your home address off of public record. Just go to northwestregisteredagent.com to get started today. That's northwestregisteredagent.com or click the link down below in the description to get your LLC filed. Thank you so much to Northwestregistered agent",
       "predicted": [],
       "gold": [],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -865,7 +839,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
@@ -952,7 +926,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1015,7 +989,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1062,7 +1036,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1109,7 +1083,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1122,7 +1096,7 @@
       "text": "[Plan: baseline site → skill redesign → reference-based redesign] What I'm going to do is I'm going to set up a very basic website that we can kind of see the standard AI design style in. And then we're going to use the Claude Code front-end skill to redesign that page. Maybe based on a reference or maybe just to kind of redesign it based on a bit of information that it would know about our website. And so let's go",
       "predicted": [],
       "gold": [],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1297,7 +1271,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -1424,7 +1398,7 @@
           "attributes": {}
         }
       ],
-      "review": "Codex manual span review; exact boundaries and semantics accepted for every listed candidate; empty rows verified as no admissible Tier-0 span."
+      "review": "Codex manual re-review after cue precision narrowing; exact kind, normalized value, and half-open spans accepted for listed candidates; empty rows verified as no admissible Tier-0 span."
     }
   ]
 }

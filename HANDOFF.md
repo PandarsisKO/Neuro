@@ -1246,3 +1246,10 @@ cue entities, and canonical identifiers). No gold labels were inferred and no do
 Triage-only changes are release-checked at `2b460ae`; `repo-check` and all deterministic release proofs pass in
 `evals/release/release-check-0.63.65-2b460ae-20260913-150223.json`. T3 behavior is unchanged and the full baseline is
 1,383 passed. Continue with manual gold adjudication of the pending 60-row manifest; do not persist or start T4 yet.
+
+## T3 precision narrowing — 2026-09-13 15:12 PT
+
+Seeded corpus review found heading-label, `I don't know`, and bare-`to` cue false positives. T3 now requires terminal
+punctuation for cue sentences, suppresses heading-prefixed segments, removes bare-`to` procedures, and restricts
+negative warning cues to explicit imperative verbs. Full pytest is 1,383 passed; focused T3 is 15 passed. The sample
+and 60-row pending manifest were regenerated; gold labels remain pending and downstream trust is still gated.

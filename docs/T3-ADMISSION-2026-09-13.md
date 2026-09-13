@@ -130,3 +130,15 @@ The triage-only manifest update is release-checked at `2b460ae`; `repo-check` pa
 artifact is `evals/release/release-check-0.63.65-2b460ae-20260913-150223.json`. The full regression baseline remains
 1,383 passed with one existing Starlette warning. No extractor behavior changed. The next gate is manual gold
 adjudication of the 60-row seeded queue; persistence and T4 remain prohibited until its per-kind floors are met.
+
+## T3 precision narrowing after seeded corpus review — 2026-09-13 15:12 PT
+
+Review of the seeded manifest exposed recurring false-positive paths in the original cue layer: markdown/topic labels
+were treated as sentence content, `I don't know` became a warning, and bare `to ...` fragments became procedures.
+The extractor now requires terminal punctuation for cue sentences, suppresses heading-prefixed segments, removes the
+bare-`to` procedure cue, and admits `don't`/`never` only with explicit imperative warning verbs. Focused tests still
+pass 15 and the full suite passes 1,383 with one existing Starlette warning.
+
+Both evidence artifacts were regenerated from the same copied read-only backup. The provisional sample now contains
+63 manually reviewed spans; the 60-row seeded manifest retains `gold: null` and pending status, with updated triage
+counts. This narrows precision risk but does not close the larger hand-label gate or authorize downstream trust.
