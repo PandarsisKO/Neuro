@@ -1240,3 +1240,9 @@ adjudication is required before downstream selector, persistence, or T4 work.
 
 The 60-row pending manifest now includes review-only triage flags (dense rows, sentence boundaries, empty negatives,
 cue entities, and canonical identifiers). No gold labels were inferred and no downstream trust changed.
+
+## T3 triage release checkpoint — 2026-09-13 15:02 PT
+
+Triage-only changes are release-checked at `2b460ae`; `repo-check` and all deterministic release proofs pass in
+`evals/release/release-check-0.63.65-2b460ae-20260913-150223.json`. T3 behavior is unchanged and the full baseline is
+1,383 passed. Continue with manual gold adjudication of the pending 60-row manifest; do not persist or start T4 yet.

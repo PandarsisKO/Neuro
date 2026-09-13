@@ -2111,3 +2111,8 @@ adjudication closes the per-kind precision floors.
 
 Review-only triage flags prioritize dense spans, sentence boundaries, empty negatives, entities, and identifiers in the
 pending manifest. They do not modify extraction or promote any state.
+
+## T3 triage release checkpoint — 2026-09-13 15:02 PT
+
+Triage metadata is release-checked at `2b460ae`; no extractor behavior changed. The 60-row pending queue still needs
+manual exact-span gold labels and adversarial review before downstream trust.

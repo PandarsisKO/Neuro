@@ -123,3 +123,10 @@ kind, normalized value, and `[start,end)` spans before T3 can feed any selector,
 The pending manifest now carries non-authoritative triage flags: 26 dense multi-span rows, 10 sentence-boundary
 reviews, 5 empty-negative rows, 3 cue-entity reviews, and 2 canonical-identifier reviews. Flags only prioritize
 human work; they do not alter predictions or create gold labels.
+
+## T3 triage release checkpoint — 2026-09-13 15:02 PT
+
+The triage-only manifest update is release-checked at `2b460ae`; `repo-check` passes and the deterministic release
+artifact is `evals/release/release-check-0.63.65-2b460ae-20260913-150223.json`. The full regression baseline remains
+1,383 passed with one existing Starlette warning. No extractor behavior changed. The next gate is manual gold
+adjudication of the 60-row seeded queue; persistence and T4 remain prohibited until its per-kind floors are met.

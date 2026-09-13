@@ -326,3 +326,8 @@ pending manual gold labels; no scheduler or downstream extraction work is admitt
 
 Pending T3 rows carry review-priority flags only; scheduling and downstream selector work remain gated on manual gold
 labels and precision floors.
+
+## T3 triage release checkpoint — 2026-09-13 15:02 PT
+
+The pending review triage metadata is green under `repo-check` and release-check at `2b460ae`; no scheduler or queue
+behavior changed. Manual gold adjudication remains the next gate.
