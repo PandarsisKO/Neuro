@@ -1,6 +1,6 @@
 # Neuro Search product scheduler
 
-Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-12. This is distinct from the parked runtime scheduler design in SCHEDULER.md.
+Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-13. This is distinct from the parked runtime scheduler design in SCHEDULER.md.
 
 ## NOW — one active effort
 

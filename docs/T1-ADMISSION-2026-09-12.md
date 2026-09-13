@@ -1,6 +1,6 @@
 # Transcript Intelligence T1 admission — 2026-09-12
 
-## State: T1 measurement slice in progress
+## State: T1 implementation complete; semantic backfill authorization pending
 
 Foundation closed through R7 with an authenticated live observation on 2026-09-12. Transcript Intelligence is now
 the active product program. Its first rung, T1 has a defined shared-space design. R9(c) is explicitly deferred with the numeric revisit trigger in
@@ -18,7 +18,7 @@ and rejected Qwen3 8B, Qwen3 14B, and gpt-oss-20b Q4 on the measured speed and/o
 15k-token findings/claims benchmark is explicitly deferred after the external 70B pull stalled; its numeric revisit
 trigger is recorded in the pre-T1 audit. R8 retention is deliberately deferred to its non-destructive
 observation trigger after 2026-10-11 17:28 PT and does not block T1.
-The first bounded schema slice is now underway: additive metadata columns, typed fail-open read/write/invalidation
+The first bounded schema slice is complete: additive metadata columns, typed fail-open read/write/invalidation
 helpers, a low-lane durable backfill adapter, a measured versioned corpus-space attestation, a project-relative
 similarity distribution engine with content/revision freshness keys and stale-job refusal, and a read-only
 `/api/projects/{id}/transcript/coverage` scaffold have been added to both derived-object tables, with focused coverage
@@ -66,6 +66,12 @@ The complete commit-bound release check passed for candidate `fd66241` at 19:22 
 `evals/release/release-check-0.63.43-fd66241-20260912-192249.json`; all Foundation, migration, crash/recovery,
 workflow, Tier 1, retrieval, frontend, and backup gates passed. The existing H1 batch economic gate remains
 intentionally deferred.
+
+As of 2026-09-13, the Bootstrap/resources/UI set is committed and Claude's D1/F0 design work is merged. The current
+full release evidence is `evals/release/release-check-0.63.43-6edcb73-20260913-030843.json`; no tracked product-code
+changes after that artifact affect T1. The remaining T1 action is an explicit spend decision for the derived-object
+backfill, followed by a fresh version-stamped semantic cohort. Until that decision, only zero-cost tests, previews,
+and documentation work may proceed.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
