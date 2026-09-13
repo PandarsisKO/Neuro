@@ -23,17 +23,19 @@ def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]
     """Queue only canonical rows without a current vector; low lane makes this work yield to user tasks."""
     conn = db.connect()
     out = []
-    for table, statuses, text_col, meta_col in (("project_notes", ("approved", "suggested"), "content", "citations"),
-                                                 ("project_claims", ("proposed", "accepted"), "text", "qualifiers")):
+    for table, statuses, text_col, meta_col, revision_cols in (("project_notes", ("approved", "suggested"), "content", "citations", ("source_revision", "brief_revision")),
+                                                               ("project_claims", ("proposed", "accepted"), "text", "qualifiers", ("extraction_hash", "updated_at"))):
         qs = ",".join("?" for _ in statuses)
-        rows = conn.execute(f"""SELECT id, {text_col} AS text, {meta_col} AS metadata FROM {table}
+        rows = conn.execute(f"""SELECT id, {text_col} AS text, {meta_col} AS metadata, {revision_cols[0]} AS rev_a,
+            {revision_cols[1]} AS rev_b FROM {table}
             WHERE project_id=? AND status IN ({qs}) AND embedding IS NULL LIMIT ?""",
                           (project_id, *statuses, max(0, limit - len(out)))).fetchall()
         for row in rows:
-            ih = input_hash(row["text"] or "", row["metadata"] or "")
+            ih = input_hash(row["text"] or "", row["metadata"] or "", row["rev_a"], row["rev_b"])
             payload = {
                 "project_id": project_id, "table": table, "object_id": row["id"], "text": row["text"] or "",
                 "input_hash": ih, "provider": "openai", "model": settings.embedding_model,
+                "revision_a": row["rev_a"], "revision_b": row["rev_b"],
                 "version": VECTOR_VERSION,
             }
             out.append(db.create_job("t1_embed_derived", payload,

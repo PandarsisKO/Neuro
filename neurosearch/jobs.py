@@ -355,6 +355,13 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         submit_external("fake", "demo", {"x": payload.get("x")}, deadline=time.time() + 3600, ready_after=int(payload.get("ready_after", 2)))
     if kind == "t1_embed_derived":
         from . import embeddings
+        from . import t1
+        row = db.connect().execute(f"SELECT * FROM {payload['table']} WHERE id=?", (payload["object_id"],)).fetchone()
+        if row is None or t1.input_hash(row["content"] if payload["table"] == "project_notes" else row["text"],
+                                       row["citations"] if payload["table"] == "project_notes" else row["qualifiers"],
+                                       row["source_revision"] if payload["table"] == "project_notes" else row["extraction_hash"],
+                                       row["brief_revision"] if payload["table"] == "project_notes" else row["updated_at"]) != payload["input_hash"]:
+            return {"skipped": "stale_input"}
         vec = embeddings.embed_texts([payload.get("text") or ""])[0]
         db.set_derived_embedding(payload["table"], payload["object_id"], vec,
                                  provider=payload["provider"], model=payload["model"],

@@ -67,13 +67,28 @@ def test_t1_job_writes_provider_versioned_vector(t1_db, monkeypatch):
     db.connect().commit()
     note_id = db.connect().execute("SELECT last_insert_rowid()").fetchone()[0]
     monkeypatch.setattr("neurosearch.embeddings.embed_texts", lambda texts: [np.array([0., 1.], dtype=np.float32)])
+    input_hash = __import__("neurosearch.t1", fromlist=["input_hash"]).input_hash("embed me", None, None, None)
     job = {"id": "job-t1", "kind": "t1_embed_derived", "payload": {
         "table": "project_notes", "object_id": note_id, "text": "embed me", "provider": "openai",
-        "model": "text-embedding-3-small", "version": "t1-v1", "input_hash": "h"}}
+        "model": "text-embedding-3-small", "version": "t1-v1", "input_hash": input_hash}}
     result = jobs.run_job(job)
     assert result["dimensions"] == 2
     assert db.load_versioned_derived_embeddings("project_notes", project_id, provider="openai",
                                                 model="text-embedding-3-small", version="t1-v1", dimensions=2)
+
+
+def test_t1_job_skips_when_input_revision_changed(t1_db, monkeypatch):
+    from neurosearch import jobs, t1
+    project_id = db.create_project("T1 stale", "test")["id"]
+    db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
+                         (project_id, "new text", "approved", db.now()))
+    db.connect().commit(); note_id = db.connect().execute("SELECT last_insert_rowid()").fetchone()[0]
+    monkeypatch.setattr("neurosearch.embeddings.embed_texts", lambda texts: (_ for _ in ()).throw(AssertionError("must not embed stale input")))
+    old_hash = t1.input_hash("old text", None, None, None)
+    result = jobs.run_job({"id": "job-stale", "kind": "t1_embed_derived", "payload": {
+        "table": "project_notes", "object_id": note_id, "text": "old text", "provider": "openai",
+        "model": "m", "version": "t1-v1", "input_hash": old_hash}})
+    assert result == {"skipped": "stale_input"}
 
 
 def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
