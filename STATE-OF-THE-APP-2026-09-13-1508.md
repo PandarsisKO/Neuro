@@ -2,9 +2,10 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- `main` is `f1533c6`; app/package version `0.63.65`.
-- `repo-check` and commit-bound `release-check --no-pytest` pass; artifact:
-  `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`.
+- `main` is `e60cf71`; app/package version `0.63.65`.
+- `repo-check` passes. The latest commit-bound `release-check --no-pytest` passed at the code commit `f1533c6`;
+  artifact: `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`. The intervening commit is
+  documentation/evidence only.
 - Full pytest baseline: **1,383 passed**, one existing Starlette deprecation warning. Focused T3: 16 passed.
 - Claude owns design/audit/browser surfaces; Codex owns backend/reliability/T1–T3. Claims remains paused; R8/R9
   triggers unchanged.
