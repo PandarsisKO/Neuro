@@ -686,3 +686,43 @@ is the connection under test even after the entire suite has run.
 
 Final commit-bound `release-check --no-pytest` passes at `0.63.59 @ 95e2f3f`; artifact:
 `evals/release/release-check-0.63.59-95e2f3f-20260913-123840.json`.
+
+## Design ladder — F1's last item landed (display:none -> hidden) — closes Rung F1 — 2026-09-13
+
+Landed the final piece of F1: converted every `display:none` toggle to the native `hidden`
+attribute. On `main` at merge commit `696a0c6` (source commit `d6091b7` on branch
+`design/f1-step2p-display-hidden`, now deleted).
+
+Converted 18 static/template sites (14 in `index.html`: `#bootCard`, `#jobsCard`, `#captureCard`,
+`#srcGroupCtl`, `#fbGroupCtl`, five `#pane*` research containers, `#cwBulk`, `#cwGroupCtl`,
+`#settleBtn`, the file-attach input; plus 1 in `js/research.js` — the per-watchout claims panel
+— and 3 in `js/sources.js` — the per-source `#reserve-${id}` box, `browserBlock`'s help text, and
+`loadReviews`' per-row filter-visibility ternary) and 24 JS toggle lines that read or wrote
+`.style.display` for those same elements (2 in `js/home.js`, 8 in `js/research.js`, 14 in
+`js/sources.js`), each converted to a `.hidden = true/false` (or negated-boolean) assignment.
+
+Caught and fixed a real gotcha before it could ship broken: three of the converted elements carry
+`class="row"`, and `styles.css` defines `.row{display:flex}` — at equal CSS specificity an author
+stylesheet rule beats the browser's UA stylesheet rule for `[hidden]`, so the `hidden` attribute
+alone would not have actually hidden those three elements. Added
+`[hidden]{display:none!important}` to `styles.css` to guarantee `hidden` always wins, found and
+fixed during scoping rather than after a visual bug report.
+
+`UI_VERSION` bumped to `0.63.60` (no `MAX_INLINE_STYLE_ATTRS` change — this item doesn't touch
+`style=` attribute counts). 59 tests pass across `test_s50_design_drift`,
+`test_s44_frontend_integrity`, `test_s5_ui_syntax`, and every directly-related surface suite
+(`test_n7_pool`, `test_n8_research_shell`, `test_n9_source_drawer`, `test_o1_accelerate`,
+`test_o2_claims_workbench`, `test_r8_yield_and_review_fold`); `node --check` passes on all three
+touched JS modules. The full 1,363-test suite shows order-dependent flakiness in this sandbox
+unrelated to this change — confirmed by running it twice on unmodified `main`, which failed on a
+different set of 8 tests each time, none overlapping.
+
+**This closes Rung F1 in its entirety** — tokens, inline-style retirement, width:auto,
+display:none, and the icon sprite are all landed. Per `ladder.md`'s sequencing
+(`F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 → RE-AUDIT → C1 → P1`), Rung F2 (the shared
+loading/empty/failure-state primitive, fixing `H-2`) is now eligible to start. One caveat worth
+a real browser check rather than just a green test suite: this item touched live visibility
+toggling across several surfaces (Research panes, Sources grouping/reserve/capture, Findings/
+Claims filter bars, the jobs card), and this environment has no reliable browser repaint path to
+visually confirm — Codex's own frontend-split HANDOFF entries flagged the identical limitation.
+Worth a quick click-through before treating this as fully verified.
