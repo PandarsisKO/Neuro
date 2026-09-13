@@ -2020,3 +2020,9 @@ Findings' `Rebuild now · $X`; cost, endpoint, and behavior are unchanged. The m
 Focused W1/frontend checks passed (86 tests), full pytest passed **1,364 tests** with one existing Starlette
 warning, and the deterministic release gate passed all checks. Artifact:
 `evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json`.
+
+## W1 step 2 runtime verification — 2026-09-13 13:53 PT
+
+The live authenticated app now serves `0.63.63` with `fake_ai=false`. Health reports zero queued/running/stale/leased/
+external-pending jobs and the newest verified backup `neurosearch-20260913-1353.db` with full `integrity: ok`; no
+settlement was run for the 36 historical collected-but-unwritten batch items.

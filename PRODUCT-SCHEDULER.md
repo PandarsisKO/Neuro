@@ -222,3 +222,10 @@ label as Findings. Focused checks (86), full pytest (1,364), and the commit-boun
 `0.63.63`; artifact `evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json`. W1's remaining work is
 human re-scoring and any evidence-backed label sweep; F2 browser evidence remains open. Codex has no new independent
 rung to admit while T2's state-model gate and the recorded R8/R9(c) triggers remain unmet.
+
+## W1 STEP 2 RUNTIME CHECKPOINT — 2026-09-13 13:53 PT
+
+Post-release authenticated verification reports `0.63.63`, `fake_ai=false`, no active or stale jobs, and a newest
+verified backup with full `integrity: ok`. The 36 historical unsettled batch results remain untouched while Claims is
+paused. W1 step 2 is therefore validated in code, tests, release gate, and runtime; the next evidence requirement is
+Claude's human/browser re-score before additional W1 label changes.

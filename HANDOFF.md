@@ -1033,3 +1033,10 @@ The merged W1 step-2 tree `1a7ff71` passed the focused frontend/design checks (8
 passed**, one existing Starlette warning), and the deterministic release gate at `0.63.63`. Artifact:
 `evals/release/release-check-0.63.63-1a7ff71-20260913-135410.json` (and matching `.txt`). This validates the Plan
 cost-label change together with the prior W1 step-1 fixes; no backend behavior or live data changed.
+
+## Runtime verification after W1 step 2 — 2026-09-13 13:53 PT
+
+Authenticated API reads after the `0.63.63` reload returned `/api/version` 200 (`fake_ai=false`) and `/api/health`
+with zero queued/running/stale/leased/external-pending jobs. Health's newest verified backup is
+`neurosearch-20260913-1353.db`, full `integrity: ok`, 38,038 chunks, 1.15 GB. The two historical unsettled batches
+remain 36 collected-but-unwritten items and were not settled.
