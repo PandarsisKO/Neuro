@@ -242,3 +242,12 @@ There is currently no admitted Codex-owned implementation rung. T2 remains behin
 gate; R8 retention and R9(c) remain trigger-gated. Claude owns the open F2/W1 browser evidence. Do not reopen the
 superseded frontend-split queue or start parked product work. A new Codex rung requires a measured backend,
 reliability, recovery, or Transcript Intelligence trigger and the normal tests, documentation, and release gate.
+
+## T2 ADMISSION PROPOSAL — 2026-09-13 14:18 PT
+
+Codex prepared `docs/T2-ADMISSION-2026-09-13.md` from the completed T1 cohort. It defines a read-only, derived
+seven-state coverage view, preserves independent signals plus a deterministic projection, requires project-relative
+cut points, and postpones `chunk_pass` persistence until measured need. This is a proposal, not an implementation
+admission: state semantics must be reviewed before Codex touches T2 code. It does not touch Claude-owned frontend or
+design surfaces. If accepted, T2 becomes the single active Codex effort and must pass its focused tests, measurement,
+full suite/Tier 1 where affected, and commit-bound release gate.

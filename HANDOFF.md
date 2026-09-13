@@ -1069,3 +1069,12 @@ The exact launcher command, `./.venv/bin/pip install -q -e '.[dev]'`, was timed 
 seconds with no failures. This is not currently a material startup trigger, so the launcher remains unchanged; its
 self-update behavior continues to protect dependency/version drift. The corresponding vestigial-inventory item now
 has a measured revisit condition rather than an unbounded suspicion.
+
+## T2 admission proposal — seven-state coverage view — 2026-09-13 14:18 PT
+
+The missing T2 gate is now drafted at `docs/T2-ADMISSION-2026-09-13.md`. It is intentionally a proposal rather than
+an implementation: the derived read-only view preserves independent `extracted`, `represented`, `finding_covered`,
+`claim_covered`, `redundant`, `irrelevant`, and `unexplained` signals, exposes a deterministic projection, uses only
+project-relative T1 distributions, and fails open when inputs are unavailable. It adds no UI, route, table, provider
+call, or live-data mutation. T2 implementation remains unadmitted until the state-model semantics are reviewed; if
+accepted, the next step is to implement only the existing T1 coverage seam and run the named gates.
