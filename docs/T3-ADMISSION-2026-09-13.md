@@ -196,3 +196,10 @@ Pure manifest validation/scoring helpers are committed at `7821cb5`; `repo-check
 Fixed `score_manifest` to aggregate each labeled row independently instead of globally set-collapsing identical
 `(kind,start,end,normalized)` keys from different chunks. Added a regression proving duplicate offsets across rows are
 counted independently. Review infrastructure focused coverage is now 24 passed; pending rows remain excluded.
+
+## T3 review scorer release checkpoint — 2026-09-13 15:16 PT
+
+Cross-row metric preservation is committed at `2c815e7`; focused T3/review tests are 24 passed, full pytest is 1,392
+passed with one existing Starlette warning, and repo/release checks pass. Artifact:
+`evals/release/release-check-0.63.65-2c815e7-20260913-151605.json`. The pending 60-row queue still requires manual
+exact-span gold adjudication; no downstream trust or persistence is admitted.

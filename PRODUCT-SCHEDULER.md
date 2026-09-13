@@ -376,3 +376,8 @@ adjudication remains the next gate.
 
 The pure scorer now preserves cross-row duplicate spans; scheduler behavior is unchanged and manual gold review remains
 the gate.
+
+## T3 review scorer release checkpoint — 2026-09-13 15:16 PT
+
+Cross-row review metrics are corrected and release-checked at `2c815e7`; scheduler behavior is unchanged. Manual gold
+review remains the next gate.

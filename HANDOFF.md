@@ -1325,3 +1325,9 @@ the 60-row queue; no persistence or T4 yet.
 
 `score_manifest` now aggregates row-by-row, preserving identical offsets that occur in separate chunks. A regression
 covers this; focused T3/review tests are 24 passed. Pending gold rows remain excluded from metrics.
+
+## T3 review scorer release checkpoint — 2026-09-13 15:16 PT
+
+The row-by-row review scorer fix is committed at `2c815e7`; full pytest 1,392 passed, focused review/T3 24 passed, and
+release-check is green with artifact `evals/release/release-check-0.63.65-2c815e7-20260913-151605.json`. Continue
+manual gold adjudication of the 60-row queue; persistence/T4 remain gated.

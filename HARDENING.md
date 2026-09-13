@@ -2161,3 +2161,8 @@ manual gold labels remain required.
 ## T3 review scorer cross-row correctness — 2026-09-13 15:45 PT
 
 Fixed cross-row metric undercounting in review scoring and added regression coverage. Pending rows remain non-authoritative.
+
+## T3 review scorer release checkpoint — 2026-09-13 15:16 PT
+
+Review scoring now preserves identical spans across chunks and passes the full 1,392-test suite. The pending queue
+still requires exact-span gold adjudication before downstream trust.
