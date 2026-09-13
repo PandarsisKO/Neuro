@@ -117,6 +117,21 @@ Answer: what did intervening work benefit, hinder, invalidate or add risk to? Co
 
 The prior handoff is retained in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md` for history only.
 
+## T1 backfill execution — 2026-09-13
+
+Kyle authorized the paid derived-object backfill. The live app was re-attested
+through its authenticated API at 38,038 valid 1,536-dimensional chunk vectors,
+zero malformed rows, revision 10. Codex added the bounded enqueue endpoint
+`POST /api/projects/{project_id}/transcript/backfill` (pages of 1–5,000 with an
+offset) and committed it at `1194646`; the focused T1 suite is 16 passed and the
+full deterministic suite is 1,362 passed. The queue was paused while admitting
+exactly 39,951 low-lane `t1_embed_derived` jobs across the three retained
+projects, then resumed. Health showed 3,206 complete, 36,586 queued, two running,
+zero stale leases, and zero new T1 failures at the last observation. Do not
+re-enqueue; dedupe keys and offsets already cover the full scope. When queued
+reaches zero, use the supported coverage endpoint for each project and save the
+fresh version-stamped semantic cohort before any T2 decision.
+
 ## QA stabilization handoff — 2026-09-13
 
 The repository-control mission is archived at
