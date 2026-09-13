@@ -26,14 +26,15 @@ def input_hash(*parts: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]:
+def enqueue_backfill(project_id: str, limit: int = 5000, offset: int = 0) -> list[dict[str, Any]]:
     """Queue canonical rows whose vector is missing, stale, corrupt, or in another space."""
-    if limit <= 0:
+    if limit <= 0 or offset < 0:
         return []
     conn = db.connect()
     out = []
     model = settings.embedding_model
     expected_dimensions = _attested_dimensions(DERIVED_PROVIDER, model)
+    skipped = 0
     for table, statuses, text_col, meta_col, revision_cols in _DERIVED_SPECS:
         qs = ",".join("?" for _ in statuses)
         rows = conn.execute(f"""SELECT id, {text_col} AS text, {meta_col} AS metadata, {revision_cols[0]} AS rev_a,
@@ -47,6 +48,9 @@ def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]
             if not _needs_backfill(row, input_hash_=ih, provider=DERIVED_PROVIDER, model=model,
                                    expected_dimensions=expected_dimensions):
                 continue
+            if skipped < offset:
+                skipped += 1
+                continue
             payload = {
                 "project_id": project_id, "table": table, "object_id": row["id"], "text": row["text"] or "",
                 "input_hash": ih, "provider": DERIVED_PROVIDER, "model": model,
@@ -55,7 +59,7 @@ def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]
             }
             out.append(db.create_job("t1_embed_derived", payload,
                                      dedupe_key=f"t1-embed:{table}:{row['id']}:{ih}:{DERIVED_PROVIDER}:{model}:{VECTOR_VERSION}", lane="low"))
-            if len(out) >= max(0, limit):
+            if len(out) >= limit:
                 return out
     return out
 

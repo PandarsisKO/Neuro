@@ -2974,6 +2974,13 @@ class T1AttestationIn(BaseModel):
     preparation_tag: str
 
 
+class T1BackfillIn(BaseModel):
+    # The admission slice is intentionally bounded; callers must make another
+    # explicit request for a later cohort rather than creating an unbounded queue.
+    limit: int = 5000
+    offset: int = 0
+
+
 @app.post("/api/transcript/corpus-attestation", dependencies=[Depends(require_auth)])
 def api_t1_attestation(body: T1AttestationIn) -> dict[str, Any]:
     """Measure stored chunk-vector dimensions and persist only the resulting T1 attestation."""
@@ -3033,6 +3040,20 @@ def api_t1_backfill_preview(project_id: str) -> dict[str, Any]:
     if not db.get_project(project_id):
         raise HTTPException(404)
     return t1.backfill_preview(project_id)
+
+
+@app.post("/api/projects/{project_id}/transcript/backfill", dependencies=[Depends(require_auth)])
+def api_t1_backfill(project_id: str, body: T1BackfillIn) -> dict[str, Any]:
+    """Queue the explicitly authorized, low-lane T1 derived-vector cohort."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if body.limit <= 0 or body.limit > 5000 or body.offset < 0:
+        raise HTTPException(400, "limit must be between 1 and 5000 and offset must be non-negative")
+    jobs_queued = t1.enqueue_backfill(project_id, limit=body.limit, offset=body.offset)
+    return {"project_id": project_id, "queued": len(jobs_queued),
+            "job_ids": [j["id"] for j in jobs_queued], "limit": body.limit,
+            "offset": body.offset, "provider": t1.DERIVED_PROVIDER, "model": settings.embedding_model,
+            "version": t1.VECTOR_VERSION, "lane": "low"}
 
 
 @app.delete("/api/notes/{note_id}", dependencies=[Depends(require_auth)])

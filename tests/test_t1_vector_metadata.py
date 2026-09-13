@@ -113,6 +113,33 @@ def test_t1_backfill_preview_never_queues_work(t1_db):
     assert report["total_rows"] == 0 and report["queued"] == 0 and report["executed"] == 0
 
 
+def test_t1_backfill_endpoint_is_bounded_and_low_lane(t1_db, client):
+    project_id = db.create_project("T1 endpoint", "test")["id"]
+    db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
+                         (project_id, "queue through API", "approved", db.now()))
+    db.connect().commit()
+    headers = {"Authorization": "Bearer t0k"}
+    queued = client.post(f"/api/projects/{project_id}/transcript/backfill", headers=headers, json={"limit": 1})
+    assert queued.status_code == 200 and queued.json()["queued"] == 1
+    assert queued.json()["lane"] == "low" and queued.json()["version"] == "t1-derived-v1"
+    assert client.post(f"/api/projects/{project_id}/transcript/backfill", headers=headers, json={"limit": 5001}).status_code == 400
+    assert client.post("/api/projects/nope/transcript/backfill", headers=headers, json={"limit": 1}).status_code == 404
+
+
+def test_t1_backfill_offset_reaches_later_rows_without_duplicate_pages(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 paging", "test")["id"]
+    for i in range(3):
+        db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
+                             (project_id, f"queue {i}", "approved", db.now()))
+    db.connect().commit()
+    ids = [r["id"] for r in db.connect().execute("SELECT id FROM project_notes WHERE project_id=? ORDER BY id", (project_id,)).fetchall()]
+    first = t1.enqueue_backfill(project_id, limit=2, offset=0)
+    second = t1.enqueue_backfill(project_id, limit=2, offset=2)
+    assert [j["payload"]["object_id"] for j in first] == ids[:2]
+    assert [j["payload"]["object_id"] for j in second] == ids[2:]
+
+
 def test_t1_preview_and_queue_include_stale_vectors_not_only_nulls(t1_db, monkeypatch):
     from neurosearch import t1
     from neurosearch.config import settings
