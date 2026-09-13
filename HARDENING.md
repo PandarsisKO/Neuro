@@ -1966,3 +1966,12 @@ took 10.066 s, 11.862 s, and 11.937 s respectively. The 8M result had 1,502 clus
 result by two missing and one extra cluster; 12M and 16M both produced 1,503 clusters with identical cluster
 signatures. This makes a measured 12M ceiling a plausible small follow-up, but it is not yet admitted: the next
 checkpoint must add a deterministic regression fixture and confirm memory/latency before changing the constant.
+
+## Findings-quality pair ceiling — implementation — 2026-09-13
+
+The measured candidate is now implemented in `findings_quality.PAIR_BUDGET` at 12,000,000; lexical thresholds and
+blocking semantics are unchanged. Against the verified backup, the large 16,450-finding project completes without the
+8M partial warning. A fresh run returned 1,776 duplicate findings; its first cold review took 14.149 s and stable
+cache hits took 0.054 s. The exact comparison showed identical clusters at 12M and 16M (11.862 s and 11.937 s), so
+12M is the smallest measured complete ceiling for the current corpus. The revision-keyed cache and exact cap remain in
+place; this is a bounded completeness fix, not an unbounded quadratic expansion.

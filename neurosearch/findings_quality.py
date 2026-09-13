@@ -76,11 +76,10 @@ BLOCK_MIN_NOTES = 600        # below this, compare every pair (600^2/2 is ~180k 
                              # a small set excludes everything, because with five findings every word is "common"
 BLOCK_DF_SHARE = 0.02        # a word in more than 2% of a project's findings is too common to block on
 BLOCK_MAX = 400              # ignore a blocking word that would pair more than this many findings
-PAIR_BUDGET = 8_000_000      # measured: Kyle's 10,380-finding project needs ~4M comparisons and converges at 192
-                             # duplicates in 169 groups. At 400k it found 78 and logged that it was partial, which
-                             # is the kind of quiet half-answer this codebase is supposed to refuse. 8M costs 3.8 s,
-                             # which is why `review` is cached on the project's view revision rather than recomputed
-                             # per request.
+PAIR_BUDGET = 12_000_000     # measured on the current 16,450-finding project: 8M stopped partial (1,502 clusters),
+                             # while 12M and 16M produced identical complete 1,503-cluster signatures in 11.862 s
+                             # and 11.937 s. Keep the exact cap so a future corpus cannot turn one request into an
+                             # unbounded quadratic pass; `review` remains cached on the project's view revision.
 
 # ---- vacuity ------------------------------------------------------------------------------------
 SHORT_CONTENT_TOKENS = 5     # content words, after stop words: fewer than this says almost nothing

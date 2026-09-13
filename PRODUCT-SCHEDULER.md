@@ -145,6 +145,11 @@ Measured runtimes were 10.066 s, 11.862 s, and 11.937 s. A 12M ceiling is theref
 candidate for the current corpus, pending a deterministic regression fixture and memory check after the active design
 boundary. The constant remains unchanged.
 
+The Codex backend checkpoint now implements the measured 12M findings-quality ceiling. This remains disjoint from
+Claude's F2 browser/W1 design work: only `neurosearch/findings_quality.py`, its calibration test, and shared handoff
+documentation are touched. The full suite and commit-bound release gate are required before this bounded fix closes;
+no new service or unmeasured threshold change is admitted.
+
 The validated current tree is also backed up remotely on `backup/2026-09-13-clean` (snapshot commit
 `aff2e407b5faae5ee8d193168bfc094f9dfabf7f`). A normal `main` push is blocked by retired historical `VIDEOS/` blobs and
 was not retried destructively; local history remains intact pending an explicit history-rewrite decision.

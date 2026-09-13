@@ -333,7 +333,7 @@ def test_the_thresholds_are_the_calibrated_ones():
     shipped guess of 0.62 found 18 pairs in that corpus; 0.35 plus containment finds 192 in 169 groups."""
     assert fq.NEAR_JACCARD == 0.35
     assert fq.CONTAIN_RATIO == 0.85
-    assert fq.PAIR_BUDGET >= 8_000_000          # 400k left detection partial on a real project, and said so
+    assert fq.PAIR_BUDGET >= 12_000_000         # the current 16,450-finding project needs 12M for a complete pass
 
 
 def test_clustering_covers_the_whole_project_not_a_prefix():

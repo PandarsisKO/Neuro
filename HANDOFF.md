@@ -829,6 +829,14 @@ The follow-up exact-budget experiment tested 8M, 12M, and 16M pairs on that same
 and one extra cluster. This supports evaluating a 12M ceiling as the smallest measured complete result for the current
 corpus. It remains a candidate after the active design boundary, with no constant, schema, or threshold changed.
 
+## Codex findings-quality ceiling — implementation checkpoint — 2026-09-13
+
+The measured backend candidate is now implemented: `PAIR_BUDGET` is 12,000,000, the smallest ceiling that matched the
+complete 16M result on the verified current backup. No lexical threshold, blocking rule, schema, or provider path
+changed. The large project completes without the 8M partial warning; a fresh copy measured 14.149 s cold and 0.054 s
+on stable cache hits, with 1,776 duplicate findings. Focused quality tests pass (42); the full suite passes 1,364
+tests with one existing Starlette warning. The commit-bound release gate is being run after this checkpoint.
+
 ## GitHub backup checkpoint — 2026-09-13
 
 The ordinary `git push origin main` could not complete because the historical graph contains several gigabytes of
