@@ -94,6 +94,11 @@ the full suite was rerun after the changes and produced no observed failure.
 The next active rung is R3: re-measure correctness/flakiness debt and select the
 highest-value confirmed issue before adding any broader release gate.
 
+The front door is now durable: `AGENTS.md`, `QUALITY-CONTRACT.md`, and
+`QA-STABILIZATION-PROMPT.md` are tracked. Their design references use the
+repository's canonical uppercase filenames, so a new session will not be sent to
+nonexistent `design.md`/`audit.md` files.
+
 # R0 - Establish the truth
 
 Before editing production code:
