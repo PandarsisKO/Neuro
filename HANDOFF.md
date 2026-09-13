@@ -841,3 +841,6 @@ To preserve a reviewable remote copy without rewriting shared history, the curre
 history-free snapshot commit `aff2e407b5faae5ee8d193168bfc094f9dfabf7f` and pushed successfully to GitHub branch
 `backup/2026-09-13-clean`. That branch is the current remote backup target; local `main` history is unchanged. Any
 future main-history cleanup needs an explicit decision because it would rewrite commit ancestry shared with Claude.
+
+The snapshot branch is refreshed after each documentation checkpoint so its tree includes the latest committed
+documentation; inspect `git ls-remote origin refs/heads/backup/2026-09-13-clean` for its current tip.
