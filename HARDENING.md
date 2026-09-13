@@ -2034,3 +2034,12 @@ The editable virtualenv metadata lagged the source/runtime (`0.63.43` versus `0.
 --no-deps --editable .` synchronized the metadata. Post-repair `doctor` passes the version check at `0.63.63`, and
 `repo-check` passes with no findings. Historical provider/model and ambiguous-execution counters remain visible by
 design; they were not deleted or reset.
+
+## W1 step 3 — Sources re-rank disclosure — 2026-09-13 14:15 PT
+
+Claude's committed W1 step 3 (`a086fb5`, merged at `6a17b9e`) adds the missing model-budget disclosure to both
+Sources re-rank controls. The text states that titles/descriptions are scored against the project brief and that the
+model budget is used; behavior and cost class are unchanged. UI/package version is `0.63.64`. The focused frontend/
+Sources suite passed 28 tests, and the commit-bound deterministic release gate passed at `307b593` with artifact
+`evals/release/release-check-0.63.64-307b593-20260913-141519.json`. The full 1,364-test baseline remains recorded at
+0.63.63; no backend or live-data path changed.

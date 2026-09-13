@@ -251,3 +251,11 @@ cut points, and postpones `chunk_pass` persistence until measured need. This is 
 admission: state semantics must be reviewed before Codex touches T2 code. It does not touch Claude-owned frontend or
 design surfaces. If accepted, T2 becomes the single active Codex effort and must pass its focused tests, measurement,
 full suite/Tier 1 where affected, and commit-bound release gate.
+
+## W1 STEP 3 RELEASE CHECKPOINT — 2026-09-13 14:15 PT
+
+Claude's W1 step 3 is released at `6a17b9e` (source `a086fb5`): both Sources re-rank controls now disclose that
+ranking titles/descriptions against the project brief uses the model budget. The focused suite passed 28 tests and
+commit-bound `release-check --no-pytest` passed every deterministic proof at UI `0.63.64`; artifact
+`evals/release/release-check-0.63.64-307b593-20260913-141519.{json,txt}`. W1's remaining acceptance is the human/
+browser re-score for F2 and W1. The T2 admission proposal is prepared but remains pending state-model review.
