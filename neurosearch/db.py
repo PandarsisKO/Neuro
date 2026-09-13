@@ -21,6 +21,7 @@ import numpy as np
 from .config import settings
 
 FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
+CHUNK_EMBEDDING_REVISION_KEY = "chunks:embedding-revision"
 
 # R8 storage hygiene, measured 2026-09-11 on a copied 630 MB verified backup. SQLite's default cache was only
 # 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac.
@@ -1467,8 +1468,25 @@ def chunks_missing_embeddings(limit: int = 500, source_id: str | None = None) ->
 
 
 def set_embeddings(pairs: list[tuple[int, np.ndarray]]) -> None:
+    if not pairs:
+        return
     with tx() as conn:
         conn.executemany("UPDATE chunks SET embedding=? WHERE id=?", [(_pack(e), cid) for cid, e in pairs])
+        row = conn.execute("SELECT value FROM kv WHERE key=?", (CHUNK_EMBEDDING_REVISION_KEY,)).fetchone()
+        try:
+            revision = int(row["value"] if row else 0) + 1
+        except (TypeError, ValueError):
+            revision = 1
+        conn.execute("""INSERT INTO kv (key, value) VALUES (?,?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                     (CHUNK_EMBEDDING_REVISION_KEY, str(revision)))
+
+
+def chunk_embedding_revision() -> int:
+    try:
+        return int(kv_get(CHUNK_EMBEDDING_REVISION_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 _T1_DERIVED_TABLES = {

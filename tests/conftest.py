@@ -21,6 +21,7 @@ os.environ["NEUROSEARCH_RETRIEVAL_RERANK"] = "0"
 os.environ["NEUROSEARCH_CHAT_TAIL_BREAKPOINT"] = "0"
 os.environ["NEUROSEARCH_SCHEMA_COMPAT_FALLBACK"] = ""
 os.environ["NEUROSEARCH_FAKE_AI"] = "0"
+os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 
 # 2026-09-13 — the data directory is HARD-SET here, unconditionally, before any test module is imported. Seventy-eight
 # modules still say `os.environ.setdefault("NEUROSEARCH_DATA_DIR", tmp)`; Kyle's `.env` sets that variable, so on

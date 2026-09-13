@@ -31,6 +31,12 @@ is explicitly deferred with a numeric revisit trigger. R8 retention is deliberat
 unchanged; the remaining T1 gate is the explicitly authorized derived-object backfill and semantic cohort. See `PRODUCT-SCHEDULER.md`,
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
+T1's pre-backfill correctness review closed the stale/wrong-space selection gap, pinned queued model identity through
+execution and usage accounting, made corpus attestation expire after canonical embedding changes, and removed a
+test-order authentication leak. The 2026-09-12 19:07 PT live re-measurement found 37,629 valid chunk vectors and
+39,740 derived objects across the three retained projects. Full pytest passed 1,353 tests. The backfill remains
+unstarted and requires an explicit spend decision.
+
 GitHub custody: the current documentation tree is published on `https://github.com/PandarsisKO/Neuro` and the latest
 compact sync was verified tree-equal to this checkout. The published snapshot includes the Foundation R7 closeout,
 R9(a)/(b) scorecards, the T1 vector-space reconciliation, the R8 revisit trigger, the Claude handoff, and the

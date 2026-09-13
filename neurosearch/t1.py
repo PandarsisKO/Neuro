@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,12 @@ from .config import settings
 
 VECTOR_VERSION = "t1-derived-v1"
 CORPUS_ATTESTATION_KEY = "t1:corpus-space-attestation"
+DERIVED_PROVIDER = "openai"
+
+_DERIVED_SPECS = (
+    ("project_notes", ("approved", "suggested"), "content", "citations", ("source_revision", "brief_revision")),
+    ("project_claims", ("proposed", "accepted"), "text", "qualifiers", ("extraction_hash", "updated_at")),
+)
 
 
 def input_hash(*parts: Any) -> str:
@@ -20,26 +27,36 @@ def input_hash(*parts: Any) -> str:
 
 
 def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]:
-    """Queue only canonical rows without a current vector; low lane makes this work yield to user tasks."""
+    """Queue canonical rows whose vector is missing, stale, corrupt, or in another space."""
+    if limit <= 0:
+        return []
     conn = db.connect()
     out = []
-    for table, statuses, text_col, meta_col, revision_cols in (("project_notes", ("approved", "suggested"), "content", "citations", ("source_revision", "brief_revision")),
-                                                               ("project_claims", ("proposed", "accepted"), "text", "qualifiers", ("extraction_hash", "updated_at"))):
+    model = settings.embedding_model
+    expected_dimensions = _attested_dimensions(DERIVED_PROVIDER, model)
+    for table, statuses, text_col, meta_col, revision_cols in _DERIVED_SPECS:
         qs = ",".join("?" for _ in statuses)
         rows = conn.execute(f"""SELECT id, {text_col} AS text, {meta_col} AS metadata, {revision_cols[0]} AS rev_a,
-            {revision_cols[1]} AS rev_b FROM {table}
-            WHERE project_id=? AND status IN ({qs}) AND embedding IS NULL LIMIT ?""",
-                          (project_id, *statuses, max(0, limit - len(out)))).fetchall()
+            {revision_cols[1]} AS rev_b, embedding IS NULL AS embedding_missing,
+            LENGTH(embedding) AS embedding_bytes, embedding_provider, embedding_model,
+            embedding_dimensions, embedding_input_hash, embedding_version
+            FROM {table} WHERE project_id=? AND status IN ({qs}) ORDER BY id""",
+                          (project_id, *statuses)).fetchall()
         for row in rows:
             ih = input_hash(row["text"] or "", row["metadata"] or "", row["rev_a"], row["rev_b"])
+            if not _needs_backfill(row, input_hash_=ih, provider=DERIVED_PROVIDER, model=model,
+                                   expected_dimensions=expected_dimensions):
+                continue
             payload = {
                 "project_id": project_id, "table": table, "object_id": row["id"], "text": row["text"] or "",
-                "input_hash": ih, "provider": "openai", "model": settings.embedding_model,
+                "input_hash": ih, "provider": DERIVED_PROVIDER, "model": model,
                 "revision_a": row["rev_a"], "revision_b": row["rev_b"],
                 "version": VECTOR_VERSION,
             }
             out.append(db.create_job("t1_embed_derived", payload,
-                                     dedupe_key=f"t1-embed:{table}:{row['id']}:{ih}:{VECTOR_VERSION}", lane="low"))
+                                     dedupe_key=f"t1-embed:{table}:{row['id']}:{ih}:{DERIVED_PROVIDER}:{model}:{VECTOR_VERSION}", lane="low"))
+            if len(out) >= max(0, limit):
+                return out
     return out
 
 
@@ -47,15 +64,47 @@ def backfill_preview(project_id: str) -> dict[str, Any]:
     """Return the billable T1 scope without queuing or running anything."""
     conn = db.connect()
     counts = {}
-    for table, statuses in (("project_notes", ("approved", "suggested")), ("project_claims", ("proposed", "accepted"))):
+    model = settings.embedding_model
+    expected_dimensions = _attested_dimensions(DERIVED_PROVIDER, model)
+    for table, statuses, text_col, meta_col, revision_cols in _DERIVED_SPECS:
         qs = ",".join("?" for _ in statuses)
-        n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id=? AND status IN ({qs}) AND embedding IS NULL",
-                         (project_id, *statuses)).fetchone()[0]
-        counts[table] = int(n)
+        rows = conn.execute(f"""SELECT id, {text_col} AS text, {meta_col} AS metadata,
+            {revision_cols[0]} AS rev_a, {revision_cols[1]} AS rev_b,
+            embedding IS NULL AS embedding_missing, LENGTH(embedding) AS embedding_bytes,
+            embedding_provider, embedding_model, embedding_dimensions, embedding_input_hash, embedding_version
+            FROM {table} WHERE project_id=? AND status IN ({qs})""", (project_id, *statuses)).fetchall()
+        counts[table] = sum(_needs_backfill(
+            row,
+            input_hash_=input_hash(row["text"] or "", row["metadata"] or "", row["rev_a"], row["rev_b"]),
+            provider=DERIVED_PROVIDER,
+            model=model,
+            expected_dimensions=expected_dimensions,
+        ) for row in rows)
     total = sum(counts.values())
     return {"project_id": project_id, "rows": counts, "total_rows": total,
             "embedding_batches_at_96": (total + 95) // 96, "queued": 0, "executed": 0,
-            "model": settings.embedding_model, "version": VECTOR_VERSION}
+            "provider": DERIVED_PROVIDER, "model": model, "version": VECTOR_VERSION,
+            "expected_dimensions": expected_dimensions}
+
+
+def _attested_dimensions(provider: str, model: str) -> int | None:
+    attestation = get_chunk_space_attestation()
+    if not attestation or (attestation.get("provider"), attestation.get("model")) != (provider, model):
+        return None
+    return int(attestation["dimensions"])
+
+
+def _needs_backfill(row: Any, *, input_hash_: str, provider: str, model: str,
+                    expected_dimensions: int | None) -> bool:
+    if row["embedding_missing"]:
+        return True
+    if (row["embedding_provider"], row["embedding_model"], row["embedding_version"], row["embedding_input_hash"]) != (
+            provider, model, VECTOR_VERSION, input_hash_):
+        return True
+    dimensions = int(row["embedding_dimensions"] or 0)
+    if dimensions <= 0 or int(row["embedding_bytes"] or 0) != dimensions * np.dtype(np.float32).itemsize:
+        return True
+    return expected_dimensions is not None and dimensions != expected_dimensions
 
 
 def coverage_report(project_id: str) -> dict[str, Any]:
@@ -102,9 +151,13 @@ def measure_project(project_id: str, *, provider: str, model: str, dimensions: i
 
 
 def attest_chunk_space(*, provider: str, model: str, dimensions: int, preparation_tag: str) -> dict[str, Any]:
-    """Measure and persist the legacy chunk-vector space; mixed or malformed blobs fail closed."""
+    """Measure and persist a dimension/revision attestation for the declared legacy vector space."""
     if dimensions <= 0:
         raise ValueError("dimensions must be positive")
+    if provider != DERIVED_PROVIDER:
+        raise ValueError("unsupported T1 embedding provider")
+    if not model.strip() or not preparation_tag.strip():
+        raise ValueError("model and preparation_tag are required")
     rows = db.connect().execute("SELECT embedding FROM chunks WHERE embedding IS NOT NULL").fetchall()
     bad = 0
     for row in rows:
@@ -115,6 +168,9 @@ def attest_chunk_space(*, provider: str, model: str, dimensions: int, preparatio
             bad += 1
     attestation = {"provider": provider, "model": model, "dimensions": dimensions,
                    "count": len(rows), "bad_dimensions": bad, "preparation_tag": preparation_tag,
+                   "embedding_revision": db.chunk_embedding_revision(), "verified_at": time.time(),
+                   "verification_scope": "dimensions_and_canonical_write_revision",
+                   "provenance_basis": "declared_preparation_metadata",
                    "verified": bool(rows) and bad == 0}
     db.kv_set(CORPUS_ATTESTATION_KEY, json.dumps(attestation, sort_keys=True))
     return attestation
@@ -128,4 +184,13 @@ def get_chunk_space_attestation() -> dict[str, Any] | None:
         value = json.loads(raw)
     except (TypeError, ValueError):
         return None
-    return value if isinstance(value, dict) and value.get("verified") else None
+    if not isinstance(value, dict) or not value.get("verified"):
+        return None
+    if value.get("verification_scope") != "dimensions_and_canonical_write_revision":
+        return None
+    if int(value.get("embedding_revision", -1)) != db.chunk_embedding_revision():
+        return None
+    current_count = db.connect().execute("SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL").fetchone()[0]
+    if int(value.get("count", -1)) != int(current_count):
+        return None
+    return value

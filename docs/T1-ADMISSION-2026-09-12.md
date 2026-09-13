@@ -22,7 +22,7 @@ The first bounded schema slice is now underway: additive metadata columns, typed
 helpers, a low-lane durable backfill adapter, a measured versioned corpus-space attestation, a project-relative
 similarity distribution engine with content/revision freshness keys and stale-job refusal, and a read-only
 `/api/projects/{id}/transcript/coverage` scaffold have been added to both derived-object tables, with focused coverage
-in `tests/test_t1_vector_metadata.py` (9 focused tests). The endpoint reports explicit `measurement_pending` until attestation exists;
+in `tests/test_t1_vector_metadata.py` (14 focused tests). The endpoint reports explicit `measurement_pending` until attestation exists;
 it never invents semantic coverage.
 No live database was opened or re-embedded.
 
@@ -43,6 +43,24 @@ explicitly authorized derived-object backfill.
 The zero-cost backfill preview (`evals/t1/backfill-preview-20260912-1724.json`) covers 39,715 canonical missing
 vectors across 13 projects, approximately 418 batches at the existing 96-row batch size, with 0 queued and 0
 executed. It is a preview only; no provider call or job mutation occurred.
+
+That artifact remains the historical pre-cleanup snapshot. After the ten synthetic projects were removed, the live
+API was measured again at 19:07 PT: the three retained projects contain 39,740 derived objects requiring a current
+vector, or 416 project-bounded batches at 96 rows. The corpus was re-attested through the supported API at 37,629
+chunk vectors, 1,536 dimensions, and zero malformed rows.
+
+The pre-backfill correctness review then closed three gaps. Backfill eligibility now includes missing, stale,
+wrong-model, wrong-version, wrong-hash, wrong-dimension, and malformed-length vectors rather than only SQL `NULL`s.
+The queued model is passed explicitly to the embedding call and the cost ledger, so a configuration change cannot
+mislabel a generated vector. Corpus attestation now records its honest verification scope and expires when the
+canonical chunk-embedding revision or embedded-row count changes. Provider/model provenance remains declared
+preparation metadata because legacy chunk blobs contain no per-row provenance; only dimensions and canonical write
+revision are mechanically verified.
+
+The test harness also hard-sets its application token before module collection. This removes an order-dependent
+401 failure exposed by running the T1 tests before the resource API tests. The repaired mixed-order slice passed 97
+tests, and the full deterministic suite passed 1,353 tests with one existing Starlette deprecation warning in
+160.69 seconds. No paid embedding job was queued or executed.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with

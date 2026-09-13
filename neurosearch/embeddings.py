@@ -12,17 +12,23 @@ log = logging.getLogger(__name__)
 BATCH = 96
 
 
-def embed_texts(texts: list[str]) -> list[np.ndarray]:
+def embed_texts(texts: list[str], *, model: str | None = None) -> list[np.ndarray]:
+    """Embed with one explicit model identity.
+
+    Jobs that persist model provenance pass their queued model here so a later
+    configuration change cannot make the stored label disagree with the vector.
+    """
     from . import providers
 
     client = providers.openai_client()
+    model_name = model or settings.embedding_model
     out: list[np.ndarray] = []
     for i in range(0, len(texts), BATCH):
         batch = [t[:8000] for t in texts[i:i + BATCH]]
-        res = client.embeddings.create(model=settings.embedding_model, input=batch)
+        res = client.embeddings.create(model=model_name, input=batch)
         try:
             from . import usage
-            usage.record("embed", settings.embedding_model, input_tokens=int(getattr(getattr(res, "usage", None), "total_tokens", 0) or 0))
+            usage.record("embed", model_name, input_tokens=int(getattr(getattr(res, "usage", None), "total_tokens", 0) or 0))
         except Exception:  # noqa: BLE001
             pass
         for d in sorted(res.data, key=lambda d: d.index):
