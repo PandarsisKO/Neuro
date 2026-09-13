@@ -804,3 +804,11 @@ limitation Codex flagged for its own frontend-split work).
 RE-AUDIT → C1 → P1`), Rung W1 ("Reprocessing vocabulary/disclosure contract," fixing `H-5`) is now
 eligible to start — not begun; awaiting Kyle's direction per this engagement's established pattern
 of not assuming the next rung is automatically authorized.
+
+## Post-merge release validation — 2026-09-13
+
+Codex reran the complete release ritual at documentation checkpoint `23f0b70` after F2 landed. `repo-check` passed
+with no findings; `release-check --no-pytest` passed every deterministic proof at app `0.63.61`, including frontend
+integrity, JavaScript parsing, frozen Tier 1, retrieval/cache/economic baselines, and backup/restore. The artifact is
+`evals/release/release-check-0.63.61-23f0b70-20260913-130727.json`. A clean full pytest run immediately before this
+gate passed 1,364 tests with one existing Starlette deprecation warning.
