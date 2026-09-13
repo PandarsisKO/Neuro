@@ -402,3 +402,25 @@ Left untouched, same discipline: `margin-top:6px` throughout, shorthand `margin:
 (neither part maps onto an existing utility — `--muted` isn't one of the status tokens). Master Plan is now
 similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to
 Settings.
+
+## Design ladder — F1 step 2j landed — 2026-09-13
+
+Moved the retirement pass onto Settings (the next surface in `audit.md`'s ranking after Master Plan) — a
+single static view with no dedicated render functions, so this covers all of `#view-settings`. On `main` at
+merge commit `16cd8ed` (source commit `6a90c09` on branch `design/f1-step2j`, now deleted).
+
+Substitutions: 6x bare `margin-top:8px` -> `.mt-2` (one merged into an id-only `#facts` div, five merged into
+an already-present `class="row"` on the Claims/budget/health/retire/danger-zone action rows); 1x bare
+`margin-top:12px` on the project-settings Save row -> `.mt-3`, merged into its `class="row"`. Every touched
+element checked first for JS reading/setting its `style` property (none does). 7 style attributes eliminated
+(328 -> 321); `MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.54`.
+24 tests pass.
+
+Left untouched, as `audit.md` itself flagged this surface ("this is a form that should be a form component"):
+the repeated `style="display:block;margin-top:10px"` on every field label (display:block uncovered, 10px off
+the `--space-*` scale), every textarea's `min-height:*px`, the `<select>`/`<input>` `width:auto`/`width:90px`
+cases (still the deferred selects/inputs decision), `#healthLine`'s combined grid declaration, `#perfOut`/
+`#valueOut`/`#retList`/`#retPreview`'s combined `margin-top` + `font-size:12.5px` + `overflow` strings,
+`#retReason`'s `flex:1;min-width:240px`, `#settleBtn`'s `display:none` state toggle, and the `<dialog>` row's
+`margin-top:12px;justify-content:flex-end` (only the margin half is covered). Settings is now similarly
+exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to Findings.
