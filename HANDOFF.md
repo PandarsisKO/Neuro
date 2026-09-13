@@ -1270,3 +1270,30 @@ Evidence artifacts were refreshed. Manual gold review remains pending before per
 T3 decimal guard and refreshed evidence are committed at `f1533c6`; full pytest 1,383 passed, focused T3 16 passed,
 and release-check is green with artifact `evals/release/release-check-0.63.65-f1533c6-20260913-150847.json`. Continue
 with manual gold adjudication of the 60-row queue; persistence/T4 remain gated.
+
+## Design-audit housekeeping — stale-finding verification (no code changed) — 2026-09-13
+
+While waiting on the audit-instance restart to unblock F2/W1/W2's behavioral and human gates, re-verified
+`docs/design-audit/2026-09-13-b85c222/f1-remaining-scope.md`'s claim that Rung F1 items 2-4 (`width:auto`,
+icon sprite, `display:none` → `hidden`) were still outstanding. They are not — all three landed some time after
+that scope doc was last updated (see `HANDOFF.md`'s own "F1 items 2-3 landed" and "F1's last item landed" entries
+above). `f1-remaining-scope.md` is now stale as a to-do list; leaving it in place as historical record of the
+scoping work rather than rewriting it, per the established practice of correcting the shared record with an
+addendum rather than editing another entry's history.
+
+Also spot-checked six `Rung P1` findings from `audit.md` against current `main` for the same kind of drift:
+
+- **L-1** ("empty grey source-row thumbnails, no fallback glyph") — **stale**. `sources.js` already renders a
+  platform-icon glyph (`ICON[s.platform]`) in place of a missing thumbnail, plus a "Refresh info" flow for
+  sources still missing one.
+- **L-3** ("Chat header menu Delete same weight as Rename/Share") — **stale**, confirmed separately earlier
+  today. `Delete` already carries `class="small ghost danger"`; `Rename`/`Share` do not.
+- **L-2** (CSV exports misplaced among Sources' filter controls), **L-4** (Master Plan's tab strip not
+  persistent), **M-7** (Sources' add-source panel always expanded), **M-9** (Research/Plan toggle styled as a
+  segmented view switch), **M-11** (Chat list unbounded, no recency grouping) — all **still open**, confirmed
+  against current code. None implemented here: each is a layout/visual change per the ladder's own P1 rule
+  ("fixed inside the rung that already touches that surface, never as a standalone commit"), and several
+  (L-4, M-7, M-9) need a rendered check before landing blind, the same limitation as F2/W1/W2's own gates.
+
+No code changed by this note. Saves whoever lands W2/W3/W4/W5/C1 from re-discovering which P1 items are already
+closed.
