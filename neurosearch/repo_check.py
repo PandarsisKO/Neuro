@@ -24,6 +24,7 @@ ROOT_FILES = {
     ".env.example", ".gitignore", "AGENTS.md", "AUDIT.md", "CLAUDE.md", "DESIGN-MISSION.md",
     "DESIGN.md", "DEVELOPMENT-OPERATING-SYSTEM.md", "Dockerfile", "EXTERNAL-AI-ACCESS-MISSION.md",
     "FIELD-MAP-RUNG.md", "FOUNDATION-HANDOFF.md", "HANDOFF.md", "HARDENING.md", "PRODUCT-SCHEDULER.md",
+    "APPLE-DESIGN-REFERENCES.md",
     "QA-STABILIZATION-MISSION.md", "QA-STABILIZATION-PROMPT.md", "QUALITY-CONTRACT.md", "README.md",
     "SCHEDULER.md", "SOURCE-CAPABILITY-RUNG.md", "SPEED-MISSION.md", "TRANSCRIPT-INTELLIGENCE-MISSION.md",
     "VESTIGIAL-INVENTORY.md", "fly.toml", "pyproject.toml", "restart.command", "start", "start.command",
@@ -78,7 +79,7 @@ def _root_hygiene(root: Path, out: list[Finding]) -> None:
     states = sorted(root.glob("STATE-OF-THE-APP-*.md"), key=lambda p: p.name)
     newest_state = states[-1].name if states else None
     for path in sorted(root.iterdir()):
-        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "data", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", "SCREENSHOT AUDIT", ".venv", ".worktrees", "neurosearch.egg-info"}:
+        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "tools", "data", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", "SCREENSHOT AUDIT", ".venv", ".worktrees", "neurosearch.egg-info"}:
             continue
         out.append(Finding(path.name, "1", "unexpected-root-entry", "warning",
                            "root-level entry is not in the documented repository allowlist"))
