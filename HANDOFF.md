@@ -302,3 +302,24 @@ Sources' remaining inline styles are now concentrated in `sourceDrawer` (the dra
 promotable sections — audit.md's own breakdown names this as one of the largest single owners) and
 `transportChoiceHtml`, plus the off-scale/dynamic/display:none cases already logged as deliberately skipped
 throughout steps 2c-2e. `sourceDrawer` is the natural next sub-unit.
+
+## Design ladder — F1 step 2f landed — 2026-09-13
+
+`sourceDrawer` plus the quality/promotable review functions (`loadQuality`, `loadPromotable`, `openPromotable`,
+`openQuality`) — audit.md's "quality & promotable drawers" bucket. On `main` at merge commit `2f003cb` (source
+commit `0883817` on branch `design/f1-step2f`, now deleted). Substitutions: `sourceDrawer`'s "What it gave you"
+card's `margin-top:8px` -> `mt-2` (merged into existing `card` class); the drawer title's `font-size:15px` ->
+`text-base` (15px is the exact `--text-base` token value); four `style="flex:1"` spans across the
+quality/promotable functions -> `class="grow"`. Every touched element checked first for JS reading/setting its
+`style` property (none does). 6 style attributes eliminated (379 -> 373); `MAX_INLINE_STYLE_ATTRS` lowered to
+match in the same commit. `UI_VERSION` bumped to `0.63.50`. 24 tests pass.
+
+`transportChoiceHtml` was reviewed this step and found to have zero exact-match candidates — its inline styles
+are all combined or off-scale declarations, so it was left untouched and stays open for a future, more careful
+pass (not a mechanical exact-match one).
+
+**Sources is now effectively exhausted for the mechanical exact-match pass** (steps 2c-2f): remaining Sources
+inline styles are the deliberately-deferred categories logged throughout — off-scale spacing values, dynamic
+`style="color:${...ternary...}"` badges, `display:none`/`display:block` state toggles, and `transportChoiceHtml`'s
+combined declarations — each needing its own considered (non-mechanical) sub-unit rather than a drop-in
+substitution. Per `audit.md`'s ranking, the next sub-unit should move to the next-ranked surface: Research.
