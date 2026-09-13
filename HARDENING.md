@@ -2176,3 +2176,8 @@ read-only and remains pending gold review.
 
 Interrogative procedure false positives are removed under 25 focused and 1,393 full tests. The pending queue still
 requires exact-span gold adjudication before downstream trust.
+
+## T3 narrative cue narrowing — 2026-09-13 16:20 PT
+
+Generic `Then`, `Other than`, and `one more` cue paths are hardened; evidence was refreshed read-only and remains pending
+gold review.

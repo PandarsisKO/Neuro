@@ -390,3 +390,7 @@ Procedure/question overlap is corrected under focused tests; scheduler and downs
 
 Procedure/question overlap is corrected and release-checked at `81f2cd9`; scheduler behavior is unchanged. Manual gold
 review remains the next gate.
+
+## T3 narrative cue narrowing — 2026-09-13 16:20 PT
+
+Narrative procedure/comparative false positives are narrowed under focused tests; scheduler behavior is unchanged.

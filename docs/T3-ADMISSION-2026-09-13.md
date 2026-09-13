@@ -216,3 +216,10 @@ Procedure/question overlap is fixed at `81f2cd9`; focused T3/review tests are 25
 with one existing Starlette warning, and repo/release checks pass. Artifact:
 `evals/release/release-check-0.63.65-81f2cd9-20260913-152248.json`. Manual gold adjudication of the 60-row queue
 remains required before persistence or T4.
+
+## T3 narrative cue narrowing — 2026-09-13 16:20 PT
+
+Seeded review identified narrative false positives from generic `Then` procedure cues and bare comparative words in
+phrases such as `Other than that` and `one more`. Those cues are now removed or require comparative context; explicit
+imperatives and comparison terms remain supported. Focused T3/review coverage is 26 passed, and both evidence artifacts
+were refreshed against the current extractor.

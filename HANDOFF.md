@@ -1342,3 +1342,9 @@ T3/review tests are 25 passed and evidence artifacts are refreshed. Continue pen
 Questions no longer receive procedure labels; imperative `Do ... .` remains supported. Commit `81f2cd9` is green under
 1,393 full tests and release-check artifact `evals/release/release-check-0.63.65-81f2cd9-20260913-152248.json`.
 Continue manual gold review; persistence/T4 remain gated.
+
+## T3 narrative cue narrowing — 2026-09-13 16:20 PT
+
+Removed generic narrative `Then` procedures and bare comparative matches for `Other than`/`one more`; explicit
+imperatives/comparisons remain. Focused T3/review tests are 26 passed and evidence is refreshed. Gold adjudication remains
+pending.

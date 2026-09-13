@@ -19,12 +19,12 @@ _DATE = re.compile(r"(?<![\w])(?:20\d{2}-\d{1,2}-\d{1,2}|(?:Jan(?:uary)?|Feb(?:r
 _NUMBER = re.compile(r"(?<![\w.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\w,])")
 _UNIT = re.compile(r"(?<![\w])\d[\d,]*(?:\.\d+)?\s?(?:kg|g|lb|lbs|mile|miles|km|ft|sq\.?\s?ft|tokens?|pages?|people|employees?|customers?|sources?|chunks?|windows?)(?!\w)", re.I)
 _SENTENCE = re.compile(r"(?m)(?<!\w)[^\n.!?]{2,}(?:[!?]|(?<!\d)\.)")
-_PROCEDURE = re.compile(r"(?i)^(?:first\s+off\b|(?:first|second|third)\s+step\b|step\s+\d+|then\b|next\b|make sure|ensure|use\b|do\b|avoid\b|never\b|always\b|check\b|calculate\b|contact\b|file\b|submit\b|review\b|keep\b|create\b|add\b|remove\b|set\b|start\b|stop\b)")
+_PROCEDURE = re.compile(r"(?i)^(?:(?:first|second|third)\s+step\b|step\s+\d+|make sure|ensure|use\b|do\b|avoid\b|never\b|always\b|check\b|calculate\b|contact\b|file\b|submit\b|review\b|keep\b|create\b|add\b|remove\b|set\b|start\b|stop\b)")
 # Generic "don't"/"never" also occur in harmless narration ("I don't know").
 # Admit only explicit warning words or a small imperative verb list after them.
 _WARNING = re.compile(r"(?i)(?:\b(?:warning|warns?|caution|danger|beware|red\s+flag|watch\s+out)\b|\b(?:do\s+not|don't|never)\s+(?:skip|ignore|assume|use|share|send|put|forget|touch|buy|sign|delete|remove|enter|leave|call|rely|invest|miss|start|stop|worry)\b)")
 _EXCEPTION = re.compile(r"(?i)\b(?:except|unless|only\s+if|provided\s+that|with\s+the\s+exception|however|although)\b")
-_COMPARATIVE = re.compile(r"(?i)\b(?:more|less|higher|lower|better|worse|best|worst|versus|vs\.?|compared\s+(?:with|to)|than)\b")
+_COMPARATIVE = re.compile(r"(?i)(?<!one )\b(?:more|less|higher|lower)\s+(?:than|[\w-]+)\b|\b(?:better|worse|best|worst|versus|vs\.?|compared\s+(?:with|to))\b")
 _HEDGE = re.compile(r"(?i)\b(?:may|might|could|likely|possibly|generally|often|usually|tends?\s+to|appears?|seems?|can\s+be)\b")
 _ENTITY = re.compile(r"(?i:\b(?:company|organization|organisation|firm|vendor|tool|product|platform)\s+called\s+)(?P<name>[A-Z][\w&-]*(?:\s+[A-Z][\w&-]*){0,3})")
 

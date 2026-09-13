@@ -1,7 +1,7 @@
 {
   "artifact": "T3 seeded hand-label review manifest",
   "schema_version": "t3-review-manifest-v1",
-  "generated_at_utc": "2026-09-13T22:20:08.621815+00:00",
+  "generated_at_utc": "2026-09-13T22:24:45.930230+00:00",
   "seed": 20260913,
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
@@ -827,14 +827,6 @@
           "attributes": {}
         },
         {
-          "kind": "procedure",
-          "raw": "Then I joined BiggerPockets and I was like, \"Oh my god, I've been doing everything wrong for six straight years.",
-          "normalized": "Then I joined BiggerPockets and I was like, \"Oh my god, I've been doing everything wrong for six straight years.",
-          "start": 360,
-          "end": 472,
-          "attributes": {}
-        },
-        {
           "kind": "comparative",
           "raw": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
           "normalized": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
@@ -1626,14 +1618,6 @@
           "attributes": {}
         },
         {
-          "kind": "comparative",
-          "raw": "Like 90% of the time, 80% of the time, like like by and large, you would say that people have a much greater spending problem than it is an earning problem.",
-          "normalized": "Like 90% of the time, 80% of the time, like like by and large, you would say that people have a much greater spending problem than it is an earning problem.",
-          "start": 198,
-          "end": 354,
-          "attributes": {}
-        },
-        {
           "kind": "percentage",
           "raw": "90%",
           "normalized": "90%",
@@ -1669,7 +1653,6 @@
       "gold": null,
       "review_status": "pending_manual_label",
       "review_flags": [
-        "dense_multi_span",
         "sentence_boundary_review"
       ]
     },
@@ -2229,14 +2212,6 @@
       "chunk_end": 2552.72,
       "text": "[Sweaty Startup] confidence to go try more stuff. Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff. We always joke we put forks into electrical sockets. We learned a lot and then we started investing. And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.\" And do you remember how much capital you started doing that with? Once you once you stop starting new businesses, you said decided to go start buying? I think it was like four four or five million bucks. We We basically sat down and said, um \"Okay, we're going to start this thing called Tiny. Um I'm going to own 80%, you're going to own 20%.\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it. We never put any",
       "predicted": [
-        {
-          "kind": "procedure",
-          "raw": "Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff.",
-          "normalized": "Then we tried every bad business model, you know, we did drop shipping, we started a restaurant, we did a skin comp skin care company, like all sorts of dumb stuff.",
-          "start": 50,
-          "end": 214,
-          "attributes": {}
-        },
         {
           "kind": "hedge",
           "raw": "And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.",
@@ -2855,19 +2830,12 @@
       "chunk_start": 276.479,
       "chunk_end": 288.52,
       "text": "[Outro] for you today. The files for the full web app on Dualite will be the first link in the description, and the Figma files will be down there, too. Other than that, I hope you learned something, and I'll see you in the next one.",
-      "predicted": [
-        {
-          "kind": "comparative",
-          "raw": "Other than that, I hope you learned something, and I'll see you in the next one.",
-          "normalized": "Other than that, I hope you learned something, and I'll see you in the next one.",
-          "start": 153,
-          "end": 233,
-          "attributes": {}
-        }
-      ],
+      "predicted": [],
       "gold": null,
       "review_status": "pending_manual_label",
-      "review_flags": []
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3021,14 +2989,6 @@
           "attributes": {}
         },
         {
-          "kind": "comparative",
-          "raw": "and one more and uh and break.",
-          "normalized": "and one more and uh and break.",
-          "start": 342,
-          "end": 372,
-          "attributes": {}
-        },
-        {
           "kind": "number",
           "raw": "100",
           "normalized": "100",
@@ -3063,9 +3023,7 @@
       ],
       "gold": null,
       "review_status": "pending_manual_label",
-      "review_flags": [
-        "dense_multi_span"
-      ]
+      "review_flags": []
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
