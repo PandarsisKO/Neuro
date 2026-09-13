@@ -113,8 +113,9 @@ def test_t1_backfill_preview_never_queues_work(t1_db):
     assert report["total_rows"] == 0 and report["queued"] == 0 and report["executed"] == 0
 
 
-def test_t1_backfill_endpoint_is_bounded_and_low_lane(t1_db, client):
-    project_id = db.create_project("T1 endpoint", "test")["id"]
+def test_t1_backfill_endpoint_is_bounded_and_low_lane(client):
+    project_id = client.post("/api/projects", headers={"Authorization": "Bearer t0k"},
+                             json={"name": "T1 endpoint", "brief": "test"}).json()["id"]
     db.connect().execute("INSERT INTO project_notes (project_id, content, status, created_at) VALUES (?,?,?,?)",
                          (project_id, "queue through API", "approved", db.now()))
     db.connect().commit()
