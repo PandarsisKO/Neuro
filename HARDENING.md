@@ -2047,3 +2047,7 @@ Sources suite passed 28 tests, and the commit-bound deterministic release gate p
 ## T2 pre-admission measurement — 2026-09-13 14:19 PT
 
 Read-only measurement on a copied verified backup (`data/backups/neurosearch-20260913-1410.db`) passed full `PRAGMA integrity_check` and `quick_check` and confirmed 38,038 FTS5 rows. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` records the three retained projects' locator inputs, chunk unions, malformed-citation count, and every unavailable seven-state signal. The 1,091 and 37 unmatched Claim locator rows are explicit reconciliation evidence; no row was changed and no state was inferred from a missing locator. T2 remains a proposal pending state-model review.
+
+## T2 locator boundary evidence — 2026-09-13 14:23 PT
+
+The copied-backup baseline `evals/t2/pre-admission-baseline-20260913-141959.json` classifies unmatched Claim locators under `[start, end)`: exact chunk-end positions are separated from before/after bounds, internal gaps, and excluded/non-member sources. Buying Businesses has 293 exact-end, 615 internal-gap, and 12 excluded/non-member rows; Design has 12 internal gaps and 25 edge rows; Real Estate has none. This protects the locator invariant from a tempting but incorrect range-widening fix.

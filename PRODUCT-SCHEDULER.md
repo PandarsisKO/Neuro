@@ -263,3 +263,7 @@ browser re-score for F2 and W1. The T2 admission proposal is prepared but remain
 ## T2 pre-admission baseline — 2026-09-13 14:19 PT
 
 Codex produced `evals/t2/pre-admission-baseline-20260913-141959.json` from a copied verified backup, with no live-database access. Full `integrity_check` and `quick_check` passed; FTS5 contains 38,038 rows. The artifact publishes per-project chunk, canonical Claim/Finding, Claim-locator, Finding-citation, union-locator, and unavailable-signal counts. Unmatched locator rows (1,091 Buying Businesses; 37 Design) are recorded for T2 reconciliation and are not treated as failures or repaired. This strengthens the pending T2 state-model gate; it does not admit implementation or create a new active rung.
+
+## T2 locator reconciliation follow-up — 2026-09-13 14:23 PT
+
+The baseline artifact `evals/t2/pre-admission-baseline-20260913-141959.json` distinguishes exact half-open-boundary misses from internal gaps and membership problems. Buying Businesses contains 293 locators exactly at chunk ends, 615 internal gaps, and 12 excluded/non-member rows; Design contains 12 internal gaps and 25 edge misses; Real Estate matches all 603. T2 must preserve `[start, end)` semantics and report unavailable/reconciliation reasons rather than silently broadening coverage.

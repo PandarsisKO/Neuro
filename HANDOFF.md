@@ -1110,3 +1110,7 @@ pass risks speculative churn rather than evidenced fixes.
 ## T2 pre-admission baseline — 2026-09-13 14:19 PT
 
 Codex measured T2's existing inputs read-only from a copy of `data/backups/neurosearch-20260913-1410.db`; the live database was not opened. Full and quick SQLite checks both returned one `ok` row, and the copied FTS5 table contains 38,038 rows. Artifact: `evals/t2/pre-admission-baseline-20260913-141959.json`. Per-project locator counts and unavailable-signal reasons are recorded there. The most material reconciliation inputs are 1,091 Claim locator rows without a retained chunk match in Buying Businesses and 37 in Design; these remain evidence for T2 boundary handling, not data mutations. No seven-state assignment or T2 implementation was admitted. The next safe action is state-model review, followed by implementation only through the existing T1 coverage seam if accepted.
+
+## T2 locator reconciliation follow-up — 2026-09-13 14:23 PT
+
+The pre-admission artifact `evals/t2/pre-admission-baseline-20260913-141959.json` now classifies unmatched Claim locators under the proposed `[start, end)` interval. Buying Businesses has 293 exact chunk-end rows (valid half-open boundary misses), 615 internal gaps, 166 before-first, 5 after-last, and 12 excluded/non-member; Design has 23 before-first, 2 after-last, and 12 internal gaps; Real Estate has no unmatched rows. This is evidence for T2's response-level reconciliation reasons, not a license to widen ranges or mutate data.
