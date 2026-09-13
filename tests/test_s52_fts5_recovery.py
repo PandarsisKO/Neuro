@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from neurosearch import db, ingest
+from fastapi import HTTPException
+
+from neurosearch import api, db, ingest
 
 
 @pytest.fixture
@@ -19,20 +21,17 @@ def isolated_db(tmp_path, monkeypatch):
     db.close_thread_connection()
 
 
-def test_fts5_rebuild_requires_confirmation_and_rechecks_integrity(client, isolated_db):
+def test_fts5_rebuild_requires_confirmation_and_rechecks_integrity(isolated_db):
     ingest.ingest_text("FTS recovery", "A short transcript about durable search indexes.")
 
-    headers = {"Authorization": "Bearer t0k"}
-    refused = client.post("/api/maintenance/fts5/rebuild", headers=headers, json={})
-    assert refused.status_code == 400
-    assert "confirm=true" in refused.json()["detail"]
+    with pytest.raises(HTTPException) as refused:
+        api.api_fts5_rebuild(api.Fts5RebuildIn())
+    assert refused.value.status_code == 400
+    assert "confirm=true" in refused.value.detail
 
-    response = client.post("/api/maintenance/fts5/rebuild", headers=headers, json={"confirm": True})
-    assert response.status_code == 200
-    body = response.json()
+    body = api.api_fts5_rebuild(api.Fts5RebuildIn(confirm=True))
     assert body["ok"] and body["before"] == "ok" and body["result"] == "ok"
     assert body["chunks"] == 1 and body["seconds"] >= 0
     assert db.fts_search("durable search")
     assert db.kv_get("db:last_fts_rebuild")
-    health = client.get("/api/health", headers=headers).json()
-    assert health["db"]["fts5_rebuild"]["result"] == "ok"
+    assert db.health()["db"]["fts5_rebuild"]["result"] == "ok"

@@ -1911,3 +1911,6 @@ The duplicate allocation was removed; one unconditional temporary directory rema
 `tests/test_s51_test_isolation.py` and the FTS5 recovery contract both pass after the cleanup.
 The post-cleanup commit-bound release gate also passes at `0.63.59 @ a825175`; artifact:
 `evals/release/release-check-0.63.59-a825175-20260913-123249.json`.
+The full suite then passed **1,364 tests** with one existing Starlette deprecation warning. The S52 test now calls
+the endpoint function against its isolated connection, avoiding the session TestClient's unrelated portal-thread
+connection retained across focused modules.
