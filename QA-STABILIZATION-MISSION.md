@@ -78,6 +78,22 @@ release candidate `fd66241`). The deterministic release ritual for `fd66241` pas
 This baseline is the R0 record. The next rung is R1 navigation/root hygiene,
 followed immediately by the report-only R2 `repo-check` implementation.
 
+### R0/R1/R2 completion record — 2026-09-12
+
+R0 passed without a behavior change. Three superseded root state snapshots were
+moved to `docs/archive/state/`; the newest snapshot remains the single root
+checkpoint. R2 is implemented as `neurosearch repo-check` and covered by
+`tests/test_repo_check.py`. It is report-only, deterministic, JSON-capable, and
+does not initialize the app or open a database. Its current real-repository output
+is `PASS (no findings)`. The check treats the explicitly documented, disabled
+`planner_v3.py` experiment as an allowlisted exception and catches future
+experimental filenames, duplicate top-level definitions, duplicate API routes,
+broken front-door links, and root-entry drift. Focused verification: 117 passed;
+the full suite was rerun after the changes and produced no observed failure.
+
+The next active rung is R3: re-measure correctness/flakiness debt and select the
+highest-value confirmed issue before adding any broader release gate.
+
 # R0 - Establish the truth
 
 Before editing production code:
