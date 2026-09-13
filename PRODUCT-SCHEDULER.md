@@ -366,3 +366,8 @@ review remains the next gate.
 
 Pure review validation/scoring helpers are available for the pending queue; scheduler behavior and downstream trust are
 unchanged.
+
+## T3 review infrastructure release checkpoint — 2026-09-13 15:15 PT
+
+Pure T3 manifest validation/scoring is release-checked at `7821cb5`; scheduler behavior is unchanged. Manual gold
+adjudication remains the next gate.

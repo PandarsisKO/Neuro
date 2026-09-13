@@ -184,3 +184,9 @@ Added pure `neurosearch/t3_review.py` helpers to validate exact record structure
 validator checks required fields, raw-text/offset agreement, half-open bounds, duplicate keys, and stable ordering;
 the scorer requires exact kind, normalized value, and offsets, and keeps `gold: null` rows out of metrics. Five focused
 review tests plus the existing T3 suites pass (23 total). The helper has no database, provider, queue, UI, or write path.
+
+## T3 review infrastructure release checkpoint — 2026-09-13 15:15 PT
+
+Pure manifest validation/scoring helpers are committed at `7821cb5`; `repo-check` and release-check pass with artifact
+`evals/release/release-check-0.63.65-7821cb5-20260913-151455.json`. The focused T3/review suite is 23 passed. The
+60-row queue remains unlabeled and downstream trust is still gated.

@@ -1314,3 +1314,9 @@ adjudication of the 60-row queue; persistence/T4 remain gated.
 `neurosearch/t3_review.py` now provides pure manifest validation and exact span scoring; 23 focused T3/extraction tests
 pass. Pending rows remain excluded from metrics, and no DB/provider/queue/UI path was added. Use this helper when
 adjudicating the 60-row queue.
+
+## T3 review infrastructure release checkpoint — 2026-09-13 15:15 PT
+
+`neurosearch/t3_review.py` and its tests are committed at `7821cb5`; release-check is green with artifact
+`evals/release/release-check-0.63.65-7821cb5-20260913-151455.json`. Use the pure validator/scorer while adjudicating
+the 60-row queue; no persistence or T4 yet.

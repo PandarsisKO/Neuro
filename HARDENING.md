@@ -2152,3 +2152,8 @@ Malformed-comma and decimal-period protections are green under 1,386 tests and r
 
 Manifest validation now enforces exact offsets, raw text, ordering, duplicates, and pending-row exclusion from metrics.
 The helper is pure and cannot touch live data.
+
+## T3 review infrastructure release checkpoint — 2026-09-13 15:15 PT
+
+Review helpers enforce exact span structure and exclude pending rows from metrics. Release-check passes at `7821cb5`;
+manual gold labels remain required.
