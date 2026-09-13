@@ -47,8 +47,13 @@ def html() -> str:
 
 
 @pytest.fixture(scope="module")
-def js(html: str) -> str:
-    return "\n".join(m.group(1) for m in re.finditer(r"<script>(.*?)</script>", html, re.S))
+def js() -> str:
+    return "\n".join(p.read_text() for p in sorted(UI.parent.joinpath("js").glob("*.js")))
+
+
+@pytest.fixture(scope="module")
+def css() -> str:
+    return (UI.parent / "styles.css").read_text()
 
 
 # ------------------------------------------------------------------ the instant frame
@@ -72,15 +77,15 @@ def test_the_press_marks_the_control_immediately_and_not_via_a_request(js: str):
     assert "fetch(" not in body, "the press must not depend on a request"
 
 
-def test_the_press_state_is_styled(html: str):
-    assert ".ns-press{" in html.replace(" ", ""), "the press class must have a visible rule"
-    assert 'button[aria-busy="true"]::after{' in html.replace(" ", ""), "busy needs a visible indicator"
+def test_the_press_state_is_styled(css: str):
+    assert ".ns-press{" in css.replace(" ", ""), "the press class must have a visible rule"
+    assert 'button[aria-busy="true"]::after{' in css.replace(" ", ""), "busy needs a visible indicator"
 
 
-def test_the_busy_indicator_cannot_reflow_the_page(html: str):
+def test_the_busy_indicator_cannot_reflow_the_page(css: str):
     """A spinner that changes a button's size moves everything beside it, which reads as a glitch rather
     than as progress. The indicator is absolutely positioned inside the button for that reason."""
-    rule = re.search(r'button\[aria-busy="true"\]::after\{(.*?)\}', html.replace("\n", " ").replace(" ", ""), re.S)
+    rule = re.search(r'button\[aria-busy="true"\]::after\{(.*?)\}', css.replace("\n", " ").replace(" ", ""), re.S)
     assert rule, "no ::after rule for the busy state"
     assert "position:absolute" in rule.group(1)
 
@@ -91,7 +96,7 @@ def test_the_mechanism_never_writes_a_controls_label(js: str):
     """Twelve handlers already manage their own text ("⏳ queueing…", "Pinned ✓", "Added ✓"). If the global
     mechanism also wrote textContent it would overwrite them, so it is visual only. This assertion is what
     keeps the two layers compatible."""
-    block = re.search(r"const NSACK = \{(.*?)\n\};", js, re.S)
+    block = re.search(r"globalThis\.NSACK = \{(.*?)\n\};", js, re.S)
     assert block, "NSACK not found"
     # Scoped to the methods that handle a CONTROL. `_bar` builds the window's own progress element and
     # legitimately sets its innerHTML — that is not a button and has no label to overwrite. The first
@@ -127,7 +132,7 @@ def test_api_claims_the_press_and_always_releases_it(js: str):
 
 def test_every_request_helper_goes_through_api(js: str):
     """post/put/del must delegate, or three quarters of the app's writes would never acknowledge."""
-    for helper in ("const post = (p, b) => api(", "const put = (p, b) => api(", "const del = (p, b) => api("):
+    for helper in ("globalThis.post = (p, b) => api(", "globalThis.put = (p, b) => api(", "globalThis.del = (p, b) => api("):
         assert helper in js, f"{helper!r} must delegate to api()"
 
 
@@ -157,7 +162,7 @@ def test_the_claim_window_is_long_enough_for_an_async_handler(js: str):
     assert m and int(m.group(1)) >= 1000
 
 
-def test_the_busy_state_is_unmistakable_not_subtle(html: str):
+def test_the_busy_state_is_unmistakable_not_subtle(css: str):
     """Kyle, on the first version: "the delay was so bad I thought the app was frozen ... I need it to be
     visually obvious that the button was clicked, maybe turned grey or something while it waits."
 
@@ -167,18 +172,18 @@ def test_the_busy_state_is_unmistakable_not_subtle(html: str):
     button here may carry .primary (accent background), .ghost (transparent) or .small, and with no build
     step a busy state that loses the cascade on SOME buttons is worse than none, because it is
     inconsistent."""
-    rule = re.search(r'button\[aria-busy="true"\]\{(.*?)\}', html, re.S).group(1).replace(" ", "").replace("\n", "")
+    rule = re.search(r'button\[aria-busy="true"\]\{(.*?)\}', css, re.S).group(1).replace(" ", "").replace("\n", "")
     for prop in ("background:var(--panel2)!important", "color:var(--muted)!important"):
         assert prop in rule, f"the busy state must {prop.split(':')[0]} the control unmistakably"
     assert "cursor:progress" in rule
     # and the progress indicator must NOT be greyed with it, or busy reads as merely disabled
-    after = re.search(r'button\[aria-busy="true"\]::after\{(.*?)\}', html.replace("\n", " "), re.S).group(1)
+    after = re.search(r'button\[aria-busy="true"\]::after\{(.*?)\}', css.replace("\n", " "), re.S).group(1)
     assert "var(--accent" in after, "the hairline must stay vivid so busy reads as working, not broken"
 
 
-def test_a_busy_control_cannot_be_clicked_twice(html: str, js: str):
+def test_a_busy_control_cannot_be_clicked_twice(css: str, js: str):
     """0.62.7 had to make a second Settle-all click impossible server-side. Doing it in the UI too is free."""
-    assert "pointer-events:none" in re.search(r'button\[aria-busy="true"\]\{(.*?)\}', html, re.S).group(1)
+    assert "pointer-events:none" in re.search(r'button\[aria-busy="true"\]\{(.*?)\}', css, re.S).group(1)
     assert "el.getAttribute('aria-busy') === 'true'" in js, "the listener must ignore an already-busy control"
 
 
@@ -188,17 +193,17 @@ def test_opted_out_controls_are_possible(js: str):
     assert "dataset.noack" in js
 
 
-def test_reduced_motion_is_honoured(html: str):
-    assert "prefers-reduced-motion" in html
+def test_reduced_motion_is_honoured(css: str):
+    assert "prefers-reduced-motion" in css
 
 
 # ------------------------------------------------------------------ the measurement that motivated it
 
-def test_most_controls_still_rely_on_the_global_mechanism(html: str):
+def test_most_controls_still_rely_on_the_global_mechanism(html: str, js: str):
     """Recorded as a number rather than a claim: this is why it is one mechanism and not N patches. If a
     future change makes most buttons hand-rolled, this gate should be revisited rather than kept."""
-    with_onclick = len(re.findall(r"<button[^>]*onclick=", html))
-    hand_rolled = html.count("disabled = true")
+    with_onclick = len(re.findall(r"<button[^>]*onclick=", html)) + len(re.findall(r"<button[^>]*onclick=", js))
+    hand_rolled = html.count("disabled = true") + js.count("disabled = true")
     assert with_onclick > 150, f"expected the measured population (228), found {with_onclick}"
     assert hand_rolled < 30, f"{hand_rolled} hand-rolled acknowledgements — is the global one still the right shape?"
 
@@ -277,7 +282,7 @@ def test_the_reserve_verdict_buttons_pass_a_status_that_is_actually_used(js: str
 
 # ------------------------------------------------------------------ it has to fit on the screen
 
-def test_no_group_of_buttons_is_trapped_in_white_space_nowrap(html: str):
+def test_no_group_of_buttons_is_trapped_in_white_space_nowrap(js: str):
     """Kyle, with a screenshot of the Findings page: "elements not fitting in their window."
 
     The staleness triage row put four buttons carrying both currencies — "Rebuild · $0 · about 4 h 17 min
@@ -290,7 +295,7 @@ def test_no_group_of_buttons_is_trapped_in_white_space_nowrap(html: str):
     it stops a label breaking mid-phrase — and one tight inline group ("pick top [n]") is a deliberate
     exception, so the rule is about GROUPS of buttons, which is the shape that can only overflow."""
     offenders = []
-    for i, line in enumerate(html.split("\n"), 1):
+    for i, line in enumerate(js.split("\n"), 1):
         if 'white-space:nowrap">' not in line:
             continue
         # count buttons after the nowrap opener on this line
@@ -302,9 +307,9 @@ def test_no_group_of_buttons_is_trapped_in_white_space_nowrap(html: str):
                            f"(line, count): {offenders}")
 
 
-def test_the_triage_row_itself_wraps(html: str):
+def test_the_triage_row_itself_wraps(js: str):
     """The row has to be allowed to drop its buttons below the text, not just wrap them internally —
     otherwise a long explanation squeezes them to nothing instead of clipping them."""
-    row = re.search(r'return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start([^"]*)"', html)
+    row = re.search(r'return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start([^"]*)"', js)
     assert row, "the staleness triage row was not found — has it been rewritten?"
     assert "flex-wrap:wrap" in row.group(1), "the triage row must wrap"

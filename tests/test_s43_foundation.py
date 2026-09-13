@@ -217,8 +217,8 @@ def test_stale_client_refused_before_endpoint_side_effects():
 
 
 def test_frontend_stale_response_blocks_next_request_and_keeps_one_notice(tmp_path):
-    html = (ROOT / 'neurosearch/web/index.html').read_text()
-    code = html.split('let staleClientVersion = null;')[1].split('async function checkVersion()')[0]
+    html = (ROOT / 'neurosearch/web/js/state.js').read_text()
+    code = html.split('globalThis.staleClientVersion = null;')[1].split('globalThis.checkVersion = async function checkVersion()')[0]
     script = """
 const assert = require('node:assert/strict');
 const UI_VERSION = 'current';
@@ -227,8 +227,8 @@ const $ = key => elements[key]; const showVersion = () => {};
 const location = {reload(){}};
 const document = {createElement(){return {setAttribute(){},style:{},addEventListener(){}}}, body:{appendChild(el){notices++; elements['#verBanner']=el; elements['#reloadCurrentUI']={addEventListener(){}}}}};
 const fetch = async () => {calls++; return {headers:new Headers({'X-Neurosearch-Version':'new'})};};
-let staleClientVersion = null;
-""" + code + """
+globalThis.staleClientVersion = null;
+    """ + code + ";\n" + """
 (async () => {
  await assert.rejects(uiFetch('/api/projects'), /out of date/);
  await assert.rejects(uiFetch('/api/projects', {method:'POST'}), /out of date/);

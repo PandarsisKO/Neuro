@@ -19,6 +19,7 @@ from neurosearch import api, claims, claims_view, db, fake_ai, jobs, knowledge, 
 from neurosearch.config import settings  # noqa: E402
 
 from tests.test_k6_claims import _acceptance_fixture as _fixture, _by_text  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -153,7 +154,8 @@ def test_api_wiring_and_settle_this_reuses_the_normal_target_path(monkeypatch):
     assert tg and len(knowledge.list_targets(pid)) == before + 1
 
     # the UI wires exactly these endpoints and functions
-    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    web = __import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web"
+    html = ui_source(web)
     assert "loadClaimsWorkbench" in html and "/claims?" in html
     assert "claimsBulk" in html and "/claims/bulk-status" in html
     assert "whyThisAnswer" in html and "/claims/for-source" in html

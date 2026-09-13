@@ -18,6 +18,7 @@ from neurosearch import api, claims, db, fake_ai, jobs, knowledge, research_view
 from neurosearch.config import settings  # noqa: E402
 
 from tests.test_k6_claims import _acceptance_fixture as _fixture  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = Path(__file__).resolve().parents[1] / "neurosearch" / "web" / "index.html"
 
@@ -108,7 +109,7 @@ def test_one_verdict_clears_a_whole_watch_out_and_dismissal_is_durable(monkeypat
 
 def test_the_shell_and_the_api_agree(monkeypatch):
     """A UI rung still gets a gate: every endpoint and pane id the shell uses must exist on this build."""
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     for pane in ("paneOverview", "paneQuestions", "paneWatchouts", "paneAreas", "paneClaims", "paneTools"):
         assert f'id="{pane}"' in html, pane
     for el in ("resNav", "resHead", "resAreaBar", "resMsg", "resClaims", "resMap", "resTensions", "resTargets"):

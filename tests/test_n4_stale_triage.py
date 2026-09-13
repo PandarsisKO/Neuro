@@ -225,7 +225,8 @@ def test_every_tier_quotes_both_currencies_so_faster_is_visible(monkeypatch):
     assert not t2["local"] and y["local_line"] == "" and y["cost_line"] == y["api_line"]
 
     # the UI renders the fast button from exactly these fields and routes it at a route that exists
-    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    web = __import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web"
+    html = __import__("tests.frontend_helpers", fromlist=["ui_source"]).ui_source(web)
     assert "x.local_line ?" in html and "rebuildTier('${key}', 'api')" in html
     assert "/accelerate" in html and any(getattr(r, "path", "") == "/api/projects/{project_id}/accelerate" for r in api.app.routes)
 
@@ -262,5 +263,6 @@ def test_the_local_eta_is_wall_clock_and_the_batch_price_is_offered(monkeypatch)
 
     # an empty tier still quotes nothing, and the UI reads exactly these fields
     assert staleness.triage(p["id"])["tiers"]["retry_failed"]["batch_line"] == ""
-    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    web = __import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web"
+    html = __import__("tests.frontend_helpers", fromlist=["ui_source"]).ui_source(web)
     assert "x.batch_line" in html and "rebuildTier('${key}', 'batch')" in html and "rebuildTier('${key}', 'api')" in html

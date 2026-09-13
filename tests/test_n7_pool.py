@@ -142,7 +142,8 @@ def test_capture_the_n_that_fit_takes_the_same_paths_as_a_single_capture(monkeyp
 
     # the route exists and the button in the UI calls exactly this endpoint
     assert any(getattr(rt, "path", "") == "/api/projects/{project_id}/pool/capture-many" for rt in api.app.routes)
-    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    web = __import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web"
+    html = __import__("tests.frontend_helpers", fromlist=["ui_source"]).ui_source(web)
     assert "/pool/capture-many" in html and "captureManyPool" in html
 
 
@@ -225,7 +226,8 @@ def test_extract_claims_job_can_be_cancelled_mid_run(monkeypatch):
     assert not any(c.get("normalized") for c in claims.list_for_project(pid))
 
     # the Jobs panel no longer shows the bare kind name for this job
-    html = (__import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web" / "index.html").read_text()
+    web = __import__("pathlib").Path(__import__("neurosearch").__file__).parent / "web"
+    html = __import__("tests.frontend_helpers", fromlist=["ui_source"]).ui_source(web)
     assert "extract_claims" in html and "finding claims to track" in html
     assert "extract_claims" in jobs.RETRYABLE   # a transient provider hiccup retries like every other AI job kind, instead of failing outright
 

@@ -22,8 +22,9 @@ from pathlib import Path
 import re
 
 HTML = (Path(__file__).resolve().parents[1] / 'neurosearch/web/index.html').read_text(encoding='utf-8')
-CSS = re.search(r'<style>(.*?)</style>', HTML, re.S).group(1)
-JS = '\n'.join(re.findall(r'<script>(.*?)</script>', HTML, re.S))
+CSS = (Path(__file__).resolve().parents[1] / 'neurosearch/web/styles.css').read_text(encoding='utf-8')
+JS_DIR = Path(__file__).resolve().parents[1] / 'neurosearch/web/js'
+JS = '\n'.join(p.read_text(encoding='utf-8') for p in sorted(JS_DIR.glob('*.js')))
 ROOT = re.search(r':root\{(.*?)\}', CSS, re.S).group(1)
 DARK = re.search(r'\[data-theme=dark\]\{(.*?)\}', CSS, re.S).group(1)
 CSS_BODY = re.sub(r'\[data-theme=dark\]\{.*?\}', '', re.sub(r':root\{.*?\}', '', CSS, flags=re.S), flags=re.S)
@@ -49,11 +50,11 @@ def colour_literals(text):
 
 
 def distinct_font_sizes():
-    return {m for m in re.findall(r'font-size:\s*([\d.]+)px', HTML)}
+    return {m for m in re.findall(r'font-size:\s*([\d.]+)px', HTML + CSS)}
 
 
 def distinct_radii():
-    return {m for m in re.findall(r'border-radius:\s*([\d.]+(?:px|%))', HTML)}
+    return {m for m in re.findall(r'border-radius:\s*([\d.]+(?:px|%))', HTML + CSS)}
 
 
 def emoji_only_controls():

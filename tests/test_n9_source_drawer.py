@@ -18,6 +18,7 @@ from neurosearch import api, claims, db, fake_ai, findings, ingest, jobs, knowle
 from neurosearch.config import settings  # noqa: E402
 
 from tests.test_k6_claims import _acceptance_fixture as _fixture  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = Path(__file__).resolve().parents[1] / "neurosearch" / "web" / "index.html"
 
@@ -102,7 +103,7 @@ def test_the_drawer_carries_the_staleness_tier_and_the_reserve_findings(monkeypa
 
 
 def test_the_drawer_is_reachable_and_its_actions_exist():
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     assert html.count("sourceDrawer(") >= 4          # defined + source card button + value line + findings group
     assert "askAboutSource(" in html and "state.attached.push(" in html
     routes = {r.path for r in api.app.routes if hasattr(r, "path")}

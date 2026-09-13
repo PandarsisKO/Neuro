@@ -550,3 +550,49 @@ naming the eight emoji-only controls that `audit.md` flagged. A fresh decision i
 step 2's *further* retirement (a `display:none`→`hidden`-attribute conversion pass, and/or new spacing/
 font-size tokens to cover the off-scale values found throughout) — that work should wait for explicit
 direction rather than being assumed as the automatic next sub-unit.
+
+
+## Frontend split — ACTIVE, CSS candidate — 2026-09-13
+
+Kyle explicitly reprioritized structural frontend extraction over D2/F1 continuation. Safe switch: no tracked
+uncommitted work; base/main `30ee4f4`, version 0.63.57. Isolated worktree `/private/tmp/neuro-frontend-split`,
+branch `refactor/frontend-css`; existing untracked main references/evidence preserved. D2/F1 step 3 is suspended,
+with its resume boundary in `PRODUCT-SCHEDULER.md`.
+
+First candidate 0.63.58 moves the exact style-block contents to `neurosearch/web/styles.css`, linked from the
+same position in the head. The existing FastAPI web-serving section supplies `/styles.css` as `text/css` with
+revalidation required. Existing `web/*` package data already includes the CSS. JavaScript and markup are unchanged
+apart from the stylesheet link and version. S50 reads external CSS and still measures font/radius declarations
+across CSS plus HTML; the inline-attribute ceiling stays 301. S44 covers actual stylesheet delivery and freshness.
+Touched files: index/styles, API, package/version files, S50/S44, scheduler, this handoff and architecture map.
+Baseline S50/S44/S5: 24 passed. Release validation is pending; this is not yet landed/live-verified.
+
+Next: validate and land the CSS cut, notify Kyle for the requested direction check before JS extraction.
+Then extract state/API/shared formatting, individual surfaces and bootstrap/router incrementally, preserving
+inline-handler reachability, startup ordering, shared state identity and the versioned fetch boundary. No build
+step, dependencies, restyling, or backend behavior changes are admitted.
+
+## Frontend split — decomposition candidate complete — 2026-09-13
+
+The structural extraction continued after the initial candidate. `index.html` is now a 302-line markup shell with
+`styles.css` and a single native-module entrypoint (`js/app.js`). The JavaScript is split into `api.js`, `utils.js`,
+`state.js`, `home.js`, `chats.js`, `sources.js`, `research.js`, `plan.js`, and `bootstrap.js`. Existing inline
+handlers remain supported through explicit `globalThis` bindings; the bootstrap module preserves the original
+execution order and calls `route()` only after all surface modules load. No framework, bundler, transpiler,
+dependency, or backend/API contract was added.
+
+The extracted files preserve the original bytes and behavior apart from the required module binding form. Static
+assets are served by the existing FastAPI web surface (`/styles.css` and `/js/*`), with package data covering the
+nested module directory. `UI_VERSION` is 0.63.58 in the package, pyproject, and state module. Frontend structural
+readers now inspect the complete static asset set; `MAX_INLINE_STYLE_ATTRS` remains 301 and continues to count
+only element attributes. A shared `tests/frontend_helpers.py` reader keeps static contract assertions pointed at
+the shipped HTML, CSS, and modules.
+
+Validation in `/private/tmp/neuro-frontend-split` at base `30ee4f4`: focused frontend/click suites 47 passed;
+the affected static-contract collection 198 passed; full deterministic pytest 1,363 passed with one existing
+Starlette deprecation warning; `release-check --no-pytest` passed all proofs and wrote
+`evals/release/release-check-0.63.58-30ee4f4-20260913-115141.json`. A browser visual pass remains a delivery
+check because the current environment has no reliable browser repaint path; no visual source changed.
+
+Before delivery, inspect `main` HEAD again, review the generated module diff for accidental declaration rewrites,
+run the full release ritual from the isolated checkout, and commit this as the frontend decomposition milestone.

@@ -5,7 +5,8 @@ from pathlib import Path
 import re
 
 HTML = (Path(__file__).resolve().parents[1] / 'neurosearch/web/index.html').read_text()
-JS = '\n'.join(re.findall(r'<script>(.*?)</script>', HTML, re.S))
+JS_DIR = Path(__file__).resolve().parents[1] / 'neurosearch/web/js'
+JS = '\n'.join(p.read_text() for p in sorted(JS_DIR.glob('*.js')))
 
 class Controls(HTMLParser):
     def __init__(self):
@@ -48,3 +49,17 @@ def test_all_first_party_fetches_use_version_boundary():
     assert len(re.findall(r'\bfetch\(', JS)) == 1, 'raw fetch bypasses stale-client refusal (uploads/streams included)'
     assert 'setInterval(() => { if (!document.hidden) checkVersion(); }, 30000)' in JS
     assert "window.addEventListener('focus', checkVersion)" in JS
+
+
+def test_external_stylesheet_is_linked_and_served(client):
+    assert '<style>' not in HTML
+    assert '<link rel="stylesheet" href="/styles.css">' in HTML
+    css = (Path(__file__).resolve().parents[1] / 'neurosearch/web/styles.css').read_text()
+    response = client.get('/styles.css')
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('text/css')
+    assert response.headers['cache-control'] == 'no-cache'
+    assert response.text == css
+    module = client.get('/js/app.js')
+    assert module.status_code == 200
+    assert module.headers['content-type'].startswith('text/javascript')

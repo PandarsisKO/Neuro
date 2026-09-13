@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+from tests.frontend_helpers import ui_source
 
 UI = pathlib.Path(__file__).resolve().parent.parent / "neurosearch" / "web" / "index.html"
 VERDICT_CALLS = ("noteStatus(", "promoteReserve(", "claimStatus(", "bulkNotes(")
@@ -79,13 +80,13 @@ def _words(label: str) -> str:
 
 def test_there_are_verdict_buttons_to_check():
     """A gate that silently matches nothing is not a gate."""
-    src = UI.read_text()
+    src = ui_source(UI.parent)
     assert len(_buttons(src)) >= 8 and len(_row_buttons(src)) >= 6
 
 
 def test_every_verdict_button_says_what_it_does():
     bare = []
-    for tag, label in _buttons(UI.read_text()):
+    for tag, label in _buttons(ui_source(UI.parent)):
         if not _words(label):
             bare.append(tag[:150])
     assert not bare, ("a verdict button with no word in it — a person should not have to hover a glyph to learn "
@@ -97,7 +98,7 @@ def test_every_verdict_button_also_carries_a_title():
     plan and Claims', 'nothing is deleted'. A verdict that cannot be explained on hover is a verdict a person
     makes without knowing the consequence."""
     missing = []
-    for tag, _label in _row_buttons(UI.read_text()):
+    for tag, _label in _row_buttons(ui_source(UI.parent)):
         if not re.search(r'title="[^"]{8,}"', tag):
             missing.append(tag[:150])
     assert not missing, "verdict button with no explanatory title:\n" + "\n".join(missing)
@@ -106,7 +107,7 @@ def test_every_verdict_button_also_carries_a_title():
 def test_the_approve_and_dismiss_verbs_are_the_same_words_everywhere():
     """Three separate call sites render a findings verdict (workbench row, per-source block, reserve drawer). The
     same action must read identically in all of them, or the app teaches three vocabularies for one decision."""
-    src = UI.read_text()
+    src = ui_source(UI.parent)
     approve = [_words(l) for t, l in _row_buttons(src) if "'approved'" in t]
     dismiss = [_words(l) for t, l in _row_buttons(src) if "'dismissed'" in t]
     assert approve and len(set(approve)) == 1, f"approve reads as {sorted(set(approve))}"
@@ -117,7 +118,7 @@ def test_the_status_glyphs_are_not_reused_as_commands_without_a_word():
     """`✓` means 'this happened' in several status lines in this file (✓ added, ✓ attached, ✓ already in your
     library). That is fine — what is not fine is the same glyph standing alone as a command, which is how it read
     on the findings row."""
-    src = UI.read_text()
+    src = ui_source(UI.parent)
     for tag, label in _buttons(src):
         w = _words(label)
         if "✓" in label:

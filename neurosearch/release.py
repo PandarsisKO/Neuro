@@ -367,22 +367,23 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
         import re as _re
         import shutil as _sh
         import subprocess as _sp
-        import tempfile as _tf
-        html = (Path(__file__).resolve().parent / "web" / "index.html").read_text()
-        js = "\n".join(_re.findall(r"<script(?![^>]*src=)[^>]*>(.*?)</script>", html, _re.S))
+        web = Path(__file__).resolve().parent / "web"
+        html = (web / "index.html").read_text()
         node = _sh.which("node") or _sh.which("nodejs")
-        ui_v = (_re.search(r"const UI_VERSION = '([^']+)'", html) or [None, None])[1]
-        if ui_v != __version__:
-            r.check("web/index.html UI_VERSION matches the package", False, f"{ui_v} != {__version__}")
+        ui_v = (_re.search(r"globalThis\.UI_VERSION = '([^']+)'", (web / "js" / "state.js").read_text()) or [None, None])[1]
+        html_v = (_re.search(r'name="neurosearch-ui-version" content="([^"]+)"', html) or [None, None])[1]
+        if ui_v != __version__ or html_v != __version__:
+            r.check("web UI_VERSION markers match the package", False, f"state={ui_v}, index={html_v}, package={__version__}")
         elif not node:
             r.check("web/index.html parses", True, "skipped — no JavaScript engine on this machine", warn=True)
         else:
-            with _tf.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
-                f.write(js)
-                jp = f.name
-            out = _sp.run([node, "--check", jp], capture_output=True, text=True, timeout=90)
-            r.check("web/index.html parses", out.returncode == 0,
-                    (out.stderr or "")[:300] or f"{len(js)} chars of inline JS, UI_VERSION {ui_v}")
+            failures = []
+            for module in sorted((web / "js").glob("*.js")):
+                out = _sp.run([node, "--check", str(module)], capture_output=True, text=True, timeout=90)
+                if out.returncode:
+                    failures.append(f"{module.name}: {(out.stderr or '')[:240]}")
+            r.check("web JavaScript modules parse", not failures,
+                    "; ".join(failures) or f"{len(list((web / 'js').glob('*.js')))} modules, UI_VERSION {ui_v}")
     except Exception as e:  # noqa: BLE001
         r.check("web/index.html parses", False, str(e)[:200])
     was_fake, was_dir, was_profile = settings.fake_ai, settings.data_dir, settings.ai_profile

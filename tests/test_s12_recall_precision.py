@@ -33,6 +33,7 @@ import pytest  # noqa: E402
 
 from neurosearch import bootstrap, db, discover, library, safe_fetch  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 
 @pytest.fixture()
@@ -249,8 +250,7 @@ def test_the_results_land_on_the_discovery_rows(lib, monkeypatch):
 
 
 def test_a_dead_link_is_not_offered_as_something_to_add():
-    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "neurosearch", "web", "index.html"), encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(__file__).resolve().parents[1] / "neurosearch" / "web")
     assert "const dead = lc && (lc.status === 'not_found' || lc.status === 'unreachable')" in ui
     assert "&& !dead ?" in ui
     assert "Add the site instead" in ui
@@ -293,8 +293,7 @@ def test_a_fresh_row_is_not_stale(lib):
 
 
 def test_an_old_suggestion_is_never_pre_ticked():
-    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "neurosearch", "web", "index.html"), encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(__file__).resolve().parents[1] / "neurosearch" / "web")
     assert "h.band === 'strong' && !h.from_old_matcher ? 'checked' : ''" in ui
     assert "older matcher" in ui
     assert "Scan again — free" in ui

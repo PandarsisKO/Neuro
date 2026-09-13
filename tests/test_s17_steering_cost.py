@@ -33,6 +33,7 @@ import pytest  # noqa: E402
 
 from neurosearch import claims, db, knowledge  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 
 @pytest.fixture()
@@ -125,6 +126,5 @@ def test_discover_says_how_current_its_steering_is(fresh, monkeypatch):
 def test_the_job_is_retryable_and_named_in_plain_language(fresh):
     from neurosearch import jobs
     assert "refresh_research" in jobs.RETRYABLE
-    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "neurosearch", "web", "index.html"), encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(__file__).resolve().parents[1] / "neurosearch" / "web")
     assert "bringing the research state up to date" in ui

@@ -28,6 +28,7 @@ import pytest  # noqa: E402
 
 from neurosearch import api, db  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "neurosearch", "web", "index.html")
 
@@ -126,7 +127,7 @@ def test_another_projects_findings_job_is_not_counted(project):
 # ------------------------------------------------------------------ the link now lands somewhere
 
 def test_the_sources_link_filters_the_workbench_to_that_source():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "openSourceSuggestions(" in ui
     # the yellow link must call it, not merely switch tabs
     m = re.search(r"suggested finding\$\{s\.suggested === 1 \? '' : 's'\} waiting for review", ui)
@@ -136,13 +137,13 @@ def test_the_sources_link_filters_the_workbench_to_that_source():
 
 
 def test_the_workbench_can_be_filtered_to_one_source_and_cleared():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "if (FB.source) p.set('source_id', FB.source);" in ui
     assert "clearFindingSource" in ui and 'id="fbSrcChip"' in ui
 
 
 def test_the_findings_view_no_longer_downloads_every_source():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     body = ui[ui.index("async function loadNotes()"):ui.index("// The Sources tab's")]
     code = "\n".join(l for l in body.splitlines() if not l.strip().startswith("//"))
     assert "limit=2000" not in code
@@ -150,7 +151,7 @@ def test_the_findings_view_no_longer_downloads_every_source():
 
 
 def test_the_suggested_block_says_when_it_is_showing_a_page(project):
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     body = ui[ui.index("async function loadNotes()"):ui.index("// The Sources tab's")]
     assert "most important of" in body            # never implies it is showing all of them
     assert "Approve ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}" in body
@@ -160,7 +161,7 @@ def test_the_suggested_block_says_when_it_is_showing_a_page(project):
 
 def test_every_discover_add_button_looks_the_same():
     """The colour used to depend on the row's KIND, which encoded nothing a reader could see."""
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     acts = ui[ui.index('<div class="dacts">'):ui.index('${d.status !== \'added\' ?')]
     assert "d.kind === 'website'" not in acts
     # five since 0.60.2: the fifth is the "add the site instead" offer on a row whose address 404s
@@ -168,7 +169,7 @@ def test_every_discover_add_button_looks_the_same():
 
 
 def test_adding_from_discover_acknowledges_the_click():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     fn = ui[ui.index("async function discAdd("):ui.index("async function addFromLibrary(")]
     assert "btn.disabled = true" in fn and "adding…" in fn and "added ✓" in fn
     assert "toast(" in fn
@@ -177,13 +178,13 @@ def test_adding_from_discover_acknowledges_the_click():
 
 
 def test_adding_from_the_library_acknowledges_the_click_too():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     fn = ui[ui.index("async function addFromLibrary("):ui.index("// ================= BOOTSTRAP R3")]
     assert "adding…" in fn and "added ✓" in fn and "btn.disabled = false" in fn
 
 
 def test_the_progress_box_collapses_to_what_is_running():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "toggleJobsBox" in ui and "JOBSBOX" in ui
     assert "Show only what is running" in ui and "ns_jobsbox" in ui
     # collapsed still shows anything failed or bumped — those need the user

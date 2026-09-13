@@ -31,6 +31,7 @@ import pytest  # noqa: E402
 
 from neurosearch import bootstrap, db, staleness  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "neurosearch", "web", "index.html")
 
@@ -97,7 +98,7 @@ def test_an_older_row_without_the_measure_is_unaffected():
 
 
 def test_the_card_holds_back_a_generic_only_match():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "const live = pending.filter(h => !h.weak_query_only)" in ui
     assert "without a specific connection to this project" in ui
     assert "show them anyway" not in ui
@@ -267,14 +268,14 @@ def test_health_separates_hopeless_from_retryable(fresh):
 
 
 def test_the_row_says_which_it_is():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "PERMANENT_FAILURES" in ui and "will not work" in ui and "retryable" in ui
 
 
 # ------------------------------------------------------------------ 6. a warning that says zero, and a poll storm
 
 def test_a_banner_with_nothing_stale_does_not_warn():
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "const head = t.stale_total" in ui
     assert "⟳ Re-analysing ${reb.length}" in ui
     assert "Three answers, not one bill" not in ui       # the garbled line is gone
@@ -284,7 +285,7 @@ def test_a_banner_with_nothing_stale_does_not_warn():
 def test_the_findings_tab_asks_whether_anything_changed_first():
     """Five whole-project passes every four seconds, seen in his own browser. The Sources view has had the 13 ms
     revision check since 0.46.2; Findings never got it."""
-    ui = open(UI, encoding="utf-8").read()
+    ui = ui_source(__import__("pathlib").Path(UI).parent)
     assert "async function notesTick()" in ui and "/tick`" in ui
     body = ui[ui.index("async function notesTick()"):ui.index("async function loadNotes()")]
     assert "notesTicks >= RECONCILE_EVERY" in body       # and it still reconciles on a slow interval

@@ -17,6 +17,7 @@ import pytest  # noqa: E402
 from neurosearch import api, db, fake_ai, ingest, jobs, staleness, usage  # noqa: E402
 from neurosearch import claude_code as CC  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = Path(__file__).resolve().parents[1] / "neurosearch" / "web" / "index.html"
 TEXT = "0:05 cloudflare pages is free hosting for static sites with no bandwidth bill\n3:40 never touch the MX records when you move hosting or email breaks"
@@ -101,7 +102,7 @@ def test_a_cloud_profile_never_offers_the_dialog(monkeypatch):
     monkeypatch.setattr(settings, "ai_profile", "cloud")
     b = jobs.backlog(p["id"])
     assert b["local_ready"] is False and b["local_minutes"] is None and "waiting on Claude Code" not in b["line"]
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     assert 'id="backlog"' in html and "loadBacklog()" in html and "accelerate(" in html
     assert "b.local_ready" in html, "the banner must hide itself when the local provider is not the one doing the work"
 
@@ -122,7 +123,7 @@ def test_a_button_that_spends_money_says_so_on_its_face():
     # the per-button sum can never exceed the whole-set figure the banner quotes
     assert round(sum(j["api_cost"] for j in b["jobs"]), 2) == b["api_cost"]
 
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     assert "function accelEstimate" in html and "accelMins(" in html
     for must in ("saves ~", "buying time, not a different answer", "cannot be undone", "at $0"):
         assert must in html, f"the purchase must state {must!r} before it is made"

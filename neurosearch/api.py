@@ -26,6 +26,7 @@ import anyio
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from starlette.staticfiles import StaticFiles
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
@@ -173,6 +174,7 @@ mcp_app = mcp.streamable_http_app(
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 app.mount("/mcp", mcp_app)
+app.mount("/js", StaticFiles(directory=WEB_DIR / "js"), name="web-js")
 app.add_middleware(PerfMiddleware)
 app.add_middleware(ClientVersionMiddleware)
 app.add_middleware(TokenPathMiddleware)
@@ -206,6 +208,12 @@ def index(request: Request) -> Any:
     if not _token_ok(_request_token(request)):
         return HTMLResponse((WEB_DIR / "login.html").read_text(), headers=NO_STORE)
     return HTMLResponse((WEB_DIR / "index.html").read_text(), headers=NO_STORE)
+
+
+@app.get("/styles.css")
+def stylesheet() -> FileResponse:
+    # Revalidate on each load so extracted styles cannot outlive a UI release.
+    return FileResponse(WEB_DIR / "styles.css", media_type="text/css", headers={"Cache-Control": "no-cache"})
 
 
 @app.post("/login")

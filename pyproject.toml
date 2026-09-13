@@ -1,6 +1,6 @@
 [project]
 name = "neurosearch"
-version = "0.63.57"
+version = "0.63.58"
 description = "Turn videos, podcasts and audio into a queryable, citation-backed knowledge base."
 requires-python = ">=3.11"
 dependencies = [
@@ -42,4 +42,4 @@ build-backend = "setuptools.build_meta"
 include = ["neurosearch*"]
 
 [tool.setuptools.package-data]
-neurosearch = ["web/*"]
+neurosearch = ["web/*", "web/js/*.js"]

@@ -27,6 +27,7 @@ import pytest  # noqa: E402
 
 from neurosearch import db, jobs, relevance  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
+from tests.frontend_helpers import ui_source  # noqa: E402
 
 UI = pathlib.Path(__file__).resolve().parents[1] / "neurosearch" / "web" / "index.html"
 
@@ -95,13 +96,13 @@ def test_a_short_collection_never_yields():
 
 def test_the_queue_controls_sit_above_the_review_stack():
     """Ordering in the DOM is the fix: In-progress is what you reach for WHILE reviewing, not after."""
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     assert html.index('id="jobsCard"') < html.index('id="reviewWrap"'), "the queue card must come before the review cards"
     assert html.index('id="bootCard"') < html.index('id="reviewWrap"')
 
 
 def test_review_cards_after_the_first_start_folded():
-    html = UI.read_text()
+    html = ui_source(UI.parent)
     assert "RVFOLD" in html and ".rv.folded .list" in html and ".rv.folded .rvfoot" in html
     assert "RVFOLD[c.id] !== undefined ? RVFOLD[c.id] : idx > 0" in html, "default folded for every card after the first"
     assert 'class="row rvfoot"' in html, "the ingest buttons fold away with their list"

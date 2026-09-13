@@ -2402,7 +2402,8 @@ def test_version_is_pep440_and_consistent():
     except InvalidVersion:
         pytest.fail(f"pyproject version {v!r} is not PEP 440 — pip install -e . will fail")
     assert v == neurosearch.__version__
-    assert f"'{v}'" in (pathlib.Path(neurosearch.__file__).parent / "web" / "index.html").read_text()
+    web = pathlib.Path(neurosearch.__file__).parent / "web"
+    assert f"'{v}'" in (web / "js" / "state.js").read_text()
 
 
 # ------------------------------------------------------------------ F5 harness fixes: frozen research, INCOMPLETE stages, resume

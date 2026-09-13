@@ -4,17 +4,21 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-13. This is
 
 ## NOW — one active effort
 
-Pre-T1 gate completion: R9(a) selected local Ollama `bge-m3` (1024 dimensions) and R9(b) has a complete candidate scorecard. R9(c)'s long-window findings/claims benchmark is explicitly deferred after an external 70B pull stalled; its exact revisit trigger is in `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`. R8 retention is deliberately deferred to the non-destructive observation trigger after 2026-10-11 17:28 PT and is non-blocking. See `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
-
-The design-system work has completed D0 and D1 (`DESIGN-MISSION.md`, updated 2026-09-13): `ladder.md` rung F0
-closed with a bounded runtime-verification pass, and `design/f0`'s full history (AUDIT.md/DESIGN.md upgrades, the
-Apple design reference sourcebook, the evidence baseline) is merged to `main` at `79c4446`. T1's implementation,
-three-pass derived-vector backfill, semantic cohort, and release gate are now complete; D2 (`ladder.md` F1–P1) is
-the active design lane and may proceed one bounded surface at a time.
+Kyle's 2026-09-13 override: split `neurosearch/web/index.html` into static CSS and native ES modules,
+without a build step or visual/behavior changes. ACTIVE: CSS extraction first, then state/API/shared formatting,
+view modules and bootstrap/router in independently mergeable steps. Acceptance: affected frontend gates after
+each step; full pytest, Tier 1 and commit-bound release-check at release boundaries. Initial CSS landing is
+Kyle's direction-check checkpoint before the JavaScript split. Progress and isolation details: `HANDOFF.md`.
 
 ## SUSPENDED — RESUME FIRST
 
-This section is now historical. The previously uncommitted Codex
+D2/F1 is suspended at a safe committed boundary (0.63.57, base `30ee4f4`): mechanical inline-style
+retirement is complete; F1 step 3's eight-control SVG sprite remains next. Collision is Yellow: both efforts
+share frontend source and design gates. Resume by finding CSS in `styles.css` and JavaScript in its then-current
+modules, re-running S50/S44/S5 plus affected gates, and recording a Resume Delta. No backend/T1 work is in flight;
+the T1 cohort and release closeout are complete. Interruption cost is low.
+
+The following earlier suspension is historical. The previously uncommitted Codex
 Bootstrap/resources/UI fix set is committed on `main` (`21bb117`, `5fc2ad6`,
 `d95f4b3`) and its focused tests are part of the full release suite. Claude's
 F0/D1 design work is likewise merged (`79c4446`); `DESIGN.md`, `AUDIT.md`,
