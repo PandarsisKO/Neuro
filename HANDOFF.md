@@ -1040,3 +1040,16 @@ Authenticated API reads after the `0.63.63` reload returned `/api/version` 200 (
 with zero queued/running/stale/leased/external-pending jobs. Health's newest verified backup is
 `neurosearch-20260913-1353.db`, full `integrity: ok`, 38,038 chunks, 1.15 GB. The two historical unsettled batches
 remain 36 collected-but-unwritten items and were not settled.
+
+## Current control-plane reconciliation — 2026-09-13 14:01 PT
+
+`STATE-OF-THE-APP-2026-09-13-1401.md` is the newest orientation source. The older scheduler entry that lists the
+frontend CSS/module extraction as `NOW` is historical: that decomposition was delivered before the current W1
+checkpoints. `main` is now `ed52a59` at UI `0.63.63`; W1 steps 1–2 are released, and the remaining acceptance work
+is Claude's browser/human re-score for F2 and W1.
+
+No Codex-owned implementation rung is admitted at this boundary. T2 cannot start until its design/state-model gate
+exists; R8 retention and R9(c) remain trigger-gated. If new Claude evidence lands, inspect the exact commit and
+preserve ownership. Otherwise, do not invent work or reopen the superseded frontend queue. Any future Codex rung
+must be backend/reliability/measurement/recovery or Transcript Intelligence infrastructure, with focused tests,
+required release validation, and an append-only checkpoint.

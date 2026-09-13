@@ -229,3 +229,16 @@ Post-release authenticated verification reports `0.63.63`, `fake_ai=false`, no a
 verified backup with full `integrity: ok`. The 36 historical unsettled batch results remain untouched while Claims is
 paused. W1 step 2 is therefore validated in code, tests, release gate, and runtime; the next evidence requirement is
 Claude's human/browser re-score before additional W1 label changes.
+
+## CONTROL-PLANE RECONCILIATION — 2026-09-13 14:01 PT
+
+The older `NOW` block at the top of this file describes the frontend CSS/module extraction as active. That effort is
+already delivered and is followed by Claude's F1/F2 and W1 work on `main`; it is no longer an active implementation
+queue. The latest authoritative checkpoint is `STATE-OF-THE-APP-2026-09-13-1401.md` and the W1 step-2 release entry
+above: `main` is `ed52a59`, UI `0.63.63`, W1 code steps 1–2 are released, and the remaining W1 work is human/browser
+re-scoring plus any evidence-backed label sweep.
+
+There is currently no admitted Codex-owned implementation rung. T2 remains behind its design/state-model admission
+gate; R8 retention and R9(c) remain trigger-gated. Claude owns the open F2/W1 browser evidence. Do not reopen the
+superseded frontend-split queue or start parked product work. A new Codex rung requires a measured backend,
+reliability, recovery, or Transcript Intelligence trigger and the normal tests, documentation, and release gate.
