@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.49';
+const UI_VERSION = '0.63.50';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2297,11 +2297,11 @@ async function sourceDrawer(sid) {
       (st.tier !== 'rebuild_transcript' ? `<button class="small ghost" title="Keep these findings and stop flagging it until the inputs change again" onclick="drawerAccept('${sid}')">Accept as still usable</button>` : '')
     : '';
   $('#dlgBody').innerHTML = `
-    <div class="row" style="align-items:baseline;gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(s.title)}</b>
+    <div class="row" style="align-items:baseline;gap:8px;flex-wrap:wrap"><b class="text-base">${esc(s.title)}</b>
       ${s.url && s.url.startsWith('http') ? `<a class="muted" href="${esc(s.url)}" target="_blank">open ↗</a>` : ''}
       ${v.priority ? '<span class="tag">★ priority</span>' : ''}${s.depth === 'deep' ? '<span class="tag">🔬 deep-read</span>' : ''}${s.long ? '<span class="tag">📚 long-form</span>' : ''}</div>
     <div class="muted">${esc(s.channel || s.platform)}${s.published_at ? ' · ' + esc(s.published_at) : ''}${s.duration ? ' · ' + fmt(s.duration) : ''} · ${staleLine}</div>
-    <div class="card" style="margin-top:8px"><b>What it gave you</b><div>${esc(v.label)}</div>
+    <div class="card mt-2"><b>What it gave you</b><div>${esc(v.label)}</div>
       ${v.why.length ? `<div class="why">Why it matters: ${v.why.map(esc).join(' · ')}</div>` : v.never_used ? `<div class="why">Nothing has used it yet — no plan step, chat answer or Claim rests on it.</div>` : ''}
       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
         <button class="small" onclick="dlg.close();askAboutSource('${sid}',${JSON.stringify(s.title).replace(/"/g, '&quot;')})">💬 Ask about this source</button>
@@ -3080,7 +3080,7 @@ async function loadQuality(st) {
   if (s.duplicates) bits.push(`${s.duplicates} the same source said twice`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
   const corr = (s.corroborated || {}).findings || 0;
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.${s.as_of_current === false ? ' <span class="muted">Counted a moment ago; refreshing.</span>' : ''}</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">🧽 ${st === 'suggested' ? 'Before you approve these: ' : ''}${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · <b>${corr} confirmed by more than one source</b> — kept, never swept` : ''}.${s.as_of_current === false ? ' <span class="muted">Counted a moment ago; refreshing.</span>' : ''}</span><button class="small" onclick="openQuality('${st}')">Review</button></div>`;
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.
 // The filter can now say which of them are not repeats of something approved and do name something specific.
@@ -3088,7 +3088,7 @@ async function loadPromotable(el) {
   let r; try { r = await api(`/api/projects/${state.project.id}/findings/reserve-promotable?limit=400`); } catch (e) { el.innerHTML = ''; return; }
   if (!r.reserve) { el.innerHTML = ''; return; }
   const sk = Object.entries(r.skipped || {}).map(([k, v]) => `${v} ${k === 'already_covered' ? 'already covered by an approved finding' : (r.rules ? '' : '') + k.replace(/_/g, ' ')}`).join(' · ');
-  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">📥 ${r.promotable} of ${r.reserve} withheld findings look worth keeping${sk ? ` · skipping ${esc(sk)}` : ''}.</span>` +
+  el.innerHTML = `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">📥 ${r.promotable} of ${r.reserve} withheld findings look worth keeping${sk ? ` · skipping ${esc(sk)}` : ''}.</span>` +
     (r.promotable ? `<button class="small" onclick="openPromotable()">Review</button><button class="small primary" onclick="promoteReserve(${JSON.stringify(r.rows.map(x => x.id))})">Approve all ${r.promotable}</button>` : '') + `</div>`;
 }
 async function openPromotable() {
@@ -3096,7 +3096,7 @@ async function openPromotable() {
   $('#dlgBody').innerHTML = `<h3 style="margin:0 0 4px">Withheld findings worth keeping</h3>
     <p class="muted" style="margin:0 0 10px">${esc(r.note)}</p>
     ${(r.rows || []).map(x => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px"><input type="checkbox" class="pchk" value="${x.id}" checked>
-      <span style="flex:1">${esc((x.content || '').slice(0, 260))}<br><span class="muted" style="font-size:11px">${esc(x.why)}${x.importance ? ` · rated ${x.importance}/5` : ''}</span></span></label>`).join('')}
+      <span class="grow">${esc((x.content || '').slice(0, 260))}<br><span class="muted" style="font-size:11px">${esc(x.why)}${x.importance ? ` · rated ${x.importance}/5` : ''}</span></span></label>`).join('')}
     <div class="row" style="margin-top:12px;gap:8px"><button class="small primary" onclick="promoteReserve([...document.querySelectorAll('.pchk:checked')].map(c=>+c.value))">Approve the ticked ones</button></div>`;
   dlg.showModal();
 }
@@ -3120,7 +3120,7 @@ async function openQuality(st) {   // opened deliberately: this one waits for a 
     ${order.filter(k => groups[k]).map(k => `<details class="fgroup" open><summary class="gh"><b>${esc(r.rules[k])}</b><span>${groups[k].length}</span></summary>
       ${groups[k].map(row => `<label class="row" style="align-items:flex-start;gap:8px;padding:6px 8px">
         <input type="checkbox" class="qchk" value="${row.id}" ${row.pre_select ? 'checked' : ''} ${row.protected ? 'disabled' : ''}>
-        <span style="flex:1"><span>${esc((row.content || '').slice(0, 260))}</span>
+        <span class="grow"><span>${esc((row.content || '').slice(0, 260))}</span>
         ${row.keep_instead ? `<br><span class="muted" style="font-size:11px">keeping instead: ${esc((keepOf(row.keep_instead) || '').slice(0, 160) || '#' + row.keep_instead)}</span>` : ''}
         ${row.protected ? `<br><span class="muted" style="font-size:11px">🔒 ${esc(row.protected)}</span>` : ''}</span></label>`).join('')}
     </details>`).join('')}
