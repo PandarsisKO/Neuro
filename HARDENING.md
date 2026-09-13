@@ -2055,3 +2055,11 @@ The copied-backup baseline `evals/t2/pre-admission-baseline-20260913-141959.json
 ## T2 state-model gate — 2026-09-13 14:26 PT
 
 The T2 admission review fixed half-open locator semantics and fail-open signal handling. The derived view can assert only evidence supported by canonical locators or a valid attested T1 vector; source-level relevance, findings-only duplicate output, and pre-T3 extraction remain unknown at chunk level. `unexplained` is therefore withheld whenever any required input is unavailable. Implementation is confined to the existing T1 read-only seam with no table, provider call, UI, or live-data write. Baseline artifact: `evals/t2/pre-admission-baseline-20260913-141959.json`.
+
+## T2 implementation closeout — 2026-09-13 14:35 PT
+
+The T2 derived coverage view is release-checked at `280146a`; artifact `evals/t2/cohort-20260913-1435.json` records read-only timings, p90 thresholds, signal counts, and typed locator reconciliation for all three retained projects. The focused suite passed 31 tests and full pytest passed 1,368 with one existing Starlette warning; release artifact `evals/release/release-check-0.63.65-280146a-20260913-143316.json` passed every deterministic proof. The implementation fails open for missing/stale vector space and keeps extraction, chunk redundancy, relevance, and unexplained states unavailable until their inputs are valid. No persistence, provider call, UI change, or live-data write was introduced.
+
+## W1 step 4 — legacy Sources re-analysis disclosure — 2026-09-13
+
+Claude's `f143266` landing brings UI/package version to `0.63.65` and discloses model-budget use on the legacy “Re-analyse all” action. Frontend custody remains with Claude; the remaining browser/human re-score is open.

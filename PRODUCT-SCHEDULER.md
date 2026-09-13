@@ -271,3 +271,11 @@ The baseline artifact `evals/t2/pre-admission-baseline-20260913-141959.json` dis
 ## T2 state-model admission — 2026-09-13 14:26 PT
 
 The internal state-model gate is closed. T2 is now the single active Codex rung, implemented only through the existing T1 read-only coverage seam. The fixed rules are finite locators with `[start, end)` chunk boundaries, typed boundary/membership gaps, project-relative attested T1 representation, and explicit unknowns for source-level relevance, findings-only redundancy, and pre-T3 extraction. `unexplained` remains unavailable whenever a required input is unavailable. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` is the baseline; no UI, table, provider call, or live-data mutation is admitted.
+
+## T2 implementation closeout — 2026-09-13 14:35 PT
+
+T2 is release-checked at `280146a`; the existing authenticated coverage route now pages the derived seven-signal view. Cohort `evals/t2/cohort-20260913-1435.json` measured all 38,038 retained-project chunk vectors read-only, with project-relative p90 thresholds and typed boundary/member/gap reconciliation. The full 1,368-test suite and deterministic release artifact `evals/release/release-check-0.63.65-280146a-20260913-143316.json` are green. Unknown states are explicit where T3 extraction, chunk-level redundancy, or validated chunk-level relevance does not yet exist; `unexplained` is never inferred. T2 is closed. The next Codex-owned work is to prepare T3's deterministic extraction admission and precision gate; Claude retains the open W1/F2 browser/human gate.
+
+## Claude W1 step 4 landing — 2026-09-13
+
+Claude's W1 step 4 (`f143266`) discloses model-budget use on the legacy Sources “Re-analyse all” control and synchronizes UI/package version `0.63.65`. This frontend change remains Claude-owned; Codex's T2 work stayed in backend/tests/docs.

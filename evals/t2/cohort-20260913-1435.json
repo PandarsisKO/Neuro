@@ -1,0 +1,197 @@
+{
+  "backup_filename": "neurosearch-20260913-1410.db",
+  "backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
+  "generated_at_utc": "2026-09-13T21:34:43.670357+00:00",
+  "live_database_opened": false,
+  "projects": [
+    {
+      "canonical_claims": 3602,
+      "canonical_findings": 3834,
+      "denominator": 6139,
+      "latency_seconds": 2.8724,
+      "primary_states": {
+        "claim_covered": 2305,
+        "finding_covered": 33,
+        "represented": 235,
+        "unknown": 3566
+      },
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "reconciliation": {
+        "claim_locator_reasons": {
+          "at_or_after_last_chunk": 2,
+          "before_first_chunk": 23,
+          "internal_chunk_gap": 12
+        },
+        "claim_locator_rows": 3838,
+        "claim_locator_rows_without_match": 37,
+        "finding_citation_items": 3880,
+        "finding_citation_reasons": {
+          "at_or_after_last_chunk": 2,
+          "before_first_chunk": 23,
+          "internal_chunk_gap": 12
+        },
+        "finding_citations_malformed": 0,
+        "finding_rows_with_citations": 3823
+      },
+      "semantic": {
+        "chunk_count": 6139,
+        "distributions": {
+          "claims": {
+            "max": 0.9011961221694946,
+            "min": 0.20592737197875977,
+            "p50": 0.6090378761291504,
+            "p90": 0.7193177342414856
+          },
+          "findings": {
+            "max": 0.8939851522445679,
+            "min": 0.2277834117412567,
+            "p50": 0.6025997996330261,
+            "p90": 0.7083722352981567
+          }
+        },
+        "invalid_chunks": 0,
+        "status": "measured",
+        "thresholds": {
+          "claims": 0.7193177342414856,
+          "findings": 0.7083722352981567
+        }
+      },
+      "signals": {
+        "claim_covered": 2305,
+        "extracted": 0,
+        "finding_covered": 2338,
+        "irrelevant": 0,
+        "redundant": 0,
+        "represented": 836,
+        "unexplained": 0
+      }
+    },
+    {
+      "canonical_claims": 14742,
+      "canonical_findings": 16577,
+      "denominator": 24166,
+      "latency_seconds": 44.9921,
+      "primary_states": {
+        "claim_covered": 8039,
+        "finding_covered": 216,
+        "represented": 910,
+        "unknown": 15001
+      },
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "reconciliation": {
+        "claim_locator_reasons": {
+          "at_chunk_end": 294,
+          "at_or_after_last_chunk": 5,
+          "before_first_chunk": 166,
+          "excluded_source": 11,
+          "internal_chunk_gap": 614,
+          "source_not_member": 1
+        },
+        "claim_locator_rows": 18496,
+        "claim_locator_rows_without_match": 1091,
+        "finding_citation_items": 16816,
+        "finding_citation_reasons": {
+          "at_chunk_end": 278,
+          "at_or_after_last_chunk": 5,
+          "before_first_chunk": 156,
+          "excluded_source": 14,
+          "internal_chunk_gap": 594,
+          "source_not_member": 6
+        },
+        "finding_citations_malformed": 0,
+        "finding_rows_with_citations": 16451
+      },
+      "semantic": {
+        "chunk_count": 24166,
+        "distributions": {
+          "claims": {
+            "max": 0.8997898101806641,
+            "min": 0.17284050583839417,
+            "p50": 0.5793861150741577,
+            "p90": 0.7170388698577881
+          },
+          "findings": {
+            "max": 0.8927544355392456,
+            "min": 0.18511217832565308,
+            "p50": 0.5757224559783936,
+            "p90": 0.7027446031570435
+          }
+        },
+        "invalid_chunks": 0,
+        "status": "measured",
+        "thresholds": {
+          "claims": 0.7170388698577881,
+          "findings": 0.7027446031570435
+        }
+      },
+      "signals": {
+        "claim_covered": 8039,
+        "extracted": 0,
+        "finding_covered": 8029,
+        "irrelevant": 0,
+        "redundant": 0,
+        "represented": 3103,
+        "unexplained": 0
+      }
+    },
+    {
+      "canonical_claims": 589,
+      "canonical_findings": 605,
+      "denominator": 2719,
+      "latency_seconds": 0.1776,
+      "primary_states": {
+        "claim_covered": 636,
+        "finding_covered": 12,
+        "represented": 194,
+        "unknown": 1877
+      },
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "reconciliation": {
+        "claim_locator_reasons": {},
+        "claim_locator_rows": 603,
+        "claim_locator_rows_without_match": 0,
+        "finding_citation_items": 607,
+        "finding_citation_reasons": {},
+        "finding_citations_malformed": 0,
+        "finding_rows_with_citations": 600
+      },
+      "semantic": {
+        "chunk_count": 2719,
+        "distributions": {
+          "claims": {
+            "max": 0.8627943992614746,
+            "min": 0.16473856568336487,
+            "p50": 0.5712198615074158,
+            "p90": 0.6971054673194885
+          },
+          "findings": {
+            "max": 0.8250852227210999,
+            "min": 0.18691211938858032,
+            "p50": 0.5623528957366943,
+            "p90": 0.6684821844100952
+          }
+        },
+        "invalid_chunks": 0,
+        "status": "measured",
+        "thresholds": {
+          "claims": 0.6971054673194885,
+          "findings": 0.6684821844100952
+        }
+      },
+      "signals": {
+        "claim_covered": 636,
+        "extracted": 0,
+        "finding_covered": 648,
+        "irrelevant": 0,
+        "redundant": 0,
+        "represented": 373,
+        "unexplained": 0
+      }
+    }
+  ],
+  "read_only": true,
+  "schema": "t2-coverage-cohort/v1"
+}

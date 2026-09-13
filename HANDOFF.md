@@ -1118,3 +1118,68 @@ The pre-admission artifact `evals/t2/pre-admission-baseline-20260913-141959.json
 ## T2 state-model review admitted — 2026-09-13 14:26 PT
 
 The T2 state-model review is closed and the derived read-only implementation is admitted through the existing T1 coverage seam. `[start, end)` locator semantics and typed reconciliation reasons are fixed. The implementation may report `claim_covered`, `finding_covered`, and valid T1 `represented`; it must keep source-level relevance, findings-only redundancy, and pre-T3 extraction explicitly unavailable and must never assert `unexplained` while required inputs are unknown. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` is the measured baseline. No new table, provider call, UI, or live-data mutation is allowed.
+
+## Design ladder — Rung W1 step 4 landed: legacy-suggestions disclosure fix (H-5)
+
+Landed on `main` at merge commit `f143266` (source `f76d1d1` on branch
+`design/w1-step4-legacy-suggestions`, now deleted).
+
+Found opportunistically while scoping Rung W2 (see below), not from the original audit evidence list.
+Findings' legacy-suggestions banner (`#suggestedWrap` in `research.js`, ~line 791) had a bare `<a>`
+link, "Re-analyse all", that called `suggestNow(true)` directly — skipping cost disclosure entirely.
+Two lines below in the same file, the *exact same action* is offered via "Re-analyse all…" which
+correctly routes through `analyzeChooser(true)` first (pricing card, now/background choice) before
+ever calling `suggestNow`. Same action, same file, one path disclosed and one didn't. Fix: routed the
+legacy-suggestions link through the same `analyzeChooser(true)` flow already used elsewhere in this
+file — no new pattern, per AUDIT.md's "fixes must extend existing product systems."
+
+`UI_VERSION` bumped to `0.63.65` (4-way sync). No `MAX_INLINE_STYLE_ATTRS` change. Targeted suites
+(`test_s50_design_drift`, `test_s44_frontend_integrity`, `test_s5_ui_syntax`, `test_n8_research_shell`,
+`test_s11_findings_tab`, `test_s14_fix_pass`): 79 passed, before and after the merge. Worktree and
+branch removed cleanly, verified gone.
+
+**Rung W1 status:** all four code-only steps landed (vocabulary/disclosure on Sources' "Suggest
+findings" and Chat's "also search the web", Plan's rebuild button role, Sources' re-rank disclosure,
+and now the legacy-suggestions disclosure gap found while scoping W2). Remaining scope is entirely the
+ladder's Human gate — re-scoring Sources/Chats/Findings/Plan's "What that will do" ratings needs a
+live/audit-instance click-through, the same limitation as F2's still-open browser-verification gate.
+
+## Rung W2 scoping — investigation only, not implemented
+
+While W1 sat on its Human gate, scoped Rung W2 ("Findings: three stacked banners become one Review
+entry point", H-3/RC-A/RC-C). Full code map and checklist written to
+`docs/design-audit/2026-09-13-b85c222/w2-scope.md` (this commit). Headline findings:
+
+- The audit's H-3 evidence names three banners (`#staleFindings`, `#fbSweep`, `#fbQual`). There is
+  a fourth region the original audit pass didn't name: `#suggestedWrap`, sitting between
+  `#staleFindings` and the filter bar, which can itself show up to two banners at once (legacy
+  suggestions — the link just fixed above — and an analysing-in-progress spinner with an optional
+  "Start N now" button). So Findings can legitimately stack up to five banner-shaped things at once
+  before the user reaches the findings list, worse than the audit's evidence by count even though the
+  root cause is the same.
+- Enumerated all 9 priced/actionable options that must stay reachable within ≤2 clicks per the
+  ladder's own behavioral gate (rebuild variants, retry, accept, sweep review/dismiss, quality review,
+  reserve review/approve-all, legacy re-analyse, first-wave start-now) — a concrete checklist for
+  whoever implements W2, rather than a vague "don't lose anything."
+- **Recommendation: hold W2 implementation** until an audit-instance or live read-only check is
+  possible. The ladder itself calls W2 "the rung most likely to hide a priced action a user currently
+  sees at once" — a real-render verification, not a code-reading one. Implementing a banner
+  consolidation this size blind risks exactly the regression the ladder warns about.
+
+## Audit-instance finding: currently serving stale code
+
+Separately from the above: the audit instance (port 8788) is currently serving `UI_VERSION 0.63.61`
+with a single bundled `js/app.js` — an intermediate commit state predating both the current per-surface
+JS module split (research.js/sources.js/utils.js/etc.) and all of Rung W1. It was apparently restarted
+independently at some point during this session from a stale checkout of `.worktrees/f0`, rather than
+current `main`. Before any browser/audit-instance verification of F2, W1, or a future W2 can happen,
+the audit instance needs restarting from current `main` (or the pinned baseline worktree needs
+updating, per whatever the pinning policy for `.worktrees/f0` actually calls for — worth Kyle's call).
+
+## T2 implementation closeout — 2026-09-13 14:35 PT
+
+T2 is implemented and release-checked at `280146a`. The authenticated T1 coverage route now accepts `detail=chunks` with bounded paging and returns deterministic per-chunk signals plus typed reconciliation, project-relative p90 thresholds, and fail-open unknowns. Real-corpus artifact: `evals/t2/cohort-20260913-1435.json`; release artifact: `evals/release/release-check-0.63.65-280146a-20260913-143316.json`. Focused tests: 31 passed; full pytest: 1,368 passed with one existing Starlette warning. T2 adds no table, provider call, UI, or live-data write. `extracted`, `redundant`, `irrelevant`, and `unexplained` remain unavailable by design until T3 or a measured chunk-level signal supplies them. The next Codex action is a T3 deterministic-extraction admission proposal and precision-gate design; do not add a persisted extraction matrix before that gate.
+
+## Claude W1 step 4 landing — 2026-09-13
+
+Claude's `design/w1-step4-legacy-suggestions` landed on `main` at `f143266`, bumping UI/package version to `0.63.65` and disclosing the model budget on the legacy Sources “Re-analyse all” action. Codex did not edit Claude-owned frontend files. W1/F2 browser and human re-score evidence remains Claude's lane.
