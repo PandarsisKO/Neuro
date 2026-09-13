@@ -461,7 +461,7 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 
 | # | Criterion | Status |
 |---|---|---|
-| 1 | Product and version identified | met — 0.63.43, `b85c222`; baseline SHA to be re-pinned after Codex's UI diff lands (F0 step 2) |
+| 1 | Product and version identified | met — 0.63.43; **baseline pinned at `21bb117`** (2026-09-13, F0 step 2): Codex's standalone `index.html` commit, drift counts re-measured there and identical (430 / 28 / 3 / 16 / 11 / 8) |
 | 2 | Live product inspected read-only **and** interactions exercised on an audit instance | **unmet** — read-only half only; no audit instance exists |
 | 3 | Surfaces inventoried by intent | met |
 | 4 | Load-bearing workflows walked end to end | **unmet** — all observed, none exercised |
