@@ -4,9 +4,9 @@ Python 3.11+ / FastAPI / SQLite FTS5 + numpy vectors / vanilla JavaScript UI / M
 
 Read the newest timestamped State-of-the-App first, then HANDOFF.md and the active Foundation handoff. `DEVELOPMENT-OPERATING-SYSTEM.md` records Kyle's governing priorities. `PRODUCT-SCHEDULER.md` is the product queue; `SCHEDULER.md` is a parked runtime design. Historical checklists are not assignments.
 
-Runtime: 0.63.43 is observed through the authenticated console with `fake_ai=false`. Its R7 candidate is committed
-at `bf8d595`, release-checked, and live-observed with a healthy backup/integrity state and `0 queued · 0 running`.
-Delivery and validation status live in FOUNDATION-HANDOFF.md; `PRODUCT-SCHEDULER.md` owns the current execution order.
+Runtime: 0.63.63 is the current released application (`fake_ai=false`), with authenticated Health showing zero
+queued/running/stale/leased/external-pending jobs and full verified-backup integrity. Delivery and validation status
+live in `HANDOFF.md` and the newest `STATE-OF-THE-APP-*.md`; `PRODUCT-SCHEDULER.md` owns the current execution order.
 
 ## Standing rules (never break these)
 

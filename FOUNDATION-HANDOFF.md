@@ -1,14 +1,9 @@
 # Foundation coordination — Codex and Claude
 
-Status: **0.63.43 R7 COMPLETE; FOUNDATION CLOSEOUT COMPLETE; T1 MEASUREMENT IN PROGRESS; R9(c) DEFERRED**, 2026-09-12.
-
-Current restart point: commit `bf8d595` implements R7 project-relative novelty/residual reading over R6's durable
-Fast/Warm jobs. The 0.63.43 full suite, Tier 1, release-check and authenticated Foundation closeout pass. The
-remaining active work is the T1 derived-object backfill and semantic cohort; R9(c) has an explicit numeric revisit trigger.
-
-The detailed 0.63.36–0.63.39 and 0.63.37 delivery sections below are historical release records. Current admission
-and sequencing are owned by `STATE-OF-THE-APP-2026-09-12-1510.md`, `PRODUCT-SCHEDULER.md` and
-`docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+**Historical record.** Foundation Phases 0–10 and Transcript Intelligence T1 are complete. This file preserves the
+0.63.36–0.63.43 Foundation delivery evidence and is not the current restart point. Current status and sequencing are
+owned by the newest `STATE-OF-THE-APP-*.md`, `HANDOFF.md`, and `PRODUCT-SCHEDULER.md`; the current released app is
+0.63.63 and W1 steps 1–2 are complete. T2 remains behind its design/state-model admission gate.
 
 Codex prepared candidate 0.63.36 in `/private/tmp/neuro-foundation-review` from base
 `f345726e790b27ce32fadaf8d9003426364d99dc`. Kyle confirmed Claude was dormant. Before delivery, the live checkout
