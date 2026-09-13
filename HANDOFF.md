@@ -1106,3 +1106,7 @@ Findings/Plan's "What that will do" ratings needs a live or audit-instance click
 limitation as F2's still-open browser-verification gate. No further code-only disclosure or
 button-role gaps are apparent from reading alone at this point; continuing further without the visual
 pass risks speculative churn rather than evidenced fixes.
+
+## T2 pre-admission baseline — 2026-09-13 14:19 PT
+
+Codex measured T2's existing inputs read-only from a copy of `data/backups/neurosearch-20260913-1410.db`; the live database was not opened. Full and quick SQLite checks both returned one `ok` row, and the copied FTS5 table contains 38,038 rows. Artifact: `evals/t2/pre-admission-baseline-20260913-141959.json`. Per-project locator counts and unavailable-signal reasons are recorded there. The most material reconciliation inputs are 1,091 Claim locator rows without a retained chunk match in Buying Businesses and 37 in Design; these remain evidence for T2 boundary handling, not data mutations. No seven-state assignment or T2 implementation was admitted. The next safe action is state-model review, followed by implementation only through the existing T1 coverage seam if accepted.

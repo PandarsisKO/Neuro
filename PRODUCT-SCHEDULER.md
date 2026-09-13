@@ -259,3 +259,7 @@ ranking titles/descriptions against the project brief uses the model budget. The
 commit-bound `release-check --no-pytest` passed every deterministic proof at UI `0.63.64`; artifact
 `evals/release/release-check-0.63.64-307b593-20260913-141519.{json,txt}`. W1's remaining acceptance is the human/
 browser re-score for F2 and W1. The T2 admission proposal is prepared but remains pending state-model review.
+
+## T2 pre-admission baseline — 2026-09-13 14:19 PT
+
+Codex produced `evals/t2/pre-admission-baseline-20260913-141959.json` from a copied verified backup, with no live-database access. Full `integrity_check` and `quick_check` passed; FTS5 contains 38,038 rows. The artifact publishes per-project chunk, canonical Claim/Finding, Claim-locator, Finding-citation, union-locator, and unavailable-signal counts. Unmatched locator rows (1,091 Buying Businesses; 37 Design) are recorded for T2 reconciliation and are not treated as failures or repaired. This strengthens the pending T2 state-model gate; it does not admit implementation or create a new active rung.

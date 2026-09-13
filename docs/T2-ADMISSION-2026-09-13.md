@@ -95,3 +95,11 @@ rung is closed.
 This proposal is ready for state-model review. If accepted, implement the derived response in the existing T1 seam,
 run the gates above, and record a Resume Delta naming the exact files and test evidence. If the review changes state
 precedence or the meaning of unavailable signals, patch this proposal before writing code.
+
+## Pre-admission baseline measurement — 2026-09-13 14:19 PT
+
+A read-only baseline was computed from a copy of the verified backup `data/backups/neurosearch-20260913-1410.db`; the live database was not opened. The copied file passed both `PRAGMA quick_check` and full `PRAGMA integrity_check` (one `ok` row), and its FTS5 table contains 38,038 rows. The complete machine-readable artifact is `evals/t2/pre-admission-baseline-20260913-141959.json`.
+
+The retained projects have these locator inputs: Design has 6,139 chunks, 3,602 canonical Claims, 3,834 canonical Findings, 2,072 chunks with Claim locators, 2,085 with Finding citations, and 2,085 in the union; Buying Businesses has 24,166 chunks, 14,742 Claims, 16,577 Findings, 7,243 chunks with Claim locators, 7,106 with Finding citations, and 7,329 in the union; Real Estate has 2,719 chunks, 589 Claims, 605 Findings, 554 chunks with Claim locators, 557 with Finding citations, and 557 in the union. The baseline also records 1,091 Claim locator rows that do not map to a retained project chunk in Buying Businesses and 37 in Design; these are reconciliation inputs to investigate in T2, not silently discarded errors.
+
+This is measurement only. The seven-state projection remains unavailable for `extracted`, `represented`, `redundant`, `irrelevant`, and `unexplained`; locator counts are not treated as state assignments. T2 remains unadmitted pending state-model review.

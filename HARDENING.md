@@ -2043,3 +2043,7 @@ model budget is used; behavior and cost class are unchanged. UI/package version 
 Sources suite passed 28 tests, and the commit-bound deterministic release gate passed at `307b593` with artifact
 `evals/release/release-check-0.63.64-307b593-20260913-141519.json`. The full 1,364-test baseline remains recorded at
 0.63.63; no backend or live-data path changed.
+
+## T2 pre-admission measurement — 2026-09-13 14:19 PT
+
+Read-only measurement on a copied verified backup (`data/backups/neurosearch-20260913-1410.db`) passed full `PRAGMA integrity_check` and `quick_check` and confirmed 38,038 FTS5 rows. Artifact `evals/t2/pre-admission-baseline-20260913-141959.json` records the three retained projects' locator inputs, chunk unions, malformed-citation count, and every unavailable seven-state signal. The 1,091 and 37 unmatched Claim locator rows are explicit reconciliation evidence; no row was changed and no state was inferred from a missing locator. T2 remains a proposal pending state-model review.
