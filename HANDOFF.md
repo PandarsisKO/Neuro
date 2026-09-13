@@ -1053,3 +1053,12 @@ exists; R8 retention and R9(c) remain trigger-gated. If new Claude evidence land
 preserve ownership. Otherwise, do not invent work or reopen the superseded frontend queue. Any future Codex rung
 must be backend/reliability/measurement/recovery or Transcript Intelligence infrastructure, with focused tests,
 required release validation, and an append-only checkpoint.
+
+## Operational verification — editable package metadata — 2026-09-13 14:04 PT
+
+`neurosearch doctor` initially warned that the editable virtualenv package metadata was `0.63.43` while the
+checked-out source and runtime were `0.63.63`. Refreshed the editable install with `./.venv/bin/pip install --no-deps
+--editable .`; no product files or live data were changed. A repeat `doctor` now passes the installed-package/version
+check at `0.63.63`. The remaining doctor warnings are historical structured-output, ambiguous-invocation, model-
+substitution, network, and optional-Reddit-credential records; those are retained for provenance and are not cleared
+as a cosmetic health change. `neurosearch repo-check` also passes with no findings.

@@ -2026,3 +2026,11 @@ warning, and the deterministic release gate passed all checks. Artifact:
 The live authenticated app now serves `0.63.63` with `fake_ai=false`. Health reports zero queued/running/stale/leased/
 external-pending jobs and the newest verified backup `neurosearch-20260913-1353.db` with full `integrity: ok`; no
 settlement was run for the 36 historical collected-but-unwritten batch items.
+
+## Operational version-drift repair — 2026-09-13 14:04 PT
+
+The editable virtualenv metadata lagged the source/runtime (`0.63.43` versus `0.63.63`), which made `neurosearch
+ doctor` report a false installation-drift warning. Reinstalling the project editable with `./.venv/bin/pip install
+--no-deps --editable .` synchronized the metadata. Post-repair `doctor` passes the version check at `0.63.63`, and
+`repo-check` passes with no findings. Historical provider/model and ambiguous-execution counters remain visible by
+design; they were not deleted or reset.
