@@ -1,6 +1,6 @@
 # Transcript Intelligence T1 admission — 2026-09-12
 
-## State: T1 implementation complete; semantic backfill authorization pending
+## State: T1 implementation, backfill, and semantic cohort complete
 
 Foundation closed through R7 with an authenticated live observation on 2026-09-12. Transcript Intelligence is now
 the active product program. Its first rung, T1 has a defined shared-space design. R9(c) is explicitly deferred with the numeric revisit trigger in
@@ -111,9 +111,28 @@ and 3,602 changed claims in the design project; all notes and all real-estate
 rows were current. Those claims returned `skipped: stale_input` because their
 revision metadata moved while the live app continued its own work. With the
 background queue paused, the bounded offset endpoint admitted exactly 18,344
-fresh claim jobs (14,742 + 3,602), then resumed the queue. The four queued or
-running `extract_claims` jobs visible in global health are pre-existing work
-outside the T1 cohort and were left untouched.
+fresh claim jobs (14,742 + 3,602), then resumed the queue. Four pre-existing
+`extract_claims` jobs were visible in global health outside the T1 cohort; the
+one that was still running was later cancelled through the supported endpoint
+as requested, and no claims job remained active at closeout.
+
+### T1 cohort closeout — 2026-09-13 10:58 PDT
+
+After the claims lane was explicitly cancelled, the final 14,742-claim pass
+reached terminal state with no T1 failures. The supported preview returned
+`total_rows: 0` for all three retained projects. The accepted, version-stamped
+cohort is `evals/t1/cohort-20260913-105835.json`, collected from live app
+0.63.51 at repository HEAD `cfec636`.
+
+The artifact records 73,037 T1 job attempts: 41,477 embedded writes and
+31,560 stale-input skips across the initial admission and two reconciliations;
+all 73,037 jobs are terminal `done`, with zero T1 failures. Semantic coverage
+is measured in the attested OpenAI `text-embedding-3-small` 1,536-dimensional
+space for every canonical active row: buying-businesses 14,742 claims / 16,577
+findings, design 3,602 / 3,834, and real estate 589 / 605. Coverage latency and
+the month cost ledger are recorded separately in the artifact. The top-level
+coverage `status` remains the compatibility readiness label; the nested
+`semantic_distributions.status` is the measured result.
 
 The first full-suite run after adding the enqueue endpoint exposed only a test
 fixture mismatch (the API client is session-scoped while the module fixture

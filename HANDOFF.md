@@ -152,8 +152,28 @@ rows were current. The claims had legitimately returned `skipped: stale_input`
 because revision metadata moved while the live app continued its own work.
 With the background queue paused, Codex admitted exactly 18,344 fresh claim
 jobs through the bounded offset endpoint (14,742 + 3,602), observed 18,325
-queued and three running after resume, and left the four pre-existing
-`extract_claims` jobs outside this T1 cohort untouched.
+queued and three running after resume. Four pre-existing `extract_claims` jobs
+were outside this T1 cohort; the one still running was later cancelled through
+the supported endpoint as requested, and no claims job remained active at
+closeout.
+
+### T1 cohort closeout — 2026-09-13 10:58 PDT
+
+After the claims lane was explicitly cancelled, the final 14,742-claim pass
+reached terminal state with no T1 failures. The supported preview returned
+`total_rows: 0` for all three retained projects. The accepted cohort is
+`evals/t1/cohort-20260913-105835.json`, collected from live app 0.63.51 at
+repository HEAD `cfec636`.
+
+The artifact records 73,037 T1 attempts: 41,477 embedded writes and 31,560
+stale-input skips across the initial admission and two reconciliations. All
+73,037 T1 jobs are terminal `done`, with zero T1 failures. Semantic coverage
+is measured in the attested OpenAI `text-embedding-3-small` 1,536-dimensional
+space for every canonical active row: buying-businesses 14,742 claims / 16,577
+findings, design 3,602 / 3,834, and real estate 589 / 605. Coverage latency
+and the month cost ledger are recorded separately in the artifact. The
+top-level coverage `status` remains the compatibility readiness label; the
+nested `semantic_distributions.status` is the measured result.
 
 ## QA stabilization handoff — 2026-09-13
 

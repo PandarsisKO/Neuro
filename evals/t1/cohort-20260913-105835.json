@@ -1,0 +1,281 @@
+{
+  "attestation": {
+    "bad_dimensions": 0,
+    "count": 38038,
+    "dimensions": 1536,
+    "embedding_revision": 10,
+    "model": "text-embedding-3-small",
+    "preparation_tag": "t1-production-space-20260913-authorized-backfill",
+    "provenance_basis": "declared_preparation_metadata",
+    "provider": "openai",
+    "verification_scope": "dimensions_and_canonical_write_revision",
+    "verified": true,
+    "verified_at": 1789313344.041685
+  },
+  "cohort": "t1-production-derived-20260913-105835",
+  "cost": {
+    "local_billed": false,
+    "month": {
+      "cost": 75.206835,
+      "kept": 18971,
+      "per_kept_finding": 0.003964
+    },
+    "total_charged_month": 147.949019,
+    "unattributed_month": 5.027215,
+    "week": {
+      "cost": 58.434948,
+      "kept": 18971,
+      "per_kept_finding": 0.00308
+    },
+    "week_vs_month": "cheaper"
+  },
+  "git_sha": "c0d2054aa68aa8066d6e3f92a2266aeaa0a62b4d",
+  "jobs": {
+    "done_result_counts": {
+      "embedded": 41477,
+      "stale_input": 31560
+    },
+    "health_terminal": {
+      "cancelled": 15,
+      "done": 78701,
+      "expired_leases": 0,
+      "external_pending": 0,
+      "failed": 50,
+      "leased": 0,
+      "stale_running": 0
+    },
+    "status_counts": {
+      "done": 73037
+    },
+    "total_t1_attempts": 73037
+  },
+  "latency_seconds": {
+    "coverage_total": 55.7939,
+    "health": 0.2999,
+    "preview_total": 0.7195
+  },
+  "live_app_version": "0.63.56",
+  "projects": [
+    {
+      "coverage": {
+        "canonical_claims": 14742,
+        "canonical_findings": 16577,
+        "chunks": 24166,
+        "claim_locator_rows": 18496,
+        "corpus_space": {
+          "bad_dimensions": 0,
+          "count": 38038,
+          "dimensions": 1536,
+          "embedding_revision": 10,
+          "model": "text-embedding-3-small",
+          "preparation_tag": "t1-production-space-20260913-authorized-backfill",
+          "provenance_basis": "declared_preparation_metadata",
+          "provider": "openai",
+          "verification_scope": "dimensions_and_canonical_write_revision",
+          "verified": true,
+          "verified_at": 1789313344.041685
+        },
+        "finding_locator_rows": 16451,
+        "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+        "reason": null,
+        "semantic_distributions": {
+          "chunk_count": 26008,
+          "claims": {
+            "distribution": {
+              "max": 0.8997898101806641,
+              "min": 0.3564856946468353,
+              "p50": 0.6648709177970886,
+              "p90": 0.7640518128871918
+            },
+            "vector_count": 14742
+          },
+          "findings": {
+            "distribution": {
+              "max": 0.8927544355392456,
+              "min": 0.36182934045791626,
+              "p50": 0.6446002721786499,
+              "p90": 0.7402660727500915
+            },
+            "vector_count": 16577
+          },
+          "status": "measured"
+        },
+        "status": "ready_for_measurement"
+      },
+      "latency_seconds": {
+        "coverage": 53.0446,
+        "preview": 0.5717
+      },
+      "preview": {
+        "embedding_batches_at_96": 0,
+        "executed": 0,
+        "expected_dimensions": 1536,
+        "model": "text-embedding-3-small",
+        "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+        "provider": "openai",
+        "queued": 0,
+        "rows": {
+          "project_claims": 0,
+          "project_notes": 0
+        },
+        "total_rows": 0,
+        "version": "t1-derived-v1"
+      },
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income."
+    },
+    {
+      "coverage": {
+        "canonical_claims": 3602,
+        "canonical_findings": 3834,
+        "chunks": 6139,
+        "claim_locator_rows": 3838,
+        "corpus_space": {
+          "bad_dimensions": 0,
+          "count": 38038,
+          "dimensions": 1536,
+          "embedding_revision": 10,
+          "model": "text-embedding-3-small",
+          "preparation_tag": "t1-production-space-20260913-authorized-backfill",
+          "provenance_basis": "declared_preparation_metadata",
+          "provider": "openai",
+          "verification_scope": "dimensions_and_canonical_write_revision",
+          "verified": true,
+          "verified_at": 1789313344.041685
+        },
+        "finding_locator_rows": 3823,
+        "project_id": "d7a9f585076e49649b561649d71238c3",
+        "reason": null,
+        "semantic_distributions": {
+          "chunk_count": 6139,
+          "claims": {
+            "distribution": {
+              "max": 0.9011961221694946,
+              "min": 0.37582099437713623,
+              "p50": 0.6550366580486298,
+              "p90": 0.7464252889156342
+            },
+            "vector_count": 3602
+          },
+          "findings": {
+            "distribution": {
+              "max": 0.8939851522445679,
+              "min": 0.38270458579063416,
+              "p50": 0.6349772214889526,
+              "p90": 0.7291257083415985
+            },
+            "vector_count": 3834
+          },
+          "status": "measured"
+        },
+        "status": "ready_for_measurement"
+      },
+      "latency_seconds": {
+        "coverage": 2.6125,
+        "preview": 0.1231
+      },
+      "preview": {
+        "embedding_batches_at_96": 0,
+        "executed": 0,
+        "expected_dimensions": 1536,
+        "model": "text-embedding-3-small",
+        "project_id": "d7a9f585076e49649b561649d71238c3",
+        "provider": "openai",
+        "queued": 0,
+        "rows": {
+          "project_claims": 0,
+          "project_notes": 0
+        },
+        "total_rows": 0,
+        "version": "t1-derived-v1"
+      },
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT"
+    },
+    {
+      "coverage": {
+        "canonical_claims": 589,
+        "canonical_findings": 605,
+        "chunks": 2719,
+        "claim_locator_rows": 603,
+        "corpus_space": {
+          "bad_dimensions": 0,
+          "count": 38038,
+          "dimensions": 1536,
+          "embedding_revision": 10,
+          "model": "text-embedding-3-small",
+          "preparation_tag": "t1-production-space-20260913-authorized-backfill",
+          "provenance_basis": "declared_preparation_metadata",
+          "provider": "openai",
+          "verification_scope": "dimensions_and_canonical_write_revision",
+          "verified": true,
+          "verified_at": 1789313344.041685
+        },
+        "finding_locator_rows": 600,
+        "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+        "reason": null,
+        "semantic_distributions": {
+          "chunk_count": 2753,
+          "claims": {
+            "distribution": {
+              "max": 0.8627943992614746,
+              "min": 0.42847007513046265,
+              "p50": 0.673815131187439,
+              "p90": 0.7535103559494019
+            },
+            "vector_count": 589
+          },
+          "findings": {
+            "distribution": {
+              "max": 0.8250852227210999,
+              "min": 0.46881482005119324,
+              "p50": 0.642013669013977,
+              "p90": 0.7122734546661377
+            },
+            "vector_count": 605
+          },
+          "status": "measured"
+        },
+        "status": "ready_for_measurement"
+      },
+      "latency_seconds": {
+        "coverage": 0.1368,
+        "preview": 0.0247
+      },
+      "preview": {
+        "embedding_batches_at_96": 0,
+        "executed": 0,
+        "expected_dimensions": 1536,
+        "model": "text-embedding-3-small",
+        "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+        "provider": "openai",
+        "queued": 0,
+        "rows": {
+          "project_claims": 0,
+          "project_notes": 0
+        },
+        "total_rows": 0,
+        "version": "t1-derived-v1"
+      },
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy"
+    }
+  ],
+  "provider_health": [
+    {
+      "detail": null,
+      "failures": 0,
+      "generation": 0,
+      "label": "OpenAI Embeddings",
+      "last_error_type": "OVERLOADED",
+      "last_success_at": 1789322146.076172,
+      "next_probe_at": null,
+      "operation": "openai:embeddings",
+      "state": "closed",
+      "status": "Healthy",
+      "waiting_jobs": 0
+    }
+  ],
+  "repo_app_version": "0.63.56",
+  "timestamp": "2026-09-13T10:58:35.261497-07:00"
+}
