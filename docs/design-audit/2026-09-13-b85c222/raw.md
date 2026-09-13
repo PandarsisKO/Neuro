@@ -315,3 +315,125 @@ does not stand in for a real narrow-viewport interaction pass. The dark-theme de
 above, but stays single-project and single-theme rather than the fuller light/dark × empty/populated matrix a
 from-scratch baseline would have. No finding's severity or the ladder's ordering changes because of this addendum
 — it upgrades evidence quality, not diagnosis.
+
+---
+
+## F0 addendum 3 — bounded runtime-verification matrix closure (2026-09-13)
+
+Following the AUDIT.md merge (`f4e98d9`), this addendum runs the new §4.5 minimum runtime verification matrix,
+§4.5.1 failure-state check, §4.6 timing baseline, and §4.7 narrow-viewport interactive requirement to closure,
+using the same disposable audit-instance project as addendum 1 ("F0 empty-state probe," a new project created
+for this purpose, `NEUROSEARCH_FAKE_AI=1`, $0 budget) plus one new source added to it for this pass. No live data
+was touched; nothing here spent real money or called a real model.
+
+### Six-flow matrix
+
+| Flow | Evidence level | What was exercised |
+|---|---|---|
+| Add/acquire research | RUNTIME VERIFIED | Two sources added via Paste text (a deliberately low-substance note and a substantive SBA-financing note) and one via Link (a deliberately unresolvable domain, see Failure state below). |
+| Findings | RUNTIME VERIFIED | The low-substance note correctly scored "substance 0/100" and produced no suggestions ("analysed — nothing worth suggesting"); the substantive note correctly produced two real, content-derived suggestions (seller-financing terms; tax-return/SDE reconciliation), one approved and one dismissed. This is a genuine content-sensitivity result, not a canned response — see the fake-AI fidelity note below. |
+| Chat | RUNTIME VERIFIED | A question about the substantive note's repayment terms returned a cited answer referencing the source, with working "why" drilldown links. |
+| Discover | RUNTIME VERIFIED | "Library first" mode run to completion; produced six real candidate sources; one dismissed via its safe "X" control (no fetch triggered). Also produced the stale-poll finding below. |
+| Master Plan | RUNTIME VERIFIED | Plan rebuilt from v1 (stale, pre-dated the new sources) to v2; v2's Goal/Strengths/Weaknesses/Opportunities/Threats and Paths-compared sections all correctly cite "based on: F0 probe - substantive note @ 0:00," confirming the rebuild genuinely re-reads current sources rather than replaying a fixed canned plan end-to-end (the earlier addendum's canned-plan caveat applies to the *first-build-with-zero-sources* case, not rebuild-with-sources). |
+| Jobs / background work | RUNTIME VERIFIED | Directly observed across the flows above (queued → running → done transitions on findings-suggestion and Discover jobs) and, discretely, via the Failed/recoverable job-state check immediately below, which exercises the queued → failed → retried → failed-again path end to end. |
+
+### Failure-state verification (§4.5.1: existing safe mechanism, no manufactured cost)
+
+Added one Link source pointing at a syntactically valid but non-existent domain
+(`https://this-domain-does-not-exist-neurosearch-audit-test-9f3k2.invalid/page`, "Add this page only"). This is a
+deterministic DNS-resolution failure — no real host is contacted, no paid API call is made, and no product state
+is corrupted; it is the same class of naturally-available failure §4.5.1 asks auditors to prefer over manufacturing
+one.
+
+Result: the source entered `queued`, then surfaced as **`failed`** in the Sources list with a plain, specific error
+("error: That host name could not be resolved"), a working **Retry** control, and a `Failed 1` filter tab (of 3
+total sources). Clicking Retry produced a "Queued again" toast, re-entered the queue, and failed again with the
+same error on the second attempt — a clean, reproducible, honestly-labeled failure/recovery cycle. Project spend
+stayed at $0.02 throughout (unchanged from before the test), confirming no cost was incurred. The test source was
+then removed to keep the disposable project clean.
+
+This closes the "failed/recoverable job-state inspection" requirement RUNTIME VERIFIED, and is a strength worth
+naming alongside the ones already recorded in `audit.md`: the failure surfaces a specific, human-readable cause
+and a one-click recovery path, rather than a dead end.
+
+### Interrupted / stale / non-updating poll inspection
+
+During the Discover run above, the small per-job progress badge froze at "18s · alive 17s ago" for roughly 35-50+
+seconds of wall time while the page's top progress summary line kept incrementing correctly (18s → 35s → 53s →
+73s+) over the same interval, and the whole operation ultimately took roughly 9× longer than its own stated
+"~10s" ETA before completing successfully. This is naturally-occurring evidence (not manufactured): two liveness
+indicators for the same job disagreed about whether it was still alive, and the badge's own "alive Ns ago" text
+became actively misleading (it read as increasingly stale rather than updating) even though the job was, per the
+other indicator, still running and eventually succeeded. Filed as **`[F0-4]` Per-job progress badge freezes and
+reports increasingly stale "alive" text while the job is still running and the top-level progress line continues
+to advance correctly** — Medium severity (a user watching only the small badge would reasonably conclude the job
+died), Local scope (Discover's job-queue widget; the same widget class appears on Sources per addendum 1's "2
+queued" panel, so this may recur wherever that component is reused — flagged for the interaction pass rather than
+assumed). Evidence: RUNTIME VERIFIED (naturally occurring, not forced). Root cause: folds into **RC-C** ("stale"
+has four independent presentations and vocabularies) as a fifth instance — the job-badge's own "alive" text is
+itself an undermaintained staleness indicator, the same species of defect RC-C already names for Findings/Plan
+banners and the row badge. No new root cause, no severity or ladder-ordering change.
+
+### Narrow-viewport interactive verification (§4.7)
+
+Prior passes' `resize_window` calls did not change the captured frame (recorded in addendum 1 and in `audit.md`'s
+Assumptions / cannot verify as a tooling limitation). Retried this pass against the same live tab already open in
+Kyle's real Chrome: `resize_window(390×844)` **did** take this time — the captured frame changed to a genuinely
+reflowed narrow layout (stacked nav list above content, no side-by-side desktop columns) on both the Master Plan
+and Sources surfaces, and remained narrow across a subsequent in-page navigation between them. This is now
+**interactive** narrow-viewport evidence, not a static image: the verification included navigating between two
+surfaces and scrolling within one of them while narrow, with no clipping, overflow, or horizontal scroll observed
+on either surface. Evidence: RUNTIME VERIFIED. This supersedes the earlier BLOCKED/CANNOT VERIFY characterization
+for these two surfaces specifically; Home, login, empty-project, and failure states at narrow width remain
+uncaptured interactively (Kyle's hand-captured images from addendum 2 cover Sources/Research/chat-with-citations
+statically; this pass adds an interactive walk of Master Plan and Sources) — recorded under Residual Coverage in
+`audit.md` rather than reopening F0 to chase the remaining combinations, per the bounded stopping rule.
+
+### Timing baseline (§4.6)
+
+Qualitative, session-observed (not instrumented with client-side timers; sufficient to establish rough order of
+magnitude before any threshold is proposed elsewhere in the ladder — no threshold is proposed here):
+
+| Interaction | T_ack (UI acknowledges) | T_result (visibly complete) | Notes |
+|---|---|---|---|
+| Paste-text source save | Near-instant (form clears on click) | ~2s+ before the sidebar source count re-renders | Momentarily read as a possible failed save (see Errors and fixes in this session) before resolving; not itself filed as a new finding since the save did succeed, but worth the interaction pass confirming this gap is consistent and not occasionally longer. |
+| Findings-suggestion generation (one substantive source) | Immediate "queued" | ~13s to suggestions appearing | Single sample. |
+| Chat answer | Immediate "thinking" state | ~1s to cited answer | Single sample, short question. |
+| Discover ("Library first") | Immediate queued/running state, stated ETA "~10s" | ~73s+ (see stale-poll finding above) | ETA understated actual time by roughly 9×; the ETA itself may warrant review but is out of F0's scope to size a fix for. |
+| Master Plan rebuild | Immediate "queued" acknowledgement | Completed within the observed poll window (order of tens of seconds) | Not precisely timed; superseded prior canned-response version end to end. |
+| Failed-source job (DNS failure) | Immediate "queued" | Surfaced as `failed` within ~8s | Deterministic, repeated identically on Retry. |
+
+These are order-of-magnitude observations from a single disposable project on one machine, not a performance
+benchmark; they exist to satisfy §4.6's "measure before inventing thresholds" requirement, not to set an SLA. Any
+rung that proposes a numeric timeout or "slow" threshold should re-measure on its own target surface rather than
+reuse these numbers.
+
+### Fake-AI fidelity note (supersedes part of addendum 1's Master Plan caveat)
+
+Addendum 1 recorded that `NEUROSEARCH_FAKE_AI=1` "returns a fixed canned plan regardless of the actual project
+brief or the absence of sources." This pass shows that caveat holds for a *first build against zero or unrelated
+sources*, but not for findings-suggestion generation or a *plan rebuild once real source content exists* — both
+of those genuinely varied with, and correctly attributed, the actual pasted content. This narrows the audit-
+tooling gap named in addendum 1: fake-AI fidelity is content-sensitive for findings suggestions and for plan
+rebuilds, and only degrades to a fixed fixture on an empty/zero-evidence first build. No `audit.md` finding
+changes because of this — it only affects how much weight future fake-AI-instance observations should carry.
+
+### What remains under Residual Coverage, not reopened
+
+Per the newly-merged Bounded stopping rule (`AUDIT.md` Phase 9): the six-flow matrix is complete and classified,
+timing evidence is captured where applicable, narrow-width interaction has now been exercised (Master Plan,
+Sources), the closure pass below is complete, and the items listed here are recorded rather than chased further,
+because none plausibly changes a Critical/High finding, a root-cause diagnosis, a material acceptance criterion,
+or the ladder's ordering:
+
+- Narrow-viewport interaction on Home, login, empty-project, and failure states (static images exist for some of
+  these from addendum 2; none is interactive).
+- The acquisition/findings-triage/chat/discover/plan-rebuild flows above were exercised on a small, single-project
+  disposable dataset, not at the 1,348-row / 16,437-badge scale seen on the real project (addendum 1).
+- The job-badge staleness pattern (`F0-4`) was observed once, on Discover; whether it recurs identically on the
+  Sources "queued" panel noted in addendum 1 is plausible but not separately confirmed this pass.
+- Exact instrumented (not wall-clock-observed) timing for any of the table above.
+
+None of these is believed capable of moving a Critical/High severity, changing a root cause, changing an
+acceptance criterion, or reordering `ladder.md` — if a future pass finds otherwise, it reopens the relevant rung,
+not all of F0.
