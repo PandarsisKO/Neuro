@@ -272,3 +272,21 @@ static substitution and needs its own considered pass, not a mechanical one.
 Codex committed an unrelated, purely-additive `HANDOFF.md`/`docs/T1-ADMISSION-2026-09-12.md` checkpoint
 (`a3ac76f`) between step 2c and 2d landing — checked via diff before resuming, no `index.html` touch, no
 collision.
+
+## Design ladder — F1 step 2e landed — 2026-09-13
+
+Extended the exact-match retirement pass across every remaining Sources function between `srcRowHtml` (step 2d)
+and `sourceDrawer` (not yet touched) — `renderBook`, `openCalc`, `loadPool`, `browserBlock`,
+`loadCaptureQueue`, `classifyInput`, `exploreCommunity`, `loadWorks`, `loadLibrary`, `loadCandidates`,
+`renderSeen`, `renderLibrarySuggestions`, `loadDiscoveries`, `claimCard`, `renderClaimsBulkBar`,
+`whyThisAnswer`. On `main` at merge commit `3201844` (source commit `b97fa14` on branch `design/f1-step2e`, now
+deleted). Same rules as 2c/2d: a lone `flex:1` (8x) -> `.grow`; a lone `flex:1;min-width:0` (3x) -> `.grow
+.min-w-0`; `class="muted" style="font-size:12px"` (4x) -> `.text-xs`; five more single-instance exact matches
+onto their matching `--space-*`/status-* class; and one inline `width:auto` on a `<input type="radio">` removed
+outright (already covered by the step 2a base rule, so it was purely redundant, not converted). 22 style
+attributes eliminated (401 -> 379); ceiling lowered to match. `UI_VERSION` bumped to `0.63.49`. 24 tests pass.
+
+Sources' remaining inline styles are now concentrated in `sourceDrawer` (the drawer — value report, quality &
+promotable sections — audit.md's own breakdown names this as one of the largest single owners) and
+`transportChoiceHtml`, plus the off-scale/dynamic/display:none cases already logged as deliberately skipped
+throughout steps 2c-2e. `sourceDrawer` is the natural next sub-unit.
