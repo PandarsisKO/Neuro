@@ -147,6 +147,11 @@ separate F0 worktree. Codex has not modified those paths. Once Claude closes F0,
 the design evidence can be attached to this release result without merging
 product-code changes.
 
+The local `SCREENSHOT AUDIT/` folder is preserved as non-authoritative evidence:
+the canonical design audit explicitly cites those user-captured images. It is
+allowlisted by `repo-check` so evidence retention does not create a false root
+hygiene failure.
+
 # R0 - Establish the truth
 
 Before editing production code:

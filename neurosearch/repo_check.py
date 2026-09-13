@@ -78,7 +78,7 @@ def _root_hygiene(root: Path, out: list[Finding]) -> None:
     states = sorted(root.glob("STATE-OF-THE-APP-*.md"), key=lambda p: p.name)
     newest_state = states[-1].name if states else None
     for path in sorted(root.iterdir()):
-        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "data", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", ".venv", ".worktrees", "neurosearch.egg-info"}:
+        if path.name.startswith(".") or path.name in ROOT_FILES or path.name == newest_state or path.name in {"docs", "evals", "extension", "neurosearch", "tests", "data", "data_backup_2026-09-03", "VIDEOS", "_to_delete", "INSPIRATION", "Claude outputs", "SCREENSHOT AUDIT", ".venv", ".worktrees", "neurosearch.egg-info"}:
             continue
         out.append(Finding(path.name, "1", "unexpected-root-entry", "warning",
                            "root-level entry is not in the documented repository allowlist"))
