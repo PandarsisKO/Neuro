@@ -101,6 +101,13 @@ def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
     assert report["claim_locator_rows"] == 0 and report["finding_locator_rows"] == 0
 
 
+def test_t1_backfill_preview_never_queues_work(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 preview", "test")["id"]
+    report = t1.backfill_preview(project_id)
+    assert report["total_rows"] == 0 and report["queued"] == 0 and report["executed"] == 0
+
+
 def test_t1_chunk_space_attestation_measures_and_fails_mixed_space(t1_db):
     from neurosearch import t1
     project_id = db.create_project("T1 attest", "test")["id"]

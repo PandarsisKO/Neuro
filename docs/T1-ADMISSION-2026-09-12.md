@@ -40,6 +40,10 @@ vectors measured 1,536 dimensions with zero malformed rows. The resulting cohort
 because no paid backfill was queued or run. The remaining gate is the version-stamped semantic cohort after an
 explicitly authorized derived-object backfill.
 
+The zero-cost backfill preview (`evals/t1/backfill-preview-20260912-1724.json`) covers 39,715 canonical missing
+vectors across 13 projects, approximately 418 batches at the existing 96-row batch size, with 0 queued and 0
+executed. It is a preview only; no provider call or job mutation occurred.
+
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
 T1's canonical-active and project-relative requirements.

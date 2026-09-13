@@ -2967,6 +2967,20 @@ class NoteIn(BaseModel):
     citations: list[dict[str, Any]] = []
 
 
+class T1AttestationIn(BaseModel):
+    provider: str
+    model: str
+    dimensions: int
+    preparation_tag: str
+
+
+@app.post("/api/transcript/corpus-attestation", dependencies=[Depends(require_auth)])
+def api_t1_attestation(body: T1AttestationIn) -> dict[str, Any]:
+    """Measure stored chunk-vector dimensions and persist only the resulting T1 attestation."""
+    return t1.attest_chunk_space(provider=body.provider, model=body.model, dimensions=body.dimensions,
+                                 preparation_tag=body.preparation_tag)
+
+
 @app.post("/api/projects/{project_id}/notes", dependencies=[Depends(require_auth)])
 def api_add_note(project_id: str, body: NoteIn) -> dict[str, Any]:
     return db.add_project_note(project_id, body.content, body.citations)
@@ -3011,6 +3025,14 @@ def api_t1_coverage(project_id: str) -> dict[str, Any]:
     if not db.get_project(project_id):
         raise HTTPException(404)
     return t1.coverage_report(project_id)
+
+
+@app.get("/api/projects/{project_id}/transcript/backfill-preview", dependencies=[Depends(require_auth)])
+def api_t1_backfill_preview(project_id: str) -> dict[str, Any]:
+    """Report T1's billable scope without queuing or executing work."""
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return t1.backfill_preview(project_id)
 
 
 @app.delete("/api/notes/{note_id}", dependencies=[Depends(require_auth)])
