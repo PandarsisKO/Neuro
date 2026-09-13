@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.52';
+const UI_VERSION = '0.63.53';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -2847,7 +2847,7 @@ async function renderTriageCard(elId) {
   const row = (key, label, btn, danger) => { const x = T[key]; if (!x || !x.count) return '';
     const names = x.sources.slice(0, 3).map(r => esc((r.title || '').slice(0, 48))).join(' · ') + (x.count > 3 ? ` · +${x.count - 3}` : '');
     const why = key === 'rebuild_matters' ? ` <span class="muted">(${esc([...new Set(x.sources.flatMap(r => r.why))].slice(0, 3).join('; '))})</span>` : key === 'retry_failed' ? ` <span class="muted">(${esc([...new Set(x.sources.map(r => (r.reasons.find(z => z.startsWith('last rebuild failed')) || '').replace('last rebuild failed: ', '')))].slice(0, 2).join(' / ').slice(0, 140))})</span>` : '';
-    return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:0"><b>${x.count}</b> ${label}${why}<div class="muted" style="font-size:12px">${names}</div><div class="muted" style="font-size:12px">${esc(t.explain[key])}</div></div>
+    return `<div class="row" style="margin-top:6px;gap:8px;align-items:flex-start;flex-wrap:wrap"><div class="grow min-w-0"><b>${x.count}</b> ${label}${why}<div class="muted text-xs">${names}</div><div class="muted text-xs">${esc(t.explain[key])}</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${btn(x)}</div></div>`; };
   // 0.45.2: both currencies on every button. The local price is time, the API price is dollars; the card shows each tier's
   // two options side by side so "faster" is a thing you can SEE and press, not something you have to know exists.
@@ -2870,7 +2870,7 @@ async function renderTriageCard(elId) {
     ${row('rebuild_transcript', 'whose transcript changed', x => rebuildBtns(x, 'rebuild_transcript'))}
     ${row('retry_failed', 'whose last rebuild failed', retryBtns)}
     ${row('accept', 'stale only because the brief changed, carrying no weight', acceptBtns)}
-    <div class="row" style="margin-top:8px"><span class="muted" style="flex:1;font-size:12px">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div></div>`;
+    <div class="row mt-2"><span class="muted grow text-xs">${s.plan.status === 'stale' ? 'The Master Plan is rebuilt after the sources it rests on (see the Plan tab).' : ''}</span><button class="small ghost" onclick="STALE.left=1;renderTriageCard('${elId}')">Hide for now</button></div></div>`;
 }
 async function rebuildTier(tier, mode) {
   const T = (STALE.triage && STALE.triage.tiers && STALE.triage.tiers[tier]) || {};
@@ -2905,15 +2905,15 @@ function renderStaleCard(elId, what) {
     if (legacy.length) parts.push(`${legacy.length} legacy analys${legacy.length === 1 ? 'is' : 'es'} (preserved from 0.15 — original project context cannot be verified)`);
     if (reb.length) parts.push(`${reb.length} re-analysing${rebNote ? ' · ' + esc(rebNote) : '…'}`);
     stale.push(...legacy);
-    h = `<div class="card" style="border-color:var(--warn)"><b>⚠ ${parts.join(' · ')}</b>
+    h = `<div class="card status-warn-border"><b>⚠ ${parts.join(' · ')}</b>
       <div class="muted">${why ? `Why: ${esc(why)}. ` : ''}Their findings are still readable and usable — they just may not reflect what the project is about now. Nothing is re-run unless you ask.</div>
-      ${stale.length ? `<div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Re-analyse ${stale.length} stale (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span style="color:var(--warn)">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
+      ${stale.length ? `<div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Re-analyse ${stale.length} stale (${esc(s.estimate.basis)})${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}${s.budget.fits ? '' : ' · <span class="status-warn">exceeds today\'s budget — it will run as far as the budget allows and continue tomorrow</span>'}</span>
         <button class="small primary" onclick="rebuildStale(['findings'],'interactive')" title="Faster · standard model cost">Rebuild now · ${money(s.estimate.findings)}</button><button class="small" onclick="rebuildStale(['findings'],'batch')" title="Up to 24 hours · ~50% lower model cost (model cost only)">Rebuild in background · ${money(s.estimate.findings_background ?? s.estimate.findings / 2)} model cost</button><button class="small ghost" onclick="STALE.left=1;renderStaleCard('${elId}','${what}')">Leave stale</button></div>` : ''}</div>`;
   } else {
     const p = s.plan;
     if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
-    if (p.status === 'rebuilding') h = `<div class="card" style="border-color:var(--warn)"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
-    else h = `<div class="card" style="border-color:var(--warn)"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
+    if (p.status === 'rebuilding') h = `<div class="card status-warn-border"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
+    else h = `<div class="card status-warn-border"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
       <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
       <div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} now or ${money(s.estimate.findings_background ?? s.estimate.findings / 2)} in background to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first — the plan waits for them either way)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
         <button class="small primary" onclick="rebuildStale(['plan'],'interactive')">Rebuild plan</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'],'interactive')" title="Faster · standard model cost">Re-analyse now + rebuild · ${money(s.estimate.total)}</button><button class="small" onclick="rebuildStale(['findings','plan'],'batch')" title="Up to 24 hours · ~50% lower model cost on the re-analysis (model cost only)">Re-analyse in background + rebuild · ${money(s.estimate.total_background ?? s.estimate.total)}</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
@@ -3333,7 +3333,7 @@ function renderPlan(r) {
   const pl = r.plan, p = pl.plan, E = p._evidence || {}, started = pl.status === 'started';
   const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
   const an = p.analysis || {}, facts = (state.project.facts || []);
-  let h = `<div class="row" style="margin-bottom:12px"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
+  let h = `<div class="row mb-3"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
     <button class="small" onclick="checkUpdates()">${r.research_changed ? '⚠ Research changed — check for updates' : 'Check for updates'}</button>
     <button class="small" onclick="rebuildPrompt()">Rebuild…</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
@@ -3342,7 +3342,7 @@ function renderPlan(r) {
     h += `<div class="banner"><b>Master Plan has ${pending.length} suggested update${pending.length === 1 ? '' : 's'}</b>` +
       pending.map(u => `<div class="upd"><div class="muted">${esc(u.section)}</div>${u.previous ? `<div class="prev">${esc(u.previous)}</div>` : ''}<div><b>${esc(u.proposed)}</b></div><div class="muted">Why: ${esc(u.reason || '')}</div>
         <div class="row" style="margin-top:6px"><button class="small primary" onclick="updStatus(${u.id},'accepted')">Accept change</button><button class="small" onclick="updStatus(${u.id},'rejected')">Keep current plan</button><button class="small ghost" onclick="researchThis(${JSON.stringify(u.section + ': ' + u.proposed + ' — is this right? What does the research say?').replace(/"/g, '&quot;')})">Research further</button></div></div>`).join('') +
-      (accepted.length ? `<div class="row" style="margin-top:8px"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
+      (accepted.length ? `<div class="row mt-2"><span class="muted">${accepted.length} accepted, not yet applied.</span><button class="small primary" onclick="applyUpdates()">Apply accepted changes (rebuilds plan)</button></div>` : '') + `</div>`;
   }
 
   // ---------- START HERE: the short version ----------
@@ -3354,7 +3354,7 @@ function renderPlan(r) {
       <div class="starth">🎯 Start here</div>
       ${an.verdict ? `<p class="verdict">${esc(an.verdict)}</p>` : ''}
       ${(p.approach || {}).recommended ? `<p><b>Approach:</b> ${esc(p.approach.recommended)}</p>` : ''}
-      <p><b>Initial cost:</b> ${esc(rd.initial_cost || '?')}${rd.blockers?.length ? ` · <b style="color:var(--bad)">Blocked by:</b> ${rd.blockers.map(esc).join('; ')}` : ''}${rd.need_before?.length ? ` · <b>Need first:</b> ${rd.need_before.map(esc).join('; ')}` : ''}</p>
+      <p><b>Initial cost:</b> ${esc(rd.initial_cost || '?')}${rd.blockers?.length ? ` · <b class="status-bad">Blocked by:</b> ${rd.blockers.map(esc).join('; ')}` : ''}${rd.need_before?.length ? ` · <b>Need first:</b> ${rd.need_before.map(esc).join('; ')}` : ''}</p>
       ${started ? '<span class="tag">🚀 project started</span>' : `<button class="primary" onclick="startProject()">Start project</button> <span class="muted">marks the first steps ready and switches to execution</span>`}
     </div>
     <div class="startcol">
@@ -3368,7 +3368,7 @@ function renderPlan(r) {
   if (qs.length) {
     const answered = q => facts.find(f => f.content.startsWith('Q: ' + q.question));
     const n = qs.filter(answered).length;
-    h += `<div class="refine"><div class="row"><div class="starth" style="flex:1">💬 Make this plan yours <span class="muted" style="font-weight:400">— ${n} of ${qs.length} answered</span></div>
+    h += `<div class="refine"><div class="row"><div class="starth grow">💬 Make this plan yours <span class="muted" style="font-weight:400">— ${n} of ${qs.length} answered</span></div>
       ${n ? `<button class="small primary" onclick="rebuildWithAnswers()">↻ Rebuild plan with my answers</button>` : ''}</div>
       <div class="muted" style="margin-bottom:6px">These are the things only you know. Each answer you save becomes a project fact; rebuild when you've answered a few and the plan will be tighter and more specific.</div>` +
       qs.map((q, i) => { const a = answered(q); return `<div class="rq ${a ? 'answered' : ''}" id="rq-${i}">
@@ -3393,7 +3393,7 @@ function renderPlan(r) {
     if (an.situation) h += `<h2>Where you stand</h2><p>${esc(an.situation)}</p>`;
     if (an.swot) h += `<div class="swotgrid">${col('Strengths', an.swot.strengths, 's')}${col('Weaknesses', an.swot.weaknesses, 'w')}${col('Opportunities', an.swot.opportunities, 'o')}${col('Threats', an.swot.threats, 't')}</div>`;
     if (an.readiness?.length) h += `<p><b>Readiness</b></p><div class="row" style="flex-wrap:wrap;gap:6px">${an.readiness.map(r => `<span class="chip" title="${esc(r.note || '')}"><span class="conf ${r.level === 'ready' ? 'high' : r.level === 'partly' ? 'medium' : 'needs_research'}">●</span> ${esc(r.area)} <span class="muted">· ${esc(r.level)}${r.note ? ' — ' + esc(r.note) : ''}</span></span>`).join('')}</div>`;
-    if (an.options?.length) h += `<h2>Paths compared</h2><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td style="color:var(--warn)">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table>`;
+    if (an.options?.length) h += `<h2>Paths compared</h2><table><tr><th>Path</th><th>Cost</th><th>Time to result</th><th>Risk</th><th>Fit</th><th>Why</th></tr>${an.options.map(o => `<tr><td><b>${esc(o.path)}</b><div class="muted">${esc(o.summary || '')}</div></td><td>${esc(o.cost || '')}</td><td>${esc(o.time_to_result || '')}</td><td><span class="tag ${esc(o.risk || '')}">${esc(o.risk || '')}</span></td><td class="status-warn">${'●'.repeat(+o.fit || 0)}</td><td>${esc(o.why_fit || '')}${ev(o.evidence, E)}</td></tr>`).join('')}</table>`;
     h += `<h2>Recommended approach</h2><p class="k">${esc(a.recommended || '')}</p><p>${esc(a.why || '')}</p>` +
       (a.alternatives?.length ? `<p class="muted">Alternatives considered:</p><ul>${a.alternatives.map(x => `<li><b>${esc(x.option)}</b> — ${esc(x.why_not)}</li>`).join('')}</ul>` : '') + basis(a) + ev(a.evidence, E);
     if (p.confidence?.length) h += `<h2>Plan confidence</h2><ul>${p.confidence.map(x => `<li><b>${esc(x.area)}</b>: <span class="conf ${x.level}">${esc((x.level || '').replace('_', ' '))}</span> — ${esc(x.note || '')}</li>`).join('')}</ul>`;
@@ -3407,8 +3407,8 @@ function renderPlan(r) {
     if (p.defer?.length) h += `<h2>Not yet</h2><ul>${p.defer.map(d => `<li>${esc(d.item)} <span class="muted">— ${esc(d.until || '')}</span></li>`).join('')}</ul>`;
   }
   if (tab === 'decide') {
-    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div style="margin-top:4px"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">💬 Discuss</button></div></div>${statusSel('decisions.' + i)}</div>`).join('');
-    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div style="margin-top:4px"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">🔍 Research this</button></div></div>${statusSel('open_questions.' + i)}</div>`).join('');
+    if (p.decisions?.length) h += `<h2>Decisions to make</h2>` + p.decisions.map((d, i) => `<div class="item"><div class="body"><span class="tag ${d.when}">${d.when === 'now' ? 'decide now' : 'decide later'}</span> <span class="k">${esc(d.decision)}</span><div class="muted">Options: ${(d.options || []).map(esc).join(' · ')}</div><div><b>Recommended:</b> ${esc(d.recommended || '')} — ${esc(d.why || '')}</div>${d.by_phase ? `<div class="muted">Needed by: ${esc(d.by_phase)}</div>` : ''}${basis(d)}${ev(d.evidence, E)}<div class="mt-1"><button class="small ghost" onclick="researchThis(${JSON.stringify('Help me decide: ' + d.decision + '. Options: ' + (d.options || []).join(', ') + '. What do the sources say and what fits my situation?').replace(/"/g, '&quot;')})">💬 Discuss</button></div></div>${statusSel('decisions.' + i)}</div>`).join('');
+    if (p.open_questions?.length) h += `<h2>Open questions</h2>` + p.open_questions.map((q, i) => `<div class="item"><div class="body"><span class="tag ${q.category}">${({ blocking: 'blocking', soon: 'important soon', nice: 'nice to know' })[q.category] || esc(q.category || '')}</span> <span class="k">${esc(q.question)}</span><div class="muted">${esc(q.why || '')}</div><div class="mt-1"><button class="small" onclick="researchThis(${JSON.stringify(q.research_prompt || q.question).replace(/"/g, '&quot;')})">🔍 Research this</button></div></div>${statusSel('open_questions.' + i)}</div>`).join('');
     if (an.assumptions?.length) h += `<h2>Assumptions this plan rests on</h2>` + an.assumptions.map(x => `<div class="item"><div class="body"><span class="k">${esc(x.assumption)}</span><div class="muted">If wrong: ${esc(x.if_wrong || '')} · How to check: ${esc(x.how_to_check || '')}</div></div></div>`).join('');
     if (!p.decisions?.length && !p.open_questions?.length) h += '<p class="muted">Nothing to decide right now.</p>';
   }
