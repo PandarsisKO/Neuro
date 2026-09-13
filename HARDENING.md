@@ -1863,3 +1863,25 @@ conftest is the one place that runs first for every invocation. `tests/test_s51_
 hard-set exists, that the resolved data dir is never the repo's `data/`, and that `settings.data_dir` agrees; it also
 holds the `setdefault` count at 78 so it only ever goes down. The ten projects were **not** deleted by the agent;
 that is Kyle's action from the UI.
+
+## T1 derived-vector backfill closeout — 2026-09-13
+
+The first Transcript Intelligence measurement used the attested production
+`text-embedding-3-small` space: 38,038 stored chunk vectors, 1,536 dimensions,
+zero malformed rows, revision 10. Three retained projects were processed with
+canonical active scopes only (`project_notes` approved/suggested and
+`project_claims` proposed/accepted). The bounded low-lane adapter admitted an
+initial 39,951 jobs, then two offset-paged stale-input reconciliations (18,344
+and 14,742 jobs) after concurrent claim revisions and the requested claims-job
+cancellation. All 73,037 T1 attempts are terminal with zero T1 failures; the
+accepted cohort is `evals/t1/cohort-20260913-105835.json`.
+
+The final preview is zero candidates for every project and semantic vector
+counts equal the canonical rows: buying-businesses 14,742 claims / 16,577
+findings, design 3,602 / 3,834, and real estate 589 / 605. Similarity
+distributions are project-relative and measured separately for claims and
+findings; no universal cut point or persisted coverage state was introduced.
+The full release gate passed at
+`evals/release/release-check-0.63.56-6a9f1ce-20260913-110344.json` (1,362 tests,
+all gates PASS). A duplicate T1 helper block in `neurosearch/db.py` was
+removed before that gate; `neurosearch repo-check` now reports no findings.
