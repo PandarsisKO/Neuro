@@ -2157,3 +2157,7 @@ The helper is pure and cannot touch live data.
 
 Review helpers enforce exact span structure and exclude pending rows from metrics. Release-check passes at `7821cb5`;
 manual gold labels remain required.
+
+## T3 review scorer cross-row correctness — 2026-09-13 15:45 PT
+
+Fixed cross-row metric undercounting in review scoring and added regression coverage. Pending rows remain non-authoritative.

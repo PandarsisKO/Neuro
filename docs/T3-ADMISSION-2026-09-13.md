@@ -190,3 +190,9 @@ review tests plus the existing T3 suites pass (23 total). The helper has no data
 Pure manifest validation/scoring helpers are committed at `7821cb5`; `repo-check` and release-check pass with artifact
 `evals/release/release-check-0.63.65-7821cb5-20260913-151455.json`. The focused T3/review suite is 23 passed. The
 60-row queue remains unlabeled and downstream trust is still gated.
+
+## T3 review scorer cross-row correctness — 2026-09-13 15:45 PT
+
+Fixed `score_manifest` to aggregate each labeled row independently instead of globally set-collapsing identical
+`(kind,start,end,normalized)` keys from different chunks. Added a regression proving duplicate offsets across rows are
+counted independently. Review infrastructure focused coverage is now 24 passed; pending rows remain excluded.

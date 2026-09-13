@@ -371,3 +371,8 @@ unchanged.
 
 Pure T3 manifest validation/scoring is release-checked at `7821cb5`; scheduler behavior is unchanged. Manual gold
 adjudication remains the next gate.
+
+## T3 review scorer cross-row correctness — 2026-09-13 15:45 PT
+
+The pure scorer now preserves cross-row duplicate spans; scheduler behavior is unchanged and manual gold review remains
+the gate.

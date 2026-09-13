@@ -1320,3 +1320,8 @@ adjudicating the 60-row queue.
 `neurosearch/t3_review.py` and its tests are committed at `7821cb5`; release-check is green with artifact
 `evals/release/release-check-0.63.65-7821cb5-20260913-151455.json`. Use the pure validator/scorer while adjudicating
 the 60-row queue; no persistence or T4 yet.
+
+## T3 review scorer cross-row correctness — 2026-09-13 15:45 PT
+
+`score_manifest` now aggregates row-by-row, preserving identical offsets that occur in separate chunks. A regression
+covers this; focused T3/review tests are 24 passed. Pending gold rows remain excluded from metrics.

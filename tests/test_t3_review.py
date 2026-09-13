@@ -38,6 +38,13 @@ def test_score_manifest_keeps_pending_rows_out_of_metrics():
     assert result["labeled_rows"] == 1 and result["pending_rows"] == 1 and result["overall"]["tp"] == 1
 
 
+def test_score_manifest_counts_identical_spans_in_separate_rows_independently():
+    text = "7"
+    row = {"predicted": [_record(text)], "gold": [_record(text)]}
+    result = t3_review.score_manifest([row, row])
+    assert result["labeled_rows"] == 2 and result["overall"]["predicted"] == 2 and result["overall"]["tp"] == 2
+
+
 def test_extractor_records_validate_through_review_helper():
     text = "Budget $5,000."
     records = t3.extract(text)["records"]

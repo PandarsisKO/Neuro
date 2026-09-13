@@ -68,16 +68,22 @@ def score_records(predicted: Iterable[dict[str, Any]], gold: Iterable[dict[str, 
 
 def score_manifest(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Score labeled rows and report pending rows separately."""
-    labeled: list[dict[str, Any]] = []
+    rows = list(rows)
     pending = 0
+    aggregate: dict[str, dict[str, int]] = {}
     for row in rows:
         if row.get("gold") is None:
             pending += 1
         else:
-            labeled.append(row)
-    scored = score_records((record for row in labeled for record in row.get("predicted", [])),
-                           (record for row in labeled for record in row.get("gold", [])))
-    return {"labeled_rows": len(labeled), "pending_rows": pending, **scored}
+            scored = score_records(row.get("predicted", []), row.get("gold", []))
+            for kind, values in scored["by_kind"].items():
+                target = aggregate.setdefault(kind, {"predicted": 0, "gold": 0, "tp": 0, "fp": 0, "fn": 0})
+                for key in target:
+                    target[key] += int(values[key])
+    by_kind = {kind: _rates(values) for kind, values in sorted(aggregate.items())}
+    totals = {key: sum(values[key] for values in aggregate.values()) for key in ("predicted", "gold", "tp", "fp", "fn")}
+    return {"labeled_rows": sum(1 for row in rows if row.get("gold") is not None), "pending_rows": pending,
+            "by_kind": by_kind, "overall": _rates(totals)}
 
 
 def _rates(values: dict[str, int]) -> dict[str, Any]:
