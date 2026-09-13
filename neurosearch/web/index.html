@@ -732,7 +732,7 @@ function funCard(f, title, elId) {
   const y = h >= 0.5 ? pick(YARDSTICKS, h) : null, b = f.words >= 20000 ? pick(BOOKS, f.words) : null;
   const plat = Object.entries(f.by_platform || {}).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${n} ${({ youtube: 'YouTube video', media: 'podcast/audio', web: 'web page', document: 'document', instagram: 'reel', spreadsheet: 'spreadsheet', file: 'file', manual: 'pasted text' })[k] || k}${n === 1 ? '' : 's'}`).join(' · ');
   const per = f.hours && f.spend ? `$${(f.spend / f.hours).toFixed(2)} per hour of material` : '';
-  return `<div class="fun"><div class="funh row" style="gap:8px">📊 ${title}<span style="flex:1"></span>${elId ? `<button class="small" data-el="${elId}" onclick="funReroll(this)" title="another comparison">🎲 another comparison</button>` : ''}</div>
+  return `<div class="fun"><div class="funh row" style="gap:8px">📊 ${title}<span class="grow"></span>${elId ? `<button class="small" data-el="${elId}" onclick="funReroll(this)" title="another comparison">🎲 another comparison</button>` : ''}</div>
     <div class="funrow">
       <div class="funstat"><b>${h.toLocaleString()}</b><span>hours of audio &amp; video, read for you</span></div>
       <div class="funstat"><b>${straight}</b><span>if you watched it all back to back${weeks >= 1 ? ` — ${weeks.toFixed(1)} working weeks` : ''}${h >= 2 ? `; still ${(h / 2).toFixed(0)} h at 2× speed` : ''}</span></div>
@@ -767,7 +767,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.56';
+const UI_VERSION = '0.63.57';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
@@ -1226,7 +1226,7 @@ async function ask() {
     if (r.ingest_jobs?.some(j => j.job_id)) watchIngest(m, r.ingest_jobs.filter(j => j.job_id).map(j => j.job_id));
     if ((r.actions || []).some(a => a.type === 'brief_updated')) { state.project.brief = r.project.brief; $('#epBrief').value = r.project.brief; $('#wsFoot').textContent = r.project.brief.slice(0, 140); }
     if ((r.actions || []).some(a => a.type !== 'brief_updated')) $('#nFindings').textContent = +($('#nFindings').textContent || 0) + 1;
-  } catch (e) { if (tick) clearInterval(tick); thinking.innerHTML = `<span style="color:var(--bad)">${esc(e.message)}</span>`; }
+  } catch (e) { if (tick) clearInterval(tick); thinking.innerHTML = `<span class="status-bad">${esc(e.message)}</span>`; }
   $('#askBtn').disabled = false;
 }
 async function watchIngest(msgEl, jobIds) {
@@ -2368,7 +2368,7 @@ function renderShell() {
   $('#resNav').innerHTML = tabs.map(([k, l, n]) => `<span class="chipf ${RES.pane === k ? 'on' : ''}" onclick="resPane('${k}')">${l}${n != null ? ` <b>${n}</b>` : ''}</span>`).join('');
   $('#resHead').innerHTML = v.empty ? 'nothing to research yet — approve some findings first'
     : `<b>${v.attention}</b> need${v.attention === 1 ? 's' : ''} you${v.attention_capped ? '+' : ''} · ${s.claims_total} Claim${s.claims_total === 1 ? '' : 's'} from your findings, all built at no cost`;
-  $('#resAreaBar').innerHTML = RES.area ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span style="flex:1">Showing only <b>${esc(RES.area)}</b></span><button class="small ghost" onclick="resClearArea()">✕ show everything</button></div>` : '';
+  $('#resAreaBar').innerHTML = RES.area ? `<div class="banner" style="display:flex;gap:8px;align-items:center"><span class="grow">Showing only <b>${esc(RES.area)}</b></span><button class="small ghost" onclick="resClearArea()">✕ show everything</button></div>` : '';
   for (const [k] of tabs) { const el = $('#pane' + k[0].toUpperCase() + k.slice(1)); if (el) el.style.display = RES.pane === k ? '' : 'none'; }
   if (RES.pane === 'overview') renderOverview();
   if (RES.pane === 'questions') renderQuestionsPane();
@@ -2574,7 +2574,7 @@ async function claimStatus(id, status, application) { await post(`/api/claims/${
 async function tensionStatus(id, status) { await post(`/api/tensions/${id}/status`, { status }); loadResearch(); }
 async function targetStatus(id, status) { await post(`/api/targets/${id}/status`, { status }); loadResearch(); }
 async function captureBest(tid, n) { $('#resMsg').textContent = 'capturing…'; try { const r = await post(`/api/targets/${tid}/capture-best`, { n }); const jobs_ = r.started.filter(x => x.how === 'job').length, att = r.started.length - jobs_; $('#resMsg').textContent = `${att ? att + ' attached from the library' : ''}${att && jobs_ ? ' · ' : ''}${jobs_ ? jobs_ + ' capture' + (jobs_ === 1 ? '' : 's') + ' queued' + (r.started.some(x => x.acquisition_hint === 'browser_likely') ? ' (some will need your browser — see Sources → Browser capture)' : '') : ''}`; } catch (e) { $('#resMsg').textContent = e.message; } loadResearch(); loadJobs(); }
-async function showKnown(tid) { const k = await api(`/api/targets/${tid}/known`); $('#dlgBody').innerHTML = `<b>Known, not captured</b> <span class="muted">· ${k.known_uncaptured} source${k.known_uncaptured === 1 ? '' : 's'}${k.browser_likely ? ` · ${k.browser_likely} likely need your browser` : ''}</span>` + (k.best.map(b => `<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><span style="flex:1"><a href="${esc(b.url)}" target="_blank">${esc(b.title || b.url)}</a> <span class="muted">· fit ${b.relevance ?? '?'}${b.num_comments ? ' · ' + b.num_comments + ' comments' : ''}${b.acquisition_hint === 'browser_likely' ? ' · browser capture likely' : ''}</span></span><button class="small ghost" onclick="post('/api/candidates/${b.candidate_id}/dismiss-link',{project_id:state.project.id,kind:'evidence_target',ref_id:'${tid}'}).then(()=>{dlg.close();loadResearch()})" title="Not useful for this question — the source stays known">Not for this</button></div>`).join('') || '<div class="muted">nothing linked yet — press Look on the question first</div>'); dlg.showModal(); }
+async function showKnown(tid) { const k = await api(`/api/targets/${tid}/known`); $('#dlgBody').innerHTML = `<b>Known, not captured</b> <span class="muted">· ${k.known_uncaptured} source${k.known_uncaptured === 1 ? '' : 's'}${k.browser_likely ? ` · ${k.browser_likely} likely need your browser` : ''}</span>` + (k.best.map(b => `<div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><span class="grow"><a href="${esc(b.url)}" target="_blank">${esc(b.title || b.url)}</a> <span class="muted">· fit ${b.relevance ?? '?'}${b.num_comments ? ' · ' + b.num_comments + ' comments' : ''}${b.acquisition_hint === 'browser_likely' ? ' · browser capture likely' : ''}</span></span><button class="small ghost" onclick="post('/api/candidates/${b.candidate_id}/dismiss-link',{project_id:state.project.id,kind:'evidence_target',ref_id:'${tid}'}).then(()=>{dlg.close();loadResearch()})" title="Not useful for this question — the source stays known">Not for this</button></div>`).join('') || '<div class="muted">nothing linked yet — press Look on the question first</div>'); dlg.showModal(); }
 async function addTarget() { const q = $('#resTargetQ').value.trim(); if (!q) return; await post(`/api/projects/${state.project.id}/targets`, { question: q, sufficiency: $('#resTargetS').value }); $('#resTargetQ').value = ''; loadResearch(); }
 async function pursueTarget(id, external) { $('#resMsg').textContent = 'looking…'; try { const r = await post(`/api/targets/${id}/pursue`, { external }); const st = r.escalation.steps; $('#resMsg').textContent = st.map(s => s.step === 'external' ? (s.run ? 'web search queued' : '') : `${s.step.replace('_', ' ')}: ${s.found}`).filter(Boolean).join(' · '); } catch (e) { $('#resMsg').textContent = e.message; } loadResearch(); if (external) loadJobs(); }
 function renderResearchHeader(r) {
@@ -2736,7 +2736,7 @@ async function checkNowJob(id) { await post(`/api/jobs/${id}/check-now`, {}).cat
 function liveTag(j) {
   if (j.status !== 'running' || !j.updated_at) return '';
   const q = Math.round(Date.now() / 1000 - j.updated_at);
-  if (q > 180) return ` <span style="color:var(--warn)" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>`;
+  if (q > 180) return ` <span class="status-warn" title="no progress update for a while — it will time out and retry on its own">· quiet for ${ago(j.updated_at)}</span>`;
   return ` <span class="muted" title="the worker reported progress this recently — this is what tells you it is alive" style="font-size:11px">· alive ${q < 5 ? 'just now' : q + 's ago'}</span>`;
 }
 let pollFails = 0;
@@ -3235,7 +3235,7 @@ async function loadRetireChannels() {
     RET = { channels: r.channels || [], picked: new Set() };
     box.innerHTML = RET.channels.map(c => `<label class="row" style="gap:6px;padding:2px 0">
       <input type="checkbox" onchange="retToggle(${JSON.stringify(c.channel).replace(/"/g, '&quot;')}, this.checked)">
-      <span style="flex:1">${esc(c.channel)}</span>
+      <span class="grow">${esc(c.channel)}</span>
       <span class="muted">${c.sources} source${c.sources === 1 ? '' : 's'} · ${c.hours} h · ${c.findings} findings</span></label>`).join('')
       || '<div class="muted">no channels</div>';
   } catch (e) { box.textContent = 'could not read: ' + (e.message || e); }
@@ -3248,8 +3248,8 @@ async function retPreview() {
   try {
     const r = await post(`/api/projects/${state.project.id}/retire/preview`, { channels: [...RET.picked] });
     box.innerHTML = `<div class="banner"><b>${r.sources} sources (${r.hours} h) would leave this project.</b>
-      <div style="margin-top:4px">${r.findings} findings dismissed · <b>${r.claims_losing_all_evidence}</b> Claims would lose every piece of evidence the project still holds and are rejected · ${r.claims_partly_affected} keep some evidence and are re-assessed.</div>
-      <div class="muted" style="margin-top:4px">Reversible: ${esc(r.reversible)}</div>
+      <div class="mt-1">${r.findings} findings dismissed · <b>${r.claims_losing_all_evidence}</b> Claims would lose every piece of evidence the project still holds and are rejected · ${r.claims_partly_affected} keep some evidence and are re-assessed.</div>
+      <div class="muted mt-1">Reversible: ${esc(r.reversible)}</div>
       <div style="margin-top:6px"><button class="small danger" onclick="retApply()">Retire these ${r.sources} sources</button></div></div>`;
   } catch (e) { box.textContent = 'could not preview: ' + (e.message || e); }
 }
@@ -3268,7 +3268,7 @@ async function deleteProject() { if (!confirm('Delete this project, its chats an
 
 // ---- facts ----
 function renderFacts(facts) {
-  $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span style="flex:1">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
+  $('#facts').innerHTML = facts.map(f => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="tag" style="flex:0 0 auto">${esc(f.kind)}</span><span class="grow">${esc(f.content)}</span><a href="#" class="muted" onclick="del('/api/facts/${f.id}').then(()=>api('/api/projects/'+state.project.id).then(p=>renderFacts(p.facts)));return false">remove</a></div>`).join('') || '<div class="muted">none yet</div>';
 }
 async function addFact() {
   const t = $('#factText').value.trim(); if (!t) return;
@@ -3449,7 +3449,7 @@ async function rebuildWithAnswers() {
 
 async function checkUpdates() {
   $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" id="chk"><span class="spin"></span> comparing new research against the plan…</div>');
-  try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted" style="margin-bottom:8px">No material changes — the plan still holds.</div>'); }
+  try { const r = await post(`/api/projects/${state.project.id}/plan/check-updates`); await loadPlan(); if (!r.updates.length) $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted mb-2">No material changes — the plan still holds.</div>'); }
   catch (e) { alert(e.message); $('#chk')?.remove(); }
 }
 async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
