@@ -101,6 +101,26 @@ The front door is now durable: `AGENTS.md`, `QUALITY-CONTRACT.md`, and
 repository's canonical uppercase filenames, so a new session will not be sent to
 nonexistent `design.md`/`audit.md` files.
 
+### R3/R5/R8 transition record — 2026-09-12
+
+R3 re-measurement found no unresolved P0/P1 correctness or flakiness defect in
+the current checkout. The named local-provider fallback concern is already
+covered by the explicit no-fallback contract and `tests/test_j3_fallback.py`;
+that gate passes (14 tests). Existing task-level gates cover project creation,
+global source reuse, ingestion/retrieval, citation-backed chat, findings and
+research state, planner provenance, retry/recovery, restart durability, and
+stale-client/version behavior across the K/L/N/O/S test families. This is an
+evidence-based acceptance of the current R5 coverage, with no duplicate browser
+test layer introduced.
+
+R8 is now active: `neurosearch release-check` invokes the same deterministic
+`repo-check` and blocks when it reports any finding. A `skip_pytest` release
+probe passed on commit `1ecb8e1`, including the new repository-hygiene gate.
+The full suite had already passed 1,359 tests after the preceding changes; the
+release integration's focused gate passes 14 tests. Remaining work is R6 design
+integration (Claude-owned), then R7 operational proof and a final full
+release-check before R9/R10 closeout.
+
 # R0 - Establish the truth
 
 Before editing production code:

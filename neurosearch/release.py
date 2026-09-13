@@ -257,6 +257,7 @@ def _fresh(prefix: str) -> Path:
 def release_check(progress: Any = print, out_dir: Path = Path("evals") / "release", skip_pytest: bool = False) -> dict[str, Any]:
     """The deterministic release gate. Every gate is one of the project's own frozen proofs; nothing is live."""
     from . import cache_layout, contracts, evals, prefilter_eval, retrieval_eval, schemas
+    from .repo_check import check_repo
     r = _Report("release-check", progress)
     sha = _sha()
     progress(f"neurosearch release-check · app {__version__} @ {sha}")
@@ -264,6 +265,9 @@ def release_check(progress: Any = print, out_dir: Path = Path("evals") / "releas
     fl = flags_state()
     r.check("experimental flags off by default", all(v["ok"] for v in fl.values() if v["status"] != "test mode (never in production)") and not settings.fake_ai,
             {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
+    repo_findings = check_repo(ROOT)
+    r.check("repository hygiene and architecture boundaries", not repo_findings,
+            "; ".join(f"{f.rule} {f.file}:{f.location}" for f in repo_findings[:8]) or "repo-check PASS")
     ok, tail = _pytest(["tests/test_s43_foundation.py", "tests/test_s44_frontend_integrity.py", "tests/test_s45_storage_hygiene.py"])
     r.check("Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity", ok, tail)
     # 1. unit + indestructible + boundary suites (includes the crash matrix, the 40-source equivalence, migrations, breakers, fallback)
