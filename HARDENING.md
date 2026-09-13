@@ -1797,7 +1797,7 @@ single-colour ring measures 1.84:1 against the primary-button fill and would be 
 Changing any of these values requires re-running the validation and replacing this table. The method is plain
 WCAG 2.1 relative luminance; the decision it encodes is that a status colour nobody can read is not a status.
 
-**Drift baseline, commit `19d858b`; working-tree correction recorded 2026-09-12.** The pre-D0 measurement had 432
+**Drift baseline, commit `19d858b`; working-tree correction recorded 2026-09-12.** Re-measured 2026-09-13 at the pinned design baseline `21bb117` (F0): identical counts — 430 / 28 / 3 / 16 / 11 / 8. The pre-D0 measurement had 432
 inline style attributes. Claude's currently preserved, uncommitted UI work has already reduced that count to 430; the
 ratchet therefore uses 430 as its current ceiling. The remaining values below are the measured pre-D0 ceilings:
 
