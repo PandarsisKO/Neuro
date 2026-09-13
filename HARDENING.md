@@ -2076,3 +2076,10 @@ from promoting phone-shaped ten-digit strings; punctuation-safe entity spans and
 false-positive paths. Evidence artifact `evals/t3/tier0-sample-20260913-144650.json` was generated from a copied verified
 backup in SQLite read-only mode; no live DB or WAL sidecar was touched. The 15-row/64-span sample is provisional and
 cannot authorize T4 or persistence by itself.
+
+## T3 release checkpoint — 2026-09-13 14:50 PT
+
+The pure T3 extractor is green under the full 1,376-test suite and commit-bound release gate at `46f0a5e`. Its
+provisional 15-row/64-span read-only sample is recorded with a copied-backup hash. The next hardening requirement is
+a larger seeded sample with adversarial negatives and offset-boundary cases; no persisted extraction, selector, T4,
+provider, queue, or UI path may rely on current provisional metrics.

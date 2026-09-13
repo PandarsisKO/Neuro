@@ -1199,3 +1199,11 @@ retained projects, all candidate kinds represented, 64 manually reviewed exact s
 recall. Source is a copied `neurosearch-20260913-1410.db` backup with SHA-256
 `bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220`; live DB untouched. The small purposive sample
 is evidence only and does not admit T4 or persistence; expand and seed a larger review before downstream trust.
+
+## T3 implementation release checkpoint — 2026-09-13 14:50 PT
+
+Codex's T3 pure extractor and tests are committed at `46f0a5e`; full pytest is 1,376 passed with one existing
+Starlette warning, focused T1/T2/T3 checks are 28 passed, and `release-check --no-pytest` passes at UI/package
+0.63.65. Release artifact: `evals/release/release-check-0.63.65-46f0a5e-20260913-145001.json`. The 15-row/64-span
+sample is provisional and read-only. Next Codex gate: expand to a seeded hand-label sample with adversarial negatives
+and boundaries before any persistence, selector, T4, or user-facing trust. Claude's design/audit custody is unchanged.

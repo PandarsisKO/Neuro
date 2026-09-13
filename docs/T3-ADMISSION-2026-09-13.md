@@ -82,3 +82,14 @@ and represents every emitted kind. Codex manually reviewed exact kind, normalize
 64 candidates: provisional precision/recall are 1.00 overall and for each represented kind. This is a purposive,
 small sample, so it does **not** authorize T4 or persisted extraction; a larger seeded sample and release gate remain
 required before downstream trust.
+
+## T3 implementation release checkpoint — 2026-09-13 14:50 PT
+
+Implementation and provisional evidence are committed at `46f0a5e` (`feat: add T3 deterministic extraction`). The
+full suite passes 1,376 tests (one existing Starlette deprecation warning); T1/T2/T3 focused checks pass 28 tests.
+Commit-bound `release-check --no-pytest` passes every deterministic proof at UI/package `0.63.65`; artifact:
+`evals/release/release-check-0.63.65-46f0a5e-20260913-145001.json`.
+
+The provisional sample remains evidence only. A larger seeded hand-label set with adversarial negatives and boundary
+cases is the next gate. No T3 output is persisted or trusted by T4, a selector, or user-facing state until that gate is
+closed.

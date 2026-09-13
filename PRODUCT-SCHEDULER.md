@@ -292,3 +292,10 @@ identifier normalization, phone-shaped ISBN rejection, punctuation-safe entities
 read-only provisional sample `evals/t3/tier0-sample-20260913-144650.json` covers 15 chunks across all retained projects
 and 64 manually reviewed candidates (1.00 provisional precision/recall). This is not a downstream admission: T4 and
 stored extraction remain blocked until a larger seeded sample and commit-bound release gate pass.
+
+## T3 release checkpoint — 2026-09-13 14:50 PT
+
+T3 is implemented and release-checked at `46f0a5e`; full pytest 1,376 passed and the deterministic release artifact
+is `evals/release/release-check-0.63.65-46f0a5e-20260913-145001.json`. The extractor remains outside scheduling,
+queues, providers, persistence, and UI. Do not schedule extraction or downstream selector work until the larger
+seeded/adversarial hand-label gate closes.
