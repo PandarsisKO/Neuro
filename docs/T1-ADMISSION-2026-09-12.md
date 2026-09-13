@@ -93,6 +93,16 @@ failures, and zero stale leases. The cohort remains under observation until the
 queue reaches a terminal state; only then will the version-stamped semantic
 coverage report be accepted.
 
+### Execution checkpoint — 2026-09-13 09:23 PDT
+
+The supported health endpoint recorded 20,702 global jobs done, 24,911 queued,
+four leased, zero stale leases, and no increase in the historical failure total
+of 50. The three-project preview reported approximately 26,065 T1 candidates
+still needing vectors (17,433 / 7,438 / 1,194 by project). The remaining
+difference is pre-existing non-T1 work in the global queue. OpenAI Embeddings
+was closed/Healthy with no new failures. Workers were left running; the cohort
+was not cancelled or re-enqueued.
+
 The first full-suite run after adding the enqueue endpoint exposed only a test
 fixture mismatch (the API client is session-scoped while the module fixture
 swapped its database directory); the endpoint was correct and returned 404 for

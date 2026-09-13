@@ -132,6 +132,17 @@ re-enqueue; dedupe keys and offsets already cover the full scope. When queued
 reaches zero, use the supported coverage endpoint for each project and save the
 fresh version-stamped semantic cohort before any T2 decision.
 
+### Execution checkpoint — 2026-09-13 09:23 PDT
+
+The backfill remains healthy on the live local-profile workers. A supported
+health sample recorded 20,702 global jobs done, 24,911 queued, four leased,
+zero stale leases, and the unchanged historical failure total of 50. The
+project-scoped preview reported approximately 26,065 T1 candidates still
+needing vectors (17,433 / 7,438 / 1,194 by project); the difference from the
+global queue is pre-existing non-T1 work that is draining concurrently.
+OpenAI Embeddings remained closed/Healthy with no new failures. This is an
+observation checkpoint only; no jobs were cancelled, re-enqueued, or reprioritized.
+
 ## QA stabilization handoff — 2026-09-13
 
 The repository-control mission is archived at
