@@ -177,3 +177,263 @@ citations inline in chat; "Make this plan yours" chip answers.
 
 Narrow viewport (resize did not take); polling flicker; Health/Jobs surfaces; every Phase 3 walk; whether the
 Findings blank period is network or render (needs timing); dark theme not screenshotted this pass.
+
+---
+
+## F0 addendum — audit-instance pass (2026-09-13, baseline `21bb117`)
+
+Mode: F0 preflight per `ladder.md`. Audit instance: `tools/audit-instance.command`, port 8788, data copied from
+`neurosearch-20260912-1907.db` (the newest verified backup), `NEUROSEARCH_FAKE_AI=1`, both budgets $0, no API
+keys, login token `audit`. Both the live project set and a new empty project ("F0 empty-state probe") were
+inspected. Chrome window resize to ~390px did not change the captured frame — the narrow-viewport limitation from
+the read-only pass reproduces here too; **no narrow-viewport evidence exists from this addendum's own tooling**
+(closed instead by a second addendum below, using Kyle's own hand-captured screenshots). Dark theme, login, empty
+states, one real failure state, and the Health panel were inspected and are new in this pass.
+
+### New states inspected
+
+**Login page** (`/`, unauthenticated). Simple centered card, dark-theme-aware (persisted before authentication, so
+the toggle's `localStorage` read happens pre-login). No findings — clean, minimal, on-brand.
+
+**New/empty project — Sources, Findings, Research, Master Plan, Chats.** Each surface's zero-state has explicit,
+actionable copy ("No sources yet. Add a link, upload a file, paste text, or pull from the library above.";
+"Nothing approved yet. Approve suggestions above, or ask questions in a chat and pin the answers worth keeping.";
+"No Claims yet. Approve findings in 📌 Findings — the research state builds itself from them at no cost.") — these
+are strengths, consistent with `DESIGN.md` §1.7 (honest states) and worth explicit protection in any rung that
+touches these surfaces. One new chat view was blank with no guidance on first click, then showed full guidance
+copy ("Every chat here only sees this project's sources...") on a later visit to what appeared to be the same
+"New chat" — inconsistent, possibly a render-timing race of the same class as `H-2` (loading masquerading as
+permanently blank). Filed as **`[F0-1]` New-chat placeholder inconsistently renders its guidance text** — Low
+confidence, not reproduced a second time, flagged for the interaction-pass audit to confirm or rule out.
+
+**Master Plan build on zero evidence.** Clicking "Build Master Plan" on the empty project showed a truthful,
+well-specified pending state ("reading the research... · 0s (analysis first, then the plan — usually 1–3 min)")
+— a strength consistent with the protected click-acknowledgement contract. However, `NEUROSEARCH_FAKE_AI=1`
+returns a fixed canned plan (a Squarespace-migration scenario) regardless of the actual project brief or the
+absence of sources — **this is a fake-AI fixture limitation, not a validated product behavior**: F0 cannot
+observe what a zero-evidence Master Plan build genuinely produces, because the fake responder does not vary with
+input. This should be logged as an audit-tooling gap, not closed as "inspected."
+
+**A real failure state (Sources, `Failed 1` filter, live-backup project).** One row: a Facebook post, `media ·
+failed`, red text `[facebook] 1763098265823974: Cannot parse data retryable · other`. Two observations: (1) a
+failed row shows only four actions (Retry, Make priority, Remove from project, Delete everywhere) rather than the
+six on a healthy row — a reasonable, undocumented simplification, worth naming explicitly if `ladder.md` rung W4
+touches row actions, so it isn't accidentally reverted to six. (2) the error text is a raw internal exception
+string (`Cannot parse data retryable · other`) surfaced verbatim to the user with no translation — filed as
+**`[F0-2]` Failure rows surface raw internal error strings** — Low severity, Local scope (Sources), consistent
+with `DESIGN.md`'s honesty principle in spirit but not in execution; a real user cannot act on "Cannot parse data
+retryable · other" the way they can act on the Health panel's plain-language equivalents.
+
+**The Health panel** (Settings → scroll → "Health"). This is the single most important discovery of the F0 pass
+and changes how `H-1` should be read. Health is not a missing surface — it is a rich, well-structured panel: ~20
+labeled cards (Database integrity, Verified backup, Queue, Finding quotes verified, Model the provider actually
+ran, Structured-output fallbacks, Spend recorded vs. likely charged, Who pays for local calls, Provider batches:
+work paid for and not written, Cost per kept finding, and more), each with a ✅/⚠️/🧪 glyph, a plain-language
+label, and a detail line. Several of these are strengths worth explicit protection: "Model the provider actually
+ran" proactively surfaces silent model substitution; "Provider batches" warns about paid-and-uncollected work;
+"Who pays for local calls" explains billing attribution in plain language. **The problem `H-1` describes is not
+that this data doesn't exist — it's that the only versions of it visible outside Settings are the single
+compressed log-line sentence on Home and the Chat sidebar footer.** The good, readable version is three clicks
+deep (Settings → scroll past the project form, decisions table and spending valve) with no nav entry of its own.
+This sharpens `H-1`'s improvement direction: the fix is not to invent new health data, it is to surface the
+existing Health panel's best rows earlier and more prominently, and to treat Settings' current Health section as
+the source of truth the new status component reads from — not something to redesign from scratch. `H-1` in
+`audit.md` should be read with this addendum; no severity or ladder-ordering change follows from it, since `W5`
+already targets the same status-line rework.
+
+**The project brief, echoed unlabeled in the sidebar.** Both the light and dark passes on the empty project show
+the project's Goal/Brief text ("Inspecting empty states only, no real acquisition.") repeated verbatim in the
+bottom-left sidebar, directly above the spend/status footer, with no heading distinguishing it from anything
+else there. On a project with a long brief this text wraps and visually crowds the already-dense status line.
+Filed as **`[F0-3]` The project brief renders unlabeled in the sidebar, crowding the status footer** — Medium
+severity, Local scope (sidebar, all views), Visual evidence. This is additive to `H-1`/`RC-F`, not a new root
+cause: whatever status component `W5` builds needs to either give this line a label or move it, not just
+reflow the spend text around it.
+
+### Incidental finding — not a design defect, a data-handling note
+
+The audit instance is a full, byte-for-byte copy of the live backup, deliberately so per `AUDIT.md` §3. Its
+Settings → Decisions & constraints table on the real "buying businesses" project contains Kyle's actual Morgan
+Stanley account numbers and balances, verbatim, because that table stores whatever free text a chat or the user
+recorded as a "decision" — the product does not distinguish a project decision from a financial account number
+typed into the same field. Two screenshots taken during this pass captured that table before it was noticed;
+both were deleted immediately and are not part of the evidence set (see manifest). No design-audit finding is
+filed for this — it sits outside `AUDIT.md`'s scope (data handling/security, not visual/UX design) — but it is
+recorded here as a procedural note for any future F0/RE-AUDIT pass: **do not screenshot a real project's
+Decisions & constraints table**, and consider whether the live backup used for future audit instances should
+have that table redacted before copying. Kyle should decide whether this is worth a security/privacy review
+separate from the design-audit track; it is not added to `ladder.md`.
+
+### Completion coverage this addendum closes
+
+Jobs/Health inspected (above). Empty/default states for every surface inspected (above). One real failure state
+inspected (Sources). Dark theme inspected across Home, Settings, Sources, new-project surfaces, and login — no
+contrast or token defects observed beyond the already-measured `--ok`/`--warn` values. Narrow viewport was
+**unsupported / not applicable with this addendum's own tooling** — the resize tool does not change the captured
+frame in this browser automation setup — but see the second addendum immediately below, which closes it partially
+by a different route.
+
+---
+
+## F0 addendum 2 — evidence recovery via Kyle's own screenshots (2026-09-13)
+
+The six canonical screenshots from the addendum above were lost (sandboxed browser-automation temp path
+unreachable by any shell — see `evidence/baseline/manifest.md` history). Separately, and unprompted by any
+request in this pass, Kyle had already captured 12 of his own screenshots the previous evening (2026-09-12,
+7:46–7:51 PM) directly on his Mac against the same audit instance, saved in a `SCREENSHOT AUDIT` folder at the
+repo root: 4 at full desktop window size, 8 with Chrome narrowed to ~390pt CSS width (labeled "PHONE" but not
+actual phone captures — a narrowed desktop Chrome window sitting beside his other apps on his real monitor, not
+cropped to isolate the browser).
+
+**What they show.** The 4 desktop ones are dark-theme, full-window captures of Home, Sources, Findings, and
+Research overview, all on the real "buying businesses" project (not a clean empty project). The 8 narrow ones are
+the same audit instance narrowed to phone width: Sources (numbers panel, twice), Sources (filter bar + list),
+Sources (job-queue detail, twice more), Research overview, and — the most valuable single image in the set — a
+chat answer with inline citation markers (`[1][6][12]`, etc.) rendered at narrow width, closing the "chat with an
+answer + citations, narrow viewport" gap directly.
+
+**Handling.** All 12 originals sat inside a macOS App Sandbox path that neither `device_stage_files` nor a
+literal-filename `cp` could reach (both failed "No such file or directory" against files `ls -la` had just
+listed) — worked around with a shell glob (`cp "$DIR"/Screenshot*7.46.04*` in place of the exact filename),
+which succeeded for all 12 files. Before using any of them as evidence: the 8 narrow ones were cropped to the
+app's own column (0–498px of the original 2560px-wide capture), removing Kyle's real iMessage window and desktop
+wallpaper that the original, uncropped capture also contained — those are his personal messages, not part of the
+product, and have no place in a tracked evidence folder. The 4 desktop ones were cropped to remove Chrome's own
+browser chrome (tabs, address bar), leaving only the app. No other edits were made to any image.
+
+**What was kept.** 8 of the 12, one per distinct state: the 4 desktop screenshots as-is, and 4 of the 8 narrow
+ones (numbers panel, filter+list, Research overview, chat-with-citations) — the remaining 4 narrow screenshots
+were near-duplicates of the job-queue widget mid-countdown and were dropped rather than kept per `AUDIT.md`'s
+evidence-retention policy (one canonical set, not a screenshot-per-interaction log). All 8 are now in
+`evidence/baseline/`; see that folder's `manifest.md` for the full breakdown.
+
+**What this closes and what it doesn't.** Narrow viewport moves from *no evidence* to *partial evidence*: Sources,
+Research overview, and a chat-with-citations are now visually confirmed to render without clipping, overflow, or
+horizontal scroll at ~390pt width. It does **not** cover Home, login, empty-project, or failure states at narrow
+width, and it is image evidence only — no interaction (scroll, tap, open nav) was exercised at this width, so it
+does not stand in for a real narrow-viewport interaction pass. The dark-theme desktop set replaces the images lost
+above, but stays single-project and single-theme rather than the fuller light/dark × empty/populated matrix a
+from-scratch baseline would have. No finding's severity or the ladder's ordering changes because of this addendum
+— it upgrades evidence quality, not diagnosis.
+
+---
+
+## F0 addendum 3 — bounded runtime-verification matrix closure (2026-09-13)
+
+Following the AUDIT.md merge (`f4e98d9`), this addendum runs the new §4.5 minimum runtime verification matrix,
+§4.5.1 failure-state check, §4.6 timing baseline, and §4.7 narrow-viewport interactive requirement to closure,
+using the same disposable audit-instance project as addendum 1 ("F0 empty-state probe," a new project created
+for this purpose, `NEUROSEARCH_FAKE_AI=1`, $0 budget) plus one new source added to it for this pass. No live data
+was touched; nothing here spent real money or called a real model.
+
+### Six-flow matrix
+
+| Flow | Evidence level | What was exercised |
+|---|---|---|
+| Add/acquire research | RUNTIME VERIFIED | Two sources added via Paste text (a deliberately low-substance note and a substantive SBA-financing note) and one via Link (a deliberately unresolvable domain, see Failure state below). |
+| Findings | RUNTIME VERIFIED | The low-substance note correctly scored "substance 0/100" and produced no suggestions ("analysed — nothing worth suggesting"); the substantive note correctly produced two real, content-derived suggestions (seller-financing terms; tax-return/SDE reconciliation), one approved and one dismissed. This is a genuine content-sensitivity result, not a canned response — see the fake-AI fidelity note below. |
+| Chat | RUNTIME VERIFIED | A question about the substantive note's repayment terms returned a cited answer referencing the source, with working "why" drilldown links. |
+| Discover | RUNTIME VERIFIED | "Library first" mode run to completion; produced six real candidate sources; one dismissed via its safe "X" control (no fetch triggered). Also produced the stale-poll finding below. |
+| Master Plan | RUNTIME VERIFIED | Plan rebuilt from v1 (stale, pre-dated the new sources) to v2; v2's Goal/Strengths/Weaknesses/Opportunities/Threats and Paths-compared sections all correctly cite "based on: F0 probe - substantive note @ 0:00," confirming the rebuild genuinely re-reads current sources rather than replaying a fixed canned plan end-to-end (the earlier addendum's canned-plan caveat applies to the *first-build-with-zero-sources* case, not rebuild-with-sources). |
+| Jobs / background work | RUNTIME VERIFIED | Directly observed across the flows above (queued → running → done transitions on findings-suggestion and Discover jobs) and, discretely, via the Failed/recoverable job-state check immediately below, which exercises the queued → failed → retried → failed-again path end to end. |
+
+### Failure-state verification (§4.5.1: existing safe mechanism, no manufactured cost)
+
+Added one Link source pointing at a syntactically valid but non-existent domain
+(`https://this-domain-does-not-exist-neurosearch-audit-test-9f3k2.invalid/page`, "Add this page only"). This is a
+deterministic DNS-resolution failure — no real host is contacted, no paid API call is made, and no product state
+is corrupted; it is the same class of naturally-available failure §4.5.1 asks auditors to prefer over manufacturing
+one.
+
+Result: the source entered `queued`, then surfaced as **`failed`** in the Sources list with a plain, specific error
+("error: That host name could not be resolved"), a working **Retry** control, and a `Failed 1` filter tab (of 3
+total sources). Clicking Retry produced a "Queued again" toast, re-entered the queue, and failed again with the
+same error on the second attempt — a clean, reproducible, honestly-labeled failure/recovery cycle. Project spend
+stayed at $0.02 throughout (unchanged from before the test), confirming no cost was incurred. The test source was
+then removed to keep the disposable project clean.
+
+This closes the "failed/recoverable job-state inspection" requirement RUNTIME VERIFIED, and is a strength worth
+naming alongside the ones already recorded in `audit.md`: the failure surfaces a specific, human-readable cause
+and a one-click recovery path, rather than a dead end.
+
+### Interrupted / stale / non-updating poll inspection
+
+During the Discover run above, the small per-job progress badge froze at "18s · alive 17s ago" for roughly 35-50+
+seconds of wall time while the page's top progress summary line kept incrementing correctly (18s → 35s → 53s →
+73s+) over the same interval, and the whole operation ultimately took roughly 9× longer than its own stated
+"~10s" ETA before completing successfully. This is naturally-occurring evidence (not manufactured): two liveness
+indicators for the same job disagreed about whether it was still alive, and the badge's own "alive Ns ago" text
+became actively misleading (it read as increasingly stale rather than updating) even though the job was, per the
+other indicator, still running and eventually succeeded. Filed as **`[F0-4]` Per-job progress badge freezes and
+reports increasingly stale "alive" text while the job is still running and the top-level progress line continues
+to advance correctly** — Medium severity (a user watching only the small badge would reasonably conclude the job
+died), Local scope (Discover's job-queue widget; the same widget class appears on Sources per addendum 1's "2
+queued" panel, so this may recur wherever that component is reused — flagged for the interaction pass rather than
+assumed). Evidence: RUNTIME VERIFIED (naturally occurring, not forced). Root cause: folds into **RC-C** ("stale"
+has four independent presentations and vocabularies) as a fifth instance — the job-badge's own "alive" text is
+itself an undermaintained staleness indicator, the same species of defect RC-C already names for Findings/Plan
+banners and the row badge. No new root cause, no severity or ladder-ordering change.
+
+### Narrow-viewport interactive verification (§4.7)
+
+Prior passes' `resize_window` calls did not change the captured frame (recorded in addendum 1 and in `audit.md`'s
+Assumptions / cannot verify as a tooling limitation). Retried this pass against the same live tab already open in
+Kyle's real Chrome: `resize_window(390×844)` **did** take this time — the captured frame changed to a genuinely
+reflowed narrow layout (stacked nav list above content, no side-by-side desktop columns) on both the Master Plan
+and Sources surfaces, and remained narrow across a subsequent in-page navigation between them. This is now
+**interactive** narrow-viewport evidence, not a static image: the verification included navigating between two
+surfaces and scrolling within one of them while narrow, with no clipping, overflow, or horizontal scroll observed
+on either surface. Evidence: RUNTIME VERIFIED. This supersedes the earlier BLOCKED/CANNOT VERIFY characterization
+for these two surfaces specifically; Home, login, empty-project, and failure states at narrow width remain
+uncaptured interactively (Kyle's hand-captured images from addendum 2 cover Sources/Research/chat-with-citations
+statically; this pass adds an interactive walk of Master Plan and Sources) — recorded under Residual Coverage in
+`audit.md` rather than reopening F0 to chase the remaining combinations, per the bounded stopping rule.
+
+### Timing baseline (§4.6)
+
+Qualitative, session-observed (not instrumented with client-side timers; sufficient to establish rough order of
+magnitude before any threshold is proposed elsewhere in the ladder — no threshold is proposed here):
+
+| Interaction | T_ack (UI acknowledges) | T_result (visibly complete) | Notes |
+|---|---|---|---|
+| Paste-text source save | Near-instant (form clears on click) | ~2s+ before the sidebar source count re-renders | Momentarily read as a possible failed save (see Errors and fixes in this session) before resolving; not itself filed as a new finding since the save did succeed, but worth the interaction pass confirming this gap is consistent and not occasionally longer. |
+| Findings-suggestion generation (one substantive source) | Immediate "queued" | ~13s to suggestions appearing | Single sample. |
+| Chat answer | Immediate "thinking" state | ~1s to cited answer | Single sample, short question. |
+| Discover ("Library first") | Immediate queued/running state, stated ETA "~10s" | ~73s+ (see stale-poll finding above) | ETA understated actual time by roughly 9×; the ETA itself may warrant review but is out of F0's scope to size a fix for. |
+| Master Plan rebuild | Immediate "queued" acknowledgement | Completed within the observed poll window (order of tens of seconds) | Not precisely timed; superseded prior canned-response version end to end. |
+| Failed-source job (DNS failure) | Immediate "queued" | Surfaced as `failed` within ~8s | Deterministic, repeated identically on Retry. |
+
+These are order-of-magnitude observations from a single disposable project on one machine, not a performance
+benchmark; they exist to satisfy §4.6's "measure before inventing thresholds" requirement, not to set an SLA. Any
+rung that proposes a numeric timeout or "slow" threshold should re-measure on its own target surface rather than
+reuse these numbers.
+
+### Fake-AI fidelity note (supersedes part of addendum 1's Master Plan caveat)
+
+Addendum 1 recorded that `NEUROSEARCH_FAKE_AI=1` "returns a fixed canned plan regardless of the actual project
+brief or the absence of sources." This pass shows that caveat holds for a *first build against zero or unrelated
+sources*, but not for findings-suggestion generation or a *plan rebuild once real source content exists* — both
+of those genuinely varied with, and correctly attributed, the actual pasted content. This narrows the audit-
+tooling gap named in addendum 1: fake-AI fidelity is content-sensitive for findings suggestions and for plan
+rebuilds, and only degrades to a fixed fixture on an empty/zero-evidence first build. No `audit.md` finding
+changes because of this — it only affects how much weight future fake-AI-instance observations should carry.
+
+### What remains under Residual Coverage, not reopened
+
+Per the newly-merged Bounded stopping rule (`AUDIT.md` Phase 9): the six-flow matrix is complete and classified,
+timing evidence is captured where applicable, narrow-width interaction has now been exercised (Master Plan,
+Sources), the closure pass below is complete, and the items listed here are recorded rather than chased further,
+because none plausibly changes a Critical/High finding, a root-cause diagnosis, a material acceptance criterion,
+or the ladder's ordering:
+
+- Narrow-viewport interaction on Home, login, empty-project, and failure states (static images exist for some of
+  these from addendum 2; none is interactive).
+- The acquisition/findings-triage/chat/discover/plan-rebuild flows above were exercised on a small, single-project
+  disposable dataset, not at the 1,348-row / 16,437-badge scale seen on the real project (addendum 1).
+- The job-badge staleness pattern (`F0-4`) was observed once, on Discover; whether it recurs identically on the
+  Sources "queued" panel noted in addendum 1 is plausible but not separately confirmed this pass.
+- Exact instrumented (not wall-clock-observed) timing for any of the table above.
+
+None of these is believed capable of moving a Critical/High severity, changing a root cause, changing an
+acceptance criterion, or reordering `ladder.md` — if a future pass finds otherwise, it reopens the relevant rung,
+not all of F0.

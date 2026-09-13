@@ -237,7 +237,9 @@ component here first, then decide in W3 whether Plan shares it.
 `UI_VERSION`. *Behavioral:* every priced option previously visible (four Rebuild variants, "Accept N as still
 usable", "Review them", "Dismiss all N") is reachable from the new entry point with the same operation, cost class
 and truthful estimate, reversibility and consequence — checked on the audit instance; a bulk-dismiss cannot be
-reached without the count of affected items on screen. *Human:* re-score `Findings › Current state` (Partly) and `Findings › What matters`
+reached without the count of affected items on screen; per `DESIGN.md` §3's progressive-disclosure rule, why each
+item needs attention is visible at the entry point itself (0 clicks), not behind a further expand, and each
+previously-visible priced option stays reachable within ≤ 2 clicks of the entry point. *Human:* re-score `Findings › Current state` (Partly) and `Findings › What matters`
 (Partly). Expected: both toward Yes.
 
 **Regression risks:** this is the rung most likely to hide a priced action a user currently sees at once — the
@@ -286,7 +288,11 @@ rung's handoff note.
 
 **Proposed change:** one primary action per row by task context; secondary actions behind an overflow control;
 "Delete everywhere" behind a confirmation scaled to its irreversibility and never adjacent at equal weight to
-"Remove from project". `DESIGN.md` §5 (danger role) governs the treatment.
+"Remove from project". `DESIGN.md` §5 (danger role) governs the treatment. Per `DESIGN.md` §3's progressive-
+disclosure rule (common actions stay close to the result), if the audit instance's twenty-row bulk-review baseline
+shows a second action used on a large share of rows (e.g. Retry on the current `Failed` filter), that action is a
+second visible control on the row, not folded into the overflow with the genuinely rare ones — collapsing to
+exactly one visible action is not itself the goal.
 
 **Precondition:** W1 landed, **and** F0's interaction walk of Sources exists — this rung does not ship on
 observation alone.

@@ -95,7 +95,28 @@ because they are objective. Deciding observations are in `raw.md` Phase 2.
 | Master Plan | Yes | Partly | Yes | Yes | Partly |
 | Settings | Yes | n/a | Partly | Yes | Partly |
 
-Not yet scored: Jobs / Health, dark theme, narrow viewport, empty and failure states — F0 in `ladder.md`.
+Scored on the F0 audit-instance pass, 2026-09-13, same reviewer:
+
+| Surface | Where am I | Current state | What matters | What to do next | What that will do |
+|---|---|---|---|---|---|
+| Settings → Health | Partly (no nav entry; reached only by scrolling Settings) | Yes — once found, the panel itself is clear and well-labeled | Partly — no ranking of which warning matters most | n/a (read-only panel) | n/a |
+| New/empty project (any surface) | Yes | Yes — explicit "nothing yet, do X" copy on every surface | Yes | Yes | Yes |
+| Login | Yes | n/a | n/a | Yes | Yes |
+
+Not yet scored: a failed job, a failed poll.
+
+**Narrow viewport — image evidence only, not an interactive scorecard pass (F0 evidence-recovery addendum, 2026-09-13).**
+Kyle captured Sources, Research and a chat-with-citations at ~390pt width by hand (the browser-automation resize
+tool still does not work). Judged from the static images alone, not an interactive walk, so scored conservatively:
+
+| Surface (narrow) | Where am I | Current state | What matters | What to do next | What that will do |
+|---|---|---|---|---|---|
+| Sources (numbers + list) | Yes | Yes — no visible overflow or clipped text | Partly — same dense numbers grid as desktop, unranked | n/a (static capture) | n/a |
+| Research overview | Yes | Yes | Yes — "Do these next" cards already rank by consequence | Yes | Yes |
+| Chat with citations | Yes | Yes | Yes — citation markers render inline, unclipped | n/a (static capture) | n/a |
+
+No layout break, clipped text, or horizontal scroll is visible in any of the three; this is a positive signal, not
+a substitute for an actual interaction pass (scrolling, tapping a citation, opening the nav) at this width.
 
 ## Critical findings
 
@@ -317,8 +338,29 @@ depends on this rung landing first or alongside — see ladder ordering.
   in code). `[Visual/Code]`
 - **`[M-11]`** The Chat sidebar's chat list is unbounded (20+ visible) with no grouping by recency. `[Visual]`
 
+## Medium findings (F0 addendum)
+
+- **`[F0-3]`** The project's Goal/Brief text renders unlabeled in the sidebar directly above the spend/status
+  footer, with no heading distinguishing it from system state — on a long brief it wraps and crowds the already
+  dense status line. Additive to `H-1`/`RC-F`, not a new root cause: `W5`'s status component must label or
+  relocate this line, not just reflow around it. `[Visual]` — audit instance, 2026-09-13.
+- **`[F0-4]`** Discover's per-job progress badge froze at "18s · alive 17s ago" for roughly 35-50+ seconds
+  while the page's top progress summary line kept advancing correctly (18s -> 35s -> 53s -> 73s+), and the whole
+  operation ultimately took ~9x its own stated "~10s" ETA before completing successfully -- naturally occurring,
+  not manufactured. A user watching only the small badge would reasonably conclude the job had died. Folds into
+  `RC-C` (stale-state has four independent presentations) as a fifth instance, not a new root cause. Same widget
+  class appears in Sources' "queued" panel (addendum 1); not separately confirmed there this pass -- see Residual
+  Coverage. `[Runtime]` -- RUNTIME VERIFIED, audit instance, 2026-09-13 (F0 addendum 3).
+
 ## Low / polish findings
 
+- **`[F0-1]`** A new chat's placeholder guidance rendered blank on first visit, then showed full guidance copy on
+  a later visit to what appeared to be the same view — not reproduced a second time, low confidence, possibly the
+  same class of defect as `H-2` (a brief loading gap read as permanently empty). Flagged for the interaction-pass
+  audit to confirm or rule out, not yet a confirmed finding. `[Runtime]`
+- **`[F0-2]`** A failed source's error text is a raw internal exception string (`Cannot parse data retryable ·
+  other`) surfaced verbatim, not translated into something a user can act on — inconsistent with the plain-language
+  standard the Health panel otherwise holds to. `[Visual/Copy]`
 - **`[L-1]`** Every source-row thumbnail observed was an empty grey rectangle with no fallback glyph. `[Visual]`
 - **`[L-2]`** "Master sheet CSV" and "Segments CSV" exports are placed among Sources' filter controls rather than
   with other export/utility actions. `[Visual]`
@@ -401,10 +443,13 @@ Full entry-point notes: `raw.md` Phase 3.
 
 - **`--ok`/`--warn` AA contrast failure** — see `H-7`. This is the only accessibility finding with hard measurement
   behind it in this pass.
-- **No narrow-viewport evidence exists.** A resize to 400×800 did not take (capture frame stayed at 1436×840);
-  every layout/responsive question is unanswered. Per `AUDIT.md` §4.3's mobile severity cap, any future
-  narrow-viewport finding is capped at Medium unless it also breaks a desktop workflow or the layout is unusable
-  rather than cramped.
+- **Narrow-viewport evidence is now partial, not absent.** The browser-automation resize tool still does not work
+  (a 400×800 attempt did not take), but Kyle captured four states by hand at ~390pt width on 2026-09-13
+  (Sources ×2, Research overview, a chat with citations) — see `evidence/baseline/`. None show a layout break,
+  clipped text, or horizontal scroll. Home, login, empty-project, and failure states remain uncaptured at narrow
+  width, so the layout/responsive question is answered for some surfaces, not all. Per `AUDIT.md` §4.3's mobile
+  severity cap, any future narrow-viewport finding is still capped at Medium unless it also breaks a desktop
+  workflow or the layout is unusable rather than cramped.
 - No first-party console errors were observed in the sampled window (one Chrome-extension exception, not
   first-party). `[Runtime]` — recorded as a clean result, not a finding.
 
@@ -426,7 +471,7 @@ Full entry-point notes: `raw.md` Phase 3.
 |---|---|---|
 | RC-A | No attention model outside Research — every other surface answers "how much" before "what needs me" | H-1, H-3, H-6, M-1, M-2 |
 | RC-B | No shared action/state vocabulary or visual weight for reprocessing actions | H-5 |
-| RC-C | "Stale" has four independent presentations and vocabularies (Findings banner, Plan banner, row badge, Sources filter) | H-3, H-6 |
+| RC-C | "Stale" has five independent presentations and vocabularies (Findings banner, Plan banner, row badge, Sources filter, Discover job-progress badge) | H-3, H-6, F0-4 |
 | RC-D | Row action overload on the workbenches — every capability exposed at every row | H-4, M-4 |
 | RC-E | Loading is indistinguishable from empty on large lists | H-2 |
 | RC-F | Status (health, spend) rendered as an unscannable log-line sentence | H-1 |
@@ -461,29 +506,57 @@ F0 in `ladder.md` exits only when every row here reads *met* or *unsupported / n
 
 | # | Criterion | Status |
 |---|---|---|
-| 1 | Product and version identified | met — 0.63.43, `b85c222`; baseline SHA to be re-pinned after Codex's UI diff lands (F0 step 2) |
-| 2 | Live product inspected read-only **and** interactions exercised on an audit instance | **unmet** — read-only half only; no audit instance exists |
+| 1 | Product and version identified | met — 0.63.43; **baseline pinned at `21bb117`** (2026-09-13, F0 step 2): Codex's standalone `index.html` commit, drift counts re-measured there and identical (430 / 28 / 3 / 16 / 11 / 8) |
+| 2 | Live product inspected read-only **and** interactions exercised on an audit instance | met — audit instance built (`tools/audit-instance.command`), a new project created and driven through every surface, a Master Plan build triggered, dark theme and login exercised (F0, 2026-09-13) |
 | 3 | Surfaces inventoried by intent | met |
-| 4 | Load-bearing workflows walked end to end | **unmet** — all observed, none exercised |
-| 5 | Important states incl. failure and empty inspected | **unmet** — only the populated state of the largest project |
-| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed, not under narrow viewport |
-| 7 | Major findings carry reproducible evidence | partly — reproduction steps yes; `evidence/` empty, no screenshots saved |
+| 4 | Load-bearing workflows walked end to end | met — project creation, empty-state review, acquisition (add source), findings triage, chat, discover, and a Master Plan rebuild were all exercised on the audit instance (F0 addendum 3, six-flow runtime verification matrix, 2026-09-13); scale is separately tracked under criterion 6 |
+| 5 | Important states incl. failure and empty inspected | met — every surface's empty state, one real failure state (a failed source), and the Health panel inspected (F0 addendum, `raw.md`) |
+| 6 | Real-content / large-project behaviour tested | partly — observed at 876 / 16,437 / 1,348; not timed |
+| 7 | Major findings carry reproducible evidence | partly — reproduction steps written for every finding; the original six screenshots from the audit-instance pass were lost to a sandboxed temp path (see `evidence/baseline/manifest.md` history), but eight canonical images taken directly by Kyle now cover Home/Sources/Findings/Research (desktop, dark) and Sources/Research/chat-with-citations (narrow) — not every individual finding has a matching image, so this stays partly, not met |
 | 8 | Drift audited separately | met — measured, ratcheted, per-surface table above |
 | 9 | Cross-surface interactions reviewed | met (as observed) |
 | 10 | Raw observations preserved | met — `raw.md` |
 | 11 | Symptoms consolidated into root causes | met |
 | 12 | Materiality filter applied | met |
-| 13 | Closure pass found no new unpropagated consequence | met for the read-only evidence; must be re-run after F0 step 4 |
+| 13 | Closure pass found no new unpropagated consequence | met — F0's four new findings (`F0-1` low-confidence, `F0-2`, `F0-3`, `F0-4`) fold into existing root causes (RC-E, RC-F, RC-C) with no contradiction; see F0 close-out |
 | 14 | Ladder turns the biggest problems into coherent rungs | met — `ladder.md` |
 | 15 | No product code changed | met |
 
-Not yet inspected at all: Jobs / Health / cost feedback, dark theme (supported per `DESIGN.md` §3 — in scope),
-narrow viewport, empty project, failed source, failed job, failed poll.
+Closed by the F0 audit-instance pass (2026-09-13): Jobs/Health, dark theme, empty project states, one failed
+source. Narrow viewport went from **unsupported / not applicable** to **partly evidenced** after addendum 2's
+static images, then to **interactively verified for two surfaces** (Master Plan, Sources) after addendum 3, once
+`resize_window` was retried and worked — Home, login, empty-project, and failure states remain uncaptured
+interactively (Residual Coverage, below). **Failed/recoverable job-state and interrupted/stale-poll inspection are
+now both closed** (F0 addendum 3, 2026-09-13): a deterministic DNS-failure source exercised the queued -> failed ->
+retried -> failed-again cycle end to end at $0 cost (see `[F0]` failure-state note in `raw.md`), and a naturally
+occurring stale per-job progress badge during a live Discover run produced `[F0-4]` above.
+
+## Residual Coverage
+
+Per `AUDIT.md`'s Bounded stopping rule (Phase 9): the items below are known-uninspected surfaces that F0 is
+closing without chasing further, because none is judged capable of changing a Critical/High finding, a root-cause
+diagnosis, a material acceptance criterion, or `ladder.md`'s ordering. A future pass (interaction-pass audit, or
+RE-AUDIT after any W-rung) should treat this list as its starting point rather than F0 reopening to cover it now.
+
+- Narrow-viewport **interactive** verification on Home, login, empty-project, and failure states (Master Plan and
+  Sources are now interactively verified; four other narrow states have static images only, from addendum 2; the
+  rest have no narrow-width evidence of any kind).
+- The six-flow runtime verification matrix (F0 addendum 3) was exercised on a small, single-project disposable
+  dataset (2 sources, 1 chat, 1 plan), not at the 1,348-row / 16,437-badge scale observed on the real project
+  (addendum 1) — this is why completion criterion 6 stays "partly," not the matrix itself.
+- `[F0-4]`'s stale-badge pattern was observed once, on Discover; whether the same widget class staled identically
+  on Sources' "2 queued" panel (addendum 1) is plausible but not separately confirmed.
+- Timing baseline figures (`AUDIT.md` §4.6) are wall-clock, single-sample, and qualitative — not instrumented
+  client-side timers — sufficient to rule out inventing a threshold from nothing, not to set one.
+- The original six audit-instance screenshots lost to a sandboxed temp path (addendum 1/2 history) were never
+  recovered; Kyle's own 8 replacement images (addendum 2) cover different states than the lost set, not a like-for-
+  like replacement.
+- Dark theme has computed-contrast verification only, no visual screenshot evidence (unchanged from before this
+  addendum).
 
 ## Assumptions / cannot verify
 
-Narrow-viewport rendering (resize attempt failed to change the capture frame); polling/refresh flicker over time;
-Health/Jobs surfaces (not opened this pass); every Phase 3 interaction walk (acquisition, findings triage, chat,
-discover, plan rebuild, job monitoring) — filed as observed-not-exercised, deferred to the audit-instance pass;
-whether Findings' blank period (`H-2`) is network-bound or render-bound (needs timing instrumentation); dark theme
-was not screenshotted, so no visual (only computed-contrast) verification exists for it.
+Narrow-viewport interaction beyond Master Plan and Sources (resize-tool now works; Home, login, empty-project,
+and failure states remain uninspected interactively — see Residual Coverage); whether Findings' blank period
+(`H-2`) is network-bound or render-bound (needs client-side timing instrumentation, not just wall-clock
+observation); dark theme was not screenshotted, so no visual (only computed-contrast) verification exists for it.

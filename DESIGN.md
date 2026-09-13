@@ -6,6 +6,11 @@
 
 Neuro Search should feel like a well-made research instrument: calm, precise, trustworthy, and dense when density helps.
 
+**Calm at first glance, powerful on demand.** The interface must never dump its entire internal state onto the
+screen at once, and it must never make the user excavate a simple answer through menus, tabs, drawers, and modals.
+Every layer of disclosure must earn the click it adds. See section 3's "Progressive disclosure without interaction
+tax" for the governing rule and interaction-depth heuristic this implies.
+
 The interface should make complex research feel smaller. Within about five seconds, a reasonable first-time user should understand:
 
 1. where they are
@@ -32,6 +37,18 @@ Do not restructure a feature whose mission explicitly locks its behavior or layo
 
 `DESIGN.md` is the design source of truth. `AUDIT.md` checks whether the implementation follows it. The audit does not invent a new design language or override feature semantics. This file is `DESIGN.md` — capitalised, matching `CLAUDE.md`, `HANDOFF.md`, `AUDIT.md`. Do not create a second lowercase copy; the working disk is case-insensitive and Git will eventually track two names for one file.
 
+`APPLE-DESIGN-REFERENCES.md` contains first-party Apple design sources and Neuro-specific interpretation for
+progressive disclosure, simplicity, interaction depth, interface writing, familiarity, craft, and onboarding. It is
+supporting reference material, not a second design system. `DESIGN.md` remains authoritative for Neuro; where the
+two conflict, `DESIGN.md` wins until the conflict is deliberately reviewed.
+
+**What "Apple-like" means here, and what it does not.** It means principles: intention, agency, familiarity,
+simplicity that is not emptiness, concise contextual language, craft, restrained motion, predictable consequences,
+and delight through competence. It does **not** mean copying Apple's visual chrome, recreating macOS/iOS, adding
+glass effects or Apple-style marketing language, blindly adopting platform components, making every screen sparse,
+hiding functionality, increasing click depth, or replacing Neuro's own tokens. Neuro keeps its own identity and
+research-tool density.
+
 ## 3. Product UX rules
 
 1. **Meaning before metadata.** Show outcomes and user meaning before engine detail. Internal terminology belongs in advanced inspectors when plain language is available.
@@ -44,6 +61,77 @@ Do not restructure a feature whose mission explicitly locks its behavior or layo
 8. **Preserve uncertainty.** Weak, stale, partial, conflicting, or incomplete evidence must not look settled.
 9. **Real progress only.** A click acknowledges immediately. Show real counts, stages, queue state, or honest indeterminate progress. Never invent a percentage.
 10. **Default views are curated.** Surface no more than 3 to 5 priority items before the user asks for more.
+
+### Progressive disclosure without interaction tax
+
+Neuro currently tends to lay information, controls, metadata, warnings, and secondary detail directly onto the
+page all at once. The redesign must reveal information more intentionally — but the opposite failure is equally
+bad: hiding useful information behind layers of buttons, menus, tabs, drawers, and modals until a simple task
+requires five clicks.
+
+**Governing rule: surface conclusions and actions; collapse explanation and machinery; never collapse the result
+itself.**
+
+1. **The primary result should usually require zero clicks.** When Neuro already knows the thing the user came to
+   the surface to understand — what matters, current status, recommended next action, an important warning, a
+   plan recommendation, a research conclusion, whether something needs attention, whether a job succeeded or
+   failed — show it immediately. Do not make the user open a card or drawer merely to discover a result's primary
+   meaning.
+2. **Supporting explanation should usually be one reveal away.** Why this matters, why Neuro thinks this,
+   supporting evidence, what changed, secondary statistics, freshness reasoning, related Claims, source details,
+   and consequences of an action belong behind inline expansion, an accordion, a drawer, a popover, or a
+   contextual "See why" / "Details" control — chosen by the amount and importance of the information, never
+   defaulted to a modal.
+3. **Deep machinery may live another level down.** Provenance, evidence lineage, model/debug information, raw
+   Claim internals, job diagnostics, research diagnostics, historical state, and large filter/control sets can sit
+   two levels deep. A normal user should not have to traverse this layer to complete a normal workflow.
+4. **Common actions stay close to the result.** Do not hide a frequently used action inside an overflow menu
+   merely to make the page look cleaner. If an action is the likely next step from a result, it stays directly
+   available on that result; secondary or rare actions move behind an overflow control, a drawer, or an expanded
+   state.
+5. **Interaction-depth heuristic.** For ordinary workflows, design toward 0 clicks to understand the result, 1
+   click to understand it deeply, and ≤ 2 clicks to perform the normal next action. This is a heuristic, not a
+   mechanical test — complexity, safety, expense, or irreversibility can genuinely require more steps — but any
+   workflow requiring 3+ sequential interactions should be examined for unnecessary interaction depth. Avoid
+   `result -> menu -> modal -> tab -> detail -> action`; prefer `result -> action` or
+   `result -> See why -> supporting detail`.
+6. **Hide complexity, not usefulness.** Progressive disclosure should hide what is secondary, advanced,
+   contextual, diagnostic, infrequently needed, or only relevant after another decision. It must never hide the
+   answer, the recommended action, meaningful status, an important warning or cost, a failure state, or whatever
+   needs the user's attention.
+7. **Reveal mechanisms have different jobs.** Inline disclosure/accordion for supporting content that belongs to
+   the current context. A drawer for inspecting an object while preserving where the user was (source, Claim,
+   finding, question, watch-out, plan item). A popover for a small contextual explanation (a definition, "why?",
+   a freshness or cost explanation). A modal only when the user is making a contained decision that deserves
+   interruption — a destructive action, significant spend, permissions, an irreversible or high-impact
+   configuration. Do not use a modal as ordinary navigation.
+8. **Animation explains state changes; it does not decorate them.** Motion should help the user understand what
+   expanded, what collapsed, where new information came from, where an object moved, that an action completed, or
+   that state changed — kept short and functional. It must never delay access to information, become required to
+   understand state, make a repetitive workflow slower, or exist only to look modern. Respect reduced-motion
+   preferences.
+9. **Do not solve density solely with cards.** Not every object deserves its own large rounded card. Prefer
+   hierarchy, grouping, rows, compact summaries, nested disclosure, drawers, whitespace, typography, dividers, and
+   contextual controls before turning every piece of information into another card.
+10. **Applying this while implementing an existing audit rung** (not re-auditing): for each surface, ask what must
+    be visible immediately; what is useful but secondary and can be revealed; what is advanced machinery that can
+    move deeper; what the normal next action is and whether it is directly accessible; whether reducing visual
+    density accidentally increased click depth; whether the user can understand the result without interacting;
+    whether the explanation is one reveal away; and whether the normal action completes within roughly two
+    interactions. If improving one dimension harms the other, prioritize the user's workflow over visual
+    cleanliness — a visually sparse interface that makes the user hunt is not an improvement, and a visually dense
+    interface that exposes every internal detail at once is not an improvement either. The target is calm at
+    first glance, powerful on demand.
+11. **Simplicity is not minimalism.** An interface can look visually empty while still making the user hunt
+    through layers of controls — that is not simple, only sparse. Neuro may stay dense where density genuinely
+    helps understanding, comparison, or work (rule 9 above already says not to solve this with cards). Simplicity
+    means removing friction and cognitive burden, never removing useful capability.
+12. **Complexity appears just in time, not just in case.** Do not expose configuration, advanced controls,
+    internal research machinery, or an additional decision before it is actually useful to the task at hand.
+13. **Context should reduce copy, not the other way around.** Layout, state, hierarchy, and surrounding content
+    should do most of the explaining, so a label can stay short (`Review`, `Retry`, `Continue`) without becoming
+    vague — this is the same semantic test as rule 5 above, applied to brevity: a short label is good only when
+    context makes its consequence predictable, not because shorter is inherently better.
 
 ## 4. Shell and page hierarchy
 
@@ -214,6 +302,23 @@ Action before analysis. `Start here` and `This week` stay above deeper analysis,
 
 Operational tools may be denser and more technical. Factual state, tables, filters, and clear controls over decorative cards.
 
+### Project creation — the canonical progressive-disclosure exemplar
+
+This flow is the clearest test of section 3's progressive-disclosure rules and the reference other surfaces should
+be judged against, not a one-off exception.
+
+Ask for the minimum needed to begin — conceptually close to project name, goal, create — and start useful work
+immediately. This is a direction, not a frozen copy/layout spec; a rung that ships this still owns its own exact
+wording and field set.
+
+Behind that simple surface Neuro may do substantial work: checking the existing library, finding reusable research,
+finding related projects or sources, ranking material, identifying gaps, preparing the project. None of that
+orchestration needs to be exposed merely because it exists — show human-readable progress and results as they
+become useful, in the product's own language, never internal job names.
+
+The desired feeling: **the product prepared the room before the user walked into it.** That is a behavioral
+standard for what the flow accomplishes, not a request for decorative animation.
+
 ## 9. Content and microcopy
 
 Voice: plain, concise, specific, non-performative.
@@ -221,6 +326,10 @@ Voice: plain, concise, specific, non-performative.
 Prefer `3 sources still need review`, `This may change your financing plan`, `Search my existing research`, `No major evidence problems need your attention`.
 
 Avoid `Unlock powerful insights`, `AI-powered intelligence`, `Supercharge your research`, `Magic`, generic praise such as `Great question`, and engineering labels when a user outcome can be named.
+
+Project creation *feeling* surprisingly capable — because real, substantial work happens smoothly with
+little burden on the user — is a legitimate experience goal (see section 8's Project creation direction); it is
+never license to literally label a feature "magic," "magical," or "AI magic" in the interface.
 
 Use real product content while designing and testing. No lorem ipsum, generic fake analytics, or decorative AI-generated imagery in functional UI.
 
