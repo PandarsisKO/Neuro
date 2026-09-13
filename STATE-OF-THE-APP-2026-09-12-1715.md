@@ -1,4 +1,4 @@
-# State of the App — 2026-09-12 17:15 PT
+# State of the App — 2026-09-12 17:15 PT (superseded)
 
 This is the current orientation source and supersedes the 17:05 state file.
 

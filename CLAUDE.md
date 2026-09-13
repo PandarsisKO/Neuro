@@ -84,9 +84,10 @@ Reuse the existing invocation ledger, run ids, leases/heartbeats, provider polic
 Durable per-window/group work reuse (R4) is implemented in 0.63.40 and its consolidated 66-case abuse gate passes.
 Bounded concurrency (R5) is implemented in 0.63.41 and its deterministic concurrency gate passes. R6 Fast/Warm
 admission is implemented in 0.63.42 and its gate passes. R7 novelty/residual reading is implemented in 0.63.43 and
-its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. T1's first measurement slice is prepared in the existing production `text-embedding-3-small` space so derived vectors can be compared to existing chunks. R9(a) selected local Ollama `bge-m3` (1024 dimensions) in an
+its gate passes; authenticated Foundation closeout is complete and Transcript Intelligence is admitted. T1's first measurement slice is implemented in the existing production `text-embedding-3-small` space so derived vectors can be compared to existing chunks. R9(a) selected local Ollama `bge-m3` (1024 dimensions) in an
 isolated fixture: 34.48 ms p50, recall@10 1.0000, MRR 0.8898; that local space is reserved for a later full-space migration gate. The ready-to-execute design and gates are in
 `docs/T1-ADMISSION-2026-09-12.md`. Do not change existing 1536-dimensional production chunk embeddings or
 re-embed the live corpus until versioned migration/backfill gates exist. R9(b) is complete (Llama 3.1 8B adopted for
 short classification; Qwen3 8B, Qwen3 14B and gpt-oss-20b rejected on the measured gate). R9(c)'s long-window
-findings/claims benchmark remains open; follow `PRODUCT-SCHEDULER.md` and the pre-T1 audit before implementation.
+findings/claims benchmark is explicitly deferred with a numeric revisit trigger; follow `PRODUCT-SCHEDULER.md` and
+the newest State-of-the-App before continuing T1.
