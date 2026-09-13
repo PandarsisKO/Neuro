@@ -1336,3 +1336,9 @@ manual gold adjudication of the 60-row queue; persistence/T4 remain gated.
 
 Questions ending in `?` no longer receive an overlapping procedure label; imperative `Do ... .` remains supported. Focused
 T3/review tests are 25 passed and evidence artifacts are refreshed. Continue pending gold adjudication.
+
+## T3 interrogative/procedure release checkpoint — 2026-09-13 15:22 PT
+
+Questions no longer receive procedure labels; imperative `Do ... .` remains supported. Commit `81f2cd9` is green under
+1,393 full tests and release-check artifact `evals/release/release-check-0.63.65-81f2cd9-20260913-152248.json`.
+Continue manual gold review; persistence/T4 remain gated.

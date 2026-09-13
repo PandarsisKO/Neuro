@@ -209,3 +209,10 @@ exact-span gold adjudication; no downstream trust or persistence is admitted.
 Seeded review found questions such as `Do you trust them?` receiving a second `procedure` label. Procedure emission
 now excludes terminal interrogatives while preserving imperative `Do ... .` sentences. Focused T3/review coverage is
 25 passed; both evidence artifacts were refreshed. The larger gold-label gate remains open.
+
+## T3 interrogative/procedure release checkpoint — 2026-09-13 15:22 PT
+
+Procedure/question overlap is fixed at `81f2cd9`; focused T3/review tests are 25 passed, full pytest is 1,393 passed
+with one existing Starlette warning, and repo/release checks pass. Artifact:
+`evals/release/release-check-0.63.65-81f2cd9-20260913-152248.json`. Manual gold adjudication of the 60-row queue
+remains required before persistence or T4.

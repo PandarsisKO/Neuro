@@ -2171,3 +2171,8 @@ still requires exact-span gold adjudication before downstream trust.
 
 Interrogative `Do ...?` spans no longer become procedures; imperative sentences remain covered. Evidence was refreshed
 read-only and remains pending gold review.
+
+## T3 interrogative/procedure release checkpoint — 2026-09-13 15:22 PT
+
+Interrogative procedure false positives are removed under 25 focused and 1,393 full tests. The pending queue still
+requires exact-span gold adjudication before downstream trust.
