@@ -1409,3 +1409,28 @@ clicks on the actual rendered app, per the ladder's own "rung most likely to hid
 has not had a fresh visual pass since this landing — Codex's browser check was against the pre-fix,
 pre-.tag-scope-repair build. Worth a look next time the audit instance is up, alongside whatever's left of
 F2/W1's re-scoring.
+
+## Audit-instance worktree repaired and repinned to current main — 2026-09-13
+
+Kyle asked for a fresh server so he could verify he was checking the right (current) code. Found
+`.worktrees/f0`'s git registration orphaned again (`.git` pointed at a `.git/worktrees/f0` directory that no
+longer existed) — same failure mode as the mid-session wipe documented earlier, cause not re-investigated this
+time since the fix is the same either way. Its checked-out files were also stale relative to current `main`
+(predating this session's crash fix and Rung W2 landing), which is what actually blocked Kyle from seeing the
+right thing regardless of the git-registration issue.
+
+Preserved `data-audit/` (15GB, including the already-inspected copied backup DB with real WAL activity from
+Codex's own browser session earlier) by moving it out before touching anything, removed the orphaned worktree
+directory, ran `git worktree prune`, and recreated `.worktrees/f0` as a proper detached-HEAD worktree pinned to
+current `main` (`724cc58` — includes the startup-crash fix, Rung W2, and the launcher fix below). Moved
+`data-audit/` back in afterward; nothing in it was touched or lost.
+
+Also fixed both copies of the launcher script (`tools/audit-instance.command`, tracked; the untracked root
+convenience copy `RUN THIS - Audit Instance.command`): both hardcoded `baseline 21bb117` in their startup
+message and provenance write, which had gone stale the moment the pinned baseline last moved. Both now compute
+`git rev-parse --short HEAD` at launch time instead, so the printed baseline commit is always accurate — this
+exact kind of staleness is what caused today's confusion, so it's worth not repeating.
+
+Audit instance is ready: Kyle can double-click `RUN THIS - Audit Instance.command` and get current `main`
+(`724cc58`) on port 8788 with the same previously-inspected data, fake AI, $0 budgets, login token `audit`. This
+unblocks the still-open F2/W1 re-scoring and Rung W2's own behavioral/visual gate in one restart.
