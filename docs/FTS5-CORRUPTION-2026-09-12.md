@@ -117,9 +117,11 @@ there is no way to tell after the fact.
 
 ## 6. Suggested follow-ups, in order of value
 
-1. **Run a full `PRAGMA integrity_check` on a copied verified backup** (never in place). It is the only way to know
-   whether the fts5 index is actually consistent on disk; `quick_check` cannot answer it.
-2. **Confirm the SQLite version** the Mac's Python links against, so we know what the integrity pragmas cover.
+1. **Copied-backup integrity audit — closed 2026-09-13.** A temporary copy of
+   `data_backup_2026-09-03/neurosearch.db` passed full `PRAGMA integrity_check` in 0.11s with no foreign-key
+   violations. The check was run on the copy, never in place.
+2. **SQLite version — closed 2026-09-13.** The repo's Python 3.14 links SQLite 3.53.4 with `ENABLE_FTS5` and
+   `DEFAULT_MMAP_SIZE=0`, so the copied-backup integrity result includes FTS5's virtual-table consistency walk.
 3. **Recovery path — closed 2026-09-13.** `db.rebuild_fts5()` now runs the remedy statement,
    `INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')`, inside the app's serialized `BEGIN IMMEDIATE` writer
    transaction, follows it with a full `PRAGMA integrity_check`, and records the result in `db:last_fts_rebuild`.
