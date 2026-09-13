@@ -345,3 +345,32 @@ declarations (`margin-top:3px`, `margin-top:2px`, the `margin-left:auto;display:
 `display:none` state toggles on the research panes (deferred with the rest of that work). Research is now
 similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to
 Jobs/Health/boot.
+
+## Design ladder — F1 step 2h landed — 2026-09-13
+
+Moved the retirement pass onto Jobs/Health/boot (the next surface in `audit.md`'s ranking after Research):
+`bootRow`, `renderBoot`, `loadJobs`, `loadNotes`, `useBadges`, `loadWorkbench`. On `main` at merge commit
+`270a745` (source commit `0e76e8f` on branch `design/f1-step2h`, now deleted). `loadPool`, `loadBacklog`,
+`perfReport` and `loadHealth` were reviewed and found to have zero exact-match candidates left — `loadPool`'s
+were already retired by step 2e (it doubles as a Sources function), and the rest are off-scale, combined, or
+dynamic throughout (perfReport's debug tables, loadHealth's single off-scale `margin-top:3px`).
+
+Substitutions: `bootRow`'s lone `flex:1;min-width:0` -> `class="grow min-w-0"`; a `font-size:12px` merge into an
+existing `muted` class -> `.text-xs` on the channel byline; 2x `class="tag" style="color:var(--warn)"` ->
+`class="tag status-warn"` (older-matcher, generic-match badges). `renderBoot`'s 2x `margin-top:4px`/`margin-top:8px`
+merges into existing `muted` classes -> `.mt-1`/`.mt-2`; a bare `margin-top:8px` -> `class="mt-2"`; a bare
+`flex:1` spacer span -> `class="grow"`. `loadJobs`' `class="muted" style="flex:1"` (2x: spend line, per-job
+message span) -> `class="muted grow"`; a bare `flex:1` (coldLine span) -> `class="grow"`; a lone
+`color:var(--bad)` (dependency-failure span) -> `class="status-bad"`. `loadNotes`' `margin-bottom:8px` merge into
+its `row` class -> `.mb-2`. `useBadges`' lone stale-source `color:var(--warn)` tag -> `status-warn`.
+`loadWorkbench`'s 2x bare `flex:1` (source-filter chip, low-value-sweep banner) -> `class="grow"`. Every touched
+element checked first for JS reading/setting its `style` property (none does). 16 style attributes eliminated
+(360 -> 344); `MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.52`. 24
+tests pass.
+
+Left untouched, same discipline: `margin-top:5px`/`3px`/`6px` (off the `--space-*` scale), shorthand
+`margin:8px 0`/`margin:4px 0 8px` banners, `flex-wrap`/`overflow`/`text-overflow` combinations with no covering
+class, the dynamic `${rt.blocked ? ... }` inline-color ternary in `loadJobs`, and every `font-size:11px`/`12.5px`
+instance (off the current `--text-*` scale — a candidate for a future token, not a mechanical substitution).
+Jobs/Health/boot is now similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit
+should move to Master Plan.
