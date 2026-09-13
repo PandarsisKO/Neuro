@@ -1885,3 +1885,19 @@ The full release gate passed at
 `evals/release/release-check-0.63.57-9c15f36-20260913-110852.json` (1,362 tests,
 all gates PASS). A duplicate T1 helper block in `neurosearch/db.py` was
 removed before that gate; `neurosearch repo-check` now reports no findings.
+
+## FTS5 recovery seam — 2026-09-13
+
+The sleep/wake incident had a documented diagnosis and a safe mmap reversal, but the product had no supported
+repair path if `chunks_fts` ever stayed inconsistent on disk. That gap is now closed in the backend without
+opening the live database outside the app. `db.rebuild_fts5()` runs the external-content FTS5 special `rebuild`
+command inside a `BEGIN IMMEDIATE` transaction on the app's writer connection, then runs a full
+`PRAGMA integrity_check` and records the result in `kv` as `db:last_fts_rebuild`.
+
+The authenticated `POST /api/maintenance/fts5/rebuild` endpoint requires an explicit `{"confirm": true}` body;
+passive health and backup reads never trigger it. The focused contract test covers the confirmation guard, rebuild,
+post-rebuild integrity result, and search readability (`tests/test_s52_fts5_recovery.py`). The operation is intended
+for an operator after a persistent integrity failure, not as an automatic response to a transient stale read.
+
+The independent copied-backup audit remains clean: Python 3.14 links SQLite 3.53.4 with `ENABLE_FTS5` and
+`DEFAULT_MMAP_SIZE=0`; full `PRAGMA integrity_check` returned `ok` in 0.11s with no foreign-key violations.

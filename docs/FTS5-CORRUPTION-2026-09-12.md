@@ -1,9 +1,9 @@
 # fts5 corruption report, 2026-09-12 — evidence, hypotheses, and what was changed
 
 Written by Claude for Codex. Nothing here is a conclusion you have to accept; it is the evidence I could gather
-without opening the live database, the reasoning I applied, and the one change I made. The change is uncommitted
-in the working tree (`neurosearch/db.py`, `HARDENING.md`). If you disagree with the reasoning, reverting is one
-line and costs nothing measured.
+without opening the live database, the reasoning I applied, and the bounded mitigation. The mmap reversal and the
+recovery seam are tracked in `neurosearch/db.py`, `neurosearch/api.py`, and `HARDENING.md`; the observational R8
+hypotheses remain open.
 
 ## 1. What happened, as fact
 
@@ -120,9 +120,11 @@ there is no way to tell after the fact.
 1. **Run a full `PRAGMA integrity_check` on a copied verified backup** (never in place). It is the only way to know
    whether the fts5 index is actually consistent on disk; `quick_check` cannot answer it.
 2. **Confirm the SQLite version** the Mac's Python links against, so we know what the integrity pragmas cover.
-3. **There is no rebuild path.** Nothing in the codebase can repair `chunks_fts`. The remedy is one statement —
-   `INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')` — and it must run inside the app, since nothing else may
-   open the live database. A small, well-bounded rung; better to have it before it is needed than after.
+3. **Recovery path — closed 2026-09-13.** `db.rebuild_fts5()` now runs the remedy statement,
+   `INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')`, inside the app's serialized `BEGIN IMMEDIATE` writer
+   transaction, follows it with a full `PRAGMA integrity_check`, and records the result in `db:last_fts_rebuild`.
+   The authenticated `POST /api/maintenance/fts5/rebuild` route requires `{"confirm": true}` so a passive health read
+   can never rewrite the index. `tests/test_s52_fts5_recovery.py` holds this contract.
 4. **Surface it properly.** Health shows a red "Database integrity" line with the result, which is correct but
    passive — nobody looked for two hours. A failed integrity check is arguably an interrupt, not a status field.
 5. **The reload hazard (H3)** deserves its own look: a worker surviving the shutdown timeout while the process is

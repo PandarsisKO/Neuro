@@ -2958,6 +2958,38 @@ def integrity_check() -> dict[str, Any]:
     return info
 
 
+def rebuild_fts5() -> dict[str, Any]:
+    """Rebuild the external-content FTS5 index under the app's writer connection.
+
+    This is an explicit recovery operation for a reported FTS5 inconsistency.  The
+    immediate transaction serializes it with other writers; no caller outside the
+    app should ever open the live database to run the special ``rebuild`` command.
+    A full integrity check is run after the rebuild and the result is retained in
+    ``kv`` for the health/history surfaces.
+    """
+    started = time.time()
+    conn = connect()
+    before = conn.execute("PRAGMA quick_check").fetchone()[0]
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute("INSERT INTO chunks_fts(chunks_fts) VALUES ('rebuild')")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    info = {
+        "ts": time.time(),
+        "ok": result == "ok",
+        "before": before,
+        "result": result,
+        "chunks": conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
+        "seconds": round(time.time() - started, 2),
+    }
+    kv_set("db:last_fts_rebuild", json.dumps(info))
+    return info
+
+
 def _flags_health() -> dict[str, Any]:
     """Every experimental / rollback flag with its current value and whether it sits at the release's safe default."""
     try:
@@ -3165,7 +3197,7 @@ def health() -> dict[str, Any]:
     except OSError:
         disk = {}
     inv = invocation_counts()
-    return {"db": {"integrity": _j("db:last_integrity"), "path": str(settings.db_path)},
+    return {"db": {"integrity": _j("db:last_integrity"), "fts5_rebuild": _j("db:last_fts_rebuild"), "path": str(settings.db_path)},
             "invocations": {**inv, "ambiguous": inv.get("outcome_unknown", 0)},
             "backup": {"last_verified": _j("backup:last_verified"), "last_error": _j("backup:last_error")},
             "jobs": {**jobs_by, "stale_running": stale, "expired_leases": stale, "leased": leased,

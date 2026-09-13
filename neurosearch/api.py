@@ -1211,6 +1211,20 @@ def api_backup() -> dict[str, Any]:
     return {"path": str(p), "integrity": chk, "verified": db.verify_database(p)}
 
 
+class Fts5RebuildIn(BaseModel):
+    # Rebuilding is deliberately an explicit maintenance action: it rewrites the
+    # derived search index and should never be triggered by a passive health read.
+    confirm: bool = False
+
+
+@app.post("/api/maintenance/fts5/rebuild", dependencies=[Depends(require_auth)])
+def api_fts5_rebuild(body: Fts5RebuildIn) -> dict[str, Any]:
+    """Explicitly repair the external-content FTS5 index inside the app process."""
+    if not body.confirm:
+        raise HTTPException(400, "confirm=true is required to rebuild the FTS5 index")
+    return db.rebuild_fts5()
+
+
 @app.get("/api/validation-events", dependencies=[Depends(require_auth)])
 def api_validation_events(kind: str | None = None, source_id: str | None = None, project_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
     """Diagnostics: what the evidence validators rejected or repaired (never shown as findings, never lost)."""

@@ -650,3 +650,19 @@ longer applies now that JS toggle logic is spread across separate surface files)
 carry-forward of the pre-split scope. Once that lands, Rung F1 is genuinely closed and F2 (the
 shared loading/empty/failure-state primitive, fixing `H-2`) becomes eligible per `ladder.md`'s
 sequencing.
+## Codex reliability follow-up — FTS5 recovery — 2026-09-13
+
+Claude's copied-backup incident report was independently verified without opening the live database: the repo's
+Python 3.14 links SQLite 3.53.4 with `ENABLE_FTS5` and `DEFAULT_MMAP_SIZE=0`; a temporary copy of
+`data_backup_2026-09-03/neurosearch.db` passed full `PRAGMA integrity_check` in 0.11s and had no foreign-key
+violations. The live mmap setting remains 0; the WAL `-shm` hypothesis and the 30-day R8 observation remain open.
+
+The missing recovery path is now implemented on `main`: `db.rebuild_fts5()` serializes the special external-content
+FTS5 `rebuild` command in a `BEGIN IMMEDIATE` transaction, runs a full integrity check, and stores the result in
+`db:last_fts_rebuild`. The authenticated `POST /api/maintenance/fts5/rebuild` route requires an explicit
+`{"confirm": true}` body, so health and backup paths remain read-only. `tests/test_s52_fts5_recovery.py` covers the
+confirmation guard and post-rebuild search/integrity contract.
+
+Next owner split: Claude continues the suspended D2/F1 design lane and updates the scheduler at its next committed
+frontend boundary. Codex should keep backend/reliability work off Claude-owned design surfaces and append any shared
+handoff or hardening notes before committing.
