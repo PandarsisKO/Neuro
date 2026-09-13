@@ -1,6 +1,6 @@
 # MISSION: QA, STABILIZATION, AND REPOSITORY CONTROL
 
-**Status:** ACTIVE WHEN EXPLICITLY ASSIGNED
+**Status:** COMPLETE / ARCHIVED — 2026-09-13
 
 ## Mission
 
@@ -424,3 +424,14 @@ The durable outcome is:
 - operational recovery checks,
 - a release gate that prevents structural debt from growing,
 - and a repository where historical work is available without being mistaken for current instruction.
+
+## Closeout record — 2026-09-13
+
+R9 was reviewed against the clean `repo-check` output and the current architecture
+map. No dead module, rejected experiment, compatibility shim, or helper cleanup
+could be removed safely without new measurement; the documented `planner_v3`
+alternative remains intentionally disabled and therefore stays. R10 is complete:
+the quality contract and release gate are durable, the current State of the App and
+HANDOFF carry the result, the final merged-design release check passed, and this
+mission is moved to `docs/archive/missions/`. Future work resumes from the
+Transcript Intelligence/T1 or Design D2 ladders, not this stabilization log.

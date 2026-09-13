@@ -117,3 +117,17 @@ Rung evidence belongs in HARDENING.md and current state/handoff documents. Do no
 Answer: what did intervening work benefit, hinder, invalidate or add risk to? Compare touched surfaces and assumptions, write a Resume Delta, and run intersection gates before continuing. Do not mechanically resume a historical checklist.
 
 The prior handoff is retained in `docs/archive/HANDOFF-2026-09-11-pre-foundation.md` for history only.
+
+## QA stabilization handoff — 2026-09-13
+
+The repository-control mission is archived at
+`docs/archive/missions/QA-STABILIZATION-MISSION-2026-09-13.md`.
+R0 through R8 are complete: the root reading path is documented, superseded
+state snapshots are archived, `neurosearch repo-check` is deterministic and
+clean, high-confidence duplicate definitions and the direct-DB boundary are
+covered, design D1/F0 is merged, and `release-check` blocks on repository
+hygiene findings. The merged-design release artifact is
+`evals/release/release-check-0.63.43-6edcb73-20260913-030843.json` and records
+PASS. R9 found no safe unmeasured cleanup candidate; R10 closeout is the next
+action once the mission status is archived. Claude-owned design files remain
+canonical and must not be duplicated.

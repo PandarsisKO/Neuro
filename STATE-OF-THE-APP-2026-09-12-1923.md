@@ -20,3 +20,16 @@ version-stamped semantic cohort.
 
 The working tree still contains Claude's uncommitted Bootstrap/resource/UI/test changes plus untracked QA/design
 documents and inspiration assets. They remain preserved and are outside Codex's committed T1 chain.
+
+## Addendum — 2026-09-13 03:10 PT
+
+Claude's D1/F0 design audit is now merged to `main` at `79c4446`; `DESIGN.md`,
+`AUDIT.md`, `DESIGN-MISSION.md`, Apple references, and the evidence baseline are
+tracked and canonical. The QA stabilization mission completed its measured
+R0–R8 work: `neurosearch repo-check` is clean and is a blocking release gate,
+duplicate top-level definitions were removed, and the centralized DB boundary is
+machine-checked. The full merged-design release check passed at `6edcb73`; see
+`evals/release/release-check-0.63.43-6edcb73-20260913-030843.json`. The QA mission
+is archived after its R10 closeout; remaining product work is governed by the
+Transcript Intelligence/T1 and Design D2 ladders, with H1 economics and T1
+backfill still explicitly deferred/authorization-gated.
