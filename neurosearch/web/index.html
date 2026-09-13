@@ -3,8 +3,8 @@
 <meta name="theme-color" content="#f6f7f9">
 <title>Neuro Search</title>
 <style>
-  :root{--bg:#f6f7f9;--panel:#ffffff;--panel2:#eef1f5;--line:#e1e5eb;--text:#1b1f27;--muted:#5f6878;--accent:#2f5bea;--accent-text:#fff;--link:#2f5bea;--ok:#1a9d63;--warn:#b7791f;--bad:#d2413a;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
-  [data-theme=dark]{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--line:#262b36;--text:#e8e8ea;--muted:#9aa3b2;--accent:#4f7cff;--accent-text:#fff;--link:#8fb0ff;--ok:#3ecf8e;--warn:#f5b642;--bad:#ff6b6b;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
+  :root{--bg:#F6F7F9;--panel:#FFFFFF;--panel2:#F1F3F6;--panel-strong:#E9EDF2;--line:#DDE3EA;--line-strong:#7A8EA5;--text:#18212B;--muted:#515B66;--text-faint:#65707D;--accent:#3156D3;--accent-hover:#2747B8;--accent-soft:#EEF2FF;--accent-text:#FFFFFF;--link:#2f5bea;--ok:#187A5A;--ok-soft:#EAF7F1;--warn:#946200;--warn-soft:#FFF6D8;--bad:#B42318;--bad-soft:#FEF0EE;--focus:#6184FF;--chip:#eef1f5;--user:#e3eafd;--user-text:#1b1f27;--banner:#fff7e6;--banner-line:#f0d9a6;--suggest-line:#b9c8f5;--shadow:0 1px 2px rgba(16,24,40,.06);--side:250px;color-scheme:light}
+  [data-theme=dark]{--bg:#0F1115;--panel:#171A21;--panel2:#1D212B;--panel-strong:#232834;--line:#262B36;--line-strong:#5E6B86;--text:#E8E8EA;--muted:#9AA3B2;--text-faint:#828B9A;--accent:#5F88FF;--accent-hover:#7D9DFF;--accent-soft:#141C34;--accent-text:#0F1115;--link:#8fb0ff;--ok:#3ECF8E;--ok-soft:#143425;--warn:#F5B642;--warn-soft:#342814;--bad:#FF6B6B;--bad-soft:#341414;--focus:#6E8EFF;--chip:#222736;--user:#243266;--user-text:#e8e8ea;--banner:#2a2410;--banner-line:#5a4a1e;--suggest-line:#2f4a8a;--shadow:none;color-scheme:dark}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:15px}
@@ -740,7 +740,7 @@ function toggleTheme() { applyTheme(document.documentElement.getAttribute('data-
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-const UI_VERSION = '0.63.43';
+const UI_VERSION = '0.63.44';
 function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
