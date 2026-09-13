@@ -29,7 +29,12 @@ No live database was opened or re-embedded.
 The affected Foundation/storage gate and the deterministic release check were rerun after the slice; release-check
 passed with experimental flags off (artifact generated 2026-09-12 16:54 PT). The full pytest gate remains a separate
 release-boundary action; the prior attempt was interrupted after an unbounded multiprocessing stall and is not counted
-as a pass.
+as a pass. A later full suite run passed 1,345 tests in 171.90 seconds.
+
+A fresh read-only cohort was collected through the supported localhost API at 17:18 PT across all 13 visible
+projects (`evals/t1/cohort-20260912-1718.json`). Every report returned `measurement_pending` because no corpus-space
+attestation has been admitted; canonical and locator counts were preserved. No live write or re-embed was performed.
+The remaining gate is an explicitly admitted attestation measurement followed by a version-stamped semantic cohort.
 
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
