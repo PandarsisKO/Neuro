@@ -842,6 +842,13 @@ The gate is now closed: full pytest passed **1,364 tests** with one existing Sta
 `evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. The 12M ceiling rung is complete and the next
 Codex action is a fresh priority checkpoint; no further findings-quality changes are admitted without new evidence.
 
+## Live verification of the 12M ceiling — 2026-09-13
+
+After the release checkpoint, the authenticated `GET /api/projects/{id}/findings/quality?status=approved&limit=300`
+request for the large buying-businesses project returned HTTP 200 in 0.625 s from the warmed cache, with
+`counts.duplicate: 1776`, 60 review clusters, and no partial-budget warning. This confirms the running app has loaded
+the 12M ceiling. The read started no job and made no provider call.
+
 ## GitHub backup checkpoint — 2026-09-13
 
 The ordinary `git push origin main` could not complete because the historical graph contains several gigabytes of

@@ -1980,3 +1980,7 @@ The implementation closeout passed the full suite (**1,364 tests**, one existing
 commit-bound deterministic release gate at `0.63.61 @ fd476f5`. Artifact:
 `evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. All frozen Tier 1, retrieval, cache, economic,
 frontend, schema, and backup/restore proofs remained green.
+
+Authenticated live verification then queried the large project's Findings-quality endpoint: HTTP 200 in 0.625 s from
+the warmed cache, 1,776 duplicate findings, 60 clusters, and no partial-budget warning. This confirms the released
+runtime is using the new ceiling; the read created no job and made no provider call.

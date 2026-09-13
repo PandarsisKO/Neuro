@@ -155,6 +155,10 @@ warning), and the deterministic release gate passed at app `0.63.61`; artifact:
 `evals/release/release-check-0.63.61-fd476f5-20260913-133816.json`. This bounded Codex rung is closed. Reassess the
 admitted queue at the next safe checkpoint; do not change the ceiling again without a new measured corpus trigger.
 
+Live authenticated verification confirms the running app serves the 12M result: 1,776 duplicate findings and 60
+clusters for the large project in 0.625 s from the warmed cache, with no partial warning and no work queued. The rung
+is therefore released in code and runtime, not only in tests.
+
 The validated current tree is also backed up remotely on `backup/2026-09-13-clean` (snapshot commit
 `aff2e407b5faae5ee8d193168bfc094f9dfabf7f`). A normal `main` push is blocked by retired historical `VIDEOS/` blobs and
 was not retried destructively; local history remains intact pending an explicit history-rewrite decision.
