@@ -152,6 +152,13 @@ the canonical design audit explicitly cites those user-captured images. It is
 allowlisted by `repo-check` so evidence retention does not create a false root
 hygiene failure.
 
+R6 design integration is now verified: Claude's D1/F0 artifacts are tracked on
+`main` (`79c4446`), `DESIGN.md`/`AUDIT.md` are canonical, the design drift suite
+passes (26 tests), and the release frontend gates pass. The current full release
+artifact after that merge is
+`evals/release/release-check-0.63.43-6edcb73-20260913-030843` (`.json`/`.txt`),
+with `RELEASE CHECK PASS`.
+
 # R0 - Establish the truth
 
 Before editing production code:
