@@ -62,6 +62,11 @@ The test harness also hard-sets its application token before module collection. 
 tests, and the full deterministic suite passed 1,353 tests with one existing Starlette deprecation warning in
 160.69 seconds. No paid embedding job was queued or executed.
 
+The complete commit-bound release check passed for candidate `fd66241` at 19:22 PT in 172.6 seconds. Its artifact is
+`evals/release/release-check-0.63.43-fd66241-20260912-192249.json`; all Foundation, migration, crash/recovery,
+workflow, Tier 1, retrieval, frontend, and backup gates passed. The existing H1 batch economic gate remains
+intentionally deferred.
+
 This is a real admission boundary, rather than a reason to revive the removed semantic prototype. `semantics.py` was
 removed in 0.63.36 because it had no product/API path and used an all-row, fixed-quantile policy incompatible with
 T1's canonical-active and project-relative requirements.

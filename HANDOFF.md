@@ -35,7 +35,9 @@ T1's pre-backfill correctness review closed the stale/wrong-space selection gap,
 execution and usage accounting, made corpus attestation expire after canonical embedding changes, and removed a
 test-order authentication leak. The 2026-09-12 19:07 PT live re-measurement found 37,629 valid chunk vectors and
 39,740 derived objects across the three retained projects. Full pytest passed 1,353 tests. The backfill remains
-unstarted and requires an explicit spend decision.
+unstarted and requires an explicit spend decision. Commit-bound release-check candidate `fd66241` passed at 19:22 PT
+in 172.6 seconds; artifact: `evals/release/release-check-0.63.43-fd66241-20260912-192249.json`. H1's batch economic
+gate remains deferred by design.
 
 GitHub custody: the current documentation tree is published on `https://github.com/PandarsisKO/Neuro` and the latest
 compact sync was verified tree-equal to this checkout. The published snapshot includes the Foundation R7 closeout,
