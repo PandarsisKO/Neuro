@@ -2142,3 +2142,8 @@ gold adjudication before downstream trust.
 
 Added protections for malformed comma numbers and decimal-period cue splitting; focused T3 is 18 passed. Evidence was
 refreshed read-only and remains non-authoritative pending gold labels.
+
+## T3 numeric-boundary release checkpoint — 2026-09-13 15:13 PT
+
+Malformed-comma and decimal-period protections are green under 1,386 tests and release-check at `763c8eb`. The pending
+60-row queue still requires exact-span gold adjudication before downstream trust.

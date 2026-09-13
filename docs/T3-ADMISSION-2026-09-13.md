@@ -170,3 +170,10 @@ The pending corpus also exposed malformed comma fragments (`1,00`) and sentence 
 (`1.00`). Numeric boundaries now reject comma/period subspans, and cue sentence termination treats a period after a
 digit as decimal content. Focused T3 coverage is 18 passed; both read-only evidence artifacts were refreshed again.
 The larger hand-label gate remains open.
+
+## T3 numeric-boundary release checkpoint — 2026-09-13 15:13 PT
+
+Malformed-comma and decimal-period protections are committed at `763c8eb`; focused T3 is 18 passed, full pytest is
+1,386 passed, and `repo-check` plus commit-bound release-check pass. Artifact:
+`evals/release/release-check-0.63.65-763c8eb-20260913-151330.json`. The seeded queue remains pending manual gold
+adjudication; no persistence, selector, provider, queue, or T4 work is admitted.

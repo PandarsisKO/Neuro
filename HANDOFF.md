@@ -1302,3 +1302,9 @@ closed.
 
 Fixed malformed `1,00` number fragments and decimal-period sentence splitting; focused T3 is 18 passed and both
 artifacts are refreshed. Gold adjudication remains pending before persistence or T4.
+
+## T3 numeric-boundary release checkpoint — 2026-09-13 15:13 PT
+
+T3 numeric boundary hardening is committed at `763c8eb`; full pytest 1,386 passed, focused T3 18 passed, and release
+check is green with artifact `evals/release/release-check-0.63.65-763c8eb-20260913-151330.json`. Continue manual gold
+adjudication of the 60-row queue; persistence/T4 remain gated.

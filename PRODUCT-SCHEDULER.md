@@ -356,3 +356,8 @@ next gate.
 
 Numeric and sentence decimal boundaries are hardened under focused tests; scheduler behavior is unchanged and manual
 gold review remains required.
+
+## T3 numeric-boundary release checkpoint — 2026-09-13 15:13 PT
+
+Numeric and decimal sentence boundaries are release-checked at `763c8eb`; scheduler behavior is unchanged. Manual gold
+review remains the next gate.
