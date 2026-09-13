@@ -731,3 +731,11 @@ toggling across several surfaces (Research panes, Sources grouping/reserve/captu
 Claims filter bars, the jobs card), and this environment has no reliable browser repaint path to
 visually confirm — Codex's own frontend-split HANDOFF entries flagged the identical limitation.
 Worth a quick click-through before treating this as fully verified.
+
+## Runtime checkpoint — 2026-09-13
+
+The supported authenticated Health API was rechecked after the cleanup: live app `0.63.60`, queued/running jobs
+`0`, stale running `0`, leased `0`, database integrity `ok`, foreign-key violations `0`, and the latest verified
+backup present at `data/backups/neurosearch-20260913-1239.db` (three retained projects, 38,038 chunks). No live
+recovery or claims work is pending. Claude's `design/f2-step1-list-state` worktree is present; no F2 implementation
+commit is visible yet, so the ownership boundary remains unchanged and Codex has no admitted overlapping task.
