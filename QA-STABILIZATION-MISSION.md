@@ -131,6 +131,22 @@ first app run, and optional Reddit credentials are unset. No live database was
 opened and no paid model evaluation was run. Existing crash/recovery, breaker,
 retry, backup, and stale-client gates remain part of the release ritual.
 
+### Release verification — 2026-09-12
+
+The complete release ritual passed at commit `5476a03` in 172.6 seconds. The
+current evidence is `evals/release/release-check-0.63.43-5476a03-20260912-194737`
+(`.json` and `.txt`). It includes the blocking repository-hygiene gate,
+1,359-test pytest run, migration and crash/recovery matrices, workflow gates,
+Tier 1 frozen totals, retrieval/cache/prefilter checks, and backup/restore
+integrity. The H1 batch economic gate remains intentionally deferred as a
+pre-existing decision; no paid work was initiated by this mission.
+
+R6 remains a coordination boundary: Claude owns `DESIGN.md`, `AUDIT.md`,
+`DESIGN-MISSION.md`, `docs/design-audit/**`, and the design drift tests in its
+separate F0 worktree. Codex has not modified those paths. Once Claude closes F0,
+the design evidence can be attached to this release result without merging
+product-code changes.
+
 # R0 - Establish the truth
 
 Before editing production code:
