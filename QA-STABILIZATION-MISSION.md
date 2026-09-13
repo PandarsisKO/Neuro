@@ -92,7 +92,9 @@ broken front-door links, and root-entry drift. Focused verification: 117 passed;
 the full suite was rerun after the changes and produced no observed failure.
 
 The next active rung is R3: re-measure correctness/flakiness debt and select the
-highest-value confirmed issue before adding any broader release gate.
+highest-value confirmed issue before adding any broader release gate. After the
+six repository-check fixtures were added, the full suite collected and passed
+1,359 tests with one pre-existing Starlette deprecation warning (138.41s).
 
 The front door is now durable: `AGENTS.md`, `QUALITY-CONTRACT.md`, and
 `QA-STABILIZATION-PROMPT.md` are tracked. Their design references use the
