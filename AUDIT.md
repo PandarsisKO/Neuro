@@ -193,7 +193,10 @@ instance those are real downloads, real transcription, real paid calls and durab
   where scale, real content and real accumulated state are observed, and nowhere else.
 - **Audit instance: interactions.** A second app with a private `NEUROSEARCH_DATA_DIR` restored from a copied
   verified backup, `NEUROSEARCH_FAKE_AI=1` (or a zero daily budget), on a different port. Never a second server
-  against the live data directory. Every click-through in Phase 3 happens there.
+  against the live data directory. Every click-through in Phase 3 happens there. The procedure is tracked (a tiny
+  generic launcher or a documented command — no framework); the copied database, private data directory, tokens,
+  cookies and machine-private state are gitignored and never tracked, so a RE-AUDIT can recreate the instance
+  from the repository alone.
 - If the audit instance cannot be started, each affected workflow is reported as **observed, not exercised**. Do
   not silently downgrade a walk to a code reading and present it as a walk.
 
@@ -228,7 +231,9 @@ Deliver, into `docs/design-audit/<YYYY-MM-DD>-<short-sha>/`:
 - `raw.md`
 - `audit.md`
 - `ladder.md`
-- `evidence/` for screenshots
+- `evidence/` for screenshots — one `baseline/` set of canonical before-states (roughly one image per surface and
+  important state, both themes), at most one `current/` comparison set, and a short `manifest.md`. Accepted changes
+  replace superseded baseline images; a historical image is retained only when a documented regression names it.
 
 The repository root keeps only `AUDIT.md` and `DESIGN.md`; audit output never lands there.
 

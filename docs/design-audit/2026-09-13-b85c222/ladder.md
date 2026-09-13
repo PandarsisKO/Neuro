@@ -22,8 +22,11 @@ Every W-rung carries three gate types, applied where they fit:
   gates named in `AUDIT.md` §4.3 (`test_s44`, `test_s5`, `test_s50`, `UI_VERSION`), contrast, token use, state
   semantics, request-path purity.
 - **Behavioral / workflow regression gate** — the affected workflow still does what it did: existing workflow tests,
-  plus a walk on the audit instance confirming every action the rung touched still calls the same endpoint with the
-  same payload and the same price.
+  plus a walk on the audit instance confirming every action the rung touched keeps the same user-visible operation,
+  state transition, authorization requirement, cost class and truthful disclosure, reversibility, and downstream
+  consequence — unless the rung explicitly intends to change one of those. Endpoint and payload may be recorded
+  during the walk for debugging; they are not a design gate, and "same price" means same cost class and honest
+  estimate, not the same number.
 - **Human UX re-score** — the five-second scorecard (`AUDIT.md` Phase 2) is a structured human evaluation,
   Yes / Partly / No, not a measurement. Each rung names the specific cells it intends to improve; after
   implementation those cells are re-scored and recorded before → after. A cell that the evidence does not move
@@ -52,22 +55,34 @@ and (c) `evidence/` is empty, so a RE-AUDIT has no before-state to compare with.
 2. **Pin the baseline.** Record the resulting commit SHA as the design/audit baseline in `audit.md` Phase 0 and in
    `HARDENING.md`'s drift entry. Re-run the `test_s50` measurement against that SHA; if the counts moved, the
    ceilings and the table in `audit.md` are corrected to the pinned SHA in the same commit.
-3. **Build the minimum disposable audit instance** per `AUDIT.md` §3 ("the audit does not spend money or change the
-   user's research"): private `NEUROSEARCH_DATA_DIR` restored from a copied verified backup, `NEUROSEARCH_FAKE_AI=1`
-   or a zero budget, a different port. A `.command` launcher is enough. It is disposable and never tracked.
+3. **Build the minimum audit instance** per `AUDIT.md` §3 ("the audit does not spend money or change the user's
+   research"): private `NEUROSEARCH_DATA_DIR` restored from a copied verified backup, `NEUROSEARCH_FAKE_AI=1` or a
+   zero budget, a different port. The *procedure* is not disposable: a tiny generic launcher (a `.command` or a
+   documented command in `AUDIT.md` §3 — one screen, no framework) is tracked; the copied database, the private
+   data directory, tokens, cookies and any machine-private state are gitignored and never tracked. RE-AUDIT must
+   be able to recreate the instance from the tracked procedure alone.
 4. **Finish the missing coverage** on that instance, following `AUDIT.md` Phase 3–4 and appending to `raw.md`:
    normal/default states of every surface; the important failure and empty states (new project with nothing in
    it, a failed source, a failed job, a failed poll); Jobs / Health / cost feedback; narrow viewport (~390px,
-   under the `AUDIT.md` §4.3 severity cap); dark theme, which `DESIGN.md` §3 declares supported and is therefore
-   in scope. Anything that cannot be reached is marked **unsupported / not applicable** explicitly, not skipped.
+   under the `AUDIT.md` §4.3 severity cap); dark theme — verified 2026-09-13 as an intentional product state since
+   `v0.7` (persisted `🌙 Dark` / `☀️ Light` toggle in the header and sidebar), so it is inspected, not invented.
+   Anything that cannot be reached is marked **unsupported / not applicable** explicitly, not skipped.
 5. **Capture a small canonical screenshot baseline into `evidence/`.** One representative before-state per major
    surface and per important state — on the order of fifteen to twenty images, light and dark — named
-   `<surface>-<state>-<theme>.png`. Not one per interaction. These are what RE-AUDIT compares against.
+   `<surface>-<state>-<theme>.png`. Not one per interaction. **Retention:** `evidence/` holds one `baseline/` set,
+   at most one `current/` comparison set, and a short `manifest.md` (what each image shows, the SHA it was taken
+   at). A RE-AUDIT that accepts a change replaces the superseded baseline images rather than adding a dated
+   folder; a historical image is kept only when a documented regression names it. No screenshot history tree.
 6. **Update `audit.md`** with any new material finding the coverage produces, and re-run the Phase 9 closure pass
    if one appears. Re-score the scorecard for any surface first seen in this step.
 
 **Exit criterion:** `AUDIT.md` §12's completion criteria 1–15 are each marked *met*, or *unsupported / not
 applicable* with a one-line reason, in `audit.md`. Until that table exists, no F1 work starts.
+
+**F0 does not authorize F1.** Closing F0 ends with a report, not a commit to product code: does anything found in
+step 4 change the ladder's ordering, scope, or root-cause diagnosis? If not, F1 may be admitted next. If it does,
+the ladder is patched first and F1 waits for the patched version. F1 is never started in the same step that closes
+F0.
 
 **Non-goals:** no token change, no copy change, no layout change, no new component, no refactor "while in there."
 If step 4 finds a defect in a state nobody has seen, it is filed, not fixed.
@@ -167,10 +182,12 @@ vs "on the API" are worded, priced and styled independently on Findings, Plan, S
 **Affected surfaces:** Findings (Rebuild banner), Master Plan (Re-analyse banner), Sources ("Suggest findings"),
 Chat ("also search the web").
 
-**Proposed change:** one contract — a fixed verb set following `DESIGN.md` §1 rule 5 (outcome labels), one rule
-for disclosure (any action that spends money or changes durable state says so inline, next to the control, before
-the click), and one button treatment per role from `DESIGN.md` §5 (primary / secondary / tertiary / danger, with
-paid actions carrying their price as part of the label region). Applied to all four surfaces in one rung.
+**Proposed change:** one contract — labels that follow `DESIGN.md` §1 rule 5 (a bare operation verb is fine when
+its outcome is predictable, inadequate when it is not; this is semantic clarity, not a forbidden-word list), one
+rule for disclosure (any action capable of initiating non-free work exposes the applicable cost mode or estimate
+before commitment, using the app's real cost semantics — `$0`, local/subscription time, an API estimate, or "may
+use model/web-search budget" are all valid disclosures), and one button treatment per role from `DESIGN.md` §5
+(primary / secondary / tertiary / danger). Applied to all four surfaces in one rung.
 
 **Precondition:** F1 landed. **Why before W2/W3:** the banner consolidations need settled wording to consolidate
 around.
@@ -179,11 +196,14 @@ around.
 
 **Seam:** action-button markup on the four surfaces; the shared button rules F1 added.
 
-**Gates.** *Deterministic:* a new check in `test_s44` or `test_s50`: every control whose handler names a paid
-endpoint (enumerate them once from `routes.py`) renders a price or a `data-cost` element — no unpriced paid control
-in the DOM; `test_s5`, `UI_VERSION`. *Behavioral:* on the audit instance, each of the four surfaces' reprocessing
-actions is clicked once and the network log confirms the same endpoint and payload as before the rung; existing
-workflow tests (`test_s14_fix_pass`, the Findings/Plan rebuild tests) pass. *Human:* re-score
+**Gates.** *Deterministic:* `test_s44`, `test_s5`, `test_s50`, `UI_VERSION`. *Cost-disclosure check (behavioral,
+enumerated from the product, not from JavaScript):* list the actions that can initiate non-free work from the
+app's own cost/job metadata — the job kinds and admission classes the server prices, the web-search and model
+budgets — and on the audit instance confirm each such action shows its applicable cost mode or estimate before
+commitment. Not bound to handler names, endpoint names, or a literal price element. *Behavioral:* each of the four
+surfaces' reprocessing actions keeps the same user-visible operation, state transition, cost class and disclosure,
+reversibility and downstream consequence (endpoint/payload recorded for debugging only); existing workflow tests
+(`test_s14_fix_pass`, the Findings/Plan rebuild tests) pass. *Human:* re-score
 `Sources › What that will do` (Partly), `Chats › What that will do` (Partly), `Findings › What that will do`
 (Yes for Rebuild / No for Dismiss — record the Dismiss half), `Plan › What that will do` (Partly). Expected:
 each moves toward Yes; Dismiss's reversibility must be stated or the cell stays No.
@@ -215,9 +235,9 @@ component here first, then decide in W3 whether Plan shares it.
 
 **Gates.** *Deterministic:* `test_s50` (banner markup is a common inline-style source); `test_s44`, `test_s5`,
 `UI_VERSION`. *Behavioral:* every priced option previously visible (four Rebuild variants, "Accept N as still
-usable", "Review them", "Dismiss all N") is reachable from the new entry point and fires the same endpoint at the
-same price — checked on the audit instance with the network log; a bulk-dismiss cannot be reached without the count
-of affected items on screen. *Human:* re-score `Findings › Current state` (Partly) and `Findings › What matters`
+usable", "Review them", "Dismiss all N") is reachable from the new entry point with the same operation, cost class
+and truthful estimate, reversibility and consequence — checked on the audit instance; a bulk-dismiss cannot be
+reached without the count of affected items on screen. *Human:* re-score `Findings › Current state` (Partly) and `Findings › What matters`
 (Partly). Expected: both toward Yes.
 
 **Regression risks:** this is the rung most likely to hide a priced action a user currently sees at once — the
@@ -247,8 +267,8 @@ strength) is not moved.
 **Seam:** `renderStaleCard`, `renderPlan` banner block.
 
 **Gates.** *Deterministic:* `test_s44`, `test_s5`, `test_s50`, `UI_VERSION`. *Behavioral:* all four options still
-reachable and priced identically (audit instance, network log); the plan's first section is visible without
-scrolling at 1440×900. *Human:* re-score `Plan › Current state` (Partly) and `Plan › What that will do` (Partly).
+reachable with the same cost class and disclosure behaviour (audit instance); the plan's first section is visible
+without scrolling at 1440×900. *Human:* re-score `Plan › Current state` (Partly) and `Plan › What that will do` (Partly).
 
 **Regression risks:** a default that steers toward a more expensive choice — the rule must be written down in the
 rung's handoff note.
@@ -276,9 +296,11 @@ observation alone.
 **Seam:** `srcRowHtml`, `renderBook`, the static `#view-sources` row template.
 
 **Gates.** *Deterministic:* `test_s44` (handlers), `test_s50` (row markup is the single largest inline-style
-source), `test_s5`, `UI_VERSION`. *Behavioral:* on the audit instance every one of the six actions still functions
-from its new position and calls the same endpoint; a bulk-review pass of twenty rows is timed before and after and
-is not materially slower for the common (non-destructive) case. *Human:* re-score `Sources › What matters` (No)
+source), `test_s5`, `UI_VERSION`. *Behavioral:* on the audit instance every one of the six actions still performs
+the same operation with the same consequence and reversibility from its new position; a bulk-review pass of
+twenty rows is timed **before** the rung — several runs if the numbers are noisy, recorded in the rung's handoff
+note as the baseline — and again after. A material regression against that recorded baseline fails the rung; no
+threshold is set before the baseline exists. *Human:* re-score `Sources › What matters` (No)
 and `Sources › What to do next` (No). Expected: toward Partly or Yes; the Findings row density strength must be
 matched, not traded away.
 
@@ -310,8 +332,8 @@ sidebar footer.
 
 **Gates.** *Deterministic:* `test_s44`, `test_s5`, `test_s50`, `UI_VERSION`; the status component renders the same
 three numbers the current sentence does (a test comparing its DOM to the `/api/…` status payload). *Behavioral:*
-card-body click navigates (a `test_s44`-style handler check plus an audit-instance click); Re-check still fires the
-same probe. *Human:* re-score `Home › Where am I` (Partly), `Home › Current state` (No), `Home › What matters`
+card-body click navigates (a `test_s44`-style handler check plus an audit-instance click); Re-check performs the
+same health probe with the same consequence. *Human:* re-score `Home › Where am I` (Partly), `Home › Current state` (No), `Home › What matters`
 (No), `Chats › Current state` (Partly).
 
 **Regression risks:** ordinary layout risk; nothing priced or destructive is touched.
@@ -359,9 +381,10 @@ that fix belongs in W1 or C1, not here. **Effort:** S aggregate **Risk:** Low.
 
 ## Sequencing
 
-F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 → [cross-cutting RE-AUDIT] → C1 → P1.
+F0 → [F0 close-out report: does the new evidence change the ladder?] → F1 → F2 → W1 → W2 → W3 → W4 → W5 →
+[cross-cutting RE-AUDIT] → C1 → P1.
 
-F1 and F2 may run in parallel after F0. W1 waits for F1. W2 and W3 wait for W1; W4 waits for W1 and for F0's
+F1 and F2 may run in parallel once F0's close-out report has been given and the ladder patched if it needed to be. W1 waits for F1. W2 and W3 wait for W1; W4 waits for W1 and for F0's
 Sources walk. After W5, one RE-AUDIT across every touched surface, against the `evidence/` baseline, before C1 —
 to catch a consequence that five workflow rungs propagated without anyone noticing. Each rung leaves a handoff note
 naming the next incomplete rung (`DESIGN-MISSION.md`, acceptance evidence).
