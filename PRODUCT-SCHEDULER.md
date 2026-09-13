@@ -92,3 +92,12 @@ parallel; no deletion or retention cutoff is admitted before its 2026-10-11 17:2
 change remains trigger-only.
 
 R9(a) admission: `bge-m3` is selected after passing frozen latency, recall and MRR gates; `nomic-embed-text` is rejected on MRR. R9(b) is complete: Llama 3.1 8B is adopted for short classification, while Qwen3 8B, Qwen3 14B and gpt-oss-20b are rejected on the measured gate. R9(c) is explicitly deferred; see docs/R9-ADMISSION-2026-09-11.md.
+
+## HANDOFF UPDATE — 2026-09-13 12:31 PT
+
+Claude remains the owner of D2/F1 Audit and Design work. The frontend lane has since landed F1 items 2–3 (the
+`width:auto` utility and named SVG icon sprite) on `main` through `a914cbf`/`b30420f`; the remaining `display:none`
+scope still needs Claude's element-by-element design pass. Codex's backend reliability follow-up is committed at
+`c513a46` with the explicit authenticated FTS5 recovery endpoint and health history, and its deterministic release
+gate is recorded at `evals/release/release-check-0.63.59-c513a46-20260913-123106.json`. Keep the ownership split:
+Claude advances frontend/design surfaces; Codex takes backend/reliability work and appends shared handoff notes.

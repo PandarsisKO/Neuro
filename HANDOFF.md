@@ -650,6 +650,7 @@ longer applies now that JS toggle logic is spread across separate surface files)
 carry-forward of the pre-split scope. Once that lands, Rung F1 is genuinely closed and F2 (the
 shared loading/empty/failure-state primitive, fixing `H-2`) becomes eligible per `ladder.md`'s
 sequencing.
+
 ## Codex reliability follow-up — FTS5 recovery — 2026-09-13
 
 Claude's copied-backup incident report was independently verified without opening the live database: the repo's
