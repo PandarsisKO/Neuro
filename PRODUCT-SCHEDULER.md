@@ -176,3 +176,11 @@ historical baseline reference. F2's behavioral browser gate remains open and W1 
 
 The later `design/w1-step1-vocab-disclosure` worktree was likewise a dead session pointer with no unique commits. It
 was pruned and its merged local branch removed after verifying ancestry; only `main` remains as an active checkout.
+
+## CODEX RELIABILITY CHECKPOINT — 2026-09-13 13:45 PT
+
+With F2's browser evidence still owned by Claude and no T2 admission gate, Codex admitted one bounded backend
+reliability fix: make verified backups use full SQLite `integrity_check` so FTS5 virtual-table corruption cannot be
+missed by `quick_check`. A copied current backup measured `integrity_check: ok` in 1.479 s; all migration fixtures
+passed. The implementation is committed with a focused 5-test pass; full pytest and the commit-bound release gate
+must pass before the rung is closed. No live database was opened and no unsettled batch was mutated.

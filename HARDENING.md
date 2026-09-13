@@ -1984,3 +1984,17 @@ frontend, schema, and backup/restore proofs remained green.
 Authenticated live verification then queried the large project's Findings-quality endpoint: HTTP 200 in 0.625 s from
 the warmed cache, 1,776 duplicate findings, 60 clusters, and no partial-budget warning. This confirms the released
 runtime is using the new ceiling; the read created no job and made no provider call.
+
+## Backup FTS5 integrity verification — 2026-09-13 13:45 PT
+
+The FTS5 incident exposed a verification gap: `verify_database()` used `PRAGMA quick_check`, while the full
+`PRAGMA integrity_check` is the stronger walk that invokes SQLite's virtual-table integrity hook. A read-only
+measurement on a copied current 1.15 GB backup returned `quick_check: ok` in 5.890 s and `integrity_check: ok` in
+1.479 s (the checks were run sequentially on the same copy; the second benefited from filesystem cache). All five
+legacy migration fixtures also returned `integrity_check: ok`.
+
+`verify_database()` now requires the full integrity result, returns it as `integrity`, and raises with the explicit
+`integrity_check` failure. The backup path therefore cannot record a snapshot as verified while an FTS5 inconsistency
+is invisible to the check. The read remains confined to standalone backup files; it never opens the live database or
+its WAL/`-shm` sidecars. Focused backup, FTS5 recovery, and storage-hygiene tests pass (5, one existing Starlette
+warning). The full suite and commit-bound release gate remain required before this rung closes.

@@ -921,3 +921,15 @@ A later state check found the `design/w1-step1-vocab-disclosure` entry was also 
 its branch pointed to the already-merged `b5b922a` with no unique commits. Git removed only the stale worktree metadata,
 then deleted that fully merged local branch after ancestry verification. The active checkout remains only `main`; no
 Claude-owned files or unmerged work were removed.
+
+## Codex reliability follow-up — full backup integrity walk — 2026-09-13 13:45 PT
+
+A bounded backend gap was found after the FTS5 sleep/wake report: `db.verify_database()` marked backups verified
+with `PRAGMA quick_check`, which does not provide the full FTS5 virtual-table consistency evidence needed for that
+incident. On a copied current 1.15 GB backup, `quick_check` returned `ok` in 5.890 s and full `integrity_check`
+returned `ok` in 1.479 s; all legacy migration fixtures passed the full check.
+
+`verify_database()` now runs full `PRAGMA integrity_check`, returns `integrity: "ok"`, and reports explicit failures.
+The focused backup/FTS5/storage suite is 5 passed. This change is Codex-owned (`neurosearch/db.py` plus the backup
+assertion in `tests/test_core.py`) and does not touch Claude's frontend or design-audit surfaces. Full pytest and the
+commit-bound release gate are the remaining closeout evidence.

@@ -2903,19 +2903,25 @@ REQUIRED_TABLES = ("sources", "segments", "chunks", "projects", "project_sources
 
 
 def verify_database(path: Path) -> dict[str, Any]:
-    """Open a database file read-only and prove it is a usable Neuro Search database: quick_check passes, every
-    required table exists, and the main tables can be counted. Raises RuntimeError otherwise."""
+    """Open a database file read-only and prove it is a usable Neuro Search database.
+
+    A backup only counts as verified after the full integrity walk succeeds.  Unlike
+    ``quick_check``, SQLite's full ``integrity_check`` invokes FTS5's virtual-table
+    integrity hook, which is the check that can detect the corruption seen in the
+    2026-09-12 sleep/wake incident.  The path is a standalone backup, so this read
+    does not touch the live database's WAL or ``-shm`` files.
+    """
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        qc = conn.execute("PRAGMA quick_check").fetchone()[0]
-        if qc != "ok":
-            raise RuntimeError(f"quick_check: {qc}")
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        if integrity != "ok":
+            raise RuntimeError(f"integrity_check: {integrity}")
         have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         missing = [t for t in REQUIRED_TABLES if t not in have]
         if missing:
             raise RuntimeError(f"missing tables: {', '.join(missing)}")
         counts = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("sources", "segments", "chunks", "projects", "project_notes", "conversations", "messages", "plans")}
-        return {"ok": True, "counts": counts, "bytes": path.stat().st_size}
+        return {"ok": True, "integrity": integrity, "counts": counts, "bytes": path.stat().st_size}
     finally:
         conn.close()
 

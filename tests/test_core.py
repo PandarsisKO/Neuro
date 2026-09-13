@@ -870,7 +870,8 @@ def test_backup_is_verified_and_health_reports_it(client, monkeypatch):
     monkeypatch.setattr(settings, "fake_ai", True)
     ingest.ingest_text("Backup fixture", "A small transcript that makes the backup count assertion self-contained.")
     p = db.backup()
-    assert p.exists() and db.verify_database(p)["ok"]
+    verified = db.verify_database(p)
+    assert p.exists() and verified["ok"] and verified["integrity"] == "ok"
     h = client.get("/api/health", headers=H).json()
     assert h["backup"]["last_verified"]["path"] == str(p) and h["backup"]["last_verified"]["counts"]["sources"] >= 1
     chk = db.integrity_check()
