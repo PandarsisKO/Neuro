@@ -114,3 +114,18 @@ The dead root-level `main/` worktree copy was moved intact out of the checkout i
 release-check for the cleaned tree are green at `82765db` (details in `HANDOFF.md`).
 The follow-up isolation cleanup is validated at `d9e2914`: full pytest 1,364 passed, and the commit-bound release
 gate is green. No Codex-owned rung is admitted while Claude's F2 design work is pending its boundary.
+
+## CURRENT CHECKPOINT OVERRIDE — 2026-09-13
+
+The historical checkpoint above is superseded by Claude's merged F2 boundary at `49e2b62` (source `bc1aba1`). The
+shared loading/empty/failed list-state primitive is implemented across Findings, Sources, and Chat history, with the
+UI/package marker at `0.63.61`. Focused frontend/design gates pass, and a clean full-suite run passes **1,364 tests**
+with the existing Starlette deprecation warning. F2's remaining acceptance evidence is the audit-instance behavioral
+check for first-paint loading, clear-on-data, clear-on-error, and an explicit failed state under forced fetch failure;
+Claude owns that verification. W1 is eligible after that gate, but has not started.
+
+Codex remains confined to backend/reliability and measurement surfaces. T2 is still parked behind its own design and
+state-model gate. R8 retention remains observational until 2026-10-11 17:28 PT, and R9(c) remains behind its recorded
+numeric trigger. Preserve the ownership boundary and do not edit Claude-owned frontend or design-audit files while F2
+behavioral evidence is open. The earlier mixed full-suite result was order-dependent noise; the clean rerun and focused
+checks are green.
