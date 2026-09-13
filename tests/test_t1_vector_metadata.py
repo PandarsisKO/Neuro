@@ -83,6 +83,7 @@ def test_t1_coverage_is_read_only_and_explicitly_pending(t1_db):
     assert report["status"] == "measurement_pending"
     assert report["semantic_distributions"] is None
     assert report["corpus_space"] is None
+    assert report["claim_locator_rows"] == 0 and report["finding_locator_rows"] == 0
 
 
 def test_t1_chunk_space_attestation_measures_and_fails_mixed_space(t1_db):
@@ -102,3 +103,19 @@ def test_t1_chunk_space_attestation_measures_and_fails_mixed_space(t1_db):
     db.connect().commit()
     att = t1.attest_chunk_space(provider="openai", model="text-embedding-3-small", dimensions=2, preparation_tag="t1-test")
     assert att["verified"] and t1.get_chunk_space_attestation()["dimensions"] == 2
+
+
+def test_t1_measurement_publishes_project_relative_distribution(t1_db):
+    from neurosearch import t1
+    project_id = db.create_project("T1 measure", "test")["id"]
+    source_id = db.upsert_source(platform="manual", external_id="measure", url="manual://measure", title="measure")['id']
+    db.connect().execute("INSERT INTO project_sources (project_id, source_id) VALUES (?,?)", (project_id, source_id))
+    db.connect().execute("INSERT INTO chunks (source_id, idx, start, end, text, embedding) VALUES (?,?,?,?,?,?)",
+                         (source_id, 0, 0, 1, "chunk", np.array([1., 0.], dtype=np.float32).tobytes()))
+    db.connect().commit()
+    t1.attest_chunk_space(provider="openai", model="m", dimensions=2, preparation_tag="t1-test")
+    db.connect().execute("INSERT INTO project_claims (id, project_id, text, status, created_at, updated_at, embedding_provider, embedding_model, embedding_dimensions, embedding_version, embedding_input_hash, embedding) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         ("c1", project_id, "claim", "accepted", db.now(), db.now(), "openai", "m", 2, t1.VECTOR_VERSION, "h", np.array([1., 0.], dtype=np.float32).tobytes()))
+    db.connect().commit()
+    report = t1.measure_project(project_id, provider="openai", model="m", dimensions=2)
+    assert report["status"] == "measured" and report["claims"]["vector_count"] == 1 and report["claims"]["distribution"]["p50"] == 1.0
