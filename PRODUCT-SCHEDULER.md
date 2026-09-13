@@ -151,3 +151,7 @@ was not retried destructively; local history remains intact pending an explicit 
 
 The backup branch is refreshed after each documentation checkpoint; its current tip is discoverable with
 `git ls-remote origin refs/heads/backup/2026-09-13-clean`.
+
+The stale, already-merged `design/f0` worktree metadata was pruned and its local branch removed after verifying it was
+an ancestor of `main`; only the active main checkout remains. This reconciles the scheduler's stated worktree cleanup
+with the actual repository state.
