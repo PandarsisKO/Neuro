@@ -43,6 +43,21 @@ def enqueue_backfill(project_id: str, limit: int = 5000) -> list[dict[str, Any]]
     return out
 
 
+def backfill_preview(project_id: str) -> dict[str, Any]:
+    """Return the billable T1 scope without queuing or running anything."""
+    conn = db.connect()
+    counts = {}
+    for table, statuses in (("project_notes", ("approved", "suggested")), ("project_claims", ("proposed", "accepted"))):
+        qs = ",".join("?" for _ in statuses)
+        n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE project_id=? AND status IN ({qs}) AND embedding IS NULL",
+                         (project_id, *statuses)).fetchone()[0]
+        counts[table] = int(n)
+    total = sum(counts.values())
+    return {"project_id": project_id, "rows": counts, "total_rows": total,
+            "embedding_batches_at_96": (total + 95) // 96, "queued": 0, "executed": 0,
+            "model": settings.embedding_model, "version": VECTOR_VERSION}
+
+
 def coverage_report(project_id: str) -> dict[str, Any]:
     """Read-only T1 measurement scaffold; semantic coverage stays unavailable until chunk-space attestation exists."""
     conn = db.connect()
