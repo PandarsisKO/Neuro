@@ -811,7 +811,7 @@ globalThis.openSourceSuggestions = async function openSourceSuggestions(sid, sta
 }
 globalThis.clearFindingSource = function clearFindingSource() { FB.source = null; FB.offset = 0; loadWorkbench(); }
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
-globalThis.FB = { offset: 0, limit: 100, source: null };
+globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false };
 globalThis.FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
 globalThis.useBadges = function useBadges(n) {
   const u = n.used || {}; const b = [];
@@ -827,7 +827,9 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
   if (FB.source) p.set('source_id', FB.source);
   for (const [k, id] of [['q', 'fbQ'], ['min_importance', 'fbImp'], ['used', 'fbUsed'], ['stale', 'fbStale'], ['area', 'fbArea']]) { const v = $('#' + id).value; if (v) p.set(k, v); }
-  let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { return; }
+  if (!FB.loaded) $('#notes').innerHTML = listState('loading', { label: 'Loading findings…' });
+  let r; try { r = await api(`/api/projects/${state.project.id}/findings?` + p); } catch (e) { $('#notes').innerHTML = listState('failed', { message: "Couldn't load findings.", retry: 'loadWorkbench()' }); return; }
+  FB.loaded = true;
   // area facet options (keep the current choice)
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;

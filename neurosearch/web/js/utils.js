@@ -1,3 +1,13 @@
+// ---- shared list-state primitive (loading / empty / failed) — DESIGN.md SS7/SS11, Rung F2 ----
+// One shared three-state block for any list that renders from a fetch. `loading` shows on first
+// paint only (callers gate that themselves); `failed` always renders an explicit retry rather
+// than leaving stale or blank content that reads as "still loading" forever.
+globalThis.listState = function listState(kind, opts = {}) {
+  if (kind === 'loading') return `<div class="empty"><span class="spin"></span> ${esc(opts.label || 'Loading…')}</div>`;
+  if (kind === 'failed') return `<div class="empty listfail">⚠ ${esc(opts.message || "Couldn't load — try again.")} <button class="small ghost" onclick="${opts.retry || ''}">Retry</button></div>`;
+  return `<div class="empty">${esc(opts.message || 'Nothing here yet.')}</div>`;
+}
+
 // ---- fun stats: how much did we not have to watch? ----
 globalThis.YARDSTICKS = [   // [label, hours] — things people know the length of
   // binge-watching
