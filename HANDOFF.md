@@ -252,3 +252,23 @@ functions (`srcRowHtml`, `sourceDrawer`, `renderBook`, `transportChoiceHtml`, ca
 seen, quality & promotable drawers, value report, `browserBlock`, `classifyInput`) — the majority of Sources'
 ~141 total. Each is its own future bounded sub-unit. After Sources, `audit.md`'s ranking continues: Research,
 Jobs/Health/boot, Master Plan, Settings, Findings, Chats.
+
+## Design ladder — F1 step 2d landed — 2026-09-13
+
+`srcRowHtml`'s exact-match retirement pass, on `main` at merge commit `119e88c` (source commit `8b9d79b` on
+branch `design/f1-step2d`, now deleted). Same discipline as 2c, applied to this render function: the wrapping
+`flex:1;min-width:0` -> `class="grow min-w-0"`; three `class="tag" style="color:var(--warn)"` spans (under-read,
+legacy-analysis, stale badges) and the "suggested findings" link -> `status-warn`; the error-message div's
+`color:var(--bad)` -> `status-bad`; two identical `margin-top:4px` blocks -> `mt-1`. Every touched element was
+checked for JS that reads/sets its `style` property first (none does). 8 more style attributes eliminated
+(409 -> 401); `MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.48`.
+24 tests pass.
+
+**Explicitly deferred within `srcRowHtml` itself, not just "later Sources":** `margin-top:3px` (off the frozen
+scale) and the two dynamic `style="color:${...ternary...}"` badges (substance score, pool-potential score) —
+turning computed inline colour logic into conditional classes is a materially different, riskier change than a
+static substitution and needs its own considered pass, not a mechanical one.
+
+Codex committed an unrelated, purely-additive `HANDOFF.md`/`docs/T1-ADMISSION-2026-09-12.md` checkpoint
+(`a3ac76f`) between step 2c and 2d landing — checked via diff before resuming, no `index.html` touch, no
+collision.
