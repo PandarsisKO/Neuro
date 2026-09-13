@@ -14,9 +14,10 @@ globalThis.selectChat = async function selectChat(id, push = true) {
   document.querySelectorAll('#chatList .c').forEach((el, i) => el.classList.toggle('active', state.chats[i]?.id === id));
   const c = state.chats.find(x => x.id === id);
   $('#chatTitle').textContent = c ? (c.title || 'Untitled chat') : 'New chat';
-  $('#chat').innerHTML = '';
   if (id) {
-    const ms = await api('/api/conversations/' + id);
+    $('#chat').innerHTML = listState('loading', { label: 'Loading this chat…' });
+    let ms; try { ms = await api('/api/conversations/' + id); }
+    catch (e) { $('#chat').innerHTML = listState('failed', { message: "Couldn't load this chat.", retry: `selectChat('${id}', false)` }); if (push) showView('chats'); $('#q').focus(); return; }
     if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
     else ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false }));
   } else emptyChat();

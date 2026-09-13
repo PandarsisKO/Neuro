@@ -95,7 +95,7 @@ globalThis.rvDiscard = async function rvDiscard(id) { if (!confirm('Discard this
 // R2 part 3 (SPEED-MISSION.md): `html` is the last content rendered per group and `byKey` the current rows, so a
 // refresh can patch only the groups that actually changed instead of rebuilding all 22,470 nodes — which also stops
 // every poll from throwing away scroll position and open/closed state.
-globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {} };
+globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {}, loaded: false };
 globalThis.srcGroupToggled = function srcGroupToggled(key, open) {
   if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key);
   if (!open) return;
@@ -214,7 +214,9 @@ globalThis.loadSources = async function loadSources() {
   loadReviews();
   loadCaptionRecovery();
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
-  const all = await api('/api/sources?' + p);
+  if (!SRCG.loaded) $('#srcList').innerHTML = listState('loading', { label: 'Loading sources…' });
+  let all; try { all = await api('/api/sources?' + p); } catch (e) { $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return; }
+  SRCG.loaded = true;
   const nReady = all.filter(r => r.status === 'ready').length;
   $('#nSources').textContent = nReady;
   if (FUN.n !== undefined && FUN.n !== nReady) loadFun(state.view === 'sources' ? 'srcFun' : null);   // a new source landed: fresh numbers, fresh comparison

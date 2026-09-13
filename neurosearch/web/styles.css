@@ -289,3 +289,6 @@ select[aria-busy="true"], input[aria-busy="true"], a[aria-busy="true"] { opacity
 select.ns-press, input.ns-press, a.ns-press { outline:2px solid var(--accent); }
 /* F1: the hidden attribute must always win over component display rules (e.g. .row{display:flex}). */
 [hidden]{display:none!important}
+/* F2: shared list-state primitive (see js/utils.js listState). */
+.listfail{color:var(--bad)}
+.listfail button{margin-left:8px}
