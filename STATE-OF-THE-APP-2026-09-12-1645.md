@@ -1,4 +1,4 @@
-# State of the App — 2026-09-12 16:45 PT
+# State of the App — 2026-09-12 16:45 PT (superseded)
 
 This is the current orientation source. It supersedes `STATE-OF-THE-APP-2026-09-12-1510.md`.
 

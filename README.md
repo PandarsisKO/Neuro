@@ -280,5 +280,6 @@ tests/           offline tests (pytest)
 ## Product direction
 
 `PRODUCT-SCHEDULER.md` is the only current queue. Historical roadmap lists and mission documents are evidence,
-not assignments. Foundation closeout is complete and Transcript Intelligence is the active program; T1 implementation
-awaits only the R9(c) long-window benchmark recorded in `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+not assignments. Foundation closeout is complete and Transcript Intelligence is the active program; R9(c) is explicitly
+deferred with a numeric revisit trigger, and T1's measurement slice is active. See the newest State-of-the-App and
+`docs/T1-ADMISSION-2026-09-12.md`.

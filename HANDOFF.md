@@ -11,18 +11,19 @@ The active program is Transcript Intelligence, admitted after the completed Foun
 expanded Research/Discover/Planner, additional Bootstrap and unrelated Findings redesign are parked. Old declarations
 of a current mission are historical evidence only.
 
-Current execution state: 0.63.43 is release-checked at commit `bf8d595`. R7 adds project-relative embedding
+Current execution state: Foundation 0.63.43 is release-checked at `bf8d595`; the active T1 slice is release-checked
+on the current T1 commit chain. R7 adds project-relative embedding
 comparison to R6 scheduling and Findings reading: redundant material receives a bounded priority reduction, while
 its least-similar residual chunks are read first. This never removes a source or kept window; missing/corrupt vectors
 leave existing order unchanged. Full pytest, Tier 1 and release-check pass. The authenticated closeout observation
-also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. Prepare the
-Transcript Intelligence T1 first measurement slice in the existing production `text-embedding-3-small` space for
-derived vectors so it can compare against the already embedded chunks. R9(a)'s selected local `bge-m3` result is 34.48
+also found a clean queue, healthy integrity/backup state and interactive endpoint p90 at or below 0.58s. T1 is
+implemented through corpus attestation, versioned derived-vector storage, fail-open measurement helpers, and a
+read-only cohort in the existing production `text-embedding-3-small` space. R9(a)'s selected local `bge-m3` result is 34.48
 ms p50, recall@10 1.0000 and MRR 0.8898; it is reserved for a later full-space migration gate. R9(b) is now complete: Llama 3.1 8B
 clears the short-classification gate and the other declared candidates are rejected. R9(c)'s long-window benchmark
-remains before T1 implementation. R8 retention is deliberately deferred to its non-destructive observation trigger after
+is explicitly deferred with a numeric revisit trigger. R8 retention is deliberately deferred to its non-destructive observation trigger after
 2026-10-11 17:28 PT and is non-blocking. Existing production chunks remain
-unchanged until versioned migration/backfill gates exist. See `PRODUCT-SCHEDULER.md`,
+unchanged; the remaining T1 gate is the explicitly authorized derived-object backfill and semantic cohort. See `PRODUCT-SCHEDULER.md`,
 `docs/PRE-T1-GATE-AUDIT-2026-09-12.md` and `docs/T1-ADMISSION-2026-09-12.md`.
 
 GitHub custody: the current documentation tree is published on `https://github.com/PandarsisKO/Neuro` and the latest
