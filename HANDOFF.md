@@ -424,3 +424,34 @@ cases (still the deferred selects/inputs decision), `#healthLine`'s combined gri
 `#retReason`'s `flex:1;min-width:240px`, `#settleBtn`'s `display:none` state toggle, and the `<dialog>` row's
 `margin-top:12px;justify-content:flex-end` (only the margin half is covered). Settings is now similarly
 exhausted for the mechanical pass; per `audit.md`'s ranking the next sub-unit should move to Findings.
+
+## Design ladder — F1 step 2k landed — 2026-09-13
+
+Moved the retirement pass onto Findings (the next surface in `audit.md`'s ranking after Settings):
+`#view-findings`'s static markup plus `loadReviews`. On `main` at merge commit `05b7088` (source commit
+`658f94d` on branch `design/f1-step2k`, now deleted).
+
+Substitutions: static markup's bare `<span class="muted" style="flex:1">` in the "What's worth keeping" intro
+row -> `class="muted grow"`; the `#fbPager` wrapper's bare `margin-top:8px` -> `class="row mt-2"`, merged
+alongside its existing `id`. `loadReviews`: a lone `color:var(--warn)` rank-note span -> `class="status-warn"`;
+a bare `margin-left:auto` re-rank button in the unranked/unscored branch -> the existing `.push-right` utility
+(the first use of `.push-right` outside the surface it was defined for); a bare `<b style="flex:1">` card
+header -> `class="grow"`; a bare `margin-top:4px` rankLine wrapper row -> `class="mt-1"`. Every touched element
+checked first for JS reading/setting its `style` property (none does). 6 style attributes eliminated
+(321 -> 315); `MAX_INLINE_STYLE_ATTRS` lowered to match in the same commit. `UI_VERSION` bumped to `0.63.55`.
+24 tests pass.
+
+Left untouched, same discipline: `loadReviews`' dynamic `class="card rv${folded ? ' folded' : ''}"
+style="border-color:var(--warn)"` — unlike every other card/border-color merge so far this engagement, its
+`class` attribute is itself a template-literal expression, so a static find/replace can't safely fold in
+`status-warn-border`; this needs its own converter approach and was deliberately deferred rather than forced.
+Also left: the number-input's combined `width:64px;flex:none;padding:4px 6px`, the `display:inline-flex;gap:6px;
+align-items:center;margin-left:auto;white-space:nowrap` wrapper (combined, uncovered), `margin-top:3px`/`2px`/
+`6px`/`10px` instances throughout the card body (all off the `--space-*` scale), the filter input's
+`max-width:240px`, and the per-row dynamic `' style="display:none"'` filter-visibility ternary (deferred with
+other `display:none` cases). Findings' own six `<select>` `width:auto` attributes (still the deferred
+selects/inputs decision), `#fbBar`'s combined `gap:6px;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px`, and
+`#fbGroupCtl`'s combined `display:none;gap:8px;margin:-2px 0 6px;font-size:12.5px` are untouched for the same
+reasons. Findings is now similarly exhausted for the mechanical pass; per `audit.md`'s ranking the next
+sub-unit should move to Chats — noting `whyThisAnswer` was already partially processed during step 2e's
+Sources pass, so it should be checked for remaining exact matches rather than assumed untouched.
