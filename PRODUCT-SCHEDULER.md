@@ -11,12 +11,14 @@ rendered evidence audit (D1), documented in `DESIGN-MISSION.md`; it must not dis
 
 ## SUSPENDED — RESUME FIRST
 
-The current worktree contains an uncommitted Claude-side Bootstrap/resources/UI fix set and its tests:
+The current worktree contains an uncommitted Codex Bootstrap/resources/UI fix set and its tests (begun the afternoon of 2026-09-12; Claude did not touch these files):
 `neurosearch/bootstrap.py`, `neurosearch/resources.py`, `neurosearch/web/index.html`,
 `tests/test_k3_resources.py`, and `tests/test_s14_fix_pass.py`. The focused suite is **73 passed** (2026-09-12).
 These files are intentionally preserved and are not included in the R9/T1 documentation commits. Review, commit, or
-discard them as one coherent set before changing the same surfaces. `AUDIT.md`, `design.md`,
-`Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md`, and the `INSPIRATION/` assets are also untracked handoff material;
+discard them as one coherent set before changing the same surfaces. Claude's uncommitted work is separate: the mmap
+reversal in `neurosearch/db.py` plus two `HARDENING.md` entries (D0 tokens/drift baseline; FTS5 mmap), `DESIGN.md`,
+`AUDIT.md`, `tests/test_s50_design_drift.py`, `docs/FTS5-CORRUPTION-2026-09-12.md`. The `INSPIRATION/` assets and
+`Claude outputs/` are untracked handoff material;
 do not silently delete them.
 
 ## NEXT — admitted priorities (maximum three)

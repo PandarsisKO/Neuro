@@ -23,10 +23,24 @@ from .config import settings
 FALLBACK_POLICY_VERSION = "fallback-policy-v1"    # mirrored from contracts (db must not import contracts)
 
 # R8 storage hygiene, measured 2026-09-11 on a copied 630 MB verified backup. SQLite's default cache was only
-# 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac;
-# mmap pages are shared by the OS and a 1 GB ceiling covers the current database with room to grow.
+# 2 MB and mmap was disabled. The cache is per connection, so 64 MB is deliberately bounded even on a 128 GB Mac.
+#
+# 0.63.44 — mmap is OFF again, and this is a deliberate reversal of one part of R8. On 2026-09-12 the Mac slept
+# from 09:32 to 13:43 (four missed hourly backups, no log line in between) and the FIRST integrity check after it
+# woke reported `fts5: corruption found reading blob 824633720836 from table "chunks_fts"`. It repeated at 14:44
+# and 15:44 with the SAME blob id, always with 0 foreign-key violations, and was gone after a restart. Every
+# hourly backup verified clean throughout — `verify_database` opens its own read-only connection, which never had
+# mmap set. That is the signature of a stale memory-mapped page surviving sleep/wake, not of damage on disk: the
+# b-tree is intact, one specific mapped page reads as garbage, and a fresh process maps it correctly.
+#
+# It matters beyond a noisy log. A page that can be served to `quick_check` can be served to a query, so search —
+# and therefore findings and chat citations — could read a stale page and nobody would know. R8's measured win was
+# the composite index (7.87 ms -> 0.43 ms); mmap was bundled into that rung and never isolated, so there is no
+# recorded benefit being given up here. Causation is not proven: the test is whether corruption recurs across a
+# sleep with this at 0. If it does, this hypothesis is wrong and the line costs nothing to restore.
+# (WAL mode still memory-maps the -shm file regardless of this setting; only table-page reads change.)
 SQLITE_CACHE_KIB = 64 * 1024
-SQLITE_MMAP_BYTES = 1024 * 1024 * 1024
+SQLITE_MMAP_BYTES = 0
 ANALYZE_INTERVAL_S = 7 * 24 * 3600
 
 SCHEMA = """
