@@ -852,6 +852,16 @@ session path and the merged `design/f0` branch still existed locally. `git workt
 metadata, and the fully merged branch was deleted with `git branch -d`; `git worktree list` now shows only the active
 main checkout. No Claude worktree contents or active branch were touched.
 
+## Authenticated runtime checkpoint — 2026-09-13 13:xx PT
+
+The supported `GET /api/health` check reports app `0.63.61`, database integrity `ok` (1.65 s), zero foreign-key
+violations, zero queued/running/stale/leased jobs, and a verified backup at
+`data/backups/neurosearch-20260913-1301.db` (38,038 chunks, 1.15 GB). It also reports two finished provider batches
+with 36 collected results that were never written: one cancelled findings batch (6) and one completed profile batch
+(30). The existing authenticated settlement endpoints can recover these results for free, but no live settlement was
+triggered because it would mutate project data while the claims lane is intentionally paused. They remain an explicit
+operator decision, not an active worker or integrity failure.
+
 ## Audit-instance restart attempt — 2026-09-13 (deferred)
 
 Before starting W1, checked whether F2's outstanding behavioral gate (real-browser check of the loading/failed

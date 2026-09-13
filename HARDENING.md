@@ -1937,6 +1937,15 @@ overrides from the resource, exploration, pool, shell, drawer, acceleration, Cla
 test modules. The S51 ratchet is now **71 remaining modules** (down from 79); the focused batch passed 81 tests with
 one existing Starlette warning. `tests/conftest.py` remains the sole hard-set owner.
 
+## Live batch settlement observation — 2026-09-13
+
+An authenticated Health API read (no direct live-database access) found no queued, running, stale, or leased jobs and
+confirmed database integrity `ok` with zero foreign-key violations. It did surface two finished batches with 36
+collected-but-unwritten results: six from a cancelled findings batch and thirty from a completed profile batch. The
+existing `batches.settle()` / `settle-all` path is the intended free, idempotent recovery mechanism. No settlement was
+started because it would write live findings/profile data while the claims lane is paused; the state is documented for
+the next deliberate operator action.
+
 ## Cold findings-quality budget follow-up — 2026-09-13 13:09 PT
 
 A read-only benchmark against the verified backup `data/backups/neurosearch-20260913-1239.db` was run through a
