@@ -12,9 +12,10 @@ T1 is now the active implementation mission. The first slice is in commits `8acb
 - versioned embedding metadata and additive migrations for `project_notes` and `project_claims`;
 - canonical, dimension-checked, fail-open vector read/write/invalidation helpers;
 - a low-lane durable `t1_embed_derived` job and resumable enqueue adapter;
-- a read-only `/api/projects/{id}/transcript/coverage` endpoint that reports `measurement_pending` until corpus-space
-  attestation exists;
-- six focused tests in `tests/test_t1_vector_metadata.py`.
+- a versioned corpus-space attestation that measures legacy chunk dimensions and fails closed on mixed blobs;
+- a read-only `/api/projects/{id}/transcript/coverage` endpoint that reports `measurement_pending` until attestation
+  exists;
+- seven focused tests in `tests/test_t1_vector_metadata.py`.
 
 No live database was opened, queried, changed, or re-embedded. Claude’s uncommitted Bootstrap/resources/UI work and
 design audit assets remain preserved and separate; do not overwrite or stage them without reviewing the coherent set.
