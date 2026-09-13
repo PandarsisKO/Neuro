@@ -1542,6 +1542,59 @@ def load_versioned_derived_embeddings(table: str, project_id: str, *, provider: 
     return out
 
 
+_T1_DERIVED_TABLES = {
+    "project_notes": ("approved", "suggested"),
+    "project_claims": ("proposed", "accepted"),
+}
+
+
+def set_derived_embedding(table: str, object_id: str, vector: np.ndarray, *, provider: str, model: str,
+                          version: str, input_hash: str) -> None:
+    """Write one versioned T1 vector; callers cannot accidentally write an unlabelled space."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    v = np.asarray(vector, dtype=np.float32).reshape(-1)
+    if not len(v) or not np.isfinite(v).all():
+        raise ValueError("derived vector must be finite and non-empty")
+    with tx() as conn:
+        conn.execute(f"""UPDATE {table} SET embedding=?, embedding_provider=?, embedding_model=?,
+                       embedding_dimensions=?, embedding_input_hash=?, embedding_version=? WHERE id=?""",
+                     (_pack(v), provider, model, int(v.size), input_hash, version, object_id))
+
+
+def invalidate_derived_embedding(table: str, object_id: str) -> None:
+    """Clear a derived vector and all identity fields when its source content changes."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    with tx() as conn:
+        conn.execute(f"""UPDATE {table} SET embedding=NULL, embedding_provider=NULL, embedding_model=NULL,
+                       embedding_dimensions=NULL, embedding_input_hash=NULL, embedding_version=NULL WHERE id=?""", (object_id,))
+
+
+def load_versioned_derived_embeddings(table: str, project_id: str, *, provider: str, model: str,
+                                      version: str, dimensions: int) -> list[dict[str, Any]]:
+    """Return only canonical vectors from the requested space; legacy or corrupt rows fail open."""
+    if table not in _T1_DERIVED_TABLES:
+        raise ValueError("unsupported derived-vector table")
+    statuses = _T1_DERIVED_TABLES[table]
+    qs = ",".join("?" for _ in statuses)
+    rows = connect().execute(f"""SELECT id, project_id, embedding, embedding_input_hash, embedding_dimensions
+        FROM {table} WHERE project_id=? AND status IN ({qs}) AND embedding IS NOT NULL
+          AND embedding_provider=? AND embedding_model=? AND embedding_version=? AND embedding_dimensions=?""",
+        (project_id, *statuses, provider, model, version, dimensions)).fetchall()
+    out = []
+    for row in rows:
+        try:
+            vec = _unpack(row["embedding"])
+            if vec.size != dimensions or not np.isfinite(vec).all():
+                continue
+        except (TypeError, ValueError):
+            continue
+        out.append({"id": row["id"], "project_id": row["project_id"], "embedding": vec,
+                    "input_hash": row["embedding_input_hash"], "dimensions": row["embedding_dimensions"]})
+    return out
+
+
 def _pack(vec: Any) -> bytes | None:
     if vec is None:
         return None
