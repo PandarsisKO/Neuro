@@ -30,7 +30,7 @@ DARK = re.search(r'\[data-theme=dark\]\{(.*?)\}', CSS, re.S).group(1)
 CSS_BODY = re.sub(r'\[data-theme=dark\]\{.*?\}', '', re.sub(r':root\{.*?\}', '', CSS, flags=re.S), flags=re.S)
 
 # ---- baseline at 19d858b. Lower these when you clean a surface; never raise without a HARDENING entry.
-MAX_INLINE_STYLE_ATTRS = 301
+MAX_INLINE_STYLE_ATTRS = 287
 MAX_CSS_COLOUR_LITERALS = 28
 MAX_JS_COLOUR_LITERALS = 3
 MAX_DISTINCT_FONT_SIZES = 16

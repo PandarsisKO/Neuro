@@ -1,10 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.58">
+<meta name="neurosearch-ui-version" content="0.63.59">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
+<svg class="icon-sprite" width="0" height="0" aria-hidden="true">
+  <symbol id="ic-dismiss" viewBox="0 0 24 24"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="ic-approve" viewBox="0 0 24 24"><path d="M5 12.5 L10 17.5 L19 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="ic-flag" viewBox="0 0 24 24"><path d="M6 3 L6 21 M6 4.5 L18 8 L6 11.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+</svg>
 
 <!-- ============ HOME ============ -->
 <div id="home">
@@ -98,7 +103,7 @@
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Seen, not added</b> <span class="muted" id="candCounts"></span>
             <div class="muted">Everything a channel, playlist, feed or site listing showed you that you didn't pick — kept as cheap metadata (no downloads), so a later gap can find it without searching the web again. Not evidence until added.</div>
-            <div class="row mt-2"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" style="width:auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
+            <div class="row mt-2"><input id="candQ" placeholder="search what we've seen… (e.g. insurance for low-time twin pilots)" oninput="debounce(loadCandidates)"><select id="candState" onchange="loadCandidates()" class="w-auto"><option value="">all states</option><option value="available">available</option><option value="skipped_limit">skipped (limit)</option><option value="skipped_low_relevance">skipped (low relevance)</option><option value="user_dismissed">dismissed</option><option value="acquired">acquired</option></select></div>
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
@@ -130,7 +135,7 @@
         </div>
         <div class="pane" id="pane-discover">
           <div class="muted">Who should this project learn from? <b>Library first:</b> what you already own (in other projects) is checked at no cost before the web is searched for creators, channels and podcasts.</div>
-          <div class="row mt-2"><select id="discMode" style="width:auto" title="Where to look"><option value="library_first">Library first</option><option value="library_only">Library only ($0)</option><option value="web_first">Web first</option><option value="web_only">Web only</option></select><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
+          <div class="row mt-2"><select id="discMode" class="w-auto" title="Where to look"><option value="library_first">Library first</option><option value="library_only">Library only ($0)</option><option value="web_first">Web first</option><option value="web_only">Web only</option></select><input id="discRefine" placeholder="Optional steer — e.g. “more practitioners, fewer gurus”, “focus on small businesses”, “podcasts only”"><button class="primary" id="discBtn" onclick="runDiscover()">Find sources</button></div>
           <div class="muted" id="discMsg" style="margin-top:6px"></div>
           <div id="discResearch" style="margin-top:10px"></div>
           <div id="discSeen" style="margin-top:10px"></div>
@@ -181,12 +186,12 @@
       <div id="suggestedWrap"></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px" id="fbBar">
         <input id="fbQ" placeholder="Search findings…" oninput="debounce(loadWorkbench)" style="flex:1;min-width:160px">
-        <select id="fbStatus" onchange="loadWorkbench()" style="width:auto"><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
-        <select id="fbImp" onchange="loadWorkbench()" style="width:auto"><option value="">any importance</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
-        <select id="fbUsed" onchange="loadWorkbench()" style="width:auto"><option value="">used anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
-        <select id="fbStale" onchange="loadWorkbench()" style="width:auto"><option value="">any source state</option><option value="current">source current</option><option value="stale">source stale</option></select>
-        <select id="fbArea" onchange="loadWorkbench()" style="width:auto"><option value="">any area</option></select>
-        <select id="fbSort" onchange="loadWorkbench()" style="width:auto"><option value="importance">sort: importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
+        <select id="fbStatus" onchange="loadWorkbench()" class="w-auto"><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
+        <select id="fbImp" onchange="loadWorkbench()" class="w-auto"><option value="">any importance</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
+        <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">used anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
+        <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any source state</option><option value="current">source current</option><option value="stale">source stale</option></select>
+        <select id="fbArea" onchange="loadWorkbench()" class="w-auto"><option value="">any area</option></select>
+        <select id="fbSort" onchange="loadWorkbench()" class="w-auto"><option value="importance">sort: importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
         <span class="muted" id="fbCount"></span>
       </div>
       <div id="fbSrcChip"></div>
@@ -214,11 +219,11 @@
       <div id="paneClaims" style="display:none">
         <div class="row" style="gap:6px;margin:2px 0 8px;flex-wrap:wrap">
           <input id="cwQ" placeholder="Search Claims…" oninput="CW.q=this.value;CW.offset=0;loadClaimsWorkbench()" style="min-width:180px">
-          <select id="cwStatus" onchange="CW.status=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="all">all statuses</option><option value="proposed">not yet decided</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
-          <select id="cwStrength" onchange="CW.strength=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">any evidence level</option><option value="strong">well evidenced</option><option value="developing">building evidence</option><option value="weak">thin evidence</option><option value="unsupported">no evidence yet</option></select>
-          <select id="cwFresh" onchange="CW.freshness=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="">still current or not</option><option value="stale">likely outdated</option><option value="needs_refresh">may need a refresh</option><option value="uncertain">unclear if current</option></select>
+          <select id="cwStatus" onchange="CW.status=this.value;CW.offset=0;loadClaimsWorkbench()" class="w-auto"><option value="all">all statuses</option><option value="proposed">not yet decided</option><option value="accepted">accepted</option><option value="rejected">rejected</option></select>
+          <select id="cwStrength" onchange="CW.strength=this.value;CW.offset=0;loadClaimsWorkbench()" class="w-auto"><option value="">any evidence level</option><option value="strong">well evidenced</option><option value="developing">building evidence</option><option value="weak">thin evidence</option><option value="unsupported">no evidence yet</option></select>
+          <select id="cwFresh" onchange="CW.freshness=this.value;CW.offset=0;loadClaimsWorkbench()" class="w-auto"><option value="">still current or not</option><option value="stale">likely outdated</option><option value="needs_refresh">may need a refresh</option><option value="uncertain">unclear if current</option></select>
           <label class="row" style="gap:4px;width:auto;font-size:12.5px"><input type="checkbox" id="cwNeeds" onchange="CW.needs_decision=this.checked;CW.offset=0;loadClaimsWorkbench()"> needs your decision</label>
-          <select id="cwSort" onchange="CW.sort=this.value;CW.offset=0;loadClaimsWorkbench()" style="width:auto"><option value="priority">sort: needs a decision first</option><option value="strength">most evidenced first</option><option value="newest">newest</option><option value="topic">by topic</option></select>
+          <select id="cwSort" onchange="CW.sort=this.value;CW.offset=0;loadClaimsWorkbench()" class="w-auto"><option value="priority">sort: needs a decision first</option><option value="strength">most evidenced first</option><option value="newest">newest</option><option value="topic">by topic</option></select>
           <label class="row" style="gap:4px;width:auto" title="Group Claims by the same Areas the Overview and Areas panes use"><input type="checkbox" id="cwGroupToggle" checked onchange="loadClaimsWorkbench()"> Group by area</label>
           <span class="muted" id="cwCount"></span>
         </div>
@@ -237,7 +242,7 @@
       <h3 style="margin-top:14px">Knowledge Map</h3><div id="resMap"></div>
       <h3>Research tensions</h3><div id="resTensions"></div>
       <h3>Evidence targets <span class="muted" style="font-weight:normal;font-size:12px">— what “enough” means, and where to look first (project → library → seen → web)</span></h3>
-      <div class="row"><input id="resTargetQ" placeholder="Add a target: what must be established before you decide?"><select id="resTargetS" style="width:auto"><option value="corroborative">needs independent corroboration</option><option value="governing">one governing source can close it</option></select><button class="small" onclick="addTarget()">Add</button></div>
+      <div class="row"><input id="resTargetQ" placeholder="Add a target: what must be established before you decide?"><select id="resTargetS" class="w-auto"><option value="corroborative">needs independent corroboration</option><option value="governing">one governing source can close it</option></select><button class="small" onclick="addTarget()">Add</button></div>
       <div id="resTargets"></div>
       </div>
     </div>
@@ -268,7 +273,7 @@
       <div class="card"><b>Decisions, constraints & requirements</b>
         <div class="muted">Recorded automatically when you state them in a chat ("we're going with X", "budget is Y"). Add or remove here.</div>
         <div id="facts" class="mt-2"></div>
-        <div class="row mt-2"><select id="factKind" style="width:auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
+        <div class="row mt-2"><select id="factKind" class="w-auto"><option value="decision">decision</option><option value="constraint">constraint</option><option value="requirement">requirement</option><option value="rejected">rejected option</option></select><input id="factText" placeholder="e.g. Hosting on Cloudflare Pages"><button class="small" onclick="addFact()">Add</button></div>
       </div>
       <div id="projFun"></div>
       <div class="card"><b>Spending valve</b>

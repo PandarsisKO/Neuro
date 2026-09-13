@@ -67,6 +67,9 @@
   .grow{flex:1}
   .push-right{margin-left:auto}
   .min-w-0{min-width:0}
+  .icon-sprite{position:absolute}
+  .ic{width:14px;height:14px;vertical-align:-2px;color:currentColor}
+  .w-auto{width:auto}
   .mt-1{margin-top:var(--space-1)}
   .mt-2{margin-top:var(--space-2)}
   .mt-3{margin-top:var(--space-3)}
