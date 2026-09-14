@@ -96,3 +96,35 @@ def test_source_staleness_filter_reads_the_analysis_state(monkeypatch):
     db.update_project(p["id"], brief="hosting and email deliverability")
     assert fv.query(p["id"], stale="stale")["total"] == 2 and all(f["source_stale"] for f in fv.query(p["id"])["findings"])
     assert fv.query(p["id"])["facets"]["stale"] == {"stale": 2}
+
+
+def test_a_populated_embedding_blob_does_not_break_json_serialization(monkeypatch):
+    """0.63.67: T1's backfill writes a real embedding BLOB onto project_notes.embedding once a note has been
+    vectorised. findings_view._rows_only used to build its row dicts with a bare dict(row) (SELECT * includes
+    that column), so once any note in a project had an embedding, GET /findings 500'd with
+    PydanticSerializationError: invalid utf-8 sequence... — pydantic trying to treat the raw vector bytes as a
+    JSON string. db.row_to_dict() already stripped this for every other reader of project_notes; this was the
+    one path that still didn't. Same landmine existed in claims._claim() for project_claims.embedding.
+
+    Exercises the uncached, private row-builders directly (`_rows_only`/`_claim`) rather than the cached public
+    wrappers, so a stale cache entry from fixture setup can't hide the very bug this guards against."""
+    import json
+    pid, ids = _fixture(monkeypatch)
+    note_id = next(iter(fv._rows_only(pid)))["id"]
+    fake_vector = bytes(range(1, 256)) * 24  # deliberately invalid UTF-8 (no byte is 0, none of it decodes cleanly)
+    db.connect().execute("UPDATE project_notes SET embedding=? WHERE id=?", (fake_vector, note_id))
+    db.connect().commit()
+    rows = fv._rows_only(pid)
+    target = next(r for r in rows if r["id"] == note_id)
+    assert "embedding" not in target
+    json.dumps(rows)  # must not raise TypeError on a raw bytes value
+
+    claims.ensure(pid)
+    row = db.connect().execute("SELECT id FROM project_claims WHERE project_id=? LIMIT 1", (pid,)).fetchone()
+    assert row, "fixture should have produced at least one claim"
+    db.connect().execute("UPDATE project_claims SET embedding=? WHERE id=?", (fake_vector, row["id"]))
+    db.connect().commit()
+    claim_row = db.connect().execute("SELECT * FROM project_claims WHERE id=?", (row["id"],)).fetchone()
+    claim = claims._claim(claim_row)
+    assert "embedding" not in claim
+    json.dumps(claim)  # must not raise TypeError on a raw bytes value

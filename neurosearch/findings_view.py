@@ -51,6 +51,12 @@ def _rows_only(project_id: str) -> list[dict[str, Any]]:
         "SELECT * FROM project_notes WHERE project_id=? ORDER BY importance DESC, created_at DESC",
         (project_id,)).fetchall()]
     for r in rows:
+        r.pop("embedding", None)  # 0.63.67: T1 backfill populates this BLOB on real projects now; a raw
+        # embedding vector is not valid UTF-8 and crashes the JSON response (PydanticSerializationError:
+        # invalid utf-8 sequence...) the moment any note in a project has one. db.row_to_dict() already
+        # strips it for every other reader of project_notes; this was the one path still doing a bare
+        # dict(row) instead. Metadata columns (embedding_model/_provider/_dimensions/...) are plain
+        # strings/ints and stay — only the BLOB itself is unserializable.
         try:
             r["citations"] = json.loads(r["citations"] or "[]")
         except ValueError:

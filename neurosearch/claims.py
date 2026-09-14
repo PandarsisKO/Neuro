@@ -239,6 +239,7 @@ def project_vocab(project_id: str) -> dict[str, int]:
 
 def _claim(row: Any) -> dict[str, Any]:
     d = dict(row)
+    d.pop("embedding", None)  # 0.63.67: same raw-BLOB-in-JSON crash as findings_view._rows_only (see there)
     if d.get("freshness_class") in _LEGACY_FRESHNESS:
         d["freshness_class"] = _LEGACY_FRESHNESS[d["freshness_class"]]
     for k in ("qualifiers", "routing"):
