@@ -1778,3 +1778,30 @@ deleted. Flagging for Kyle's own five-minute look in the morning, since he knows
 
 No code, test, or doc file was changed by this pass — it's an observation only, same evidence discipline as the
 audit above.
+
+## Vestigial pass, resolved — 2026-09-14 (overnight, follow-up)
+
+Closed out three of the four items flagged earlier tonight, now that there's time to actually investigate
+rather than just flag:
+
+- **`Claude outputs/`** — did the explicit comparison `VESTIGIAL-INVENTORY.md` asked for. All four files are
+  superseded: `T1-DESIGN-AUDIT-2026-09-12.md` by the tracked `docs/` copy (which says so in its own header),
+  `f1-remaining-scope.md` by the tracked scope doc (a strict superset, same content plus a later addendum), and
+  the two `f1_step2*.py` landing scripts by F1's now-RESOLVED status. Moved all four (plus a note explaining the
+  comparison) to `docs/design-audit/archive/claude-outputs-2026-09-12/`. Root folder removed since it was empty
+  after the move.
+- **`.audit-compare-tmp/`** — confirmed both files were scratch snapshots of `AUDIT.md` from the
+  already-completed, already-archived `AUDIT-V2-PROPOSED.md` merge (near-identical to current `AUDIT.md`, off by
+  exactly the two paragraphs that merge added). No unique content. Deleted — genuinely a `tmp` folder with
+  nothing to preserve.
+- **`evals/release/` untracked files — investigated further, deliberately left alone, no `.gitignore` added.**
+  Cross-checked all 20 untracked filenames against every `evals/release/release-check-*` citation in
+  `HARDENING.md`, `PRODUCT-SCHEDULER.md`, and `docs/T3-ADMISSION-2026-09-13.md`: none of the 20 are cited by
+  name anywhere. Every artifact those governing docs point to as evidence for a specific gate *is* committed.
+  So the pattern isn't an accident to fix — it's "the cited, load-bearing artifact per version gets committed;
+  intermediate/superseded runs from iterating don't." Touching this (gitignoring, deleting) is Codex's release
+  tooling and evidence trail, not a Design/Audit call, and none of it collides with Design/Audit work — left
+  untouched per this mission's own boundary.
+
+`Claude outputs/` and `.audit-compare-tmp/` no longer appear in `git status`; the 20 `evals/release/` files
+still do, intentionally.
