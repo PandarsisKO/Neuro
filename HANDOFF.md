@@ -2312,3 +2312,42 @@ working in rung 1's verification pass on the same shared stylesheet.
 
 Proceeding directly to rung 3 (`SM-4`: Findings' $0 rebuild option becomes primary, matching Plan's own W3
 pattern that RD-4 just reused) per the same standing authorization.
+
+
+## Declutter rung 3: Findings' $0 rebuild option becomes primary — 2026-09-14 (overnight, eighth follow-up)
+
+Rung 3 of 6 (`SM-4`), continuing straight from rung 2 per the same standing authorization.
+
+Findings' REVIEW card ("N sources analysed against older inputs", `research.js`'s `renderTriageCard`/
+`rebuildBtns`/`fastBtn`) filled the most expensive option — "⏩ Rebuild now · $X on the API" — as its primary
+button while the $0 Claude-Code option sat plain, inverting rung W3's own rule (already applied on Plan, and
+just reused in rung 2's `RD-4` fix): the recommended default is the cheapest option that fully resolves
+staleness, never an arbitrary pick.
+
+Fix: the plain "Rebuild · $X" button is primary whenever a $0/Claude-Code option exists (`x.local_line`); the
+"in the background" batch button becomes primary only when it doesn't (Claude Code inactive, so background-
+batch — half the price of running now — is the cheapest available option); the "now"/API button is never
+primary. Exactly one primary per stale-source row, always the cheapest one. `acceptTier`/`retryFailed` rows'
+existing (already-unemphasized) styling was left untouched — not what this finding flagged.
+
+`neurosearch/web/js/research.js` only. `UI_VERSION` 0.63.84 → 0.63.85. `node --check` clean. Tests: 62/62
+(`test_s44_frontend_integrity`, `test_s50_design_drift`, `test_s5_ui_syntax`, `test_n4_stale_triage`,
+`test_n6_findings_workbench`, `test_n8_research_shell`, `test_s22_stale_research`, `test_s23_retire` — every
+stale-rebuild surface this touches). Landed as commit `b46eea7`. `.worktrees/f0` repinned to `b46eea7`.
+
+Audit-instance restart: same pattern as prior rungs (stale artifact on first screenshot, real dialog after
+coordinate-close, Terminate by `element_index`, relaunch via the already-selected Finder row). This time the
+page itself caught the mismatch first — Chrome showed "This page is out of date... Reload page" before I
+even checked the version, confirming that banner works as intended. Reloaded, confirmed `v0.63.85`.
+Live-verified in Findings on the same project: the "816 sources analysed against older inputs" card now
+shows "Rebuild · $0 · about 4 h 55 min on Claude Code" and "Rebuild · $0 · about 4 h 07 min on Claude Code"
+(the two tiers, "carrying weight" and "carrying no weight") as the filled primary buttons, with "Rebuild in
+the background · $15.11"/"$8.50" and "Rebuild now · $30.21"/"$17.00 on the API" both plain — matching the
+audit's own quoted example almost exactly (prices differ slightly since this is live fake-mode data, not the
+audit's snapshot).
+
+Proceeding to rung 4 (`CL-2` + `CL-3` + `CL-5` + `CL-4` + `RD-6` + `RD-7`: the Findings-and-Sources workbench
+rung — suggested-block-to-REVIEW-entry, two-line finding rows, filter-stack collapse, guilt-count removal,
+duplicate-drawer-control removal, REVIEW copy cleanup). This is the audit's largest remaining rung and it
+flags a real gate: "respect rung W4's bulk-review timing baseline before landing." I'll read what that
+baseline actually measured before touching the workbench, to land within it rather than against it.
