@@ -2999,5 +2999,6 @@ Kyle authorized removal of the retired recordings from Git history. `main` was r
 `refs/backup/pre-videos-rewrite-20260914` (and `refs/original/refs/heads/main`). Validation found no reachable
 `VIDEOS/` paths and no blob over GitHub's 100 MB limit. The rewritten `main` was force-updated with an explicit
 `--force-with-lease` and now publishes at `f0f12aee5ccc86b5a0b9cde3c201577ed8818d52`. The remote
-`backup/2026-09-13-clean` mirror remains available; refresh it after this documentation commit. The earlier
+`backup/2026-09-13-clean` mirror is refreshed from the final documentation tree; verify its tip with
+`git ls-remote --heads origin backup/2026-09-13-clean`. The earlier
 "main intentionally blocked" note above is superseded by this section.
