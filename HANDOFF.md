@@ -1591,3 +1591,31 @@ Codex's own separate in-progress T3 work.
 **Next:** this closes every W-rung. Per `ladder.md`'s sequencing, next is one cross-cutting RE-AUDIT across
 every touched surface (F1, F2, W1–W5) against the `evidence/` baseline, before `C1` (one badge/pill primitive,
 Findings rows to two badges) and `P1`'s remaining polish items (L-1–L-4, M-4–M-11 not already folded in).
+
+## Cross-cutting RE-AUDIT (F1, F2, W1–W5) — all resolved, no regressions — 2026-09-14
+
+Per `ladder.md`'s sequencing ("one RE-AUDIT across every touched surface, against the `evidence/` baseline,
+before C1"), ran `AUDIT.md` §3's RE-AUDIT mode against everything landed since F0: F1 (tokens), F2 (list-state
+primitive), W1 (reprocessing vocabulary), W2 (Findings review hub), W3 (Plan stale banner), W4 (Sources row
+actions), W5 (Home/status line). Reproduced each finding live on the audit instance rather than inferring
+resolution from commits, concentrating on dark theme since F1's token contrast and W5's status colours are the
+two rungs most sensitive to it (dark theme was previously the weaker evidence trail — `audit.md`'s own
+Assumptions section flagged this).
+
+**Result:** `H-1` through `H-7`, `M-1`, `M-2`, `F0-3`, `L-5` all RESOLVED. `M-3` closed NO LONGER APPLICABLE
+(already re-checked and noted when W5 landed). No new regression on any touched surface — specifically checked
+each rung's own flagged regression risk (a hidden priced action on Findings/Plan, a token value outside F1's
+ratchet, Sources' overflow menu turning into a confusing dump). One false alarm caught and written up rather
+than silently dropped: a mid-scroll screenshot on Sources briefly showed a white row-list background against an
+otherwise dark page — a second screenshot after the scroll settled showed correct dark throughout, a stale JPEG
+capture mid-repaint from the screenshot tool, not a real defect.
+
+Full writeup: `docs/design-audit/2026-09-13-b85c222/reaudit.md` (per-finding table with live evidence).
+`ladder.md`'s sequencing section now records the RE-AUDIT as done.
+
+Landed as `837bc16` (docs only — no product code changed by this pass, so no `UI_VERSION` bump and no restart
+needed). `.worktrees/f0` repinned to `837bc16`. Left untouched: `neurosearch/t3.py` and
+`tests/test_t3_adversarial.py`, Codex's own separate in-progress T3 work.
+
+**Next:** `C1` — one badge/pill primitive, roles distinguishable; Findings rows to two badges. Its precondition
+(W1–W5 landed and this RE-AUDIT done) is now satisfied.
