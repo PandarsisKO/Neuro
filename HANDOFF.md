@@ -1984,3 +1984,32 @@ This is a content/copy decision, not a mechanical bug — brought back to Kyle r
 `test_s43_foundation.py`'s worker-restart test, confirmed identical on a clean `git stash` baseline — unrelated
 to any of tonight's changes). `test_core`/`test_indestructible`: the same 12 pre-existing sandbox-environment
 failures as every prior rung, none new.
+
+## Watch-outs phrasing variation — 2026-09-14 (post-midnight, same-night follow-up)
+
+Closed out the one open item from the earlier Research/Chat audit pass: 37+ Watch-outs cards mostly shared one
+identical sentence template per `kind` (STALE, WEAK_CONSENSUS, CONTRADICTION, MISSING_PERSPECTIVE, NOVEL), with
+only the topic swapped — flagged as a copy/product decision, not a mechanical bug, so it went back to Kyle rather
+than being decided unilaterally. He chose "vary the phrasing" over grouping same-shape cards together or leaving
+it as-is.
+
+Added `KIND_IF_IGNORED_ALTS` in `research_view.py`: 2-3 alternate phrasings per kind, each carrying the same
+information as the original `KIND_IF_IGNORED` sentence, just worded differently. `watchouts()` now picks one via
+`_if_ignored_for(kind, watchout_id)`, a deterministic hash of the card's own id (`f"wo:{kind}:{area}"`) mod the
+alt-pool size — not random selection. That means the same watch-out always reads the same way across reloads
+(verified: hard-reloaded the live Watch-outs page twice, same two cards showed byte-identical text both times),
+while different cards of the same kind genuinely read differently (verified live: "Ai-assisted design" and
+"Interaction patterns" both MISSING_PERSPECTIVE cards showed "This stays a one-sided read: whoever the missing
+voice would represent never gets a say in the advice.", while "Cognitive load" showed "The Master Plan keeps
+recommending from one vantage point only - it has nothing from the other side to weigh against it." — two
+different alts from the same pool, each stable on its own card).
+
+148/148 relevant Research-surface tests pass (`test_n1_research_view`, `test_n8_research_shell`, `test_p1_perf`,
+`test_s15_lockup`, `test_s21_payload_and_settle`, `test_s22_stale_research`, `test_s23_retire`, `test_s2_scholar`,
+`test_s31_limits`, `test_s36_sources_payload`); 26/26 deterministic gates pass; `test_core`/`test_indestructible`
+show the same 12 pre-existing sandbox-environment failures as every prior rung, none new. Landed as commit
+`2c8d9f5`, `UI_VERSION` 0.63.77 → 0.63.78, worktree `f0` repinned, audit instance restarted and live-verified.
+
+This closes out the data-integrity sweep + Research/Chat second-pass ladder from earlier tonight — all four
+findings (duplicate-citation cleanup, dangling `origin_note_id`, `/js` no-cache gap, Watch-outs phrasing) are now
+landed, tested, and live-verified.
