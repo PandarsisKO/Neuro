@@ -2668,3 +2668,66 @@ alone (they were never emoji-prefixed to begin with).
 live-verified.** Proceeding to rung 6, the final rung: `DOC-1`–`DOC-3` (doc-level findings — folded into
 whichever file each touches), to close out all 22 findings per the standing "complete them all, most efficient
 manner" authorization.
+
+
+## Declutter rung 6 (final): DOC-1, DOC-2, DOC-3 — 2026-09-14 (overnight, thirteenth follow-up)
+
+The last rung. Three doc-level findings, no app code touched, so no `UI_VERSION` bump and no audit-instance
+restart/live-verify needed for this one — the change is entirely in `AUDIT.md`/`DESIGN.md` prose.
+
+**DOC-1 — `AUDIT.md` gained the check that would have caught `RD-1`/`RD-2`/`CL-1`–`CL-3` sooner.** Phase 4 §C
+(hierarchy/scanability) and §D (density/calmness) each audited one surface at a time and never asked whether a
+number, badge, glyph or control was *also* rendered elsewhere with a possibly-different value, or whether its
+visual form matched what it encoded. That is precisely the gap the substance bar passed through, and the
+reason a same-day FULL AUDIT run closed "nothing new" over findings this rung's predecessors already fixed.
+Added one bullet to §C (cross-surface duplication: "is it shown elsewhere on this or the adjacent surface, and
+with the same value?") and one to §D (encoding match: "a bar for a fill-toward-whole, dots for a rating, a
+pill for a state, a checkmark for done — never a bar for a score, never a checkmark for a version"), plus a
+third bullet on the same question in Phase 6's cross-surface interaction list, so it's checked both
+per-surface and across surfaces.
+
+**DOC-2 — `DESIGN.md`'s stat-tile guidance stopped contradicting its own Sec 6/10.** The Appendix "Adopt" line
+read "Stat tiles: small label, large number, one qualifier" in isolation — true, but silent on *which*
+numbers, while §6 already said "a tile whose number answers no question the user asked does not belong on the
+page" and §10 named "fake charts/sparklines that answer no real question" as the same failure. `RD-1` (the
+Research tab-count fix from rung 5) was traceable to reading the Appendix line without the other two. Added
+the missing clause directly to the Appendix line: "…for orientation numbers the user acts on — not for
+novelty comparisons."
+
+**DOC-3 — the `UI_VERSION` sync-site count in `DESIGN.md` §12 item 10 said three; it's four, and has been
+since `state.js` joined the sync set.** Named all four explicitly (`neurosearch/__init__.py`, `pyproject.toml`,
+`neurosearch/web/index.html`, `neurosearch/web/js/state.js`) so the rule can't silently drift out of sync with
+the actual sync set again. The finding's other doc-vs-code note — §4 describing the shell as six views while
+the `.modes` toggle (`SM-1`, landed earlier this cycle) isn't documented — was confirmed to need no fix: the
+audit's own text says that's the *correct* outcome once `SM-1` landed, not a contradiction to resolve.
+
+**Files:** `AUDIT.md` (§C, §D, Phase 6 cross-surface list), `DESIGN.md` (Appendix "Adopt" stat-tiles line,
+§12 item 10). Checked `tests/` for any string assertion against the touched doc lines before editing — none
+exist, so no test changes were needed. `git diff --stat`: 2 files, 12 insertions, 4 deletions.
+
+Landed as commit `ee52d1a`. `.worktrees/f0` repinned to `ee52d1a`. No app-facing change, so no restart/
+live-verify step applies here (docs aren't served by the running instance).
+
+---
+
+## All 22 declutter-audit findings are now landed
+
+`docs/design-audit/2026-09-14-bd95e65/declutter-audit.md`'s full suggested 6-step execution order is complete:
+
+1. `RD-1`, `RD-2` — commit `c19b530`
+2. `SM-1`, `SM-2`, `RD-3`, `RD-4` — commit `ce06de8`
+3. `SM-4` — commit `b46eea7`
+4. `CL-2`, `CL-4`, `CL-5`, `RD-6`, `RD-7`, `CL-3` — commits `274cba7`, `16ba80f`
+5. `RD-5`, `SM-5`, `SM-3`, `SM-6`, `CL-1`, `CL-6` — commits `19ce0cd`, `875115f`
+6. `DOC-1`, `DOC-2`, `DOC-3` — commit `ee52d1a`
+
+Every rung's app-facing commit was live-verified in Chrome against the audit instance, in both light and dark
+theme, on the same 889-source/16,450-finding "I want to start buying businesses…" project used throughout;
+every commit ran its targeted test suites plus a full-suite sanity pass before landing. The pre-existing
+`test_core.py`/`test_j3_fallback.py` failures (tracing to `neurosearch/t3.py`, Codex's in-progress file) and
+the one `test_s43_foundation.py` native-worker-restart timing race were present, unchanged, and unrelated to
+this work at every checkpoint across the whole cycle — documented rung by rung above rather than fixed, since
+neither falls inside this mission's scope.
+
+This closes the standing "complete them all, most efficient manner" authorization. No further declutter-audit
+work remains queued; the next design/audit pass (if any) starts fresh against current `main`.
