@@ -150,11 +150,17 @@ def test_the_findings_view_no_longer_downloads_every_source():
     assert "/findings?" in code and "status: 'suggested'" in code
 
 
-def test_the_suggested_block_says_when_it_is_showing_a_page(project):
+def test_the_suggested_block_links_to_the_paged_workbench(project):
+    # CL-2 (declutter rung 4): the 100-card block loadNotes() used to render here is gone — it duplicated the
+    # workbench's own 'suggested' filter. loadNotes() now sends the user there instead of paging its own copy.
     ui = ui_source(__import__("pathlib").Path(UI).parent)
     body = ui[ui.index("async function loadNotes()"):ui.index("// The Sources tab's")]
-    assert "most important of" in body            # never implies it is showing all of them
-    assert "Approve ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}" in body
+    assert "reviewSuggested" in body
+    assert "suggested finding" in body and "waiting" in body
+    # the bulk approve/dismiss wording (and its "never implies it approved everything" honesty) now lives on the
+    # workbench itself, scoped to whichever page is actually on screen.
+    wb = ui[ui.index("globalThis.loadWorkbench = async function loadWorkbench"):ui.index("globalThis.loadWorkbenchSource")]
+    assert "Approve ${r.total > rows.length ? rows.length + ' shown' : 'all'}" in wb
 
 
 # ------------------------------------------------------------------ feedback on a click

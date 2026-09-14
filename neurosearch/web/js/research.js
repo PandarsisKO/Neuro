@@ -812,20 +812,25 @@ globalThis.loadNotes = async function loadNotes() {
       sug = r.findings || []; sugTotal = r.total != null ? r.total : nSug;
     } catch (e) { sug = []; }
   }
-  const bySrc = {}; sug.forEach(n => { const k = n.source_title || (n.citations?.[0]?.title) || 'Untitled source'; (bySrc[k] = bySrc[k] || []).push(n); });
   const legacy = sug.filter(n => !n.title).length;
-  const shownIds = sug.map(n => n.id);
-  $('#suggestedReview').innerHTML = (legacy ? reviewItem(`${legacy} legacy suggestion${legacy === 1 ? '' : 's'}`, 'older analysis produced run-on text', `<button class="small" onclick="analyzeChooser(true)">Re-analyse all…</button> <span class="muted text-xs">Cost is shown before anything runs.</span>`) : '') + (analysing ? reviewItem(`Reading ${analysing} source${analysing === 1 ? '' : 's'}`, 'new findings will appear as each source finishes', `${FWAVE.queued ? `<button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button> <span class="muted text-xs">Free — changes queue order only.</span>` : '<span class="muted text-xs">No action needed.</span>'}`) : '');
+  // CL-2: this used to render every suggested finding as its own card, right above a workbench that already has
+  // a 'suggested' filter for the exact same list — one pile of cards duplicating another. It's now a single
+  // REVIEW entry that sends the user to that filter; bulk approve/dismiss live on the workbench itself (see
+  // loadWorkbench's #fbBulk), scoped to whichever page is actually on screen rather than a separate top-100 pull.
+  $('#suggestedReview').innerHTML = (legacy ? reviewItem(`${legacy} legacy suggestion${legacy === 1 ? '' : 's'}`, 'older analysis produced run-on text', `<button class="small" onclick="analyzeChooser(true)">Re-analyse all…</button> <span class="muted text-xs">Cost is shown before anything runs.</span>`) : '')
+    + (sugTotal ? reviewItem(`${sugTotal} suggested finding${sugTotal === 1 ? '' : 's'} waiting`, 'new findings extracted from your sources, not yet reviewed', `<button class="small primary" onclick="reviewSuggested()">Review</button>`) : '')
+    + (analysing ? reviewItem(`Reading ${analysing} source${analysing === 1 ? '' : 's'}`, 'new findings will appear as each source finishes', `${FWAVE.queued ? `<button class="small primary" title="Move the first few of these to the front of the whole queue so this project becomes usable now. Free — it changes the order only, not the provider, model or cost." onclick="firstWave()">⏫ Start ${Math.min(FWAVE.queued, 6)} now</button> <span class="muted text-xs">Free — changes queue order only.</span>` : '<span class="muted text-xs">No action needed.</span>'}`) : '');
   syncFindingsReview();
-  $('#suggestedWrap').innerHTML = `<div class="row mb-2"><h3 style="margin:0;flex:1">Suggested ${sugTotal ? `(${sugTotal})` : ''}</h3>
-      ${sug.length ? `<button class="small primary" title="${sugTotal > sug.length ? `Approve the ${sug.length} shown here (of ${sugTotal})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(shownIds)},'approved')">Approve ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button><button class="small" onclick="bulkNotes(${JSON.stringify(shownIds)},'dismissed')">Dismiss ${sugTotal > sug.length ? sug.length + ' shown' : 'all'}</button>` : ''}
-      <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new…</button><button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button></div>
-    ${sugTotal > sug.length ? `<div class="muted" style="margin-bottom:6px">Showing the ${sug.length} most important of ${sugTotal}. The workbench below pages through the rest — set Show to <b>suggested</b>.</div>` : ''}
-    <div class="muted" id="sugMsg"></div>` +
-    (Object.entries(bySrc).map(([title, list]) => `<div class="fgroup"><div class="gh"><b>${esc(title)}</b><span>${list.length} suggested</span><button class="small ghost" title="Approve every suggested finding from this source" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'approved')">✓ Approve all</button><button class="small ghost" title="Dismiss every suggested finding from this source (nothing is deleted)" onclick="bulkNotes(${JSON.stringify(list.map(n => n.id))},'dismissed')">✕ Dismiss all</button></div>` +
-      list.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`)).join('') + `</div>`).join('')
-      || '<div class="muted" style="margin:6px 0 14px">Nothing waiting. New sources are analysed automatically when they finish ingesting.</div>');
   loadWorkbench();
+}
+// CL-2: the REVIEW entry's "Review" button lands here — sets the workbench to the suggested filter with a
+// clean slate (no leftover search/facets from whatever the user was doing before) and scrolls it into view.
+globalThis.reviewSuggested = function reviewSuggested() {
+  $('#fbStatus').value = 'suggested';
+  for (const id of ['fbQ', 'fbImp', 'fbUsed', 'fbStale', 'fbArea']) { const el = $('#' + id); if (el) el.value = ''; }
+  FB.source = null; FB.offset = 0;
+  loadWorkbench();
+  setTimeout(() => { const el = $('#fbBar'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
 }
 // The Sources tab's "N suggested findings waiting for review" link lands HERE, on that source's suggestions —
 // before 0.60.1 it only switched tabs, so it dropped the user into whatever filter the workbench happened to hold
@@ -858,6 +863,17 @@ globalThis.useBadges = function useBadges(n) {
   if (n.source_stale) b.push(`<span class="tag status-warn" title="its source was analysed against older inputs">⚠ stale source</span>`);
   return b.join(' ');
 }
+// CL-5: the status filter used to be an unlabeled <select> buried in a row of six other unlabeled selects.
+// It is the one choice people actually reach for constantly (it's how the suggested-review flow gets here), so
+// it now renders as a chip row — like Sources' own status chips — with the <select> kept, hidden, purely as
+// the value store every other bit of code here already reads/writes via $('#fbStatus').value.
+const FB_STATUS_CHIPS = [['approved', 'Approved'], ['suggested', 'Suggested'], ['reserve', 'Reserve'], ['dismissed', 'Dismissed'], ['all', 'All']];
+globalThis.renderFbStatusChips = function renderFbStatusChips(cur) {
+  const el = $('#fbStatusChips'); if (!el) return;
+  cur = cur || $('#fbStatus').value;
+  el.innerHTML = FB_STATUS_CHIPS.map(([k, l]) => `<span class="chipf ${cur === k ? 'on' : ''}" onclick="setFbStatus('${k}')">${l}</span>`).join('');
+}
+globalThis.setFbStatus = function setFbStatus(v) { $('#fbStatus').value = v; loadWorkbench(); }
 globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (reset) FB.offset = 0;
   const p = new URLSearchParams({ limit: FB.limit, offset: FB.offset, status: $('#fbStatus').value, sort: $('#fbSort').value });
@@ -870,19 +886,20 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   const sel = $('#fbArea'); const cur = sel.value; const areas = Object.entries(r.facets.area || {}).sort((a, b) => b[1] - a[1]);
   sel.innerHTML = `<option value="">any area</option>` + areas.map(([a, n]) => `<option value="${esc(a)}">${esc(a)} (${n})</option>`).join(''); sel.value = cur;
   const f = r.facets; const st = $('#fbStatus').value;
+  renderFbStatusChips(st);
   $('#fbSrcChip').innerHTML = FB.source ? `<div class="row muted" style="font-size:12.5px;padding:2px 0"><span class="grow">Showing one source only</span><button class="small ghost" onclick="clearFindingSource()">✕ show every source</button></div>` : '';
   const bg = r.badges || {};
   // 0.61.5: use/staleness/area come from a cache that is deliberately allowed to lag the rows, so the counts say
   // when they are lagging instead of reading as current. An unknown count is never printed as zero.
   $('#fbCount').textContent = `${r.total} finding${r.total === 1 ? '' : 's'}`
-    + (f.used && bg.known ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0} · never used ${f.used.never || 0}` : '')
+    + (f.used && bg.known ? ` · plan ${f.used.plan || 0} · chat ${f.used.chat || 0} · Claims ${f.used.claim || 0}` : '')
     + (bg.note ? ` · ${bg.note}` : '');
   // Fire-and-forget, and explicitly swallowed: tonight's banners were shipped without a human able to look at the
   // browser (0.58.10), so a failure in this decoration must not be able to take the findings list down with it.
   try { const q = loadQuality(st); if (q && q.catch) q.catch(() => { const el = $('#fbQual'); if (el) el.innerHTML = ''; }); }
   catch (e) { const el = $('#fbQual'); if (el) el.innerHTML = ''; }
   const sw = r.low_value_sweep || {};
-  $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? reviewItem(`${sw.count} low-value finding${sw.count === 1 ? '' : 's'}`, `${esc(sw.line)}; nothing has used them`, `<button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button>`) : '';
+  $('#fbSweep').innerHTML = sw.count && !sw.pending && st === 'approved' ? reviewItem(`Review ${sw.count} low-value finding${sw.count === 1 ? '' : 's'}`, `${esc(sw.line)}; nothing has used them`, `<button class="small" onclick="$('#fbImp').value='';$('#fbUsed').value='never';$('#fbSort').value='importance';loadWorkbench()">Review them</button><button class="small danger" onclick="sweepLow(${JSON.stringify(sw.note_ids)})">Dismiss all ${sw.count}</button>`) : '';
   syncFindingsReview();
   const rows = r.findings || [];
   const bySrc = []; const idx = {};
@@ -901,6 +918,14 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   if (FGRP.collapsed === 'all') FGRP.collapsed = new Set(bySrc.map(([title]) => title));
   const grpSearching = !!($('#fbQ').value || $('#fbImp').value || $('#fbUsed').value || $('#fbStale').value || $('#fbArea').value);
   $('#fbGroupCtl').hidden = !(bySrc.length > 1);
+  // CL-2: bulk approve/dismiss for the suggested filter used to live above a separate, now-removed 100-card
+  // block fed by its own top-of-page fetch; this uses the same page of rows the workbench is already showing,
+  // so "shown" always means what's actually on screen.
+  const bulkIds = rows.map(n => n.id);
+  $('#fbBulk').innerHTML = (st === 'suggested' && rows.length) ? `<div class="row" style="gap:6px;margin:0 0 10px;flex-wrap:wrap">
+      <button class="small primary" title="${r.total > rows.length ? `Approve the ${rows.length} shown here (of ${r.total})` : 'Approve all of them'}" onclick="bulkNotes(${JSON.stringify(bulkIds)},'approved')">Approve ${r.total > rows.length ? rows.length + ' shown' : 'all'}</button>
+      <button class="small" onclick="bulkNotes(${JSON.stringify(bulkIds)},'dismissed')">Dismiss ${r.total > rows.length ? rows.length + ' shown' : 'all'}</button>
+    </div>` : '';
   $('#notes').innerHTML = rows.length ? bySrc.map(([title, sid, list]) => {
     const open = grpSearching || bySrc.length <= 4 || !FGRP.collapsed.has(title);
     const keyJs = JSON.stringify(title).replace(/"/g, '&quot;');
@@ -933,7 +958,7 @@ globalThis.loadQuality = async function loadQuality(st) {
   if (s.duplicates) bits.push(`${s.duplicates} the same source said twice`);
   const vac = s.flagged - s.duplicates; if (vac > 0) bits.push(`${vac} that name nothing specific`);
   const corr = (s.corroborated || {}).findings || 0;
-  el.innerHTML = reviewItem(`${s.flagged} finding${s.flagged === 1 ? '' : 's'} need a quality check`, `${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · ${corr} independently confirmed and kept` : ''}`, `<button class="small" onclick="openQuality('${st}')">Review</button>${s.as_of_current === false ? ' <span class="muted text-xs">Counted a moment ago; refreshing.</span>' : ''}`);
+  el.innerHTML = reviewItem(`${s.flagged} finding${s.flagged === 1 ? '' : 's'} need${s.flagged === 1 ? 's' : ''} a quality check`, `${esc(bits.join(' · '))}${s.protected ? ` · ${s.protected} protected` : ''}${corr ? ` · ${corr} independently confirmed and kept` : ''}`, `<button class="small" onclick="openQuality('${st}')">Review</button>${s.as_of_current === false ? ' <span class="muted text-xs">Counted a moment ago; refreshing.</span>' : ''}`);
   syncFindingsReview();
 }
 // F5 (0.58.5): `reserve` is what the cap withheld — findings already paid for, never exported or planned on.

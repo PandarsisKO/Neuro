@@ -159,7 +159,7 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
   if (s.status === 'skipped') primary = `<button class="small primary" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>`;
   else if (canRetry) primary = `<button class="small primary" onclick="retry('${s.id}')">Retry</button>`;
   else if (s.status === 'ready') primary = s.analysed
-    ? `<button class="small primary" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button>`
+    ? (s.approved ? '' : `<button class="small primary" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button>`)
     : `<button class="small primary" title="Reads this source with the model to extract findings — uses your model budget" onclick="suggestSource('${s.id}')">Suggest findings</button>`;
 
   // Rare, source-type-specific and already high-value when present — F0 addendum 4's bulk-review baseline is why
@@ -265,11 +265,23 @@ globalThis.loadSources = async function loadSources() {
   const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;
   const counts = { working: all.filter(s => bucket(s) === 0).length, failed: all.filter(s => s.status === 'failed').length, browser: all.filter(needsBrowser).length,
                    ready: all.filter(s => s.status === 'ready').length, skipped: all.filter(s => s.status === 'skipped').length, deep: all.filter(s => s.status === 'ready' && s.long).length };
-  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['deep', '📚 Deep content', counts.deep], ['skipped', 'Skipped', counts.skipped], ['pool', '🔎 Known, not captured', POOL.total ?? '…']];
-  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join(''); return loadPool(); }
-  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`).then(r => { POOL.total = r.total; }).catch(() => {});
+  const chips = [['all', 'All', all.length], ['working', '⟳ Working on', counts.working], ['browser', '🌐 Browser needed', counts.browser], ['failed', '✕ Failed', counts.failed], ['ready', '✓ Ready', counts.ready], ['deep', '📚 Deep content', counts.deep], ['skipped', 'Skipped', counts.skipped]];
+  // CL-4: "Known, not captured" is a count, not a workflow status like the rest of this row, so it renders into
+  // #srcPoolChip (inside Filters) instead of the always-visible #srcChips — still one click away, still
+  // highlighted with the same 'on' state when it's the active view.
+  const chipHtml = list => list.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
+  const renderPoolChip = n => {
+    const el = $('#srcPoolChip'); if (!el) return;
+    el.hidden = !n;
+    el.classList.toggle('on', state.srcFilter === 'pool');
+    el.innerHTML = n ? `🔎 Known, not captured <b>${n}</b>` : '';
+    el.onclick = () => { state.srcFilter = 'pool'; loadSources(); };
+  };
+  renderPoolChip(POOL.total);
+  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); renderPoolChip(POOL.total); return loadPool(); }
+  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`).then(r => { POOL.total = r.total; renderPoolChip(r.total); }).catch(() => {});
   loadCaptureQueue(all.filter(needsBrowser));
-  $('#srcChips').innerHTML = chips.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
+  $('#srcChips').innerHTML = chipHtml(chips);
   const f = state.srcFilter || 'all';
   // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
   const F = state.srcFilters || {};

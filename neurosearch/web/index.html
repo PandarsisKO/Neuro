@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.85">
+<meta name="neurosearch-ui-version" content="0.63.86">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -152,37 +152,55 @@
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
         <span class="muted fixed" id="srcCount"></span>
-        <button class="small ghost" title="Export every source in this project as a CSV" onclick="exportCsv(false)">⬇ Master sheet CSV</button>
-        <button class="small ghost" title="Export this project's source segments as a CSV" onclick="exportCsv(true)">⬇ Segments CSV</button>
       </div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin:-4px 0 8px;font-size:12.5px" id="srcFilters">
-        <span class="muted">Show:</span>
-        <span class="chipf" data-f="matters" onclick="toggleSrcFilter('matters')" title="Priority, in the Master Plan, evidence of a strong Claim, or findings you rated 4–5">★ Matters</span>
-        <span class="chipf" data-f="stale" onclick="toggleSrcFilter('stale')" title="Analysed against older inputs (see the triage card in Findings)">⚠ Stale</span>
-        <span class="chipf" data-f="priority" onclick="toggleSrcFilter('priority')">★ Priority</span>
-        <span class="chipf" data-f="under_read" onclick="toggleSrcFilter('under_read')" title="Long source read once at the old 12-finding cap">📚 Under-read</span>
-        <span class="chipf" data-f="deep" onclick="toggleSrcFilter('deep')" title="Read with Read deeper">🔬 Deep-read</span>
-        <span class="chipf" data-f="nothing" onclick="toggleSrcFilter('nothing')" title="Ready and analysed, but no approved finding">∅ Gave nothing</span>
-        <span class="chipf" data-f="unused" onclick="toggleSrcFilter('unused')" title="No plan step, chat answer or Claim ever used it">Never used</span>
-        <select id="srcLen" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
-        <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">sort: activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
-        <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()"> Group by origin</label>
-        <span class="muted" id="srcFilterNote"></span>
-      </div>
-      <div class="row hidden" id="srcGroupCtl" style="gap:8px;margin:-4px 0 6px;font-size:12.5px">
-        <a href="#" onclick="SRCG.collapsed=new Set();renderSourceList();return false">Expand all</a>
-        <a href="#" onclick="SRCG.collapsed='all';renderSourceList();return false">Collapse all</a>
-      </div>
+      <!-- CL-5: search + the status-chip row above are the only things on by default now; sort, length, grouping,
+           the value filters, the CSV exports and the expand/collapse toggle all move behind one disclosure so the
+           list itself starts closer to the page title. CL-4: "Known, not captured" (a count, not a workflow
+           status) moved in here too, off the ordinary status-chip row. -->
+      <details class="filtersPanel">
+        <summary><span id="srcFilterNote" class="muted"></span></summary>
+        <div class="filtersBody">
+          <div class="row" style="gap:6px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px" id="srcFilters">
+            <span class="muted">Show:</span>
+            <span class="chipf" data-f="matters" onclick="toggleSrcFilter('matters')" title="Priority, in the Master Plan, evidence of a strong Claim, or findings you rated 4–5">★ Matters</span>
+            <span class="chipf" data-f="stale" onclick="toggleSrcFilter('stale')" title="Analysed against older inputs (see the triage card in Findings)">⚠ Stale</span>
+            <span class="chipf" data-f="priority" onclick="toggleSrcFilter('priority')">★ Priority</span>
+            <span class="chipf" data-f="under_read" onclick="toggleSrcFilter('under_read')" title="Long source read once at the old 12-finding cap">📚 Under-read</span>
+            <span class="chipf" data-f="deep" onclick="toggleSrcFilter('deep')" title="Read with Read deeper">🔬 Deep-read</span>
+            <span class="chipf" data-f="nothing" onclick="toggleSrcFilter('nothing')" title="Ready and analysed, but no approved finding">∅ Gave nothing</span>
+            <span class="chipf" data-f="unused" onclick="toggleSrcFilter('unused')" title="No plan step, chat answer or Claim ever used it">Never used</span>
+            <span class="chipf" id="srcPoolChip" hidden title="Known about but never added to this project"></span>
+          </div>
+          <div class="row" style="gap:14px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
+            <label class="row" style="gap:4px;width:auto">Length:
+              <select id="srcLen" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto">Sort:
+              <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()"> Group by origin</label>
+          </div>
+          <div class="row hidden" id="srcGroupCtl" style="gap:8px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
+            <a href="#" onclick="SRCG.collapsed=new Set();renderSourceList();return false">Expand all</a>
+            <a href="#" onclick="SRCG.collapsed='all';renderSourceList();return false">Collapse all</a>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button class="small ghost" title="Export every source in this project as a CSV" onclick="exportCsv(false)">⬇ Master sheet CSV</button>
+            <button class="small ghost" title="Export this project's source segments as a CSV" onclick="exportCsv(true)">⬇ Segments CSV</button>
+          </div>
+        </div>
+      </details>
       <div id="srcList"></div>
     </div>
 
     <!-- findings -->
     <div class="view" id="view-findings">
       <h2>Findings</h2>
-      <div class="row" style="margin-bottom:10px"><span class="muted grow">What's worth keeping. Approved findings feed the exports and the Master Plan.</span>
-        <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
-        <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
-        <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a></div>
+      <div class="row" style="gap:6px;margin:0 0 10px;flex-wrap:wrap" id="fbAnalyseBar">
+        <button class="small ghost" onclick="analyzeChooser(false)" title="Analyse sources that haven't been read yet">Analyse new sources…</button>
+        <button class="small ghost" onclick="analyzeChooser(true)" title="Read every source again">Re-analyse all…</button>
+      </div>
+      <div id="sugMsg"></div>
       <section id="findingsReview" class="review-hub" hidden aria-labelledby="findingsReviewTitle">
         <div class="review-hub-head"><div><h3 id="findingsReviewTitle">Review</h3><div class="muted text-xs">Items that need attention, with the reason visible before you choose an action.</div></div><span class="tag" id="findingsReviewCount"></span></div>
         <div id="staleFindings"></div>
@@ -190,22 +208,47 @@
         <div id="fbSweep"></div>
         <div id="fbQual"></div>
       </section>
-      <div id="suggestedWrap"></div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin:14px 0 6px;font-size:12.5px" id="fbBar">
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin:14px 0 6px;align-items:center" id="fbBar">
         <input id="fbQ" placeholder="Search findings…" oninput="debounce(loadWorkbench)" style="flex:1;min-width:160px">
-        <select id="fbStatus" onchange="loadWorkbench()" class="w-auto"><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
-        <select id="fbImp" onchange="loadWorkbench()" class="w-auto"><option value="">any importance</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
-        <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">used anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
-        <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any source state</option><option value="current">source current</option><option value="stale">source stale</option></select>
-        <select id="fbArea" onchange="loadWorkbench()" class="w-auto"><option value="">any area</option></select>
-        <select id="fbSort" onchange="loadWorkbench()" class="w-auto"><option value="importance">sort: importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
+        <div class="row" id="fbStatusChips" style="gap:4px;flex-wrap:wrap"></div>
+        <select id="fbStatus" hidden><option value="approved">approved</option><option value="suggested">suggested</option><option value="reserve">reserve (extracted beyond the cap)</option><option value="dismissed">dismissed</option><option value="all">all</option></select>
         <span class="muted" id="fbCount"></span>
       </div>
       <div id="fbSrcChip"></div>
-      <div class="row hidden" id="fbGroupCtl" style="gap:8px;margin:-2px 0 6px;font-size:12.5px">
-        <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
-        <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
-      </div>
+      <!-- CL-5: importance/use/staleness/area/sort, the exports and Expand/Collapse used to sit in the open, next
+           to search — one search box and one status-chip row are now the only things on by default. -->
+      <details class="filtersPanel">
+        <summary></summary>
+        <div class="filtersBody">
+          <div class="row" style="gap:14px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
+            <label class="row" style="gap:4px;width:auto">Importance:
+              <select id="fbImp" onchange="loadWorkbench()" class="w-auto"><option value="">any</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto">Used:
+              <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto">Source:
+              <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any state</option><option value="current">current</option><option value="stale">stale</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto">Area:
+              <select id="fbArea" onchange="loadWorkbench()" class="w-auto"><option value="">any area</option></select>
+            </label>
+            <label class="row" style="gap:4px;width:auto">Sort:
+              <select id="fbSort" onchange="loadWorkbench()" class="w-auto"><option value="importance">importance</option><option value="newest">newest</option><option value="source">by source</option><option value="used">most used</option></select>
+            </label>
+          </div>
+          <div class="row hidden" id="fbGroupCtl" style="gap:8px;flex-wrap:wrap;margin:0 0 8px;font-size:12.5px">
+            <a href="#" onclick="FGRP.collapsed=new Set();loadWorkbench(false);return false">Expand all</a>
+            <a href="#" onclick="FGRP.collapsed='all';loadWorkbench(false);return false">Collapse all</a>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <a class="chip fixed" id="expFind" target="_blank">⬇ Findings</a>
+            <a class="chip fixed" id="expPlan" target="_blank">⬇ Synthesis</a>
+            <a class="chip fixed" id="expZip" target="_blank">⬇ Full package (.zip)</a>
+          </div>
+        </div>
+      </details>
+      <div id="fbBulk"></div>
       <div id="notes"></div>
       <div class="row mt-2" id="fbPager"></div>
     </div>
