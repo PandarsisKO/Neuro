@@ -457,3 +457,16 @@ The real adjudication call path (`t5.adjudicate`) is built, tested, and committe
 for real until Kyle refreshes the Anthropic API key in his `.env` -- the current one returns 401 Unauthorized.
 Once fixed, `t5.adjudicate('c752ed152ec942dd97b9a94c3f1b3b96', '67d9643a5fb54c488888fe9805f0ad39')` is ready to
 run against his real "Buying Businesses" project with no further code changes.
+
+## Control-plane reconciliation — 2026-09-14 12:17 PT
+
+The historical `NOW` header still names the frontend CSS/module split. That work and Claude's complete 22-finding
+declutter pass are already committed. The current active technical state is instead the low-cost reliability and
+control-plane cleanup recorded in `STATE-OF-THE-APP-2026-09-14-1217.md`.
+
+T3's 60-row exact-span gold gate is closed at `3ca18be`; T4 is shipped through the selector and the $0 executor
+routing dry run (`86ddab9`, `c127978`); T5's proposal and real-call paths are shipped at `ed37393` and `1e6b632`
+but live execution is blocked by the invalid Anthropic credential; T6 is shipped at `e0e99f5`. Do not retry T5,
+wire live T4 provider execution, or add structured-delta persistence without the required credential and explicit
+admission. The immediate safe work is deterministic test-isolation, pure side-effect coverage, and release/document
+reconciliation.

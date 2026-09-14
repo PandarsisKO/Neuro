@@ -2854,3 +2854,19 @@ binary is Cowork's own restricted wrapper, not Kyle's subscription CLI). The rea
 configured Anthropic API key itself is invalid -- not a bug in this code. **No cost was recorded, no note was
 written.** Kyle needs to refresh the key in `.env` before this can complete; the code needs no change once it's
 fixed. Full detail in docs/T5-ADMISSION-2026-09-14.md's "T5 live adjudication call" section. Landed at `1e6b632`.
+
+## Control-plane reconciliation and low-cost cleanup — 2026-09-14 12:17 PT
+
+The prior root state snapshot `STATE-OF-THE-APP-2026-09-14-1016.md` was superseded and archived because it still
+reported T3's gold gate as pending and did not reflect the shipped T4/T5/T6 slices. The authoritative state is now
+`STATE-OF-THE-APP-2026-09-14-1217.md`; the old file remains under `docs/archive/state/` as historical evidence.
+
+Current code tip is `main` at `0ac749c`; the latest tested product-code checkpoint is `1e6b632`, UI/package `0.63.90`.
+T3 is admitted after 252 manually adjudicated predictions with zero false positives. T4 consists of the selector
+and the $0 executor-routing dry run. T5's real call path is tested but blocked by an invalid Anthropic API key; no
+cost or note was produced. T6's ledger is informational. Claude's 22-item design/declutter work is complete.
+
+The next Codex-owned batch is local-only: reconcile the scheduler/state records, isolate fake-OpenAI breaker state
+between tests, strengthen T4/T5 no-side-effect and blocked-credential tests, then run the full release ritual.
+Do not retry T5 or make paid provider calls. Preserve the existing root warning for `KEEP AWAKE - overnight.command`
+until its treatment is separately decided; do not delete or silently hide it.

@@ -2260,3 +2260,16 @@ Commit-bound `release-check --no-pytest` shows "contracts valid" PASS (t5.adjudi
 pre-existing FAIL causes. Committed at `1e6b632`. Artifact:
 `evals/release/release-check-0.63.90-1e6b632-20260914-185801.json`. The real live call itself is blocked on an
 invalid Anthropic API key (confirmed via direct curl, not an SDK or proxy artifact) -- not a code or test gap.
+
+## Low-cost control-plane cleanup checkpoint — 2026-09-14 12:17 PT
+
+The authoritative current state moved to `STATE-OF-THE-APP-2026-09-14-1217.md`; the contradictory 10:16 snapshot
+was archived under `docs/archive/state/`. The repository now records the completed T3 gold gate (`3ca18be`), T4
+selector and $0 routing dry run (`86ddab9`, `c127978`), T5 proposal and credential-blocked real-call path
+(`ed37393`, `1e6b632`), and informational T6 ledger (`e0e99f5`).
+
+The remaining low-cost reliability work is test isolation and side-effect proof, not live inference: isolate the
+fake-OpenAI breaker state that leaks across test order, prove T4/T5 proposal and blocked-credential paths make no
+provider call or unintended write, and rerun the release ritual. The Anthropic key remains invalid; no retry or paid
+call is authorized. The `KEEP AWAKE - overnight.command` root warning and native worker-restart timing race remain
+known, separately scoped conditions.
