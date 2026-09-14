@@ -352,3 +352,31 @@ PASS. Kyle's own venv is where the 1,439-green run lives.
 The v2 selector still executes nothing; the floor is a parameter, not a default. The next live step is the
 smallest possible: a handful of new sources chosen by v2's `by_source` order, run with `substance_floor=30`,
 to check both changes against fresh, unlabelled data before anything runs at scale.
+
+
+### Live validation on fresh data — 2026-09-14, seven sources, $0.4273
+
+Chosen by v2's own `by_source` order among sources never analysed for this project: the top three single-window
+sources and top two two-window sources (does the ranking hold on unlabelled data?), plus two multi-window sources
+from the bottom of the ranking (does the probe stop them?). Run through the real, unmodified
+`findings.suggest_for_source(..., substance_floor=30)` -- the bridge fetched window 0 for every source and the
+remaining windows only where the probe passed, so a stopped source had exactly one window available and the real
+probe HAD to stop it or fail loudly.
+
+    v2 rel  probe  stopped  cost     suggested  substance  source
+    0.646    35     n/a     $0.017        6        35      Starting a company vs buying a company (Searchfunder)
+    0.634    85     n/a     $0.032       13        85      Little To No Money Down Acquisition Secrets.pdf
+    0.618    68     n/a     $0.039       11        68      EVERY Level of a Holding Company
+    0.579    78     no      $0.099       23        70      SBA LOANS: Signs of a GREAT business to buy
+    0.566    78     no      $0.131       26        75      How to Find Businesses to Buy NO ONE ELSE Knows About
+    0.268     2     YES     $0.052        0         2      Episode 4: The Royal Rumble: Women VS Men
+    0.249     5     YES     $0.057        4         5      n8n Masterclass: Build AI Agents
+
+Every v2-top source cleared the floor (four of five scored 68 or above); both v2-bottom sources scored under 6
+and the probe stopped each after one window, skipping three windows (~$0.17) with nothing lost. Single-window
+sources were correctly not probed (`n/a`). 83 suggested findings for $0.43 -- $0.005 per suggested finding,
+against $0.009 for the un-ranked, un-probed batches earlier today. `cost_value.unit_costs()["total_charged"]`
+moved `151.204365 -> 151.6317`, matching. Both changes are validated on data they were not tuned on.
+
+Recorded spend today (T5 + T4, all batches + this validation): **$3.6826**; actual Anthropic billing including the
+disclosed ~$0.79 timeout loss: roughly **$4.47** of the $20 authorized.
