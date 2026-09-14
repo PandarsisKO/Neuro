@@ -151,3 +151,57 @@ gold-adjudication closure, none introduced. `repo-check` shows the same one pre-
 T4 now has both halves represented: a real, tested selector, and a real, tested executor routing seam proven at
 $0. The only remaining step to a fully live T4 is wiring `providers.route()` plus the actual provider/local call
 and a structured-delta write path — deliberately left for a future rung, per Kyle's choice.
+
+
+## Real findings extraction, one flagged source — 2026-09-14
+
+Kyle authorized real spend up to $20 today and asked to run real findings extraction on flagged sources in his
+"Buying Businesses" project, throttled: one source first, check the real cost, then decide batch size.
+
+### Which source, and why
+
+`t4.plan()` ranked the project's unexplained chunks; source `559438c56dbb4be1b1116f8da76698b2`
+("If I Wanted to Go From $0 to $100M, I'd Do This [FULL GUIDE]") had the most priority-1 items (6, each with a
+Tier-0 cue and zero Claim/Finding coverage) of any single source, so it was the first real test.
+
+### What ran, and why it needed the same bridge as T5
+
+Same root cause as T5 (see `docs/T5-ADMISSION-2026-09-14.md`, "The real call, and why it needed a bridge"): this
+device's shell can only reach the network through a local proxy that blocks `api.anthropic.com`. Rather than
+build a T4-specific executor, this ran the EXISTING, already-shipped, already-tested production pipeline --
+`findings.suggest_for_source()` -- completely unmodified, using the seam it already has for exactly this kind of
+problem: the durable work-unit cache (`db.work_unit_get`/`work_unit_complete`, keyed by a content hash of every
+input that can change the request). The comment on that cache reads "work in flight is still work" -- it exists
+so a batch job whose results haven't been collected yet is never re-bought; the same mechanism makes a
+pre-fetched real response indistinguishable from one `suggest_for_source` fetched itself:
+
+1. On the device (real database): built the exact 6 per-window requests `suggest_for_source` would send for
+   this source, via the pipeline's own `findings.canonical_requests()` plus the `findings.extract` contract's
+   `request_params()` -- pure and read-only, no network, no ledger row.
+2. Those 6 requests moved to a network-capable environment, which made the 6 real, billed calls.
+3. The 6 real responses moved back. Each was parsed with `providers.structured()` (the exact function
+   `invoke_structured()` itself calls), its cost recorded with `usage.record_anthropic()`, and the result written
+   into `db.work_unit_complete()` under the SAME `work_unit_key()` the real pipeline would compute for that
+   window (a pure hash of project/source/window/index/contract/revisions -- verified to match by construction,
+   not by convention).
+4. `findings.suggest_for_source(project_id, source_id, force=True)` then ran for real, completely unmodified.
+   It found every window already "completed" in the work-unit cache, reused all 6 without any network call, and
+   ran its real materialize pipeline (dedup, cap, prefilter bookkeeping, note-writing) on real model output.
+
+`neurosearch/findings.py` is UNCHANGED. This is deliberately a heavier-weight bridge than T5's (which called
+`providers.invoke` directly): T4's target was the production extraction pipeline itself, with its concurrency,
+durable caching, and materialize logic all worth exercising for real rather than reimplementing.
+
+### Result
+
+6 real calls, `claude-sonnet-5`: 133,029 input tokens, 7,332 output tokens, **$0.3492** (matches
+`usage.record_anthropic`'s own per-window recording exactly). `cost_value.unit_costs(window="month")["total_charged"]`
+moved `147.952786 -> 148.301967`. `suggest_for_source` materialized **47 suggested findings** for this source
+(cap 80, not hit) and recorded a substance score of 12/100 -- correctly low: the transcript is Dan Martell/Tony
+Robbins content on personal finance, investing and business scaling, essentially unrelated to the project's
+acquisition-research brief. This is itself a useful, honest result: T4's selector flagged this source as
+unexplained and cue-dense, and a real extraction pass confirms there was genuinely little of substance here for
+THIS project -- not a wasted selector pick, a correctly low-substance read.
+
+Combined real spend today across T5 (one adjudication) and T4 (one source, six windows): **$0.352949** of the
+$20 authorized -- both rungs have now executed for real, not just against the fake-provider harness.

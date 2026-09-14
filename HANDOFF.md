@@ -2879,3 +2879,33 @@ repository root. The file was inspected, preserved byte-for-byte and moved to `/
 the already-running `caffeinate -disu` process was unaffected. The repository allowlist was not broadened and no user
 file was deleted. `./.venv/bin/neurosearch repo-check` now reports PASS, and the formerly failing test passes alone.
 The next full release ritual must be run after the remaining cleanup changes.
+
+## T5 transport correction and cleanup validation — 2026-09-14 12:31 PT
+
+Claude's later evidence supersedes the earlier diagnosis that the Anthropic credential was invalid. The device's
+shell is behind a Cowork MITM egress proxy that returns a synthetic `401` for `api.anthropic.com`; the same key
+returned `200` from an allowlisted environment. One bridge-assisted adjudication therefore ran for real at
+`claude-sonnet-5`, 474 input / 282 output tokens, `$0.003768`; cost ledger and suggested note `29360` are real,
+while the bridge deliberately did not manufacture a low-level invocation/breaker row. Claim and tension status
+were unchanged. With only a small weekly allowance remaining, no retry or other paid T5 call is authorized.
+
+The keep-awake helper was moved intact outside the repository. After that cleanup, the full suite is **1,436
+passed, 1 warning**, `repo-check` is PASS, and commit-bound `release-check --no-pytest` is PASS at `296d20f`.
+The previously suspected fake-OpenAI breaker leak is not reproducible in the normal full suite; the remaining
+safe work is to add explicit regression coverage for fresh-database breaker isolation and blocked-credential
+no-mutation behavior, then rerun the same release ritual.
+
+## T4 real findings extraction, one flagged source — 2026-09-14 13:2x PT
+
+Same bridge mechanism as the T5 correction above, applied to T4: `findings.suggest_for_source()` ran completely
+unmodified against source `559438c56dbb4be1b1116f8da76698b2` ("If I Wanted to Go From $0 to $100M, I'd Do This
+[FULL GUIDE]") — the project's highest-priority `t4.plan()` pick — by priming its durable work-unit cache
+(`db.work_unit_complete`, keyed by the pipeline's own `work_unit_key()` hash) with 6 real, bridge-fetched
+responses, then letting the real pipeline reuse them and materialize findings normally. `neurosearch/findings.py`
+is unchanged. Real spend: `claude-sonnet-5`, 133,029 input / 7,332 output tokens, **$0.3492**; cost ledger moved
+`147.952786 -> 148.301967`. 47 suggested findings were written; substance scored 12/100 (correctly low — this
+source is personal-finance/investing content, essentially unrelated to the acquisition-research brief). Combined
+real spend today (T5 + this T4 source): **$0.352949** of the $20 authorized. See "Real findings extraction, one
+flagged source" in `docs/T4-ADMISSION-2026-09-14.md` for the full mechanism. STATE-OF-THE-APP's T4 bullet still
+needs a pass to reflect this — left for the next person to touch that file, to avoid clobbering the in-flight
+edit above.
