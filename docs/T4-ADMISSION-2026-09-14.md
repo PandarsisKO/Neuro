@@ -380,3 +380,29 @@ moved `151.204365 -> 151.6317`, matching. Both changes are validated on data the
 
 Recorded spend today (T5 + T4, all batches + this validation): **$3.6826**; actual Anthropic billing including the
 disclosed ~$0.79 timeout loss: roughly **$4.47** of the $20 authorized.
+
+
+## E1 — the substance floor threaded through the job path — 2026-09-14
+
+Per `docs/T4-EXECUTION-PLAN-2026-09-14.md`'s rung E1: `substance_floor` previously stopped at
+`findings.suggest_for_source()`. `suggest_for_project()` now accepts and forwards it unchanged to every source,
+INCLUDING the re-enqueue path -- if a budget pause or provider outage hands the remaining sources back to the
+queue (`db.create_job("suggest_findings", ...)`), the new job payload now carries the same floor, so a resumed
+run keeps probing rather than silently reverting to reading every window. The `suggest_findings` job kind
+(`neurosearch/jobs.py`) now reads `payload.get("substance_floor")` and passes it through. `None` (both a missing
+key and an explicit `None`) is byte-for-byte the pre-existing behaviour -- nothing that does not opt in changes.
+
+Four new tests in `tests/test_findings_substance_floor.py` (9 total in that file now): `suggest_for_project`
+passes the floor through and stops a low source at window 1; without the floor it reads every window as before;
+the same two cases run through the real `jobs.run_job()` on a `suggest_findings` job dict, exercising the actual
+path the executor (E2) will enqueue into rather than calling `findings` directly.
+
+### Validation
+
+Focused: 9/9 in `test_findings_substance_floor.py`; 96/96 across the full T4/findings-adjacent set. Full suite in
+this device VM: same 15 failures as the last checkpoint (13 in `test_core.py`/`test_j3_fallback.py` from blocked
+OpenAI egress and artifact paths, 1 order-flaky retrieval test, 1 native-worker-restart race) -- identical set,
+zero new failures, confirmed by diff against the prior run's failure list. `repo-check` PASS. No spend, no write,
+no schema change.
+
+Next: E2, `t4.execute()` -- the executor itself, with a $0 dry run and a dollar cap, still to be built.

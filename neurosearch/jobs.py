@@ -324,7 +324,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "suggest_findings":
         from .findings import suggest_for_project
         return suggest_for_project(payload["project_id"], payload.get("source_ids"), progress=progress, force=bool(payload.get("force")), depth=payload.get("depth"),
-                                   r6_wave=payload.get("r6_wave"), r6_provisional=bool(payload.get("r6_provisional")))
+                                   r6_wave=payload.get("r6_wave"), r6_provisional=bool(payload.get("r6_provisional")),
+                                   substance_floor=payload.get("substance_floor"))
     if kind == "suggest_findings_batch":
         from .batches import run as run_batch
         return run_batch(jid, payload, progress=progress)

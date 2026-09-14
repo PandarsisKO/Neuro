@@ -691,7 +691,12 @@ def is_long(src: dict[str, Any], n_segments: int | None = None) -> bool:
 
 
 def suggest_for_project(project_id: str, source_ids: list[str] | None = None, progress=None, force: bool = False, depth: str | None = None,
-                        r6_wave: str | None = None, r6_provisional: bool = False) -> dict[str, Any]:
+                        r6_wave: str | None = None, r6_provisional: bool = False,
+                        substance_floor: int | None = None) -> dict[str, Any]:
+    """``substance_floor`` (T4 E1, 2026-09-14): passed through unchanged to every ``suggest_for_source`` call, and
+    preserved on the re-enqueued job if a budget pause or provider outage hands the remaining sources back to the
+    queue -- so a resumed job keeps probing at the same floor rather than silently reverting to reading every
+    window. ``None`` (the default) is byte-for-byte the pre-existing behaviour."""
     ids = source_ids or db.sources_needing_suggestions(project_id)
     done, failed = 0, []
     for i, sid in enumerate(ids):
@@ -703,7 +708,8 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             if progress:
                 progress(max(0.02, (_i + frac) / max(len(ids), 1)), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
         try:
-            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub, r6_wave=r6_wave, r6_provisional=r6_provisional)
+            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub, r6_wave=r6_wave, r6_provisional=r6_provisional,
+                               substance_floor=substance_floor)
             done += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
@@ -711,7 +717,8 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             if isinstance(e, (BudgetPaused, ProviderUnavailable)):
                 # hand the remaining sources back to the queue as a fresh job and stop
                 remaining = ids[i:]
-                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining, "depth": depth})
+                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining, "depth": depth,
+                                                    "substance_floor": substance_floor})
                 raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)

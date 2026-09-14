@@ -106,3 +106,44 @@ def test_single_window_source_is_not_probed(fresh, monkeypatch):
     findings.suggest_for_source(project["id"], sid, force=True, substance_floor=30)
     assert read == [0]
     assert _analysis_prefilter(project["id"], sid) is None      # nothing to skip, nothing recorded
+
+
+def test_suggest_for_project_passes_the_floor_through(fresh, monkeypatch):
+    project, sid = _source_and_project()
+    read = _install(monkeypatch, [12, 90, 90])
+    result = findings.suggest_for_project(project["id"], [sid], substance_floor=30)
+    assert read == [0]
+    assert result == {"sources": 1, "done": 1, "failed": 0}
+    probe = _analysis_prefilter(project["id"], sid)["substance_probe"]
+    assert probe["stopped"] is True and probe["windows_skipped"] == 2
+
+
+def test_suggest_for_project_without_floor_is_the_old_path(fresh, monkeypatch):
+    project, sid = _source_and_project()
+    read = _install(monkeypatch, [12, 90, 90])
+    findings.suggest_for_project(project["id"], [sid])
+    assert sorted(read) == [0, 1, 2]
+    assert _analysis_prefilter(project["id"], sid) is None
+
+
+def test_suggest_findings_job_passes_the_floor_through(fresh, monkeypatch):
+    from neurosearch import jobs
+
+    project, sid = _source_and_project()
+    read = _install(monkeypatch, [12, 90, 90])
+    job = db.create_job("suggest_findings", {"project_id": project["id"], "source_ids": [sid], "substance_floor": 30})
+    jobs.run_job(job)
+    assert read == [0]
+    probe = _analysis_prefilter(project["id"], sid)["substance_probe"]
+    assert probe["stopped"] is True
+
+
+def test_suggest_findings_job_without_floor_key_is_the_old_path(fresh, monkeypatch):
+    from neurosearch import jobs
+
+    project, sid = _source_and_project()
+    read = _install(monkeypatch, [12, 90, 90])
+    job = db.create_job("suggest_findings", {"project_id": project["id"], "source_ids": [sid]})
+    jobs.run_job(job)
+    assert sorted(read) == [0, 1, 2]
+    assert _analysis_prefilter(project["id"], sid) is None
