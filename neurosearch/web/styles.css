@@ -308,12 +308,6 @@
   .pill-stat.ok{color:var(--ok);background:var(--ok-soft)}
   .pill-stat.warn{color:var(--warn);background:var(--warn-soft)}
   .pill-stat.bad{color:var(--bad);background:var(--bad-soft)}
-  /* 2026-09-14 - OrchestrateIQ's "Agents" table (INSPIRATION) pairs a percentage with a small inline
-     progress bar rather than the bare number alone. Added as its own class using currentColor so it
-     automatically picks up whichever status color the parent .tag.status-ok/warn/bad span is already
-     set to - no separate color logic to keep in sync with the tag's own threshold coloring. */
-  .tag-bar{display:inline-block;width:28px;height:4px;margin-left:5px;vertical-align:middle;border-radius:2px;background:var(--chip);position:relative;overflow:hidden}
-  .tag-bar::after{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--pct);background:currentColor}
   .plan .tag.high,.plan .tag.blocking{color:var(--bad)} .plan .tag.medium,.plan .tag.soon{color:var(--warn)} .plan .tag.now{color:var(--warn)}
   .plan table{border-collapse:collapse;width:100%;font-size:13px} .plan th,.plan td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top} .plan th{background:var(--panel2)}
   .plan .ready{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
