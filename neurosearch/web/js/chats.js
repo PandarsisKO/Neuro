@@ -2,8 +2,12 @@
 globalThis.loadChats = async function loadChats() {
   state.chats = await api('/api/conversations?project_id=' + state.project.id);
   $('#nChats').textContent = state.chats.length;
+  const now = Date.now() / 1000, cRow = c => `<div class="c ${c.id === state.conv ? 'active' : ''}" onclick="selectChat('${c.id}')"><span>${esc(c.title || 'Untitled chat')}</span></div>`;
+  const bands = [['Today', c => c.updated_at && now - c.updated_at < 86400], ['This week', c => c.updated_at && now - c.updated_at < 86400 * 7], ['Older', () => true]];
+  let rest = state.chats;
+  const grouped = bands.map(([label, test]) => { const match = rest.filter(test); rest = rest.filter(c => !test(c)); return [label, match]; }).filter(([, arr]) => arr.length);
   $('#chatList').innerHTML = `<div class="newc"><button class="small" style="width:100%" onclick="newChat()">＋ New chat</button></div>` +
-    state.chats.map(c => `<div class="c ${c.id === state.conv ? 'active' : ''}" onclick="selectChat('${c.id}')"><span>${esc(c.title || 'Untitled chat')}</span></div>`).join('');
+    (grouped.length > 1 ? grouped.map(([label, arr]) => `<div class="chatGroupLabel">${label}</div>` + arr.map(cRow).join('')).join('') : state.chats.map(cRow).join(''));
 }
 globalThis.newChat = async function newChat() {
   const c = await post('/api/conversations', { project_id: state.project.id, title: null });

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.71">
+<meta name="neurosearch-ui-version" content="0.63.72">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -26,7 +26,7 @@
       <div class="back" onclick="goHome()">← All projects</div>
       <div class="pname" id="wsName"></div>
     </div>
-    <div class="modes"><div id="modeResearch" class="active" onclick="showView('chats')">Research</div><div id="modePlan" onclick="showView('plan')">Plan</div></div>
+    <div class="modes"><div id="modeResearch" class="active" onclick="if(state.view==='plan')showView('chats')">Research</div><div id="modePlan" onclick="showView('plan')">Plan</div></div>
     <nav>
       <div class="item" data-view="chats" onclick="showView('chats')">💬 Chats <span class="n" id="nChats"></span></div>
       <div class="item" data-view="sources" onclick="showView('sources')">📚 Sources <span class="n" id="nSources"></span></div>
@@ -70,7 +70,8 @@
     <div class="view" id="view-sources">
       <h2>Sources</h2>
       <div id="srcFun"></div>
-      <div class="card">
+      <details class="card" id="srcAddPanel">
+        <summary class="srcAddSummary">+ Add sources <span class="muted">— link, upload, paste, library, Discover, browser extension</span></summary>
         <div class="tabs">
           <button class="active" data-pane="link" onclick="showPane('link')">Link</button>
           <button data-pane="upload" onclick="showPane('upload')">Upload file</button>
@@ -145,7 +146,7 @@
           <div id="discLibrary" style="margin-top:10px"></div>
           <div id="discList" style="margin-top:10px"></div>
         </div>
-      </div>
+      </details>
       <div id="bootCard" class="card hidden" style="border-color:var(--accent)"></div>
       <div id="jobsCard" class="card hidden"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
       <div id="reviewWrap"></div>
@@ -154,6 +155,8 @@
         <div id="srcChips" class="row" style="gap:4px"></div>
         <input id="srcQ" placeholder="Filter sources…" oninput="debounce(loadSources)" style="flex:1;min-width:160px">
         <span class="muted fixed" id="srcCount"></span>
+        <button class="small ghost" title="Export every source in this project as a CSV" onclick="exportCsv(false)">⬇ Master sheet CSV</button>
+        <button class="small ghost" title="Export this project's source segments as a CSV" onclick="exportCsv(true)">⬇ Segments CSV</button>
       </div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin:-4px 0 8px;font-size:12.5px" id="srcFilters">
         <span class="muted">Show:</span>
@@ -168,8 +171,6 @@
         <select id="srcSort" onchange="loadSources()" style="width:auto;font-size:12.5px"><option value="default">sort: activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
         <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()"> Group by origin</label>
         <span class="muted" id="srcFilterNote"></span>
-        <button class="small" onclick="exportCsv(false)">Master sheet CSV</button>
-        <button class="small" onclick="exportCsv(true)">Segments CSV</button>
       </div>
       <div class="row hidden" id="srcGroupCtl" style="gap:8px;margin:-4px 0 6px;font-size:12.5px">
         <a href="#" onclick="SRCG.collapsed=new Set();renderSourceList();return false">Expand all</a>
@@ -266,7 +267,7 @@
         <label class="muted">Name</label><input id="epName">
         <label class="muted" style="display:block;margin-top:10px">Goal — what does "done" look like?</label><input id="epGoal">
         <label class="muted" style="display:block;margin-top:10px">Brief — what are you trying to find out? Every answer in this project is guided by it. You can also change it from a chat (“refocus on…”).</label>
-        <textarea id="epBrief" style="min-height:120px"></textarea>
+        <textarea id="epBrief" style="min-height:260px"></textarea>
         <label class="muted" style="display:block;margin-top:10px">Who is this for?</label><input id="epAudience">
         <label class="muted" style="display:block;margin-top:10px">What do you want at the end?</label><input id="epOutput">
         <label class="muted" style="display:block;margin-top:10px">Source preferences</label><input id="epSourcePrefs">

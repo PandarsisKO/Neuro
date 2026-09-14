@@ -60,6 +60,11 @@
   button.small{padding:5px 9px;font-size:13px;border-radius:7px}
   button.danger{color:var(--bad)}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .srcAddSummary{cursor:pointer;font-weight:600;list-style:none}
+  .srcAddSummary::-webkit-details-marker{display:none}
+  .srcAddSummary::before{content:'▸ ';display:inline-block}
+  details[open] .srcAddSummary::before{content:'▾ '}
+  #srcAddPanel[open] .srcAddSummary{margin-bottom:10px;display:block}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .row>*{flex:1;min-width:0}
   .row>input{min-width:140px}
@@ -148,6 +153,8 @@
   aside .chats .c.active{background:var(--panel2);color:var(--text)}
   aside .chats .c .x{opacity:0;font-size:12px}
   aside .chats .c:hover .x{opacity:.8}
+  aside .chats .chatGroupLabel{color:var(--text-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px 3px}
+  aside .chats .chatGroupLabel:first-child{padding-top:2px}
   aside .chats .newc{margin:6px 0 6px}
   aside .foot{padding:10px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
   #main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
@@ -277,7 +284,7 @@
   .wk input{width:auto;margin-top:3px}.wk.done{opacity:.55;text-decoration:line-through}
   .refine{background:var(--banner);border:1px solid var(--banner-line);border-radius:12px;padding:12px 14px;margin:0 0 14px}
   .rq{padding:8px 0;border-top:1px solid var(--banner-line)}.rq.answered{opacity:.85}.rq .ans{color:var(--ok);margin-top:3px}
-  .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:6px 0 10px;flex-wrap:wrap}
+  .ptabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:6px 0 10px;flex-wrap:wrap;position:sticky;top:0;background:var(--bg);z-index:2}
   .ptabs button{border:0;background:none;padding:8px 12px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font:inherit}
   .ptabs button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
   .plan details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:8px 0}.plan summary{cursor:pointer}

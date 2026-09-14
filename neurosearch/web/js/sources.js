@@ -126,7 +126,7 @@ globalThis.srcRowHtml = function srcRowHtml(s) {
     return '';
   })();
   return `<div class="src ${(s.job && s.job.status === 'running') || s.analysing ? 'live' : ''}">
-    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
+    ${s.thumbnail_url ? `<img src="${esc(s.thumbnail_url)}" loading="lazy" onerror="this.outerHTML=${esc(JSON.stringify(`<div class="ico">${ICON[s.platform] || '•'}</div>`))}">` : `<div class="ico">${ICON[s.platform] || '•'}</div>`}
     <div class="grow min-w-0">
       <div class="t">${s.priority ? '<span title="Priority source for this project — retrieval favours it">★</span> ' : ''}${s.url.startsWith('http') ? `<a href="${esc(s.url)}" target="_blank">${esc(s.title || s.url)}</a>` : esc(s.title || s.url)}</div>
       <div class="muted">${esc(s.channel || s.platform)} ${s.published_at ? '· ' + s.published_at : ''} ${s.duration ? '· ' + fmt(s.duration) : (s.description || '')}${s.r6_provisional ? ' <span class="tag" title="Fast-wave result: useful early evidence, still provisional while the warm/deep queue continues. Later evidence can revise it.">⚡ provisional</span>' : ''}${s.under_read ? ' <span class="tag status-warn" title="Long source read once at the old 12-finding cap — Read deeper to get what it holds">📚 under-read</span>' : ''} <span class="st ${s.status} ${s.job && s.job.status === 'running' ? 'active' : ''}">${s.job && s.job.status === 'running' ? 'active' : s.status === 'pending' ? 'queued' : s.status}</span> ${s.transcript_kind ? '· ' + s.transcript_kind : ''} ${(s.tags || []).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</div>
