@@ -2499,3 +2499,90 @@ confirmed up via Chrome at `v0.63.87` after two ~8-10s waits.
 Rung 4 (`CL-2`/`CL-3`/`CL-4`/`CL-5`/`RD-6`/`RD-7`) is now fully landed. Proceeding to rung 5 —
 `CL-1` + `CL-6` + `SM-3` + `SM-5` + `SM-6` + `RD-5` — per the audit's suggested execution order and the
 standing "complete them all, most efficient manner" authorization.
+
+
+## Declutter rung 5: RD-5, SM-5, SM-3, SM-6, CL-1 — 2026-09-14 (overnight, eleventh follow-up)
+
+Rung 5 of 6, continuing straight from rung 4's landing per the same standing authorization. Five findings
+in one commit — each touches a small, disjoint surface, so unlike rung 4 they held together safely without
+splitting. `CL-6` (the app-wide emoji-as-glyph sweep) is deliberately left for its own commit next: much
+larger surface area, and `test_s50_design_drift` needs its emoji ceiling lowered in that same commit per the
+audit's own acceptance test for `CL-6`.
+
+**RD-5 — watch-out titles stopped repeating the area their own chip already shows.** `research_view.py`'s
+`KIND_TITLE` templates built titles like `"{area} evidence may be outdated"`, and for any watch-out spanning
+more than one Claim, `subject` (the thing filled into `{area}`) fell back to the area string itself — so a
+card could read "Deal financing · Seller financing evidence may be outdated" directly above a chip reading
+"Deal financing · Seller financing". Titles now say only what is wrong ("Evidence may be outdated", "Sources
+disagree", "No experiential or expert voice yet" for `MISSING_PERSPECTIVE`); `areaChip()` is the only place
+"where" is said, in both the one-Claim and many-Claim case. `tests/test_n1_research_view.py`'s three affected
+assertions (which had asserted the old duplicating format, including one that explicitly asserted
+`w["area"] in w["title"]`) updated to match the new behavior.
+
+**SM-5 — Research's "Open questions" tab stopped disagreeing with its own stat tile.** The Overview tile
+counts `s.important_questions` (the server total); the tab label counted `openQ.length` (the paged client
+list) — an order of magnitude apart on a large project (an audit example: tile 2000, tab 200). Simplest of
+the two audit-sanctioned fixes: the tab drops its own number since the tile already has it.
+
+**SM-3 — 🧠 is reserved for the Research nav item.** It was also the "became a Claim" use-badge, the
+per-citation "why" link (~14 per chat answer), the "Consulted the Knowledge Map"/"Proposed Claim" chat
+banners, and — the one that actually misled — the prefix on the Claim-strength tag on finding rows, where
+"🧠 weak" read as "this finding is weak" when it actually named the strength of the Claim the finding feeds.
+Every one of those is now plain text: "in plan", "cited 2×", "Claim: weak" (both in `useBadges()` and the
+sourceDrawer's own local `badge()` helper), "why", "Consulted the Knowledge Map", "Proposed Claim", "became a
+Claim" (the `#fbUsed` select option). Verified live: a finding row that used to show "🧠 weak" now shows
+"Claim: weak" — states the Claim's strength without implying the finding itself is weak.
+
+**SM-6 — the Sources job console collapses to one line by default.** It used to render fully open above the
+filter row: the global spend line, four controls (Pause queue, Pause background, Cancel queued, Budget…),
+and every job row — duplicating the sidebar footer's own spend figure (RD-3) and outranking the workbench the
+user came for. It's now `<details class="jobsPanel">` (same disclosure shape as CL-5's Filters panel),
+collapsed by default with one computed summary line ("N jobs running · doing X", or "N jobs queued"); opening
+it reveals the exact same console as before — same spend line, same four controls, same rows — untouched
+internally, just one click away instead of open by default. `loadJobs()`'s actual job-fetching, polling and
+row-rendering logic was not touched, only wrapped, to keep the isolated-risk surface small. Verified live:
+default Sources render shows "▸ 1 job running · finding claims to track" and nothing else above the filter
+row; clicking it reveals the full spend line, all four controls and the running job's row exactly as before.
+
+**CL-1 — Sources and the Findings workbench stop showing dozens of primaries at once.** Sources'
+`sourceRowActions()` had `.primary` on the row's main action slot regardless of state (up to 889 rows at
+once) plus on the Calculator and add-videos buttons; all three are now plain — Sources' one primary is the
+"+ Add sources" disclosure, which was never styled `.primary` to begin with, so the surface now has zero.
+The Findings workbench's per-row "✓ Approve" (in `suggested` and `reserve` states) was also `.primary` on
+every row of a 16,450-row list; it stays — it's the actual work — but plain, with the bulk Approve control
+above the list (CL-2) remaining the one primary at that scale. Verified live: a `skipped` source's "Ingest
+anyway" renders as a plain outlined button; on the Suggested workbench filter, "Approve 100 shown" is the
+only filled-blue primary on the page, with every per-row Approve plain beside it.
+
+**Files:** `neurosearch/research_view.py` (`KIND_TITLE`, the `MISSING_PERSPECTIVE` override, the
+`.format(area=subject)` call site), `neurosearch/web/js/research.js` (`renderShell()`'s tabs array,
+`useBadges()`, `sourceDrawer()`'s local `badge()`, workbench `act()`, `loadJobs()`'s new summary line),
+`neurosearch/web/js/sources.js` (`sourceRowActions()`'s primary/special slots), `neurosearch/web/js/chats.js`
+(the citation "why" link, the `research_state`/`claim_proposed` banners), `neurosearch/web/index.html`
+(`#fbUsed` option text, the `jobsCard` markup wrapped in `<details>`), `neurosearch/web/styles.css` (new
+`.jobsPanel` disclosure rules, same shape as `.filtersPanel`). `tests/test_n1_research_view.py`'s three
+RD-5-affected assertions updated.
+
+`UI_VERSION` 0.63.87 → 0.63.88. `node --check` clean on every touched JS file; `python3 -m ast` clean on
+`research_view.py`. Tests: 87/87 on the rung-4 targeted suites (confirmed unaffected), 36/36 on
+`test_n1_research_view.py` + `test_s37_uncited_findings.py` + `test_s20_no_double_read.py`, 5/5 on
+`test_r8_yield_and_review_fold.py`. Full suite (split in half, as `device_bash`'s 180s cap requires): 601/614
+and 781/782. The 13 `test_core.py`/`test_j3_fallback.py` failures are the same pre-existing calculator-gate
+failures documented in every rung's HANDOFF this cycle, tracing to `neurosearch/t3.py` (Codex's in-progress
+file, untouched here). The one new failure,
+`test_s43_foundation.py::test_native_worker_restart_recovers_inflight_fake_provider_job`, is an 8-second
+subprocess-timing race in the native worker-restart path — reproduces standalone the same way, and none of
+this rung's files (`research_view.py`, `research.js`, `sources.js`, `chats.js`, `index.html`, `styles.css`)
+touch job-worker or golden-eval machinery, so it's flagged as environmental/pre-existing rather than caused
+by this rung.
+
+Landed as commit `19ce0cd`. `.worktrees/f0` repinned to `19ce0cd`. Audit-instance restart followed the usual
+pattern (stale-artifact first screenshot, real dialog on the second coordinate-close, Terminate, relaunch via
+the already-selected Finder row) — confirmed up via Chrome at `v0.63.88` after two ~10s waits. Live-verified
+SM-6's collapse/reveal, CL-1's plain row buttons (Sources skipped-row and Findings suggested-filter), and
+SM-3's "Claim: weak" text on the same 889-source/16450-finding project used throughout this cycle, in both
+light and dark theme (`toggleTheme()`) — no CSS regressions.
+
+Proceeding to `CL-6` (Emoji still serve as glyphs across the app) — the last rung-5 finding, given its own
+commit for the reasons above — then rung 6 (`DOC-1`–`DOC-3`, folded into whichever file each touches) to
+close out all 22 findings, per the standing "complete them all, most efficient manner" authorization.
