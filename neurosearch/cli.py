@@ -628,3 +628,12 @@ def repo_check_cmd(as_json: bool = typer.Option(False, "--json", help="Emit stab
     """Report deterministic repository hygiene findings without opening the database or making network calls."""
     from .repo_check import check_repo, render
     typer.echo(render(check_repo(Path.cwd()), as_json=as_json), nl=False)
+
+
+@app.command("assumptions")
+def assumptions_cmd(as_json: bool = typer.Option(False, "--json", help="Emit stable machine-readable JSON")) -> None:
+    """T6: list every registered assumption (a constant that encodes a judgement about the data), its current
+    live value, whether it has been measured against live data, and how to re-verify it. Read-only; makes no
+    database, provider, or network call. Drift is informational only -- see `doctor` for the one-line summary."""
+    from . import assumptions
+    typer.echo(assumptions.render(as_json=as_json), nl=False)

@@ -11,6 +11,12 @@ from . import db, jobs, logctx, providers
 T = TypeVar("T")
 R = TypeVar("R")
 
+# T6 assumption-ledger entries: neurosearch/assumptions.py resolves these two live, by name, so naming them here
+# (rather than leaving them as inline literals in limit_for) is what makes them discoverable/auditable at all.
+# Neither has been measured against live throughput/rate-limit data yet -- see the ledger's `how_to_verify`.
+_LOCAL_UNIT_CONCURRENCY_DEFAULT = 2
+_API_UNIT_CONCURRENCY_DEFAULT = 3
+
 
 @dataclass(frozen=True)
 class ParentContext:
@@ -28,8 +34,8 @@ def capture_parent() -> ParentContext:
 def limit_for(task: str) -> int:
     """Small independent bounds for local and paid interactive execution; external batches own their own bound."""
     target, _ = providers.route(task)
-    name, default = (("NEUROSEARCH_LOCAL_UNIT_CONCURRENCY", 2) if target == "local"
-                     else ("NEUROSEARCH_API_UNIT_CONCURRENCY", 3))
+    name, default = (("NEUROSEARCH_LOCAL_UNIT_CONCURRENCY", _LOCAL_UNIT_CONCURRENCY_DEFAULT) if target == "local"
+                     else ("NEUROSEARCH_API_UNIT_CONCURRENCY", _API_UNIT_CONCURRENCY_DEFAULT))
     try:
         value = int(os.environ.get(name, "") or default)
     except ValueError:

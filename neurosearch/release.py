@@ -168,6 +168,16 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
         r.check("every model above the cheapest tier names a reason", False, str(e)[:200])
     fl = flags_state()
     r.check("experimental flags at their safe defaults", all(v["ok"] for v in fl.values()), {k: v["current"] for k, v in fl.items() if not v["ok"]} or "all off")
+    # T6: the assumption ledger is informational only, per its own gate ("drift warns, never fails a release") --
+    # this line never turns doctor RED, it just keeps unmeasured judgement calls visible instead of buried.
+    try:
+        from . import assumptions as _assumptions
+        _as = _assumptions.summary()
+        r.check("assumption ledger (informational)", None,
+                f"{_as['total']} registered, {_as['measured']} measured, {_as['unmeasured']} not yet measured"
+                + (f", {_as['resolution_errors']} failed to resolve" if _as['resolution_errors'] else ""), warn=True)
+    except Exception as e:  # noqa: BLE001
+        r.check("assumption ledger (informational)", None, str(e)[:200], warn=True)
     from . import claude_code
     lh = claude_code.health(wait=True)                      # doctor may block for the probe; the API surfaces never do
     r.check(claude_code.status_line(wait=True), lh.get("state") in ("ready", "disabled"), lh.get("detail") or "", warn=True)
