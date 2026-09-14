@@ -1458,3 +1458,40 @@ This was not caused by Rung W2 or the startup-crash fix, and the data itself was
 needed. `.worktrees/f0` is repinned to `c74a58f`. Kyle needs one more restart of the audit instance (same
 "Port 8788 already in use" dance if the previous process is still up — `lsof -nP -iTCP:8788 -sTCP:LISTEN` then
 `kill -9 <pid>`) to pick this up; the existing `data-audit/` backup copy doesn't need to be touched again.
+
+## Design ladder — Rung W3 landed (Master Plan: one recommended stale action) — 2026-09-14
+
+Landed as `8b06876`, right after re-verifying F2/W1/W2 live on the repaired audit instance (see the entries
+above). With Findings finally rendering, the Plan tab's stale banner was the next thing visible, and it showed
+exactly the pattern `ladder.md` describes for Rung W3 (`H-6`): four equal-weight buttons — Rebuild plan,
+Re-analyse now + rebuild, Re-analyse in background + rebuild, Raise budget — sitting above the plan itself, only
+one of which (Rebuild plan) was actually styled as primary; the other three read as co-equal.
+
+**Fix, in `renderStaleCard`'s plan branch (`research.js`):** Rebuild plan stays the one immediately-visible
+default — it is the cheapest option that always fully resolves the plan's own staleness (its cost is the plan
+estimate alone, no re-analysis required), so it satisfies the ladder's "explicit, stated rule, never an arbitrary
+pick" requirement for the recommended action; that was already true of the data, just not of the layout. The two
+costlier "re-analyse stale sources first" variants moved into a `<details>` disclosure one step away, styled like
+W2's `review-item` (same visual language for consistency — a Plan-local reuse of the pattern, not the Findings
+review hub itself). "Raise budget" now only renders when the estimate actually exceeds today's remaining budget
+(`s.budget.fits`) instead of unconditionally, matching how the Findings branch above it already only warns about
+budget when it applies.
+
+Checked live at 1440×900 on the audit instance first: the plan's own content (Master Plan header, "Start here")
+was already visible above the fold before this change — that half of `H-6` wasn't currently reproducing, only the
+four-co-equal-buttons half was, which is what this rung fixes.
+
+All four previously-visible options stay reachable with the same operation, cost and disclosure. `UI_VERSION` ->
+`0.63.68`. Ran the ladder's named deterministic gates (`test_s44`, `test_s50`, `test_s5`): 26 passed. Broader
+sweep (`test_core`, `test_indestructible`, `test_n5_source_value`, `test_n9_source_drawer`,
+`test_s36_sources_payload`): 12 `test_core` failures reproduce identically with these changes stashed out
+(pre-existing, sandbox-environment-specific — golden-eval/real-API-tier paths this sandbox can't run, not caused
+by this change); everything else passed.
+
+`.worktrees/f0` repinned to `8b06876`. Left untouched: `neurosearch/t3.py` and `tests/test_t3_adversarial.py`,
+Codex's own separate in-progress T3 work.
+
+**Next incomplete rung:** `W4` — Sources: one primary row action, the rest disclosed. Its precondition is
+"W1 landed, and F0's interaction walk of Sources exists" — worth checking `raw.md`/`audit.md` for whether that
+walk was actually completed before starting, per the ladder's explicit "this rung does not ship on observation
+alone" caveat.
