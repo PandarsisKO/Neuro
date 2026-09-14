@@ -46,3 +46,9 @@ The active work is deterministic control-plane and reliability cleanup only:
 
 No live T5 execution, paid inference, T4 provider routing, or structured-delta write path is authorized by this
 checkpoint.
+
+## Optional cleanup follow-through — 2026-09-14 12:44 PT
+
+The stale detached F0 worktree metadata was verified and pruned; no `design/f0` branch or live worktree existed.
+`tests/test_s43_foundation.py` passes **18/18**, and T3's bracket-label and unpunctuated-cue recall gaps now have
+explicit regression coverage. No production extractor or scheduler behavior changed.

@@ -83,3 +83,12 @@ def test_t3_url_trailing_delimiters_are_outside_the_span():
 def test_t3_empty_lines_and_markdown_labels_do_not_create_spurious_records():
     text = "\n[Plan: baseline → redesign]\n\n"
     assert t3.extract(text)["records"] == []
+
+
+def test_t3_known_recall_gaps_stay_explicit_and_do_not_relax_precision_guards():
+    """Bracket labels and cue sentences without terminal punctuation remain documented recall gaps."""
+    bracketed = "[Topic: acquisition]\nThis might be the best approach I've seen"
+    unpunctuated = "Never skip this step unless approved"
+    assert not _rows(bracketed, "hedge")
+    assert not _rows(bracketed, "comparative")
+    assert not _rows(unpunctuated, "procedure")

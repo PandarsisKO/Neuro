@@ -501,3 +501,9 @@ T4-selected source through the documented egress bridge: six real Sonnet calls c
 47 suggested findings, with substance 12/100. Combined real spend today across T4 and T5 is `$0.352949`.
 This does not change the admission boundary: the general T4 executor, provider routing, and structured-delta
 write path remain future work; only this one throttled extraction was run.
+
+## Optional cleanup follow-through — 2026-09-14 12:44 PT
+
+The stale F0 worktree registration was pruned after verifying its path was gone and no `design/f0` branch existed.
+The native worker-restart foundation suite is green (**18 passed**), and T3's bracket-label and unpunctuated-cue
+recall gaps are now pinned by explicit regression tests. No scheduler or production behavior changed.

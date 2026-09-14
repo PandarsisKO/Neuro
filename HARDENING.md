@@ -2306,3 +2306,10 @@ Claude's one throttled bridge-assisted T4 extraction used the unchanged producti
 Sonnet calls (`$0.3492`), materializing 47 suggested findings and a 12/100 substance score on the selected source.
 Together with T5, real spend today is `$0.352949`. The bridge did not add a new executor or provider path; general
 T4 live routing and structured-delta persistence remain gated future work.
+
+## Optional cleanup follow-through — 2026-09-14 12:44 PT
+
+The stale detached F0 worktree metadata was verified and pruned safely: no `design/f0` branch or live worktree
+existed, and only the broken `.git/worktrees/f0` registration was removed. The native worker-restart race is
+currently green under `tests/test_s43_foundation.py` (**18 passed**). Two T3 recall-only cases now have explicit
+tests preserving the current conservative behavior; no extractor production code changed.

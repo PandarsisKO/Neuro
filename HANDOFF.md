@@ -2923,3 +2923,15 @@ real spend today (T5 + this T4 source): **$0.352949** of the $20 authorized. See
 flagged source" in `docs/T4-ADMISSION-2026-09-14.md` for the full mechanism. STATE-OF-THE-APP's T4 bullet still
 needs a pass to reflect this — left for the next person to touch that file, to avoid clobbering the in-flight
 edit above.
+
+## Optional cleanup follow-through — 2026-09-14 12:44 PT
+
+The current state and scheduler records now reconcile Claude's real T4 extraction: six bridge-assisted Sonnet
+calls cost `$0.3492`, materialized 47 suggested findings, and scored substance 12/100; combined T4/T5 spend was
+`$0.352949`. The stale F0 worktree metadata was verified prunable: its path and gitdir target no longer existed,
+and no `design/f0` branch was present. `git worktree prune -v` removed only that stale metadata; the main worktree
+and all user reference directories remain intact.
+
+The historical native worker-restart race is not reproducing: `tests/test_s43_foundation.py` passes **18/18**.
+T3's two known recall-only cases now have explicit adversarial regression coverage (bracket-topic labels and cue
+sentences without terminal punctuation); the conservative precision guards remain unchanged.
