@@ -1434,3 +1434,27 @@ exact kind of staleness is what caused today's confusion, so it's worth not repe
 Audit instance is ready: Kyle can double-click `RUN THIS - Audit Instance.command` and get current `main`
 (`724cc58`) on port 8788 with the same previously-inspected data, fake AI, $0 budgets, login token `audit`. This
 unblocks the still-open F2/W1 re-scoring and Rung W2's own behavioral/visual gate in one restart.
+
+## Findings 500 on the audit instance was a real bug, not just stale/corrupted data — 2026-09-14
+
+After the worktree repin above, Kyle got a fresh audit instance up (new backup copied in cleanly this time —
+`neurosearch-20260913-1640.db`), but Findings still failed with "Couldn't load findings" on every project. This
+looked at first like the same FTS5 `candidates_fts` corruption seen in the previous backup, but the server log
+showed a different, new error: `PydanticSerializationError: invalid utf-8 sequence... ` while serializing the
+findings response.
+
+Root cause: T1's embedding backfill has been running against real projects and now populates
+`project_notes.embedding` / `project_claims.embedding` with real vector BLOBs (confirmed directly against the
+copied backup: 16,577 of 18,063 notes on the business-acquisition project have one). `findings_view._rows_only`
+and `claims._claim` both built their row dicts with a bare `dict(row)` from `SELECT *`, so once a project had any
+embedded notes/claims, the raw vector bytes rode along into the JSON response and pydantic choked trying to treat
+them as a UTF-8 string. `db.row_to_dict()` already strips this column for every other reader of those two tables
+(see its `d.pop("embedding", None)`) — these were the two remaining paths that didn't. Landed as `c74a58f`, with
+a regression test that populates a real embedding blob on a note and a claim and asserts the row-builders strip
+it before it can reach serialization (verified it fails without the fix, passes with it). `UI_VERSION` ->
+`0.63.67`.
+
+This was not caused by Rung W2 or the startup-crash fix, and the data itself was fine — no corruption, no re-copy
+needed. `.worktrees/f0` is repinned to `c74a58f`. Kyle needs one more restart of the audit instance (same
+"Port 8788 already in use" dance if the previous process is still up — `lsof -nP -iTCP:8788 -sTCP:LISTEN` then
+`kill -9 <pid>`) to pick this up; the existing `data-audit/` backup copy doesn't need to be touched again.
