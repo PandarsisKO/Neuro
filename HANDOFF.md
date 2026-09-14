@@ -1495,3 +1495,40 @@ Codex's own separate in-progress T3 work.
 "W1 landed, and F0's interaction walk of Sources exists" — worth checking `raw.md`/`audit.md` for whether that
 walk was actually completed before starting, per the ladder's explicit "this rung does not ship on observation
 alone" caveat.
+
+## Design ladder — Rung W4 landed (Sources rows: one primary action, overflow menu) — 2026-09-14
+
+Precondition check first: `ladder.md` requires "F0's interaction walk of Sources" before this rung, and grepping
+`raw.md`/`audit.md` showed it had been explicitly deferred (Kyle's 2026-09-13 decision), not done. Rather than
+skip it, ran that walk live on the audit instance before touching code: Ready-filtered Sources (889 rows), an
+11-click "Suggest findings" bulk-review pass, ~48s wall-clock, one real misclick caused by non-uniform row
+heights (a short-description row sits directly above a long-description row with no visual separation cue).
+Documented as a new "F0 addendum 4" section in `raw.md` and folded into `[H-4]` in `audit.md` (Evidence upgraded
+to "Visual, Code, Runtime"). This closed W4's precondition and sharpened `H-4`'s severity with a genuine new
+finding rather than just checking a box.
+
+**Fix, in `sources.js`:** each Sources row previously rendered 6+ inline action buttons in a flat `.actions` row
+(`H-4`'s pattern). Replaced with `sourceRowActions(s, needsBrowser)`: exactly one primary button chosen by row
+state (skipped → "Ingest anyway"; failed/pending-retryable → "Retry"; ready+unanalysed → "Suggest findings";
+ready+analysed → "What this gave"), plus any state-specific inline badges/buttons that were already
+conditionally rendered before this change (Calculator, video-embeds, deep-read tag — left as-is, these aren't
+part of `H-4`'s "too many equal-weight actions" complaint since they only ever show 0-2 at a time). Everything
+else — Suggest findings again, Transcript/Contents/Read, Read again with the model, Read deeper, Make/unmake
+priority, Remove from project, and (below a divider) Delete everywhere — moved into a "⋯" overflow menu, reusing
+the existing `.menu` component from chat's Copy/Share menus (`chats.js`) rather than inventing new UI: same
+toggle-viaHidden-attribute pattern per Rung F1's convention, same click-outside-to-close behavior, same CSS
+(generalized `.msg .menu` → bare `.menu`, same promotion pattern as W2's `.tag` fix). Delete everywhere uses the
+existing generic `button.danger{color:var(--bad)}` rule, not a new class.
+
+Verified live at 1440×900 on the audit instance (business-acquisition project, 889 sources) after Kyle restarted
+the server to pick up `UI_VERSION 0.63.69`: version-mismatch banner cleared, each row now shows exactly one
+primary button + "⋯", the menu opens with Suggest findings / Transcript / Make priority / Remove from project /
+divider / Delete everywhere in the correct order and styling, and closes cleanly on an outside click.
+
+`UI_VERSION` -> `0.63.69`. Landed as `ec9193c` (code) preceded by `f83970c` (F0 addendum 4 docs). `.worktrees/f0`
+repinned to `ec9193c`. Left untouched: `neurosearch/t3.py` and `tests/test_t3_adversarial.py`, Codex's own
+separate in-progress T3 work.
+
+**Next incomplete rung:** `W5` — Home and the status line: attention before totals. After that, a cross-cutting
+RE-AUDIT of every touched surface against the `evidence/` baseline, then `C1` (badge/pill primitive, Findings
+rows), then `P1` (small independent polish: L-1–L-5, M-7, M-9, M-10, M-11).
