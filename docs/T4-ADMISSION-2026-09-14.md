@@ -212,3 +212,36 @@ $20 authorized -- both rungs have now executed for real, not just against the fa
 The request/response JSON and the small priming script used for this bridge were preserved intact outside the
 repository at `/Users/kyleowen/neuro-t4-bridge/`. They are operational provenance only and are not part of the
 product or executor path.
+
+
+## Second batch, six more flagged sources — 2026-09-14
+
+Kyle: "Run more sources if it's useful to improving your findings and your work." Ran the next six sources by
+`t4.plan()` ranking (mixing clearly on-brief titles with off-brief ones, deliberately not hand-curated to only
+the easy wins, to exercise the real executor at scale) through the same bridge as the first source -- 33 real
+calls across 6 sources, `findings.suggest_for_source()` unmodified each time:
+
+| source | windows | cost | suggested | substance |
+|---|---|---|---|---|
+| Build & Sell n8n AI Agents (8+ Hour Course) | 14 | $0.7631 | 77 | 26 |
+| Copy of Acquisition Ace Deal Calculator | 4 | $0.5015 | 38 | **68** |
+| CLAUDE CODE FULL COURSE 4 HOURS | 7 | $0.3183 | 18 | 16 |
+| Mike Rowe: $10,000/Month in 90 Days | 4 | $0.1817 | 12 | 5 |
+| The NEW Way To Grow Your Business Part-Time | 2 | $0.1018 | 7 | 5 |
+| How To Analyze M&A Broker CIMs for Business Buyers | 2 | $0.1273 | 27 | **83** |
+
+Batch total: **$1.9937** (`cost_value.unit_costs()["total_charged"]` moved `148.301967 -> 150.29563`, matching).
+165 additional suggested findings written across the six sources.
+
+The two acquisition-specific sources ("Acquisition Ace Deal Calculator", "How To Analyze M&A Broker CIMs") scored
+substance 68 and 83 -- real, on-brief signal, not noise -- while the generic AI-tooling/course sources (n8n
+agents, the Claude Code course) scored low (26, 16), consistent with T4's selector flagging them purely on
+cue-density and coverage gaps, not topical relevance. This is a useful independent check on the selector: it
+finds cue-dense unexplored material regardless of topic, and the executor's substance score is what actually
+separates signal from noise once real extraction runs.
+
+### Running total
+
+T5 (one adjudication) + T4 (seven sources across two batches, $0.349181 + $1.9937): **$2.346612** of the $20
+authorized. All seven sources' work units and suggested findings are real and durable in the project database;
+nothing here was simulated or reverted.
