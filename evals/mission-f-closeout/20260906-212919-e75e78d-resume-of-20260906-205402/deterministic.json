@@ -1,0 +1,126 @@
+{
+ "steps": [
+  {
+   "step": "pytest",
+   "pass": true,
+   "detail": "135 passed, 1 warning in 31.21s"
+  },
+  {
+   "step": "schema registry provider-compatible",
+   "pass": true,
+   "detail": [
+    "discovery-v2",
+    "findings-v2",
+    "plan-actions-v3",
+    "plan-core-v3",
+    "plan-economics-v3",
+    "plan-execution-v3",
+    "plan-update-v2",
+    "rank-v2",
+    "situation-v3"
+   ]
+  },
+  {
+   "step": "Tier 1 (Planner V1)",
+   "pass": true,
+   "detail": "cost $0.5776"
+  },
+  {
+   "step": "Tier 1 (Planner V1) zero structured-output events",
+   "pass": true,
+   "detail": {
+    "schema_mismatches": 0,
+    "schema_fallbacks": 0,
+    "schema_failures": 0,
+    "output_truncated": 0,
+    "output_refused": 0,
+    "structured_tasks": [
+     "discover.quick",
+     "findings.extract",
+     "planner.actions",
+     "planner.core",
+     "planner.economics",
+     "planner.execution",
+     "planner.situation",
+     "planner.update",
+     "rank.relevance"
+    ]
+   }
+  },
+  {
+   "step": "Tier 1 (Planner V1) frozen planner rubric",
+   "pass": true,
+   "detail": {
+    "plan": 0.0,
+    "analysis": 0.1818
+   }
+  },
+  {
+   "step": "Tier 1 (Planner V3)",
+   "pass": true,
+   "detail": "cost $0.5974"
+  },
+  {
+   "step": "Tier 1 (Planner V3) zero structured-output events",
+   "pass": true,
+   "detail": {
+    "schema_mismatches": 0,
+    "schema_fallbacks": 0,
+    "schema_failures": 0,
+    "output_truncated": 0,
+    "output_refused": 0,
+    "structured_tasks": [
+     "discover.quick",
+     "findings.extract",
+     "planner.actions",
+     "planner.core",
+     "planner.economics",
+     "planner.execution",
+     "planner.situation",
+     "planner.update",
+     "rank.relevance"
+    ]
+   }
+  },
+  {
+   "step": "Tier 1 (Planner V3) frozen planner rubric",
+   "pass": true,
+   "detail": {
+    "plan": 1.0,
+    "analysis": 1.0
+   }
+  },
+  {
+   "step": "Tier 1 V3 evidence / assembly",
+   "pass": true,
+   "detail": {
+    "references": 56,
+    "dangling": [],
+    "removed": false
+   }
+  },
+  {
+   "step": "rubric V3 \u2265 V1 (fakes)",
+   "pass": true,
+   "detail": {
+    "v1": {
+     "plan": 0.0,
+     "analysis": 0.1818
+    },
+    "v3": {
+     "plan": 1.0,
+     "analysis": 1.0
+    }
+   }
+  }
+ ],
+ "pass": true,
+ "rubric_v1": {
+  "plan": 0.0,
+  "analysis": 0.1818
+ },
+ "rubric_v3": {
+  "plan": 1.0,
+  "analysis": 1.0
+ }
+}

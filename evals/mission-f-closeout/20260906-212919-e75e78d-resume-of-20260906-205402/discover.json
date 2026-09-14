@@ -1,0 +1,198 @@
+{
+ "items": [
+  {
+   "id": 4,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "The SBA Loan Guy (Hatch Business)",
+   "kind": "youtube_channel",
+   "url": "https://www.youtube.com/@thesbaloanguy",
+   "known_for": "SBA 7(a) financing mechanics explained",
+   "why": "Explains exact down-payment rules, lender fees, working capital injection, and SBA 7(a) eligibility for business acquisitions.",
+   "angle": "Lender-side perspective; pro-SBA; US small-business focused",
+   "start_with": [
+    {
+     "title": "SBA 7(a) Loan for Buying a Business \u2014 How Much Down?",
+     "url": "https://www.youtube.com/results?search_query=SBA+7a+loan+buying+business+down+payment+Hatch"
+    },
+    {
+     "title": "SBA Loan Deal Structure Explained",
+     "url": "https://www.youtube.com/results?search_query=SBA+loan+deal+structure+business+acquisition+Hatch"
+    }
+   ],
+   "fit": 5,
+   "depth": "beginner",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337128,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  },
+  {
+   "id": 3,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "SMB Diligence",
+   "kind": "website",
+   "url": "https://smbdiligence.com",
+   "known_for": "diligence checklists for SMB buyers",
+   "why": "Purpose-built checklist and framework site for exactly what kills deals in HVAC and services diligence.",
+   "angle": "Buyer-protective; risk-focused; practitioner-authored",
+   "start_with": [
+    {
+     "title": "The SMB Due Diligence Checklist",
+     "url": "https://smbdiligence.com"
+    },
+    {
+     "title": "Quality of Earnings for Main Street Deals",
+     "url": "https://smbdiligence.com"
+    }
+   ],
+   "fit": 5,
+   "depth": "intermediate",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337112,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  },
+  {
+   "id": 2,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "Acquiring Minds",
+   "kind": "podcast",
+   "url": "https://www.acquiringminds.co",
+   "known_for": "SMB acquisition stories and tactics",
+   "why": "Weekly interviews with buyers who closed SBA-financed main-street deals; covers exact financing, LOI, and 90-day plans.",
+   "angle": "Practitioner storytelling; broadly pro-ETA; US-centric SMB focus",
+   "start_with": [
+    {
+     "title": "How to Buy a Business with an SBA Loan",
+     "url": "https://www.acquiringminds.co"
+    },
+    {
+     "title": "Due Diligence That Almost Killed the Deal",
+     "url": "https://www.acquiringminds.co"
+    }
+   ],
+   "fit": 5,
+   "depth": "intermediate",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337096,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  },
+  {
+   "id": 1,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "Walker Deibel",
+   "kind": "person",
+   "url": "https://www.amazon.com/Buy-Then-Build-Acquisition-Entrepreneurs/dp/1544511868",
+   "known_for": "acquisition entrepreneurship via buying",
+   "why": "Wrote the definitive playbook on buying cash-flowing SMBs; covers valuation, SBA, and diligence rigorously.",
+   "angle": "Operator-first; pro-acquisition over startup; mainstream ETA framework",
+   "start_with": [
+    {
+     "title": "Buy Then Build (book) \u2014 Chapter 6: Due Diligence",
+     "url": ""
+    },
+    {
+     "title": "Walker Deibel on SBA Loans and Deal Structure (Acquiring Minds Podcast)",
+     "url": ""
+    }
+   ],
+   "fit": 5,
+   "depth": "beginner",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337002,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  },
+  {
+   "id": 6,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "Lara Morgan / Main Street Millionaire (Codie Sanchez)",
+   "kind": "newsletter",
+   "url": "https://www.contrarianthinking.co",
+   "known_for": "boring-business acquisition for cash flow",
+   "why": "Popularized buying cash-flowing SMBs; covers HVAC and services specifically with financing breakdowns and operator mindset.",
+   "angle": "Pro-acquisition evangelist; optimistic; audience-growth business model",
+   "start_with": [
+    {
+     "title": "How to Buy an HVAC Business Step by Step",
+     "url": "https://www.youtube.com/results?search_query=Codie+Sanchez+buy+HVAC+business"
+    },
+    {
+     "title": "SBA Loan Breakdown for Small Business Buyers",
+     "url": "https://www.contrarianthinking.co"
+    }
+   ],
+   "fit": 4,
+   "depth": "beginner",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337161,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  },
+  {
+   "id": 5,
+   "project_id": "a2eaa0c6a38540dc98307daaff0c11b5",
+   "name": "Chenmark Capital",
+   "kind": "newsletter",
+   "url": "https://chenmark.com/weekly-reads",
+   "known_for": "holding company ops and deal thinking",
+   "why": "Contrarian, long-hold perspective on valuing and operating main-street service businesses; counters hype-driven multiples.",
+   "angle": "Patient capital; operator-owners; skeptical of overpaying",
+   "start_with": [
+    {
+     "title": "Weekly Reads Archive \u2014 On Business Quality",
+     "url": "https://chenmark.com/weekly-reads"
+    },
+    {
+     "title": "What We Look for in a Business (Chenmark blog)",
+     "url": "https://chenmark.com"
+    }
+   ],
+   "fit": 4,
+   "depth": "advanced",
+   "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+   "refine": null,
+   "status": "new",
+   "created_at": 1788755940.337142,
+   "model": "claude-sonnet-4-6",
+   "prompt_version": "discover-7752a57c",
+   "brief_revision": "39ff53bcc9d76831"
+  }
+ ],
+ "note": "Start with Acquiring Minds and the SBA Loan Guy channel to nail financing mechanics and deal stories, then use SMB Diligence as your working checklist during any active deal; Chenmark is best read after you understand the basics, as a corrective against overpaying.",
+ "events": {
+  "schema_mismatch": 0,
+  "schema_fallback": 0,
+  "schema_failure": 0,
+  "output_truncated": 0,
+  "output_refused": 0,
+  "plan_assembly_failed": 0
+ },
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-sonnet-4-6"
+ },
+ "cost": 0.0209,
+ "seconds": 23.89
+}

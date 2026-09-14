@@ -1,0 +1,1145 @@
+{
+ "error": null,
+ "error_type": null,
+ "seconds": 286.88,
+ "tasks": {
+  "planner.analysis": {
+   "present": true,
+   "rubric": {
+    "score": 0.9091,
+    "passed": 10,
+    "total": 11,
+    "failed": [
+     "threat.customer_concentration"
+    ],
+    "by_kind": {
+     "assumption": "2/2",
+     "completeness": "4/4",
+     "contradiction": "1/1",
+     "risk": "3/4"
+    },
+    "structure": {
+     "score": 1.0,
+     "failed": []
+    }
+   },
+   "grounding": {
+    "research_items": 0,
+    "grounded": 0,
+    "fraction": null,
+    "evidence_refs": 40
+   },
+   "evidence_refs": 40,
+   "dangling_after_removal": 0,
+   "truncated": 0,
+   "parse_failed": 0,
+   "json_repaired": 0,
+   "output_chars": 19149,
+   "output_tokens": 5140,
+   "input_tokens": 586,
+   "cache_read": 0,
+   "cache_write": 4758,
+   "cost": 0.0967,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": 111.62,
+   "invocations": {
+    "logical": 1,
+    "attempts": 1,
+    "by_state": {
+     "completed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": "claude-sonnet-4-6"
+   }
+  },
+  "planner.build": {
+   "present": true,
+   "rubric": {
+    "score": 0.9583,
+    "passed": 23,
+    "total": 24,
+    "failed": [
+     "completeness.closing_day"
+    ],
+    "by_kind": {
+     "assumption": "3/3",
+     "completeness": "3/4",
+     "contradiction": "2/2",
+     "dependency": "4/4",
+     "first_step": "3/3",
+     "open_question": "3/3",
+     "risk": "5/5"
+    },
+    "structure": {
+     "score": 1.0,
+     "failed": []
+    }
+   },
+   "grounding": {
+    "research_items": 3,
+    "grounded": 3,
+    "fraction": 1.0,
+    "evidence_refs": 34
+   },
+   "evidence_refs": 34,
+   "dangling_after_removal": 0,
+   "truncated": 0,
+   "parse_failed": 0,
+   "json_repaired": 0,
+   "output_chars": 31849,
+   "output_tokens": 8308,
+   "input_tokens": 6387,
+   "cache_read": 4758,
+   "cache_write": 0,
+   "cost": 0.1452,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": 175.25,
+   "invocations": {
+    "logical": 1,
+    "attempts": 1,
+    "by_state": {
+     "completed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": "claude-sonnet-4-6"
+   }
+  }
+ },
+ "research_hash": "d1d61ede90b5251a",
+ "plan_evidence_dangling_raw": 0,
+ "planner_version": "v1",
+ "build_telemetry": null,
+ "plan_evidence_refs_raw": 74,
+ "plan": {
+  "goal": {
+   "outcome": "Close on a main-street business (HVAC, services, or light manufacturing) within 12 months using an SBA 7(a) loan with a 10/10/80 financing structure, having completed full diligence and negotiated a defined seller transition.",
+   "constraints": [
+    "12-month decision deadline",
+    "SBA 7(a) minimum 10% equity injection required \u2014 up to half can be a seller note on full standby",
+    "SBA lender requires DSCR \u2265 1.25\u00d7 after buyer salary",
+    "Unlimited personal guarantee required for all owners with 20%+ stake",
+    "Maximum SBA 7(a) loan: $5M"
+   ],
+   "success": [
+    "Pre-qualified with at least one SBA preferred lender with a target deal size range in hand",
+    "LOI signed on a business with verified SDE and a DSCR \u2265 1.25\u00d7",
+    "Quality of earnings report completed before contingencies removed",
+    "Seller transition period of 90+ days negotiated into the APA",
+    "First 90 days post-close executed without revenue loss from the transition"
+   ],
+   "evidence": [
+    "C1",
+    "C4",
+    "C5",
+    "C8",
+    "C9"
+   ]
+  },
+  "approach": {
+   "recommended": "SBA 7(a) with seller note \u2014 10% cash equity, 10% seller note on full standby, 80% SBA loan. Target main-street businesses at 2.0\u00d7\u20133.5\u00d7 SDE with verified earnings via a quality of earnings report before removing contingencies.",
+   "why": "This is the dominant, lender-validated structure for this asset class. Seller note on standby cuts actual cash needed to 5% of purchase price (e.g., $50K on a $1M deal), the 10-year term and government guarantee make rates and terms accessible, and the lender's DSCR floor acts as a built-in overpayment guard. HVAC and services businesses are exactly the 'boring businesses' that SBA lenders know and brokers transact regularly, reducing friction.",
+   "alternatives": [
+    {
+     "option": "Full seller financing (no SBA)",
+     "why_not": "Sellers willing to carry 100% of a note are rare, especially in attractive sectors like HVAC. Without a lender's DSCR check you become your own underwriter with no safety net. Treat as a fallback for a uniquely motivated seller, not a primary strategy."
+    },
+    {
+     "option": "Target managed businesses at 3.5\u00d7\u20134\u00d7 SDE to offset lack of industry experience",
+     "why_not": "Valid if operator experience is a real lender concern, but higher multiples require more cash at close and push the timeline to 12\u201318 months. Revisit only if lenders flag your background as a qualification risk."
+    }
+   ],
+   "basis": "research",
+   "confidence": "high",
+   "evidence": [
+    "C1",
+    "C4",
+    "C8",
+    "C9",
+    "C5",
+    "S5",
+    "S8"
+   ]
+  },
+  "first_steps": [
+   {
+    "action": "Total your liquid capital today \u2014 every non-retirement, accessible account.",
+    "detail": "The SBA requires a minimum 10% equity injection. Up to half (5% of purchase price) can come from a seller note on full standby, so your true minimum cash floor is 5% of the deal size you want to pursue. You cannot size a deal, pick a lender, or model DSCR until you know this number. Write it down.",
+    "today": true,
+    "evidence": [
+     "C1",
+     "C4"
+    ]
+   },
+   {
+    "action": "Call two SBA Preferred Lenders (PLP status) this week and ask for a pre-qualification conversation.",
+    "detail": "Tell them: your liquid capital, that you're targeting a main-street business acquisition (HVAC / services / light manufacturing), and ask what deal size they'd support and what they need from you. This is free. It gives you a real deal-size ceiling and starts the lender relationship you'll need later.",
+    "today": false,
+    "evidence": [
+     "C1",
+     "C4",
+     "S5",
+     "S8"
+    ]
+   },
+   {
+    "action": "Write your target criteria on one page: geography, sectors (rank them), revenue range, minimum SDE, must-have operational characteristics (e.g., does not require owner to be a licensed technician).",
+    "detail": "This single document prevents you from spending 6+ months looking at everything. It also tells brokers exactly what to send you, which improves the quality of deal flow immediately.",
+    "today": false,
+    "evidence": [
+     "S1",
+     "C3"
+    ]
+   }
+  ],
+  "phases": [
+   {
+    "name": "Phase 1 \u2014 Qualify & Set Criteria (Weeks 1\u20134)",
+    "objective": "Know your deal size, have at least one lender pre-qual conversation on record, and have written target criteria that you're actively sharing with brokers.",
+    "tasks": [
+     {
+      "task": "Calculate exact liquid capital and source-of-funds documentation",
+      "detail": "Bank statements, brokerage statements, any gift letters if family capital is involved. Lenders will verify every dollar of equity injection."
+     },
+     {
+      "task": "Contact 2\u20133 SBA Preferred Lenders for pre-qualification",
+      "detail": "Focus on lenders with active acquisition lending desks \u2014 community banks and credit unions with SBA PLP status close faster than large national banks. Ask specifically about their acquisition experience in your target sectors."
+     },
+     {
+      "task": "Write and finalize one-page target criteria document",
+      "detail": "Geography, sector priority, revenue $500K\u2013$5M (adjust to your capital), SDE floor (run the deal calculator to find the SDE needed to clear 1.25\u00d7 DSCR at your expected deal size), owner-involvement level acceptable."
+     },
+     {
+      "task": "Identify and contact 5\u20138 business brokers active in your target geography and sectors",
+      "detail": "Register on BizBuySell and ask brokers you contact to add you to their VIP buyer list. Most deals worth buying are shown to preferred buyers before hitting public listings."
+     },
+     {
+      "task": "Engage a buy-side M&A attorney for an introductory conversation",
+      "detail": "You don't need to retain yet, but identify who you'll call when an LOI is needed. Look for attorneys who have closed SBA-financed acquisitions \u2014 they know the lender's requirements and will draft the APA accordingly."
+     }
+    ],
+    "dependencies": [
+     "Liquid capital total known"
+    ],
+    "decisions": [
+     "What deal size range to target",
+     "Which sectors to prioritize"
+    ],
+    "outcome": "Pre-qualification letter or conversation in hand; broker relationships started; deal size ceiling confirmed."
+   },
+   {
+    "name": "Phase 2 \u2014 Structured Search (Months 2\u20137)",
+    "objective": "Generate and evaluate a pipeline of deals against your criteria. Move quickly to LOI on the first business that clears a preliminary financial screen.",
+    "tasks": [
+     {
+      "task": "Maintain a weekly outreach cadence \u2014 minimum 5 broker touches per week",
+      "detail": "Track in a simple spreadsheet: broker name, date, deal, status. Cadence beats volume \u2014 consistent follow-up is how you get deals before they're marketed widely."
+     },
+     {
+      "task": "For every CIM received, run a 15-minute preliminary DSCR screen before reading further",
+      "detail": "Use the deal calculator structure: (SDE \u2013 your salary) \u00f7 estimated annual debt service \u2265 1.25. If it fails at the asking price, the business either needs a lower price or is not for you. Do this before you get emotionally invested."
+     },
+     {
+      "task": "Visit businesses that clear the preliminary screen \u2014 meet the owner, see the operation",
+      "detail": "You're assessing customer concentration, owner dependence, and key employee risk in person. These are not discoverable from a CIM alone."
+     },
+     {
+      "task": "Submit LOI on the first business that clears your screen and site visit",
+      "detail": "LOI should state the purchase price, the SDE figure you're basing it on (so there's no later dispute), deal structure (10/10/80), exclusivity period (60 days minimum for SBA diligence), and a defined transition period requirement. Keep it non-binding except for exclusivity and confidentiality."
+     }
+    ],
+    "dependencies": [
+     "Phase 1 complete",
+     "Broker relationships active",
+     "Attorney identified"
+    ],
+    "decisions": [
+     "When to submit LOI vs. keep searching",
+     "Whether seller note on standby is achievable with this seller"
+    ],
+    "outcome": "Signed LOI with exclusivity period on a business that has passed preliminary financial screening."
+   },
+   {
+    "name": "Phase 3 \u2014 Diligence (Months 6\u20139, ~60\u201390 days after LOI)",
+    "objective": "Verify the SDE number is real, confirm no legal/operational landmines, and get SBA lender to credit approval.",
+    "tasks": [
+     {
+      "task": "Commission a Quality of Earnings report immediately after LOI is signed",
+      "detail": "Cost: $8K\u2013$20K for a business under $5M revenue. The QoE ties tax returns to bank statements and stress-tests every add-back. Apply the strict test: does this expense genuinely disappear when the seller leaves? If QoE reduces SDE by more than 15%, renegotiate price or walk."
+     },
+     {
+      "task": "Request and review the lease on day one of diligence",
+      "detail": "Confirm remaining term (want 5+ years or renewal options), assignment clause, and landlord consent requirement. A non-assignable lease with 18 months remaining is a deal-killer. Your SBA lender will also require this."
+     },
+     {
+      "task": "Verify customer concentration \u2014 top 10 customers as % of revenue",
+      "detail": "A single customer over 20% of revenue is a significant risk. Over 30% will concern your lender and should concern you. Ask for 3 years of revenue by customer."
+     },
+     {
+      "task": "Confirm key employee plans \u2014 interview lead technicians or operators (with seller permission)",
+      "detail": "In HVAC and services, the lead tech often is the business. Ask seller to facilitate introductions. Consider structuring retention bonuses (6\u201312 months of salary) funded from the deal."
+     },
+     {
+      "task": "Submit formal SBA loan application to your pre-qualified lender",
+      "detail": "Provide QoE report, 3 years tax returns, seller's financial statements, lease, and your personal financial statement. Budget 60\u201390 days for SBA credit approval and closing."
+     },
+     {
+      "task": "Have your attorney draft and negotiate the Asset Purchase Agreement",
+      "detail": "Key provisions: working capital peg (normal level of receivables + inventory \u2013 payables that seller must deliver at close), representations and warranties, non-compete (minimum 3\u20135 years in same geography and sector), and seller transition period (90\u2013180 days)."
+     }
+    ],
+    "dependencies": [
+     "Signed LOI with exclusivity",
+     "QoE firm retained",
+     "Attorney retained",
+     "SBA lender engaged"
+    ],
+    "decisions": [
+     "Whether to proceed after QoE results",
+     "Working capital peg amount",
+     "Transition period length"
+    ],
+    "outcome": "SBA credit approval, signed APA, and a confirmed closing date."
+   },
+   {
+    "name": "Phase 4 \u2014 Close & First 90 Days (Months 9\u201312)",
+    "objective": "Close cleanly, protect revenue during the ownership handoff, and stabilize operations.",
+    "tasks": [
+     {
+      "task": "Confirm equity injection funds are in place and sourced 30 days before close",
+      "detail": "Lender will verify source of funds. Do not move money around in the 60 days before closing without telling your lender \u2014 unexplained transfers create underwriting problems."
+     },
+     {
+      "task": "Execute seller transition plan: shadow the owner for weeks 1\u20134, take the lead in weeks 5\u20138, solo in weeks 9+",
+      "detail": "Introduce yourself to key customers and employees in person during the transition period. Revenue risk is highest in the first 60 days \u2014 your presence and the seller's endorsement are the best mitigation."
+     },
+     {
+      "task": "Don't change anything in the first 30 days \u2014 observe before you optimize",
+      "detail": "Operational changes in week one destroy employee trust and customer relationships. Your job in month one is to learn how the business actually runs, not how the CIM said it runs."
+     },
+     {
+      "task": "Set up financial reporting: weekly P&L vs. prior year, accounts receivable aging, cash balance",
+      "detail": "The single most important operational tool is knowing your numbers weekly, not monthly. You need to catch a revenue shortfall in week 3, not month 3."
+     }
+    ],
+    "dependencies": [
+     "SBA approval",
+     "APA signed",
+     "Seller transition terms agreed"
+    ],
+    "decisions": [
+     "Who manages day-to-day in weeks 1\u20134 if seller is less available than agreed"
+    ],
+    "outcome": "Business closed, ownership transferred, revenue stable at or above pre-close run rate at day 90."
+   }
+  ],
+  "dependencies": [
+   {
+    "item": "Liquid capital total",
+    "blocking": true,
+    "note": "Nothing else can be sized or modeled without this number. Do it today."
+   },
+   {
+    "item": "SBA lender pre-qualification",
+    "blocking": true,
+    "note": "Required before submitting an LOI \u2014 you need to know the lender will fund the deal size you're targeting."
+   },
+   {
+    "item": "Quality of earnings report",
+    "blocking": true,
+    "note": "Never remove diligence contingencies without it. Non-negotiable even on small deals."
+   },
+   {
+    "item": "Lease assignability confirmed",
+    "blocking": true,
+    "note": "A non-assignable lease kills the deal at close or creates catastrophic post-close risk."
+   },
+   {
+    "item": "Seller's acceptance of standby seller note",
+    "blocking": false,
+    "note": "If seller refuses standby terms, you need the full 10% in cash rather than 5%. Know this before modeling."
+   }
+  ],
+  "decisions": [
+   {
+    "decision": "What deal size range to target",
+    "options": [
+     "$500K\u2013$1M purchase price (requires $25K\u2013$100K cash)",
+     "$1M\u2013$2M purchase price (requires $50K\u2013$200K cash)",
+     "$2M\u2013$5M purchase price (requires $100K\u2013$500K cash)"
+    ],
+    "recommended": "Match to your liquid capital: minimum cash floor is 5% of purchase price if seller note is achievable, 10% if not.",
+    "why": "The SBA equity injection requirement is a hard constraint. Targeting above your capital floor is not viable.",
+    "when": "now",
+    "by_phase": "Phase 1",
+    "basis": "research",
+    "evidence": [
+     "C1",
+     "C4",
+     "C9"
+    ]
+   },
+   {
+    "decision": "Sector priority within HVAC / services / light manufacturing",
+    "options": [
+     "HVAC \u2014 strong recurring revenue, PE rollup tailwinds on exit, requires licensed technicians",
+     "Commercial cleaning / landscaping \u2014 lower multiples, more substitutable workforce, easier to operate",
+     "Light manufacturing \u2014 asset-heavy, SBA real estate loan possible (25-year term), requires operational knowledge"
+    ],
+    "recommended": "HVAC or services if you want recurring revenue and a proven SBA deal type. Light manufacturing only if you have relevant operational background.",
+    "why": "Lenders and brokers know HVAC and services well. Light manufacturing has higher operational complexity for an inexperienced buyer.",
+    "when": "now",
+    "by_phase": "Phase 1",
+    "basis": "planner",
+    "evidence": [
+     "C3",
+     "C2",
+     "C6"
+    ]
+   },
+   {
+    "decision": "Seller note standby negotiation \u2014 raise it early or late in the process",
+    "options": [
+     "Include standby seller note requirement in the LOI (transparent, may lose some sellers)",
+     "Negotiate after LOI acceptance (more flexibility, but risk of surprise at the lender stage)"
+    ],
+    "recommended": "Include it in the LOI. Sellers who refuse standby terms need to be identified before you spend $8K\u2013$20K on diligence.",
+    "why": "If the seller won't accept standby, your equity injection requirement doubles. This changes your deal math fundamentally.",
+    "when": "now",
+    "by_phase": "Phase 2",
+    "basis": "research",
+    "evidence": [
+     "C1",
+     "C4"
+    ]
+   }
+  ],
+  "costs": {
+   "upfront": [
+    {
+     "item": "Equity injection \u2014 cash portion (5\u201310% of purchase price)",
+     "amount": "$50K\u2013$100K on a $1M deal"
+    },
+    {
+     "item": "Quality of earnings report",
+     "amount": "$8,000\u2013$20,000"
+    },
+    {
+     "item": "Buy-side M&A attorney (LOI + APA)",
+     "amount": "$5,000\u2013$15,000"
+    },
+    {
+     "item": "SBA loan origination fee (included in loan, often financed)",
+     "amount": "~2\u20133% of guaranteed portion, typically financed"
+    }
+   ],
+   "recurring": [
+    {
+     "item": "SBA loan payment (80% of purchase price at ~10.5% over 10 years)",
+     "amount": "~$10,700/month on $800K loan \u2014 model with deal calculator"
+    }
+   ],
+   "optional": [
+    {
+     "item": "Buy-side broker / advisor (1\u20133% of deal)",
+     "amount": "$10,000\u2013$30,000 on a $1M deal"
+    },
+    {
+     "item": "Environmental assessment (manufacturing)",
+     "amount": "$2,000\u2013$5,000"
+    },
+    {
+     "item": "Key employee retention bonuses",
+     "amount": "$5,000\u2013$20,000"
+    }
+   ],
+   "services": [
+    {
+     "item": "SBA lender (bank/credit union)",
+     "amount": "No direct fee; loan fees financed into deal"
+    },
+    {
+     "item": "Business broker (seller-paid, typically 10\u201312% of deal price)",
+     "amount": "$0 to buyer"
+    }
+   ],
+   "contingency": "Budget 10\u201315% above your professional fee estimates for surprises \u2014 unexpected legal complexity, a second round of lender documentation, or a renegotiation after the QoE.",
+   "minimum": "$63,000 all-in on a $1M deal (5% cash injection + QoE + attorney at low end)",
+   "recommended": "$100,000 all-in on a $1M deal (10% full cash injection + QoE + attorney at mid-range + contingency)",
+   "premium": "$135,000+ if seller won't accept standby and you need full 10% cash plus advisor",
+   "note": "These are deal-closing costs only. Ensure you retain 3\u20136 months of personal living expenses outside of the equity injection \u2014 the SBA lender may verify this as part of your personal financial statement.",
+   "evidence": [
+    "C1",
+    "C4",
+    "C7",
+    "C9",
+    "S4",
+    "S5"
+   ]
+  },
+  "risks": [
+   {
+    "risk": "Add-back inflation overstates SDE \u2014 you pay too much and DSCR fails post-QoE",
+    "mitigation": "Commission QoE before removing contingencies. Apply strict add-back test: does this expense disappear when the seller leaves? Renegotiate price if QoE reduces SDE by more than 10\u201315%.",
+    "priority": "high"
+   },
+   {
+    "risk": "Search drags past month 7, leaving insufficient time to close within 12 months",
+    "mitigation": "Set a written weekly activity target (5 broker contacts, 2 CIM reviews). Use the preliminary DSCR screen to kill bad deals fast and avoid emotional attachment. Submit an LOI on the first business that clears your criteria \u2014 don't wait for perfect.",
+    "priority": "high"
+   },
+   {
+    "risk": "Lease is non-assignable or expires within 24 months of close",
+    "mitigation": "Request the lease on day one of diligence. If landlord consent is required, start that conversation immediately \u2014 landlords can delay or kill deals at the last minute.",
+    "priority": "high"
+   },
+   {
+    "risk": "Key technician or operator leaves at or after close, destroying revenue",
+    "mitigation": "Interview key employees during diligence. Negotiate employment agreements or retention bonuses into the APA. A 90\u2013180 day seller transition provides cover while you assess and secure the team.",
+    "priority": "high"
+   },
+   {
+    "risk": "Seller refuses standby terms, requiring full 10% cash injection",
+    "mitigation": "Surface this in the LOI negotiation before spending on diligence. If seller refuses standby, re-model deal with full 10% cash \u2014 proceed only if you have it.",
+    "priority": "medium"
+   }
+  ],
+  "gotchas": [
+   {
+    "gotcha": "The SBA process takes 60\u201390 days from application to close \u2014 sellers who want speed will choose cash or seller-financed buyers over you.",
+    "avoid": "Get pre-qualified with a lender BEFORE you find a deal. A lender who already knows your file can move in 45 days instead of 90. Tell sellers and brokers you are pre-qualified \u2014 it matters."
+   },
+   {
+    "gotcha": "Moving money around in the 60 days before closing triggers lender re-underwriting. Unexplained deposits or transfers can delay or kill closing.",
+    "avoid": "Keep your equity injection funds in a stable, documented account from the moment you submit the LOI. Tell your lender before moving anything."
+   },
+   {
+    "gotcha": "The LOI is where working capital is either protected or lost \u2014 most first-time buyers skip the working capital peg, then discover the seller drained receivables before close.",
+    "avoid": "Include a working capital peg in the LOI: a defined 'normal' level of net working capital that the seller must deliver at close. Your attorney should draft this \u2014 don't do it yourself."
+   },
+   {
+    "gotcha": "A non-compete without geographic and time specificity is unenforceable in most states. A seller who reopens next door destroys the value you paid for.",
+    "avoid": "Have your attorney draft the non-compete with explicit geography (county or radius), duration (3\u20135 years), and scope (same services). Review with local counsel \u2014 enforceability varies by state."
+   },
+   {
+    "gotcha": "Buying 'the business' but not securing the real estate can leave you at a landlord's mercy at renewal. In service businesses, location is often not critical, but in manufacturing, it frequently is.",
+    "avoid": "For manufacturing especially, confirm lease terms before the LOI. If real estate is included in the deal, the SBA loan can extend to 25 years \u2014 a meaningful improvement in cash flow."
+   }
+  ],
+  "defer": [
+   {
+    "item": "Deciding between HVAC vs. services vs. manufacturing",
+    "until": "After lender pre-qual conversation \u2014 lender may have sector preferences or restrictions"
+   },
+   {
+    "item": "Hiring a buy-side advisor/broker",
+    "until": "After 60 days of self-directed search \u2014 only add this cost if deal flow is genuinely insufficient"
+   },
+   {
+    "item": "Building detailed post-close operational plans for a specific business",
+    "until": "After LOI is signed \u2014 before that, it's premature and a distraction"
+   },
+   {
+    "item": "Forming your acquisition entity (LLC)",
+    "until": "Phase 2, when you're actively making offers \u2014 consult your attorney on optimal structure for the SBA loan"
+   }
+  ],
+  "open_questions": [
+   {
+    "question": "What is your total liquid capital available for an equity injection, excluding retirement accounts?",
+    "category": "blocking",
+    "why": "This single number determines every deal size you can pursue. Until it's known, no deal can be responsibly modeled.",
+    "research_prompt": "Total every non-retirement liquid account (checking, savings, brokerage, money market). Then ask your SBA lender: 'Given $X in liquid capital and a willingness to accept a seller note on standby for up to 5% of the deal, what purchase price range will you pre-qualify me for?'"
+   },
+   {
+    "question": "Do you have relevant operator or industry experience in HVAC, services, or manufacturing \u2014 and have you disclosed this to a lender?",
+    "category": "blocking",
+    "why": "SBA lenders assess repayment ability partly through borrower background. Inexperienced buyers may face a higher required injection or need to demonstrate a management plan. Knowing this now shapes your search criteria.",
+    "research_prompt": "In your lender pre-qualification conversation, ask directly: 'I have [X years / no experience] in this sector \u2014 does that affect your required equity injection or your willingness to lend on this deal type?'"
+   },
+   {
+    "question": "Will you be operating the business full-time yourself, or do you need a business with an existing manager in place?",
+    "category": "soon",
+    "why": "Owner-operator businesses trade at 2\u20133\u00d7 SDE but require your full-time involvement. Businesses with management in place trade at 3\u20134\u00d7 SDE but work with an absentee buyer. This shapes your entire search.",
+    "research_prompt": "Decide before you start talking to brokers. Brokers will ask. A confused answer signals an unprepared buyer and reduces deal flow quality."
+   },
+   {
+    "question": "What geography are you targeting \u2014 specific metro, state, or willing to relocate?",
+    "category": "soon",
+    "why": "Without a geography, your broker outreach list is undefined and search is impossible to structure. This is a decision only you can make.",
+    "research_prompt": "Write down your target geography in one sentence before your first broker call. Be specific enough to be actionable (e.g., 'Within 2 hours of Denver' or 'Southeast US, willing to relocate')."
+   }
+  ],
+  "confidence": [
+   {
+    "area": "SBA financing mechanics (injection, standby, DSCR, guarantee)",
+    "level": "high",
+    "note": "Confirmed by program documentation and multiple practitioner sources."
+   },
+   {
+    "area": "Valuation multiples for main-street businesses",
+    "level": "high",
+    "note": "2\u20133.5\u00d7 SDE for sub-$1M earnings is consistent across sources. HVAC may trade higher due to PE interest."
+   },
+   {
+    "area": "Diligence process and QoE necessity",
+    "level": "high",
+    "note": "Consistently flagged across sources as non-negotiable."
+   },
+   {
+    "area": "Your personal readiness (capital, experience, risk tolerance)",
+    "level": "needs_research",
+    "note": "None of your personal financial details were provided. This is the single biggest unknown in the plan."
+   },
+   {
+    "area": "Deal timeline (12 months is achievable)",
+    "level": "medium",
+    "note": "Achievable if search starts immediately and is structured. Search alone averages 6+ months. Slippage is a real risk."
+   }
+  ],
+  "ready": {
+   "first_three": [
+    "Total your liquid capital right now \u2014 every accessible, non-retirement account",
+    "Call two SBA Preferred Lenders this week for a pre-qualification conversation",
+    "Write your one-page target criteria (geography, sector, revenue range, SDE floor, operator role)"
+   ],
+   "initial_cost": "$0 for pre-qualification conversations; $63K\u2013$100K at deal close for equity injection and professional fees on a $1M deal",
+   "need_before": [
+    "Liquid capital total confirmed",
+    "SBA lender pre-qualification conversation completed",
+    "Target criteria written and shared with first broker"
+   ],
+   "blockers": [
+    "Unknown liquid capital \u2014 cannot size any deal until this is confirmed",
+    "No lender relationship \u2014 SBA pre-qualification is the longest lead-time item and must start now"
+   ]
+  },
+  "this_week": [
+   {
+    "action": "Calculate and document your total liquid capital \u2014 print bank and brokerage statements, add them up, write the number down.",
+    "why": "This is the single input that drives every other number in this plan. Without it you are guessing at deal sizes, DSCR math, and lender conversations.",
+    "time": "30 minutes"
+   },
+   {
+    "action": "Find and call two SBA Preferred Lenders (search 'SBA Preferred Lender Program' on SBA.gov for the lender directory). Tell them your liquid capital, your target sector, and ask what deal size they'd pre-qualify you for and what documentation they need.",
+    "why": "Pre-qualification is the longest lead-time item in the whole process and it's free. Knowing your lender's ceiling before you start searching prevents wasted months pursuing deals you can't finance.",
+    "time": "2 hours across two calls"
+   },
+   {
+    "action": "Write your one-page target criteria: geography (specific), sectors in priority order, revenue range, minimum SDE (calculate from deal calculator: what SDE do you need to clear 1.25\u00d7 DSCR after your target salary?), and your role (full-time operator vs. absentee).",
+    "why": "This document drives your entire broker outreach. Without it you receive random deal flow and evaluate everything, which leads to the six-month search trap.",
+    "time": "1 hour"
+   },
+   {
+    "action": "Contact 5 business brokers active in your target geography: find them on BizBuySell broker directory or IBBA.org. Send a one-paragraph buyer profile (liquid capital range, sectors, deal size, timeline) and ask to be added to their off-market buyer list.",
+    "why": "Most good deals are shown to preferred buyers before public listing. Getting on those lists early \u2014 even months before you're ready \u2014 is how you access real deal flow.",
+    "time": "1\u20132 hours"
+   },
+   {
+    "action": "Run the deal calculator math at three price points ($750K, $1M, $1.5M): plug in 10% equity, 10% seller note, 80% SBA at 10.5% over 10 years, and your realistic salary. Confirm which price points clear 1.25\u00d7 DSCR. Save the spreadsheet.",
+    "why": "You need to be able to kill a bad deal in 15 minutes during the search phase. Having your DSCR thresholds pre-calculated prevents emotional attachment to deals that can't be financed.",
+    "time": "45 minutes"
+   }
+  ],
+  "refine_questions": [
+   {
+    "question": "How much liquid capital (non-retirement) do you have available right now for an equity injection?",
+    "why": "This determines every deal size in the plan. A $50K answer means a very different search than a $200K answer. The entire financing structure, DSCR modeling, and lender conversations pivot on this number.",
+    "kind": "fact"
+   },
+   {
+    "question": "Do you have relevant work experience in HVAC, services, or manufacturing \u2014 and are you planning to operate the business full-time yourself?",
+    "why": "Lenders assess borrower background for repayment ability. Your answer also determines whether you target owner-operator businesses (2\u20133\u00d7 SDE, lower price) or managed businesses (3\u20134\u00d7 SDE, higher price, less operator dependency).",
+    "kind": "decision",
+    "options": [
+     "No relevant experience \u2014 will operate full-time and learn on the job",
+     "No relevant experience \u2014 need a business with a manager already in place",
+     "Have relevant experience in [specific sector] and will operate full-time",
+     "Have management experience, not industry-specific"
+    ]
+   },
+   {
+    "question": "What geography are you targeting \u2014 and are you willing to relocate for the right deal?",
+    "why": "Without a geography, the broker outreach list and search process cannot be structured. This also affects lender choice (local lenders close acquisition deals faster than national banks in many markets).",
+    "kind": "fact"
+   },
+   {
+    "question": "How many hours per week can you realistically dedicate to this acquisition process right now, before you own anything?",
+    "why": "A 12-month close is achievable at 10\u201315 hours/week of focused effort (search, broker calls, deal review). At 3\u20135 hours/week, the timeline is 18+ months. This changes whether the plan is realistic as written.",
+    "kind": "fact",
+    "options": [
+     "3\u20135 hours/week (adjust timeline to 18 months)",
+     "8\u201312 hours/week (12-month timeline is realistic)",
+     "20+ hours/week (could compress to 8\u201310 months)"
+    ]
+   },
+   {
+    "question": "Have you internalized the personal guarantee \u2014 do you own a home, have retirement savings, or a spouse whose finances would be affected if the business failed?",
+    "why": "Every owner with 20%+ must sign an unlimited personal guarantee on the SBA loan. This is not abstract. If you have not explicitly accepted this risk with full awareness of what's at stake, it needs to be resolved before you sign an LOI.",
+    "kind": "decision",
+    "options": [
+     "Yes, fully understood and accepted \u2014 proceed as planned",
+     "Partially understood \u2014 need to review with a financial advisor or spouse before proceeding",
+     "Not yet internalized \u2014 pause Phase 2 until resolved"
+    ]
+   }
+  ],
+  "_evidence": {
+   "S1": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min)",
+    "link": "https://www.youtube.com/watch?v=golden00003",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "S2": {
+    "label": "Van life in Utah: solar, water and a sunrise hike",
+    "link": "https://www.youtube.com/watch?v=golden00009",
+    "kind": "research",
+    "source_id": "1a53afb9188646c69a9f74a196c3d738"
+   },
+   "S3": {
+    "label": "No money down: a contrarian on buying businesses",
+    "link": "https://example.com/podcasts/no-money-down.mp3",
+    "kind": "research",
+    "source_id": "01506db712634a6880ab6fd842fa75a9"
+   },
+   "S4": {
+    "label": "Due diligence checklist for a small business purchase",
+    "link": "https://www.youtube.com/watch?v=golden00002",
+    "kind": "research",
+    "source_id": "39edf28d7e3048358a43853d9a5287b5"
+   },
+   "S5": {
+    "label": "SBA 7(a) loans for buying a business, explained",
+    "link": "https://www.youtube.com/watch?v=golden00001",
+    "kind": "research",
+    "source_id": "e67c80cbb3be4295bb8362d2c4da1dc5"
+   },
+   "S6": {
+    "label": "Sourdough starter notes",
+    "link": "file://irrelevant_sourdough.txt",
+    "kind": "research",
+    "source_id": "9102e169eb5f4b15bcfbb97a77fcc765"
+   },
+   "S7": {
+    "label": "Deal calculator",
+    "link": "file://deal_calculator.xlsx",
+    "kind": "research",
+    "source_id": "aa1359ad3be44ddebf2324894d8958b0"
+   },
+   "S8": {
+    "label": "SBA 7(a) acquisition lending summary",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "16508b55c8fa4413aaf61e2a461ba2bd"
+   },
+   "S9": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "7950f75ad2b94800919e4d0d15e44eda"
+   },
+   "C1": {
+    "label": "SBA 7(a) loans for buying a business, explained @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00001&t=0s",
+    "kind": "research",
+    "source_id": "e67c80cbb3be4295bb8362d2c4da1dc5"
+   },
+   "C2": {
+    "label": "No money down: a contrarian on buying businesses @ 0:00",
+    "link": "https://example.com/podcasts/no-money-down.mp3#t=0",
+    "kind": "research",
+    "source_id": "01506db712634a6880ab6fd842fa75a9"
+   },
+   "C3": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 4:15",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=255s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C4": {
+    "label": "SBA 7(a) acquisition lending summary @ p. 2",
+    "link": "file://report_sba_summary.pdf",
+    "kind": "research",
+    "source_id": "16508b55c8fa4413aaf61e2a461ba2bd"
+   },
+   "C5": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 2",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "7950f75ad2b94800919e4d0d15e44eda"
+   },
+   "C6": {
+    "label": "How small businesses are valued: SDE and EBITDA multiples explained @ \u00a7 1",
+    "link": "https://example.com/blog/how-small-businesses-are-valued",
+    "kind": "research",
+    "source_id": "7950f75ad2b94800919e4d0d15e44eda"
+   },
+   "C7": {
+    "label": "Due diligence checklist for a small business purchase @ 0:00",
+    "link": "https://www.youtube.com/watch?v=golden00002&t=0s",
+    "kind": "research",
+    "source_id": "39edf28d7e3048358a43853d9a5287b5"
+   },
+   "C8": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 41:13",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2473s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C9": {
+    "label": "Deal calculator @ sheet 1",
+    "link": "file://deal_calculator.xlsx",
+    "kind": "research",
+    "source_id": "aa1359ad3be44ddebf2324894d8958b0"
+   },
+   "C10": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 44:36",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2675s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C11": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 7:28",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=448s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C12": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 32:45",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1964s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C13": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:04:24",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=3864s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C14": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 28:30",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=1709s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C15": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 35:18",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=2117s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   },
+   "C16": {
+    "label": "Full deal walkthrough: search to first 90 days (92 min) @ 1:16:09",
+    "link": "https://www.youtube.com/watch?v=golden00003&t=4569s",
+    "kind": "research",
+    "source_id": "f785bae8c4a9431bafefe5bb71133e27"
+   }
+  },
+  "_generated": "2026-09-06",
+  "_research_hash": "d1d61ede90b5251a",
+  "_evidence_check": {
+   "references": 74,
+   "dangling": [],
+   "removed": false
+  }
+ },
+ "analysis": {
+  "situation": "You are evaluating whether to buy a main-street business (HVAC, services, or light manufacturing) in the next 12 months using an SBA 7(a) loan as the primary financing vehicle. The goal is a fully formed decision \u2014 not just interest \u2014 including a clear financing structure, diligence checklist, and 90-day post-close plan. The research covers the core mechanics well: SBA equity injection rules, valuation multiples, diligence process, and deal structure. Your personal financial details (liquid capital, income, credit score, existing collateral) were not provided, which is the single biggest unknown in assessing your readiness right now.",
+  "swot": {
+   "strengths": [
+    {
+     "point": "Clear goal with a defined timeline (12 months to a decision)",
+     "so_what": "You are not just browsing \u2014 having a hard deadline forces real action on search, financing pre-qualification, and diligence preparation rather than indefinite research loops."
+    },
+    {
+     "point": "Targeting the right asset class for SBA financing",
+     "so_what": "HVAC, services, and light manufacturing are exactly the 'boring businesses' practitioners flag as most acquirable and most financeable under 7(a) \u2014 lenders and brokers know these categories well, reducing execution friction [C3]."
+    },
+    {
+     "point": "You are asking the right starting questions (down payment, multiples, diligence killers)",
+     "so_what": "These three questions map directly to the three biggest failure points in small business acquisition. Framing the problem correctly from the start saves months of misdirected effort."
+    }
+   ],
+   "weaknesses": [
+    {
+     "point": "Liquid capital amount is unknown",
+     "so_what": "The SBA requires a minimum 10% equity injection on a change-of-ownership loan [C4, C1]. On a $1M deal that is $100K cash at minimum \u2014 and up to half can be a seller note on full standby, meaning you still need $50K hard cash at minimum. Without knowing your liquid capital, no deal size can be responsibly modeled."
+    },
+    {
+     "point": "No stated operator experience in the target industries",
+     "so_what": "SBA lenders assess 'repayment ability' partly through borrower background [C4]. An inexperienced buyer in HVAC or manufacturing may face a higher required equity injection or lender skepticism, and may underestimate operational complexity in the first 90 days."
+    },
+    {
+     "point": "No existing lender or broker relationships mentioned",
+     "so_what": "Deal flow and lender pre-qualification are the two longest lead-time items. Starting without a preferred SBA lender or a broker relationship means you are 2\u20134 months behind someone who already has those in place."
+    },
+    {
+     "point": "Personal guarantee obligation not yet internalized",
+     "so_what": "Every owner with 20%+ stake must sign an unlimited personal guarantee on the SBA loan [C4]. This puts personal assets at risk. If you have a home, retirement savings, or a spouse's assets, that exposure needs to be explicitly understood and accepted before signing an LOI."
+    }
+   ],
+   "opportunities": [
+    {
+     "point": "Seller note can cut actual cash needed in half",
+     "so_what": "Up to 5% of the purchase price (half the 10% injection) can come from a seller note on full standby, reducing your true out-of-pocket on a $1M deal from $100K to $50K [C1, C4]. This meaningfully expands the deal sizes you can pursue.",
+     "evidence": [
+      "C1",
+      "C4",
+      "S5"
+     ]
+    },
+    {
+     "point": "Main-street businesses (2\u20133.5\u00d7 SDE) are priced accessibly relative to lower-middle-market",
+     "so_what": "Businesses under $1M in SDE trade at 2.0\u00d7\u20133.5\u00d7 SDE [C6, C12], making them reachable with SBA leverage. The math in the deal calculator shows a $1M purchase on $320K SDE yields a DSCR above 1.25 at current rates, which is the SBA minimum threshold [C5, C9].",
+     "evidence": [
+      "C6",
+      "C9",
+      "C5",
+      "C12"
+     ]
+    },
+    {
+     "point": "Working capital peg and LOI structure are well-understood and negotiable",
+     "so_what": "Standard deal architecture (10% equity / 10% seller note / 80% SBA, working capital peg, transition period) is documented and practiced \u2014 you are not inventing a structure, you are executing a known playbook [C8, C5, C14].",
+     "evidence": [
+      "C8",
+      "C5",
+      "C14"
+     ]
+    },
+    {
+     "point": "HVAC and home services multiples are rising due to PE rollup activity",
+     "so_what": "As a buyer this is a threat on price, but it also signals strong exit potential if you ever sell. Buy at 3\u00d7, sell into a rollup at 5\u00d7 is a realistic outcome in this sector [C2].",
+     "evidence": [
+      "C2"
+     ]
+    }
+   ],
+   "threats": [
+    {
+     "point": "Add-back inflation is the leading cause of paying too much",
+     "so_what": "Sellers routinely add back personal expenses (truck, phone, salary, one-time items) to inflate SDE. Without a quality of earnings report ($8K\u2013$20K), you have no independent verification that the earnings number is real [C7]. Overpaying is the most common and most irreversible mistake.",
+     "evidence": [
+      "C7",
+      "S4"
+     ]
+    },
+    {
+     "point": "SBA process takes 60\u201390 days, creating deal fatigue and competition risk",
+     "so_what": "The paperwork timeline is real. A seller who wants to close fast may prefer a cash buyer or seller-financed deal over your SBA process. Pre-qualifying with a preferred SBA lender before you find a deal compresses this window significantly [C2].",
+     "evidence": [
+      "C2",
+      "S5"
+     ]
+    },
+    {
+     "point": "DSCR floor of 1.25\u00d7 constrains price regardless of comparable sales",
+     "so_what": "Even if the market says 3.5\u00d7 is fair, the lender will reject the deal if cash flow after your salary does not cover debt service at 1.25\u00d7 [C5]. This acts as a hard ceiling on deal price for a given earnings level \u2014 model this before you fall in love with a business.",
+     "evidence": [
+      "C5",
+      "C9"
+     ]
+    },
+    {
+     "point": "Search phase drags on for 6\u201312+ months without a structured process",
+     "so_what": "Practitioners consistently describe buyers who spend 6\u201312 months searching and buy nothing [S1]. Without target criteria, a shortlist of brokers, and a weekly outreach cadence, the 12-month deadline will arrive with nothing to show.",
+     "evidence": [
+      "S1",
+      "C3"
+     ]
+    }
+   ]
+  },
+  "readiness": [
+   {
+    "area": "Capital / Financing",
+    "level": "gap",
+    "note": "Minimum 10% equity injection required by SBA, with up to half potentially covered by a seller note on full standby [C4, C1]. Your liquid capital figure is unknown. This is the first thing to nail down \u2014 it determines every deal size you can responsibly pursue. Get a bank statement total and talk to an SBA preferred lender for a pre-qualification letter before anything else."
+   },
+   {
+    "area": "Deal knowledge",
+    "level": "partly",
+    "note": "You are asking the right questions, which puts you ahead of most first-time buyers. But knowing the framework and executing it (reading a quality of earnings report, negotiating a working capital peg, writing an LOI) are different skills. Plan to hire a buy-side M&A attorney and a CPA with acquisition experience \u2014 do not DIY those pieces."
+   },
+   {
+    "area": "Industry / Operator skills",
+    "level": "gap",
+    "note": "No operator background was stated. For HVAC or light manufacturing, lenders and sellers will both probe this. Consider whether you are buying a business you will run yourself or one with a management team in place. The latter reduces lender concern but raises the price multiple [C6]."
+   },
+   {
+    "area": "Network (brokers, lenders, advisors)",
+    "level": "gap",
+    "note": "No existing relationships mentioned. Building a shortlist of 3\u20135 SBA preferred lenders and 5\u201310 active brokers in your target geography and sector is a month-one task. Deal flow comes from relationships, not just listing sites."
+   },
+   {
+    "area": "Time availability",
+    "level": "partly",
+    "note": "A 12-month horizon is realistic for a first acquisition if search starts immediately. Research shows search alone averages 6+ months [S1]. Diligence takes another 60\u201390 days. The timeline is tight but achievable if you treat this as a part-time second job from day one."
+   },
+   {
+    "area": "Mindset / Risk tolerance",
+    "level": "partly",
+    "note": "Unlimited personal guarantee [C4] and the reality of a 10-year SBA loan obligation need to be internalized, not just acknowledged. This is a leveraged bet on your ability to operate a business you have never run. The upside is real; so is the downside."
+   },
+   {
+    "area": "Legal / Administrative",
+    "level": "gap",
+    "note": "No mention of an entity structure, buy-side attorney, or familiarity with LOI / APA documents. These need to be in place before you make an offer. Attorney cost is typically $5K\u2013$15K for a deal of this size \u2014 budget for it."
+   }
+  ],
+  "options": [
+   {
+    "path": "SBA 7(a) with seller note (10/10/80 structure)",
+    "summary": "Bring 5% cash, source 5% from a seller note on full standby, finance 80% via SBA 7(a) at prime + 2.5\u20133%. This is the standard playbook for main-street acquisitions and is explicitly validated by program rules and practitioners [C1, C4, C8]. On a $1M deal: $50K cash, $100K seller note (standby), $800K SBA loan at ~10.5% over 10 years \u2248 $10.7K/month debt service. Requires SDE of roughly $223K+ after your salary to clear 1.25\u00d7 DSCR [C9, C5].",
+    "cost": "$50K\u2013$100K cash at close (depending on seller note negotiation) plus $15K\u2013$35K in professional fees (attorney, QoE, lender fees)",
+    "time_to_result": "6\u201312 months to close (search + 60\u201390 day SBA process)",
+    "risk": "medium",
+    "fit": 5,
+    "why_fit": "Matches the stated goal exactly. Maximizes leverage while keeping equity injection manageable. Seller note alignment (seller wants business to succeed so they get paid) is a structural bonus. This is the dominant structure for this asset class.",
+    "evidence": [
+     "C1",
+     "C4",
+     "C8",
+     "C9",
+     "C5",
+     "S5",
+     "S8"
+    ]
+   },
+   {
+    "path": "Full seller financing (no SBA)",
+    "summary": "Negotiate 100% seller financing over 5\u20137 years, paid from business cash flow. No SBA paperwork, no personal guarantee, no bank. Requires finding a highly motivated seller willing to carry the full note \u2014 typically a tired owner with no other buyers [C2, S3]. Valuation discipline matters even more here since there is no lender DSCR check acting as a floor.",
+    "cost": "Near zero cash at close in the best case; seller may demand a larger down payment to offset risk",
+    "time_to_result": "Potentially faster close (no bank process), but finding the right seller may take longer",
+    "risk": "medium",
+    "fit": 2,
+    "why_fit": "Theoretically attractive but hard to execute in practice. Sellers who will carry 100% are rare, especially in desirable sectors like HVAC. No lender DSCR discipline means you must be your own underwriter. The source citing this strategy [C2, S3] is a self-described contrarian who explicitly rejects SBA \u2014 treat as an edge case, not the base case.",
+    "evidence": [
+     "C2",
+     "S3"
+    ]
+   },
+   {
+    "path": "Search longer, buy a managed business at 3.5\u20134\u00d7 SDE",
+    "summary": "Target a business with a management layer already in place \u2014 a general manager or lead tech who runs day-to-day operations \u2014 so you do not need deep industry experience. These businesses trade at the higher end of the multiple range (3\u20134\u00d7 SDE) [C6] but carry lower operational risk for an inexperienced buyer. Still uses SBA financing but requires a larger deal (higher SDE) to absorb both the management cost and the debt service.",
+    "cost": "Higher purchase price (larger equity injection) and longer search \u2014 likely 12\u201318 months total",
+    "time_to_result": "12\u201318 months",
+    "risk": "medium",
+    "fit": 3,
+    "why_fit": "Better fit if you lack industry experience. Worse fit if you want to close within 12 months or have limited capital, since higher multiples require more cash at close.",
+    "evidence": [
+     "C6",
+     "C5"
+    ]
+   },
+   {
+    "path": "Stay in research mode for 6 more months, then act",
+    "summary": "Continue learning, build broker and lender relationships, shadow a deal as an advisor, and enter the market better prepared. Reduces execution risk but burns half the 12-month timeline.",
+    "cost": "Minimal direct cost; opportunity cost of delay",
+    "time_to_result": "18+ months to close",
+    "risk": "low",
+    "fit": 1,
+    "why_fit": "Lowest risk but conflicts directly with the stated goal of deciding within 12 months. The sources are clear that search alone takes 6\u201312 months [S1]. Delaying the start almost guarantees missing the deadline. Only choose this path if capital or personal guarantee concerns are not yet resolved."
+   }
+  ],
+  "assumptions": [
+   {
+    "assumption": "You have at least $50K\u2013$100K in liquid capital available for an equity injection",
+    "if_wrong": "You cannot qualify for SBA 7(a) on a deal of any meaningful size without it. The program requires a minimum 10% injection and the lender will verify source of funds [C4].",
+    "how_to_check": "Total your liquid, non-retirement accounts today. Then call 2\u20133 SBA preferred lenders and ask for a pre-qualification conversation \u2014 they will tell you the deal size range you can support."
+   },
+   {
+    "assumption": "The target business's SDE is real and will survive diligence",
+    "if_wrong": "Add-back inflation is the most common way deals fall apart or buyers overpay [C7]. If the QoE report reduces SDE by 20\u201330%, your DSCR may drop below 1.25\u00d7 and the deal dies or requires renegotiation.",
+    "how_to_check": "Always commission a quality of earnings report ($8K\u2013$20K) before removing diligence contingencies [C7, S4]. Never waive this."
+   },
+   {
+    "assumption": "A seller in your target sector will accept 10% seller note on full standby",
+    "if_wrong": "If the seller refuses standby terms, the seller note cannot count toward your equity injection [C1, C4], and you need the full 10% in cash.",
+    "how_to_check": "Raise this early in seller conversations and in the LOI. Many sellers prefer a faster close over a larger note \u2014 some will not agree to standby. Know this before you model the deal."
+   },
+   {
+    "assumption": "Business cash flow after your salary clears 1.25\u00d7 DSCR on the proposed loan",
+    "if_wrong": "The SBA lender will decline or require a lower loan amount, forcing a price reduction or a larger equity injection [C5].",
+    "how_to_check": "Run the deal calculator math [C9] with realistic salary assumptions before making an offer. If DSCR < 1.25\u00d7, either negotiate a lower price or walk away."
+   },
+   {
+    "assumption": "The lease on the business location is assumable and has sufficient remaining term",
+    "if_wrong": "A landlord who refuses to assign the lease \u2014 or a lease expiring in 18 months \u2014 can kill a deal at close or create major post-close risk, especially for location-dependent businesses.",
+    "how_to_check": "Request the lease on day one of diligence. Confirm term, assignment clause, and landlord consent requirement. Lenders will also require this before funding."
+   },
+   {
+    "assumption": "Key employees will stay through and after the transition",
+    "if_wrong": "In HVAC and services businesses, the lead technicians often are the business. Losing them post-close can destroy the revenue base the price was based on.",
+    "how_to_check": "During diligence, interview key employees (with seller permission). Structure seller transition period (90\u2013180 days) and consider employee retention bonuses funded from the deal."
+   }
+  ],
+  "failure_patterns": [
+   {
+    "pattern": "Spending 6\u201312 months searching with no structured criteria and buying nothing",
+    "seen_in": "Multiple practitioner accounts in the source material describe buyers who spend half a year or more in unfocused search [S1, C3]",
+    "avoid": "Define your target criteria (geography, sector, revenue range, SDE floor) before you start. Build a broker outreach list in week one. Set a weekly activity metric (e.g., 5 new broker conversations per week).",
+    "evidence": [
+     "S1",
+     "C3"
+    ]
+   },
+   {
+    "pattern": "Paying too much because add-backs were not challenged",
+    "seen_in": "Quality of earnings diligence section [C7, S4] \u2014 sellers routinely inflate SDE with personal expenses that will not disappear post-close",
+    "avoid": "Commission a QoE report from an independent CPA before removing your diligence contingency. Apply a strict add-back test: does this expense genuinely disappear when the seller leaves? [C7]",
+    "evidence": [
+     "C7",
+     "S4"
+    ]
+   },
+   {
+    "pattern": "Modeling the deal without running the DSCR check, then losing lender approval",
+    "seen_in": "Valuation and deal calculator sources [C5, C9] \u2014 lenders apply a 1.25\u00d7 DSCR floor that overrides any agreed-upon multiple",
+    "avoid": "Before making an offer, run the deal calculator with conservative SDE, your actual salary requirement, and current rate assumptions. If DSCR < 1.25\u00d7, the price is too high for SBA financing regardless of market comps [C5].",
+    "evidence": [
+     "C5",
+     "C9"
+    ]
+   },
+   {
+    "pattern": "No seller transition plan, leading to revenue loss in the first 90 days",
+    "seen_in": "Deal walkthrough sources emphasize seller transition as a frequently skipped step [C3, C8]",
+    "avoid": "Negotiate a defined transition period (minimum 90 days, ideally 6 months for owner-operator businesses) into the LOI and APA. Make it a condition of close, not an afterthought.",
+    "evidence": [
+     "C3",
+     "C8"
+    ]
+   },
+   {
+    "pattern": "Skipping professional advisors to save $10K\u2013$20K, then losing far more",
+    "seen_in": "QoE report cost ($8K\u2013$20K) is explicitly flagged as non-negotiable even on small deals [C7, S4]",
+    "avoid": "Budget for a buy-side attorney ($5K\u2013$15K), a QoE CPA ($8K\u2013$20K), and an SBA-experienced lender from the start. These are not optional costs \u2014 they are insurance against catastrophic mistakes.",
+    "evidence": [
+     "C7",
+     "S4"
+    ]
+   }
+  ],
+  "verdict": "The SBA 7(a) / seller note structure is the right tool for this goal, and the target sectors (HVAC, services, light manufacturing) are genuinely well-suited to it \u2014 the playbook is proven and the math can work. However, you are not yet ready to make an offer: your liquid capital position is unknown, you have no lender pre-qualification, and no broker relationships, which means the 12-month clock is already ticking against you. The single most valuable thing you can do in the next two weeks is get a hard number on your liquid capital, call three SBA preferred lenders for pre-qualification conversations, and define your target criteria in writing \u2014 everything else follows from those three actions."
+ },
+ "plan_row_id": "8a9d97bcb8294b84b0cb0f9ea24ffc9e",
+ "usage": {
+  "calls": 2,
+  "input_tokens": 6973,
+  "output_tokens": 13448,
+  "cache_read_tokens": 4758,
+  "cache_write_tokens": 4758,
+  "cost": 0.2419
+ },
+ "events": {
+  "schema_mismatch": 0,
+  "schema_fallback": 0,
+  "schema_failure": 0,
+  "output_truncated": 0,
+  "output_refused": 0,
+  "plan_assembly_failed": 0
+ }
+}

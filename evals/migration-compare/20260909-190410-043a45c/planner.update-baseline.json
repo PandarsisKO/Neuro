@@ -1,0 +1,89 @@
+{
+ "updates": [
+  {
+   "section": "constraints \u2014 equity injection minimum",
+   "previous": "Minimum 10% equity injection required; up to half can be a seller note on full standby",
+   "proposed": "Standard SBA minimum is 10%, but at least one lender now requires 15% for deals over $500k and will not count any seller note toward the injection regardless of standby terms. The effective cash requirement is lender-dependent; do not assume seller note reduces cash-out-of-pocket until each lender's specific policy is confirmed in writing.",
+   "reason": "New lender guidance: 15% injection required for acquisitions over $500k, seller note excluded from equity credit entirely at this lender. [1]"
+  },
+  {
+   "section": "constraints \u2014 personal guarantee",
+   "previous": "Every owner of 20%+ must provide an unlimited personal guarantee. Discuss this with your spouse/partner before signing anything. This is not a technicality \u2014 your personal assets are fully exposed for the loan term.",
+   "proposed": "Partner has confirmed they will not sign a personal guarantee. SBA requires every owner with 20%+ equity to provide an unlimited personal guarantee. If partner holds or will hold 20%+ of the acquired entity, SBA financing is structurally unavailable without restructuring ownership so the partner stays below 20%. This is a blocking issue that must be resolved before Phase 2 \u2014 it is no longer a conversation to have; it is a constraint already set.",
+   "reason": "New user fact: partner will not sign a personal guarantee. This converts a Phase 1 action item into a hard structural constraint with direct SBA eligibility consequences."
+  },
+  {
+   "section": "approach \u2014 recommended financing structure",
+   "previous": "SBA 7(a) with 10% buyer equity (up to half as seller note on full standby) and 80\u201390% SBA loan.",
+   "proposed": "SBA 7(a) with 10\u201315% buyer cash equity (seller note cannot be relied upon to reduce cash requirement \u2014 at least one lender disallows it for deals over $500k regardless of standby structure). The seller note remains useful as a price adjustment or post-close earnout mechanism but should not be modeled as reducing your cash injection until each lender's policy is confirmed.",
+   "reason": "New lender guidance disallowing seller note toward equity injection [1], combined with confirmed $120k cash figure, makes the 'seller note covers half the injection' assumption unreliable as a base-case input."
+  },
+  {
+   "section": "decisions \u2014 What is my deal-size ceiling?",
+   "previous": "Open question \u2014 liquid capital unknown. Set ceiling at 10\u201320x your liquid capital after the audit.",
+   "proposed": "Resolved: $120k cash confirmed. At standard 10% injection \u2192 $1.2M ceiling. At new lender's 15% requirement for deals over $500k \u2192 $800k ceiling. Working range is $800k\u2013$1.2M depending on which lender is used. Shop lenders specifically on the equity injection percentage before targeting deal size \u2014 this single variable shifts your ceiling by $400k.",
+   "reason": "New user fact provides the concrete liquid capital figure ($120k), resolving the previously blocking open question. New lender guidance introduces a 15% floor at one lender, which materially narrows the ceiling."
+  },
+  {
+   "section": "open_questions \u2014 liquid capital",
+   "previous": "How much liquid capital do you actually have available for the equity injection (cash, brokerage, HELOC \u2014 excluding penalized retirement accounts)? [category: blocking]",
+   "proposed": "Resolved: $120k cash available. Remove from open questions. No HELOC or brokerage information provided \u2014 if additional liquidity exists there, the ceiling rises proportionally.",
+   "reason": "New user fact directly answers this blocking open question."
+  },
+  {
+   "section": "Phase 1 \u2014 personal guarantee task",
+   "previous": "Have the personal guarantee conversation \u2014 discuss with your spouse/partner before signing anything. This is not a technicality \u2014 your personal assets are fully exposed for the loan term.",
+   "proposed": "Partner has already declined to sign. This is no longer a conversation task \u2014 it is a resolved constraint with structural consequences. Before Phase 2 begins, determine whether the partner will be a co-owner. If yes and at 20%+, SBA financing is blocked and the plan must shift to either (a) sole ownership by the buyer, (b) partner capped below 20%, or (c) a non-SBA financing path. Do not advance to sourcing without resolving ownership structure.",
+   "reason": "New user fact: partner will not sign a personal guarantee. This eliminates the Phase 1 task as written and creates a new blocking dependency."
+  },
+  {
+   "section": "risks \u2014 seller note not structured correctly",
+   "previous": "Risk: Seller note not structured correctly \u2014 doesn't count toward equity injection. Priority: medium. Mitigation: Get lender's written confirmation that the seller note is on full standby for the entire loan term before finalizing purchase agreement.",
+   "proposed": "Risk: Seller note may not count toward equity injection at all \u2014 regardless of standby terms. Priority: HIGH (elevated from medium). At least one lender now refuses to count any seller note toward equity for deals over $500k. Mitigation: Confirm each lender's policy on seller notes before building your financial model. Do not assume a seller note reduces your cash requirement. The seller note is still useful for deal structuring (price reduction, deferred risk) but its role as an equity injection substitute is no longer reliable.",
+   "reason": "New lender guidance explicitly removes seller note credit for deals over $500k at that lender [1], making the risk higher-probability and the existing mitigation (full standby confirmation) insufficient on its own."
+  },
+  {
+   "section": "gotchas \u2014 seller note standby",
+   "previous": "The seller note only counts toward your equity injection if it is on complete standby \u2014 zero principal, zero interest \u2014 for the entire 10-year SBA loan term. Most sellers balk at this when they understand it. If the seller won't agree to full standby, the note doesn't reduce your cash requirement at all.",
+   "proposed": "The seller note only counts toward your equity injection if it is on complete standby \u2014 AND only if your lender allows seller notes toward equity at all. At least one lender now disallows seller note credit for deals over $500k entirely, regardless of standby terms. Confirming full standby is necessary but no longer sufficient. Verify your specific lender's policy on seller note equity credit before modeling a reduced cash injection.",
+   "reason": "New lender guidance [1] introduces a lender-level disqualification that the existing gotcha does not address \u2014 standby terms are now irrelevant at that lender."
+  },
+  {
+   "section": "costs \u2014 upfront equity injection",
+   "previous": "$50,000\u2013$100,000 for a $1M deal (5\u201310% depending on seller note)",
+   "proposed": "$120,000\u2013$150,000 for a $1M deal (10\u201315% all-cash depending on lender; seller note no longer reliably reduces this). For deals at or below $800k, $120k cash may fully satisfy even the stricter 15% lender requirement. For deals approaching $1.2M, buyer is at the ceiling of available cash at 10% and has no buffer.",
+   "reason": "Confirmed cash of $120k plus new lender's 15% requirement materially changes the cost floor and eliminates the 5% scenario (seller note as half-injection) as a reliable assumption."
+  }
+ ],
+ "n_updates": 9,
+ "raw_updates": 9,
+ "addresses_new_finding": 1,
+ "addresses_new_fact": 1,
+ "well_formed": 1,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 0,
+ "output_chars": 7452,
+ "output_tokens": 3984,
+ "input_tokens": 3,
+ "cache_read": 0,
+ "cost": 0.0,
+ "seconds": 86.93,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "claude-haiku-4-5-20251001"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 3,
+  "output_tokens": 3984,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 14097,
+  "cost": 0.0
+ }
+}

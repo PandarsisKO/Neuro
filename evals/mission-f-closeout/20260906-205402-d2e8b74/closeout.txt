@@ -1,0 +1,62 @@
+MISSION F CLOSEOUT · live · app 0.19.0+f5 @ d2e8b74 · evals/mission-f-closeout/20260906-205402-d2e8b74
+
+DETERMINISTIC PHASE
+  PASS  pytest   131 passed, 1 warning in 31.74s
+  PASS  schema registry provider-compatible
+  PASS  Tier 1 (Planner V1)   cost $0.5776
+  PASS  Tier 1 (Planner V1) zero structured-output events   {'schema_mismatches': 0, 'schema_fallbacks': 0, 'schema_failures': 0, 'output_truncated': 0, 'output_refused': 0, 'structured_tasks': ['discover.quick', 'findings.extract', 'planner.actions', 'planner.core', 'planner.economics', 'planner.execution', 'planner.situation', 'planner.update', 'rank.relevance']}
+  PASS  Tier 1 (Planner V1) frozen planner rubric   {'plan': 0.0, 'analysis': 0.1818}
+  PASS  Tier 1 (Planner V3)   cost $0.5974
+  PASS  Tier 1 (Planner V3) zero structured-output events   {'schema_mismatches': 0, 'schema_fallbacks': 0, 'schema_failures': 0, 'output_truncated': 0, 'output_refused': 0, 'structured_tasks': ['discover.quick', 'findings.extract', 'planner.actions', 'planner.core', 'planner.economics', 'planner.execution', 'planner.situation', 'planner.update', 'rank.relevance']}
+  PASS  Tier 1 (Planner V3) frozen planner rubric   {'plan': 1.0, 'analysis': 1.0}
+  PASS  Tier 1 V3 evidence / assembly   {'references': 56, 'dangling': [], 'removed': False}
+  PASS  rubric V3 ≥ V1 (fakes)   {'v1': {'plan': 0.0, 'analysis': 0.1818}, 'v3': {'plan': 1.0, 'analysis': 1.0}}
+
+LIVE PHASE  (expected ≈ $1.05, actual $0.5838, 1148.75s)
+  PASS  findings.extract   golden_evidence_recall 0.9, finding_quote_validity 1, stored_findings_verified 1, returned_model claude-sonnet-5, cost 0.1737, seconds 106.65, events 0
+  PASS  rank.relevance     precision_at_10 1, recall_at_20_strict 0.68, ndcg_at_20 0.9628, unscored_candidates 0, returned_model claude-sonnet-5, cost 0.0356, seconds 21.9, events 0
+  FAIL  planner.update     n_updates 0, addresses_new_finding 0, returned_model —, cost 0, seconds 53.43, events 0
+        FAIL planner.update raised: CONNECTION after 3 attempts: Connection error.
+  FAIL  discover.quick     , events 0
+        FAIL discover.quick raised: CONNECTION after 3 attempts: Connection error.
+
+PLANNER V1 vs V3 (identical frozen research)
+  metric                                   V1             V3
+  rubric_plan                               1              0
+  rubric_analysis                           1              0
+  structure                                 1              0
+  evidence_refs                            51              0
+  dangling_raw                              0              0
+  cost                                 0.2708         0.1033
+  cost_cold_equivalent                 0.2878         0.1033
+  seconds                              317.52         587.05
+  calls                                     2              1
+  input_tokens                          7,228            299
+  output_tokens                        14,905          4,889
+  cache_write_tokens                    6,301          7,746
+  cache_read_tokens                     6,301              0
+  DECISION: DO NOT PROMOTE — leave the default on V1; V3 recorded as not promoted (no further tuning loop)
+    HARD    V3 build failed: CONNECTION after 3 attempts: Connection error.
+    HARD    plan rubric V3 0.0 < V1 1.0 (lost: assumption.dscr, assumption.sde_multiple, assumption.valuation_range, completeness.closing_day, completeness.first_90_days, completeness.guarantee_fee_or_closing_costs, completeness.loi_exclusivity, contradiction.high_multiples, contradiction.zero_down_vs_injection, dependency.equity_injection, dependency.lender, dependency.qoe_in_diligence, dependency.seller_note_standby, first_step.deal_flow, first_step.lender_contact, first_step.money_check, open_question.cash_available, open_question.target_industry, open_question.working_capital_peg, risk.add_backs_or_qoe, risk.customer_concentration, risk.lease_assignment, risk.personal_guarantee, risk.seller_transition)
+    HARD    analysis rubric V3 0.0 < V1 1.0
+    HARD    V3 structured-output/assembly events {'schema_mismatch': 1}
+    HARD    V3 truncation / parse failure / JSON repair
+    HARD    V3 truncation / parse failure / JSON repair
+    HARD    V3 produced no build telemetry (did the flag take effect?)
+    caveat  completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2
+    caveat  latency V1 317.52s → V3 587.05s (+85%)
+    note    V1 built first and wrote the shared research prefix to the prompt cache; V3 (same model, same prefix, within minutes) read it back. Cold-cache equivalent cost: V1 $0.2878 vs V3 $0.1033
+    note    calls V1 2 → V3 1; input 7,228 → 299; cache write 6,301 → 7,746; cache read 6,301 → 0; output 14,905 → 4,889
+
+VERDICT: Mission F FAIL — a changed surface did not hold its guarantees
+  FAIL    planner V3: structured-output/assembly events during the V3 build: {'schema_mismatch': 1}
+  FAIL    planner.update raised: CONNECTION after 3 attempts: Connection error.
+  FAIL    discover.quick raised: CONNECTION after 3 attempts: Connection error.
+  caveat  findings: evidence recall 1.0 → 0.9 (within tolerance)
+  caveat  planner V3: completeness (structure checks) V3 0.0 < V1 1.0: this_week: 0 < 3; first_steps: 0 < 3; risks: 0 < 3; open_questions: 0 < 2; refine_questions: 0 < 4; phases: 0 < 2; dependencies: 0 < 2; gotchas: 0 < 2
+  caveat  planner V3: latency V1 317.52s → V3 587.05s (+85%)
+  note    Planner V3 not promoted (see the separate decision); this does not fail Mission F unless its build raised structured-output/assembly events
+
+PLANNER V3: DO NOT PROMOTE
+
+Nothing was changed: production contracts and NEUROSEARCH_PLANNER_V3 stay as they are until you decide.

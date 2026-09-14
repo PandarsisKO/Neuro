@@ -1,0 +1,177 @@
+{
+ "error": "peer closed connection without sending complete message body (incomplete chunked read)",
+ "error_type": "RemoteProtocolError",
+ "seconds": 232.58,
+ "tasks": {
+  "planner.analysis": {
+   "present": false,
+   "rubric": {
+    "score": 0.0,
+    "passed": 0,
+    "total": 11,
+    "failed": [
+     "threat.customer_concentration",
+     "threat.add_backs_or_qoe",
+     "threat.overpaying_multiple",
+     "assumption.financing_terms",
+     "assumption.checkable",
+     "contradiction.zero_down_vs_injection",
+     "readiness.money",
+     "options.sba_path",
+     "options.seller_financing_path",
+     "failure.diligence",
+     "verdict.present"
+    ],
+    "by_kind": {
+     "assumption": "0/2",
+     "completeness": "0/4",
+     "contradiction": "0/1",
+     "risk": "0/4"
+    },
+    "structure": {
+     "score": 0.0,
+     "failed": [
+      "swot.strengths: 0 < 1",
+      "swot.weaknesses: 0 < 1",
+      "swot.opportunities: 0 < 2",
+      "swot.threats: 0 < 2",
+      "readiness: 0 < 3",
+      "options: 0 < 2",
+      "assumptions: 0 < 2",
+      "failure_patterns: 0 < 2"
+     ]
+    }
+   },
+   "grounding": {
+    "research_items": 0,
+    "grounded": 0,
+    "fraction": null,
+    "evidence_refs": 0
+   },
+   "evidence_refs": 0,
+   "dangling_after_removal": 0,
+   "truncated": 1,
+   "parse_failed": 0,
+   "json_repaired": 1,
+   "output_chars": 25712,
+   "output_tokens": 7000,
+   "input_tokens": 586,
+   "cache_read": 0,
+   "cache_write": 6635,
+   "cost": 0.0439,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": 86.04,
+   "invocations": {
+    "logical": 1,
+    "attempts": 1,
+    "by_state": {
+     "completed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": "claude-haiku-4-5-20251001"
+   }
+  },
+  "planner.build": {
+   "present": false,
+   "rubric": {
+    "score": 0.0,
+    "passed": 0,
+    "total": 24,
+    "failed": [
+     "risk.customer_concentration",
+     "risk.add_backs_or_qoe",
+     "risk.personal_guarantee",
+     "risk.seller_transition",
+     "risk.lease_assignment",
+     "assumption.dscr",
+     "assumption.sde_multiple",
+     "assumption.valuation_range",
+     "dependency.equity_injection",
+     "dependency.seller_note_standby",
+     "dependency.lender",
+     "dependency.qoe_in_diligence",
+     "first_step.lender_contact",
+     "first_step.deal_flow",
+     "first_step.money_check",
+     "contradiction.zero_down_vs_injection",
+     "contradiction.high_multiples",
+     "open_question.working_capital_peg",
+     "open_question.cash_available",
+     "open_question.target_industry",
+     "completeness.first_90_days",
+     "completeness.loi_exclusivity",
+     "completeness.guarantee_fee_or_closing_costs",
+     "completeness.closing_day"
+    ],
+    "by_kind": {
+     "assumption": "0/3",
+     "completeness": "0/4",
+     "contradiction": "0/2",
+     "dependency": "0/4",
+     "first_step": "0/3",
+     "open_question": "0/3",
+     "risk": "0/5"
+    },
+    "structure": {
+     "score": 0.0,
+     "failed": [
+      "this_week: 0 < 3",
+      "first_steps: 0 < 3",
+      "risks: 0 < 3",
+      "open_questions: 0 < 2",
+      "refine_questions: 0 < 4",
+      "phases: 0 < 2",
+      "dependencies: 0 < 2",
+      "gotchas: 0 < 2"
+     ]
+    }
+   },
+   "grounding": {
+    "research_items": 0,
+    "grounded": 0,
+    "fraction": null,
+    "evidence_refs": 0
+   },
+   "evidence_refs": 0,
+   "dangling_after_removal": 0,
+   "truncated": 0,
+   "parse_failed": 1,
+   "json_repaired": 0,
+   "output_chars": 0,
+   "output_tokens": 0,
+   "input_tokens": 0,
+   "cache_read": 0,
+   "cache_write": 0,
+   "cost": 0.0,
+   "thinking_tokens_est": 0,
+   "thinking_blocks": 0,
+   "seconds": null,
+   "invocations": {
+    "logical": 0,
+    "attempts": 1,
+    "by_state": {
+     "failed": 1
+    },
+    "outcome_unknown": 0,
+    "returned_model": null
+   }
+  }
+ },
+ "research_hash": null,
+ "plan_evidence_dangling_raw": 0,
+ "planner_version": "v1",
+ "build_telemetry": null,
+ "plan_evidence_refs_raw": null,
+ "plan": {},
+ "analysis": null,
+ "plan_row_id": null,
+ "usage": {
+  "calls": 1,
+  "input_tokens": 586,
+  "output_tokens": 7000,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 6635,
+  "cost": 0.0439
+ }
+}

@@ -1,0 +1,40 @@
+{
+ "segments": [
+  {
+   "start": 0.0,
+   "end": 6.9,
+   "text": "Good morning from the van, we woke up at a trailhead in Utah and the sunrise was unreal."
+  },
+  {
+   "start": 6.9,
+   "end": 13.5,
+   "text": "Today's plan is coffee, a short hike, and then we drive three hours to the next spot."
+  },
+  {
+   "start": 13.5,
+   "end": 18.1,
+   "text": "Alright, let me pull up my notes here, give me one second."
+  },
+  {
+   "start": 18.1,
+   "end": 26.9,
+   "text": "A lot of you asked about the solar setup, it's four hundred watts on the roof and a two hundred amp hour battery."
+  },
+  {
+   "start": 26.9,
+   "end": 33.1,
+   "text": "The water tank is twenty gallons and it lasts us about four days if we're careful."
+  },
+  {
+   "start": 33.1,
+   "end": 38.1,
+   "text": "Honestly this is the part most people skip and then they regret it."
+  },
+  {
+   "start": 38.1,
+   "end": 44.6,
+   "text": "Alright the hike was about five miles, lots of red rock, and we saw exactly zero people."
+  }
+ ],
+ "duration": 44.6
+}

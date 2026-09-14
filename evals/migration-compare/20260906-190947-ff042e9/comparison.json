@@ -1,0 +1,1856 @@
+{
+ "eval": "migration-compare",
+ "tier": "live",
+ "app_version": "0.18.0-e2.4",
+ "git_sha": "ff042e9",
+ "started": "20260906-190947",
+ "spend_estimate": {
+  "items": {
+   "findings.extract (once, production Sonnet 5)": 0.173,
+   "embeddings (once)": 0.02,
+   "planner \u00b7 4.6": 0.27,
+   "planner \u00b7 5-disabled": 0.234,
+   "planner \u00b7 5-adaptive-medium": 0.434,
+   "planner.update \u00b7 4.6": 0.06,
+   "planner.update \u00b7 5-disabled": 0.052,
+   "export.synthesis \u00b7 4.6": 0.06,
+   "export.synthesis \u00b7 5-disabled": 0.052,
+   "answer.chat \u00b7 4.6": 0.84,
+   "answer.chat \u00b7 5-disabled": 0.728
+  },
+  "estimate": 2.92,
+  "maximum": 4.38,
+  "budget": 20.0
+ },
+ "preflight": {
+  "claude-sonnet-4-6": 11,
+  "claude-sonnet-5": 12
+ },
+ "prompt_versions": {
+  "findings.extract": "18b5db69",
+  "answer.chat": "82aae556",
+  "rank.relevance": "f38f9a9c",
+  "planner.analysis": "bae16c5b",
+  "planner.build": "5badff43",
+  "planner.update": "f65d4b3a",
+  "discover.quick": "7752a57c",
+  "discover.verify": "69878b96"
+ },
+ "rubric_version": 1,
+ "arms": {
+  "planner": {
+   "4.6": {
+    "meta": {
+     "arm": "4.6",
+     "model": "claude-sonnet-4-6",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "planner.analysis": {
+       "task": "planner.analysis",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 7000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      },
+      "planner.build": {
+       "task": "planner.build",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 16000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "error": null,
+    "seconds": 303.67,
+    "tasks": {
+     "planner.analysis": {
+      "present": true,
+      "rubric": {
+       "score": 1.0,
+       "passed": 11,
+       "total": 11,
+       "failed": [],
+       "by_kind": {
+        "assumption": "2/2",
+        "completeness": "4/4",
+        "contradiction": "1/1",
+        "risk": "4/4"
+       },
+       "structure": {
+        "score": 1.0,
+        "failed": []
+       }
+      },
+      "grounding": {
+       "research_items": 0,
+       "grounded": 0,
+       "fraction": null,
+       "evidence_refs": 74
+      },
+      "evidence_refs": 74,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 20731,
+      "output_tokens": 5558,
+      "input_tokens": 586,
+      "cache_read": 0,
+      "cache_write": 6429,
+      "cost": 0.1092,
+      "thinking_tokens_est": 0,
+      "thinking_blocks": 0,
+      "seconds": 119.56,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-4-6"
+      }
+     },
+     "planner.build": {
+      "present": true,
+      "rubric": {
+       "score": 1.0,
+       "passed": 24,
+       "total": 24,
+       "failed": [],
+       "by_kind": {
+        "assumption": "3/3",
+        "completeness": "4/4",
+        "contradiction": "2/2",
+        "dependency": "4/4",
+        "first_step": "3/3",
+        "open_question": "3/3",
+        "risk": "5/5"
+       },
+       "structure": {
+        "score": 1.0,
+        "failed": []
+       }
+      },
+      "grounding": {
+       "research_items": 3,
+       "grounded": 3,
+       "fraction": 1.0,
+       "evidence_refs": 57
+      },
+      "evidence_refs": 57,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 33743,
+      "output_tokens": 9009,
+      "input_tokens": 6664,
+      "cache_read": 6429,
+      "cache_write": 0,
+      "cost": 0.1571,
+      "thinking_tokens_est": 0,
+      "thinking_blocks": 0,
+      "seconds": 182.22,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-4-6"
+      }
+     }
+    },
+    "plan_evidence_dangling_raw": 0,
+    "plan_evidence_refs_raw": 131,
+    "plan_row_id": "a1ef26b9a5a84cf786bd03a8b158b872",
+    "usage": {
+     "calls": 2,
+     "input_tokens": 7250,
+     "output_tokens": 14567,
+     "cache_read_tokens": 6429,
+     "cache_write_tokens": 6429,
+     "cost": 0.2663
+    }
+   },
+   "5-disabled": {
+    "meta": {
+     "arm": "5-disabled",
+     "model": "claude-sonnet-5",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "planner.analysis": {
+       "task": "planner.analysis",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 7000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      },
+      "planner.build": {
+       "task": "planner.build",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 16000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "error": null,
+    "seconds": 145.11,
+    "tasks": {
+     "planner.analysis": {
+      "present": true,
+      "rubric": {
+       "score": 1.0,
+       "passed": 11,
+       "total": 11,
+       "failed": [],
+       "by_kind": {
+        "assumption": "2/2",
+        "completeness": "4/4",
+        "contradiction": "1/1",
+        "risk": "4/4"
+       },
+       "structure": {
+        "score": 1.0,
+        "failed": []
+       }
+      },
+      "grounding": {
+       "research_items": 0,
+       "grounded": 0,
+       "fraction": null,
+       "evidence_refs": 56
+      },
+      "evidence_refs": 56,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 14381,
+      "output_tokens": 5223,
+      "input_tokens": 754,
+      "cache_read": 0,
+      "cache_write": 8673,
+      "cost": 0.0754,
+      "thinking_tokens_est": 0,
+      "thinking_blocks": 0,
+      "seconds": 57.4,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-5"
+      }
+     },
+     "planner.build": {
+      "present": true,
+      "rubric": {
+       "score": 1.0,
+       "passed": 24,
+       "total": 24,
+       "failed": [],
+       "by_kind": {
+        "assumption": "3/3",
+        "completeness": "4/4",
+        "contradiction": "2/2",
+        "dependency": "4/4",
+        "first_step": "3/3",
+        "open_question": "3/3",
+        "risk": "5/5"
+       },
+       "structure": {
+        "score": 0.875,
+        "failed": [
+         "open_questions: 2 item(s) missing ['question', 'research_prompt']"
+        ]
+       }
+      },
+      "grounding": {
+       "research_items": 9,
+       "grounded": 9,
+       "fraction": 1.0,
+       "evidence_refs": 40
+      },
+      "evidence_refs": 40,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 24246,
+      "output_tokens": 8873,
+      "input_tokens": 7109,
+      "cache_read": 8673,
+      "cache_write": 0,
+      "cost": 0.1047,
+      "thinking_tokens_est": 0,
+      "thinking_blocks": 0,
+      "seconds": 84.68,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-5"
+      }
+     }
+    },
+    "plan_evidence_dangling_raw": 0,
+    "plan_evidence_refs_raw": 96,
+    "plan_row_id": "16971c9b74ea42a3a677d0ac7aed0e6f",
+    "usage": {
+     "calls": 2,
+     "input_tokens": 7863,
+     "output_tokens": 14096,
+     "cache_read_tokens": 8673,
+     "cache_write_tokens": 8673,
+     "cost": 0.1801
+    }
+   },
+   "5-adaptive-medium": {
+    "meta": {
+     "arm": "5-adaptive-medium",
+     "model": "claude-sonnet-5",
+     "thinking": "adaptive",
+     "effort": "medium",
+     "contracts": {
+      "planner.analysis": {
+       "task": "planner.analysis",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "adaptive",
+       "effort": "medium",
+       "max_output_tokens": 7000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      },
+      "planner.build": {
+       "task": "planner.build",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "adaptive",
+       "effort": "medium",
+       "max_output_tokens": 16000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "error": null,
+    "seconds": 135.52,
+    "tasks": {
+     "planner.analysis": {
+      "present": true,
+      "rubric": {
+       "score": 1.0,
+       "passed": 11,
+       "total": 11,
+       "failed": [],
+       "by_kind": {
+        "assumption": "2/2",
+        "completeness": "4/4",
+        "contradiction": "1/1",
+        "risk": "4/4"
+       },
+       "structure": {
+        "score": 1.0,
+        "failed": []
+       }
+      },
+      "grounding": {
+       "research_items": 0,
+       "grounded": 0,
+       "fraction": null,
+       "evidence_refs": 40
+      },
+      "evidence_refs": 40,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 13640,
+      "output_tokens": 5013,
+      "input_tokens": 754,
+      "cache_read": 0,
+      "cache_write": 8673,
+      "cost": 0.0733,
+      "thinking_tokens_est": 1603,
+      "thinking_blocks": 1,
+      "seconds": 54.74,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-5"
+      }
+     },
+     "planner.build": {
+      "present": true,
+      "rubric": {
+       "score": 0.9583,
+       "passed": 23,
+       "total": 24,
+       "failed": [
+        "completeness.closing_day"
+       ],
+       "by_kind": {
+        "assumption": "3/3",
+        "completeness": "3/4",
+        "contradiction": "2/2",
+        "dependency": "4/4",
+        "first_step": "3/3",
+        "open_question": "3/3",
+        "risk": "5/5"
+       },
+       "structure": {
+        "score": 1.0,
+        "failed": []
+       }
+      },
+      "grounding": {
+       "research_items": 7,
+       "grounded": 7,
+       "fraction": 1.0,
+       "evidence_refs": 42
+      },
+      "evidence_refs": 42,
+      "dangling_after_removal": 0,
+      "truncated": 0,
+      "parse_failed": 0,
+      "json_repaired": 0,
+      "output_chars": 21057,
+      "output_tokens": 8038,
+      "input_tokens": 6582,
+      "cache_read": 8673,
+      "cache_write": 0,
+      "cost": 0.0953,
+      "thinking_tokens_est": 2774,
+      "thinking_blocks": 1,
+      "seconds": 78.93,
+      "invocations": {
+       "logical": 1,
+       "attempts": 1,
+       "by_state": {
+        "completed": 1
+       },
+       "outcome_unknown": 0,
+       "returned_model": "claude-sonnet-5"
+      }
+     }
+    },
+    "plan_evidence_dangling_raw": 0,
+    "plan_evidence_refs_raw": 82,
+    "plan_row_id": "5e92360419a543adbd3ad04bf32ce727",
+    "usage": {
+     "calls": 2,
+     "input_tokens": 7336,
+     "output_tokens": 13051,
+     "cache_read_tokens": 8673,
+     "cache_write_tokens": 8673,
+     "cost": 0.1686
+    }
+   }
+  },
+  "planner.update": {
+   "4.6": {
+    "meta": {
+     "arm": "4.6",
+     "model": "claude-sonnet-4-6",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "planner.update": {
+       "task": "planner.update",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 4000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": false,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "updates": [
+     {
+      "section": "approach.recommended",
+      "previous": "10% cash equity injection, 10% seller note on full standby, 80% SBA loan. Target a business priced $500K\u2013$1.5M.",
+      "proposed": "At least one lender now requires 15% cash equity injection for acquisitions over $500K and will not count any seller note (full standby or otherwise) toward that requirement. Verify whether your chosen lenders still accept the 10% + seller-note structure before building deal math around it. If the 15% requirement applies, the seller note no longer halves real cash-to-close and must be treated as additional subordinated debt only.",
+      "reason": "New lender guidance directly contradicts the core financing assumption that a full-standby seller note covers half the equity injection. This changes required cash-to-close materially for deals above $500K."
+     },
+     {
+      "section": "costs.upfront (equity injection line)",
+      "previous": "$50K\u2013$150K (scales with deal size; $100K on a $1M deal)",
+      "proposed": "If lender requires 15% cash (no seller note credit): $150K on a $1M deal, $90K on a $600K deal. The seller note becomes subordinated seller financing only, not an equity injection substitute. Recalculate deal size ceiling accordingly.",
+      "reason": "15% cash-only injection replaces the 10% cash + 10% seller note structure for above-$500K deals at this lender."
+     },
+     {
+      "section": "costs.minimum / recommended / premium",
+      "previous": "Minimum $65K\u2013$80K all-in for sub-$600K deal; recommended $125K\u2013$175K for $1M deal; premium $200K+ if no seller note available.",
+      "proposed": "With $120K liquid and a 15% cash-only injection requirement: maximum supportable deal size is approximately $600K\u2013$650K before soft costs ($120K \u00f7 15% = $800K gross, minus ~$25K soft costs and ~$10K working capital reserve). The $700K\u2013$1.5M standard target range is not executable at $120K liquid under this lender's terms. Sub-$700K deals become the primary path, not the fallback.",
+      "reason": "User has $120K liquid. At 15% cash injection with no seller note credit, a $1M deal requires $150K cash injection alone \u2014 exceeding available capital before soft costs. Deal size ceiling drops materially."
+     },
+     {
+      "section": "decisions \u2014 Deal size target",
+      "previous": "Recommended $700K\u2013$1.5M; sub-$700K is the fallback if capital is limited.",
+      "proposed": "Recommended range must shift to $400K\u2013$700K given $120K liquid and the 15% cash-only injection requirement at this lender. Confirm with a second lender whether the 10% + seller note structure is still available \u2014 if yes, a $900K\u2013$1M deal remains possible. Do not assume the seller note structure works until a specific lender confirms it in writing.",
+      "reason": "User capital constraint combined with new lender guidance makes the standard $700K\u2013$1.5M range unexecutable unless a second lender still accepts the 10% + standby note structure."
+     },
+     {
+      "section": "gotchas \u2014 seller note standby",
+      "previous": "Seller note must be on full standby for 10 years to count toward equity injection \u2014 most sellers refuse this when they understand it means zero payments.",
+      "proposed": "At least one lender will not count a seller note toward equity injection at all for deals above $500K, regardless of standby terms. The full-standby seller note strategy may be lender-dependent. Confirm with each lender whether seller notes count toward equity injection before structuring any offer around them.",
+      "reason": "New lender guidance renders the seller-note-as-equity-injection assumption lender-specific rather than universal SBA policy."
+     },
+     {
+      "section": "dependencies \u2014 personal guarantee",
+      "previous": "Personal unlimited guarantee required for all 20%+ owners. (No note about partner refusing.)",
+      "proposed": "User's partner will not sign a personal guarantee. If the partner holds 20%+ ownership in the acquiring entity, the SBA requires their guarantee and the loan cannot proceed with them as a 20%+ owner. Ownership structure must be designed so the partner holds under 20%, or the partner must be excluded from the ownership entity entirely. Confirm structure with transaction attorney before forming the acquisition entity.",
+      "reason": "SBA policy mandates personal guarantees from all 20%+ owners. Partner's refusal is a structural blocking constraint that must be resolved before entity formation."
+     },
+     {
+      "section": "open_questions",
+      "previous": "No open question about partner guarantee or lender equity injection variance.",
+      "proposed": "Add two new blocking questions: (1) Will your second and third lender contacts still accept 10% cash + full-standby seller note toward equity injection for deals above $500K, or have they also moved to 15% cash-only? Answer before setting deal size ceiling. (2) What ownership percentage will your partner hold? If 20%+ and they refuse to guarantee, the acquisition entity structure must be redesigned. Resolve with attorney before any LOI.",
+      "reason": "Both are newly surfaced blocking constraints from new lender guidance and user facts."
+     },
+     {
+      "section": "ready.blockers",
+      "previous": "Capital below $80K total liquid makes the standard $700K\u2013$1.5M deal range unworkable without an equity partner.",
+      "proposed": "At $120K liquid with a 15% cash-only injection requirement, the $700K\u2013$1.5M range is also unworkable. Effective deal size ceiling is approximately $600K\u2013$650K all-in. Additionally, partner's refusal to sign a personal guarantee blocks any ownership structure giving the partner 20%+ equity.",
+      "reason": "User capital and partner guarantee constraint together create tighter blockers than the plan previously identified."
+     }
+    ],
+    "n_updates": 8,
+    "raw_updates": 8,
+    "addresses_new_finding": 1,
+    "addresses_new_fact": 1,
+    "well_formed": 1,
+    "truncated": 0,
+    "parse_failed": 0,
+    "json_repaired": 1,
+    "output_chars": 5748,
+    "output_tokens": 1457,
+    "input_tokens": 8180,
+    "cache_read": 0,
+    "cost": 0.0464,
+    "seconds": 31.94,
+    "invocations": {
+     "logical": 1,
+     "attempts": 1,
+     "by_state": {
+      "completed": 1
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-4-6"
+    },
+    "usage": {
+     "calls": 1,
+     "input_tokens": 8180,
+     "output_tokens": 1457,
+     "cache_read_tokens": 0,
+     "cache_write_tokens": 0,
+     "cost": 0.0464
+    }
+   },
+   "5-disabled": {
+    "meta": {
+     "arm": "5-disabled",
+     "model": "claude-sonnet-5",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "planner.update": {
+       "task": "planner.update",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 4000,
+       "timeout": 600.0,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": false,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "updates": [
+     {
+      "section": "approach.recommended",
+      "previous": "SBA 7(a) standard acquisition: 10% cash equity injection, 10% seller note on full standby, 80% SBA loan at prime + 2.5\u20133% over 10 years. Target a business priced $500K\u2013$1.5M with verified SDE of $150K\u2013$400K.",
+      "proposed": "At least one lender now requires 15% cash equity injection on deals over $500K, with no seller note credit toward it regardless of standby terms. This raises minimum cash-to-close and shrinks the executable deal size for a $120K cash buyer \u2014 likely capping deals near $800K rather than $1.2M+. Need to confirm whether this is lender-specific or an industry-wide shift by shopping additional lenders.",
+      "reason": "New lender guidance materially changes the cash injection assumption the entire plan is built on, directly affecting deal size ceiling for the user's stated $120K cash position."
+     },
+     {
+      "section": "decisions.deal size target",
+      "previous": "Recommended $700K\u2013$1.5M, requires $100\u2013175K liquid all-in, assuming seller note can offset half the cash injection.",
+      "proposed": "With $120K cash and a lender requiring 15% cash (no seller-note credit) on deals over $500K, max supportable deal size is roughly $800K (15% = $120K) unless a lender without this requirement is found. Sub-$500K deals may still allow the old 10%/seller-note structure. Deal size ceiling needs re-modeling against both lender types.",
+      "reason": "New lender term directly changes the math behind the recommended deal size range for this specific user's capital."
+     },
+     {
+      "section": "dependencies (blocking item: Industry experience or documented management plan)",
+      "previous": "If your background doesn't qualify, you need a partner or a business with an existing GM before lender conversations are productive.",
+      "proposed": "New blocking issue: the user's intended partner will not sign a personal guarantee. Since SBA 7(a) requires unlimited personal guarantees from all 20%+ owners, this partner cannot be a co-owner/co-borrower under the current structure. Must clarify whether the partner is meant to be a guarantor, a minority non-owner, an operating-only partner, or excluded from the deal structure entirely \u2014 this affects both experience-documentation strategy and equity structure.",
+      "proposed_reason": "New blocking dependency not previously known."
+     },
+     {
+      "section": "risks",
+      "previous": "Personal guarantee exposes all personal assets for the full 10-year loan term \u2014 mitigation: discuss with a financial advisor and family members who share assets.",
+      "proposed": "New risk: if a partner is involved in the deal (financially or operationally) but refuses to sign a personal guarantee, this could disqualify them from being a 20%+ equity owner under SBA rules, or could force the user to hold guarantee liability alone while sharing upside \u2014 a structural/legal question needing attorney input before proceeding with any partner-based deal structure.",
+      "reason": "New user fact surfaces a structural risk not previously addressed in the plan."
+     },
+     {
+      "section": "open_questions",
+      "previous": "No question addressed partner guarantee refusal or updated lender equity terms.",
+      "proposed": "Add: 'Given your partner will not sign a personal guarantee, what role will they play \u2014 non-owner advisor, minority equity holder under 20%, operating partner without ownership, or excluded entirely? And: does the 15% equity injection / no-seller-note-credit term apply broadly across SBA-preferred lenders, or is it specific to one lender \u2014 requiring a shop-around before finalizing deal size ceiling?'",
+      "reason": "Two new facts create unresolved blocking questions the plan must address before Phase 1 can be considered complete."
+     }
+    ],
+    "n_updates": 5,
+    "raw_updates": 5,
+    "addresses_new_finding": 1,
+    "addresses_new_fact": 1,
+    "well_formed": 0,
+    "truncated": 0,
+    "parse_failed": 0,
+    "json_repaired": 1,
+    "output_chars": 3795,
+    "output_tokens": 1287,
+    "input_tokens": 11285,
+    "cache_read": 0,
+    "cost": 0.0354,
+    "seconds": 15.13,
+    "invocations": {
+     "logical": 1,
+     "attempts": 1,
+     "by_state": {
+      "completed": 1
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-5"
+    },
+    "usage": {
+     "calls": 1,
+     "input_tokens": 11285,
+     "output_tokens": 1287,
+     "cache_read_tokens": 0,
+     "cache_write_tokens": 0,
+     "cost": 0.0354
+    }
+   }
+  },
+  "export.synthesis": {
+   "4.6": {
+    "meta": {
+     "arm": "4.6",
+     "model": "claude-sonnet-4-6",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "export.synthesis": {
+       "task": "export.synthesis",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 6000,
+       "timeout": null,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": false,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "chars": 20564,
+    "words": 2852,
+    "citation_links": 36,
+    "invented_links": [],
+    "n_invented_links": 0,
+    "link_coverage": 1.0,
+    "given_links": 36,
+    "sections_missing": [],
+    "sections_present": 6,
+    "truncated": 0,
+    "empty": 0,
+    "fallback_used": 0,
+    "seconds": 105.71,
+    "invocations": {
+     "logical": 1,
+     "attempts": 1,
+     "by_state": {
+      "completed": 1
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-4-6"
+    },
+    "usage": {
+     "calls": 1,
+     "input_tokens": 4283,
+     "output_tokens": 5527,
+     "cache_read_tokens": 0,
+     "cache_write_tokens": 0,
+     "cost": 0.0958
+    }
+   },
+   "5-disabled": {
+    "meta": {
+     "arm": "5-disabled",
+     "model": "claude-sonnet-5",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "export.synthesis": {
+       "task": "export.synthesis",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 6000,
+       "timeout": null,
+       "max_attempts": 3,
+       "backoff": [
+        1.0,
+        4.0
+       ],
+       "interactive": false,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": ""
+      }
+     }
+    },
+    "chars": 16288,
+    "words": 2166,
+    "citation_links": 34,
+    "invented_links": [],
+    "n_invented_links": 0,
+    "link_coverage": 0.9444,
+    "given_links": 36,
+    "sections_missing": [
+     "Recommended actions",
+     "Open questions",
+     "How to continue"
+    ],
+    "sections_present": 3,
+    "truncated": 1,
+    "empty": 0,
+    "fallback_used": 0,
+    "seconds": 50.16,
+    "invocations": {
+     "logical": 1,
+     "attempts": 1,
+     "by_state": {
+      "completed": 1
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-5"
+    },
+    "usage": {
+     "calls": 1,
+     "input_tokens": 5562,
+     "output_tokens": 6000,
+     "cache_read_tokens": 0,
+     "cache_write_tokens": 0,
+     "cost": 0.0711
+    }
+   }
+  },
+  "answer.chat": {
+   "4.6": {
+    "meta": {
+     "arm": "4.6",
+     "model": "claude-sonnet-4-6",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "answer.chat": {
+       "task": "answer.chat",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 2000,
+       "timeout": null,
+       "max_attempts": 2,
+       "backoff": [
+        1.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": "RAG chat with project tools; web_search when the user asks"
+      },
+      "answer.repair": {
+       "task": "answer.repair",
+       "provider": "anthropic",
+       "model": "claude-sonnet-4-6",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 2000,
+       "timeout": null,
+       "max_attempts": 2,
+       "backoff": [
+        1.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": "one repair round after a citation validation failure"
+      }
+     }
+    },
+    "answers": 34,
+    "failed_answers": 0,
+    "questions": 34,
+    "citation_validity": 1.0,
+    "answers_cite_expected_source": 1.0,
+    "expected_questions": 30,
+    "gap_detection": 1.0,
+    "gap_questions": 2,
+    "contradiction_surfaced": 1.0,
+    "contradiction_questions": 3,
+    "offtopic_handled": 1.0,
+    "repair_rounds": 0,
+    "repairs_succeeded": 0,
+    "answers_repaired": 0,
+    "answers_with_unrepaired_invalid_citations": 0,
+    "truncated_answers": 0,
+    "tool_rounds": 14,
+    "tool_calls": 14,
+    "mean_answer_chars": 1287,
+    "seconds": 381.78,
+    "s_per_answer": 11.23,
+    "invocations": {
+     "logical": 48,
+     "attempts": 48,
+     "by_state": {
+      "completed": 48
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-4-6"
+    },
+    "repair_invocations": {
+     "logical": 0,
+     "attempts": 0,
+     "by_state": {},
+     "outcome_unknown": 0,
+     "returned_model": null
+    },
+    "usage": {
+     "calls": 48,
+     "input_tokens": 116,
+     "output_tokens": 12144,
+     "cache_read_tokens": 146161,
+     "cache_write_tokens": 125533,
+     "cost": 0.6971
+    }
+   },
+   "5-disabled": {
+    "meta": {
+     "arm": "5-disabled",
+     "model": "claude-sonnet-5",
+     "thinking": "disabled",
+     "effort": null,
+     "contracts": {
+      "answer.chat": {
+       "task": "answer.chat",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 2000,
+       "timeout": null,
+       "max_attempts": 2,
+       "backoff": [
+        1.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": "RAG chat with project tools; web_search when the user asks"
+      },
+      "answer.repair": {
+       "task": "answer.repair",
+       "provider": "anthropic",
+       "model": "claude-sonnet-5",
+       "thinking": "disabled",
+       "effort": null,
+       "max_output_tokens": 2000,
+       "timeout": null,
+       "max_attempts": 2,
+       "backoff": [
+        1.0
+       ],
+       "interactive": true,
+       "batch_allowed": false,
+       "fallback_allowed": false,
+       "schema": "current",
+       "quality_floor": null,
+       "notes": "one repair round after a citation validation failure"
+      }
+     }
+    },
+    "answers": 34,
+    "failed_answers": 0,
+    "questions": 34,
+    "citation_validity": 1.0,
+    "answers_cite_expected_source": 1.0,
+    "expected_questions": 30,
+    "gap_detection": 1.0,
+    "gap_questions": 2,
+    "contradiction_surfaced": 1.0,
+    "contradiction_questions": 3,
+    "offtopic_handled": 1.0,
+    "repair_rounds": 0,
+    "repairs_succeeded": 0,
+    "answers_repaired": 0,
+    "answers_with_unrepaired_invalid_citations": 0,
+    "truncated_answers": 0,
+    "tool_rounds": 25,
+    "tool_calls": 26,
+    "mean_answer_chars": 1348,
+    "seconds": 294.13,
+    "s_per_answer": 8.65,
+    "invocations": {
+     "logical": 59,
+     "attempts": 59,
+     "by_state": {
+      "completed": 59
+     },
+     "outcome_unknown": 0,
+     "returned_model": "claude-sonnet-5"
+    },
+    "repair_invocations": {
+     "logical": 0,
+     "attempts": 0,
+     "by_state": {},
+     "outcome_unknown": 0,
+     "returned_model": null
+    },
+    "usage": {
+     "calls": 59,
+     "input_tokens": 118,
+     "output_tokens": 20032,
+     "cache_read_tokens": 271176,
+     "cache_write_tokens": 164098,
+     "cost": 0.665
+    }
+   }
+  }
+ },
+ "verdicts": {
+  "planner.analysis": {
+   "task": "planner.analysis",
+   "verdict": "PASS",
+   "headline": "PASS \u2014 migrate planner.analysis to claude-sonnet-5",
+   "fails": [],
+   "caveats": [],
+   "notes": [
+    "adaptive/medium: rubric 1.0 vs disabled 1.0; ~1,603 thinking tokens; $0.0733 vs $0.0754; 54.74s vs 57.4s",
+    "single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-5",
+    "thinking": "disabled",
+    "effort": null
+   },
+   "adaptive": {
+    "recommended": false,
+    "reason": "quality effectively equal (rubric 1.0 vs 1.0, structure 1.0 vs 1.0) \u2014 disabled is simpler, faster and cheaper",
+    "rubric_gain": 0.0,
+    "thinking_tokens_est": 1603,
+    "cost": 0.0733,
+    "seconds": 54.74,
+    "rubric": 1.0,
+    "failed_checks": []
+   }
+  },
+  "planner.build": {
+   "task": "planner.build",
+   "verdict": "PASS_WITH_CAVEAT",
+   "headline": "PASS WITH CAVEAT \u2014 claude-sonnet-5 holds quality on planner.build; review the caveats before migrating",
+   "fails": [],
+   "caveats": [
+    "structure checks lower: 1.0 \u2192 0.875 (open_questions: 2 item(s) missing ['question', 'research_prompt'])"
+   ],
+   "notes": [
+    "adaptive/medium: rubric 0.9583 vs disabled 1.0; ~2,774 thinking tokens; $0.0953 vs $0.1047; 78.93s vs 84.68s",
+    "single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-5",
+    "thinking": "disabled",
+    "effort": null
+   },
+   "adaptive": {
+    "recommended": false,
+    "reason": "quality effectively equal (rubric 1.0 vs 0.9583, structure 0.875 vs 1.0) \u2014 disabled is simpler, faster and cheaper",
+    "rubric_gain": -0.0417,
+    "thinking_tokens_est": 2774,
+    "cost": 0.0953,
+    "seconds": 78.93,
+    "rubric": 0.9583,
+    "failed_checks": [
+     "completeness.closing_day"
+    ]
+   }
+  },
+  "planner.update": {
+   "task": "planner.update",
+   "verdict": "FAIL",
+   "headline": "FAIL \u2014 keep claude-sonnet-4-6 for planner.update",
+   "fails": [
+    "updates missing section/proposed/reason"
+   ],
+   "caveats": [],
+   "notes": [
+    "updates proposed: 8 \u2192 5",
+    "single run per arm (n=1)"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-4-6",
+    "thinking": "disabled",
+    "effort": null
+   }
+  },
+  "export.synthesis": {
+   "task": "export.synthesis",
+   "verdict": "FAIL",
+   "headline": "FAIL \u2014 keep claude-sonnet-4-6 for export.synthesis",
+   "fails": [
+    "required sections missing: Recommended actions, Open questions, How to continue",
+    "synthesis truncated, empty or fell back to the placeholder"
+   ],
+   "caveats": [
+    "fewer of the given citations preserved: 1.0 \u2192 0.9444"
+   ],
+   "notes": [
+    "words 2852 \u2192 2166; citation links 36 \u2192 34 of 36 given",
+    "single run per arm (n=1)"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-4-6",
+    "thinking": "disabled",
+    "effort": null
+   }
+  },
+  "answer.chat": {
+   "task": "answer.chat",
+   "verdict": "PASS",
+   "headline": "PASS \u2014 migrate answer.chat to claude-sonnet-5",
+   "fails": [],
+   "caveats": [],
+   "notes": [
+    "answers 34 \u2192 34; mean length 1287 \u2192 1348 chars (wording differences are not failures)",
+    "single run per arm (n=1): differences inside the tolerances are not distinguishable from run-to-run noise"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-5",
+    "thinking": "disabled",
+    "effort": null
+   }
+  },
+  "answer.repair": {
+   "task": "answer.repair",
+   "verdict": "PASS_WITH_CAVEAT",
+   "headline": "PASS WITH CAVEAT \u2014 claude-sonnet-5 holds quality on answer.repair; review the caveats before migrating",
+   "fails": [],
+   "caveats": [
+    "no repair round was triggered on either arm \u2014 repair behaviour is unexercised; it shares chat's prompt family and contract, so it migrates with chat"
+   ],
+   "notes": [
+    "repair rounds 0 \u2192 0, succeeded 0 \u2192 0"
+   ],
+   "production_default_changed": false,
+   "recommended_setting": {
+    "model": "claude-sonnet-5",
+    "thinking": "disabled",
+    "effort": null
+   }
+  }
+ },
+ "files": [
+  "evals/migration-compare/20260906-190947-ff042e9/planner-4.6.json",
+  "evals/migration-compare/20260906-190947-ff042e9/planner-5-disabled.json",
+  "evals/migration-compare/20260906-190947-ff042e9/planner-5-adaptive-medium.json",
+  "evals/migration-compare/20260906-190947-ff042e9/planner.update-4.6.json",
+  "evals/migration-compare/20260906-190947-ff042e9/planner.update-5-disabled.json",
+  "evals/migration-compare/20260906-190947-ff042e9/export.synthesis-4.6.json",
+  "evals/migration-compare/20260906-190947-ff042e9/export.synthesis-5-disabled.json",
+  "evals/migration-compare/20260906-190947-ff042e9/answer.chat-4.6.json",
+  "evals/migration-compare/20260906-190947-ff042e9/answer.chat-5-disabled.json",
+  "evals/migration-compare/20260906-190947-ff042e9/comparison.json",
+  "evals/migration-compare/20260906-190947-ff042e9/comparison.txt"
+ ],
+ "excluded": {
+  "discover.quick": "no frozen exit test (judgement-based shortlist)",
+  "discover.verify": "uses the live web_search tool; not freezable"
+ },
+ "shared_inputs": {
+  "sources": 9,
+  "approved_findings": 49,
+  "findings_contract": {
+   "task": "findings.extract",
+   "provider": "anthropic",
+   "model": "claude-sonnet-5",
+   "thinking": "disabled",
+   "effort": null,
+   "max_output_tokens": 4000,
+   "timeout": null,
+   "max_attempts": 3,
+   "backoff": [
+    1.0,
+    4.0
+   ],
+   "interactive": false,
+   "batch_allowed": true,
+   "fallback_allowed": false,
+   "schema": "findings-v1",
+   "quality_floor": null,
+   "notes": "per transcript window; quote validator gates the output; Sonnet 5 since E2.2"
+  },
+  "prepared_s": 91.2,
+  "shared_cost": 0.1679
+ },
+ "total_cost": 2.3938,
+ "total_s": 1554.56,
+ "summary": {
+  "planner.analysis": "PASS",
+  "planner.build": "PASS_WITH_CAVEAT",
+  "planner.update": "FAIL",
+  "export.synthesis": "FAIL",
+  "answer.chat": "PASS",
+  "answer.repair": "PASS_WITH_CAVEAT"
+ },
+ "rows": {
+  "planner.analysis": [
+   {
+    "metric": "rubric.score",
+    "4.6": 1.0,
+    "5-disabled": 1.0,
+    "5-adaptive-medium": 1.0
+   },
+   {
+    "metric": "rubric.structure.score",
+    "4.6": 1.0,
+    "5-disabled": 1.0,
+    "5-adaptive-medium": 1.0
+   },
+   {
+    "metric": "grounding.fraction",
+    "4.6": null,
+    "5-disabled": null,
+    "5-adaptive-medium": null
+   },
+   {
+    "metric": "evidence_refs",
+    "4.6": 74,
+    "5-disabled": 56,
+    "5-adaptive-medium": 40
+   },
+   {
+    "metric": "dangling_after_removal",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "json_repaired",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "truncated",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "parse_failed",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "thinking_tokens_est",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 1603
+   },
+   {
+    "metric": "output_chars",
+    "4.6": 20731,
+    "5-disabled": 14381,
+    "5-adaptive-medium": 13640
+   },
+   {
+    "metric": "input_tokens",
+    "4.6": 586,
+    "5-disabled": 754,
+    "5-adaptive-medium": 754
+   },
+   {
+    "metric": "cache_read",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "output_tokens",
+    "4.6": 5558,
+    "5-disabled": 5223,
+    "5-adaptive-medium": 5013
+   },
+   {
+    "metric": "cost",
+    "4.6": 0.1092,
+    "5-disabled": 0.0754,
+    "5-adaptive-medium": 0.0733
+   },
+   {
+    "metric": "seconds",
+    "4.6": 119.56,
+    "5-disabled": 57.4,
+    "5-adaptive-medium": 54.74
+   },
+   {
+    "metric": "rubric.by_kind",
+    "4.6": {
+     "assumption": "2/2",
+     "completeness": "4/4",
+     "contradiction": "1/1",
+     "risk": "4/4"
+    },
+    "5-disabled": {
+     "assumption": "2/2",
+     "completeness": "4/4",
+     "contradiction": "1/1",
+     "risk": "4/4"
+    },
+    "5-adaptive-medium": {
+     "assumption": "2/2",
+     "completeness": "4/4",
+     "contradiction": "1/1",
+     "risk": "4/4"
+    }
+   },
+   {
+    "metric": "rubric.failed",
+    "4.6": "\u2014",
+    "5-disabled": "\u2014",
+    "5-adaptive-medium": "\u2014"
+   },
+   {
+    "metric": "structure.failed",
+    "4.6": "\u2014",
+    "5-disabled": "\u2014",
+    "5-adaptive-medium": "\u2014"
+   },
+   {
+    "metric": "returned_model",
+    "4.6": "claude-sonnet-4-6",
+    "5-disabled": "claude-sonnet-5",
+    "5-adaptive-medium": "claude-sonnet-5"
+   },
+   {
+    "metric": "outcome_unknown",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   }
+  ],
+  "planner.build": [
+   {
+    "metric": "rubric.score",
+    "4.6": 1.0,
+    "5-disabled": 1.0,
+    "5-adaptive-medium": 0.9583
+   },
+   {
+    "metric": "rubric.structure.score",
+    "4.6": 1.0,
+    "5-disabled": 0.875,
+    "5-adaptive-medium": 1.0
+   },
+   {
+    "metric": "grounding.fraction",
+    "4.6": 1.0,
+    "5-disabled": 1.0,
+    "5-adaptive-medium": 1.0
+   },
+   {
+    "metric": "evidence_refs",
+    "4.6": 57,
+    "5-disabled": 40,
+    "5-adaptive-medium": 42
+   },
+   {
+    "metric": "dangling_after_removal",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "json_repaired",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "truncated",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "parse_failed",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "thinking_tokens_est",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 2774
+   },
+   {
+    "metric": "output_chars",
+    "4.6": 33743,
+    "5-disabled": 24246,
+    "5-adaptive-medium": 21057
+   },
+   {
+    "metric": "input_tokens",
+    "4.6": 6664,
+    "5-disabled": 7109,
+    "5-adaptive-medium": 6582
+   },
+   {
+    "metric": "cache_read",
+    "4.6": 6429,
+    "5-disabled": 8673,
+    "5-adaptive-medium": 8673
+   },
+   {
+    "metric": "output_tokens",
+    "4.6": 9009,
+    "5-disabled": 8873,
+    "5-adaptive-medium": 8038
+   },
+   {
+    "metric": "cost",
+    "4.6": 0.1571,
+    "5-disabled": 0.1047,
+    "5-adaptive-medium": 0.0953
+   },
+   {
+    "metric": "seconds",
+    "4.6": 182.22,
+    "5-disabled": 84.68,
+    "5-adaptive-medium": 78.93
+   },
+   {
+    "metric": "rubric.by_kind",
+    "4.6": {
+     "assumption": "3/3",
+     "completeness": "4/4",
+     "contradiction": "2/2",
+     "dependency": "4/4",
+     "first_step": "3/3",
+     "open_question": "3/3",
+     "risk": "5/5"
+    },
+    "5-disabled": {
+     "assumption": "3/3",
+     "completeness": "4/4",
+     "contradiction": "2/2",
+     "dependency": "4/4",
+     "first_step": "3/3",
+     "open_question": "3/3",
+     "risk": "5/5"
+    },
+    "5-adaptive-medium": {
+     "assumption": "3/3",
+     "completeness": "3/4",
+     "contradiction": "2/2",
+     "dependency": "4/4",
+     "first_step": "3/3",
+     "open_question": "3/3",
+     "risk": "5/5"
+    }
+   },
+   {
+    "metric": "rubric.failed",
+    "4.6": "\u2014",
+    "5-disabled": "\u2014",
+    "5-adaptive-medium": "completeness.closing_day"
+   },
+   {
+    "metric": "structure.failed",
+    "4.6": "\u2014",
+    "5-disabled": "open_questions: 2 item(s) missing ['question', 'research_prompt']",
+    "5-adaptive-medium": "\u2014"
+   },
+   {
+    "metric": "returned_model",
+    "4.6": "claude-sonnet-4-6",
+    "5-disabled": "claude-sonnet-5",
+    "5-adaptive-medium": "claude-sonnet-5"
+   },
+   {
+    "metric": "outcome_unknown",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   },
+   {
+    "metric": "plan_evidence_dangling_raw (both passes)",
+    "4.6": 0,
+    "5-disabled": 0,
+    "5-adaptive-medium": 0
+   }
+  ],
+  "planner.update": [
+   {
+    "metric": "n_updates",
+    "4.6": 8,
+    "5-disabled": 5
+   },
+   {
+    "metric": "addresses_new_finding",
+    "4.6": 1,
+    "5-disabled": 1
+   },
+   {
+    "metric": "addresses_new_fact",
+    "4.6": 1,
+    "5-disabled": 1
+   },
+   {
+    "metric": "well_formed",
+    "4.6": 1,
+    "5-disabled": 0
+   },
+   {
+    "metric": "json_repaired",
+    "4.6": 1,
+    "5-disabled": 1
+   },
+   {
+    "metric": "truncated",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "parse_failed",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "input_tokens",
+    "4.6": 8180,
+    "5-disabled": 11285
+   },
+   {
+    "metric": "output_tokens",
+    "4.6": 1457,
+    "5-disabled": 1287
+   },
+   {
+    "metric": "cost",
+    "4.6": 0.0464,
+    "5-disabled": 0.0354
+   },
+   {
+    "metric": "seconds",
+    "4.6": 31.94,
+    "5-disabled": 15.13
+   },
+   {
+    "metric": "billed_calls",
+    "4.6": 1,
+    "5-disabled": 1
+   },
+   {
+    "metric": "billed_input_tokens",
+    "4.6": 8180,
+    "5-disabled": 11285
+   },
+   {
+    "metric": "billed_output_tokens",
+    "4.6": 1457,
+    "5-disabled": 1287
+   },
+   {
+    "metric": "billed_cache_read_tokens",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "billed_cache_write_tokens",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "billed_cost",
+    "4.6": 0.0464,
+    "5-disabled": 0.0354
+   },
+   {
+    "metric": "returned_model",
+    "4.6": "claude-sonnet-4-6",
+    "5-disabled": "claude-sonnet-5"
+   },
+   {
+    "metric": "outcome_unknown",
+    "4.6": 0,
+    "5-disabled": 0
+   }
+  ],
+  "export.synthesis": [
+   {
+    "metric": "words",
+    "4.6": 2852,
+    "5-disabled": 2166
+   },
+   {
+    "metric": "sections_present",
+    "4.6": 6,
+    "5-disabled": 3
+   },
+   {
+    "metric": "sections_missing",
+    "4.6": "\u2014",
+    "5-disabled": "Recommended actions, Open questions, How to continue"
+   },
+   {
+    "metric": "citation_links",
+    "4.6": 36,
+    "5-disabled": 34
+   },
+   {
+    "metric": "given_links",
+    "4.6": 36,
+    "5-disabled": 36
+   },
+   {
+    "metric": "link_coverage",
+    "4.6": 1.0,
+    "5-disabled": 0.9444
+   },
+   {
+    "metric": "n_invented_links",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "truncated",
+    "4.6": 0,
+    "5-disabled": 1
+   },
+   {
+    "metric": "empty",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "seconds",
+    "4.6": 105.71,
+    "5-disabled": 50.16
+   },
+   {
+    "metric": "billed_calls",
+    "4.6": 1,
+    "5-disabled": 1
+   },
+   {
+    "metric": "billed_input_tokens",
+    "4.6": 4283,
+    "5-disabled": 5562
+   },
+   {
+    "metric": "billed_output_tokens",
+    "4.6": 5527,
+    "5-disabled": 6000
+   },
+   {
+    "metric": "billed_cache_read_tokens",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "billed_cache_write_tokens",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "billed_cost",
+    "4.6": 0.0958,
+    "5-disabled": 0.0711
+   },
+   {
+    "metric": "returned_model",
+    "4.6": "claude-sonnet-4-6",
+    "5-disabled": "claude-sonnet-5"
+   },
+   {
+    "metric": "outcome_unknown",
+    "4.6": 0,
+    "5-disabled": 0
+   }
+  ],
+  "answer.chat": [
+   {
+    "metric": "answers",
+    "4.6": 34,
+    "5-disabled": 34
+   },
+   {
+    "metric": "failed_answers",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "citation_validity",
+    "4.6": 1.0,
+    "5-disabled": 1.0
+   },
+   {
+    "metric": "answers_cite_expected_source",
+    "4.6": 1.0,
+    "5-disabled": 1.0
+   },
+   {
+    "metric": "contradiction_surfaced",
+    "4.6": 1.0,
+    "5-disabled": 1.0
+   },
+   {
+    "metric": "gap_detection",
+    "4.6": 1.0,
+    "5-disabled": 1.0
+   },
+   {
+    "metric": "offtopic_handled",
+    "4.6": 1.0,
+    "5-disabled": 1.0
+   },
+   {
+    "metric": "repair_rounds",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "repairs_succeeded",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "answers_with_unrepaired_invalid_citations",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "truncated_answers",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "tool_rounds",
+    "4.6": 14,
+    "5-disabled": 25
+   },
+   {
+    "metric": "tool_calls",
+    "4.6": 14,
+    "5-disabled": 26
+   },
+   {
+    "metric": "mean_answer_chars",
+    "4.6": 1287,
+    "5-disabled": 1348
+   },
+   {
+    "metric": "s_per_answer",
+    "4.6": 11.23,
+    "5-disabled": 8.65
+   },
+   {
+    "metric": "seconds",
+    "4.6": 381.78,
+    "5-disabled": 294.13
+   },
+   {
+    "metric": "billed_calls",
+    "4.6": 48,
+    "5-disabled": 59
+   },
+   {
+    "metric": "billed_input_tokens",
+    "4.6": 116,
+    "5-disabled": 118
+   },
+   {
+    "metric": "billed_output_tokens",
+    "4.6": 12144,
+    "5-disabled": 20032
+   },
+   {
+    "metric": "billed_cache_read_tokens",
+    "4.6": 146161,
+    "5-disabled": 271176
+   },
+   {
+    "metric": "billed_cache_write_tokens",
+    "4.6": 125533,
+    "5-disabled": 164098
+   },
+   {
+    "metric": "billed_cost",
+    "4.6": 0.6971,
+    "5-disabled": 0.665
+   },
+   {
+    "metric": "returned_model",
+    "4.6": "claude-sonnet-4-6",
+    "5-disabled": "claude-sonnet-5"
+   },
+   {
+    "metric": "outcome_unknown",
+    "4.6": 0,
+    "5-disabled": 0
+   },
+   {
+    "metric": "repair.returned_model",
+    "4.6": null,
+    "5-disabled": null
+   }
+  ]
+ }
+}

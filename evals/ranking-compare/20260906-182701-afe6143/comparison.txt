@@ -1,0 +1,68 @@
+Neuro Search rank.relevance model comparison · live · app 0.18.0-e2.1 @ afe6143 · fixture v1 (79 candidates)
+  baseline  claude-sonnet-4-6 (returned claude-sonnet-4-6, thinking disabled)
+  candidate claude-sonnet-5 (returned claude-sonnet-5, thinking disabled)
+  same prompt f38f9a9c · same fixture · same contract except the model
+
+  metric                                         baseline      candidate      delta
+  -- QUALITY  (decision gate)
+  precision_at_10                                       1              1         +0
+  precision_at_20                                       1              1         +0
+  recall_at_10                                     0.2273         0.2273         +0
+  recall_at_20                                     0.4545         0.4545         +0
+  precision_at_10_strict                              0.9            0.9         +0
+  recall_at_10_strict                                0.36           0.36         +0
+  recall_at_20_strict                                0.68           0.68         +0
+  ndcg_at_20                                       0.9586         0.9623    +0.0037
+  irrelevant_in_top_10                                  0              0         +0
+  clickbait_in_top_10                                   0              0         +0
+  authoritative_low_view_in_top_20                      5              5         +0
+  popular_irrelevant_in_top_20                          0              0         +0
+  -- CATEGORY
+  mean_rank[authoritative_low_view]                   5.8              9       +3.2
+  mean_rank[clickbait]                               64.3           60.9       -3.4
+  mean_rank[duplicate]                               39.2           39.2         +0
+  mean_rank[irrelevant]                              67.5           69.6       +2.1
+  mean_rank[moderate]                                30.9           31.1       +0.2
+  mean_rank[popular_irrelevant]                        74             74         +0
+  mean_rank[relevant]                                15.9           14.6       -1.3
+  mean_rank[weak]                                    49.4           49.8       +0.4
+  mean_score[authoritative_low_view]                   95             90         -5
+  mean_score[clickbait]                               1.3              4       +2.7
+  mean_score[duplicate]                              35.6             43       +7.4
+  mean_score[irrelevant]                                0              0         +0
+  mean_score[moderate]                               62.8           57.5       -5.3
+  mean_score[popular_irrelevant]                        0              0         +0
+  mean_score[relevant]                               86.9           84.1       -2.8
+  mean_score[weak]                                   15.6           20.4       +4.8
+  -- VALIDITY  (decision gate)
+  schema_validity                                       1              1         +0
+  batches                                               1              1         +0
+  failed_batches                                        0              0         +0
+  repaired_batches                                      0              0         +0
+  unscored_candidates                                   0              0         +0
+  outcome_unknown                                       0              0         +0
+  transport_attempts                                    1              1         +0
+  configured_model                         claude-sonnet-4-6 claude-sonnet-5           
+  returned_model                           claude-sonnet-4-6 claude-sonnet-5           
+  thinking                                       disabled       disabled           
+  -- TOKENS  (supporting)
+  canonical_input_tokens                            3,899          5,009      +1110
+  billed_input_tokens                               3,899          5,009      +1110
+  billed_output_tokens                              1,754          2,460       +706
+  billed_cache_read_tokens                              0              0         +0
+  billed_cache_write_tokens                             0              0         +0
+  -- ECONOMICS  (supporting)
+  cost                                              0.038         0.0346    -0.0034
+  cost_per_100_candidates                          0.0481         0.0438    -0.0043
+  latency_rank_s                                     33.4          19.96     -13.44
+  latency_s_per_100_candidates                      42.27          25.27        -17
+
+  tokenizer delta (canonical requests, provider token count): 3,899 → 5,009 = +28.5%
+
+VERDICT: PASS — migrate rank.relevance to claude-sonnet-5
+  note    tokenizer delta on the canonical requests: 3,899 → 5,009 (+28.5%)
+  note    single run per model (n=1): differences inside the tolerances are not distinguishable from run-to-run noise
+
+  Production default unchanged. set NEUROSEARCH_TASK_MODEL_RANK_RELEVANCE=claude-sonnet-5 (and THINKING=disabled) or change the rank.relevance contract; nothing was changed by this run
+
+  files: evals/ranking-compare/20260906-182701-afe6143/baseline-sonnet-4-6.json, evals/ranking-compare/20260906-182701-afe6143/candidate-sonnet-5.json, evals/baseline-rank-0.18.0-e2.1-afe6143-sonnet-4-6.json, evals/ranking-compare/20260906-182701-afe6143/comparison.json, evals/ranking-compare/20260906-182701-afe6143/comparison.txt

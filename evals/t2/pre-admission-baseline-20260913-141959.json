@@ -1,0 +1,177 @@
+{
+  "backup_filename": "neurosearch-20260913-1410.db",
+  "backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
+  "backup_verification": {
+    "fts5_row_count": 38038,
+    "integrity_check": "ok",
+    "integrity_check_rows": 1,
+    "method": "read-only PRAGMA on copied backup",
+    "quick_check": "ok"
+  },
+  "generated_at_utc": "2026-09-13T21:19:59.784198+00:00",
+  "interpretation": "Locator counts are measured inputs only. No seven-state assignment is claimed before T2 admission; unavailable signals remain unknown rather than negative. Unmatched claim locators are categorized by boundary/member status; the derived view must preserve the documented [start, end) rule and expose these reconciliation conditions.",
+  "live_database_opened": false,
+  "projects": [
+    {
+      "canonical_claims": 3602,
+      "canonical_findings": 3834,
+      "chunks": 6139,
+      "claim_covered_chunks": 2072,
+      "claim_locator_reconciliation": {
+        "after_last": 2,
+        "at_chunk_end": 0,
+        "before_first": 23,
+        "excluded_or_nonmember": 0,
+        "internal_gap": 12,
+        "matched": 3801
+      },
+      "claim_locator_rows": 3838,
+      "claim_locator_rows_without_matching_chunk": 37,
+      "finding_citation_items": 3880,
+      "finding_citations_malformed": 0,
+      "finding_covered_chunks": 2085,
+      "finding_rows_with_citations": 3823,
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "project_name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "signals": {
+        "claim_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "extracted": {
+          "reason": "T3 extractor not implemented",
+          "status": "not_available"
+        },
+        "finding_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "irrelevant": {
+          "reason": "project-relative irrelevance state not implemented",
+          "status": "not_available"
+        },
+        "redundant": {
+          "reason": "chunk-level redundancy state not implemented",
+          "status": "not_available"
+        },
+        "represented": {
+          "reason": "T2 projection not implemented",
+          "status": "not_available"
+        },
+        "unexplained": {
+          "reason": "requires T2 precedence over all other signals",
+          "status": "not_available"
+        }
+      },
+      "union_locator_covered_chunks": 2085
+    },
+    {
+      "canonical_claims": 14742,
+      "canonical_findings": 16577,
+      "chunks": 24166,
+      "claim_covered_chunks": 7243,
+      "claim_locator_reconciliation": {
+        "after_last": 5,
+        "at_chunk_end": 293,
+        "before_first": 166,
+        "excluded_or_nonmember": 12,
+        "internal_gap": 615,
+        "matched": 17405
+      },
+      "claim_locator_rows": 18496,
+      "claim_locator_rows_without_matching_chunk": 1091,
+      "finding_citation_items": 16816,
+      "finding_citations_malformed": 0,
+      "finding_covered_chunks": 7106,
+      "finding_rows_with_citations": 16451,
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "project_name": "I want to start buying businesses and earning \"passive\" income.",
+      "signals": {
+        "claim_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "extracted": {
+          "reason": "T3 extractor not implemented",
+          "status": "not_available"
+        },
+        "finding_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "irrelevant": {
+          "reason": "project-relative irrelevance state not implemented",
+          "status": "not_available"
+        },
+        "redundant": {
+          "reason": "chunk-level redundancy state not implemented",
+          "status": "not_available"
+        },
+        "represented": {
+          "reason": "T2 projection not implemented",
+          "status": "not_available"
+        },
+        "unexplained": {
+          "reason": "requires T2 precedence over all other signals",
+          "status": "not_available"
+        }
+      },
+      "union_locator_covered_chunks": 7329
+    },
+    {
+      "canonical_claims": 589,
+      "canonical_findings": 605,
+      "chunks": 2719,
+      "claim_covered_chunks": 554,
+      "claim_locator_reconciliation": {
+        "after_last": 0,
+        "at_chunk_end": 0,
+        "before_first": 0,
+        "excluded_or_nonmember": 0,
+        "internal_gap": 0,
+        "matched": 603
+      },
+      "claim_locator_rows": 603,
+      "claim_locator_rows_without_matching_chunk": 0,
+      "finding_citation_items": 607,
+      "finding_citations_malformed": 0,
+      "finding_covered_chunks": 557,
+      "finding_rows_with_citations": 600,
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "project_name": "Real Estate Investment Strategy",
+      "signals": {
+        "claim_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "extracted": {
+          "reason": "T3 extractor not implemented",
+          "status": "not_available"
+        },
+        "finding_covered": {
+          "reason": "baseline count available; T2 projection not implemented",
+          "status": "not_available"
+        },
+        "irrelevant": {
+          "reason": "project-relative irrelevance state not implemented",
+          "status": "not_available"
+        },
+        "redundant": {
+          "reason": "chunk-level redundancy state not implemented",
+          "status": "not_available"
+        },
+        "represented": {
+          "reason": "T2 projection not implemented",
+          "status": "not_available"
+        },
+        "unexplained": {
+          "reason": "requires T2 precedence over all other signals",
+          "status": "not_available"
+        }
+      },
+      "union_locator_covered_chunks": 557
+    }
+  ],
+  "read_only": true,
+  "schema": "t2-pre-admission-baseline/v1"
+}

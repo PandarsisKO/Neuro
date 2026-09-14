@@ -1,0 +1,41 @@
+{
+ "updates": [
+  {
+   "section": "Recommended approach",
+   "previous": "Static export + Cloudflare Pages",
+   "proposed": "Static export + Netlify",
+   "reason": "New finding says Cloudflare form handling is limited."
+  }
+ ],
+ "n_updates": 1,
+ "raw_updates": 1,
+ "addresses_new_finding": 0,
+ "addresses_new_fact": 0,
+ "well_formed": 1,
+ "truncated": 0,
+ "parse_failed": 0,
+ "json_repaired": 0,
+ "output_chars": 204,
+ "output_tokens": 51,
+ "input_tokens": 1352,
+ "cache_read": 0,
+ "cost": 0.0,
+ "seconds": 0.0,
+ "invocations": {
+  "logical": 1,
+  "attempts": 1,
+  "by_state": {
+   "completed": 1
+  },
+  "outcome_unknown": 0,
+  "returned_model": "fake-claude"
+ },
+ "usage": {
+  "calls": 1,
+  "input_tokens": 1352,
+  "output_tokens": 51,
+  "cache_read_tokens": 0,
+  "cache_write_tokens": 0,
+  "cost": 0.0048
+ }
+}

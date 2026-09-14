@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+  body{font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;width:420px;margin:0;padding:14px;color:#1b1f27;background:#f6f7f9;font-size:13px}
+  h1{font-size:15px;margin:0 0 8px}
+  label{display:block;color:#5f6878;margin-top:8px;font-size:12px}
+  input,select{width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e1e5eb;border-radius:7px;font:inherit;background:#fff}
+  button{margin-top:10px;padding:8px 12px;border:1px solid #e1e5eb;border-radius:8px;background:#fff;font:inherit;cursor:pointer}
+  button.primary{background:#2f5bea;border-color:#2f5bea;color:#fff}
+  button:disabled{opacity:.5}
+  .muted{color:#5f6878;font-size:12px}
+  #lessons{max-height:260px;overflow:auto;border:1px solid #e1e5eb;border-radius:8px;background:#fff;margin-top:8px;padding:6px}
+  .les{display:flex;gap:6px;align-items:flex-start;padding:4px 2px;border-bottom:1px solid #eef1f5;font-size:12px}
+  .les .t{flex:1} .les .m{color:#5f6878}
+  .les.nov{opacity:.55}
+  .ok{color:#1a9d63} .bad{color:#d2413a} .warn{color:#b8730a}
+  details{margin-top:8px} summary{cursor:pointer;color:#5f6878}
+  .mini{font-size:11px;padding:2px 6px;margin-left:4px}
+  </style></head><body>
+<h1>Neuro Search</h1>
+<div id="setup">
+  <div class="muted">One-time setup: where is your Neuro Search app?</div>
+  <label>App address</label><input id="appUrl" placeholder="http://localhost:8000 or your Mac's local-network address">
+  <label>App password (the sign-in token)</label><input id="token" type="password">
+  <button class="primary" id="saveSetup">Save</button>
+  <span id="setupMsg" class="muted"></span>
+</div>
+<div id="main" style="display:none">
+  <div id="wanted" style="display:none;border:1px solid #2f5bea;border-radius:8px;background:#eef2ff;padding:10px;margin-bottom:10px">
+    <b>Neuro Search wants this page</b>
+    <div class="muted" id="wantedWhy" style="margin-top:4px"></div>
+    <button class="primary" id="captureWanted">Capture for Neuro Search</button>
+    <span id="wantedMsg" class="muted"></span>
+  </div>
+  <div id="queue" class="muted" style="display:none;margin-bottom:8px"></div>
+  <div style="border:1px solid #e1e5eb;border-radius:8px;background:#fff;padding:10px;margin-bottom:10px">
+    <b>Send this page</b> <span class="muted">— an article or guide as your browser sees it (works on sites that block automated readers or need a login); on an Instagram reel or profile (newest 40 posts, for review), TikTok, Vimeo or Loom page it sends the link with your session instead</span>
+    <label>To project</label><select id="pageProject"></select>
+    <button class="primary" id="sendPage">Send this page to Neuro Search</button>
+    <span id="pageMsg" class="muted"></span>
+  </div>
+  <b>Course importer</b>
+  <div class="muted">Open the course's home page (the one listing all lessons), make sure you're logged in, then:</div>
+  <button class="primary" id="scan">Scan this course</button>
+  <span id="scanMsg" class="muted"></span>
+  <div id="result" style="display:none">
+    <label>Course title</label><input id="courseTitle">
+    <label>Send to project</label><select id="project"></select>
+    <div id="lessons"></div>
+    <div class="muted" id="summary"></div>
+    <button class="primary" id="send">Send to Neuro Search</button>
+    <span id="sendMsg" class="muted"></span>
+  </div>
+  <details><summary>Settings</summary><div class="muted" id="cfg"></div><button id="reset">Change app address / password</button></details>
+</div>
+<script src="popup.js"></script>
+</body></html>

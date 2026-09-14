@@ -1,0 +1,194 @@
+{
+  "cohort": "t1-backfill-preview-20260912-1724",
+  "executed": 0,
+  "project_count": 13,
+  "projects": [
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2 api",
+      "project_id": "c09f6849d2d14e4394ad9f03eedb1a3d",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 1,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2",
+      "project_id": "a4584aba9fab42f181f14379a24397b6",
+      "queued": 0,
+      "rows": {
+        "project_claims": 5,
+        "project_notes": 5
+      },
+      "total_rows": 10,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Article routing",
+      "project_id": "7891334fb1f749f8b5f5c6548f0ca25b",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Article routing",
+      "project_id": "653e991a25284c4a98e1ee3ecee02d2c",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 1,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Article routing",
+      "project_id": "a1894d27aa454759a6d3dd19bb0263fc",
+      "queued": 0,
+      "rows": {
+        "project_claims": 11,
+        "project_notes": 11
+      },
+      "total_rows": 22,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2 chat",
+      "project_id": "05e9e2eda03349f0bfd7cdd6c7c663e8",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Article routing",
+      "project_id": "7bab5417c0954ac69689be61317bab61",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 1,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2",
+      "project_id": "35d88c7543474fef9f4d92dedcf0b8f0",
+      "queued": 0,
+      "rows": {
+        "project_claims": 5,
+        "project_notes": 5
+      },
+      "total_rows": 10,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2 chat",
+      "project_id": "69496498d0234788afeb6cd31694ca9a",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 0,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "G2 api",
+      "project_id": "9ba67f5308c2414aa0a2ac00dc92f848",
+      "queued": 0,
+      "rows": {
+        "project_claims": 0,
+        "project_notes": 0
+      },
+      "total_rows": 0,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 78,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Design beautiful and modern web apps with Claude and chatGPT",
+      "project_id": "d7a9f585076e49649b561649d71238c3",
+      "queued": 0,
+      "rows": {
+        "project_claims": 3604,
+        "project_notes": 3833
+      },
+      "total_rows": 7437,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 324,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "I want to start buying businesses and earning \"passive\" income.",
+      "project_id": "c752ed152ec942dd97b9a94c3f1b3b96",
+      "queued": 0,
+      "rows": {
+        "project_claims": 14605,
+        "project_notes": 16437
+      },
+      "total_rows": 31042,
+      "version": "t1-derived-v1"
+    },
+    {
+      "embedding_batches_at_96": 13,
+      "executed": 0,
+      "model": "text-embedding-3-small",
+      "name": "Real Estate Investment Strategy",
+      "project_id": "5b9b2a3b25e343a6bdcf3bad90ced5a4",
+      "queued": 0,
+      "rows": {
+        "project_claims": 589,
+        "project_notes": 605
+      },
+      "total_rows": 1194,
+      "version": "t1-derived-v1"
+    }
+  ],
+  "queued": 0,
+  "source": "supported localhost API",
+  "timestamp": "2026-09-12T17:17:49-0700",
+  "total_batches": 418,
+  "total_rows": 39715
+}
