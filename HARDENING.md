@@ -2202,3 +2202,12 @@ pass `test_s12` flake). `repo-check` and commit-bound `release-check --no-pytest
 findings as the prior commit; every T3-relevant deterministic proof passes. Artifact:
 `evals/release/release-check-0.63.90-3ec5fff-20260914-171629.json`. The seeded 60-row queue still requires
 manual exact-span gold adjudication before persistence, a selector, or T4 work is admitted.
+
+## T3 gold-adjudication gate closed — 2026-09-14 11:35 PT
+
+All 252 predicted records in the 60-row seeded queue were manually adjudicated against source text; 0 false
+positives. Every per-kind precision floor (0.85/0.90/0.95 by kind) passes at 1.00. Two recall-only structural
+gaps (bracket-header suppression, unpunctuated chunks) are documented, not patched — neither touches precision.
+Committed at `3ca18be`; commit-bound release-check shows the same three pre-existing unrelated failures as the
+prior checkpoint. T3 extraction output is now cleared for persistence, a selector, and T4, pending T4's own
+design review.

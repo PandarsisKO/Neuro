@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Tested code baseline is `3ec5fff`. App/package version is `0.63.90`.
+- Tested code baseline is `3ca18be`. App/package version is `0.63.90`.
 - `repo-check` reports one pre-existing WARNING (`KEEP AWAKE - overnight.command` outside the root allowlist —
   Kyle's own operational file, unrelated to any mission and untouched). Commit-bound `release-check --no-pytest`
   is FAIL, for three pre-existing, unrelated-to-T3 reasons that were already present at the prior commit and are
@@ -36,9 +36,18 @@ and count-based triage flags (19 dense_multi_span, 9 negative_empty_row, 7 sente
 cue_entity_review, 2 canonical_identifier_review). Both were generated from a copied verified backup in SQLite
 `mode=ro`; the live database was never opened.
 
-**Next gate — the only thing blocking T4:** manual exact-span, per-kind gold adjudication of the 60-row seeded
-queue, including adversarial negatives and boundaries. Until per-kind precision floors close, do not persist
-extraction, add a selector, invoke a provider on T3 output, or begin T4.
+**T3 admission gate is CLOSED (2026-09-14 11:35 PT, commit `3ca18be`):** all 252 predicted records across
+the 60-row seeded queue were manually adjudicated against source text; 0 false positives, every per-kind and
+overall precision floor passes at 1.00 (floors are 0.85/0.90/0.95 by kind). Extraction output may now be
+persisted, trusted by a selector, and used by T4. Two recall-only structural gaps (bracket-header-label
+suppression on a chunk's first sentence; chunks with no terminal sentence punctuation) are documented in
+`docs/T3-ADMISSION-2026-09-13.md` and deliberately left unpatched — neither affects precision, and either may
+motivate a future narrow T3 recall rung.
+
+**Next gate:** T4 (Batch Research Executor) is the next item on the Transcript Intelligence ladder, but it
+needs its own design/storage review (selector vs. executor separation, reuse of R4/R5 durable-unit and
+bounded-concurrency infrastructure) before implementation starts — this gate closure authorizes trusting T3's
+output, not a particular T4 implementation.
 
 `origin/backup/2026-09-13-clean` is a separate history-free snapshot; protected `VIDEOS/`, `data/`, and
 `_to_delete/` paths are absent as of the last verified check.

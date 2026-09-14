@@ -2778,3 +2778,20 @@ first attempt was rejected as non-fast-forward (the new tree has no parent relat
 design); `git push --force origin f8f56888...:refs/heads/backup/2026-09-13-clean` completed the forced update
 (`de9866d...f8f5688`). `backup/2026-09-13-clean` now matches local `main` at `f376832`. This is safe/expected
 practice for this specific disposable mirror branch only — never for `main` or any branch with dependents.
+
+## T3 gold-adjudication gate closed — 2026-09-14 (Codex, resumed)
+
+Completed the manual exact-span gold adjudication of the 60-row seeded queue that every T3 checkpoint since
+2026-09-13 has named as the remaining blocker. Reviewed all 252 predicted records against source text; zero
+false positives. Every per-kind and overall precision floor passes at 1.00 (floors are 0.85/0.90/0.95
+depending on kind — see `docs/T3-ADMISSION-2026-09-13.md` for the full table and methodology). Full detail,
+including the two documented recall-only structural gaps left unpatched, is in that file.
+
+**T3's admission gate is now closed.** Per `TRANSCRIPT-INTELLIGENCE-MISSION.md`'s ladder, T4 (Batch Research
+Executor: separate deterministic selector from executor, reusing R4/R5 durable-unit and bounded-concurrency
+infrastructure) is the next admitted rung — but T4 needs its own design/storage review before implementation
+starts; this gate closure authorizes trusting T3's *output*, not a particular T4 implementation. Landed as
+commit `3ca18be`. Commit-bound `release-check --no-pytest` shows the same three pre-existing, unrelated
+failures as every checkpoint since the design cycle (embeddings-breaker cluster, `KEEP AWAKE` root-hygiene
+warning, `test_s43` timing race); every T3-relevant deterministic proof passes. Artifact:
+`evals/release/release-check-0.63.90-3ca18be-20260914-173502.json`.

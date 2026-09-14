@@ -417,3 +417,11 @@ fresh evidence-driven work but has no queued findings; do not reopen closed F0/F
 
 Narrative-fragment false positives on bare more/less comparatives are narrowed and release-checked at `3ec5fff`;
 scheduler behavior is unchanged. Manual gold review of the 60-row queue remains the next gate.
+
+## T3 gold-adjudication gate closed — 2026-09-14 11:35 PT
+
+The 60-row seeded gold-adjudication queue is fully labeled with 0 false positives found; every per-kind
+precision floor passes. T3's admission gate is closed at commit `3ca18be`. The next admitted rung is T4
+(Batch Research Executor) per `TRANSCRIPT-INTELLIGENCE-MISSION.md`, but T4 requires its own design/storage
+review before implementation — it is not auto-admitted by this closure. Scheduler NEXT/PARKED sections are
+unchanged pending that review.
