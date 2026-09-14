@@ -404,3 +404,7 @@ F1 and F2 may run in parallel once F0's close-out report has been given and the 
 Sources walk. After W5, one RE-AUDIT across every touched surface, against the `evidence/` baseline, before C1 —
 to catch a consequence that five workflow rungs propagated without anyone noticing. Each rung leaves a handoff note
 naming the next incomplete rung (`DESIGN-MISSION.md`, acceptance evidence).
+
+**Cross-cutting RE-AUDIT: done, 2026-09-14 (`reaudit.md`).** Every `H`/`M` finding tied to F1, F2, W1–W5 verified
+RESOLVED live on the audit instance (dark theme; light theme covered per-rung at landing), except `M-3`, closed
+NO LONGER APPLICABLE. No new regression found. `C1`'s precondition is satisfied — `C1` is next.
