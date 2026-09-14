@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Local `main` is at documentation tip `7331e69`; the latest tested code checkpoint is `ceca6e5` (Claude's T5
+- Local `main` is at documentation tip `a27f8a4`; the latest tested code checkpoint is `ceca6e5` (Claude's T5
   evidence correction is in ancestor `39f27f4`), and the latest product-code checkpoint remains `1e6b632`.
   App/package version is `0.63.90`.
 - The post-cleanup full suite is **1,439 passed, 1 warning**. The sole pre-cleanup failure was the
