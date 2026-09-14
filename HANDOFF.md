@@ -2842,3 +2842,15 @@ itself (that call's local branch can trigger a real, if small, Claude Code healt
 verdict has expired, and this slice guarantees $0). Full rationale in docs/T4-ADMISSION-2026-09-14.md's new "T4
 executor -- $0 dry run" section. Landed at `c127978`. The remaining step to a fully live T4 is wiring
 `providers.route()` plus the real provider/local call and a structured-delta write path.
+
+## T5 real adjudication call — blocked on invalid API key, not code — 2026-09-14 (Claude, continuing the handoff)
+
+Kyle authorized real spend up to $20 today and asked for a real adjudication call against his actual "Buying
+Businesses" project. Built and tested (against fakes) the real call path: the `t5.adjudicate` contract and
+`t5.adjudicate(project_id, tension_id)`, forced onto the API backend (never local -- this environment's `claude`
+binary is Cowork's own restricted wrapper, not Kyle's subscription CLI). The real live call against tension
+`67d9643a5fb54c488888fe9805f0ad39` (Ben Kelly's 3-5x net profit multiple) failed with
+`anthropic.AuthenticationError: Unauthorized`. Confirmed via a bare curl bypassing the SDK entirely that the
+configured Anthropic API key itself is invalid -- not a bug in this code. **No cost was recorded, no note was
+written.** Kyle needs to refresh the key in `.env` before this can complete; the code needs no change once it's
+fixed. Full detail in docs/T5-ADMISSION-2026-09-14.md's "T5 live adjudication call" section. Landed at `1e6b632`.

@@ -2250,3 +2250,13 @@ gold-adjudication closure -- nothing new. `repo-check` shows the same pre-existi
 Commit-bound `release-check --no-pytest` shows "contracts valid" PASS (the new t4.research contract is
 gate-clean, no policy violation) and the same pre-existing FAIL causes as every prior checkpoint. Committed at
 `c127978`. Artifact: `evals/release/release-check-0.63.90-c127978-20260914-183804.json`.
+
+## T5 live-call checkpoint — code validated, credential blocked — 2026-09-14
+
+Focused `tests/test_t5_adjudicate.py` (7) plus every other T4/T5 suite (44 total) pass together against the fake
+provider harness. Full pytest: 1,382 passed / 15 failed, identical set to every checkpoint since the T3
+gold-adjudication closure -- nothing new. `repo-check` shows the same pre-existing `KEEP AWAKE` warning.
+Commit-bound `release-check --no-pytest` shows "contracts valid" PASS (t5.adjudicate is gate-clean) and the same
+pre-existing FAIL causes. Committed at `1e6b632`. Artifact:
+`evals/release/release-check-0.63.90-1e6b632-20260914-185801.json`. The real live call itself is blocked on an
+invalid Anthropic API key (confirmed via direct curl, not an SDK or proxy artifact) -- not a code or test gap.

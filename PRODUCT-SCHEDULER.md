@@ -450,3 +450,10 @@ T4 now has both halves represented at `c127978`: a tested selector (`86ddab9`) a
 routing dry run (`c127978`). Kyle chose the $0 scope explicitly over a full live executor. The remaining work --
 wiring `providers.route()`, a real provider/local call, and a structured-delta write path -- is not started and
 has no target date; it's the next step whenever Kyle wants T4 fully live.
+
+## T5 real call ready, waiting on a working API key — 2026-09-14
+
+The real adjudication call path (`t5.adjudicate`) is built, tested, and committed at `1e6b632`. It cannot run
+for real until Kyle refreshes the Anthropic API key in his `.env` -- the current one returns 401 Unauthorized.
+Once fixed, `t5.adjudicate('c752ed152ec942dd97b9a94c3f1b3b96', '67d9643a5fb54c488888fe9805f0ad39')` is ready to
+run against his real "Buying Businesses" project with no further code changes.

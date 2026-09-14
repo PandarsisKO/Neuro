@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Tested code baseline is `c127978`. App/package version is `0.63.90`.
+- Tested code baseline is `1e6b632`. App/package version is `0.63.90`.
 - `repo-check` reports the same one pre-existing WARNING (`KEEP AWAKE - overnight.command` outside the root
   allowlist — Kyle's own operational file, unrelated to any mission and untouched). Commit-bound
   `release-check --no-pytest` is FAIL, for the same three pre-existing, unrelated reasons present at every prior
@@ -72,8 +72,19 @@ in `docs/T4-ADMISSION-2026-09-14.md`.
 
 T4 now has both halves shipped: a tested selector and a tested, $0 executor routing seam. What remains for T4
 to be fully live: wiring `providers.route()`, a real provider/local call, and a structured-delta write path —
-not started, no target date. A live T5 adjudication call and the T4 novel-cluster/stale-Claim signals also
-remain future, separately-admitted work.
+not started, no target date.
+
+**T5 real adjudication call, blocked on a credential (2026-09-14, commit `1e6b632`):** Kyle authorized real
+spend up to $20 and asked for a real adjudication call against his actual "Buying Businesses" project
+(`c752ed152ec942dd97b9a94c3f1b3b96`). The `t5.adjudicate` contract and function are built and tested against
+fakes; the real call is forced onto the API backend (never local — this environment's Claude Code binary is
+Cowork's own restricted wrapper, not Kyle's subscription CLI). The real call against tension
+`67d9643a5fb54c488888fe9805f0ad39` failed with `anthropic.AuthenticationError: Unauthorized` — confirmed via a
+bare curl that the configured Anthropic API key itself is invalid, not a code bug. No cost recorded, no note
+written. Blocked until Kyle refreshes the key in `.env`; no code changes needed once it's fixed. Full detail in
+`docs/T5-ADMISSION-2026-09-14.md`.
+
+The T4 novel-cluster/stale-Claim signals remain future, separately-admitted work.
 
 `origin/backup/2026-09-13-clean` is a separate history-free snapshot; protected `VIDEOS/`, `data/`, and
 `_to_delete/` paths are absent as of the last verified check.
