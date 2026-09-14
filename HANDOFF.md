@@ -2991,3 +2991,13 @@ The ordinary `main` push remains intentionally blocked: its reachable historical
 `backup/2026-09-13-clean`; `git ls-remote` confirms that remote tip. `origin/main` remains at `67520c9` by design.
 The local `main` history is unchanged. Do not force-push `main` or rewrite ancestry without an explicit decision;
 use the backup branch as the GitHub safety mirror while the historical-video cleanup decision is open.
+
+## Historical video cleanup and main publication — 2026-09-14
+
+Kyle authorized removal of the retired recordings from Git history. `main` was rewritten with every historical
+`VIDEOS/` path removed; the original pre-rewrite tip remains recoverable at local ref
+`refs/backup/pre-videos-rewrite-20260914` (and `refs/original/refs/heads/main`). Validation found no reachable
+`VIDEOS/` paths and no blob over GitHub's 100 MB limit. The rewritten `main` was force-updated with an explicit
+`--force-with-lease` and now publishes at `f0f12aee5ccc86b5a0b9cde3c201577ed8818d52`. The remote
+`backup/2026-09-13-clean` mirror remains available; refresh it after this documentation commit. The earlier
+"main intentionally blocked" note above is superseded by this section.

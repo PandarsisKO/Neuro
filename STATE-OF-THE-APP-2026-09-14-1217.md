@@ -35,10 +35,11 @@ Current orientation source for the Neuro Search mission; older state files remai
   design work starts from fresh evidence.
 - Claims work remains paused. R8 retention is observational until after 2026-10-11 17:28 PT. R9(c) remains
   deferred behind its numeric trigger; `bge-m3` remains reserved for a separately gated full-space migration.
-- The latest verified history-free GitHub safety snapshot is remote commit
-  `86e14a72e7688a737b66234b94211f088d59ff37`, refreshed from the current committed `main` tree. The snapshot branch
-  excludes `VIDEOS/`, `data/`, and `_to_delete/`. `origin/main` remains at `67520c9` because its reachable local
-  history contains retired multi-gigabyte video blobs that GitHub will reject; local `main` history is unchanged.
+- The current `main` history has been rewritten with all historical `VIDEOS/` paths removed, after Kyle's explicit
+  authorization. No reachable blob exceeds GitHub's 100 MB limit. Remote `origin/main` now points to
+  `f0f12aee5ccc86b5a0b9cde3c201577ed8818d52`; the original pre-rewrite tip remains recoverable locally at
+  `refs/backup/pre-videos-rewrite-20260914`. The history-free safety mirror is also maintained at
+  `backup/2026-09-13-clean` and excludes `VIDEOS/`, `data/`, and `_to_delete/`.
 
 ## Current low-cost cleanup gate
 
