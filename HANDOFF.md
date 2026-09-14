@@ -2830,3 +2830,15 @@ authorized building T5 despite my earlier flagged spend concern, but building th
 money on it are different asks; validated only against the existing fake-provider harness. Whether/how to
 actually run an adjudication call live is Kyle's decision once he has seen this. Full scope in
 docs/T5-ADMISSION-2026-09-14.md. Landed at `ed37393`.
+
+## T4 executor — $0 routing dry run — 2026-09-14 (Claude, continuing the handoff)
+
+Kyle asked to get T4 "fixed and shipped." Given a choice between a $0 executor routing dry run and a full live
+executor in one pass, he chose the $0 slice. Added the `t4.research` contract (cheapest tier, local_capable,
+reversible, gate names claims.set_status as the only promotion door) and `t4.plan()`, which wraps every
+`select()` item with the routing metadata a real executor call would use -- read through `contracts.contract()`
+and `providers.current_policy()`, the same seam every other task uses -- without ever calling `providers.route()`
+itself (that call's local branch can trigger a real, if small, Claude Code health-probe spend when the cached
+verdict has expired, and this slice guarantees $0). Full rationale in docs/T4-ADMISSION-2026-09-14.md's new "T4
+executor -- $0 dry run" section. Landed at `c127978`. The remaining step to a fully live T4 is wiring
+`providers.route()` plus the real provider/local call and a structured-delta write path.

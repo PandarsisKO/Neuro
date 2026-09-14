@@ -443,3 +443,10 @@ worker) remains future, separately-admitted work — nothing currently calls `t4
 T5's escalation trigger is admitted at `ed37393`, built alongside T4/T6 under Kyle's "do 4/5/6 now"
 authorization. No live adjudication call has been made anywhere -- `escalation_candidates()` output is not
 wired into any workflow yet. This is now the "do 4/5/6" set's last item; all three are admitted.
+
+## T4 shipped — selector + $0 executor routing — 2026-09-14
+
+T4 now has both halves represented at `c127978`: a tested selector (`86ddab9`) and a tested, $0 executor
+routing dry run (`c127978`). Kyle chose the $0 scope explicitly over a full live executor. The remaining work --
+wiring `providers.route()`, a real provider/local call, and a structured-delta write path -- is not started and
+has no target date; it's the next step whenever Kyle wants T4 fully live.

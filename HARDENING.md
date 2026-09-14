@@ -2241,3 +2241,12 @@ Commit-bound `release-check --no-pytest` shows the same pre-existing FAIL causes
 could affect passes, including `test_every_proposed_reason_is_admissible_to_the_real_ladder` (every T5-proposed
 tier_reason is accepted by the real `contracts.decision()`, never UNJUSTIFIED). Committed at `ed37393`. Artifact:
 `evals/release/release-check-0.63.90-ed37393-20260914-180408.json`.
+
+## T4 executor checkpoint — $0 routing dry run — 2026-09-14
+
+Focused `tests/test_t4_plan.py` (7) plus `test_t4_selector.py` and the contract/model-policy suites (27 total)
+pass together. Full pytest: 1,382 passed / 15 failed, identical set to every checkpoint since the T3
+gold-adjudication closure -- nothing new. `repo-check` shows the same pre-existing `KEEP AWAKE` warning.
+Commit-bound `release-check --no-pytest` shows "contracts valid" PASS (the new t4.research contract is
+gate-clean, no policy violation) and the same pre-existing FAIL causes as every prior checkpoint. Committed at
+`c127978`. Artifact: `evals/release/release-check-0.63.90-c127978-20260914-183804.json`.

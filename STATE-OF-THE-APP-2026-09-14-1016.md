@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Tested code baseline is `ed37393`. App/package version is `0.63.90`.
+- Tested code baseline is `c127978`. App/package version is `0.63.90`.
 - `repo-check` reports the same one pre-existing WARNING (`KEEP AWAKE - overnight.command` outside the root
   allowlist — Kyle's own operational file, unrelated to any mission and untouched). Commit-bound
   `release-check --no-pytest` is FAIL, for the same three pre-existing, unrelated reasons present at every prior
@@ -61,9 +61,19 @@ adjudication candidates from real open, high-impact tension signals (`CONTRADICT
 live `cost_value.by_model` comparison. No live provider call has been made anywhere in this pass; output is not
 wired into any workflow. Full detail in `docs/T5-ADMISSION-2026-09-14.md`.
 
-Kyle's "do 4/5/6 now" set (T4 selector, T5 trigger, T6 assumption ledger) is now fully admitted. The T4
-executor interface, a live T5 adjudication call, and the T4 novel-cluster/stale-Claim signals remain future,
-separately-admitted work — none is auto-triggered by this closure.
+Kyle's "do 4/5/6 now" set (T4 selector, T5 trigger, T6 assumption ledger) is fully admitted, and Kyle
+then asked to get T4 "fixed and shipped."
+
+**T4 executor $0 dry run (2026-09-14, commit `c127978`):** added the `t4.research` contract and `t4.plan()`,
+which routes every selected item through the same `contracts.contract()`/`providers.current_policy()` seam a
+real executor would use, without calling `providers.route()` (that call's local branch can start a real Claude
+Code health-probe spend). Kyle chose this $0 scope explicitly over a full live executor in one pass. Full detail
+in `docs/T4-ADMISSION-2026-09-14.md`.
+
+T4 now has both halves shipped: a tested selector and a tested, $0 executor routing seam. What remains for T4
+to be fully live: wiring `providers.route()`, a real provider/local call, and a structured-delta write path —
+not started, no target date. A live T5 adjudication call and the T4 novel-cluster/stale-Claim signals also
+remain future, separately-admitted work.
 
 `origin/backup/2026-09-13-clean` is a separate history-free snapshot; protected `VIDEOS/`, `data/`, and
 `_to_delete/` paths are absent as of the last verified check.
