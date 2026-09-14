@@ -1641,3 +1641,39 @@ failures as every prior rung, none new.
 
 `C1` is done. `P1` (small independent polish: `L-1`–`L-4`, any remaining `M` items not folded into earlier rungs)
 is the final rung on the ladder.
+
+## Design ladder — Rung P1 landed, ladder complete — 2026-09-14
+
+Commit `b22c364` (repinned into `.worktrees/f0`; server auto-reloaded to `v0.63.72`, no manual restart needed).
+Seven independent small fixes, each scoped to the surface `audit.md` named — no shared change, per `ladder.md`'s
+own rule for this rung:
+
+- `L-1` — a source thumbnail with a broken/expired image URL now falls back to the platform glyph via `onerror`
+  (verified by simulating the rendered `onerror` attribute end-to-end; not reproducible live without an actually
+  dead thumbnail URL in this project's data).
+- `L-2` — Sources' CSV export buttons moved out of the filter row to sit next to the source count. Live-verified.
+- `L-3` — checked live first: already resolved (Delete already renders in `--bad` red). No change; recorded
+  as closed rather than silently dropped.
+- `L-4` — Master Plan's tab strip is now `position:sticky` within its view's scroll box, so it survives scrolling
+  a long section. Live-verified by scrolling well past the fold on "Where you stand."
+- `M-7` — Sources' add-source panel is now a `<details>`, collapsed by default (same disclosure idiom as Master
+  Plan's "Other ways to rebuild"). Live-verified collapsed and expanding correctly.
+- `M-9` — the Research/Plan sidebar control no longer force-jumps to Chats when clicked from a Research
+  sub-view (Sources/Findings/Research) — only when actually coming from Plan. Live-verified: clicking "Research"
+  while on Sources stayed on Sources.
+- `M-10` — the brief textarea grew from showing ~3 of ~25 lines (120px) to ~260px. Live-verified. Save's
+  invalidation notice was already handled by the existing `STALE.data.anything_stale` toast — no code change
+  needed for that half.
+- `M-11` — the Chat sidebar list now buckets into Today / This week / Older by `updated_at` when more than one
+  band has items, otherwise stays flat. Verified the bucketing logic directly against `state.chats` on a
+  35-chat project: all 35 fall within one band (~1–3 days old) for this project's actual data, so it correctly
+  falls back to flat rather than showing one pointless header — working as designed, not a gap.
+
+Deterministic gates (26 tests, all three files) pass; `test_core`/`test_indestructible` show the same 12
+pre-existing sandbox-environment failures as every prior rung, none new. `UI_VERSION` 0.63.71 → 0.63.72.
+
+**The design ladder is complete: F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 → [cross-cutting RE-AUDIT] → C1 → P1.**
+Every High and Medium finding in `audit.md` tied to a rung is RESOLVED or correctly closed as no longer
+applicable (`M-3`, this pass's `L-3`); the cross-cutting RE-AUDIT (`reaudit.md`) found no regression across any
+touched surface after W5; C1 and P1 are both live-verified on the running instance. Nothing further is queued on
+this ladder.
