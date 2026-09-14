@@ -2351,3 +2351,100 @@ rung — suggested-block-to-REVIEW-entry, two-line finding rows, filter-stack co
 duplicate-drawer-control removal, REVIEW copy cleanup). This is the audit's largest remaining rung and it
 flags a real gate: "respect rung W4's bulk-review timing baseline before landing." I'll read what that
 baseline actually measured before touching the workbench, to land within it rather than against it.
+
+
+## Declutter rung 4 (part 1): suggested block → REVIEW, Filters disclosure, guilt-count/duplicate-control cleanup — 2026-09-14 (overnight, ninth follow-up)
+
+Rung 4 of 6, continuing straight from rung 3 per the same standing authorization. This is the audit's
+largest remaining rung (`CL-2` + `CL-3` + `CL-5` + `CL-4` + `RD-6` + `RD-7`) and flagged a real gate —
+"respect rung W4's bulk-review timing baseline before landing." Sequenced lowest-risk first; this
+commit lands everything except `CL-3` (the finding-row shape), which is the piece closest to that
+baseline and gets its own commit next.
+
+**CL-2 — Findings' 100-card SUGGESTED block is now one REVIEW entry.** `research.js`'s `loadNotes()`
+used to fetch and render up to 100 suggested-finding cards directly on the page, duplicating the
+workbench's own `suggested` filter for the identical list. It's now `reviewItem("N suggested findings
+waiting", ...)` with a single "Review" button (`reviewSuggested()`) that sets `#fbStatus` to `suggested`,
+clears the other filters, calls `loadWorkbench()`, and scrolls it into view. Bulk Approve/Dismiss moved
+with it — `loadWorkbench()` now renders `#fbBulk` (Approve/Dismiss "N shown"/"all") above the list
+whenever the `suggested` filter is active, scoped to whichever page is actually on screen rather than a
+separate top-100 fetch. Verified live: REVIEW read "194 suggested findings waiting — Review"; clicking
+Review switched the workbench to Suggested (194 findings · plan 0 · chat 0 · Claims 1 — the same count)
+with "Approve 100 shown"/"Dismiss 100 shown" rendered above the list.
+
+**CL-5 — Sources and Findings each get one "Filters" disclosure.** Both surfaces had value filters,
+sort/length/area/importance/used/staleness selects, CSV/package exports, and Expand/Collapse all sitting
+permanently open above the list, on top of search and (Sources only) a status-chip row. All of that now
+lives behind one `<details class="filtersPanel">` per view; search plus one status-chip row are the only
+things visible by default on either surface. Every `<select>` inside Filters now has a visible `<label>`
+(Length/Sort on Sources; Importance/Used/Source/Area/Sort on Findings) — previously only the selects' own
+first `<option>` text stood in for a label. Findings' status filter was itself one of the six unlabeled
+selects and, unlike the others, is the one people reach for constantly (it's how the suggested-review
+flow lands here) — it's now a chip row (`#fbStatusChips`, same `.chipf`/`on` pattern as Sources' own
+status chips) driving a hidden `<select id="fbStatus">` that every existing read/write site
+(`reviewSuggested`, `openSourceSuggestions`, `loadWorkbench` itself) already used via `.value`, so no
+other call site changed. Verified live in both themes: Sources shows only the six status chips + search
+by default, with "Filters" expanding to the Show chips, Length/Sort (labeled), Group by origin,
+Expand/Collapse, and both CSV buttons; Findings shows search + Approved/Suggested/Reserve/Dismissed/All
+chips by default, with Filters expanding to the five labeled selects, Expand/Collapse, and the three
+export links.
+
+**CL-4 — "Known, not captured" is out of the ordinary status-chip row.** It was mixed into Sources'
+`#srcChips` (Working on / Ready / Failed / etc.) as a bare count with no verb — a guilt number sitting
+among workflow states. `sources.js`'s `loadSources()` now renders it into `#srcPoolChip` inside Filters
+instead, via a small `chipHtml`/`renderPoolChip` helper factored out of the existing chip-rendering call
+(used in three places: initial render, the `pool`-active branch, and the async `POOL.total` refresh) —
+still one click away, still gets the `on` highlight when it's the active view, still reachable and
+functional (`loadPool()` unchanged). Verified live: clicking it from inside Filters opened the pool view
+exactly as before, with the chip highlighted.
+
+**RD-6 — one drawer-opening control per source row, in the states that had two.** `sourceRowActions()`'s
+primary button was an unconditional "What this gave" whenever a source was analysed — but once a source
+is also approved, the row's own meaning line becomes `<a onclick="sourceDrawer(...)">📌 label</a>`, so the
+button opened the identical drawer a second time. Fix is scoped precisely: `primary = s.analysed ?
+(s.approved ? '' : <button>) : <button>` — the button disappears only when the meaning line is already a
+link (i.e. `analysed && approved`); it still renders in the `suggested`, `analysed-nothing-worth-suggesting`
+and `not-analysed-yet` states, where it (or "Suggest findings") is the *only* way to reach the drawer or
+start analysis. Verified live: an analysed+approved row ("Every Fee California...", 12 findings · evidence
+for 11 Claims · cited 2×) now shows no primary button next to its "⋯" overflow — the meaning line is the
+sole drawer control, as the acceptance test asks.
+
+**RD-7 — "1 finding needs a quality check" grammar fixed** (subject-verb agreement; was "1 finding need a
+quality check"). The audit's second quoted example ("22 approved findings rated 4–5; 15 approved findings
+rated 4–5") does not appear in any current frontend template — `grep -rn "rated 4"` across `neurosearch/
+web/js/*.js` found no match producing that phrasing. This is very likely backend-supplied copy (an API
+response field like `r.note`/`x.why`), so it's flagged here as identified-but-out-of-scope for this
+frontend rung rather than guessed at or left silently unaddressed — a backend follow-up, not a `t3.py`
+edit I should make mid-Codex-session.
+
+**Files:** `neurosearch/web/index.html` (Findings/Sources filter blocks restructured; new `#fbAnalyseBar`,
+`#sugMsg`, `#fbStatusChips`, hidden `#fbStatus`, `#srcPoolChip`, two `.filtersPanel` disclosures),
+`neurosearch/web/js/research.js` (`loadNotes()` simplified, `reviewSuggested()` added, `loadWorkbench()`
+gained `#fbBulk` + `renderFbStatusChips()`/`setFbStatus()`), `neurosearch/web/js/sources.js`
+(`sourceRowActions()`'s primary-button condition; `loadSources()`'s chip split), `neurosearch/web/
+styles.css` (`.filtersPanel` disclosure styling). `tests/test_s11_findings_tab.py`'s
+`test_the_suggested_block_says_when_it_is_showing_a_page` asserted the exact wording of the now-removed
+card block — replaced with `test_the_suggested_block_links_to_the_paged_workbench`, checking `loadNotes()`
+hands off via `reviewSuggested()` and that the "never implies it approved everything" honesty
+(`r.total > rows.length ? ... : 'all'`) now lives in `loadWorkbench()`.
+
+`UI_VERSION` 0.63.85 → 0.63.86. `node --check` clean. Tests: 60/60 on the relevant suites
+(`test_s44_frontend_integrity`, `test_s50_design_drift`, `test_s5_ui_syntax`, `test_n4_stale_triage`,
+`test_n5_source_value`, `test_n6_findings_workbench`, `test_n8_research_shell`, `test_n9_source_drawer`,
+`test_s11_findings_tab` including the updated test). Full-suite run surfaced 13 pre-existing failures in
+`test_core.py`/`test_j3_fallback.py` — all trace to a calculator-gate FAIL in the golden eval, unrelated
+to anything this rung touches; `neurosearch/t3.py` is mid-edit in this working tree (Codex, per this
+file) and wasn't touched here. Landed as commit `274cba7`. `.worktrees/f0` repinned to `274cba7`.
+
+Audit-instance restart: this session's remote-devices connection dropped mid-restart (a Terminal-window
+close-confirmation dialog was already showing, stale-artifact-style, when the connection came back) —
+same recovery as always: a second coordinate-close produced the real dialog (2 AX elements this time),
+Terminate, relaunch via the already-selected Finder row. Confirmed up via Chrome at `v0.63.86`.
+Live-verified CL-2/CL-4/CL-5/RD-6 on the same project used in prior rungs (889 sources, 16450 findings) —
+details above — in both light and dark theme; no CSS regressions from the new `.filtersPanel` rules on
+the shared stylesheet.
+
+Proceeding to `CL-3` (Findings' 5–6-line card → DESIGN.md's 2-line workbench row) as its own commit — the
+riskiest piece of this rung and the one closest to the W4 bulk-review timing/row-height baseline, so it
+gets isolated, careful treatment and its own before/after timing check rather than bundling with the
+above.
