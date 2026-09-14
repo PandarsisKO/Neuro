@@ -2211,3 +2211,13 @@ gaps (bracket-header suppression, unpunctuated chunks) are documented, not patch
 Committed at `3ca18be`; commit-bound release-check shows the same three pre-existing unrelated failures as the
 prior checkpoint. T3 extraction output is now cleared for persistence, a selector, and T4, pending T4's own
 design review.
+
+## T6 admission checkpoint — assumption ledger — 2026-09-14
+
+Focused `tests/test_t6_assumptions.py` (8) plus `tests/test_s47_r5_concurrency.py` (19, unaffected by the pure
+constant-naming refactor) pass together. Full pytest: 1,382 passed / 15 failed, identical set to the prior T3
+checkpoint (embeddings-breaker cluster, one `test_s12` order flake, `test_s43` timing race) — nothing new.
+`repo-check` shows the same pre-existing `KEEP AWAKE` warning. Commit-bound `release-check --no-pytest` shows the
+same pre-existing FAIL causes (`calculator_ok`, root-hygiene, `test_s43` race); every deterministic gate T6 could
+affect passes, including the new informational assumption-ledger check itself (confirmed WARN, never contributing
+to verdict). Committed at `e0e99f5`. Artifact: `evals/release/release-check-0.63.90-e0e99f5-20260914-175024.json`.

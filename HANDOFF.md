@@ -2795,3 +2795,14 @@ commit `3ca18be`. Commit-bound `release-check --no-pytest` shows the same three 
 failures as every checkpoint since the design cycle (embeddings-breaker cluster, `KEEP AWAKE` root-hygiene
 warning, `test_s43` timing race); every T3-relevant deterministic proof passes. Artifact:
 `evals/release/release-check-0.63.90-3ca18be-20260914-173502.json`.
+
+## T6 admission — assumption ledger — 2026-09-14 (Claude, continuing the Codex/Claude handoff)
+
+Built the first slice of T6 (the assumption ledger) alongside T4 and T5 under Kyle's explicit "do 4/5/6 now"
+authorization. `neurosearch/assumptions.py` registers nine constants that encode a judgement about the data (five
+`findings_quality.py` constants with cited live-measurement evidence, two unmeasured, two new named
+`concurrency.py` defaults extracted from existing inline literals), each resolved live via `getattr` so it can
+never silently drift from the code it names. Adds `neurosearch assumptions [--json]` and one informational
+`doctor()` check, per T6's own gate: drift warns, never fails a release. Full scope, gate, and validation evidence
+in `docs/T6-ADMISSION-2026-09-14.md`. Landed at `e0e99f5`. T6 is explicitly parallel, not a prerequisite to T4/T5
+per the mission doc.

@@ -425,3 +425,9 @@ precision floor passes. T3's admission gate is closed at commit `3ca18be`. The n
 (Batch Research Executor) per `TRANSCRIPT-INTELLIGENCE-MISSION.md`, but T4 requires its own design/storage
 review before implementation — it is not auto-admitted by this closure. Scheduler NEXT/PARKED sections are
 unchanged pending that review.
+
+## T6 admitted — assumption ledger — 2026-09-14
+
+T6's first slice (registry + CLI + informational doctor check) is admitted at `e0e99f5`, built alongside T4/T5
+under Kyle's "do 4/5/6 now" authorization. Per the mission doc T6 is parallel, not a prerequisite — it does not
+change NEXT/PARKED sequencing for T4/T5.
