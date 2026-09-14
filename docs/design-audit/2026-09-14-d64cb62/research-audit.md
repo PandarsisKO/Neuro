@@ -35,16 +35,20 @@ helper (JS) and an equivalent inline helper (Python) that both append "…" when
 `3a0e459`, `UI_VERSION` 0.63.72 → 0.63.73, live-verified on the audit instance after a restart (the audit
 instance runs without `--reload` by design).
 
-## Findings — flagged, not fixed this pass
+## Findings — flagged this pass, RESOLVED in a same-night follow-up
 
-- **Possible duplicate citation on the same Claim (Low/Medium, needs backend investigation).** The first Claim
-  card walked in "Ai-assisted design" showed two separate evidence chips with the *exact same* source URL
-  (`medium.muz.li/.../d5d200899129`) and the same `@ § 3` locator, both truncated to the same title. Confirmed
-  in the live DOM after the truncation fix (two distinct `<a class="chip">` elements, identical `href`). This
-  could be legitimate — two different findings citing the same passage — or a real gap in evidence
-  deduplication when a Claim absorbs findings from multiple sources. Not chased further this pass: it needs
-  someone who knows `claim_evidence`'s insert path to say which, and touching that path without that context
-  risked a worse mistake than leaving it flagged.
+- **Duplicate citation on the same Claim (was Low/Medium — resolved).** The first Claim card walked in
+  "Ai-assisted design" showed two separate evidence chips with the *exact same* source URL
+  (`medium.muz.li/.../d5d200899129`) and the same `@ § 3` locator, both truncated to the same title. Traced to a
+  real gap: `add_evidence()` had no guard against an exact repeat (same claim/source/revision/locator/relation),
+  likely from two Findings (or one Finding's own duplicate citation list) citing the identical passage into a
+  Claim reached via twin-matching. Confirmed it never affected corroboration scoring (aggregation dedupes by
+  `source_id` via a `set()`) — a data-hygiene bug, not a trust-integrity one. Fixed with a NULL-safe duplicate
+  check in `add_evidence()` (commit `e52a98a`, `UI_VERSION` 0.63.73 → 0.63.74). The code fix alone didn't clear
+  rows already written before it existed, so also cleaned up the backlog: 1,919 duplicate groups / 2,292
+  redundant `claim_evidence` rows in the live database (1,931/2,305 in the audit instance's own copy), removed
+  in one backed-up, integrity-checked transaction touching only exact-duplicate `claim_evidence` rows. Full
+  writeup in `HANDOFF.md`'s "Duplicate-citation bug — root-caused, fixed, and cleaned up" entry.
 - **Watch-outs read as one template repeated with the topic swapped (Low, content/product judgment, not a bug).**
   Ten-plus Watch-outs cards ("Ai-assisted design," "Cognitive load," "Everything else," "Interaction patterns,"
   "Visual hierarchy," "Off-topic source," "Progressive disclosure," "Design tokens," "Information architecture,"

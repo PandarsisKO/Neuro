@@ -1849,3 +1849,45 @@ One near-finding turned out to already be disclosed in-product: the single-word 
 already-known, already-named-fix-path limitation.
 
 Nothing here needed a multi-rung ladder — the one landed fix is the whole of it. Codex's files untouched.
+
+## Duplicate-citation bug — root-caused, fixed, and cleaned up — 2026-09-14 (overnight, follow-up)
+
+Chased the duplicate-citation evidence chip flagged in the Research/Chat audit pass above (same source, same
+locator, two identical `<a class="chip">` rows on one Claim). Root cause: `claims.py`'s `add_evidence()` had no
+guard against an exact repeat (same claim/source/revision/locator/relation) — likely two Findings, or one
+Finding's own duplicate citation list, both citing the identical passage into a Claim reached via twin-matching.
+Confirmed this never affected corroboration scoring (aggregation already dedupes by `source_id` via a `set()`) —
+purely a data-hygiene / duplicate-chip bug, not a trust-integrity one.
+
+**Code fix:** added a NULL-safe (`IS ?`) exact-duplicate check at the top of `add_evidence()`; an exact repeat now
+returns the existing row instead of inserting a second one. A genuinely new locator, revision, or relation still
+gets its own row. 44/44 relevant Claims tests pass; 26/26 deterministic gates pass; `test_core`/`test_indestructible`
+show the same 12 pre-existing sandbox-environment failures as every prior rung, none new. Landed as commit
+`e52a98a`, `UI_VERSION` 0.63.73 → 0.63.74, worktree `f0` repinned, audit instance restarted and live-verified.
+
+**Data cleanup — this was the bigger finding.** The guard only stops *new* duplicate inserts; it does nothing for
+rows already written before the fix existed. Live-verifying the exact flagged Claim showed the duplicate chip was
+still there. Checked the scope: the audit instance's disposable database copy (cloned from a real backup, never
+touches live data by design) had **1,931 duplicate groups / 2,305 redundant `claim_evidence` rows** out of ~22,700
+— a project-wide backlog, not a one-off. Reported this to Kyle before touching anything live; he approved running
+the same cleanup against the live database, conditioned on no risk to the projects.
+
+Applied conservatively:
+1. Confirmed the live app (`:8000`) was not running — no concurrent-writer risk.
+2. `PRAGMA integrity_check` on `data/neurosearch.db` → `ok`.
+3. Took a full backup via SQLite's own backup API (correctly captures WAL contents, unlike a raw file copy) —
+   saved as `data/backups/neurosearch-PRE-DEDUPE-20260914-043738.db` (1.1 GB). Verified the backup's own
+   `integrity_check` → `ok` and its `claim_evidence` row count matched the source exactly (24,695).
+4. Live DB had 1,919 duplicate groups / 2,292 redundant rows (same shape as the audit copy). Deleted them inside
+   a single transaction, scoped only to `claim_evidence` — nothing else touched — keeping the oldest row per
+   `(claim_id, source_id, source_revision, locator, relation)` group. Verified zero duplicate groups remained
+   *before* committing; would have rolled back otherwise.
+5. Post-delete `PRAGMA integrity_check` → `ok`. `claim_evidence` row count: 24,695 → 22,403 (2,292 removed, matches
+   plan exactly). WAL checkpointed.
+6. Spot-checked the originally-flagged Claim/source pair directly in the live DB: every group now shows exactly 1
+   row; other legitimate same-source-different-locator citations on other Claims were untouched.
+
+Net: the duplicate-citation bug is fully resolved — both the code path that caused it and the backlog of rows it
+had already written, in both the audit copy and your live project data. Nothing besides exact-duplicate
+`claim_evidence` rows was touched. Full pre-cleanup backup of the live database is kept in `data/backups/` if
+anything here ever needs to be re-examined.
