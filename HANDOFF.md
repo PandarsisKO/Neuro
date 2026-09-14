@@ -2906,6 +2906,9 @@ This low-cost Codex cleanup gate is complete. No paid provider calls were made b
 work from the corrected T5 transport record; T4 live provider routing, T5 retry, claims, and structured-delta
 persistence remain separately gated work.
 
+The final docs-only tip is `8d15a2e`; its commit-bound `release-check --no-pytest` also passes (artifact
+`evals/release/release-check-0.63.90-8d15a2e-20260914-123747.json`).
+
 ## T4 real findings extraction, one flagged source — 2026-09-14 13:2x PT
 
 Same bridge mechanism as the T5 correction above, applied to T4: `findings.suggest_for_source()` ran completely

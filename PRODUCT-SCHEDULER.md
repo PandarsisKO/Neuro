@@ -490,3 +490,6 @@ fresh-database provider-breaker isolation is covered. Full pytest is **1,438 pas
 and commit-bound `release-check --no-pytest` pass. The release artifact is
 `evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json`. Keep T5 retries, live T4 execution, claims,
 and structured-delta writes behind their existing admissions and spend controls.
+
+The current documentation tip is `8d15a2e`; a docs-only commit-bound release check passes there as well, with
+artifact `evals/release/release-check-0.63.90-8d15a2e-20260914-123747.json`.
