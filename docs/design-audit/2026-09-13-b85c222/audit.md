@@ -207,11 +207,21 @@ same "stale" concept — verify before merging the two banners into one componen
 ### `[H-4] Sources rows expose six actions each, including an unshielded destructive one, at 1,348 rows`
 
 **Severity:** High **Scope:** Local (Sources) **Confidence:** High
-**Evidence:** Visual, Code **Affected surfaces:** Sources
+**Evidence:** Visual, Code, Runtime **Affected surfaces:** Sources
 
 **What I observed:** every source row carries six actions — What this gave · Transcript · Suggest findings · ☆ Make
-priority · Remove from project · **Delete everywhere** (red text) — rendered identically at 1,348 rows (≈8,000
-buttons on one page). "Remove from project" and "Delete everywhere" sit adjacent, distinguished only by color.
+priority · Remove from project · **Delete everywhere** (red text) — rendered identically at 889-1,348 rows
+(≈5,300-8,000 buttons on one page, depending on project). "Remove from project" and "Delete everywhere" sit
+adjacent, distinguished only by color.
+
+**Runtime-verified (F0 addendum 4, 2026-09-14, `raw.md`):** exercising the row actions directly on the audit
+instance surfaced a sharper version of the same root cause — row height and button-row width are not uniform
+(long-form sources add a "Read deeper" button, sources with embedded videos add another, some rows carry an extra
+tag/count line), so a fixed vertical click offset does not reliably land on the same button across rows of
+different heights during a fast, repeated bulk pass. A real misclick (a title link opened instead of the intended
+row action) occurred during an 11-row timed sample. This does not change the finding's severity or confidence
+(both already High) — it sharpens the acceptance test below and gives Rung W4 a concrete regression to check
+against, not just a theoretical adjacency risk.
 
 **Why this matters:** at review scale, a destructive, irreversible, cross-project action ("Delete everywhere") is
 one misclick away from a merely-per-project one ("Remove from project"), repeated on every one of 1,348 rows. Row
@@ -427,7 +437,9 @@ across statuses, filters, chip-inputs, and the version tag with no visual distin
 ## Workflow findings
 
 Phase 3 (interaction walks) was deferred to a second, audit-instance pass per Kyle's 2026-09-13 decision; nothing
-below was exercised, only observed as entry points, and none is reported at higher than Medium confidence:
+below was exercised, only observed as entry points, and none is reported at higher than Medium confidence, **except
+Sources' row actions, which were exercised on the audit instance in F0 addendum 4 (2026-09-14, `raw.md`) — see
+`[H-4]`'s runtime-verified note above**:
 
 - The Sources link-acquisition textarea is pre-populated with three example YouTube URLs as grey placeholder text;
   a first-time user could plausibly mistake them for real, submittable content. `[Visual]` — Medium, unverified
@@ -529,7 +541,10 @@ static images, then to **interactively verified for two surfaces** (Master Plan,
 interactively (Residual Coverage, below). **Failed/recoverable job-state and interrupted/stale-poll inspection are
 now both closed** (F0 addendum 3, 2026-09-13): a deterministic DNS-failure source exercised the queued -> failed ->
 retried -> failed-again cycle end to end at $0 cost (see `[F0]` failure-state note in `raw.md`), and a naturally
-occurring stale per-job progress badge during a live Discover run produced `[F0-4]` above.
+occurring stale per-job progress badge during a live Discover run produced `[F0-4]` above. **Sources' interaction
+walk is now closed too** (F0 addendum 4, 2026-09-14): row actions were exercised directly (not just read) with a
+timed 11-row bulk-review sample, satisfying `ladder.md` Rung W4's stated precondition and sharpening `H-4` with a
+runtime-observed misclick (see `raw.md` addendum 4).
 
 ## Residual Coverage
 

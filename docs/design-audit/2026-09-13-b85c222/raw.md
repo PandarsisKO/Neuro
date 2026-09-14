@@ -402,6 +402,7 @@ magnitude before any threshold is proposed elsewhere in the ladder — no thresh
 | Discover ("Library first") | Immediate queued/running state, stated ETA "~10s" | ~73s+ (see stale-poll finding above) | ETA understated actual time by roughly 9×; the ETA itself may warrant review but is out of F0's scope to size a fix for. |
 | Master Plan rebuild | Immediate "queued" acknowledgement | Completed within the observed poll window (order of tens of seconds) | Not precisely timed; superseded prior canned-response version end to end. |
 | Failed-source job (DNS failure) | Immediate "queued" | Surfaced as `failed` within ~8s | Deterministic, repeated identically on Retry. |
+| Sources bulk-review pass (11 rows, "Suggest findings", Ready filter, F0 addendum 4) | Immediate toast per click | ~48s wall-clock for 11 successful clicks across 3 scroll batches | One misclick during the pass landed on a different row's title link instead of the intended button — row height varies between rows (stale tag, findings-count line, extra buttons on long-form sources), so a fixed click offset does not reliably hit the same button as rows of different heights scroll past. See addendum 4 below. |
 
 These are order-of-magnitude observations from a single disposable project on one machine, not a performance
 benchmark; they exist to satisfy §4.6's "measure before inventing thresholds" requirement, not to set an SLA. Any
@@ -437,3 +438,40 @@ or the ladder's ordering:
 None of these is believed capable of moving a Critical/High severity, changing a root cause, changing an
 acceptance criterion, or reordering `ladder.md` — if a future pass finds otherwise, it reopens the relevant rung,
 not all of F0.
+
+### Sources interaction walk (F0 addendum 4, 2026-09-14) — closes W4's precondition
+
+`ladder.md`'s Rung W4 explicitly does not admit on observation alone: it requires "F0's interaction walk of
+Sources" plus a timed twenty-row bulk-review baseline before it ships. Phase 3 above recorded Sources' row actions
+by reading the markup only ("not exercised, no audit instance"); this addendum exercises them on the repaired
+audit instance (project "I want to start buying businesses...", 889 ready sources) to close that gap.
+
+**Walk performed:** filtered Sources to `Ready` (889 rows), then clicked "Suggest findings" on a running sequence
+of rows while scrolling — the same repeated single-action-across-many-rows shape the gate's own example ("Retry on
+the current Failed filter") describes, substituting Suggest findings because this project's Failed filter has only
+1 row. 11 successful clicks landed across ~48s of wall-clock time (three scroll-and-click batches), each
+acknowledged immediately with a toast ("📌 Next in the queue — suggestions land in Findings when it finishes") —
+consistent with the existing acknowledgement-gap standard other rows in the timing table meet.
+
+**New finding — row height is not uniform, and it caused a real misclick during the walk:** a batch of clicks aimed
+at "Suggest findings" (3rd button, same x/y offset reused across several rows on the reasonable assumption that
+identical row templates repeat at a fixed height) instead landed on a *different* row's title link, which opened
+the source's YouTube URL in a new tab. Root cause: row height and button-row content vary between rows depending
+on what that source has — a "stale"/"legacy analysis" tag line, a findings/Claims count line, an extra "Read
+deeper" button on long-form sources, an extra video-embed-add button — so the vertical offset from one row's top
+to its own "Suggest findings" button is not constant across the list. This is a sharper, previously-unrecorded
+version of `H-4`'s adjacency risk: the danger is not only that "Remove from project" and "Delete everywhere" sit
+next to each other on a *given* row, it is that a fast, repeated bulk pass (exactly the workload H-4 is about,
+and exactly what W4's own gate asks to be timed) can miss its intended row entirely once several rows of varying
+height have scrolled past a fixed click point. Filed as a refinement of `H-4`'s root cause (`RC-D`), not a new
+finding — see `audit.md`'s `[H-4]` entry.
+
+**Baseline for W4's gate**, added to the Timing baseline table below: 11 rows in ~48s wall-clock including one
+misclick, single sample, one machine — sufficient to satisfy "measure before inventing a threshold," not to set
+an SLA. A post-W4 re-run of the same walk (same filter, same action, same row count) is the comparison this rung's
+behavioral gate calls for.
+
+**What this does and does not close:** the ladder's stated precondition ("F0's interaction walk of Sources
+exists") is now satisfied — Sources' actions have been exercised, not just read, and a bulk-review timing sample
+exists. It does not re-open F0 generally (per the Bounded stopping rule, this is filed as an addendum, not a
+reopening) and does not by itself change `H-4`'s severity or confidence, both already High.
