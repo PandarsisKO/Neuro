@@ -482,3 +482,11 @@ The low-cost cleanup has now removed the root keep-awake warning without broaden
 **1,436 passed, 1 warning**, `repo-check` passes, and commit-bound `release-check --no-pytest` passes at `296d20f`.
 The next Codex-owned items are explicit test regressions for fresh-database breaker isolation and blocked-T5
 no-mutation, followed by the ordinary full release ritual. Claude retains ownership of audit/design documents.
+
+## Cleanup gates closed — 2026-09-14 12:37 PT
+
+Codex's local-only cleanup is complete at `ceca6e5`: the auth/egress failure path is proven no-mutation and
+fresh-database provider-breaker isolation is covered. Full pytest is **1,438 passed, 1 warning**; `repo-check`
+and commit-bound `release-check --no-pytest` pass. The release artifact is
+`evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json`. Keep T5 retries, live T4 execution, claims,
+and structured-delta writes behind their existing admissions and spend controls.

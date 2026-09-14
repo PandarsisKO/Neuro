@@ -2,13 +2,13 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Local `main` is at cleanup tip `296d20f` (Claude's T5 evidence correction is in ancestor `39f27f4`); the latest tested product-code checkpoint is `1e6b632`.
+- Local `main` is at cleanup tip `ceca6e5` (Claude's T5 evidence correction is in ancestor `39f27f4`); the latest tested product-code checkpoint is `1e6b632`.
   App/package version is `0.63.90`.
-- The post-cleanup full suite is **1,436 passed, 1 warning**. The sole pre-cleanup failure was the
+- The post-cleanup full suite is **1,438 passed, 1 warning**. The sole pre-cleanup failure was the
   release-check test asserting PASS while `repo-check` saw Kyle's operational `KEEP AWAKE - overnight.command`
   root entry. That helper was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command` without broadening
   the repository allowlist, and the failing test now passes in isolation; `repo-check` is now PASS and
-  commit-bound `release-check --no-pytest` is PASS at `296d20f` (artifact `evals/release/release-check-0.63.90-296d20f-20260914-122639.json`).
+  commit-bound `release-check --no-pytest` is PASS at `ceca6e5` (artifact `evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json`).
   No paid provider call was made by this cleanup.
 - T3's exact-span gold gate is **closed**: 252 predicted records across the 60-row seeded queue were manually
   adjudicated with zero false positives; every per-kind and overall precision floor is 1.00. The two remaining

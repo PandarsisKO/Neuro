@@ -2895,6 +2895,17 @@ The previously suspected fake-OpenAI breaker leak is not reproducible in the nor
 safe work is to add explicit regression coverage for fresh-database breaker isolation and blocked-credential
 no-mutation behavior, then rerun the same release ritual.
 
+## Cleanup gates closed — 2026-09-14 12:37 PT
+
+The two regression tests are now landed at `ceca6e5`: blocked T5 auth/egress failures leave usage, notes, and
+breaker state unchanged; fresh private databases start with closed provider breakers. Full pytest is **1,438
+passed, 1 warning**. `repo-check` is PASS and commit-bound `release-check --no-pytest` is PASS at `ceca6e5`;
+artifact: `evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json` (and its text companion).
+
+This low-cost Codex cleanup gate is complete. No paid provider calls were made by it. Claude can resume audit/design
+work from the corrected T5 transport record; T4 live provider routing, T5 retry, claims, and structured-delta
+persistence remain separately gated work.
+
 ## T4 real findings extraction, one flagged source — 2026-09-14 13:2x PT
 
 Same bridge mechanism as the T5 correction above, applied to T4: `findings.suggest_for_source()` ran completely

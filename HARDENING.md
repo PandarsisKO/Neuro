@@ -2292,3 +2292,10 @@ invocation/breaker ledger untouched. No retry is allowed under the current allow
 Post-cleanup validation is **1,436 passed, 1 warning**; `repo-check` and commit-bound `release-check --no-pytest`
 pass at `296d20f`. The old breaker-leak report is currently not reproducible in ordinary test order; add a
 targeted fresh-database isolation regression before treating that condition as closed.
+
+## Cleanup gates closed — 2026-09-14 12:37 PT
+
+The targeted breaker-isolation and blocked-T5 no-mutation regressions landed at `ceca6e5`. Full pytest is **1,438
+passed, 1 warning**; `repo-check` and commit-bound `release-check --no-pytest` both pass. Artifact:
+`evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json`. No paid provider call was made during this
+cleanup, and the prior breaker-leak report is now covered by an explicit fresh-database regression.
