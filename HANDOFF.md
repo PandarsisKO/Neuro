@@ -1532,3 +1532,62 @@ separate in-progress T3 work.
 **Next incomplete rung:** `W5` — Home and the status line: attention before totals. After that, a cross-cutting
 RE-AUDIT of every touched surface against the `evidence/` baseline, then `C1` (badge/pill primitive, Findings
 rows), then `P1` (small independent polish: L-1–L-5, M-7, M-9, M-10, M-11).
+
+## Design ladder — Rung W5 landed (Home and the status line: attention before totals) — 2026-09-14
+
+Precondition (W1 landed — the status line references "Re-check," part of W1's vocabulary) already satisfied.
+This closes the last W-rung; a cross-cutting RE-AUDIT is next, before C1.
+
+**Problem being solved:** `H-1`, `M-1`, `M-2`, `M-3` (RC-A, RC-F), plus `F0-3` (an addendum finding that
+explicitly named this rung as the fix point) and `L-5` (folded in per P1's rule — this rung already rewrites
+that exact footer markup).
+
+**H-1 / RC-F, the core fix:** the single unscannable status sentence — `"$0.20 today · $148.01 this month ·
+Claude Code: ready 2.1.267 ... · 49,822 AI calls · 4% local · $145.41 actual · $547.03 avoided"` — is now a
+shared `statusBar()` component (`utils.js`) rendering independently legible, visually separated parts ordered
+by what needs noticing first: a blocked/paused warning when present, local-AI health as a colored dot + short
+label (reusing the existing `.status-ok`/`.status-warn`/`.status-bad` classes and the `●` glyph precedent
+already used for readiness dots in `plan.js`, not inventing new UI), today's spend, this month's spend — then
+the local/paid split richness the old sentence also carried, de-emphasized as a trailing segment rather than
+lost. `loadSpend()` now feeds this into both Home's header line (`#homeSpend`) and the Chat sidebar footer
+(`#sideSpend`), satisfying `H-1`'s explicit propagation note. Verified live at 1440×900: Home reads "🟢 Local AI
+ready | $0.20 today | $148.01 this month | 49,822 AI calls · 4% local · $145.41 actual · $547.03 avoided" as
+clearly separated chunks instead of one run-on sentence; the sidebar (narrower) stacks the same chunks
+vertically instead of cramming them at ~10px.
+
+**F0-3:** the sidebar's brief/goal text sat unlabeled directly above this same footer, easy to mistake for
+system state. Now wrapped as `<div class="foot briefFoot"><span class="footLabel">Brief</span>...` — labeled,
+not just reflowed, per the addendum's explicit instruction. Verified live.
+
+**M-1:** Home's project cards made a 0-source test project indistinguishable from an 876-source real one.
+Added an unambiguous, data-grounded "Needs sources" tag (only when `n_sources === 0` — no invented staleness
+threshold) and switched the "updated" date to `relTime()`'s relative reading, more scannable than a bare
+calendar date. (Caught and fixed a singular/plural bug in `relTime()` — "1 days ago" — while verifying live;
+separate JS-only follow-up commit, `bc64e8a`.)
+
+**M-2:** the "Your research in numbers" stat block used 22px numbers against `.pcard .name`'s 16px project
+titles, competing with rather than supporting Home's actual job of picking a project. Added a `fun-sub`
+modifier applied only when `funCard()` is called for Home's own stat block (`elId === 'homeFun'`) — numbers
+drop to 15px there. The per-project "This project in numbers" card (inside a project's own workspace) keeps
+full strength since it isn't competing with anything there. Verified live via zoomed screenshot comparison:
+the stat numbers now read smaller than the project card title above them.
+
+**M-3:** re-checked against current `home.js` before writing any code — the whole `.pcard` div already carries
+the navigation `onclick`, not just the title text. Not reproducing against this baseline; no code change made,
+noted in `audit.md` as a closed re-check rather than silently dropped.
+
+**L-5 (P1 fold-in):** the version tag's ad hoc `style="font-size:11.5px"` inline override is gone in favor of
+a 12px CSS rule, since this rung already rewrites that exact block.
+
+`UI_VERSION` -> `0.63.70`. Landed as `8abca9a` (code) + `ee46b2a` (M-3 docs re-check) + `bc64e8a` (relTime
+plural fix, no version bump needed — JS-only, doesn't touch the version-mismatch banner's Python side). Ran
+the ladder's named deterministic gates (`test_s44`, `test_s50`, `test_s5`): 26 passed. Broader sweep
+(`test_core`, `test_indestructible`): the same 12 `test_core` failures confirmed pre-existing across W3/W4
+reproduce identically (no backend code touched this rung — frontend + version files only).
+
+`.worktrees/f0` repinned to `bc64e8a`. Left untouched: `neurosearch/t3.py` and `tests/test_t3_adversarial.py`,
+Codex's own separate in-progress T3 work.
+
+**Next:** this closes every W-rung. Per `ladder.md`'s sequencing, next is one cross-cutting RE-AUDIT across
+every touched surface (F1, F2, W1–W5) against the `evidence/` baseline, before `C1` (one badge/pill primitive,
+Findings rows to two badges) and `P1`'s remaining polish items (L-1–L-4, M-4–M-11 not already folded in).
