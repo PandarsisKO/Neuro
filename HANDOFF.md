@@ -2131,3 +2131,59 @@ heartbeat/capture-pending traffic is not fully reliable when more than one Neuro
 check the window title text itself (readable via a screenshot even though titles are withheld from the window-list
 API) before closing, or check the port with `lsof -ti tcp:8788` if a Terminal window with "click" tier access is
 available for typing.
+
+
+## Inline substance progress-bar + category-breakdown reject decision — 2026-09-14 (overnight, fifth follow-up)
+
+Kyle said "Let's begin" in response to finding concrete implementation spots for the two remaining INSPIRATION
+candidates from the fourth follow-up (OrchestrateIQ's inline progress-bar-in-cell pattern, and Salach.ai's
+colored category-breakdown bars).
+
+**Pattern 1 — OrchestrateIQ's inline progress-bar, implemented.** The "Agents" table screen pairs a percentage
+with a small colored progress bar in the same cell rather than the bare number alone. Sources' "substance NN/100"
+tag (shown on every source with a summary) is the same shape, so it got the bar: added `.tag-bar` to `styles.css`
+(a 28px track using `currentColor`, so it automatically inherits whichever color the parent `.tag.status-ok/warn
+/bad` span is already set to — no separate color logic to keep in sync with the substance-score thresholds) and
+embedded `<span class="tag-bar" style="--pct:${s.substance}%">` inside that tag in `sources.js`. Deliberately not
+applied to the `pool_potential` tag on skipped sources — lower visibility, and one bar per row read is enough.
+
+**Pattern 2 — Salach.ai's category-breakdown bars, checked, skipped.** This pattern's entire visual identity is a
+different tinted color per objection category (Price/Budget, Fit/Relevance, Authority, Commitment) — which is
+exactly the thing DESIGN.md's own Reject list already calls out deliberately ("A different tinted colour per
+category," §10: one accent color, not a rainbow). Checked for a de-colorized variant with a concrete landing spot
+first — the Evidence tab's group breakdown (`plan.js`, U/F/S/C groups) was the only candidate, and those groups
+are link-out chip lists of arbitrary size, not a bounded percentage split, so a bar chart doesn't fit them either.
+Skipped outright rather than force a fit. Recorded in DESIGN.md's Appendix so a future audit sees this was
+checked, not missed.
+
+**DESIGN.md updated** (Appendix, after the fourth follow-up's two paragraphs) with both findings, same as the
+prior rung's practice — implementation surfacing a genuine addition (the tag-bar) and a genuine reject-list
+confirmation (the category-breakdown pattern), the exception DESIGN-MISSION.md §11 carves out for the frozen docs.
+
+Live-verified on the "I want to start buying businesses…" project (Sources tab): substance tags across the full
+range render the bar correctly and proportionally in both themes — "substance 38/100" (amber, ~38% filled),
+"substance 3/100" and "substance 20/100"/"substance 25/100" (red, near-empty), "substance 62/100" (green, ~62%
+filled) — checked in dark theme first, then toggled to light theme via the app's own `toggleTheme()` and
+re-checked the same rows, then toggled back to dark before closing the tab. `test_s44_frontend_integrity`,
+`test_s50_design_drift`, `test_s5_ui_syntax` all pass (26/26); also ran the Sources-specific suites
+(`test_n5_source_value`, `test_n9_source_drawer`, `test_s36_sources_payload`, `test_s4_source_capability` — 37/37)
+since this rung touched `sources.js` directly, unlike the prior rung which only touched the health panel.
+
+Landed as commit `cfad89f`, `UI_VERSION` 0.63.80 → 0.63.81. `.worktrees/f0` repinned to `cfad89f`. Audit instance
+restart this time: found the live window first via `computer_app_screenshot` (title text, not traffic-pattern
+matching — the lesson from the prior restart), clicked its close button by coordinate (`computer_app_click` with
+`coordinate`, not `element_index` — the AX summary's `[N]` indices didn't map to the right element when clicked
+by index, landing on the shell's text area instead both times tried; coordinate click worked immediately), got a
+real "Terminate running processes" confirmation dialog (this one had actual AX elements, unlike the stale
+rendering artifact seen on a previous restart — confirmed via `computer_app_ax_find` finding 0 matches on the
+artifact vs. 2 matches here), clicked Terminate, confirmed the port was free via Chrome (`ERR_CONNECTION_REFUSED`
+on `/api/version`), then double-clicked "RUN THIS - Audit Instance.command" in Finder (already selected from a
+prior segment, so a plain double-click on its coordinate was enough — no rename-mode trigger this time) and
+confirmed the new Terminal window's log showed "Uvicorn running on http://0.0.0.0:8788".
+
+Per DESIGN-MISSION.md's continue-through-eligible-rungs directive, both of the two candidate patterns
+Kyle authorized ("add and implement both" from the fourth follow-up, "Let's begin" for finding their landing
+spots) are now resolved — one implemented, one checked and correctly rejected. No further INSPIRATION-derived
+work item is currently queued; the remaining open item from the fourth follow-up (a focused test for
+`loadHealth()`'s `raw()`/`esc()` rendering with populated `model_routing.mismatches`) is a coverage gap, not a
+design gap, and stays flagged rather than done under a design-focused mission's rung discipline.
