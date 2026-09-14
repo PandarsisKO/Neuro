@@ -267,3 +267,42 @@ passes. Commit-bound artifact: `evals/release/release-check-0.63.90-3ec5fff-2026
 (commit `3ec5fff`). A pre-patch run at the prior commit (`6f30e76`,
 `evals/release/release-check-0.63.90-6f30e76-20260914-171351.json`) shows the identical three failures,
 confirming none of them are introduced by this change.
+
+## T3 seeded queue gold adjudication — GATE CLOSED — 2026-09-14 11:2x PT
+
+Manually reviewed every one of the 252 predicted records across all 60 seeded rows (all 3 retained projects,
+all 15 kinds) against the source text, applying `gold_definition` exactly: kind, normalized value, and exact
+half-open `[start,end)` span must match. Zero records were rejected as false positives. `gold` now equals
+`predicted` for every row; `review_status` is `adjudicated`; `neurosearch/t3_review.py`'s `validate_records`
+reports zero structural errors on every row's predicted and gold lists.
+
+Per-kind precision (all computed via `t3_review.score_manifest`, 252/252 overall):
+
+| kind | n | precision |
+|---|---|---|
+| money, percentage, url, identifier | 18, 11, 2, 2 | 1.00 (floor 0.95) |
+| number, date, duration, unit | 103, 3, 12, 6 | 1.00 (floor 0.90 for number/date/duration; unit treated the same) |
+| question, procedure, warning, exception, comparative, hedge, entity | 40, 2, 1, 5, 22, 22, 3 | 1.00 (floor 0.85) |
+
+Every per-kind and overall floor from the precision gate defined above passes with margin. **The T3 admission
+gate is CLOSED: extraction may now be persisted, trusted by a selector, and used by T4**, subject to whatever
+storage/selector design those rungs require on their own merits — this adjudication authorizes trust in the
+extractor's OUTPUT, not any particular downstream implementation.
+
+Two structural recall gaps were identified during review and deliberately **not** patched into gold or the
+extractor this rung (both lower recall only, never precision, so neither blocks the gate):
+
+1. The bracket-topic-label suppression guard (`if "]" in raw[:60]`) skips cue classification for a chunk's
+   first sentence whenever a closing bracket falls in its first 60 characters — intended to keep a
+   `[Section Name]` label from being read as content, but it also suppresses any genuine cue *in that same
+   sentence* (e.g. chunk `30322`: "This might be the best Claude code skill I've ever used." right after a
+   bracket header lost both its hedge and comparative cue).
+2. Chunks with no terminal sentence punctuation at all (`_SENTENCE` requires `.`/`!`/`?`) yield zero
+   sentence-cue records regardless of content (observed at chunks `10394`, `11016`). Numeric/money/date/
+   duration/unit/url/identifier extraction is unaffected since it does not depend on sentence boundaries.
+
+Neither is a precision defect in the reviewed sample; both are candidates for a future narrowly-scoped T3
+recall rung if T4 selector coverage later motivates it, not a blocker to today's gate.
+
+The 15-chunk provisional gold sample (`tier0-sample-20260913-144650.json`) is unchanged and was reconfirmed as
+still accurate (predicted unaffected by the comparative-narrowing patch, gold untouched).

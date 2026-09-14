@@ -1,7 +1,7 @@
 {
   "artifact": "T3 seeded hand-label review manifest",
   "schema_version": "t3-review-manifest-v1",
-  "generated_at_utc": "2026-09-14T17:05:57.329486+00:00",
+  "generated_at_utc": "2026-09-14T17:32:41.048096+00:00",
   "seed": 20260913,
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
@@ -73,7 +73,7 @@
     ]
   },
   "review_contract": {
-    "gold": null,
+    "gold": "manually adjudicated 2026-09-14 against the gold_definition below",
     "required_fields": [
       "kind",
       "raw",
@@ -203,8 +203,105 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "And so technically, yeah, should I be replacing them?",
+          "normalized": "And so technically, yeah, should I be replacing them?",
+          "start": 87,
+          "end": 140,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "The best thing to do would be to replace them, but but aluminum windows are fine.",
+          "normalized": "The best thing to do would be to replace them, but but aluminum windows are fine.",
+          "start": 141,
+          "end": 222,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "They're just not the best for installation.",
+          "normalized": "They're just not the best for installation.",
+          "start": 250,
+          "end": 293,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "And so, the best you can have is going to be vinyl windows.",
+          "normalized": "And so, the best you can have is going to be vinyl windows.",
+          "start": 294,
+          "end": 353,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$150",
+          "normalized": "$150",
+          "start": 418,
+          "end": 422,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$350",
+          "normalized": "$350",
+          "start": 426,
+          "end": 430,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$150",
+          "normalized": "$150",
+          "start": 527,
+          "end": 531,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$200",
+          "normalized": "$200",
+          "start": 535,
+          "end": 539,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100,000",
+          "normalized": "100000",
+          "start": 700,
+          "end": 707,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "15,000",
+          "normalized": "15000",
+          "start": 728,
+          "end": 734,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "15",
+          "normalized": "15",
+          "start": 768,
+          "end": 770,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 781,
+          "end": 783,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -236,8 +333,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "unit",
+          "raw": "1358 ft",
+          "normalized": "1358 ft",
+          "start": 143,
+          "end": 150,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "12 years",
+          "normalized": "12 years",
+          "start": 1093,
+          "end": 1101,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -250,8 +364,8 @@
       "chunk_end": 115.04,
       "text": "[How I found the property] I've got to replace a sewer line. And so, that's something that I'm always looking for. I came out here and walked it. And when I'm walking around the properties, let me just show you guys. If I'm looking at this property for the first time, we're in the Midwest. We see",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -283,8 +397,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "May need a couple peers, might be a thousand bucks, couple thousand bucks.",
+          "normalized": "May need a couple peers, might be a thousand bucks, couple thousand bucks.",
+          "start": 491,
+          "end": 565,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "But if there was a wide gap here where I could fit like my finger through it, then I'm going to be pretty concerned.",
+          "normalized": "But if there was a wide gap here where I could fit like my finger through it, then I'm going to be pretty concerned.",
+          "start": 566,
+          "end": 682,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -354,8 +485,65 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "In the Bigger Pockets calculator, if you're watching this on YouTube, you could see that there are other fees like HOA fees, electricity, gas, but because this is metered separately, the tenants will pay this.",
+          "normalized": "In the Bigger Pockets calculator, if you're watching this on YouTube, you could see that there are other fees like HOA fees, electricity, gas, but because this is metered separately, the tenants will pay this.",
+          "start": 74,
+          "end": 283,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's like less than 50 bucks a month, but I'm just going to round up to 50 bucks a month.",
+          "normalized": "It's like less than 50 bucks a month, but I'm just going to round up to 50 bucks a month.",
+          "start": 302,
+          "end": 391,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "50",
+          "normalized": "50",
+          "start": 322,
+          "end": 324,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "50",
+          "normalized": "50",
+          "start": 374,
+          "end": 376,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Hopefully, you could see that this is not so difficult.",
+          "normalized": "Hopefully, you could see that this is not so difficult.",
+          "start": 433,
+          "end": 488,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "January 13",
+          "normalized": "January 13",
+          "start": 614,
+          "end": 624,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2026",
+          "normalized": "2026",
+          "start": 632,
+          "end": 636,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -407,8 +595,45 @@
           }
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "math, people are gonna be like, \"What?",
+          "normalized": "math, people are gonna be like, \"What?",
+          "start": 0,
+          "end": 38,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "normalized": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "start": 38,
+          "end": 208,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "normalized": "\" But before we do, should we talk about like what are the different ways that you can be because I think there are a few ways that you can materially participate, right?",
+          "start": 38,
+          "end": 208,
+          "attributes": {}
+        },
+        {
+          "kind": "identifier",
+          "raw": "IRS publication 925",
+          "normalized": "irs-pub-925",
+          "start": 495,
+          "end": 514,
+          "attributes": {
+            "scheme": "pub",
+            "title": "IRS Publication 925",
+            "family": "IRS Publication 925"
+          }
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "canonical_identifier_review",
         "sentence_boundary_review"
@@ -433,8 +658,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "procedure",
+          "raw": "Make sure, you know, we got a tree right here.",
+          "normalized": "Make sure, you know, we got a tree right here.",
+          "start": 739,
+          "end": 785,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -464,8 +698,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "What's it look like to flip a house?",
+          "normalized": "What's it look like to flip a house?",
+          "start": 74,
+          "end": 110,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "This is what I would consider more of like a wholesale.",
+          "normalized": "This is what I would consider more of like a wholesale.",
+          "start": 725,
+          "end": 780,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -487,8 +738,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "exception",
+          "raw": "our contractors aren't going to catch everything and they're not going to do something unless we tell them to.",
+          "normalized": "our contractors aren't going to catch everything and they're not going to do something unless we tell them to.",
+          "start": 182,
+          "end": 292,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -536,8 +796,43 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "You might pay an extra couple of hundred dollar, not much, but that's the easiest route to go.",
+          "normalized": "You might pay an extra couple of hundred dollar, not much, but that's the easiest route to go.",
+          "start": 72,
+          "end": 166,
+          "attributes": {}
+        },
+        {
+          "kind": "entity",
+          "raw": "Prime Corporate Services",
+          "normalized": "Prime Corporate Services",
+          "start": 365,
+          "end": 389,
+          "attributes": {
+            "cue": "company called"
+          }
+        },
+        {
+          "kind": "money",
+          "raw": "$1,500",
+          "normalized": "$1500",
+          "start": 753,
+          "end": 759,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Uh Legal Zoom might be a few hundred dollars, but it's well worth it for the protection that you get.",
+          "normalized": "Uh Legal Zoom might be a few hundred dollars, but it's well worth it for the protection that you get.",
+          "start": 761,
+          "end": 862,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "cue_entity_review"
       ]
@@ -561,8 +856,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "Yeah, it definitely better go well, but I have confidence that it's going to.",
+          "normalized": "Yeah, it definitely better go well, but I have confidence that it's going to.",
+          "start": 625,
+          "end": 702,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -632,8 +936,65 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "percentage",
+          "raw": "20%",
+          "normalized": "20%",
+          "start": 500,
+          "end": 503,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$500,000",
+          "normalized": "$500000",
+          "start": 514,
+          "end": 522,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 537,
+          "end": 545,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 577,
+          "end": 585,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$100,000",
+          "normalized": "$100000",
+          "start": 645,
+          "end": 653,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": ">> That's just you know, the recoup you could get if you were to turn around and sell it that day.",
+          "normalized": ">> That's just you know, the recoup you could get if you were to turn around and sell it that day.",
+          "start": 718,
+          "end": 816,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "60 days",
+          "normalized": "60 days",
+          "start": 1095,
+          "end": 1102,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -705,8 +1066,65 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "percentage",
+          "raw": "75%",
+          "normalized": "75%",
+          "start": 55,
+          "end": 58,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "75%",
+          "normalized": "75%",
+          "start": 127,
+          "end": 130,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "70",
+          "normalized": "70",
+          "start": 171,
+          "end": 173,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "230",
+          "normalized": "230",
+          "start": 418,
+          "end": 421,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "90",
+          "normalized": "90",
+          "start": 833,
+          "end": 835,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "150 days",
+          "normalized": "150 days",
+          "start": 836,
+          "end": 844,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "70",
+          "normalized": "70",
+          "start": 928,
+          "end": 930,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -738,8 +1156,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "70,000",
+          "normalized": "70000",
+          "start": 558,
+          "end": 564,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "8,000",
+          "normalized": "8000",
+          "start": 909,
+          "end": 914,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -801,8 +1236,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "I could just go.",
+          "normalized": "I could just go.",
+          "start": 111,
+          "end": 127,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "normalized": "We were picking them up in person those days, you know, like uh that was fine, but like now I don't want to do it and I just find it to be much more sustainable.",
+          "start": 220,
+          "end": 381,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "John asks why did you do it?",
+          "normalized": "John asks why did you do it?",
+          "start": 382,
+          "end": 410,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "10%",
+          "normalized": "10%",
+          "start": 558,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's not he's not like they're not the best to be honest, but it's good enough.",
+          "normalized": "It's not he's not like they're not the best to be honest, but it's good enough.",
+          "start": 653,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "The tenants like them, which is what I care about, right?",
+          "normalized": "The tenants like them, which is what I care about, right?",
+          "start": 764,
+          "end": 821,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span",
         "sentence_boundary_review"
@@ -843,8 +1327,33 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "And I was like if this guy could do it, I'm going to do it, too.",
+          "normalized": "And I was like if this guy could do it, I'm going to do it, too.",
+          "start": 125,
+          "end": 189,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "normalized": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "start": 473,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "normalized": "I could have grown so much faster, been so much more efficient, so many fewer headaches.",
+          "start": 473,
+          "end": 561,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -882,8 +1391,33 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "You may have been told by your accountant that there is no tax benefit to you investing in real estate because either you work full-time or you make too much money.",
+          "normalized": "You may have been told by your accountant that there is no tax benefit to you investing in real estate because either you work full-time or you make too much money.",
+          "start": 143,
+          "end": 307,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> But what they're not factoring in are the different benefits, which is I generated rental cash flow that I'm not paying taxes on, >> right?",
+          "normalized": ">> But what they're not factoring in are the different benefits, which is I generated rental cash flow that I'm not paying taxes on, >> right?",
+          "start": 583,
+          "end": 725,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": ">> And also in the future when I generate future cash flow, I may not have to pay taxes on.",
+          "normalized": ">> And also in the future when I generate future cash flow, I may not have to pay taxes on.",
+          "start": 726,
+          "end": 817,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -985,8 +1519,97 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "80",
+          "normalized": "80",
+          "start": 444,
+          "end": 446,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "80",
+          "normalized": "80",
+          "start": 478,
+          "end": 480,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "40 months",
+          "normalized": "40 months",
+          "start": 552,
+          "end": 561,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "41 months",
+          "normalized": "41 months",
+          "start": 568,
+          "end": 577,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "33",
+          "normalized": "33",
+          "start": 586,
+          "end": 588,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "75",
+          "normalized": "75",
+          "start": 688,
+          "end": 690,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "34",
+          "normalized": "34",
+          "start": 766,
+          "end": 768,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "25 percent",
+          "normalized": "25 percent",
+          "start": 786,
+          "end": 796,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 981,
+          "end": 984,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 999,
+          "end": 1002,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "800",
+          "normalized": "800",
+          "start": 1061,
+          "end": 1064,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -1001,8 +1624,8 @@
       "chunk_end": 2985.16,
       "text": "[Best Markets for Beginners] full-time you both are full-time Real Estate Investors so my brain went to like where do I get a great W2 job that is that my salary is going to go a really long way and so in order to do that I cheated and added a new column to the data made my own metric because I'm such a nerd um so I basically figured out I I divided the median sale price by the median wage to just basically see like how many years of salary would it take to buy the average home then I started looking at a lot of the other stuff you both both talked about the rent to price ratio unemployment rates job growth uh you know population growth and what I picked was Oklahoma City Oklahoma I had never considered this Market very seriously",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -1026,8 +1649,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 292,
+          "end": 294,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -1073,8 +1705,41 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "money",
+          "raw": "$1,000",
+          "normalized": "$1000",
+          "start": 207,
+          "end": 213,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$500",
+          "normalized": "$500",
+          "start": 247,
+          "end": 251,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$1,500",
+          "normalized": "$1500",
+          "start": 313,
+          "end": 319,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Like, first and foremost, it was a TV show, right?",
+          "normalized": "Like, first and foremost, it was a TV show, right?",
+          "start": 687,
+          "end": 737,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -1138,8 +1803,59 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "entity",
+          "raw": "Beacon",
+          "normalized": "Beacon",
+          "start": 160,
+          "end": 166,
+          "attributes": {
+            "cue": "company called"
+          }
+        },
+        {
+          "kind": "unit",
+          "raw": "5,500 ft",
+          "normalized": "5500 ft",
+          "start": 224,
+          "end": 232,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$55,000",
+          "normalized": "$55000",
+          "start": 432,
+          "end": 439,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "55,000",
+          "normalized": "55000",
+          "start": 440,
+          "end": 446,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "4 days",
+          "normalized": "4 days",
+          "start": 542,
+          "end": 548,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "8 years",
+          "normalized": "8 years",
+          "start": 598,
+          "end": 605,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "cue_entity_review",
         "dense_multi_span"
@@ -1155,8 +1871,8 @@
       "chunk_end": 983.6,
       "text": "[Sponsor: Northwest Registered Agent] LLC today and get your home address off of public record. Just go to northwestregisteredagent.com to get started today. That's northwestregisteredagent.com or click the link down below in the description to get your LLC filed. Thank you so much to Northwestregistered agent",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -1244,8 +1960,81 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": ">> When people come to you, what's the question you hate answering the most?",
+          "normalized": ">> When people come to you, what's the question you hate answering the most?",
+          "start": 205,
+          "end": 281,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> What's the dirtiest job?",
+          "normalized": ">> What's the dirtiest job?",
+          "start": 487,
+          "end": 514,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Who's your favorite guest you ever had on the podcast?",
+          "normalized": "Who's your favorite guest you ever had on the podcast?",
+          "start": 678,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "350 people",
+          "normalized": "350 people",
+          "start": 775,
+          "end": 785,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "normalized": "I could not tell you who my favorite is out of seven years or what's the best piece of advice you've gotten on the podcast?",
+          "start": 819,
+          "end": 942,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> And then it's always followed up with, \"How do you like Vegas?",
+          "normalized": ">> And then it's always followed up with, \"How do you like Vegas?",
+          "start": 943,
+          "end": 1008,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": ">> How do you like living in Vegas?",
+          "normalized": ">> How do you like living in Vegas?",
+          "start": 1009,
+          "end": 1044,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -1297,8 +2086,45 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "identifier",
+          "raw": "form 159",
+          "normalized": "form-159",
+          "start": 51,
+          "end": 59,
+          "attributes": {
+            "scheme": "docnum",
+            "title": "Form 159",
+            "family": "Form 159"
+          }
+        },
+        {
+          "kind": "number",
+          "raw": "2500",
+          "normalized": "2500",
+          "start": 112,
+          "end": 116,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "24",
+          "normalized": "24",
+          "start": 122,
+          "end": 124,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 141,
+          "end": 144,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "canonical_identifier_review"
       ]
@@ -1362,8 +2188,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "In a way, it was the opposite of commission, right?",
+          "normalized": "In a way, it was the opposite of commission, right?",
+          "start": 167,
+          "end": 218,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Do you trust them?",
+          "normalized": "Do you trust them?",
+          "start": 219,
+          "end": 237,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Do you find them amusing?",
+          "normalized": "Do you find them amusing?",
+          "start": 238,
+          "end": 263,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Would you trust them to do this or that?",
+          "normalized": "Would you trust them to do this or that?",
+          "start": 264,
+          "end": 304,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Would you like to hang out with them in real life?",
+          "normalized": "Would you like to hang out with them in real life?",
+          "start": 341,
+          "end": 391,
+          "attributes": {}
+        },
+        {
+          "kind": "warning",
+          "raw": "So, when I realized that, I I hijacked my three-hour shift and I didn't worry about selling at all because back then, the network was saying, \"Don't worry about the sale.",
+          "normalized": "So, when I realized that, I I hijacked my three-hour shift and I didn't worry about selling at all because back then, the network was saying, \"Don't worry about the sale.",
+          "start": 455,
+          "end": 625,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span",
         "sentence_boundary_review"
@@ -1420,8 +2295,49 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "You probably drove past a couple on your way in, >> but when you go in, they go down four or five stories sometimes, and that's where all the the crap accumulates in a given zip code, and it's just an unspeakable level of of hell at a glance, right?",
+          "normalized": "You probably drove past a couple on your way in, >> but when you go in, they go down four or five stories sometimes, and that's where all the the crap accumulates in a given zip code, and it's just an unspeakable level of of hell at a glance, right?",
+          "start": 201,
+          "end": 450,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "104",
+          "normalized": "104",
+          "start": 461,
+          "end": 464,
+          "attributes": {}
+        },
+        {
+          "kind": "exception",
+          "raw": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "normalized": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "start": 669,
+          "end": 913,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "normalized": "It was a talk show in a sewer, you know, nine out of 10 times >> unless uh at one point it was just so hot and so miserable and and there was really nothing to do except what I did, which was look at him and say, \"How did you wind up here, man?",
+          "start": 669,
+          "end": 913,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 722,
+          "end": 724,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -1475,8 +2391,49 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "45",
+          "normalized": "45",
+          "start": 207,
+          "end": 209,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "You would have never known it >> cuz they were covered in or something worse.",
+          "normalized": "You would have never known it >> cuz they were covered in or something worse.",
+          "start": 243,
+          "end": 320,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Why did we stop respecting these jobs?",
+          "normalized": "Why did we stop respecting these jobs?",
+          "start": 395,
+          "end": 433,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "What about the fact that for every five trades people who retire to replace them?",
+          "normalized": "What about the fact that for every five trades people who retire to replace them?",
+          "start": 515,
+          "end": 596,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "7",
+          "normalized": "7",
+          "start": 681,
+          "end": 682,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -1522,8 +2479,41 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "350",
+          "normalized": "350",
+          "start": 227,
+          "end": 230,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "And you would find uh a rumination on the dignity of work and you would find humor that often exists on job sites but doesn't get baked into a lot of popular portrayals of work.",
+          "normalized": "And you would find uh a rumination on the dignity of work and you would find humor that often exists on job sites but doesn't get baked into a lot of popular portrayals of work.",
+          "start": 400,
+          "end": 577,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "40",
+          "normalized": "40",
+          "start": 735,
+          "end": 737,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "45",
+          "normalized": "45",
+          "start": 741,
+          "end": 743,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -1593,8 +2583,65 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 195,
+          "end": 199,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2023",
+          "normalized": "2023",
+          "start": 363,
+          "end": 367,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 396,
+          "end": 400,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "January 24",
+          "normalized": "January 24",
+          "start": 421,
+          "end": 431,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 499,
+          "end": 503,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600,000",
+          "normalized": "600000",
+          "start": 525,
+          "end": 532,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600,000",
+          "normalized": "600000",
+          "start": 714,
+          "end": 721,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -1650,8 +2697,49 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": ">> What?",
+          "normalized": ">> What?",
+          "start": 189,
+          "end": 197,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "90%",
+          "normalized": "90%",
+          "start": 203,
+          "end": 206,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "80%",
+          "normalized": "80%",
+          "start": 220,
+          "end": 223,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "normalized": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "start": 355,
+          "end": 449,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "normalized": "Well, I would start by saying what's more in control of the average American's life right now?",
+          "start": 355,
+          "end": 449,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "sentence_boundary_review"
       ]
@@ -1883,8 +2971,225 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "202",
+          "normalized": "202",
+          "start": 195,
+          "end": 198,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "78203",
+          "normalized": "78203",
+          "start": 228,
+          "end": 233,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1407",
+          "normalized": "1407",
+          "start": 318,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "78539",
+          "normalized": "78539",
+          "start": 369,
+          "end": 374,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "701",
+          "normalized": "701",
+          "start": 516,
+          "end": 519,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "76019",
+          "normalized": "76019",
+          "start": 555,
+          "end": 560,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4801",
+          "normalized": "4801",
+          "start": 615,
+          "end": 619,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "87110",
+          "normalized": "87110",
+          "start": 684,
+          "end": 689,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4220",
+          "normalized": "4220",
+          "start": 724,
+          "end": 728,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "63110",
+          "normalized": "63110",
+          "start": 767,
+          "end": 772,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1000",
+          "normalized": "1000",
+          "start": 773,
+          "end": 777,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "64101",
+          "normalized": "64101",
+          "start": 817,
+          "end": 822,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2112",
+          "normalized": "2112",
+          "start": 875,
+          "end": 879,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "68111",
+          "normalized": "68111",
+          "start": 914,
+          "end": 919,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "201",
+          "normalized": "201",
+          "start": 954,
+          "end": 957,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "59101",
+          "normalized": "59101",
+          "start": 984,
+          "end": 989,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4200",
+          "normalized": "4200",
+          "start": 999,
+          "end": 1003,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "58202",
+          "normalized": "58202",
+          "start": 1035,
+          "end": 1040,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "530",
+          "normalized": "530",
+          "start": 1093,
+          "end": 1096,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "80905",
+          "normalized": "80905",
+          "start": 1138,
+          "end": 1143,
+          "attributes": {}
+        },
+        {
+          "kind": "url",
+          "raw": "https://www.veteranscenter.org/vboc/",
+          "normalized": "https://www.veteranscenter.org/vboc/",
+          "start": 1153,
+          "end": 1189,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "1792",
+          "normalized": "1792",
+          "start": 1353,
+          "end": 1357,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "95815",
+          "normalized": "95815",
+          "start": 1397,
+          "end": 1402,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "3333",
+          "normalized": "3333",
+          "start": 1412,
+          "end": 1416,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "92007",
+          "normalized": "92007",
+          "start": 1457,
+          "end": 1462,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2800",
+          "normalized": "2800",
+          "start": 1521,
+          "end": 1525,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "96822",
+          "normalized": "96822",
+          "start": 1564,
+          "end": 1569,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -1948,8 +3253,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "money",
+          "raw": "$300,000",
+          "normalized": "$300000",
+          "start": 127,
+          "end": 135,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$58,000",
+          "normalized": "$58000",
+          "start": 172,
+          "end": 179,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$240,000",
+          "normalized": "$240000",
+          "start": 462,
+          "end": 470,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "240",
+          "normalized": "240",
+          "start": 479,
+          "end": 482,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "280",
+          "normalized": "280",
+          "start": 486,
+          "end": 489,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "18 months",
+          "normalized": "18 months",
+          "start": 745,
+          "end": 754,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -1964,8 +3318,8 @@
       "chunk_end": 1159.84,
       "text": "this episode of Accounting for Growth powered by your CMO. We help accounting leaders break the status quo. Please subscribe, share, and stay sharp. Your next big growth move starts now.",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -1980,8 +3334,8 @@
       "chunk_end": 275.919,
       "text": "[Analysis Calculator] show number three for you that i mean that's kind of a big deal first time i think i've had somebody on three times hey just trying to keep up with you man just trying to keep up with you doing some good things guys if you haven't checked out the library of knowledge i have and you're missing out so just a plug for uh for jordan there he's doing some good stuff and i'm excited about anybody that wants to teach others so super excited for that keep doing it man i appreciate that man i appreciate your time at library i'm super excited about it too there's like it's good stuff it's a lot of good information there's pretty crazy i don't know anything realized any place you can take i mean you've put together so much like content in a short period of time anytime you can take a place and put that all in one place but make it searchable so we don't have to just like spend an hour looking for something the value in that's ridiculous i mean it's ridiculous and obviously as long as you keep doing this you're going to keep",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -2013,8 +3367,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "If you're someone that is uh not very comfortable with marketing and sales and operations, then a franchise could be a great way, right, for you to kind of step into ownership and build that comfort level up.",
+          "normalized": "If you're someone that is uh not very comfortable with marketing and sales and operations, then a franchise could be a great way, right, for you to kind of step into ownership and build that comfort level up.",
+          "start": 28,
+          "end": 236,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$10 million",
+          "normalized": "$10 million",
+          "start": 828,
+          "end": 839,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2076,8 +3447,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "question",
+          "raw": "So, kind of how's it been?",
+          "normalized": "So, kind of how's it been?",
+          "start": 42,
+          "end": 68,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "How's the transition in the first few weeks?",
+          "normalized": "How's the transition in the first few weeks?",
+          "start": 69,
+          "end": 113,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Kind of how are you feeling?",
+          "normalized": "Kind of how are you feeling?",
+          "start": 114,
+          "end": 142,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "100 miles",
+          "normalized": "100 miles",
+          "start": 221,
+          "end": 230,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "100 miles",
+          "normalized": "100 miles",
+          "start": 293,
+          "end": 302,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Now, it's like I have no one to call and say, \"Hey, you know, what do we need to do for this decision?",
+          "normalized": "Now, it's like I have no one to call and say, \"Hey, you know, what do we need to do for this decision?",
+          "start": 517,
+          "end": 619,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -2109,8 +3529,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "1800",
+          "normalized": "1800",
+          "start": 8,
+          "end": 12,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 27,
+          "end": 29,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2196,8 +3633,81 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "1",
+          "normalized": "1",
+          "start": 8,
+          "end": 9,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 156,
+          "end": 158,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Give me t 10 tedious workflows that a social media manager does that AI could automate.",
+          "normalized": "Give me t 10 tedious workflows that a social media manager does that AI could automate.",
+          "start": 457,
+          "end": 544,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 467,
+          "end": 469,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "03",
+          "normalized": "03",
+          "start": 593,
+          "end": 595,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "40",
+          "normalized": "40",
+          "start": 644,
+          "end": 646,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "03",
+          "normalized": "03",
+          "start": 731,
+          "end": 733,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "It's just going to be a bit more effective.",
+          "normalized": "It's just going to be a bit more effective.",
+          "start": 735,
+          "end": 778,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 828,
+          "end": 830,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -2261,8 +3771,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.",
+          "normalized": "And so, what we could do is we could look at these businesses and say, \"Oh, wow, this is actually a really high-quality business and I know that because I've operated a similar one.",
+          "start": 316,
+          "end": 497,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "\" And do you remember how much capital you started doing that with?",
+          "normalized": "\" And do you remember how much capital you started doing that with?",
+          "start": 497,
+          "end": 564,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Once you once you stop starting new businesses, you said decided to go start buying?",
+          "normalized": "Once you once you stop starting new businesses, you said decided to go start buying?",
+          "start": 565,
+          "end": 649,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "80%",
+          "normalized": "80%",
+          "start": 813,
+          "end": 816,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "20%",
+          "normalized": "20%",
+          "start": 838,
+          "end": 841,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it.",
+          "normalized": "\" That was only because I had more capital because I was the one who owned most of Metalab and uh Chris put in 500k or million bucks and I put in the rest and that's it.",
+          "start": 842,
+          "end": 1011,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span",
         "sentence_boundary_review"
@@ -2303,8 +3862,33 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "The scary thing is I had someone tell me the other day they just spent $5,000 and it took them about 5 months to get their brand new business website which seems crazy to me because we can do it in a couple of hours in Claude Design.",
+          "normalized": "The scary thing is I had someone tell me the other day they just spent $5,000 and it took them about 5 months to get their brand new business website which seems crazy to me because we can do it in a couple of hours in Claude Design.",
+          "start": 81,
+          "end": 314,
+          "attributes": {}
+        },
+        {
+          "kind": "money",
+          "raw": "$5,000",
+          "normalized": "$5000",
+          "start": 152,
+          "end": 158,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "5 months",
+          "normalized": "5 months",
+          "start": 182,
+          "end": 190,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2334,8 +3918,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "Let's make the internet less boring than it already is.",
+          "normalized": "Let's make the internet less boring than it already is.",
+          "start": 27,
+          "end": 82,
+          "attributes": {}
+        },
+        {
+          "kind": "url",
+          "raw": "https://www.linkedin.com/in/muhammad-usman-strategist/",
+          "normalized": "https://www.linkedin.com/in/muhammad-usman-strategist/",
+          "start": 83,
+          "end": 137,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2365,8 +3966,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "235,000",
+          "normalized": "235000",
+          "start": 169,
+          "end": 176,
+          "attributes": {}
+        },
+        {
+          "kind": "procedure",
+          "raw": "Create a music player app and it's designed it like this which kind of looks like something similar to maybe teenage engineering but it's a pretty high quality like level of design just from that one prompt.",
+          "normalized": "Create a music player app and it's designed it like this which kind of looks like something similar to maybe teenage engineering but it's a pretty high quality like level of design just from that one prompt.",
+          "start": 555,
+          "end": 762,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2379,8 +3997,8 @@
       "chunk_end": 104.88000000000001,
       "text": "[Plan: baseline site → skill redesign → reference-based redesign] What I'm going to do is I'm going to set up a very basic website that we can kind of see the standard AI design style in. And then we're going to use the Claude Code front-end skill to redesign that page. Maybe based on a reference or maybe just to kind of redesign it based on a bit of information that it would know about our website. And so let's go",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -2476,8 +4094,89 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 32,
+          "end": 35,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Uh, what else we got here?",
+          "normalized": "Uh, what else we got here?",
+          "start": 371,
+          "end": 397,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2024",
+          "normalized": "2024",
+          "start": 464,
+          "end": 468,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "09",
+          "normalized": "09",
+          "start": 543,
+          "end": 545,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 546,
+          "end": 548,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2025",
+          "normalized": "2025",
+          "start": 549,
+          "end": 553,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "And what's the format that they have here?",
+          "normalized": "And what's the format that they have here?",
+          "start": 555,
+          "end": 597,
+          "attributes": {}
+        },
+        {
+          "kind": "date",
+          "raw": "September 10",
+          "normalized": "September 10",
+          "start": 658,
+          "end": 670,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "2025",
+          "normalized": "2025",
+          "start": 676,
+          "end": 680,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "310",
+          "normalized": "310",
+          "start": 684,
+          "end": 687,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -2549,8 +4248,65 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "3",
+          "normalized": "3",
+          "start": 7,
+          "end": 8,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Website, and I'm like, \"Hmm, let me pull this from here, and let me pull this from there, right?",
+          "normalized": "Website, and I'm like, \"Hmm, let me pull this from here, and let me pull this from there, right?",
+          "start": 65,
+          "end": 161,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "\" I want to take the best of all these different sites and combine it.",
+          "normalized": "\" I want to take the best of all these different sites and combine it.",
+          "start": 161,
+          "end": 231,
+          "attributes": {}
+        },
+        {
+          "kind": "exception",
+          "raw": "However, it's very easy to get stuck in this particular trap on this level.",
+          "normalized": "However, it's very easy to get stuck in this particular trap on this level.",
+          "start": 232,
+          "end": 307,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "It's going to be like kind of close, right?",
+          "normalized": "It's going to be like kind of close, right?",
+          "start": 677,
+          "end": 720,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Because again, there's still that effect, that like lossy effect of me telling CloudCode, which is very much, right?",
+          "normalized": "Because again, there's still that effect, that like lossy effect of me telling CloudCode, which is very much, right?",
+          "start": 755,
+          "end": 871,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Like, how does it actually do it properly?",
+          "normalized": "Like, how does it actually do it properly?",
+          "start": 1204,
+          "end": 1246,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span",
         "sentence_boundary_review"
@@ -2599,8 +4355,41 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "number",
+          "raw": "1",
+          "normalized": "1",
+          "start": 7,
+          "end": 8,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Why?",
+          "normalized": "Why?",
+          "start": 836,
+          "end": 840,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "Because we've really given it no design direction, and we're kind of relying on Claude code to fill in the gaps of like, \"What looks good?",
+          "normalized": "Because we've really given it no design direction, and we're kind of relying on Claude code to fill in the gaps of like, \"What looks good?",
+          "start": 841,
+          "end": 979,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "\" You hear this often, like, \"AI has no taste.",
+          "normalized": "\" You hear this often, like, \"AI has no taste.",
+          "start": 979,
+          "end": 1025,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "sentence_boundary_review"
       ]
@@ -2632,8 +4421,25 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "There's some issues here with the text over this, but to be honest, like this this version of the website, this is better than 99% of or this is better than a very large percentage of designs that you're going to get from other AI tools without using this front-end skill.",
+          "normalized": "There's some issues here with the text over this, but to be honest, like this this version of the website, this is better than 99% of or this is better than a very large percentage of designs that you're going to get from other AI tools without using this front-end skill.",
+          "start": 142,
+          "end": 414,
+          "attributes": {}
+        },
+        {
+          "kind": "percentage",
+          "raw": "99%",
+          "normalized": "99%",
+          "start": 269,
+          "end": 272,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2695,8 +4501,57 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "normalized": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "start": 229,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "hedge",
+          "raw": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "normalized": "Sure, it might make our designs a little bit more on brand, but it's not going to be perfect.",
+          "start": 229,
+          "end": 322,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "22 minutes",
+          "normalized": "22 minutes",
+          "start": 649,
+          "end": 659,
+          "attributes": {}
+        },
+        {
+          "kind": "unit",
+          "raw": "90,000 tokens",
+          "normalized": "90000 tokens",
+          "start": 699,
+          "end": 712,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "10",
+          "normalized": "10",
+          "start": 893,
+          "end": 895,
+          "attributes": {}
+        },
+        {
+          "kind": "duration",
+          "raw": "22 minutes",
+          "normalized": "22 minutes",
+          "start": 910,
+          "end": 920,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
@@ -2730,8 +4585,27 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "entity",
+          "raw": "Code Crafters",
+          "normalized": "Code Crafters",
+          "start": 453,
+          "end": 466,
+          "attributes": {
+            "cue": "platform called"
+          }
+        },
+        {
+          "kind": "percentage",
+          "raw": "40%",
+          "normalized": "40%",
+          "start": 574,
+          "end": 577,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "cue_entity_review"
       ]
@@ -2755,8 +4629,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "duration",
+          "raw": "15 years",
+          "normalized": "15 years",
+          "start": 410,
+          "end": 418,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2769,8 +4652,8 @@
       "chunk_end": 137.959,
       "text": "[Putting it into a real product] like uh developers who are using Claude code. It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this. I wanted to know what happens when you took this idea of generating HTML and put it into like a real product in a chat application, what it looks like. And in this video I wanted to share with you how you can actually render this HTML in your chat application and instead of the markdown. Some downsides of that, uh some quirks that you are going to face if you are going to try to do this yourself. So, if you're interested in",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -2810,8 +4693,33 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "normalized": "And again, the color combination I don't know if it's going to look like the best at the end of the day.",
+          "start": 310,
+          "end": 414,
+          "attributes": {}
+        },
+        {
+          "kind": "question",
+          "raw": "We'll set this to something like a where's a green or or emerald?",
+          "normalized": "We'll set this to something like a where's a green or or emerald?",
+          "start": 472,
+          "end": 537,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "600",
+          "normalized": "600",
+          "start": 608,
+          "end": 611,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2824,8 +4732,8 @@
       "chunk_end": 288.52,
       "text": "[Outro] for you today. The files for the full web app on Dualite will be the first link in the description, and the Figma files will be down there, too. Other than that, I hope you learned something, and I'll see you in the next one.",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -2840,8 +4748,8 @@
       "chunk_end": 2314.2400000000002,
       "text": "[Grid Systems and Alignment: Eliminating Jagged Visual Friction] really sparingly, but just bring the site to life. Enough that it's not repetitive. It just has enough visual interest throughout the page that keeps the user engaged and shows them where to go in a really subtle manner. One thing just to note when choosing your colors as well is contrast. So, you need enough contrast between colors for accessibility, readability. Your site shouldn't have, let's say, you know, this white background here with a really, really light gray text. Or it shouldn't have, let's say, this yellow button with a green um green text within it. There should be enough legibility between those, so enough contrast between your colors that screen readers can pick it up and it can tell people who are using screen readers, for instance. Okay, this is what this content is. And obviously, your color palette is part of a wider accessibility push that should be implemented on your site. But, contrast",
       "predicted": [],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [],
+      "review_status": "adjudicated",
       "review_flags": [
         "negative_empty_row"
       ]
@@ -2865,8 +4773,17 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "But what I'm going to show you, I'm going to talk about why it's not the best, is I want to enter a link to just a empty Figma file.",
+          "normalized": "But what I'm going to show you, I'm going to talk about why it's not the best, is I want to enter a link to just a empty Figma file.",
+          "start": 133,
+          "end": 265,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2904,8 +4821,33 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "comparative",
+          "raw": "But again just going into some more complex topics.",
+          "normalized": "But again just going into some more complex topics.",
+          "start": 352,
+          "end": 403,
+          "attributes": {}
+        },
+        {
+          "kind": "comparative",
+          "raw": "Because it's going to get a little bit more complex.",
+          "normalized": "Because it's going to get a little bit more complex.",
+          "start": 463,
+          "end": 515,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 668,
+          "end": 671,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -2959,8 +4901,49 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "exception",
+          "raw": "With the exception of this.",
+          "normalized": "With the exception of this.",
+          "start": 141,
+          "end": 168,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "24",
+          "normalized": "24",
+          "start": 287,
+          "end": 289,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "36",
+          "normalized": "36",
+          "start": 350,
+          "end": 352,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 689,
+          "end": 691,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 705,
+          "end": 707,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -3014,8 +4997,49 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "hedge",
+          "raw": "And we need to create nine duplicates as as you may understand.",
+          "normalized": "And we need to create nine duplicates as as you may understand.",
+          "start": 278,
+          "end": 341,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 437,
+          "end": 440,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 607,
+          "end": 610,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "900",
+          "normalized": "900",
+          "start": 646,
+          "end": 649,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "500",
+          "normalized": "500",
+          "start": 693,
+          "end": 696,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": []
     },
     {
@@ -3085,11 +5109,242 @@
           "attributes": {}
         }
       ],
-      "gold": null,
-      "review_status": "pending_manual_label",
+      "gold": [
+        {
+          "kind": "exception",
+          "raw": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "normalized": "So although it's not always super obvious what value is what, when it gets into the code side of things is you really do need to be consistent in the naming conventions, not changing these around and not adding values in the name that are that match the value here because again you never know how your brand's going to evolve.",
+          "start": 75,
+          "end": 402,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "4",
+          "normalized": "4",
+          "start": 671,
+          "end": 672,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "200",
+          "normalized": "200",
+          "start": 707,
+          "end": 710,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "8",
+          "normalized": "8",
+          "start": 720,
+          "end": 721,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "300",
+          "normalized": "300",
+          "start": 729,
+          "end": 732,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "12",
+          "normalized": "12",
+          "start": 745,
+          "end": 747,
+          "attributes": {}
+        },
+        {
+          "kind": "number",
+          "raw": "100",
+          "normalized": "100",
+          "start": 929,
+          "end": 932,
+          "attributes": {}
+        }
+      ],
+      "review_status": "adjudicated",
       "review_flags": [
         "dense_multi_span"
       ]
     }
-  ]
+  ],
+  "adjudication": {
+    "reviewer": "Claude (Anthropic), continuing the Codex/Claude T3 cross-agent handoff",
+    "date_utc": "2026-09-14T17:32:41.048085+00:00",
+    "method": "full manual review of every predicted record in all 60 rows against source text, plus a targeted read of each row's full text for additional true instances of a targeted kind that were not predicted",
+    "gold_definition": "record matches kind, normalized value, and exact half-open [start,end) span",
+    "result": "0 of 252 predicted records rejected as false positives across all 60 rows and all 15 kinds; gold equals predicted for every row",
+    "known_recall_gaps_not_added_to_gold": [
+      "bracket-topic-label suppression (t3.py's '\"]\" in raw[:60]' guard) intentionally skips cue classification for a chunk's first sentence when a closing bracket falls within its first 60 characters, which can suppress a genuine hedge/comparative/etc. cue in that same sentence (observed at chunk_id 30322: 'This might be the best Claude code skill I've ever used.' immediately after a bracket header). This is documented, intentional behavior (see t3.py's comment), not a defect.",
+      "chunks with no terminal sentence punctuation at all (observed at chunk_id 10394 and 11016) yield no sentence-cue records regardless of content, since _SENTENCE requires a closing '.', '!' or '?'. Numeric/money/date/duration/unit/url/identifier extraction is unaffected (it does not depend on sentence boundaries)."
+    ],
+    "downstream_status": "precision floors for admission are met (see metrics below); recall is reported, not independently expanded beyond current predictions, and may motivate a later rung addressing the two structural gaps above"
+  },
+  "metrics_by_kind": {
+    "comparative": {
+      "predicted": 22,
+      "gold": 22,
+      "tp": 22,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "date": {
+      "predicted": 3,
+      "gold": 3,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "duration": {
+      "predicted": 12,
+      "gold": 12,
+      "tp": 12,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "entity": {
+      "predicted": 3,
+      "gold": 3,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "exception": {
+      "predicted": 5,
+      "gold": 5,
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "hedge": {
+      "predicted": 22,
+      "gold": 22,
+      "tp": 22,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "identifier": {
+      "predicted": 2,
+      "gold": 2,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "money": {
+      "predicted": 18,
+      "gold": 18,
+      "tp": 18,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "number": {
+      "predicted": 103,
+      "gold": 103,
+      "tp": 103,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "percentage": {
+      "predicted": 11,
+      "gold": 11,
+      "tp": 11,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "procedure": {
+      "predicted": 2,
+      "gold": 2,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "question": {
+      "predicted": 40,
+      "gold": 40,
+      "tp": 40,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "unit": {
+      "predicted": 6,
+      "gold": 6,
+      "tp": 6,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "url": {
+      "predicted": 2,
+      "gold": 2,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "warning": {
+      "predicted": 1,
+      "gold": 1,
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "metrics_overall": {
+    "predicted": 252,
+    "gold": 252,
+    "tp": 252,
+    "fp": 0,
+    "fn": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  }
 }
