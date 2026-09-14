@@ -1,10 +1,10 @@
 # Transcript Intelligence T4 admission — the selector (first slice)
 
-**Status: ADMITTED, selector only.** Per `TRANSCRIPT-INTELLIGENCE-MISSION.md` §D/T4 and Kyle's fifth correction,
-the selector and the executor are two separable concerns; this admission is the selector alone. No executor is
-wired in this pass — it "knows nothing about who executes it," exactly as the mission doc specifies. Built
-alongside T5 and T6 under Kyle's explicit "do 4/5/6 now" authorization, following T3's gold-adjudication gate
-closing (`3ca18be`), which is what cleared T3's extraction output for use by a selector.
+**Status: ADMITTED — selector, plus the executor's $0 routing dry run.** Per `TRANSCRIPT-INTELLIGENCE-MISSION.md`
+§D/T4 and Kyle's fifth correction, the selector and the executor are two separable concerns. The selector
+landed first, alone, under Kyle's "do 4/5/6 now" authorization. Kyle then asked to get T4 "fixed and shipped";
+given the choice between a $0 routing dry run and a full live executor in one pass, he chose the $0 slice
+(see "T4 executor — $0 dry run" below). No live provider call is made anywhere in this admission.
 
 ## Problem and evidence
 
@@ -42,9 +42,10 @@ whose Tier-0 extraction says 'numbers and procedure' that nothing has ever read.
 
 ## Explicit non-goals for this slice
 
-- No executor. Nothing in this module invokes a provider, `providers.route`, a worker pool, or writes a
-  structured delta anywhere. The mission doc's executor interface (Claude Code default / local model / Haiku API
-  / future cloud worker) is future work built on top of this selector's output, not part of this admission.
+- No LIVE executor call. `t4.plan()` (below) proves the routing wiring but never invokes a provider, a
+  worker pool, or `providers.route` itself. The mission doc's executor interface (Claude Code default / local
+  model / Haiku API / future cloud worker) actually reading an item and writing a structured delta remains
+  future work.
 - No novel-cluster-with-no-Claim signal — the mission doc names this as a candidate selector input, but no
   chunk-level clustering signal currently exists in this codebase to read (T2's duplicate detection is
   finding-level, not chunk-level, per its own admission doc). Adding one is its own future, separately-admitted
@@ -86,3 +87,67 @@ T4's selector half is admitted: a pure, deterministic, $0 module producing a ran
 carrying work list from existing T1/T2/T3/Evidence-Target seams, with no executor wired and no new database
 state. The executor interface, the novel-cluster signal, and the weak/stale-Claim signal remain explicitly
 future, separately-admitted work.
+
+
+## T4 executor — $0 dry run — 2026-09-14 13:1x PT
+
+Kyle asked to get T4 "fixed and shipped." Given a choice between (a) a first $0 slice proving the executor's
+routing wiring, matching how every other rung in this ladder was built, or (b) a full live executor making real
+calls in one pass, he chose (a).
+
+### What was added
+
+A new registered contract, `t4.research` (`neurosearch/contracts.py`), at the cheapest tier (`CHEAP` /
+`claude-haiku-4-5`), `local_capable=True`, `reversible=True`, with a `gate` stating explicitly that
+`claims.set_status` remains the only promotion door and every output is proposed state. `contracts.policy_violations()`
+remains empty and `contracts.decision()` reports `verdict: "cheapest"` for it — no `tier_reason` is needed at the
+cheapest tier.
+
+`neurosearch/t4.py` gains `plan(project_id, *, limit=None, chunk_limit=None)`: it calls `select()` for the ranked
+work list, then attaches routing metadata to every item using `contracts.contract("t4.research")` (a pure lookup)
+and `providers.current_policy()` (a pure thread-local read) — both zero-cost, side-effect-free reads. It
+deliberately does **not** call `providers.route()`: that function's local branch can start a real Claude Code
+health probe (a genuine, if small, subscription spend per `claude_code.health()`'s own docstring: "the probe is
+one tiny prompt — it does spend a few subscription tokens") whenever the cached health verdict has expired. This
+slice's whole purpose is to prove the wiring costs nothing, not to guess whether now is a good moment to spend a
+few tokens on a health check — so it reports what routing *would be eligible* (`eligible_for_local`, a
+`routing_note`) without ever confirming Claude Code's live health. Every item's `executed` field is `False`.
+
+### Why this satisfies "reuses providers.route + execution_policy" without calling it
+
+The mission doc's requirement is that T4 use the SAME seam every other task in this codebase uses rather than
+inventing new machinery — not that this particular dry-run slice must trigger a live health probe. `t4.plan()`
+proves the item -> contract -> policy path is wired correctly (verified by
+`test_t4_research_contract_is_registered_and_gate_clean` and `test_plan_wraps_every_selected_item_with_routing_metadata`)
+and that the *same* `contracts.contract()` and `providers.current_policy()` calls every real task depends on
+return the expected values for T4's items. Wiring the actual `providers.route()` call — and the real
+local/API dispatch it enables — is exactly the next, separate step; nothing about this slice's design would need
+to change to add it, since `route()` is a drop-in replacement for the informational `eligible_for_local` logic
+this dry run computes by hand.
+
+### Explicit non-goals (this addition)
+
+- No call to `providers.route()`, so no health probe and no possibility of even a small subscription spend.
+- No structured-delta schema, no candidate finding/Claim writes, no worker-pool job type. These are the real
+  executor's work and remain unbuilt.
+- No change to `providers.py`, `execution_policy`, or the worker pools — T4 reads existing seams as they are, as
+  before.
+
+### Validation
+
+Focused: `tests/test_t4_plan.py` (7 tests: the `t4.research` contract is registered and gate-clean at the
+cheapest tier; every selected item is wrapped with routing metadata; `local_preferred` policy reports eligible
+for local, `api_only` reports not eligible; `plan()` makes no provider call — a monkeypatched `providers.route`
+that raises if called never fires, and job/finding/Claim row counts are unchanged before and after; `limit`
+truncates items the same way `select()` does; two calls return an identical result) — 7 passed. Run together
+with `test_t4_selector.py` and the contract/model-policy suites (27 total) to confirm no interaction.
+
+Full suite: 1,382 of 1,397 pass — the same 15 pre-existing failures as every checkpoint since the T3
+gold-adjudication closure, none introduced. `repo-check` shows the same one pre-existing warning; the new
+`t4.research` contract does not appear in `contracts.policy_violations()`.
+
+### Result
+
+T4 now has both halves represented: a real, tested selector, and a real, tested executor routing seam proven at
+$0. The only remaining step to a fully live T4 is wiring `providers.route()` plus the actual provider/local call
+and a structured-delta write path — deliberately left for a future rung, per Kyle's choice.

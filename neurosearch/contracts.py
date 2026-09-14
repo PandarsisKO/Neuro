@@ -182,6 +182,15 @@ def _base() -> dict[str, InferenceContract]:
                           tier_reason="irreversible", gate="schema claim-set-v1; idempotent by extraction_hash", thinking="disabled", max_output_tokens=5000, max_output_ceiling=8000, timeout=CLAIMS_TIMEOUT,
                           max_attempts=2, backoff=(1.0,), batch_allowed=True, schema="claim-set-v1",
                           notes="normalise candidate Claims (qualifiers, type by evidence requirement, topic, freshness class, merges) + propose evidence targets"),
+        # T4 (0.63.90): the executor half of the Batch Research Executor. Reads one t4.select() item and
+        # produces structured deltas as PROPOSED state only -- claims.set_status remains the only promotion door.
+        # Cheapest tier: this is exactly the kind of $0-by-default, gap-driven research pass the tier ladder
+        # exists to keep cheap unless a real reason says otherwise. Not yet called anywhere -- t4.plan() routes
+        # items through this contract + providers.current_policy() without invoking providers.route() (no health
+        # probe, no spend); a future rung wires the real provider/local call.
+        InferenceContract("t4.research", "anthropic", CHEAP, local_capable=True, reversible=True,
+                          gate="claims.set_status remains the only promotion door; every t4.research output is proposed state, never applied directly",
+                          notes="T4 executor (selector: neurosearch.t4.select); backend chosen per-item by providers.route at call time, same seam every other task uses; unwired as of 0.63.90 -- see docs/T4-ADMISSION-2026-09-14.md"),
         InferenceContract("discover.quick", "anthropic", CHEAP, local_capable=True, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
                           reversible=True, gate="schema discovery-v2; every suggestion is reviewed before anything is acquired",
                           notes="structured (F3); discover.verify stays on the citation-capable text/tool path — citations and output_config.format are incompatible"),

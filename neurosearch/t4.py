@@ -15,9 +15,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import db, knowledge, t1, t3
+from . import contracts, db, knowledge, providers, t1, t3
 
 SELECTOR_VERSION = "t4-selector-v1"
+PLAN_VERSION = "t4-plan-v1"
+EXECUTOR_TASK = "t4.research"
 
 # Tier-0 record kinds whose presence on an already-unexplained chunk raises its priority: these are the
 # "numbers and procedure that nothing has ever read" the mission doc names as worth surfacing first.
@@ -95,3 +97,37 @@ def select(project_id: str, *, limit: int | None = None, chunk_limit: int | None
             "by_kind": {kind: sum(1 for i in items if i["kind"] == kind)
                         for kind in ("unexplained_chunk", "open_evidence_target")},
             "items": selected}
+
+
+def plan(project_id: str, *, limit: int | None = None, chunk_limit: int | None = None) -> dict[str, Any]:
+    """The executor's dry run: route ``select()``'s ranked items through the SAME contract and execution-policy
+    seam a real executor call would use, without making one.
+
+    This deliberately stops short of calling ``providers.route`` -- that function's local branch can start a
+    Claude Code health probe (a real, if small, subscription spend) whenever the cached verdict has expired, and
+    this function's whole purpose is to prove the wiring at $0, not to guess whether now is a good moment to
+    spend a few tokens on a health check. It reads only ``contracts.contract(EXECUTOR_TASK)`` (a pure lookup) and
+    ``providers.current_policy()`` (a pure thread-local read) -- both zero-cost and side-effect-free -- and
+    reports what routing WOULD be eligible. No provider is called, no health probe runs, no row is written, and
+    ``claims.set_status`` -- the only promotion door -- is never approached.
+
+    Wiring a live call is future work: the point of this slice is that it requires adding the call itself where
+    ``executed`` is currently always ``False``, not inventing new routing machinery to carry it.
+    """
+    selection = select(project_id, limit=limit, chunk_limit=chunk_limit)
+    c = contracts.contract(EXECUTOR_TASK)
+    policy = providers.current_policy()
+    eligible_for_local = bool(c.local_capable) and policy not in ("api_only", "api_requested")
+    if policy in ("api_only", "api_requested"):
+        routing_note = f"api only: execution policy is {policy!r}"
+    elif not c.local_capable:
+        routing_note = "api only: t4.research is not local-capable"
+    else:
+        routing_note = "eligible for the local (Claude Code) backend, pending providers.route()'s health check at call time"
+    items = [{**item, "executor_task": EXECUTOR_TASK, "executor_model": c.model,
+             "eligible_for_local": eligible_for_local, "executed": False} for item in selection["items"]]
+    return {"plan_version": PLAN_VERSION, "project_id": project_id, "selector_version": selection["selector_version"],
+            "executor_task": EXECUTOR_TASK, "executor_model": c.model, "policy": policy,
+            "eligible_for_local": eligible_for_local, "routing_note": routing_note,
+            "count": selection["count"], "by_kind": selection["by_kind"], "items": items,
+            "note": "dry run only: no provider call was made; providers.route() decides real backend/health at call time (not yet wired)"}
