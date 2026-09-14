@@ -1689,3 +1689,47 @@ proposal had. The merge itself was done in an earlier session; only the proposal
 ("after merging, remove or archive this proposal") had been left undone, leaving two nominally-competing
 documents. Moved to `docs/design-audit/archive/AUDIT-V2-PROPOSED-2026-09-12.md` with a note mapping each
 proposed section to where it landed in `AUDIT.md`, rather than deleted.
+
+## Overnight autonomous run — kickoff — 2026-09-14 (evening)
+
+Kyle authorized an unattended run tonight while he sleeps, scoped as follows:
+
+- **Mission stays Audit + Design.** Codex's files (`neurosearch/t3.py`, `tests/test_t3_adversarial.py`) stay
+  untouched even though Codex is off for the night — he may resume them in the morning.
+- **Work:** a fresh `AUDIT.md` FULL AUDIT against the current build (this ladder's own F0–P1 work is done and
+  closed — see the entries above), then build and execute a new `ladder.md` rung by rung with the same landing
+  discipline used all evening: collision-check main, targeted `node --check`, the three deterministic gate
+  files, the `test_core`/`test_indestructible` sweep, live verification, a `HANDOFF.md` entry per rung, repin
+  `.worktrees/f0`, standard commit attribution. `AUDIT.md` Phase 9's own bounded stopping rule governs when the
+  audit closes — no artificial time limit.
+- **Plus:** a conservative repo-hygiene/vestigial pass alongside it (Kyle pointed at `VESTIGIAL-INVENTORY.md`,
+  dated 2026-09-12 and possibly stale in places) — archive or flag clearly stray/dead files, never delete
+  data or anything the inventory itself says needs `PRODUCT-SCHEDULER.md` admission.
+- **Money:** stays at $0 — Phase 3's interactive workflow verification happens on the audit instance
+  (`NEUROSEARCH_FAKE_AI=1`, $0 budgets, never real spend); any live-instance check stays read-only navigation,
+  same as every rung tonight.
+- **Given more autonomy tonight** ("run wider, less asking" — Kyle's words) — proceeding on judgment calls within
+  this scope rather than stopping to ask, same as any other session, but staying inside these boundaries and
+  documenting decisions here rather than only in chat.
+
+### Infrastructure set up this session, before Kyle went to bed
+
+The single biggest blocker all evening was needing Kyle to manually restart the server from his own terminal
+every time a CSS/JS-only change needed a fresh process to serve it (`./start --reload` only watches `*.py`/
+`*.html` — see `neurosearch/cli.py`'s `reload_includes`). That's solved now:
+
+- **Finder double-click, not Terminal typing.** Computer-use access to Terminal is restricted to click-only
+  (no keystrokes — a deliberate safety tier for terminals/IDEs) but Finder is fully controllable. Double-clicking
+  a `.command` launcher via Finder starts/restarts a process without typing anything, verified working this
+  session on `RUN THIS - Audit Instance.command`. The same works for `start.command`/`restart.command` if the
+  live app (port 8000) ever needs a restart overnight.
+- **`KEEP AWAKE - overnight.command`** (new, this commit) — `caffeinate -disu` in its own window, started
+  before Kyle went to bed. Keeps the Mac from sleeping without touching System Settings; closing that window
+  (or a reboot) lets it sleep normally again.
+- **The audit instance is up** — port 8788, `NEUROSEARCH_FAKE_AI=1`, $0 budgets, login token `audit`, serving
+  `.worktrees/f0`'s current pin (confirmed `v0.63.72`, signed in and reachable via the browser tools). This is
+  where every state-changing Phase 3 workflow walk happens tonight — never the live instance.
+- **The live app (port 8000)** is running with `--reload` for normal design-fix verification (read-only
+  navigation only, per `AUDIT.md` §2 — same as every rung tonight).
+
+Next: Phase 0 of a fresh FULL AUDIT.
