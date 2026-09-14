@@ -2280,3 +2280,15 @@ Removed the intentional operational helper from the repository root without dele
 was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command`. This preserves the double-clickable helper and
 its active `caffeinate` process while allowing the repository hygiene gate to remain strict. `repo-check` is now PASS;
 no allowlist expansion was made.
+
+## T5 transport correction and cleanup validation — 2026-09-14 12:31 PT
+
+The earlier “invalid Anthropic API key” diagnosis is superseded by Claude's transport evidence: this device's
+MITM egress proxy synthesized the `401`; the credential succeeded from an allowlisted environment. A single
+bridge-assisted T5 adjudication was real and cost `$0.003768` (474 in / 282 out), with cost ledger and suggested
+note `29360` recorded; no Claim or tension promotion occurred. The bridge intentionally left the low-level
+invocation/breaker ledger untouched. No retry is allowed under the current allowance.
+
+Post-cleanup validation is **1,436 passed, 1 warning**; `repo-check` and commit-bound `release-check --no-pytest`
+pass at `296d20f`. The old breaker-leak report is currently not reproducible in ordinary test order; add a
+targeted fresh-database isolation regression before treating that condition as closed.

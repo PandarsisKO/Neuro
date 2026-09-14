@@ -2,21 +2,26 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Local `main` is at documentation tip `0ac749c`; the latest tested product-code checkpoint is `1e6b632`.
+- Local `main` is at cleanup tip `296d20f` (Claude's T5 evidence correction is in ancestor `39f27f4`); the latest tested product-code checkpoint is `1e6b632`.
   App/package version is `0.63.90`.
-- The latest full-suite observation before this cleanup was **1,435 passed, 1 failed**; the sole failure was the
+- The post-cleanup full suite is **1,436 passed, 1 warning**. The sole pre-cleanup failure was the
   release-check test asserting PASS while `repo-check` saw Kyle's operational `KEEP AWAKE - overnight.command`
   root entry. That helper was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command` without broadening
-  the repository allowlist, and the failing test now passes in isolation. No paid provider call was made.
+  the repository allowlist, and the failing test now passes in isolation; `repo-check` is now PASS and
+  commit-bound `release-check --no-pytest` is PASS at `296d20f` (artifact `evals/release/release-check-0.63.90-296d20f-20260914-122639.json`).
+  No paid provider call was made by this cleanup.
 - T3's exact-span gold gate is **closed**: 252 predicted records across the 60-row seeded queue were manually
   adjudicated with zero false positives; every per-kind and overall precision floor is 1.00. The two remaining
   T3 issues are recall-only structural gaps and are explicitly non-blocking.
 - T4 is shipped as a deterministic selector plus a tested **$0 executor-routing dry run**. It does not call
   `providers.route()`, start a worker, invoke a provider, or write research state. A fully live executor remains a
   separately admitted future step requiring provider routing and structured-delta persistence.
-- T5 is shipped as a deterministic escalation proposal and a real adjudication-call path. The real call is forced
-  onto `api_only` and is blocked by the invalid Anthropic API key (`401 Unauthorized`); no cost was recorded and
-  no note was written. Do not retry until the credential is refreshed.
+- T5 is shipped as a deterministic escalation proposal and a real adjudication-call path. One real adjudication
+  was executed through a documented egress bridge because this device's MITM egress returns a false `401` for
+  `api.anthropic.com`; the key was valid. It cost **$0.003768** (474 input / 282 output tokens), recorded in the
+  real cost ledger, and produced suggested note `29360`; Claim and tension status stayed unchanged. Do not retry
+  or spend further with T5 while the weekly allowance is constrained; any future native call must first have a
+  verified egress path.
 - T6's assumption ledger is shipped and informational only; drift warns and never fails a release.
 - Claude's design/audit work is complete through all 22 declutter findings. D0/D1/F0 remain frozen; any future
   design work starts from fresh evidence.

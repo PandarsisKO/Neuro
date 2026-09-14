@@ -470,3 +470,15 @@ but live execution is blocked by the invalid Anthropic credential; T6 is shipped
 wire live T4 provider execution, or add structured-delta persistence without the required credential and explicit
 admission. The immediate safe work is deterministic test-isolation, pure side-effect coverage, and release/document
 reconciliation.
+
+## Control-plane reconciliation — 2026-09-14 12:31 PT
+
+Claude's later T5 evidence supersedes the historical “invalid key” wording above: the device egress proxy, not
+the credential, returned the synthetic `401`. One adjudication ran through a documented bridge at `$0.003768`
+and wrote suggested note `29360`; no Claim or tension status changed. Do not retry T5 or make other paid calls
+while the weekly allowance is constrained.
+
+The low-cost cleanup has now removed the root keep-awake warning without broadening `repo-check`: full pytest is
+**1,436 passed, 1 warning**, `repo-check` passes, and commit-bound `release-check --no-pytest` passes at `296d20f`.
+The next Codex-owned items are explicit test regressions for fresh-database breaker isolation and blocked-T5
+no-mutation, followed by the ordinary full release ritual. Claude retains ownership of audit/design documents.

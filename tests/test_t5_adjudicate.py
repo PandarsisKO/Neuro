@@ -3,7 +3,7 @@ tension the trigger didn't flag, writes its verdict as a suggested finding, neve
 
 import pytest
 
-from neurosearch import contracts, db, t5
+from neurosearch import contracts, db, providers, t5
 
 
 @pytest.fixture
@@ -113,3 +113,28 @@ def test_adjudicate_records_a_cost(t5_adj_db):
 
     assert isinstance(result["cost"], float)
     assert result["model"]
+
+
+def test_adjudicate_auth_failure_has_no_cost_note_or_status_mutation(t5_adj_db, monkeypatch):
+    """A credential/transport rejection must fail before T5 can publish a verdict or charge the ledger."""
+    project_id = db.create_project("T5 blocked credential", "test")["id"]
+    _claim(project_id, "claim-1")
+    _tension(project_id, "tsn-1", "CONTRADICTION", impact="high", claim_id="claim-1")
+    db.connect().commit()
+    before_usage = db.connect().execute("SELECT COUNT(*) FROM usage").fetchone()[0]
+    before_notes = db.connect().execute("SELECT COUNT(*) FROM project_notes").fetchone()[0]
+    before_breaker = db.connect().execute("SELECT state, failures FROM circuit_breakers WHERE operation=?", ("anthropic:messages",)).fetchone()
+
+    def rejected(*args, **kwargs):
+        raise providers.ProviderError("AUTH", RuntimeError("egress rejected"), 1)
+
+    monkeypatch.setattr(t5.providers, "invoke", rejected)
+    with pytest.raises(providers.ProviderError, match="AUTH"):
+        t5.adjudicate(project_id, "tsn-1")
+
+    assert db.connect().execute("SELECT COUNT(*) FROM usage").fetchone()[0] == before_usage
+    assert db.connect().execute("SELECT COUNT(*) FROM project_notes").fetchone()[0] == before_notes
+    after_breaker = db.connect().execute("SELECT state, failures FROM circuit_breakers WHERE operation=?", ("anthropic:messages",)).fetchone()
+    before_state = (before_breaker["state"], before_breaker["failures"]) if before_breaker else None
+    after_state = (after_breaker["state"], after_breaker["failures"]) if after_breaker else None
+    assert after_state == before_state

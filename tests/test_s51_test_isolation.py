@@ -31,3 +31,27 @@ def test_resolved_data_dir_is_a_private_temp_dir_not_the_repo():
     assert Path(tempfile.gettempdir()).resolve() in d.parents or "ns_" in d.name, f"unexpected data dir: {d}"
     from neurosearch.config import settings
     assert Path(settings.data_dir).resolve() == d, "settings.data_dir disagrees with the environment"
+
+
+def test_fresh_database_does_not_inherit_an_open_provider_breaker(tmp_path, monkeypatch):
+    """A provider outage in one isolated test database cannot poison the next database."""
+    from neurosearch import breakers, db
+    from neurosearch.config import settings
+
+    first = tmp_path / "first"
+    first.mkdir()
+    monkeypatch.setattr(settings, "data_dir", first)
+    db._local.conn = None
+    db.init_db()
+    for _ in range(breakers.FAILURE_THRESHOLD):
+        breakers.record_failure("openai:embeddings", "OVERLOADED", "isolation-test")
+    assert breakers.get("openai:embeddings")["state"] == breakers.OPEN
+
+    second = tmp_path / "second"
+    second.mkdir()
+    db._local.conn = None
+    monkeypatch.setattr(settings, "data_dir", second)
+    db.init_db()
+    state = breakers.get("openai:embeddings")
+    assert state["state"] == breakers.CLOSED
+    assert state["failures"] == 0
