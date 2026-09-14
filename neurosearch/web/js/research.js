@@ -1043,14 +1043,29 @@ globalThis.splitFinding = function splitFinding(n) {
   t = t.replace(/[.!?]$/, ''); t = t.charAt(0).toUpperCase() + t.slice(1);
   return { title: t, body: rest };
 }
+// CL-3: DESIGN.md §6's Workbench-row rule — title line, one meaning line underneath, ≤2 badges, fixed row
+// height, depth in a drawer/expand rather than the row growing into a card — already governs Sources and (via
+// C1's useBadges()) the badges here. This row was still five to six lines: importance dots, title, a 2–3 line
+// body, a wrapping badge/area/citation line, and a quote toggle. It's now two lines — title (truncating), then
+// body (truncating) with its badges and source trailing on the same line — with area, the full citation list and
+// the quote moved into a click-to-open detail strip instead of always being on screen.
 globalThis.findingCard = function findingCard(n, actions) {
   const c = (n.citations || [])[0];
   const { title, body } = splitFinding(n);
   const imp = n.importance ? `<span class="fi" title="importance ${n.importance}/5">${'●'.repeat(n.importance)}<span class="dim">${'●'.repeat(5 - n.importance)}</span></span>` : '<span class="fi"></span>';
+  const srcChip = !c ? '' : c.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(c.title || 'source')} — removed</span>`
+    : `<span class="chip" title="${esc(c.title || '')}${c.timestamp ? ' @ ' + c.timestamp : ''}">▶ ${esc(c.title && c.title.length > 24 ? c.title.slice(0, 22) + '…' : c.title || '')}${c.timestamp ? ' @ ' + c.timestamp : ''}</span>`;
+  const extraCitations = (n.citations || []).length > 1;
+  const hasDetail = !!(n.area || c?.snippet || extraCitations);
+  const detail = !hasDetail ? '' : `<div class="detail" hidden>
+      ${n.area ? `<span class="muted" title="Research Area">Area: ${esc(n.area)}</span> ` : ''}
+      ${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title)} @ ${x.timestamp}</a>`).join('')}
+      ${c?.snippet ? `<div class="quote">“${esc(c.snippet)}”</div>` : ''}
+    </div>`;
   return `<div class="f">${imp}<div class="main">
       <div class="ttl">${esc(title)}</div>
-      ${body ? `<div class="txt">${esc(body)}</div>` : ''}
-      <div class="meta">${n._badges ? n._badges + ' ' : ''}${n.area ? `<span class="muted" title="Research Area">${esc(n.area)}</span> ` : ''}${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
+      <div class="row2">${body ? `<span class="txt">${esc(body)}</span>` : ''}${n._badges ? n._badges : ''}${srcChip}${hasDetail ? `<a href="#" class="qtoggle" title="area, full source list and quote" onclick="const d=this.closest('.main').querySelector('.detail');d.hidden=!d.hidden;return false">⋯</a>` : ''}</div>
+      ${detail}
     </div><div class="act">${actions}</div></div>`;
 }
 globalThis.noteStatus = async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }
