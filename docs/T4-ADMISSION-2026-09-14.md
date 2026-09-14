@@ -502,3 +502,36 @@ Focused: 3/3 new, 60/60 across the whole claims-adjacent test set (`test_k6_clai
 chunks: 15 failures, byte-identical to every checkpoint today -- zero new failures. `repo-check` PASS. Re-ran
 `claims.harvest()` directly against Kyle's real business-acquisition project (still the $0, no-model-call path)
 to confirm the fix against the actual data that hit the bug: 3.4 seconds, no error, zero duplicate claims.
+
+
+## E3 — first native live run, on Kyle's Mac with real workers — 2026-09-14
+
+Kyle ran `neurosearch t4 execute c752ed152ec942dd97b9a94c3f1b3b96 --budget 1 --max-sources 5 --live` himself, on
+his own machine, with `neurosearch worker` -- the first time `t4.execute()` (E2) touched a provider for real
+through the app's own routing rather than the bridge.
+
+Sources run (top 5 by relevance): "BUYING & BUILDING -- SMALL BUSINESS ACQUISITION NOTES", "Acquisition Ace",
+"Step-by-Step Guide to Buying a Small Business with Little Money Down", "Watch This Before You Apply For An SBA
+Loan", "Expansion Through Acquisition (SBA 0% Down)". 195 findings suggested (64/46/11/40/34). All 5 completed
+within about 90 seconds combined.
+
+Cost: **$0**, not the estimated $0.0523. `providers.route`/`claude_code.local_is_free()` is `True` on this
+machine, so every job ran through Kyle's local Claude Code execution (his subscription), the free path the plan
+itself named as the alternative to metered API spend ("If it is true, expect ~$0 and slower"). This is the
+documented branch, not a miss against the estimate -- `usage.estimate_findings` prices the METERED path, which
+this run never used. The estimator does not need recalibrating from this data point; a future run through the
+API (`local_is_free() == False`, or forced via `execution_policy="api_requested"`) is the one that would
+calibrate `PROBE_DISCOUNT` and the per-window estimate against real dollars.
+
+Gate check (per the plan): estimate-vs-actual -- N/A, see above (free path, not the metered one the estimate
+prices); no source paid for twice -- confirmed, `work_units` count equals windows read for all 5 sources (1 and
+1, every source); `is_current` -- confirmed `True` for all 5 post-run. E3's gate is satisfied.
+
+The one real cost of this run was the concurrency bug the batched completion pattern exposed (see the harvest()
+race section above) -- found, fixed, tested, and verified against this exact project's real data with the fix
+in place, all $0.
+
+**E3: done.** Next per the plan is E4 -- Kyle's kept-rate review of these 195 findings in the Findings
+workbench (the plan's gate: at least 100 findings adjudicated across >=4 sources; this run cleared that with
+room to spare). Nothing past E4 can be measured without it -- E5's Haiku/Sonnet decision rule needs a kept rate
+to compare against.
