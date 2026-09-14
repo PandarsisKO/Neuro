@@ -4,11 +4,10 @@ Current orientation source for the Neuro Search mission; older state files remai
 
 - Local `main` is at documentation tip `0ac749c`; the latest tested product-code checkpoint is `1e6b632`.
   App/package version is `0.63.90`.
-- Full pytest remains **1,382 of 1,397 passing**. The 15 failures are the same pre-existing set documented in
-  `HARDENING.md`: fake-OpenAI embedding-breaker state leaking across test order, the native worker-restart timing
-  race, one recall-order flake, and related release fixtures. `repo-check` has the same intentional warning for
-  Kyle's `KEEP AWAKE - overnight.command`; commit-bound `release-check --no-pytest` remains FAIL for those known
-  conditions. No paid provider call was made during this checkpoint.
+- The latest full-suite observation before this cleanup was **1,435 passed, 1 failed**; the sole failure was the
+  release-check test asserting PASS while `repo-check` saw Kyle's operational `KEEP AWAKE - overnight.command`
+  root entry. That helper was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command` without broadening
+  the repository allowlist, and the failing test now passes in isolation. No paid provider call was made.
 - T3's exact-span gold gate is **closed**: 252 predicted records across the 60-row seeded queue were manually
   adjudicated with zero false positives; every per-kind and overall precision floor is 1.00. The two remaining
   T3 issues are recall-only structural gaps and are explicitly non-blocking.

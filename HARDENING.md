@@ -2273,3 +2273,10 @@ fake-OpenAI breaker state that leaks across test order, prove T4/T5 proposal and
 provider call or unintended write, and rerun the release ritual. The Anthropic key remains invalid; no retry or paid
 call is authorized. The `KEEP AWAKE - overnight.command` root warning and native worker-restart timing race remain
 known, separately scoped conditions.
+
+## Root hygiene cleanup — 2026-09-14 12:23 PT
+
+Removed the intentional operational helper from the repository root without deleting it: `KEEP AWAKE - overnight.command`
+was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command`. This preserves the double-clickable helper and
+its active `caffeinate` process while allowing the repository hygiene gate to remain strict. `repo-check` is now PASS;
+no allowlist expansion was made.
