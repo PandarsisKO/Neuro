@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.87">
+<meta name="neurosearch-ui-version" content="0.63.88">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -145,7 +145,7 @@
         </div>
       </details>
       <div id="bootCard" class="card hidden" style="border-color:var(--accent)"></div>
-      <div id="jobsCard" class="card hidden"><b>In progress</b><div id="backlog"></div><div id="jobs"></div></div>
+      <div id="jobsCard" class="card hidden"><details class="jobsPanel" id="jobsDetails"><summary id="jobsSummary">In progress</summary><div id="backlog"></div><div id="jobs"></div></details></div>
       <div id="reviewWrap"></div>
       <div id="captureCard" class="card hidden" style="border-color:var(--accent)"></div>
       <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
@@ -225,7 +225,7 @@
               <select id="fbImp" onchange="loadWorkbench()" class="w-auto"><option value="">any</option><option value="5">●●●●● only</option><option value="4">4 and up</option><option value="3">3 and up</option></select>
             </label>
             <label class="row" style="gap:4px;width:auto">Used:
-              <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">🧠 became a Claim</option><option value="never">never used</option></select>
+              <select id="fbUsed" onchange="loadWorkbench()" class="w-auto"><option value="">anywhere or not</option><option value="plan">📋 in the plan</option><option value="chat">💬 cited in chat</option><option value="claim">became a Claim</option><option value="never">never used</option></select>
             </label>
             <label class="row" style="gap:4px;width:auto">Source:
               <select id="fbStale" onchange="loadWorkbench()" class="w-auto"><option value="">any state</option><option value="current">current</option><option value="stale">stale</option></select>

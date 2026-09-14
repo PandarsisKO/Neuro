@@ -66,6 +66,15 @@
   .filtersPanel>summary::before{content:'▸ Filters';display:inline-block}
   .filtersPanel[open]>summary::before{content:'▾ Filters'}
   .filtersPanel>.filtersBody{margin-top:8px}
+  /* SM-6: the job console (spend line, Pause/Cancel/Budget controls, per-job rows) used to render open by
+     default above Sources' filter row -- duplicating the sidebar footer's own spend figure (RD-3) and outranking
+     the workbench the user came for. It now collapses to one summary line; the console itself is one reveal
+     away, with nothing lost -- same controls, same rows, once opened. */
+  .jobsPanel{margin:0}
+  .jobsPanel>summary{cursor:pointer;list-style:none;font-weight:600;font-size:13px}
+  .jobsPanel>summary::-webkit-details-marker{display:none}
+  .jobsPanel>summary::before{content:'▸ ';display:inline}
+  .jobsPanel[open]>summary::before{content:'▾ ';display:inline}
   .srcAddSummary{cursor:pointer;font-weight:600;list-style:none}
   .srcAddSummary::-webkit-details-marker{display:none}
   .srcAddSummary::before{content:'▸ ';display:inline-block}

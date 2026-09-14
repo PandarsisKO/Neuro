@@ -61,7 +61,9 @@ def test_overview_is_deterministic_ranked_and_costs_nothing(monkeypatch):
     assert [x["score"] for x in nxt] == sorted((x["score"] for x in nxt), reverse=True)
     # the stale rates Claim (importance 4, high impact) outranks the lone-viewpoint watch-out and the corroboration question
     assert nxt[0]["type"] == "watchout" and nxt[0]["kind"] == "STALE"
-    assert nxt[0]["claims"] == 1 and nxt[0]["title"] == "Guarantee fee rates evidence may be outdated"   # one Claim → titled by ITS label, not the area
+    # RD-5 (declutter audit): titles no longer repeat the subject the area chip already shows -- both the
+    # one-Claim and many-Claim cases share the same plain "what is wrong" title now.
+    assert nxt[0]["claims"] == 1 and nxt[0]["title"] == "Evidence may be outdated"
     # every item says what to do, what it costs and what happens if ignored — never a raw tension row
     for x in nxt:
         assert x["if_ignored"]
@@ -125,15 +127,17 @@ def test_watchouts_are_issues_not_rows(monkeypatch):
     assert w["claims"] == len(stale_rows) and len(w["underlying"]) == len(stale_rows)
     assert "may be outdated" in w["title"] and w["action"]["label"] == "Find current evidence" and w["action"]["cost"] == "$0"
     assert w["detail"].startswith(f"{len(stale_rows)} Claims rel")
-    # breadth raises the score but is capped; a single-Claim issue is titled by that Claim's own label, a many-Claim one by its area
+    # breadth raises the score but is capped
     assert w["score"] == rv.BASE["watchout:STALE"] + rv.IMPORTANCE_WEIGHT * 4 + rv.IMPACT["high"] + min(rv.BREADTH_CAP, rv.BREADTH_PER_CLAIM * (len(stale_rows) - 1))
-    assert w["area"] in w["title"]
+    # RD-5: the title used to repeat the area string the chip beside it already shows; now it never does, in
+    # either the one-Claim or many-Claim case -- the chip is the only place "where" is said.
+    assert w["area"] not in w["title"] and w["title"] == "Evidence may be outdated"
 
 
 def test_missing_perspective_names_what_is_absent(monkeypatch):
     pid, _ = _ready(monkeypatch)
     mp = [w for w in rv.watchouts(pid) if w["kind"] == "MISSING_PERSPECTIVE"]
-    assert mp and "no " in mp[0]["title"] and "voice yet" in mp[0]["title"]
+    assert mp and mp[0]["title"].lower().startswith("no ") and "voice yet" in mp[0]["title"]
     assert mp[0]["action"]["label"] == "Find the missing perspective"
 
 

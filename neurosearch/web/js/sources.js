@@ -155,19 +155,22 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
   // The stated rule, so the choice is never arbitrary: primary = the one action that makes progress on the reason
   // this row is in the list right now. Ingest/Retry when it is not yet in the library; analyse when it has not
   // been read; review what it gave once it has — matching DESIGN.md's outcome-over-implementation labelling.
+  // CL-1: this was `.primary` on every row regardless of state -- up to 889 filled primary buttons on one
+  // surface, against DESIGN.md's "one dominant primary action per decision region." Sources' one primary is
+  // the "+ Add sources" disclosure (not a .primary button at all); every row action here is plain.
   let primary = '';
-  if (s.status === 'skipped') primary = `<button class="small primary" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>`;
-  else if (canRetry) primary = `<button class="small primary" onclick="retry('${s.id}')">Retry</button>`;
+  if (s.status === 'skipped') primary = `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>`;
+  else if (canRetry) primary = `<button class="small" onclick="retry('${s.id}')">Retry</button>`;
   else if (s.status === 'ready') primary = s.analysed
-    ? (s.approved ? '' : `<button class="small primary" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button>`)
-    : `<button class="small primary" title="Reads this source with the model to extract findings — uses your model budget" onclick="suggestSource('${s.id}')">Suggest findings</button>`;
+    ? (s.approved ? '' : `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button>`)
+    : `<button class="small" title="Reads this source with the model to extract findings — uses your model budget" onclick="suggestSource('${s.id}')">Suggest findings</button>`;
 
   // Rare, source-type-specific and already high-value when present — F0 addendum 4's bulk-review baseline is why
   // these stay a second visible control instead of folding into the overflow with the genuinely rare ones.
   let special = '';
-  if (s.status === 'ready' && s.platform === 'spreadsheet') special = `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>`;
+  if (s.status === 'ready' && s.platform === 'spreadsheet') special = `<button class="small" onclick="openCalc('${s.id}')">🧮 Calculator</button>`;
   const allVideos = s.video_embeds || [], doneVideos = s.video_embeds_added || [], leftVideos = allVideos.filter(v => !doneVideos.includes(v));
-  if (s.status === 'ready' && leftVideos.length) special += `<button class="small primary" title="This page embeds ${leftVideos.length} video (${esc(leftVideos.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)).join(', '))}). Adding it downloads and transcribes it, which costs money — the page's own notes were free." onclick="addPageVideos('${s.id}', ${leftVideos.length})">🎬 Add the ${leftVideos.length} video${leftVideos.length === 1 ? '' : 's'} on this page</button>`;
+  if (s.status === 'ready' && leftVideos.length) special += `<button class="small" title="This page embeds ${leftVideos.length} video (${esc(leftVideos.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)).join(', '))}). Adding it downloads and transcribes it, which costs money — the page's own notes were free." onclick="addPageVideos('${s.id}', ${leftVideos.length})">🎬 Add the ${leftVideos.length} video${leftVideos.length === 1 ? '' : 's'} on this page</button>`;
   else if (s.status === 'ready' && allVideos.length) special += `<span class="tag" title="${esc(doneVideos.join(', '))}">🎬 ${doneVideos.length} video${doneVideos.length === 1 ? '' : 's'} from this page added</span>`;
   if (s.status === 'ready' && s.long && s.depth === 'deep') special += `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>`;
 

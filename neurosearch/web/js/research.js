@@ -89,9 +89,10 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
   let d; try { d = await api(`/api/projects/${state.project.id}/sources/${sid}/digest`); }
   catch (e) { $('#dlgBody').innerHTML = `<div class="muted">could not load: ${esc(e.message)}</div>`; return; }
   const s = d.source, v = d.value, st = d.staleness, u = d.used_in;
-  const badge = f => { const b = []; if (f.used.plan) b.push('<span class="tag" title="cited by the Master Plan">📋 plan</span>');
-    if (f.used.chat) b.push(`<span class="tag" title="cited in ${f.used.chat} chat answer(s)">💬 ${f.used.chat}×</span>`);
-    if (f.used.claim) b.push(`<span class="tag" title="became or evidences a Claim">🧠 ${esc(f.used.claim)}</span>`);
+  // SM-3: same fix as useBadges() above -- 🧠 reserved for the Research nav item, text names its subject.
+  const badge = f => { const b = []; if (f.used.plan) b.push('<span class="tag" title="cited by the Master Plan">in plan</span>');
+    if (f.used.chat) b.push(`<span class="tag" title="cited in ${f.used.chat} chat answer(s)">cited ${f.used.chat}×</span>`);
+    if (f.used.claim) b.push(`<span class="tag" title="became or evidences a Claim">Claim: ${esc(f.used.claim)}</span>`);
     return b.join(' '); };
   const group = (key, label, actions) => {
     const list = d.findings[key] || []; if (!list.length) return '';
@@ -179,7 +180,10 @@ globalThis.renderShell = function renderShell() {
   const v = RES.v; if (!v) return;
   const s = v.summary || {};
   const openQ = RES.qs.filter(q => q.status === 'open'), issues = RES.wos.filter(w => w.impact === 'high' || w.impact === 'medium');
-  const tabs = [['overview', 'Overview', null], ['questions', 'Open questions', openQ.length], ['watchouts', 'Watch-outs', RES.wos.length],
+  // SM-5: this tab used to count the paged client list (openQ.length) while the Overview stat tile beside it
+  // counts the server total (s.important_questions) -- same screen, same concept, an order of magnitude
+  // apart. The tile already has the number; the tab drops its own.
+  const tabs = [['overview', 'Overview', null], ['questions', 'Open questions', null], ['watchouts', 'Watch-outs', RES.wos.length],
                 ['areas', 'Areas', (v.areas || []).length], ['claims', 'Claims', s.claims_total], ['tools', 'Research tools', null]];
   $('#resNav').innerHTML = tabs.map(([k, l, n]) => `<span class="chipf ${RES.pane === k ? 'on' : ''}" onclick="resPane('${k}')">${l}${n != null ? ` <b>${n}</b>` : ''}</span>`).join('');
   $('#resHead').innerHTML = v.empty ? 'nothing to research yet — approve some findings first'
@@ -599,6 +603,16 @@ globalThis.loadJobs = async function loadJobs() {
   const coldCounts = {};
   cold.forEach(j => { const k = STATE_LABEL[j.state || j.status] || j.status; coldCounts[k] = (coldCounts[k] || 0) + 1; });
   const coldLine = cold.length ? `<div class="row muted" style="font-size:12.5px;padding:2px 0 6px"><span class="grow">${Object.entries(coldCounts).map(([k, n]) => `${n} ${esc(k)}`).join(' · ')}${JOBSBOX.expanded ? '' : ' — not shown'}</span><button class="small ghost" onclick="toggleJobsBox()">${JOBSBOX.expanded ? '▴ Show only what is running' : `▾ Show all ${show.length}`}</button></div>` : '';
+  // SM-6: one line, always visible, for what the collapsed jobsPanel is hiding -- "N jobs running · doing X" if
+  // anything is actually moving, else a queued count. The full console (spend, Pause/Cancel/Budget, every row)
+  // is unchanged; it is just one click away instead of open by default.
+  const runningNow = show.filter(j => !j._budget && (j.status === 'running' || (j.state || j.status) === 'external_pending'));
+  const queuedCount = show.filter(j => !j._budget).length;
+  const jobsSummaryEl = $('#jobsSummary');
+  if (jobsSummaryEl) jobsSummaryEl.textContent = !queuedCount ? 'In progress'
+    : runningNow.length ? `${runningNow.length} job${runningNow.length === 1 ? '' : 's'} running · ${jobLabel(runningNow[0])}`
+    : `${queuedCount} job${queuedCount === 1 ? '' : 's'} queued`;
+
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">✕ Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">🔄 Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
     <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">🔄 Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
@@ -855,9 +869,12 @@ globalThis.FGRP = { collapsed: new Set() };   // remembers which source-groups t
 // most two badges: the used-summary, and stale-source when it applies — the one that's actually actionable.
 globalThis.useBadges = function useBadges(n) {
   const u = n.used || {}; const used = [], why = [];
-  if (u.plan) { used.push('📋 plan'); why.push('cited as evidence by the Master Plan'); }
-  if (u.chat) { used.push(`💬 ${u.chat}×`); why.push(`cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}`); }
-  if (u.claim) { used.push(`🧠 ${esc(u.claim)}`); why.push(`became or evidences ${u.claim} Claim${u.claim === 1 ? '' : 's'}`); }
+  // SM-3: 🧠 used to prefix this exact text, so "🧠 weak" read as "this finding is weak" when it actually
+  // names the strength of the Claim the finding feeds. 🧠 is reserved for the Research nav item now; every
+  // use-badge here is plain text, and the Claim entry names its subject instead of leaving it ambiguous.
+  if (u.plan) { used.push('in plan'); why.push('cited as evidence by the Master Plan'); }
+  if (u.chat) { used.push(`cited ${u.chat}×`); why.push(`cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}`); }
+  if (u.claim) { used.push(`Claim: ${esc(u.claim)}`); why.push(`became or evidences ${u.claim} Claim${u.claim === 1 ? '' : 's'}`); }
   const b = [];
   if (used.length) b.push(`<span class="tag" title="${esc(why.join(' · '))}">${used.join(' ')}</span>`);
   if (n.source_stale) b.push(`<span class="tag status-warn" title="its source was analysed against older inputs">⚠ stale source</span>`);
@@ -909,9 +926,12 @@ globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
   // workbench one tab away says "Accept" and "Reject" in words, so the same verdict was spoken in one place and
   // mimed in the other. And ✓ already means "this happened" elsewhere in this file (✓ already in your library, ✓
   // added, ✓ attached), so the same glyph was both a status and a command. The verb goes on the button.
+  // CL-1: per-row Approve was `.primary` on every row of a 16,450-row workbench. It is the actual work, so
+  // it stays -- but plain, not primary; the one primary on this surface is #fbBulk's bulk Approve above the
+  // list (CL-2), which is what "one dominant primary action per decision region" asks for at this scale.
   const act = n => st === 'approved' || st === 'all' && n.status === 'approved' ? `<button class="small ghost" title="Remove it from the project's approved findings" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
-    : n.status === 'suggested' ? `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
-    : n.status === 'reserve' ? `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="noteStatus(${n.id},'suggested')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
+    : n.status === 'suggested' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
+    : n.status === 'reserve' ? `<button class="small" title="Keep it — approved findings feed exports, the plan and Claims" onclick="noteStatus(${n.id},'approved')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="noteStatus(${n.id},'suggested')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="noteStatus(${n.id},'dismissed')">✕ Dismiss</button>`
     : `<button class="small ghost" title="Put it back in the review queue" onclick="noteStatus(${n.id},'suggested')">↩ Restore</button>`;
   // PRODUCT-ORGANIZATION.md #1: this list already groups by source (nothing new there) — what was missing was any
   // way to collapse a group, so a project with many sources was still one long scroll of open groups.

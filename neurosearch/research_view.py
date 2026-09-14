@@ -163,8 +163,12 @@ def _label(c: dict[str, Any], titles: dict[int, str]) -> str:
 # ---------------------------------------------------------------- plain language
 
 SUFFICIENCY_TEXT = {"governing": "One current authoritative source can settle this.", "corroborative": "This needs independent confirmation."}
-KIND_TITLE = {"STALE": "{area} evidence may be outdated", "WEAK_CONSENSUS": "Not enough independent evidence on {area}", "CONTRADICTION": "Sources disagree about {area}",
-              "MISSING_PERSPECTIVE": "{area}: we are hearing from one side only", "NOVEL": "A lone viewpoint on {area} has little corroboration"}
+# RD-5 (declutter audit): titles used to repeat the subject the area chip beside them already names
+# ("Deal financing · Seller financing evidence may be outdated" over a chip reading "Deal financing ·
+# Seller financing") whenever a watch-out spans several Claims and subject falls back to the area string
+# itself. Titles now say only what is wrong; areaChip() is where.
+KIND_TITLE = {"STALE": "Evidence may be outdated", "WEAK_CONSENSUS": "Not enough independent evidence", "CONTRADICTION": "Sources disagree",
+              "MISSING_PERSPECTIVE": "We are hearing from one side only", "NOVEL": "A lone viewpoint has little corroboration"}
 KIND_ACTION = {"STALE": ("Find current evidence", "Searches this project, your library and previously seen sources for newer evidence on these Claims. No web search."),
                "WEAK_CONSENSUS": ("Find independent confirmation", "Looks for sources that do not repeat the ones you already have. No web search."),
                "CONTRADICTION": ("Review the disagreement", "Opens the Claims that disagree so you can decide which to rely on."),
@@ -444,11 +448,11 @@ def watchouts(project_id: str, data: dict[str, Any] | None = None, area_map: dic
         importance = max((d["importance"].get(c, 3) for c in cids), default=3)
         planner = any(c in d["planner"] for c in cids)
         subject = d["labels"].get(cids[0], area) if len(set(cids)) == 1 else area   # one Claim → its own label; several → the area
-        title = KIND_TITLE[kind].format(area=subject) if kind in KIND_TITLE else f"{kind.replace('_', ' ').title()}: {subject}"
+        title = KIND_TITLE[kind] if kind in KIND_TITLE else f"{kind.replace('_', ' ').title()}"
         if kind == "MISSING_PERSPECTIVE":
             missing = sorted({m for t in ts for m in _missing_of(t)})
             if missing:
-                title = f"{subject}: no {' or '.join(missing[:2])} voice yet"
+                title = f"No {' or '.join(missing[:2])} voice yet"
         n = len(ts)
         detail = {"STALE": f"{n} Claim{'s' if n != 1 else ''} rel{'y' if n != 1 else 'ies'} on evidence that may no longer be current.",
                   "WEAK_CONSENSUS": f"{n} Claim{'s' if n != 1 else ''} {'are' if n != 1 else 'is'} supported by several sources that repeat one another.",
