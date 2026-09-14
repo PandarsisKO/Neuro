@@ -2013,3 +2013,50 @@ show the same 12 pre-existing sandbox-environment failures as every prior rung, 
 This closes out the data-integrity sweep + Research/Chat second-pass ladder from earlier tonight — all four
 findings (duplicate-citation cleanup, dangling `origin_note_id`, `/js` no-cache gap, Watch-outs phrasing) are now
 landed, tested, and live-verified.
+
+## Master Plan surface audit + Evidence tab fix — 2026-09-14 (post-midnight, third follow-up)
+
+Kyle flagged that our project's Master Plan tab hadn't actually been walked yet — no plan has been built here, so
+the earlier Research/Chat second pass only ever saw the pre-flight screen. Walked the built plan surface using his
+other project ("I want to start buying businesses...", a laundromat acquisition plan) since it has a real Master
+Plan generated.
+
+Four of five plan tabs held up well at real data volume: Where you stand (SWOT grid, readiness, paths compared),
+Do this (first steps, phased checklist with dependencies), Decide (decisions with recommendations, open questions,
+assumptions), Money & tools (tool/cost tables). No findings there.
+
+**Evidence tab was a real problem: ~1,800 chips in one unbroken, unsearchable wall.** This project's plan carries
+1,804 evidence entries (facts, pinned findings, sources, research chunks) — `plan.js` rendered every single one as
+a same-weight inline `<span class="chip">` with no grouping, no search, no pagination. Confirmed via DOM query:
+1,804 `.chip`/`.chipf` elements in that one section alone.
+
+**Root cause of the worse half: `planner.py`'s `_evidence()` fell back to the fixed string `"pinned finding"` for
+any note with no citation.** Every uncited finding rendered with byte-identical chip text — 16 of them on this
+plan alone ("F1 · pinned finding", "F2 · pinned finding" ... "F24 · pinned finding"), indistinguishable from each
+other in the UI even though each points to a different underlying note. Fixed the fallback to use the note's own
+content (`n["content"][:80]`) instead, the same pattern the fact branch two lines above already used — always
+distinguishing, never a placeholder. This only affects future plan builds; the existing saved plan's `_evidence`
+map was generated before the fix and still shows the old placeholder text (confirmed live via the filter — see
+verification below). A plan rebuild would pick up the fix but wasn't run against Kyle's real project data without
+asking first.
+
+**Fixed the wall itself in `plan.js`.** Evidence chips now group by id prefix — Facts you told us (U), Pinned
+findings (F), Sources (S), Research chunks (C) — behind collapsible `<details>` sections with counts, plus a live
+text filter (`filterEvidence()`) that shows/hides chips and auto-opens any group with a match. Groups over 30
+items start collapsed so the page doesn't render 1,800 open chips by default; small groups (like the 2-item Facts
+group) start open. No data changed — same evidence map, organized instead of dumped.
+
+Live-verified both halves on the real (un-rebuilt) plan: reloading the Evidence tab now shows "1804 total" with
+four collapsible groups (Facts you told us (2) open by default, Pinned findings (1662), Sources (80), Research
+chunks (60) collapsed); searching "sba" auto-opened Pinned findings and Sources with only matching chips visible,
+Facts and Research chunks disappeared (no match); searching "pinned finding" surfaced exactly the 16
+pre-fix-generation chips still carrying the old placeholder text, confirming the label fix is in place for new
+builds and the display fix works on old data as-is.
+
+122/123 relevant tests pass (`test_j3_fallback`, `test_n1_research_view`, `test_n3_deep_findings`,
+`test_r6_model_policy`, `test_r9_claims_arm`, `test_s11_findings_tab`, `test_s1_arm_preflight`,
+`test_s36_sources_payload`, `test_s44`/`s50`/`s5`); the one failure
+(`test_doctor_is_fast_and_release_check_writes_an_artifact`) reproduces identically on a clean `git stash` —
+unrelated, pre-existing. `test_core`/`test_indestructible`: the same 12 pre-existing sandbox-environment failures
+as every prior rung, none new. Landed as commit `1ec4707`, `UI_VERSION` 0.63.78 → 0.63.79, worktree `f0` repinned,
+audit instance restarted and live-verified.
