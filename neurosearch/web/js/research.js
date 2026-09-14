@@ -740,10 +740,23 @@ globalThis.renderStaleCard = function renderStaleCard(elId, what) {
     const p = s.plan;
     if (p.status !== 'stale' && p.status !== 'rebuilding') { el.innerHTML = ''; return; }
     if (p.status === 'rebuilding') h = `<div class="card status-warn-border"><b>🔄 Master Plan is being rebuilt${p.note ? ' · ' + esc(p.note) : '…'}</b><div class="muted">The previous version stays readable until the new one is saved.</div></div>`;
-    else h = `<div class="card status-warn-border"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
+    else {
+      // 0.63.68 (W3): was four co-equal buttons (Rebuild plan / Re-analyse now / Re-analyse in background / Raise
+      // budget) in one row before the plan itself was visible. "Rebuild plan" is the cheapest option that always
+      // fully resolves the PLAN's own staleness (it costs p.estimate alone, no re-analysis required), so it is
+      // the one recommended default, kept primary and immediately visible per DESIGN.md's stated-rule requirement
+      // — never an arbitrary pick. The two costlier "re-analyse stale sources first" variants are one step away in
+      // a details/summary disclosure (styled like W2's review-item — same visual language, not the Findings hub
+      // itself). "Raise budget" only appears when the estimates actually exceed today's remaining budget instead
+      // of unconditionally, matching how the Findings branch above already only warns about budget when it applies.
+      const altBody = `<div class="row" style="flex-wrap:wrap"><span class="muted" style="width:100%">Re-analysing first means the plan reflects current source content, not just its own staleness reason${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
+        <button class="small" onclick="rebuildStale(['findings','plan'],'interactive')" title="Faster · standard model cost">Re-analyse now + rebuild · ${money(s.estimate.total)}</button><button class="small" onclick="rebuildStale(['findings','plan'],'batch')" title="Up to 24 hours · ~50% lower model cost on the re-analysis (model cost only)">Re-analyse in background + rebuild · ${money(s.estimate.total_background ?? s.estimate.total)}</button></div>`;
+      h = `<div class="card status-warn-border"><b>⚠ Plan may be stale</b> <span class="muted">v${p.version}${p.reasons.length ? ' — ' + esc(p.reasons.join('; ')) : ''}</span>
       <div class="muted">It is still readable and every task status is kept. Rebuilding writes a new version on top of it.</div>
-      <div class="row" style="margin-top:8px;flex-wrap:wrap"><span class="muted" style="width:100%">Rebuild: est. <b>${money(p.estimate)}</b>${s.stale_sources ? ` (+ ${money(s.estimate.findings)} now or ${money(s.estimate.findings_background ?? s.estimate.findings / 2)} in background to re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first — the plan waits for them either way)` : ''}${s.budget.daily_remaining != null ? ` · daily budget left ${money(s.budget.daily_remaining)}` : ''}</span>
-        <button class="small primary" onclick="rebuildStale(['plan'],'interactive')">Rebuild plan · ${money(p.estimate)}</button>${s.stale_sources ? `<button class="small" onclick="rebuildStale(['findings','plan'],'interactive')" title="Faster · standard model cost">Re-analyse now + rebuild · ${money(s.estimate.total)}</button><button class="small" onclick="rebuildStale(['findings','plan'],'batch')" title="Up to 24 hours · ~50% lower model cost on the re-analysis (model cost only)">Re-analyse in background + rebuild · ${money(s.estimate.total_background ?? s.estimate.total)}</button>` : ''}<button class="small ghost" onclick="showView('settings')">Raise budget</button></div></div>`;
+      <div class="row" style="margin-top:8px;flex-wrap:wrap;align-items:center"><button class="small primary" onclick="rebuildStale(['plan'],'interactive')">Rebuild plan · ${money(p.estimate)}</button><span class="muted">${s.budget.daily_remaining != null ? `daily budget left ${money(s.budget.daily_remaining)}` : ''}</span></div>
+      ${s.stale_sources ? reviewItem('Other ways to rebuild', `re-analyse ${s.stale_sources} stale source${s.stale_sources === 1 ? '' : 's'} first, then rebuild`, altBody) : ''}
+      ${!s.budget.fits ? `<div class="row" style="margin-top:8px;flex-wrap:wrap;align-items:center"><span class="muted">Today's estimates exceed the remaining budget.</span><button class="small ghost" onclick="showView('settings')">Raise budget</button></div>` : ''}</div>`;
+    }
   }
   el.innerHTML = STALE.left && what === 'findings' ? '' : h;
 }
