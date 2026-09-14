@@ -2951,3 +2951,16 @@ recorded 18 Sonnet calls at `$0.908735` and materialized 146 suggested findings;
 so approximately `$0.79` was spent without usable output or an app-ledger row. The rerun now checkpoints after each
 source. Recorded T4/T5 spend is `$3.255347`; estimated actual provider billing is roughly `$4.04`. No further paid
 calls are authorized.
+
+## T4 execution plan for a Sonnet session — 2026-09-14
+
+`docs/T4-EXECUTION-PLAN-2026-09-14.md` is the rung-by-rung plan (E1–E7) to take T4 from "proven through a
+bridge" to a native, budgeted, scheduled executor: thread the substance floor through the job path (E1, $0);
+`t4.execute()` with a $0 dry run, a dollar cap, per-source `suggest_findings` jobs with dedupe, and a batch
+transport option (E2, $0); first native throttled run (E3, ~$3–5); Kyle's kept-rate review (E4, $0 — the
+number everything else depends on); Haiku vs Sonnet decided by `cost_value.by_model` with the decision rule
+written before the data (E5, ~$3); H1 pre-filter evaluated then enabled or not (E6, ~$0.50); nightly refinery
+plus morning report (E7, ~$2 first night). ~$10–12 total, over at least three sessions. Structured deltas and
+the `t4.research` call remain deferred until E4 shows findings alone miss something specific. Executor rules
+at the bottom of the plan: two commits per rung, disclose any unrecorded spend, never edit the production
+contract to run an experiment.
