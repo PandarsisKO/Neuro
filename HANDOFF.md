@@ -1733,3 +1733,48 @@ every time a CSS/JS-only change needed a fresh process to serve it (`./start --r
   navigation only, per `AUDIT.md` §2 — same as every rung tonight).
 
 Next: Phase 0 of a fresh FULL AUDIT.
+
+## Fresh FULL AUDIT — closes clean, no new ladder — 2026-09-14 (overnight)
+
+Ran the fresh FULL AUDIT Kyle asked for before bed, against the current build (`d64cb62`, `v0.63.72`, ladder
+F0→P1 plus the cross-cutting RE-AUDIT all landed and closed). Wrote it up as
+`docs/design-audit/2026-09-14-d64cb62/audit.md`. Oriented against `CLAUDE.md`, `STATE-OF-THE-APP-2026-09-13-1522.md`
+and this file per §2, then live-walked Home, Sources, Findings, and Master Plan on the audit instance (two
+projects, dark theme). Every surface matched its landed rung — no new High/Medium finding, no regression.
+Attempted a 375×812 narrow-viewport check via the Browser pane's `resize_window`; both the `mobile` preset and
+an explicit size reported `window.innerWidth`/`scrollWidth` of 621, not 375 — a tool-level limitation in this
+session, not a product observation, recorded rather than silently skipped.
+
+Per `AUDIT.md` Phase 9's bounded stopping rule (closes on no-new-material-root-cause, not a time budget): **this
+audit closes with no new ladder to build.** F0–P1 plus the RE-AUDIT already covered the app's material
+Design/Audit surface this week; a fresh look tonight didn't find anything below that bar. Not treating "found
+nothing" as a reason to manufacture busywork findings.
+
+## Repo-hygiene / vestigial pass — flagged only, nothing moved or deleted — 2026-09-14 (overnight)
+
+Reviewed the untracked items visible in `git status` against `VESTIGIAL-INVENTORY.md`'s own conservative
+standard (archive/flag with evidence, never delete, never touch anything the inventory says needs
+`PRODUCT-SCHEDULER.md` admission). Conclusion: everything found is either already covered by the inventory's own
+caution or looks like Kyle's own personal working material, not repo cruft — so nothing was moved, renamed, or
+deleted. Flagging for Kyle's own five-minute look in the morning, since he knows which of these he still needs:
+
+- **`Claude outputs/`** — `VESTIGIAL-INVENTORY.md` already names this exact folder: "preserve the current
+  untracked audit until the Claude design set is reviewed as one coherent unit... archive or remove the root
+  copy only after explicit comparison [to `docs/T1-DESIGN-AUDIT-2026-09-12.md`]." That comparison is a
+  judgment call about which draft is authoritative — didn't make it unilaterally overnight.
+- **`INSPIRATION/`, `SCREENSHOT AUDIT/`** — untracked, look like Kyle's own reference screenshots/inspiration
+  images (dated 2026-09-12/13, several multi-MB phone screenshots). No sign these are stale or abandoned; likely
+  still in active use for the design work. Left untouched.
+- **`.audit-compare-tmp/`** — two files (`AUDIT-canonical.md`, `AUDIT-v2.md`), untracked, dated 2026-09-13. Names
+  suggest a scratch comparison from the `AUDIT-V2-PROPOSED.md` merge decision (already resolved and archived
+  this evening, see the `2f2cda0` entry above) — plausibly safe to remove now, but it's a few KB of markdown
+  with "tmp" already in its own name, so leaving it for Kyle to clear is lower-risk than guessing it's dead.
+- **20 untracked `evals/release/release-check-*.{json,txt}` files** (versions 0.63.43 through 0.63.61) — these
+  are `release-check` run artifacts; some releases (e.g. 0.63.65) have their `evals/release/` output committed,
+  most don't, and there's no `.gitignore` entry either way. This looks like an intentional "commit occasional
+  checkpoints, leave routine runs untracked" pattern rather than an accident, so left alone; noting it here in
+  case Kyle wants an explicit `.gitignore` rule for `evals/release/` instead of relying on nobody running
+  `git add -A`.
+
+No code, test, or doc file was changed by this pass — it's an observation only, same evidence discipline as the
+audit above.
