@@ -1619,3 +1619,25 @@ needed). `.worktrees/f0` repinned to `837bc16`. Left untouched: `neurosearch/t3.
 
 **Next:** `C1` — one badge/pill primitive, roles distinguishable; Findings rows to two badges. Its precondition
 (W1–W5 landed and this RE-AUDIT done) is now satisfied.
+
+## Design ladder — Rung C1 landed (one badge/pill primitive, Findings rows to two badges) — 2026-09-14
+
+Commit `ce18025` (repinned into `.worktrees/f0`). Findings rows' `useBadges()` consolidated from up to five
+badges (plan/chat/claim/stale/area) down to at most two: one combined "used" badge (plan/chat/Claim-strength,
+all detail kept in its tooltip) plus stale-source when it applies; area/topic moved into the meta line as plain
+text. Closes `M-4`. The Findings sidebar count badge (`M-6`) no longer fully fills orange for a plain count — now
+a neutral number with a small warn-colored corner dot. Fixed a real latent cascade bug: `.tag{color:var(--muted)}`
+was declared after `.status-ok/-warn/-bad` in `styles.css`, so any `.tag` + `.status-*` combination silently
+rendered muted grey; added `.tag.status-ok/-warn/-bad` compound-selector overrides (order-independent). This also
+fixed the pre-existing "stale source"/"legacy analysis" badges and let Sources' pool-potential/substance-score
+badges move off inline `style=` colour literals onto the shared classes (reduces F1's inline-style debt further).
+
+Live-verified on the running instance after restart: Findings row badges render as one combined "used" pill
+(`📋 plan 🧠 weak`, one tooltip) plus `⚠ stale source` — two badges, matching `DESIGN.md`'s workbench-row cap;
+sidebar Findings count shows the neutral number + dot; Sources substance-score badges render in distinct colours
+(72/100 green, 28/100 red) instead of uniform grey. `UI_VERSION` 0.63.70 → 0.63.71. All three deterministic gate
+files (26 tests) pass; `test_core`/`test_indestructible` show the same 12 pre-existing sandbox-environment
+failures as every prior rung, none new.
+
+`C1` is done. `P1` (small independent polish: `L-1`–`L-4`, any remaining `M` items not folded into earlier rungs)
+is the final rung on the ladder.
