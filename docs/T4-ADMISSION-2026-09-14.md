@@ -627,3 +627,30 @@ Two consequences worth flagging to Kyle directly (not fixed -- his call whether 
 
 No code changed for this. Nothing run, nothing spent. Continuing to look for other $0, code-only groundwork; E4
 (his review) remains the actual blocker for everything past this point.
+
+
+## E5 result — Haiku set as the findings.extract default — 2026-09-14
+
+Ran for real: 4 sources on Sonnet ($0.1051, 133 findings suggested -> $0.00079/finding), 4 on Haiku ($0.0542,
+158 findings suggested -> $0.00034/finding). Took two attempts -- the first Haiku run silently no-op'd (its
+sources had already been analyzed by something else in the background between selection and execution) and
+separately the env-var override only works when it's set on the long-running `worker` process itself, not on
+the one-off `t4 execute` command that enqueues the job. Both fixed by restarting the worker with the variable
+baked in and re-running against whatever was still genuinely fresh.
+
+Kyle flagged, honestly, that his findings review has been batch-approve-everything rather than real filtering,
+so the "approved" counts in the database are not a quality signal for either arm -- the plan's formal kept-rate
+comparison isn't measurable from existing review data. In place of that: a manual spot-check of ~10 findings
+per side across all 8 sources, read for accuracy and usefulness rather than clicked through. Verdict: Sonnet
+and Haiku were indistinguishable in quality.
+
+Equal quality + roughly half the cost per finding -> Haiku wins per the plan's own rule. Set as the new default
+via `.env` (`NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5`, not a code/contract change, fully
+reversible by removing the line) rather than the temporary per-command override. Every findings.extract call
+across both `serve` and `worker` now uses Haiku until this is changed. Machine crashed three times during this
+rung (same signature each time -- a worker thread failing to page in library code from disk, unrelated to
+Neurosearch's own code); no data lost, no double-billing, verified against the database each time.
+
+**E5: done.** Per the plan, next is E6 (H1 pre-filter evaluation) then E7 (nightly refinery + morning report).
+E6 was attempted earlier from the device-bridge sandbox and failed there for environment reasons (see the E6
+section above) -- it still needs to run on Kyle's own Mac.
