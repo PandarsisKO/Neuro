@@ -14,6 +14,7 @@ number in this file so it can be inspected and tested.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from collections import Counter, defaultdict
@@ -174,6 +175,37 @@ KIND_IF_IGNORED = {"STALE": "Chat and the Master Plan keep treating these as nee
                    "CONTRADICTION": "Chat will present both sides as unsettled.",
                    "MISSING_PERSPECTIVE": "Advice stays one-sided; the Master Plan cannot weigh the other side.",
                    "NOVEL": "The point stays a single-source observation, never a finding you can lean on."}
+
+# 2026-09-14 - one fixed sentence per kind read fine alone but, stacked in a Watch-outs list where one kind (most
+# often MISSING_PERSPECTIVE) can account for dozens of cards, it reads as a single paragraph copy-pasted with the
+# topic swapped (flagged in the Research/Chat design audit). Same information, several ways to say it - picked
+# deterministically per watch-out (stable across reloads: the same card always reads the same way) rather than
+# randomly, via a hash of its own id, so this never turns into visible re-shuffling on every page load.
+KIND_IF_IGNORED_ALTS = {
+    "STALE": ["Chat and the Master Plan keep treating these as needing re-verification.",
+              "Nothing here has been checked against anything newer - Chat and the Master Plan will keep flagging it as unverified.",
+              "The evidence behind this stays on the clock: Chat and the Master Plan continue to treat it as due for a recheck."],
+    "WEAK_CONSENSUS": ["Chat will keep hedging: several sources, none independent.",
+                       "This looks better-supported than it is - Chat will keep qualifying it because the sources all trace back to the same original claim.",
+                       "The source count stays misleading: Chat will continue to hedge since none of them independently confirm it."],
+    "CONTRADICTION": ["Chat will present both sides as unsettled.",
+                      "The disagreement stays open - Chat will keep surfacing both readings rather than picking one.",
+                      "Nobody has decided which source to trust here, so Chat keeps presenting the conflict instead of an answer."],
+    "MISSING_PERSPECTIVE": ["Advice stays one-sided; the Master Plan cannot weigh the other side.",
+                            "The Master Plan keeps recommending from one vantage point only - it has nothing from the other side to weigh against it.",
+                            "This stays a one-sided read: whoever the missing voice would represent never gets a say in the advice."],
+    "NOVEL": ["The point stays a single-source observation, never a finding you can lean on.",
+             "Nobody else has said this yet - it stays a one-source observation rather than something you can build on.",
+             "This claim keeps resting on its lone source; without corroboration it can't graduate to something you can lean on."],
+}
+
+
+def _if_ignored_for(kind: str, watchout_id: str) -> str:
+    """Deterministic pick from KIND_IF_IGNORED_ALTS so the same watch-out always reads the same way across
+    reloads, while different watch-outs of the same kind don't all read identically."""
+    alts = KIND_IF_IGNORED_ALTS.get(kind) or [KIND_IF_IGNORED.get(kind, "")]
+    idx = int(hashlib.md5(watchout_id.encode()).hexdigest(), 16) % len(alts)
+    return alts[idx]
 
 
 def _title_case(s: str) -> str:
@@ -426,7 +458,7 @@ def watchouts(project_id: str, data: dict[str, Any] | None = None, area_map: dic
         score = BASE[f"watchout:{kind}"] + IMPORTANCE_WEIGHT * importance + IMPACT.get(impact, 0) + (PLANNER_BONUS if planner else 0) + min(BREADTH_CAP, BREADTH_PER_CLAIM * (n - 1))
         action, action_help = KIND_ACTION[kind]
         out.append({"id": f"wo:{kind}:{area}", "kind": kind, "area": area, "title": title, "impact": impact, "importance": importance, "planner_dependent": planner,
-                    "claims": n, "detail": detail, "if_ignored": KIND_IF_IGNORED[kind], "action": {"label": action, "help": action_help, "cost": "$0"},
+                    "claims": n, "detail": detail, "if_ignored": _if_ignored_for(kind, f"wo:{kind}:{area}"), "action": {"label": action, "help": action_help, "cost": "$0"},
                     "underlying": [{"tension_id": t["id"], "claim_id": t.get("claim_id"), "claim": (t.get("claim_text") or "")[:160], "description": t["description"][:200]} for t in ts],
                     "score": score})
     out.sort(key=lambda w: (-w["score"], w["title"]))
