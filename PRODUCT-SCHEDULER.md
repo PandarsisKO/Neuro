@@ -431,3 +431,9 @@ unchanged pending that review.
 T6's first slice (registry + CLI + informational doctor check) is admitted at `e0e99f5`, built alongside T4/T5
 under Kyle's "do 4/5/6 now" authorization. Per the mission doc T6 is parallel, not a prerequisite — it does not
 change NEXT/PARKED sequencing for T4/T5.
+
+## T4 admitted, selector only — 2026-09-14
+
+T4's selector (ranked work list, no executor) is admitted at `86ddab9`, built alongside T5/T6 under Kyle's
+"do 4/5/6 now" authorization. The executor interface (Claude Code / local model / Haiku API / future cloud
+worker) remains future, separately-admitted work — nothing currently calls `t4.select`'s output or acts on it.

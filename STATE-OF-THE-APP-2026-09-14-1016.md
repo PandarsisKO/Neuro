@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Tested code baseline is `e0e99f5`. App/package version is `0.63.90`.
+- Tested code baseline is `86ddab9`. App/package version is `0.63.90`.
 - `repo-check` reports the same one pre-existing WARNING (`KEEP AWAKE - overnight.command` outside the root
   allowlist — Kyle's own operational file, unrelated to any mission and untouched). Commit-bound
   `release-check --no-pytest` is FAIL, for the same three pre-existing, unrelated reasons present at every prior
@@ -50,12 +50,15 @@ unmeasured), exposed via `neurosearch assumptions [--json]` and one informationa
 but never fails a release, per T6's own mission gate. T6 is explicitly parallel, not a prerequisite to T4/T5.
 Full detail in `docs/T6-ADMISSION-2026-09-14.md`.
 
-**Next gate:** T4 (Batch Research Executor) is the next item on the Transcript Intelligence ladder — selector
-(deterministic, $0, ranks from T1+T2 signals) and executor (interchangeable backend, reusing R4/R5
-durable-unit and bounded-concurrency infrastructure) are being built as separate concerns, in progress under
-Kyle's "do 4/5/6 now" authorization. T5 (Sonnet-adjudicator escalation trigger) is validated against the
-existing fake-provider test harness only in this pass — no live paid provider calls have been made; whether/how
-to exercise it live is Kyle's call once it is built.
+**T4 admitted, selector only (2026-09-14, commit `86ddab9`):** `neurosearch/t4.py` ranks genuinely
+unexplained chunks (via T2's signals + T3's own extractor for cue-based prioritization) and open Evidence
+Targets into a single reproducible, provenance-carrying work list. No executor is wired — nothing currently
+calls `t4.select`'s output. Full detail in `docs/T4-ADMISSION-2026-09-14.md`.
+
+**Next gate:** T5 (Sonnet-adjudicator escalation trigger) is next, in progress under Kyle's "do 4/5/6 now"
+authorization. It will be validated against the existing fake-provider test harness only in this pass — no
+live paid provider calls will be made; whether/how to exercise it live is Kyle's call once it is built. The T4
+executor interface remains future, separately-admitted work.
 
 `origin/backup/2026-09-13-clean` is a separate history-free snapshot; protected `VIDEOS/`, `data/`, and
 `_to_delete/` paths are absent as of the last verified check.

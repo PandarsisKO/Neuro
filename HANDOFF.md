@@ -2806,3 +2806,15 @@ never silently drift from the code it names. Adds `neurosearch assumptions [--js
 `doctor()` check, per T6's own gate: drift warns, never fails a release. Full scope, gate, and validation evidence
 in `docs/T6-ADMISSION-2026-09-14.md`. Landed at `e0e99f5`. T6 is explicitly parallel, not a prerequisite to T4/T5
 per the mission doc.
+
+## T4 admission — selector (first slice) — 2026-09-14 (Claude, continuing the Codex/Claude handoff)
+
+Built T4's selector half — the executor is deliberately not wired in this pass, per the mission doc's own
+separation of "what is worth spending on" from "who executes it." `neurosearch/t4.py` reads `t1.coverage_view`'s
+existing per-chunk signals to find genuinely unexplained passages (empty signals list — T2 never asserts its own
+"unexplained" primary_state while extracted/redundant/irrelevant remain unavailable, which is always true today),
+runs T3's own pure extractor on their text to prioritize ones with concrete Tier-0 cues, and reads open Evidence
+Targets from `knowledge.list_targets`, ranking a governing target with no Claim yet highest. Every item carries
+T1's `input_hash` for provenance; the merged, sorted list is byte-identical on a re-run against unchanged data.
+Full scope, explicit non-goals, and validation in `docs/T4-ADMISSION-2026-09-14.md`. Landed at `86ddab9`. Built
+alongside T5/T6 under Kyle's "do 4/5/6 now" authorization.

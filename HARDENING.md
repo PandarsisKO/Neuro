@@ -2221,3 +2221,13 @@ checkpoint (embeddings-breaker cluster, one `test_s12` order flake, `test_s43` t
 same pre-existing FAIL causes (`calculator_ok`, root-hygiene, `test_s43` race); every deterministic gate T6 could
 affect passes, including the new informational assumption-ledger check itself (confirmed WARN, never contributing
 to verdict). Committed at `e0e99f5`. Artifact: `evals/release/release-check-0.63.90-e0e99f5-20260914-175024.json`.
+
+## T4 admission checkpoint — selector (first slice) — 2026-09-14
+
+Focused `tests/test_t4_selector.py` (7) plus the seams it reads (`test_t2_coverage.py`, `test_t1_vector_metadata.py`,
+`test_t3_extraction.py`, `test_t3_adversarial.py` — 47 total) pass together, confirming no interaction. Full
+pytest: 1,382 passed / 15 failed, identical set to every checkpoint since the T3 gold-adjudication closure —
+nothing new. `repo-check` shows the same pre-existing `KEEP AWAKE` warning. Commit-bound `release-check
+--no-pytest` shows the same pre-existing FAIL causes (`calculator_ok`, root-hygiene, `test_s43` race); every
+deterministic gate T4 could affect passes. Committed at `86ddab9`. Artifact:
+`evals/release/release-check-0.63.90-86ddab9-20260914-175734.json`.
