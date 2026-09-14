@@ -406,3 +406,57 @@ zero new failures, confirmed by diff against the prior run's failure list. `repo
 no schema change.
 
 Next: E2, `t4.execute()` -- the executor itself, with a $0 dry run and a dollar cap, still to be built.
+
+
+## E2 — the executor itself, `t4.execute()` — 2026-09-14
+
+Per `docs/T4-EXECUTION-PLAN-2026-09-14.md`'s rung E2: `t4.execute(project_id, *, budget_usd, max_sources=None,
+substance_floor=30, min_relevance=None, dry_run=True, transport="interactive")` turns `select()`'s ranked
+`by_source` list into real work, source by source in relevance order, under a dollar cap. It writes and calls a
+provider NEVER itself -- it only enqueues `suggest_findings` (or, in batch transport, one `suggest_findings_batch`)
+jobs; `findings.suggest_for_source` via the queue remains the only thing that reads a source or writes a
+suggested finding, exactly as the plan specified.
+
+Ordering and skipping: sources come from `select()`'s relevance-descending order. A source already current for
+the project is skipped (`findings.is_current`). A source with unscored relevance (`None`) is skipped only when
+`min_relevance` is explicitly set -- unscored is never treated as low-scoring. Budget: each source is estimated
+with `_source_estimate` (a pure read of `findings.canonical_requests` sizes through `usage.estimate_findings`,
+discounted `PROBE_DISCOUNT=0.5` when a substance floor applies to a multi-window source -- the measured ~50%
+savings from the day's real 20-source validation); the walk always includes at least the first eligible source,
+then stops the moment the running total would exceed `budget_usd`, or at `max_sources`, whichever comes first.
+
+`dry_run=True` (default): returns the plan -- ordered sources, relevance, window count, per-source and
+cumulative estimate -- and touches nothing. `dry_run=False`: `usage.guard(total_estimate)` runs first (the real
+safety net, independent of this estimate); `transport="interactive"` enqueues one `suggest_findings` job per
+source in the `"low"` lane carrying `substance_floor` and this call's provenance
+(`t4_execute_version`, `t4_selector_version`); `transport="batch"` enqueues one `suggest_findings_batch` job for
+every selected source (the floor is reported as inapplicable -- a batch submits every window at once, so the
+sequential probe has no meaning there). Dedupe needed no new machinery: a single-source `suggest_findings` job
+already has a natural dedupe key (`db.dedupe_key_for`, `findings:{project_id}:{source_id}`), so calling
+`execute(..., dry_run=False)` again while a source is still queued returns the SAME job id rather than
+enqueueing a duplicate.
+
+A `neurosearch t4 execute <project> --budget N [--max-sources N] [--floor N] [--min-relevance N] [--live]
+[--batch] [--yes]` CLI command was added: prints the dry-run plan always; with `--live`, prints the plan again,
+asks for confirmation (skippable with `--yes`), then executes for real.
+
+### Validation
+
+Nine new tests in `tests/test_t4_execute.py`: dry run writes/enqueues nothing; the budget cap truncates the
+ranked list at the right count and total; an already-current source is skipped; unscored relevance is included
+by default and excluded once `min_relevance` is set; a live call enqueues one `suggest_findings` job per source
+carrying the floor and provenance; a second live call with nothing new enqueues no new job (same job id back,
+one row in `jobs`); a monkeypatched `usage.guard` that raises `BudgetPaused` blocks before any row is written;
+batch transport enqueues exactly one `suggest_findings_batch` job covering every selected source.
+
+Focused: 9/9 new, 31/31 across the T4/findings-adjacent set. Wider run (`-k "t4 or findings or jobs or cli"`):
+199 passed, 2 failed -- both the known OpenAI-egress-blocked `test_core.py` failures. Full suite in this device
+VM, four chunks: 13 + 1 + 0 + 1 = 15 failures, byte-for-byte the same known set as every prior checkpoint today
+(OpenAI egress, one order-flaky retrieval test, one native-worker-restart race) -- zero new failures. `repo-check`
+PASS. A real `--live` smoke run against a fresh fake-AI database (own scratch dir, not Kyle's real data) confirmed
+the CLI end to end: dry run prints the plan, `--live --yes` enqueues one real `suggest_findings` job with the
+floor and provenance in its payload, `status="queued"`. No spend, no write to Kyle's real database, no schema
+change.
+
+Next: E3, the first native live run -- Kyle's to run on his own Mac with the app's real workers, not through the
+bridge. `execute(..., dry_run=True)` output is ready for his review before any live spend under E3.

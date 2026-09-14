@@ -16,6 +16,8 @@ from .config import settings
 app = typer.Typer(help="Neuro Search — turn videos and podcasts into a citation-backed knowledge base.", no_args_is_help=True)
 project_app = typer.Typer(help="Manage projects (topic groupings).", no_args_is_help=True)
 app.add_typer(project_app, name="project")
+t4_app = typer.Typer(help="T4: relevance-ranked, budgeted findings extraction.", no_args_is_help=True)
+app.add_typer(t4_app, name="t4")
 
 
 def _init() -> None:
@@ -637,3 +639,35 @@ def assumptions_cmd(as_json: bool = typer.Option(False, "--json", help="Emit sta
     database, provider, or network call. Drift is informational only -- see `doctor` for the one-line summary."""
     from . import assumptions
     typer.echo(assumptions.render(as_json=as_json), nl=False)
+
+
+@t4_app.command("execute")
+def t4_execute_cmd(project: str, budget: float = typer.Option(..., "--budget", help="Dollar cap for this call, spent in relevance order"),
+                   max_sources: Optional[int] = typer.Option(None, "--max-sources", help="Also cap the number of sources, whichever limit hits first"),
+                   floor: Optional[int] = typer.Option(30, "--floor", help="Substance floor for the first-window probe (see findings.suggest_for_source); pass --floor -1 to disable"),
+                   min_relevance: Optional[float] = typer.Option(None, "--min-relevance", help="Skip sources scored below this (unscored sources are skipped too, once this is set)"),
+                   live: bool = typer.Option(False, "--live", help="Actually enqueue jobs; without this, only prints the plan and estimate"),
+                   batch: bool = typer.Option(False, "--batch", help="Use the Message Batches transport (one job for every selected source) instead of one job per source"),
+                   yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt before a --live enqueue")) -> None:
+    """T4 E2: the budgeted executor. Ranks this project's sources by relevance (t4.select), then walks them in
+    that order enqueuing real findings-extraction work until BUDGET or MAX_SOURCES is hit. Defaults to a dry run
+    that prints the plan and enqueues nothing; pass --live to actually enqueue."""
+    from . import t4
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    sub_floor = None if floor is not None and floor < 0 else floor
+    plan = t4.execute(pid, budget_usd=budget, max_sources=max_sources, substance_floor=sub_floor,
+                      min_relevance=min_relevance, dry_run=True, transport="batch" if batch else "interactive")
+    typer.echo(json.dumps(plan, indent=2))
+    if not live:
+        return
+    if not plan["sources"]:
+        typer.echo("nothing to execute: no eligible source within budget")
+        return
+    if not yes and not typer.confirm(f"Enqueue {plan['count']} source(s), estimated ${plan['total_estimate']:.4f}?"):
+        raise typer.Exit(code=0)
+    result = t4.execute(pid, budget_usd=budget, max_sources=max_sources, substance_floor=sub_floor,
+                        min_relevance=min_relevance, dry_run=False, transport="batch" if batch else "interactive")
+    typer.echo(json.dumps(result, indent=2))

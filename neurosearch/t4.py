@@ -211,3 +211,124 @@ def plan(project_id: str, *, limit: int | None = None, chunk_limit: int | None =
             "eligible_for_local": eligible_for_local, "routing_note": routing_note,
             "count": selection["count"], "by_kind": selection["by_kind"], "items": items,
             "note": "dry run only: no provider call was made; providers.route() decides real backend/health at call time (not yet wired)"}
+
+
+EXECUTE_VERSION = "t4-execute-v1"
+PROBE_DISCOUNT = 0.5   # measured 2026-09-14 on 20 real sources: substance_floor=30 roughly halved spend (docs/T4-ADMISSION-2026-09-14.md)
+
+
+def _source_estimate(project_id: str, source_id: str, *, substance_floor: int | None) -> float:
+    """Sum of usage.estimate_findings over every window findings.suggest_for_source would actually send right
+    now, discounted for a substance floor's measured early-stop savings. A pure estimate: no provider call."""
+    from . import findings, usage
+    windows = findings.canonical_requests(project_id, source_id)
+    total = sum(usage.estimate_findings(len(w["messages"][0]["content"])) for w in windows)
+    if substance_floor is not None and len(windows) > 1:
+        total *= PROBE_DISCOUNT
+    return total
+
+
+def execute(project_id: str, *, budget_usd: float, max_sources: int | None = None,
+           substance_floor: int | None = 30, min_relevance: float | None = None,
+           dry_run: bool = True, transport: str = "interactive") -> dict[str, Any]:
+    """The executor: turn ``select()``'s ranked ``by_source`` list into real ``findings.extract`` work, under a
+    dollar cap, source by source in relevance order. This is T4's second half made real -- ``plan()`` above stays
+    the $0 per-ITEM routing dry run; this is the per-SOURCE budgeted walk that actually enqueues (or, with
+    ``dry_run=True``, the default, only DESCRIBES) the work.
+
+    Ordering and skipping: sources come from ``select()['by_source']`` (relevance descending, already tie-broken).
+    A source already current for this project (``findings.is_current``) is skipped -- re-reading it would pay
+    twice for the same answer, exactly the waste ``suggest_for_source``'s own ``input_hash`` check exists to
+    prevent. A source with ``relevance is None`` (T1's vector space unattested, or this source has no valid chunk
+    vector) is skipped ONLY when ``min_relevance`` is set -- unscored is not the same as low-scoring, and with no
+    floor to compare against there is nothing to filter on; the default ``min_relevance=None`` runs every
+    otherwise-eligible source regardless of whether it could be scored.
+
+    Budget: each eligible source is estimated with ``_source_estimate`` (the same pipeline's own request sizes,
+    never a guess); the walk stops adding sources the moment the running total would exceed ``budget_usd``, or
+    once ``max_sources`` sources are selected, whichever comes first. This bounds a call to something Kyle
+    actually authorized -- it is not a substitute for ``usage.guard``, which still runs on the real total before
+    any live enqueue and can refuse for reasons this estimate cannot see (today's spend, other jobs in flight).
+
+    ``dry_run=True`` (the default): returns the plan -- ordered sources with relevance, window count, per-source
+    and cumulative estimate, and ``"executed": False`` -- and enqueues and writes NOTHING. Safe to call any time.
+
+    ``dry_run=False``, ``transport="interactive"``: after ``usage.guard(total_estimate)`` passes, enqueues ONE
+    ``suggest_findings`` job per selected source (lane ``"low"`` -- this is backlog work, never ahead of a user's
+    own interactive request), each carrying ``substance_floor`` and this call's provenance
+    (``t4_execute_version``, ``t4_selector_version``). A single-source ``suggest_findings`` job already has a
+    natural dedupe key (``db.dedupe_key_for``: ``findings:{project_id}:{source_id}``), so calling ``execute``
+    again while a source is still queued or in flight enqueues nothing new for it -- no new dedupe machinery
+    needed here.
+
+    ``transport="batch"``: instead enqueues ONE ``suggest_findings_batch`` job covering every selected source, at
+    the Message Batches discount and up to 24h provider latency. The sequential ``substance_floor`` probe has no
+    meaning inside one batch submission (every window submits at once); ``substance_floor`` is accepted but
+    reported as inapplicable rather than silently ignored.
+
+    Writes nothing itself either way -- ``findings.suggest_for_source`` (via the enqueued job) remains the only
+    thing that ever calls a provider or writes a suggested finding; ``claims.set_status`` remains the only
+    promotion door for anything downstream of that.
+    """
+    from . import db as db_mod
+    from . import findings
+
+    project = db_mod.get_project(project_id)
+    if project is None:
+        raise ValueError(f"project {project_id!r} was not found")
+    selection = select(project_id)
+    chosen: list[dict[str, Any]] = []
+    total_estimate = 0.0
+    for s in selection["by_source"]:
+        sid = s["source_id"]
+        if findings.is_current(project, sid):
+            continue
+        rel = s.get("relevance")
+        if rel is None:
+            if min_relevance is not None:
+                continue
+        elif min_relevance is not None and rel < min_relevance:
+            continue
+        est = _source_estimate(project_id, sid, substance_floor=substance_floor)
+        if chosen and total_estimate + est > budget_usd:
+            break
+        if max_sources is not None and len(chosen) >= max_sources:
+            break
+        total_estimate += est
+        chosen.append({"source_id": sid, "title": db_mod.get_source(sid)["title"], "relevance": rel,
+                       "windows": None,  # filled below with the real window count, after the budget walk decides inclusion
+                       "estimate": round(est, 4), "cumulative_estimate": round(total_estimate, 4)})
+    # window counts, filled after the budget walk so a skipped source never pays for canonical_requests()
+    for item in chosen:
+        item["windows"] = len(findings.canonical_requests(project_id, item["source_id"]))
+
+    plan_out: dict[str, Any] = {
+        "execute_version": EXECUTE_VERSION, "selector_version": selection["selector_version"],
+        "project_id": project_id, "budget_usd": budget_usd, "max_sources": max_sources,
+        "substance_floor": substance_floor, "min_relevance": min_relevance, "transport": transport,
+        "sources": chosen, "count": len(chosen), "total_estimate": round(total_estimate, 4),
+        "executed": False, "job_ids": [],
+    }
+    if dry_run or not chosen:
+        plan_out["note"] = "dry run: no job was enqueued" if dry_run else "nothing to execute: no eligible source within budget"
+        return plan_out
+
+    from . import jobs, usage
+    usage.guard(total_estimate)
+    if transport == "batch":
+        plan_out["substance_floor_note"] = "substance_floor does not apply to batch transport (all windows submit together); ignored"
+        job = jobs.enqueue("suggest_findings_batch", {"project_id": project_id, "source_ids": [s["source_id"] for s in chosen]},
+                           lane="low")
+        plan_out["job_ids"] = [job["id"]]
+    else:
+        job_ids = []
+        for s in chosen:
+            job = jobs.enqueue("suggest_findings", {"project_id": project_id, "source_ids": [s["source_id"]],
+                                                     "substance_floor": substance_floor,
+                                                     "t4_execute_version": EXECUTE_VERSION,
+                                                     "t4_selector_version": selection["selector_version"]},
+                               lane="low")
+            job_ids.append(job["id"])
+        plan_out["job_ids"] = job_ids
+    plan_out["executed"] = True
+    return plan_out
