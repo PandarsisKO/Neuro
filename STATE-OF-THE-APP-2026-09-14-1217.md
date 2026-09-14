@@ -9,7 +9,7 @@ Current orientation source for the Neuro Search mission; older state files remai
   release-check test asserting PASS while `repo-check` saw Kyle's operational `KEEP AWAKE - overnight.command`
   root entry. That helper was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command` without broadening
   the repository allowlist, and the failing test now passes in isolation; `repo-check` is now PASS and
-  commit-bound `release-check --no-pytest` is PASS at the current docs tip `8d15a2e` (artifact
+  commit-bound `release-check --no-pytest` most recently passed at docs tip `8d15a2e` (artifact
   `evals/release/release-check-0.63.90-8d15a2e-20260914-123747.json`).
   No paid provider call was made by this cleanup.
 - T3's exact-span gold gate is **closed**: 252 predicted records across the 60-row seeded queue were manually
