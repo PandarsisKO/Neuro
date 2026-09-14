@@ -588,3 +588,42 @@ NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5 .venv/bin/neurosearch t
 real metered spend on both so `cost_value.by_model()` has something to compare; without it, both would run free
 and measure nothing. Then Kyle reviews all 8 (E4 rules) and the decision rule from the plan applies: Haiku wins
 only if its cost per KEPT finding is lower AND its kept rate is within 10 points of Sonnet's.
+
+
+## E6 attempted while Kyle was away — blocked in this environment, not a bug — 2026-09-14
+
+Tried `neurosearch eval --prefilter` (H1 pre-filter evaluation) through the device-bridge sandbox, on the same
+assumption that made repo-check/pytest safe to run there all session: Tier 1 evals are documented as "free,
+repeatable... against the deterministic fakes." It failed:
+
+```
+ProviderError: LOCAL_UNAVAILABLE after 1 attempt: claude code error: exit 2:
+claude: only `claude -p "<prompt>"` is supported in this environment
+```
+
+Root cause, traced through `providers.route()` and `claude_code.create()`: `eval_cmd` does set
+`settings.fake_ai = not live` (True here), but that only fakes the metered **API** path
+(`providers.anthropic_client` swaps in `fake_ai.Anthropic`). It does not touch `settings.ai_profile`. Kyle's repo
+config has `NEUROSEARCH_AI_PROFILE=local` (matching the E3 finding that local execution is free on his machine),
+and `route()` sends any local-capable task straight to `claude_code.create()` whenever the profile is `local` and
+Claude Code's health check reports ready -- `settings.fake_ai` never enters that decision. `claude_code.create()`
+has its own, separate fake switch (`NEUROSEARCH_FAKE_CLAUDE_CODE`, unset here), so with it unset the call shells
+out to the real `claude` CLI regardless of the eval's fake tier. And because `local_api_fallback` is `False` in
+Kyle's settings (by design -- no silent paid fallback), a local failure raises instead of quietly retrying on the
+now-faked API. In the device-bridge's sandboxed VM the `claude` CLI is restricted to `claude -p "<prompt>"` and
+the app's real invocation shape doesn't match that, so it always fails here specifically -- not because of
+anything wrong with the eval or today's changes.
+
+Two consequences worth flagging to Kyle directly (not fixed -- his call whether either is worth changing):
+
+1. **`neurosearch eval --prefilter` (and any other Tier-1 `eval` flag exercising a local-capable task) is not
+   actually free/deterministic/repeatable on his own Mac either**, only in CI/tests -- `tests/conftest.py` never
+   defaults `ai_profile` to `local`, so pytest's fixtures never hit this branch, but his real terminal will route
+   the same call to his real local Claude Code, same as E3 did. It'll still cost $0 there (local is free for
+   him), but it is a live, non-deterministic model call, not the fixed fixture comparison the command's own
+   help text promises.
+2. This is why it cannot be run from here at all: needs Kyle's real Mac with a working `claude` CLI, exactly like
+   E3 and E5.
+
+No code changed for this. Nothing run, nothing spent. Continuing to look for other $0, code-only groundwork; E4
+(his review) remains the actual blocker for everything past this point.
