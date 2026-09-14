@@ -37,7 +37,7 @@ Current orientation source for the Neuro Search mission; older state files remai
   deferred behind its numeric trigger; `bge-m3` remains reserved for a separately gated full-space migration.
 - The current `main` history has been rewritten with all historical `VIDEOS/` paths removed, after Kyle's explicit
   authorization. No reachable blob exceeds GitHub's 100 MB limit. Remote `origin/main` now points to
-  `f0f12aee5ccc86b5a0b9cde3c201577ed8818d52`; the original pre-rewrite tip remains recoverable locally at
+  `3597601969299b949aad41fd537bc7d369e6ec8e`; the original pre-rewrite tip remains recoverable locally at
   `refs/backup/pre-videos-rewrite-20260914`. The history-free safety mirror is also maintained at
   `backup/2026-09-13-clean` and excludes `VIDEOS/`, `data/`, and `_to_delete/`.
 
