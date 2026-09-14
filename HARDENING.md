@@ -2299,3 +2299,10 @@ The targeted breaker-isolation and blocked-T5 no-mutation regressions landed at 
 passed, 1 warning**; `repo-check` and commit-bound `release-check --no-pytest` both pass. Artifact:
 `evals/release/release-check-0.63.90-ceca6e5-20260914-123650.json`. No paid provider call was made during this
 cleanup, and the prior breaker-leak report is now covered by an explicit fresh-database regression.
+
+## T4 real extraction reconciliation — 2026-09-14 12:39 PT
+
+Claude's one throttled bridge-assisted T4 extraction used the unchanged production findings pipeline for six real
+Sonnet calls (`$0.3492`), materializing 47 suggested findings and a 12/100 substance score on the selected source.
+Together with T5, real spend today is `$0.352949`. The bridge did not add a new executor or provider path; general
+T4 live routing and structured-delta persistence remain gated future work.

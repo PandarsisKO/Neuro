@@ -1,10 +1,11 @@
 # Transcript Intelligence T4 admission — the selector (first slice)
 
-**Status: ADMITTED — selector, plus the executor's $0 routing dry run.** Per `TRANSCRIPT-INTELLIGENCE-MISSION.md`
+**Status: ADMITTED — selector, executor $0 routing dry run, and one throttled real extraction.** Per `TRANSCRIPT-INTELLIGENCE-MISSION.md`
 §D/T4 and Kyle's fifth correction, the selector and the executor are two separable concerns. The selector
 landed first, alone, under Kyle's "do 4/5/6 now" authorization. Kyle then asked to get T4 "fixed and shipped";
 given the choice between a $0 routing dry run and a full live executor in one pass, he chose the $0 slice
-(see "T4 executor — $0 dry run" below). No live provider call is made anywhere in this admission.
+(see "T4 executor — $0 dry run" below). A later, separately throttled bridge-assisted extraction exercised the
+existing findings pipeline once; the executor routing seam and structured-delta path remain unimplemented.
 
 ## Problem and evidence
 

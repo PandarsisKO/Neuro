@@ -493,3 +493,11 @@ and structured-delta writes behind their existing admissions and spend controls.
 
 The current documentation tip is `8d15a2e`; a docs-only commit-bound release check passes there as well, with
 artifact `evals/release/release-check-0.63.90-8d15a2e-20260914-123747.json`.
+
+## T4 real extraction reconciliation — 2026-09-14 12:39 PT
+
+Claude subsequently exercised the existing `findings.suggest_for_source()` pipeline on the highest-priority
+T4-selected source through the documented egress bridge: six real Sonnet calls cost `$0.3492` and materialized
+47 suggested findings, with substance 12/100. Combined real spend today across T4 and T5 is `$0.352949`.
+This does not change the admission boundary: the general T4 executor, provider routing, and structured-delta
+write path remain future work; only this one throttled extraction was run.
