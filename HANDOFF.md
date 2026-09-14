@@ -1891,3 +1891,96 @@ Net: the duplicate-citation bug is fully resolved — both the code path that ca
 had already written, in both the audit copy and your live project data. Nothing besides exact-duplicate
 `claim_evidence` rows was touched. Full pre-cleanup backup of the live database is kept in `data/backups/` if
 anything here ever needs to be re-examined.
+
+## New ladder: data-integrity sweep + Research/Chat second pass — 2026-09-14 (post-midnight)
+
+Kyle asked for a new, bigger ladder after the duplicate-citation fix. Picked two tracks: a systematic
+data-integrity sweep (the duplicate-citation bug was invisible until a lucky live-check; worth checking the rest
+of the schema the same way) and finishing the Research/Chat surface's second pass (Settings, Sources, Master Plan
+— the corners the first pass never walked).
+
+### Data-integrity sweep
+
+Mapped every FK-shaped relationship in `db.py`'s schema (47 tables) against whether it's a declared
+`REFERENCES ... ON DELETE ...` (enforced — `PRAGMA foreign_keys=ON` is set on every connection, confirmed) or a
+bare column that only *looks* like a foreign key. Then checked which parent tables are ever actually deleted from
+in live code (`sources`, `projects`, `project_notes` — confirmed by grep; `project_claims` only in a dev migration
+rollback path, not live traffic) and ran read-only dangling-reference counts on the audit instance's disposable
+database copy for every bare reference to those three tables.
+
+Found one real, live, mechanical bug:
+
+**`project_claims.origin_note_id` can dangle — `replace_suggestions()` was deleting notes a Claim had already
+adopted (Medium, fixed).** `harvest()` (`claims.py`) can turn a still-`'suggested'`-status finding into a Claim's
+origin (`origin_note_id`) without ever changing that note's own status. `replace_suggestions()` — called whenever
+a source is re-analyzed — blanket-deletes every `'suggested'`/`'reserve'` note for that (project, source) pair,
+with no awareness a Claim might already cite one as its origin. Re-suggesting a source a Claim's origin finding
+came from silently orphaned that Claim's provenance link. **1,580 of 20,563 claims (~7.7%) in the live database
+already have a dangling `origin_note_id`** — all explained by this exact mechanism. Confirmed one concrete
+consequence: `candidates.py`'s per-channel comparison stats INNER JOIN `project_claims` to `project_notes` via
+`origin_note_id`, so every affected claim silently drops out of that count (an undercount, not a crash — which is
+likely why nobody noticed).
+
+Fixed: `replace_suggestions()` now excludes any note a Claim has already adopted (via `origin_note_id` or
+`claim_evidence_notes`) from its delete. Landed as commit `fda16ba`, `UI_VERSION` 0.63.74 → 0.63.75. **The 1,580
+already-affected claims are not a cleanup candidate** — unlike the duplicate-citation backlog, there's nothing to
+restore: the original note text is gone, and the claim text/evidence themselves are fully intact, only the
+backlink to the finding that originated them is lost. This fix only stops new occurrences.
+
+Also checked `claim_evidence_notes.note_id` dangling (718 in the live DB) — confirmed harmless: it's
+harvest-idempotency bookkeeping only ever checked for existence against notes currently being iterated, so a
+dangling row referencing an already-deleted note can never cause a bug. Checked every other bare reference
+(`research_tensions.related_claim_id`/`target_id`, `community_syntheses.claim_id`, `usage`/`batch_items`/
+`window_decisions` project/source ids) — all zero dangling rows or confirmed-harmless ledger tables.
+
+**Extended the "Database integrity" health check to actually catch this class of bug.** It ran `PRAGMA
+quick_check` + `PRAGMA foreign_key_check` only — structurally incapable of catching either of tonight's two real
+bugs (the duplicate rows were valid data, not corruption; `origin_note_id` was never a declared FK, deliberately,
+since a Claim must survive its origin note's deletion). `integrity_check()` now also counts exact-duplicate
+`claim_evidence` groups (gates `ok` — must be 0 forever now that `add_evidence` guards against it) and dangling
+`origin_note_id` references (informational only, shown but non-gating, since the historical ones are
+unrecoverable). Settings page's health panel shows both. Landed as commit `0e6a66a`, `UI_VERSION` 0.63.75 →
+0.63.76.
+
+### A third finding, found while verifying the second: `/js` was never given the 0.60.4 no-cache fix
+
+Restarting the audit instance to verify the health-panel change, the Settings page kept showing the *old* text
+even though a direct no-store fetch of `/js/sources.js` proved the server was serving the correct, updated file —
+a browser-cache mismatch, not a deploy mismatch. `0.60.4`'s own comment in `api.py` documents this exact failure
+already happening once for real: Kyle's browser held v0.53.1 for weeks while the server ran 0.60.3, because the
+UI was served with no `Cache-Control` and the browser's heuristic cache kept it. `index.html` got `NO_STORE` and
+`styles.css` got an explicit `no-cache` header — but the `/js` `StaticFiles` mount (added later, and where the
+UI's actual code lives) was left on Starlette's default: `Last-Modified`/`ETag` but no `Cache-Control` at all.
+Confirmed every `/js` file (app.js, research.js, state.js checked directly) goes out with no `Cache-Control`, so
+any UI release can silently leave stale JS running against a newer server — exactly 0.60.4's bug, one directory
+over, still live tonight.
+
+Fixed with a small `StaticFiles` subclass that sets `Cache-Control: no-cache` on every `/js` response (revalidates
+via the existing ETag/Last-Modified each load — cheap, never lets a version bump go silently missed). Extended
+`test_s44`'s existing static-asset test to assert this on `/js/app.js` the same way it already did for
+`styles.css`, so it can't regress unnoticed a second time. Landed as commit `d1e5ed8`, `UI_VERSION` 0.63.76 →
+0.63.77. Confirmed via direct header inspection (a cache-busted fetch shows the new header on every fresh
+request) — a browser tab that already cached the old `/js/app.js` earlier tonight won't self-heal until that
+cache entry naturally expires or a hard refresh happens, same one-time transition 0.60.4 itself needed; this
+does not affect anyone loading the app fresh from here on.
+
+### Research/Chat second pass: Settings, Sources, Master Plan
+
+Walked all three surfaces the first pass never touched. Settings: dense but well-organized (project fields,
+decisions/constraints, spend controls, the Health panel above). Sources: the per-source "What this gave" modal
+(Claims resting on it / Approved findings / Waiting for review) is well organized and legible even at real data
+volume (13 Claims, 20 findings on one source). Master Plan: no plan has been built yet for this project, so only
+the pre-flight "tell the planner about the project" screen was walkable — clear copy, transparent about what will
+be used (316 sources · 3834 findings · 9 chats). No new findings on any of the three; nothing broken.
+
+### Still open: Watch-outs template repetition (flagged in the first Research/Chat pass, not touched here)
+
+This is a content/copy decision, not a mechanical bug — brought back to Kyle rather than decided unilaterally
+(see chat).
+
+### Deterministic gates
+
+27/29 relevant tests pass across all three commits (one pre-existing subprocess-timing flake in
+`test_s43_foundation.py`'s worker-restart test, confirmed identical on a clean `git stash` baseline — unrelated
+to any of tonight's changes). `test_core`/`test_indestructible`: the same 12 pre-existing sandbox-environment
+failures as every prior rung, none new.
