@@ -841,13 +841,20 @@ globalThis.clearFindingSource = function clearFindingSource() { FB.source = null
 // S4: the Findings workbench — server-side filters, facets, sort, paging; use badges; the low-value sweep
 globalThis.FB = { offset: 0, limit: 100, source: null, loaded: false };
 globalThis.FGRP = { collapsed: new Set() };   // remembers which source-groups the user closed by hand (title -> closed)
+// C1: DESIGN.md's Workbench-row rule caps a normal row at two visible badges; this row used to show up to
+// five (plan/chat/claim/stale/area). The three "where this got used" signals are really one fact — whether
+// anything downstream relies on this finding — so they collapse into a single badge that keeps all three
+// pieces of detail in its title tooltip rather than losing them. Area/topic is categorical metadata, not an
+// attention signal, so it moves into the meaning line as plain text instead of a third pill. That leaves at
+// most two badges: the used-summary, and stale-source when it applies — the one that's actually actionable.
 globalThis.useBadges = function useBadges(n) {
-  const u = n.used || {}; const b = [];
-  if (u.plan) b.push(`<span class="tag" title="cited as evidence by the Master Plan">📋 plan</span>`);
-  if (u.chat) b.push(`<span class="tag" title="cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}">💬 ${u.chat}×</span>`);
-  if (u.claim) b.push(`<span class="tag" title="this finding became (or evidences) a Claim — ${u.claim}">🧠 ${esc(u.claim)}</span>`);
+  const u = n.used || {}; const used = [], why = [];
+  if (u.plan) { used.push('📋 plan'); why.push('cited as evidence by the Master Plan'); }
+  if (u.chat) { used.push(`💬 ${u.chat}×`); why.push(`cited in ${u.chat} chat answer${u.chat === 1 ? '' : 's'}`); }
+  if (u.claim) { used.push(`🧠 ${esc(u.claim)}`); why.push(`became or evidences ${u.claim} Claim${u.claim === 1 ? '' : 's'}`); }
+  const b = [];
+  if (used.length) b.push(`<span class="tag" title="${esc(why.join(' · '))}">${used.join(' ')}</span>`);
   if (n.source_stale) b.push(`<span class="tag status-warn" title="its source was analysed against older inputs">⚠ stale source</span>`);
-  if (n.area) b.push(`<span class="tag muted" title="Research Area">${esc(n.area)}</span>`);
   return b.join(' ');
 }
 globalThis.loadWorkbench = async function loadWorkbench(reset = true) {
@@ -1017,7 +1024,7 @@ globalThis.findingCard = function findingCard(n, actions) {
   return `<div class="f">${imp}<div class="main">
       <div class="ttl">${esc(title)}</div>
       ${body ? `<div class="txt">${esc(body)}</div>` : ''}
-      <div class="meta">${n._badges ? n._badges + ' ' : ''}${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
+      <div class="meta">${n._badges ? n._badges + ' ' : ''}${n.area ? `<span class="muted" title="Research Area">${esc(n.area)}</span> ` : ''}${(n.citations || []).map(x => x.removed ? `<span class="chip" title="Evidence source removed">⚠ ${esc(x.title || 'source')} — removed</span>` : `<a class="chip" href="${esc(x.link)}" target="_blank">▶ ${esc(x.title.length > 38 ? x.title.slice(0, 36) + '…' : x.title)} @ ${x.timestamp}</a>`).join('')}${c?.snippet ? `<a href="#" class="qtoggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;return false">quote</a><span class="quote" hidden>“${esc(c.snippet)}”</span>` : ''}</div>
     </div><div class="act">${actions}</div></div>`;
 }
 globalThis.noteStatus = async function noteStatus(id, status) { await post(`/api/notes/${id}/status`, { status }); loadNotes(); }

@@ -141,7 +141,7 @@
   aside nav{padding:8px}
   aside nav .item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--muted)}
   aside nav .item.active,aside nav .item:hover{background:var(--panel2);color:var(--text)}
-  aside nav .item .n{margin-left:auto;font-size:12px;color:var(--muted)}
+  aside nav .item .n{margin-left:auto;font-size:12px;color:var(--muted);position:relative}
   aside .chats{flex:1;overflow:auto;padding:4px 8px 8px;border-top:1px solid var(--line)}
   aside .chats .c{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;gap:6px;align-items:center}
   aside .chats .c span{flex:1;overflow:hidden;text-overflow:ellipsis}
@@ -223,7 +223,8 @@
   .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
   .fun{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:var(--shadow)}
   .funh{font-weight:700;margin-bottom:8px}
-  aside nav .n.stale{background:var(--warn);color:#fff}
+  aside nav .n.stale{color:var(--muted)}
+  aside nav .n.stale::after{content:'';position:absolute;top:-1px;right:-5px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
   .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
   .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
@@ -289,6 +290,9 @@
   .plan .basis{font-size:11px;color:var(--muted)}
   .plan .ev a{font-size:11px}
   .tag{font-size:11px;padding:1px 6px;border-radius:999px;background:var(--chip);color:var(--muted);margin-left:4px}
+  .tag.status-ok{color:var(--ok)}
+  .tag.status-warn{color:var(--warn)}
+  .tag.status-bad{color:var(--bad)}
   .plan .tag.high,.plan .tag.blocking{color:var(--bad)} .plan .tag.medium,.plan .tag.soon{color:var(--warn)} .plan .tag.now{color:var(--warn)}
   .plan table{border-collapse:collapse;width:100%;font-size:13px} .plan th,.plan td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top} .plan th{background:var(--panel2)}
   .plan .ready{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px}
