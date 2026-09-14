@@ -2759,3 +2759,13 @@ Reconciliation note: `PRODUCT-SCHEDULER.md`'s "NOW" section still names the fron
 active effort. That split and Claude's full 22-finding declutter audit are both already committed (see
 `PRODUCT-SCHEDULER.md`'s own reconciliation entry appended today). T3 manual gold adjudication is the actual
 active technical gate; design/audit is available for fresh evidence work but has no queued findings.
+
+## GitHub safety-snapshot refresh — blocked in this session — 2026-09-14 10:2x PT
+
+Attempted to refresh `backup/2026-09-13-clean` per the standing ritual: built a fresh history-free tree snapshot
+(`git commit-tree HEAD^{tree}` from `2e48bee`, no `VIDEOS/`/`data/`/`_to_delete/` in the tree — confirmed by
+`git ls-tree -r --name-only HEAD` before building it) but `git push` failed with `could not read Username for
+'https://github.com'` — this remote-device shell has no cached GitHub credential/SSH agent, unlike Kyle's normal
+terminal session. Local `main` (`2e48bee`) is unaffected; nothing was force-pushed or left partial. The snapshot
+tree is otherwise ready to push (`f8f56888e3ccb58a0ed4c6aaeb637b7fdd351530`) — from a terminal with GitHub auth,
+`git push origin f8f56888e3ccb58a0ed4c6aaeb637b7fdd351530:refs/heads/backup/2026-09-13-clean` completes it.
