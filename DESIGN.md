@@ -382,7 +382,7 @@ When changing UI:
 7. Do not rename or merge backend concepts solely for visual consistency.
 8. Do not add dependencies only to make the UI feel more designed.
 9. Treat a global token change as a product-wide design decision: re-run the contrast validation and record it.
-10. Every change to `index.html` ships with a `UI_VERSION` bump in all three version sites, or open tabs cannot tell they are stale.
+10. Every change to `index.html` ships with a `UI_VERSION` bump in all four version sites (`neurosearch/__init__.py`, `pyproject.toml`, `neurosearch/web/index.html`, `neurosearch/web/js/state.js`), or open tabs cannot tell they are stale.
 
 Before the audit runs, verify:
 
@@ -411,7 +411,7 @@ Change it when a design mistake repeats, a reusable primitive is intentionally i
 
 Twenty-five references collected 2026-09-12: nine marketing pages, fifteen product screens, one carousel. They settle the visual language. They do not settle the state language — none of them handle thousands of objects, stale versus current evidence, paid versus free actions, or partial and failed background work. Those come from Neuro's own model and from §11 above.
 
-**Adopt.** Off-white canvas with white surfaces and hairline borders, shadow only on floating layers. One accent, used for selection and a single primary action. Soft-tinted status pills with dark text rather than saturated fills — the Healthy/Degraded/Critical row in the OrchestrateIQ references is the model for Findings and Claims status. Stat tiles: small label, large number, one qualifier. Dense aligned tables with a filter-chip row and a search box directly above them. A compact left rail, a contextual column, a wide workbench, and a right-hand inspector for the selected object. Two-tone headline emphasis (dark phrase, grey phrase) for page purpose lines only. A calm chat surface with suggested actions as small cards and the composer anchored at the bottom.
+**Adopt.** Off-white canvas with white surfaces and hairline borders, shadow only on floating layers. One accent, used for selection and a single primary action. Soft-tinted status pills with dark text rather than saturated fills — the Healthy/Degraded/Critical row in the OrchestrateIQ references is the model for Findings and Claims status. Stat tiles: small label, large number, one qualifier — for orientation numbers the user acts on, not for novelty comparisons. Dense aligned tables with a filter-chip row and a search box directly above them. A compact left rail, a contextual column, a wide workbench, and a right-hand inspector for the selected object. Two-tone headline emphasis (dark phrase, grey phrase) for page purpose lines only. A calm chat surface with suggested actions as small cards and the composer anchored at the bottom.
 
 The strongest single reference is the meeting-analysis screen (Salach.ai): transcript on the left with time codes, extracted items on the right, each tagged and marked handled or not, with the AI analysis block clearly secondary. That is the closest existing analogue to a Neuro source drawer showing findings and Claims.
 

@@ -688,6 +688,9 @@ For each major surface, audit only the dimensions that materially apply.
 - Are counts supporting information rather than the entire interface?
 - Does typography express hierarchy consistently?
 - Are cards/panels being used because they clarify structure or simply because they are available?
+- For each number, badge, glyph and control on this surface: is it shown elsewhere on this or the adjacent
+  surface, and with the same value? (`DOC-1`: this is what let a substance bar and a stat tile disagree with
+  each other across two views of the same project.)
 
 ### D. Density and calmness
 
@@ -702,7 +705,10 @@ Look for:
 - repeated metadata competing with the actual decision;
 - long unbounded lists;
 - too many simultaneous calls to action;
-- detail that should live in an inspector, drawer, expander, or secondary view.
+- detail that should live in an inspector, drawer, expander, or secondary view;
+- a value whose visual form does not match what it encodes (a bar for a fill-toward-whole, dots for a
+  rating, a pill for a state, a checkmark for done — never a bar for a score, never a checkmark for a
+  version).
 
 Do not solve density only by making fonts smaller.
 
@@ -968,7 +974,9 @@ Examples relevant to Neuro Search include:
 - empty/partial research state × Overview recommendations;
 - local AI failure × paid fallback messaging;
 - large resultsets × default rendering;
-- terminology in Research × terminology in Chat/Discover/Planner.
+- terminology in Research × terminology in Chat/Discover/Planner;
+- the same number, badge, glyph, or control rendered on two surfaces — do they still agree, and does each
+  one's visual form still match what it encodes there?
 
 Do not assume two correct components create a correct workflow.
 
