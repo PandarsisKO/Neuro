@@ -30,9 +30,9 @@ globalThis.relTime = function relTime(ts) {
   if (!ts) return '';
   const s = Date.now() / 1000 - ts;
   if (s < 90) return 'just now';
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  if (s < 86400 * 13) return `${Math.round(s / 86400)} days ago`;
+  if (s < 3600) { const m = Math.round(s / 60); return `${m} min ago`; }
+  if (s < 86400) { const h = Math.round(s / 3600); return `${h} h ago`; }
+  if (s < 86400 * 13) { const d = Math.round(s / 86400); return `${d} day${d === 1 ? '' : 's'} ago`; }
   return new Date(ts * 1000).toLocaleDateString();
 }
 
