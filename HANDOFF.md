@@ -2245,3 +2245,70 @@ Proceeding directly to rung 2 (`SM-1` + `SM-2` + `RD-3` + `RD-4`: sidebar mode-t
 count-badge re-encoding, status-bar repetition across surfaces, Master Plan's duplicate stale-warning/rebuild
 controls) per Kyle's "complete them all... most efficient manner" instruction and DESIGN-MISSION.md's
 continue-through-eligible-rungs framework — no confirmation needed between rungs absent a genuine blocker.
+
+
+## Declutter rung 2: sidebar/status-bar/Plan-header cleanup — 2026-09-14 (overnight, seventh follow-up)
+
+Rung 2 of 6 from `docs/design-audit/2026-09-14-bd95e65/declutter-audit.md`, continuing straight from rung 1
+per Kyle's "complete them all... most efficient manner" — `SM-1`, `SM-2`, `RD-3`, `RD-4`.
+
+**SM-1 — the sidebar's "Research | Plan" mode toggle is gone.** It sat directly above a nav that already
+has "🧠 Research" and "🧭 Master Plan" items, made "Research" name two different things within ~60px, and
+its only behavior (`home.js`) mirrored `state.view === 'plan'` — a leftover from an earlier two-mode
+information architecture the six-view shell replaced. Removed the `.modes` div (`index.html`), its CSS
+(`styles.css`), and the classList-toggle line (`home.js`). "Research" now names one thing in the sidebar.
+
+**SM-2 — one encoding per nav badge, not one per last-visited page.** `#nFindings` showed "16644" from
+`home.js` (approved+suggested) or "16450 +194" from `research.js`'s `loadNotes` — same badge, two shapes,
+depending on navigation order. Both now write the approved count only; the suggested count still lives in
+Findings' own REVIEW/SUGGESTED section, where a user actually deciding what to review needs it, not the nav.
+`#nPlan` showed "✓" (from `home.js`, on every project load) until Plan was visited, then "v1" (from
+`plan.js`) — two competing shapes for the same fact. `home.js` no longer writes it at all; `plan.js`'s
+`'vN'`/blank is now the only writer, with the stale-dot overlay (`loadStaleness`) doing double duty as
+before.
+
+**RD-3 — the sidebar footer isn't Home's header in miniature anymore.** `statusBar()` takes a new `compact`
+flag: paused state takes over alone when true (single segment, most urgent), otherwise health dot + today's
+spend only — the two things that actually change while working a project. This month's total and the rest
+stay on Home's full bar. `loadSpend()` in `home.js` now calls `statusBar(u, true)` for `#sideSpend` and
+`statusBar(u)` (unchanged) for `#homeSpend`.
+
+**RD-4 — Master Plan shows one ⚠ banner and one "Rebuild" control, not two of each.** The stale card above
+the plan body (`research.js`'s `renderStaleCard`, from rung W3) already did this right: one ⚠, one primary
+$0.43 "Rebuild plan" action, costlier alternatives one disclosure away. The plan header directly below it
+duplicated both — a "⚠ Research changed — check for updates" pill and a separate "Rebuild…" button
+(`rebuildPrompt`, a free-text-instructions full rebuild). `checkUpdates` does real, different work (proposes
+per-section edits to accept/reject, not a blanket rebuild) so it stays, just without the duplicate ⚠ framing
+— it's now plain "Check for updates". `rebuildPrompt()` and its button are removed; it was only reachable
+from that one spot, so removing the button retires the function too rather than leaving it dead. The header
+now carries identity (version/date), "Check for updates", and the two exports — exactly what the audit's
+improvement direction asked for.
+
+**Files touched:** `neurosearch/web/index.html` (`.modes` div removed), `neurosearch/web/styles.css` (`.modes`
+rules removed), `neurosearch/web/js/home.js` (`modePlan`/`modeResearch` toggle removed; `#nFindings` fixed to
+approved-only; `#nPlan` write removed; `loadSpend()` uses `statusBar(u, true)` for the sidebar), `neurosearch/
+web/js/utils.js` (`statusBar()` gained the `compact` branch), `neurosearch/web/js/research.js` (`loadNotes`'s
+`#nFindings` fixed to approved-only), `neurosearch/web/js/plan.js` (header pill/button simplified;
+`rebuildPrompt()` removed).
+
+`UI_VERSION` 0.63.83 → 0.63.84. `node --check` clean on all touched JS. Tests: `test_s44_frontend_integrity`,
+`test_s50_design_drift`, `test_s5_ui_syntax` (26/26) plus `test_n6_findings_workbench`, `test_n8_research_shell`,
+`test_s22_stale_research`, `test_s23_retire` (29/29 — Plan/Findings/Research staleness surfaces this rung
+touched). `test_core.py::test_api_auth_and_import` fails in this environment independent of this change (an
+"OpenAI Embeddings is temporarily unavailable" external-service flake on an unrelated import endpoint, not a
+regression from these edits — confirmed unrelated to any file this rung touched). Landed as commit `ce06de8`.
+`.worktrees/f0` repinned to `ce06de8`.
+
+Audit-instance restart: found the same live window from the prior rung already `is_main`, screenshotted it —
+this time the close-confirmation dialog was real on the first try (5 AX elements, Cancel/Terminate both
+present), clicked Terminate, relaunched via the already-selected Finder row as before. Confirmed up via Chrome
+at `v0.63.84`. Live-verified in a project (Chats view): no mode toggle between the project name and the nav;
+Findings badge reads "16450" (no "+194"); Master Plan badge reads "v1" with the stale dot, no checkmark;
+sidebar footer shows only "● Local AI ready · $0.00 today" (no month figure); Master Plan surface shows
+exactly one ⚠ card ("Plan may be stale v1" / "Rebuild plan · $0.43" / "Other ways to rebuild" disclosure) and
+the header below it reads plain "Check for updates" with no second Rebuild control. Checked in dark theme
+(no CSS regressions from the `.modes` rule removal); light theme's equivalent surfaces were already confirmed
+working in rung 1's verification pass on the same shared stylesheet.
+
+Proceeding directly to rung 3 (`SM-4`: Findings' $0 rebuild option becomes primary, matching Plan's own W3
+pattern that RD-4 just reused) per the same standing authorization.
