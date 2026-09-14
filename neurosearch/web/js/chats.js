@@ -79,7 +79,7 @@ globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
     const warns = [];
     if (val.warning) warns.push(val.warning);
     for (const a of extra.actions || []) if (a.type === 'gap_noted') warns.push('Research gap recorded: this answer identified something the sources do not yet cover.');
-    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">📌 Pin to findings</button>` : '') + `<span class="muted copied text-xs"></span></div>`;
+    h += `<div class="tools"><button class="small ghost" onclick="copyMenu(this)">⧉ Copy ▾</button><button class="small ghost" onclick="shareMenu(this)">↗ Share ▾</button>` + (cites.length && !extra.no_pin ? `<button class="small ghost" onclick="pinMsg(this)">Pin to findings</button>` : '') + `<span class="muted copied text-xs"></span></div>`;
     d.innerHTML = h; d.dataset.text = text; d.dataset.cites = JSON.stringify(cites); d.dataset.warns = JSON.stringify(warns);
   }
   $('#chat').appendChild(d); d.scrollIntoView({ block: 'end' });

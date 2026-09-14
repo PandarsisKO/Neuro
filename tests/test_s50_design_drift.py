@@ -17,6 +17,10 @@ Why each measure exists:
 - **font sizes / radii** — 16 sizes and 11 radii against scales of six and four.
 - **emoji-only controls** — `DESIGN.md` §6 allows emoji in content, never as a control glyph.
 - **single-theme colour tokens** — a colour defined only in `:root` renders wrong in dark.
+- **emoji-prefixed buttons** — CL-6 (declutter audit): an emoji beside a text label the button already
+  states ("Rebuild in the background") is decoration, not the emoji-only glyphs `MAX_EMOJI_ONLY_CONTROLS`
+  already catches. Measured 2026-09-14 at 0, after that rung's sweep -- unlike the other measures here, this
+  one starts at its floor rather than a pre-existing baseline.
 """
 from pathlib import Path
 import re
@@ -36,6 +40,7 @@ MAX_JS_COLOUR_LITERALS = 3
 MAX_DISTINCT_FONT_SIZES = 16
 MAX_DISTINCT_RADII = 11
 MAX_EMOJI_ONLY_CONTROLS = 8
+MAX_EMOJI_PREFIXED_BUTTONS = 0
 
 COLOUR = re.compile(r'#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(')
 EMOJI = re.compile(r'[\U0001F300-\U0001FAFF☀-➿️]')
@@ -59,6 +64,14 @@ def distinct_radii():
 
 def emoji_only_controls():
     return re.findall(r'<button[^>]*>\s*(' + EMOJI.pattern + r'+)\s*<', HTML)
+
+
+def emoji_prefixed_buttons():
+    # CL-6: a button whose label is an emoji FOLLOWED BY text it already states in words -- the emoji adds
+    # nothing a sighted, English-reading user did not already get from the word. Nav items and chip-row
+    # legends (a single letter/word beside a glyph, distinguishing siblings at a glance -- DESIGN.md's named
+    # exception) are not <button> elements and so are not counted here.
+    return re.findall(r'>(' + EMOJI.pattern + r')(\s?)([A-Za-z][^<]{0,80}?)</button>', HTML + JS)
 
 
 def tokens(block):
@@ -97,6 +110,13 @@ def test_emoji_are_content_not_control_glyphs():
     assert len(found) <= MAX_EMOJI_ONLY_CONTROLS, (
         f'{len(found)} buttons whose only glyph is an emoji, ceiling {MAX_EMOJI_ONLY_CONTROLS}: {found}. '
         'Use the SVG sprite and give the control a name.')
+
+
+def test_emoji_beside_a_label_the_button_already_states_is_removed():
+    found = emoji_prefixed_buttons()
+    assert len(found) <= MAX_EMOJI_PREFIXED_BUTTONS, (
+        f'{len(found)} buttons prefix an emoji onto a text label that already says the same thing, ceiling '
+        f'{MAX_EMOJI_PREFIXED_BUTTONS}: {found}. CL-6 (declutter audit): remove the emoji, keep the word.')
 
 
 def test_every_colour_token_exists_in_both_themes():
@@ -147,3 +167,5 @@ def test_the_ratchet_would_catch_a_regression():
     assert COLOUR.search('background:rgba(0,0,0,.2)'), 'rgba detector is broken'
     assert EMOJI.search('🔄'), 'emoji detector is broken'
     assert not COLOUR.search('border:1px solid var(--line)'), 'token reference must not count as a literal'
+    assert re.findall(r'>(' + EMOJI.pattern + r')(\s?)([A-Za-z][^<]{0,80}?)</button>', '<button>🔄 Retry</button>'), \
+        'emoji-prefixed-button detector is broken'

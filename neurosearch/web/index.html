@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.88">
+<meta name="neurosearch-ui-version" content="0.63.89">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -13,7 +13,7 @@
 
 <!-- ============ HOME ============ -->
 <div id="home">
-  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted verTag" title="app version (page / server)" style="align-self:center;margin-left:8px"></span></div>
+  <div class="top"><h1>Neuro Search</h1><span class="muted" id="homeSpend" style="align-self:center"></span><button class="themeBtn" onclick="toggleTheme()">Dark</button><span class="muted verTag" title="app version (page / server)" style="align-self:center;margin-left:8px"></span></div>
   <div class="muted">Each project is its own world: its sources, its chats, its findings. <span id="homeStats"></span></div>
   <div class="grid" id="projGrid"></div>
   <div id="homeFun"></div>
@@ -39,7 +39,7 @@
          system state on a long brief. Rung W5 labels it rather than just reflowing around it. -->
     <div class="foot briefFoot"><span class="footLabel">Brief</span><span id="wsFoot"></span></div>
     <div class="statusfoot" id="sideSpend" title="estimated API spend and local-AI health"></div>
-    <div class="themefoot"><button class="themeBtn" onclick="toggleTheme()">🌙 Dark</button><span class="muted verTag" title="app version (page / server)"></span></div>
+    <div class="themefoot"><button class="themeBtn" onclick="toggleTheme()">Dark</button><span class="muted verTag" title="app version (page / server)"></span></div>
   </aside>
 
   <div id="main">
@@ -74,8 +74,8 @@
           <button data-pane="upload" onclick="showPane('upload')">Upload file</button>
           <button data-pane="paste" onclick="showPane('paste')">Paste text</button>
           <button data-pane="library" onclick="showPane('library')">From library</button>
-          <button data-pane="discover" onclick="showPane('discover')">✨ Discover</button>
-          <button data-pane="course" onclick="showPane('course')">🧩 Browser extension</button>
+          <button data-pane="discover" onclick="showPane('discover')">Discover</button>
+          <button data-pane="course" onclick="showPane('course')">Browser extension</button>
         </div>
         <div class="pane active" id="pane-link">
           <div class="muted">YouTube video, playlist, channel or <b>search link</b> (results are listed for review) · podcast episode · Instagram reel · direct mp3/mp4 link · <b>web page or article</b> (PDF links too). One per line. Single videos start right away; channels and playlists are listed first, ranked by relevance to your brief (from titles and descriptions — nothing downloaded), and the best ones are pre-selected for you to approve.</div>
@@ -185,8 +185,8 @@
             <a href="#" onclick="SRCG.collapsed='all';renderSourceList();return false">Collapse all</a>
           </div>
           <div class="row" style="gap:8px;flex-wrap:wrap">
-            <button class="small ghost" title="Export every source in this project as a CSV" onclick="exportCsv(false)">⬇ Master sheet CSV</button>
-            <button class="small ghost" title="Export this project's source segments as a CSV" onclick="exportCsv(true)">⬇ Segments CSV</button>
+            <button class="small ghost" title="Export every source in this project as a CSV" onclick="exportCsv(false)">Master sheet CSV</button>
+            <button class="small ghost" title="Export this project's source segments as a CSV" onclick="exportCsv(true)">Segments CSV</button>
           </div>
         </div>
       </details>
@@ -331,7 +331,7 @@
       <div class="card"><b>Health</b>
         <div class="muted">Can Neuro Search be trusted right now? The database is integrity-checked and snapshotted hourly; every snapshot is reopened and verified before it counts. Every finding's quote is checked against its transcript and every answer's citations against the excerpts it was given.</div>
         <div id="healthLine" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 14px;font-size:13px"></div>
-        <div class="row mt-2"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">📊 Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">💵 Cost per unit of value</button><button class="small ghost" id="settleBtn" hidden title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">📦 Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
+        <div class="row mt-2"><button class="small" onclick="backupNow()">Snapshot &amp; verify now</button><button class="small ghost" title="Where time actually goes: endpoint timings from this process, plus queue wait and model latency from the job history" onclick="perfReport()">Measure speed</button><button class="small ghost" title="Dollars per finding, per kept finding, per Claim, per source, per chat answer — with the spend attributed by kind rather than spread" onclick="valueReport()">Cost per unit of value</button><button class="small ghost" id="settleBtn" hidden title="Collect the completed requests from batches that were cancelled or failed. Free — it reads results that were already paid for and writes the findings they produced." onclick="settleBatches()">Collect abandoned batches</button><span class="muted" id="healthMsg"></span></div>
         <div id="perfOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
         <div id="valueOut" style="margin-top:8px;font-size:12.5px;overflow-x:auto"></div>
       </div>

@@ -168,7 +168,7 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
   // Rare, source-type-specific and already high-value when present — F0 addendum 4's bulk-review baseline is why
   // these stay a second visible control instead of folding into the overflow with the genuinely rare ones.
   let special = '';
-  if (s.status === 'ready' && s.platform === 'spreadsheet') special = `<button class="small" onclick="openCalc('${s.id}')">🧮 Calculator</button>`;
+  if (s.status === 'ready' && s.platform === 'spreadsheet') special = `<button class="small" onclick="openCalc('${s.id}')">Calculator</button>`;
   const allVideos = s.video_embeds || [], doneVideos = s.video_embeds_added || [], leftVideos = allVideos.filter(v => !doneVideos.includes(v));
   if (s.status === 'ready' && leftVideos.length) special += `<button class="small" title="This page embeds ${leftVideos.length} video (${esc(leftVideos.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)).join(', '))}). Adding it downloads and transcribes it, which costs money — the page's own notes were free." onclick="addPageVideos('${s.id}', ${leftVideos.length})">🎬 Add the ${leftVideos.length} video${leftVideos.length === 1 ? '' : 's'} on this page</button>`;
   else if (s.status === 'ready' && allVideos.length) special += `<span class="tag" title="${esc(doneVideos.join(', '))}">🎬 ${doneVideos.length} video${doneVideos.length === 1 ? '' : 's'} from this page added</span>`;
@@ -179,8 +179,8 @@ globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
     if (s.analysed) items.push(`<button onclick="suggestSource('${s.id}')" title="Reads this source with the model to extract findings again — uses your model budget">Suggest findings</button>`);
     else items.push(`<button onclick="sourceDrawer('${s.id}')" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is">What this gave</button>`);
     items.push(`<button onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>`);
-    if (s.platform === 'image') items.push(`<button title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">👁 Read again with the model</button>`);
-    if (s.long && s.depth !== 'deep') items.push(`<button title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`);
+    if (s.platform === 'image') items.push(`<button title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">Read again with the model</button>`);
+    if (s.long && s.depth !== 'deep') items.push(`<button title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">Read deeper</button>`);
   }
   if (!canRetry && !needsBrowser && (s.status === 'failed' || s.status === 'pending')) items.push(`<button onclick="retry('${s.id}')">Retry</button>`);
   items.push(`<button title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>`);
@@ -303,13 +303,13 @@ globalThis.loadSources = async function loadSources() {
   const rows = all.filter(s => f === 'all' || (f === 'working' ? bucket(s) === 0 : f === 'browser' ? needsBrowser(s) : f === 'deep' ? (s.status === 'ready' && s.long) : s.status === f && !needsBrowser(s))).filter(passes).sort(sorter);
   const underRead = f === 'deep' ? rows.filter(s => s.under_read) : [];
   $('#srcCount').innerHTML = `${rows.length}${f !== 'all' ? ' of ' + all.length : ''} source${all.length === 1 ? '' : 's'}` +
-    (f === 'deep' ? ` <span class="muted">· books, courses, podcasts and interviews over 45 min · ${underRead.length} under-read (read once, ≤ ${12} findings)</span>` + (underRead.length ? ` <button class="small primary" title="Reads each under-read long source again in smaller parts and keeps every specific finding. $0 on Claude Code (slow); API cost otherwise." onclick="readDeeperAll(${JSON.stringify(underRead.map(s => s.id))})">🔬 Read deeper on all ${underRead.length}</button>` : '') : '') +
+    (f === 'deep' ? ` <span class="muted">· books, courses, podcasts and interviews over 45 min · ${underRead.length} under-read (read once, ≤ ${12} findings)</span>` + (underRead.length ? ` <button class="small primary" title="Reads each under-read long source again in smaller parts and keeps every specific finding. $0 on Claude Code (slow); API cost otherwise." onclick="readDeeperAll(${JSON.stringify(underRead.map(s => s.id))})">Read deeper on all ${underRead.length}</button>` : '') : '') +
     (f === 'skipped' && rows.length ? ` <button class="small" onclick="ingestSkipped()">⏵ Ingest all ${rows.length} anyway</button>` : '') +
-    (f === 'skipped' && rows.some(s => !s.thumbnail_url) ? ` <button class="small ghost" title="Re-fetches metadata only (no download, stays skipped) for skipped sources with no thumbnail yet — catches up rows skipped before this was fixed." onclick="refreshSkippedMeta()">🔄 Refresh info</button>` : '') +
+    (f === 'skipped' && rows.some(s => !s.thumbnail_url) ? ` <button class="small ghost" title="Re-fetches metadata only (no download, stays skipped) for skipped sources with no thumbnail yet — catches up rows skipped before this was fixed." onclick="refreshSkippedMeta()">Refresh info</button>` : '') +
     (f === 'failed' && rows.length > 1 ? ` <button class="small" onclick="retryAllSources()">↻ Retry all ${rows.length}</button>` : '') +
-    (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">✕ Clear all failed</button>` : '') +
+    (f === 'failed' && rows.length ? ` <button class="small danger" onclick="clearFailedSources()">Clear all failed</button>` : '') +
     // music-only shorts/reels: the audio said nothing, but the caption often holds the substance
-    (capRecover.n ? ` <button class="small ghost" title="${capRecover.n} source${capRecover.n === 1 ? '' : 's'} said nothing out loud but carry real text in the caption — read that text so they can produce findings. No download, no re-transcription." onclick="recoverCaptions()">💬 Read ${capRecover.n} caption-only source${capRecover.n === 1 ? '' : 's'}</button>` : '');
+    (capRecover.n ? ` <button class="small ghost" title="${capRecover.n} source${capRecover.n === 1 ? '' : 's'} said nothing out loud but carry real text in the caption — read that text so they can produce findings. No download, no re-transcription." onclick="recoverCaptions()">Read ${capRecover.n} caption-only source${capRecover.n === 1 ? '' : 's'}</button>` : '');
   SRCG.rows = rows;
   renderSourceList();
 }
@@ -561,7 +561,7 @@ globalThis.toggleReserve = async function toggleReserve(sid, a) {
   const notes = r.notes || [];
   box.innerHTML = `<div class="row" style="margin:6px 0 2px"><span class="muted" style="flex:1;font-size:12px">${notes.length} more extracted (lower importance for this brief). They are not exported or planned on until you promote them.</span>
     <button class="small" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'suggested', '${sid}')">Send all to Suggested</button><button class="small ghost" onclick="bulkReserve(${JSON.stringify(notes.map(n => n.id))}, 'dismissed', '${sid}')">Dismiss all</button></div>` +
-    notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="reserveVerdict(${n.id}, 'approved', '${sid}')">✓ Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="reserveVerdict(${n.id}, 'suggested', '${sid}')">📌 To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="reserveVerdict(${n.id}, 'dismissed', '${sid}')">✕ Dismiss</button>`)).join('');
+    notes.map(n => findingCard(n, `<button class="small primary" title="Keep it — approved findings feed exports, the plan and Claims" onclick="reserveVerdict(${n.id}, 'approved', '${sid}')">Approve</button><button class="small" title="Move it into the review queue to decide later" onclick="reserveVerdict(${n.id}, 'suggested', '${sid}')">To review</button><button class="small ghost" title="Not worth keeping (nothing is deleted — it stays as dismissed)" onclick="reserveVerdict(${n.id}, 'dismissed', '${sid}')">Dismiss</button>`)).join('');
 }
 globalThis.reserveVerdict = async function reserveVerdict(id, status, sid) { await post(`/api/notes/${id}/status`, { status }); const box = $(`#reserve-${sid}`); if (box) { box.hidden = true; } loadSources(); if (status !== 'dismissed') toast(status === 'approved' ? '✓ approved' : '📌 sent to Suggested'); }
 globalThis.bulkReserve = async function bulkReserve(ids, status, sid) { await post('/api/notes/bulk-status', { note_ids: ids, status }); loadSources(); toast(`${ids.length} finding${ids.length === 1 ? '' : 's'} ${status === 'dismissed' ? 'dismissed' : 'sent to Suggested'}`); }
@@ -738,7 +738,9 @@ globalThis.loadHealth = async function loadHealth() {
   try {
     const h = await api('/api/health');
     const ago = ts => { if (!ts) return 'never'; const m = Math.round((Date.now() / 1000 - ts) / 60); return m < 1 ? 'just now' : m < 90 ? `${m} min ago` : `${(m / 60).toFixed(1)} h ago`; };
-    const ok = b => b ? '✅' : '⚠️';
+    // CL-6: these were bare ✅/⚠️ glyphs prefixing 24 row labels -- DESIGN.md reserves emoji for content, not
+    // status glyphs, and the app already has .status-ok/.status-warn for exactly this. Word plus colour now.
+    const ok = b => b ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>';
     // 2026-09-14 - DESIGN.md's adopt list has called for soft-tinted status pills since the INSPIRATION review
     // (Vyra's "↗ Normal" / "↘ Low" arrow-badges), but --ok-soft/--warn-soft/--bad-soft were defined in styles.css
     // and used almost nowhere. These three percentage rows are exactly the "vital sign" shape Vyra's pattern is
@@ -770,17 +772,17 @@ globalThis.loadHealth = async function loadHealth() {
           : `every call ran the model its contract asked for${stale ? ` · ${stale} earlier row${stale === 1 ? '' : 's'} were mis-readings corrected in v0.63.29, kept rather than deleted` : ''}`]; })(),
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
       [`${ok(!(h.structured_outputs || {}).fallbacks && !(h.structured_outputs || {}).unrecovered && !(h.structured_outputs || {}).mismatches)} Structured-output fallbacks`, h.structured_outputs ? `${h.structured_outputs.fallbacks} fallback${h.structured_outputs.fallbacks === 1 ? '' : 's'} · ${h.structured_outputs.mismatches} schema mismatch${h.structured_outputs.mismatches === 1 ? '' : 'es'} (${h.structured_outputs.unrecovered} unrecovered) · truncated ${h.structured_outputs.truncated} · refused ${h.structured_outputs.refused} · steady state 0` : '—'],
-      [`${h.fake_ai ? '🧪' : '✅'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
-      ...((h.providers || []).map(p => [`${p.status === 'Healthy' ? '✅' : p.status === 'Checking' ? '🔎' : '⏸'} ${p.label}`, p.status === 'Healthy' ? 'Healthy' : `${p.status}${p.detail ? ' · ' + p.detail : ''}${p.waiting_jobs ? ` · ${p.waiting_jobs} job${p.waiting_jobs === 1 ? '' : 's'} waiting` : ''}`])),
+      [`${h.fake_ai ? '<span class="status-warn">Test</span>' : '<span class="status-ok">OK</span>'} Models`, h.fake_ai ? 'FAKE AI MODE — no real model calls' : 'live'],
+      ...((h.providers || []).map(p => [`${p.status === 'Healthy' ? '<span class="status-ok">OK</span>' : p.status === 'Checking' ? '<span class="status-warn">Checking</span>' : '<span class="status-warn">Paused</span>'} ${p.label}`, p.status === 'Healthy' ? 'Healthy' : `${p.status}${p.detail ? ' · ' + p.detail : ''}${p.waiting_jobs ? ` · ${p.waiting_jobs} job${p.waiting_jobs === 1 ? '' : 's'} waiting` : ''}`])),
       [`${ok(Object.values(h.flags || {}).every(f => f.ok))} Experimental flags`, Object.entries(h.flags || {}).filter(([k]) => k !== 'NEUROSEARCH_FAKE_AI').map(([k, f]) => `${k.replace('NEUROSEARCH_', '').toLowerCase()} ${f.ok ? 'off' : 'ON'} (${f.status})`).join(' · ') || '—'],
-      [`${h.release ? (h.release.verdict === 'PASS' ? '✅' : '⚠️') : '⚠️'} Last release check`, h.release ? `${h.release.verdict} · ${h.release.app_version} @ ${h.release.git_sha} · ${h.release.timestamp} · ${h.release.checks} gates` : 'none yet — run: neurosearch release-check'],
+      [`${h.release ? (h.release.verdict === 'PASS' ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>') : '<span class="status-warn">Warn</span>'} Last release check`, h.release ? `${h.release.verdict} · ${h.release.app_version} @ ${h.release.git_sha} · ${h.release.timestamp} · ${h.release.checks} gates` : 'none yet — run: neurosearch release-check'],
       [`${ok(!(h.library || {}).duplicate_fingerprints)} Global Library`, h.library ? `${h.library.sources} sources (${h.library.ready} ready) · ${h.library.shared_by_projects} shared by several projects · ${h.library.acquisitions_avoided} acquisition${h.library.acquisitions_avoided === 1 ? '' : 's'} avoided by reuse · profiles: ${h.library.profiles ? `${h.library.profiles.enriched} enriched, ${h.library.profiles.wanted + h.library.profiles.queued} wanted/queued, ${h.library.profiles.recalls} recalls` : '—'} · ${h.library.candidates_seen || 0} seen, ${h.library.candidates_not_acquired || 0} not acquired (Candidate Index)${h.library.duplicate_fingerprints ? ` · ⚠ ${h.library.duplicate_fingerprints} duplicate content fingerprints` : ''}` : '—'],
       [`${ok(!((h.perf || {}).slowest || []).some(s => s.p50 > 1))} Slowest endpoints (since restart)`, ((h.perf || {}).slowest || []).length ? (h.perf.slowest.map(s => `${s.key} ${s.p50.toFixed(2)}s p50 / ${s.p90.toFixed(2)}s p90 (${s.n})`).join(' · ') + ' — full picture: Measure speed') : 'nothing measured yet'],
-      ...(Object.keys((h.perf || {}).caches || {}).length ? [[`📈 Cache hit rate`, Object.entries(h.perf.caches).map(([k, c]) => `${k} ${c.rate == null ? '—' : (c.rate * 100).toFixed(0) + '%'} (${c.hit}/${c.hit + c.miss})`).join(' · ')]] : []),
+      ...(Object.keys((h.perf || {}).caches || {}).length ? [[`Cache hit rate`, Object.entries(h.perf.caches).map(([k, c]) => `${k} ${c.rate == null ? '—' : (c.rate * 100).toFixed(0) + '%'} (${c.hit}/${c.hit + c.miss})`).join(' · ')]] : []),
       [`${ok(!(h.network || {}).fetch_blocked)} Network boundary`, `${(h.network || {}).fetch_blocked || 0} fetch${(h.network || {}).fetch_blocked === 1 ? '' : 'es'} refused (private/internal address, size or time limit)`],
       // 0.59.0: the recorded-vs-actual spend gap belongs on the page you open when you wonder where the money went.
       ...(h.spend ? [[
-        `${h.spend.local_is_free ? '✅' : '⚠️'} Spend (recorded vs likely charged)`,
+        `${h.spend.local_is_free ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>'} Spend (recorded vs likely charged)`,
         `today $${(h.spend.today || {}).likely_total ?? 0} · 7 days $${(h.spend.week || {}).likely_total ?? 0} · month $${(h.spend.month || {}).likely_total ?? 0}`
         + (h.spend.local_is_free
             ? ` · local path free (${(h.spend.month || {}).local_calls || 0} calls, $${(h.spend.month || {}).local_if_billed ?? 0} avoided)`
@@ -788,15 +790,15 @@ globalThis.loadHealth = async function loadHealth() {
         + ` · budgets: $${(h.spend.budgets || {}).daily ?? '—'}/day, $${(h.spend.budgets || {}).monthly ?? '—'}/month`
         + ((h.spend.budgets || {}).weekly ? `, $${h.spend.budgets.weekly}/week` : ', no weekly budget set')
         + ` · ceiling $${(h.spend.budgets || {}).rate_per_hour ?? '—'}/hour`
-      ], [`${h.spend.local_is_free ? '✅' : '⚠️'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
+      ], [`${h.spend.local_is_free ? '<span class="status-ok">OK</span>' : '<span class="status-warn">Warn</span>'} Who pays for local calls`, `${h.spend.billing_mode} — ${h.spend.note}`]] : []),
       // 0.60.3: a cancelled batch's completed requests were paid for. Collecting them is free.
       ...(h.batches && !h.batches.error && h.batches.unsettled ? [[
-        `⚠️ Provider batches: work paid for and not written`,
+        `<span class="status-warn">Warn</span> Provider batches: work paid for and not written`,
         `${h.batches.unsettled} batch${h.batches.unsettled === 1 ? '' : 'es'} · ${h.batches.awaiting_collection || 0} request${(h.batches.awaiting_collection || 0) === 1 ? '' : 's'} not collected · ${h.batches.collected_not_written || 0} collected but never written. ${h.batches.note}`
       ]] : []),
       // 0.59.3: how much, per useful thing. "Is it improving?" is a different question from "how much have we spent".
       ...(h.cost_value && !h.cost_value.error ? [[
-        `${h.cost_value.week_vs_month === 'dearer' ? '⚠️' : '✅'} Cost per kept finding`,
+        `${h.cost_value.week_vs_month === 'dearer' ? '<span class="status-warn">Warn</span>' : '<span class="status-ok">OK</span>'} Cost per kept finding`,
         (h.cost_value.month.per_kept_finding == null
           ? 'no findings kept this month yet'
           : `$${(+h.cost_value.month.per_kept_finding).toFixed(4)} this month (${h.cost_value.month.kept} kept for $${(+h.cost_value.month.cost).toFixed(2)})`
@@ -987,7 +989,7 @@ globalThis.loadDiscoveries = async function loadDiscoveries(keepMsg = false) {
              same, and only the dismiss stays ghost. -->
         ${vids.length ? `<button class="small primary" title="${esc(vids[0].title)}" onclick="discAdd(${d.id}, ${JSON.stringify(vids[0].url).replace(/"/g, '&quot;')}, false, this)">＋ Start video</button>` : ''}
         ${isChan ? `<button class="small primary" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, true, this)">＋ Channel</button>` : ''}
-        ${searches.length ? `<button class="small primary" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true, this)">🔍 Search YouTube</button>` : ''}
+        ${searches.length ? `<button class="small primary" title="Lists the top YouTube results for review — nothing downloaded until you approve" onclick="discAdd(${d.id}, ${JSON.stringify(searches[0]).replace(/"/g, '&quot;')}, true, this)">Search YouTube</button>` : ''}
         ${!isChan && !searches.length && d.url && /^https?:/.test(d.url) && !vids.length && !dead ? `<button class="small primary" title="Read this page into the project (text only; use a specific article URL for best results)" onclick="discAdd(${d.id}, ${JSON.stringify(d.url).replace(/"/g, '&quot;')}, false, this)">＋ Add page</button>` : ''}
         ${dead && lc.suggested_url ? `<button class="small primary" title="${esc(lc.suggested_why || '')}" onclick="discAdd(${d.id}, ${JSON.stringify(lc.suggested_url).replace(/"/g, '&quot;')}, false, this)">＋ Add the site instead</button>` : ''}
         ${d.status !== 'added' ? `<button class="small ghost" title="Dismiss" aria-label="Dismiss" onclick="discStatus(${d.id},'dismissed')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}
