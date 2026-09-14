@@ -290,3 +290,65 @@ App-ledger-recorded real spend today across T5 + T4 (nine sources across three b
 $20 authorized. Actual Anthropic billing today is that figure plus the ~$0.79 disclosed above, roughly **$4.04**.
 Both remain far inside budget. 383 more `t4.plan()`-flagged sources remain unprocessed in this project alone --
 today's batches were a deliberately small, throttled sample, not a claim of completeness.
+
+
+## Relevance-aware selection and the substance probe — 2026-09-14 (built from today's measured waste)
+
+Kyle: "how do we balance speed, budget and findings?" Today's 13 real sources answer it: two-thirds of the spend
+went to sources that scored substance 33 or lower, because the v1 selector ranked by Tier-0 cue density alone (an
+n8n automation course is dense with numbers and procedures) and every window of every source was read before its
+substance was known. Two $0 changes, each backtested on those 13 paid-for results BEFORE any new spend:
+
+### 1. `t4.source_relevance()` — selector v2 (`SELECTOR_VERSION = "t4-selector-v2"`)
+
+Per-source mean cosine of chunk vectors to the centroid of the project's canonical Claim vectors (T1's derived
+space; same attestation and version rules as `t1.coverage_view`). Reads only vectors already stored: no network,
+no new embedding, no write. Within a priority, unexplained chunks now sort by source relevance descending (open
+Evidence Targets still come first inside a priority; `input_hash` still breaks every tie, so the order stays
+reproducible and falls back to v1's hash order when relevance is unavailable). `select()` also returns a
+`by_source` rollup (relevance, unexplained and priority-1 chunk counts) so an executor can pick SOURCES, and a
+`relevance` block naming status and reason. Honesty rule inherited from T1/T2: unattested space, missing Claim
+vectors, or a source with no valid chunk vector → `None`, never a low score.
+
+Backtest on the 13 sources (substance score vs relevance rank, $0):
+
+    rank  relevance  substance  source
+       1     0.527        79    Buy then Build
+       2     0.510        83    How To Analyze M&A Broker CIMs
+       7     0.372        68    Copy of Acquisition Ace Deal Calculator   <- the miss: a spreadsheet
+       9     0.296        16    CLAUDE CODE FULL COURSE
+      13     0.274        26    Build & Sell n8n AI Agents (8+ Hour Course)
+
+Spearman 0.62 (n=13). Top half by relevance: all three substance>=60 sources, $1.72 spent, mean substance 43.
+Bottom half: none of them, $1.53 spent, mean substance 9. The one miss is instructive -- prose Claim vectors sit
+far from tabular text -- and is why relevance RANKS alongside cue density rather than filtering: the Deal
+Calculator still ranks 7th of 13, above every junk source, and cue density (v1's signal) already rated it high.
+A brief-text embedding is the better long-term basis; it needs the embedding provider reachable from the
+executing process, which this device's egress does not allow, and the centroid needs no new vector at all.
+
+### 2. `findings.suggest_for_source(substance_floor=N)` — the substance probe
+
+Off by default (`None` is byte-for-byte the old path). When set and a source has more than one window, window 0
+is read first on its own; if the substance it reports is below the floor, the remaining windows are not read and
+the analysis materialises from window 0 alone. The probe IS an ordinary `findings.extract` call stored as a work
+unit, so the main pass reuses it (never paid twice) and a re-run is idempotent as before. The verdict is recorded
+on the analysis row's `prefilter` column as `substance_probe` -- the column that already records why windows
+were not read (H1). An unreadable substance fails OPEN (everything is read). Backtest, floor 30: would have saved
+$1.64 of today's $3.25 and skipped nothing that scored 30 or above.
+
+### Validation
+
+`tests/test_t4_relevance.py` (6) and `tests/test_findings_substance_floor.py` (5): unavailability semantics,
+relevance reorders only within a priority, priority still outranks relevance, a source without vectors is
+unscored not zero, the selector still writes nothing; floor off reads every window, a low first window stops
+the read with exactly one work unit and the recorded probe, a high first window reads everything and never
+pays for window 0 twice, unreadable substance fails open, a one-window source is not probed. Full suite in this
+device VM: 1,435 passed; the 15 failures are all reproduced identically on untouched HEAD here (blocked OpenAI
+egress, native-worker restart, one order-flaky retrieval test) -- environmental, not regressions. `repo-check`
+PASS. Kyle's own venv is where the 1,439-green run lives.
+
+### What this does NOT do yet
+
+The v2 selector still executes nothing; the floor is a parameter, not a default. The next live step is the
+smallest possible: a handful of new sources chosen by v2's `by_source` order, run with `substance_floor=30`,
+to check both changes against fresh, unlabelled data before anything runs at scale.

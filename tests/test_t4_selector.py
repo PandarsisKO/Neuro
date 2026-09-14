@@ -143,4 +143,6 @@ def test_empty_project_returns_empty_ranked_list(t4_db):
     result = t4.select(project_id)
 
     assert result == {"selector_version": t4.SELECTOR_VERSION, "project_id": project_id, "count": 0,
-                      "by_kind": {"unexplained_chunk": 0, "open_evidence_target": 0}, "items": []}
+                      "by_kind": {"unexplained_chunk": 0, "open_evidence_target": 0},
+                      "relevance": {"status": "unavailable", "reason": "chunk_space_unattested", "claim_vectors": 0},
+                      "by_source": [], "items": []}

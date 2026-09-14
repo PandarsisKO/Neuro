@@ -15,9 +15,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from . import contracts, db, knowledge, providers, t1, t3
 
-SELECTOR_VERSION = "t4-selector-v1"
+SELECTOR_VERSION = "t4-selector-v2"   # v2: source relevance (T1 Claim-centroid proximity) ranks chunks within a priority
 PLAN_VERSION = "t4-plan-v1"
 EXECUTOR_TASK = "t4.research"
 
@@ -26,7 +28,66 @@ EXECUTOR_TASK = "t4.research"
 _HIGH_VALUE_T3_KINDS = ("money", "percentage", "duration", "unit", "number", "procedure", "warning", "date")
 
 
-def _unexplained_chunk_items(project_id: str, *, chunk_limit: int | None) -> list[dict[str, Any]]:
+def source_relevance(project_id: str) -> dict[str, Any]:
+    """Per-source semantic proximity to what this project already holds: the mean cosine of a source's chunk
+    vectors to the centroid of the project's canonical Claim vectors (T1's derived space, same attestation and
+    version rules as ``t1.coverage_view``). Read-only, $0, no network: every vector it reads is already stored.
+
+    Why this signal, and its known limit. Measured on the 13 sources read for real on 2026-09-14 (see
+    docs/T4-ADMISSION-2026-09-14.md, "Relevance-aware selection"): Spearman 0.62 against the substance score
+    ``findings.extract`` gave each source; all three high-substance sources landed in the top half, the bottom
+    half averaged substance 9. The one miss was a spreadsheet source (substance 68, ranked 7th of 13): prose
+    Claim vectors sit far from tabular text, so this is a RANKING signal combined with Tier-0 cue density, never
+    a filter on its own. A brief-text embedding is the better long-term basis and belongs here once the
+    embedding provider is reachable from the executing process; the centroid needs no new vector at all.
+
+    Follows T1/T2's honesty rule: when the vector space is unattested, Claim vectors are missing, or a source has
+    no valid chunk vector, the score is reported as unavailable (``None``) with a reason -- never as a low score.
+    """
+    unavailable = {"status": "unavailable", "scores": {}, "claim_vectors": 0}
+    att = t1.get_chunk_space_attestation()
+    if not att:
+        return {**unavailable, "reason": "chunk_space_unattested"}
+    provider, model, dims = att.get("provider"), att.get("model"), int(att.get("dimensions") or 0)
+    if dims <= 0:
+        return {**unavailable, "reason": "chunk_space_unattested"}
+    claims = db.load_versioned_derived_embeddings("project_claims", project_id, provider=provider, model=model,
+                                                  version=t1.VECTOR_VERSION, dimensions=dims)
+    if not claims:
+        return {**unavailable, "reason": "claim_vectors_unavailable"}
+    centroid = np.vstack([np.asarray(v["embedding"], dtype=np.float32) for v in claims]).mean(axis=0)
+    norm = float(np.linalg.norm(centroid))
+    if not np.isfinite(norm) or norm == 0.0:
+        return {**unavailable, "reason": "claim_centroid_degenerate", "claim_vectors": len(claims)}
+    centroid = centroid / norm
+    conn = db.connect()
+    rows = conn.execute("""SELECT c.source_id, c.embedding FROM chunks c
+                           JOIN project_sources ps ON ps.source_id = c.source_id
+                           WHERE ps.project_id=? AND c.embedding IS NOT NULL""", (project_id,)).fetchall()
+    sums: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    invalid: dict[str, int] = {}
+    for r in rows:
+        sid = r["source_id"]
+        try:
+            vec = db._unpack(r["embedding"])
+            if vec.size != dims or not np.isfinite(vec).all():
+                raise ValueError
+        except (TypeError, ValueError):
+            invalid[sid] = invalid.get(sid, 0) + 1
+            continue
+        sums[sid] = sums.get(sid, 0.0) + float(vec @ centroid)
+        counts[sid] = counts.get(sid, 0) + 1
+    scores = {sid: sums[sid] / counts[sid] for sid in counts}
+    return {"status": "measured", "scores": scores, "claim_vectors": len(claims),
+            "basis": "mean cosine of a source's chunk vectors to the centroid of project_claims vectors",
+            "sources_scored": len(scores), "sources_with_invalid_chunks": len(invalid)}
+
+
+def _unexplained_chunk_items(project_id: str, *, chunk_limit: int | None,
+                             relevance: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    relevance = relevance if relevance is not None else source_relevance(project_id)
+    scores = relevance.get("scores") or {}
     coverage = t1.coverage_view(project_id, limit=chunk_limit)
     # T2's own coverage_view never asserts primary_state "unexplained" while extracted/redundant/irrelevant
     # remain unavailable (see docs/T2-ADMISSION-2026-09-13.md: "unexplained is never asserted while any
@@ -57,6 +118,7 @@ def _unexplained_chunk_items(project_id: str, *, chunk_limit: int | None) -> lis
                        if cue_kinds else "no Claim/Finding coverage, no Tier-0 cue"),
             "cue_kinds": cue_kinds,
             "priority": priority,
+            "relevance": scores.get(row["source_id"]),   # None = unavailable, never "low"
             "input_hash": t1.input_hash(SELECTOR_VERSION, "unexplained_chunk", row["chunk_id"], row["start"], row["end"]),
         })
     return items
@@ -90,12 +152,30 @@ def select(project_id: str, *, limit: int | None = None, chunk_limit: int | None
     ``(priority, input_hash)`` — priority is the product judgement, ``input_hash`` breaks ties deterministically
     so the same inputs always produce the same order, independent of database row order or dict iteration.
     """
-    items = _unexplained_chunk_items(project_id, chunk_limit=chunk_limit) + _open_target_items(project_id)
-    items.sort(key=lambda item: (item["priority"], item["input_hash"]))
+    relevance = source_relevance(project_id)
+    items = _unexplained_chunk_items(project_id, chunk_limit=chunk_limit, relevance=relevance) + _open_target_items(project_id)
+    # v2 order within a priority: open Evidence Targets first (a governing question the project has already asked
+    # outranks any passage nobody has asked about), then unexplained chunks by source relevance DESCENDING, then
+    # input_hash so ties -- and the whole list when relevance is unavailable -- stay byte-for-byte reproducible.
+    items.sort(key=lambda item: (item["priority"], 0 if item["kind"] == "open_evidence_target" else 1,
+                                 -(item.get("relevance") if item.get("relevance") is not None else 0.0), item["input_hash"]))
     selected = items if limit is None else items[:limit]
+    by_source: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if item["kind"] != "unexplained_chunk":
+            continue
+        row = by_source.setdefault(item["source_id"], {"source_id": item["source_id"], "relevance": item.get("relevance"),
+                                                       "unexplained_chunks": 0, "priority1_chunks": 0})
+        row["unexplained_chunks"] += 1
+        if item["priority"] == 1:
+            row["priority1_chunks"] += 1
+    sources = sorted(by_source.values(), key=lambda s: (-(s["relevance"] if s["relevance"] is not None else 0.0),
+                                                        -s["priority1_chunks"], s["source_id"]))
     return {"selector_version": SELECTOR_VERSION, "project_id": project_id, "count": len(items),
             "by_kind": {kind: sum(1 for i in items if i["kind"] == kind)
                         for kind in ("unexplained_chunk", "open_evidence_target")},
+            "relevance": {k: v for k, v in relevance.items() if k != "scores"},
+            "by_source": sources,
             "items": selected}
 
 

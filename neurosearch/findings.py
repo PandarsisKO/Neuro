@@ -479,10 +479,20 @@ def materialize(project_id: str, source_id: str, window_results: list[tuple[str,
 
 
 def suggest_for_source(project_id: str, source_id: str, max_findings: int | None = None, force: bool = False, depth: str | None = None,
-                       progress=None, r6_wave: str | None = None, r6_provisional: bool = False) -> dict[str, Any]:
+                       progress=None, r6_wave: str | None = None, r6_provisional: bool = False,
+                       substance_floor: int | None = None) -> dict[str, Any]:
     """Extract candidate findings for one source in the context of one project (interactive transport). Stores them as
     'suggested'. Idempotent: if a current analysis exists for exactly these inputs (input_hash) the work is skipped, so a
-    retried or duplicated job never pays twice; force=True re-analyses regardless."""
+    retried or duplicated job never pays twice; force=True re-analyses regardless.
+
+    ``substance_floor`` (T4, 2026-09-14): a substance probe. When set and the source has more than one window, the FIRST
+    window is read on its own first; if the substance it reports is below the floor, no further window is read and the
+    analysis is materialised from that one window alone. Measured on the 13 sources read for real on 2026-09-14, a floor
+    of 30 would have saved half the spend and skipped no source that scored 30 or above (docs/T4-ADMISSION-2026-09-14.md).
+    The probe is an ordinary findings.extract call on window 0 -- it is stored as a work unit like any other, so the main
+    pass reuses it and a re-run never pays for it twice -- and its verdict is recorded in the analysis row's ``prefilter``
+    column as ``substance_probe`` (the column that already records why windows were not read). Off by default: ``None``
+    is byte-for-byte the pre-existing behaviour."""
     project = db.get_project(project_id)
     src = db.get_source(source_id)
     if not project or not src:
@@ -577,6 +587,22 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                               "summary_ok": False, "substance_ok": False, **_call_diagnostics(), "error": True})
                 raise
 
+    probe: dict[str, Any] | None = None
+    if substance_floor is not None and len(windows) > 1 and 0 in kept:
+        _say(0.0, reading, 0)
+        _, res0, _, _, count0, reused0 = _run_window((0, windows[0]))
+        found += count0
+        try:
+            sub0: int | None = int(res0.get("substance"))
+        except (TypeError, ValueError):
+            sub0 = None                       # an unreadable score never stops a read: fail open
+        stopped = sub0 is not None and sub0 < int(substance_floor)
+        probe = {"substance_floor": int(substance_floor), "window_substance": sub0, "stopped": stopped,
+                 "windows_skipped": (len(kept) - 1) if stopped else 0, "reused": reused0}
+        if stopped:
+            log.info("findings substance probe stopped %s after window 1: substance %s < floor %s (%d window(s) skipped)",
+                     source_id, sub0, substance_floor, probe["windows_skipped"])
+            kept = {0}
     # R7: embeddings only reorder equivalent work.  The complete kept set is
     # still read, and durable work-unit keys retain original transcript indexes.
     from . import novelty
@@ -611,6 +637,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         last_routing = routings[-1]
     if not _inputs_current():
         raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+    if probe is not None:
+        pf_summary = {**(pf_summary or {}), "substance_probe": probe}
     return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"), transport="interactive",
                        max_findings=max_findings, prefilter=pf_summary, depth=depth, routing=last_routing,
                        r6_wave=r6_wave, r6_provisional=r6_provisional)
