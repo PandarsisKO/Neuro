@@ -2981,3 +2981,13 @@ end to end. $0 spent, no touch to Kyle's real database.
 Both rungs committed to `main` (`2bff02e`, `a4d7e11`). Next per `docs/T4-EXECUTION-PLAN-2026-09-14.md`: E3, the
 first native live run -- Kyle's own call, on his own Mac, since it needs the app's real workers rather than the
 bridge. `t4.execute(..., dry_run=True)` is ready for his review before any spend there.
+
+## GitHub mirror refresh — 2026-09-14
+
+The ordinary `main` push remains intentionally blocked: its reachable historical graph contains five retired
+`VIDEOS/` blobs larger than GitHub's 100 MB limit. The current committed tree contains no `VIDEOS/`, `data/`, or
+`_to_delete/` paths. A fresh history-free snapshot of the current `main` tree was created as
+`86e14a72e7688a737b66234b94211f088d59ff37` and force-updated to the disposable remote branch
+`backup/2026-09-13-clean`; `git ls-remote` confirms that remote tip. `origin/main` remains at `67520c9` by design.
+The local `main` history is unchanged. Do not force-push `main` or rewrite ancestry without an explicit decision;
+use the backup branch as the GitHub safety mirror while the historical-video cleanup decision is open.
