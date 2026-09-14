@@ -366,6 +366,14 @@ def add_evidence(claim_id: str, source_id: str, *, locator: str | None = None, s
                 links = []
             if links:
                 lineage_id = "url:" + re.sub(r"^https?://(www\.)?", "", links[0]).rstrip("/").lower()
+    # an exact repeat (same claim, source, revision, locator, relation) is the same citation arriving twice -
+    # e.g. two Findings both extracted the identical passage. Return the row already on the claim instead of a
+    # second identical evidence chip; a genuinely new locator, revision, or relation still gets its own row.
+    dup = db.connect().execute(
+        "SELECT * FROM claim_evidence WHERE claim_id=? AND source_id=? AND source_revision IS ? AND locator IS ? AND relation=?",
+        (claim_id, source_id, rev, locator, relation)).fetchone()
+    if dup:
+        return dict(dup)
     independent, derivative_of = 1, None
     # beyond this window nothing changes sufficiency; two posts of one community thread are two pieces of evidence, so only
     # the identical locator is excluded (for other platforms a second row from the same source is the same source)
