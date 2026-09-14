@@ -1805,3 +1805,47 @@ rather than just flag:
 
 `Claude outputs/` and `.audit-compare-tmp/` no longer appear in `git status`; the 20 `evals/release/` files
 still do, intentionally.
+
+## Research/Chat surface — first first-pass audit, one fix landed — 2026-09-14 (overnight, post-ladder)
+
+Kyle asked for a bigger overnight mission after the fresh FULL AUDIT closed clean in under 30 minutes: audit
+Research/Chat (the one surface the whole F0-P1 ladder never touched) and resolve the vestigial items properly
+instead of just flagging them. Vestigial resolution is above (`82bd8be`). This entry covers Research/Chat,
+written up in full at `docs/design-audit/2026-09-14-d64cb62/research-audit.md`.
+
+Headline: read `DESIGN.md` §8 and the actual `resPane`/`renderShell` routing in `research.js` before judging
+anything live, per §2 — corrected an initial mis-click that would have wrongly flagged advanced-tier engine
+detail ("corroborative sufficiency...") as leaking into a low-tier surface. It's correctly scoped inside
+"Research tools," matching `DESIGN.md`'s own Advanced-tier definition. The Questions/Watch-outs/Areas panes read
+in genuinely plain language when read from source, a real strength.
+
+One real bug found and fixed: `research.js`'s Claims evidence chips (34-char cap) and `claims.py`'s "repeats
+another source" why-string (40-char cap) both hard-truncated titles with no ellipsis, producing garbled
+mid-word cutoffs live ("How To Use Codex To Build Insanely", "...UI/UX des"). Added a small `trunc()` helper
+(JS) and an equivalent Python helper so truncation always ends in "…". Commit `3a0e459`, `UI_VERSION` 0.63.72 ->
+0.63.73. Deterministic gates (26) plus the four Claims-focused test suites (26) pass; `test_core`/
+`test_indestructible` show the same 12 pre-existing sandbox-environment failures as every prior rung.
+
+Restarted the audit instance to pick this up (it runs without `--reload` by design) using the same
+Finder-double-click technique from earlier tonight — this time via computer-use directly rather than narrating
+it to Kyle: found the running Terminal window, clicked its close button, confirmed the "Terminate running
+processes" dialog, then double-clicked `RUN THIS - Audit Instance.command` in Finder. Confirmed back up at
+`v0.63.73`, signed in, and live-verified the truncation fix in the DOM (`Your Design System Is Now a Promp… @ §
+3`).
+
+Two things flagged, not fixed, and explicitly not chased further tonight:
+
+- Two evidence chips on one Claim card share the exact same source URL and locator (confirmed in the live DOM).
+  Could be legitimate (two findings citing the same passage) or a real `claim_evidence` dedup gap — needs
+  someone who knows that insert path, not a guess made at 3am.
+- 10+ Watch-outs cards share one sentence template with only the topic swapped ("`<Topic>`: no authoritative or
+  expert voice yet..."). Each reads fine alone; stacked in the full 37-item list they read as one paragraph
+  repeated, working against progressive disclosure. This is a content-generation pattern, not a rendering bug —
+  fixing it well means a product/copy decision (vary the phrasing, or group same-shape watch-outs), which is
+  out of scope for a mechanical overnight fix per `AUDIT.md` §1.2's evidence-first discipline.
+
+One near-finding turned out to already be disclosed in-product: the single-word "areas" ("action", "adding",
+"button"...) that looked like clustering noise are explicitly explained in `renderAreasPane()`'s own copy as an
+already-known, already-named-fix-path limitation.
+
+Nothing here needed a multi-rung ladder — the one landed fix is the whole of it. Codex's files untouched.
