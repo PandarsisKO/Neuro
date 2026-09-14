@@ -727,7 +727,7 @@ globalThis.loadHealth = async function loadHealth() {
     const ok = b => b ? '✅' : '⚠️';
     const it = h.db.integrity, bk = h.backup.last_verified, ev = h.evidence;
     const rows = [
-      [`${ok(it && it.ok)} Database integrity`, it ? `${it.result} · checked ${ago(it.ts)}` : 'not checked yet'],
+      [`${ok(it && it.ok)} Database integrity`, it ? `${it.result} · checked ${ago(it.ts)}` + (it.duplicate_claim_evidence ? ` · ${it.duplicate_claim_evidence} duplicate citation row(s) - needs a look` : '') + (it.dangling_origin_note_id ? ` · ${it.dangling_origin_note_id} claim(s) with an unrecoverable origin-note link (pre-0.63.75, informational only)` : '') : 'not checked yet'],
       [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
       [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
       [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],

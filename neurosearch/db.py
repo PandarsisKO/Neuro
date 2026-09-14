@@ -2955,11 +2955,27 @@ def backup(keep: int = 48) -> Path:
 
 
 def integrity_check() -> dict[str, Any]:
-    """quick_check on the live database; result and timestamp are kept in kv for the health view."""
+    """quick_check + foreign_key_check on the live database, plus the application-level consistency checks SQLite
+    cannot express as a declared FK. 2026-09-14: two real bugs (a duplicate-citation guard gap in
+    claims.add_evidence, and replace_suggestions deleting a note a Claim had already adopted as origin_note_id)
+    sat undetected for an unknown period because quick_check/foreign_key_check are structurally incapable of
+    seeing either - the duplicate rows were perfectly valid FTS/b-tree data, and origin_note_id/note_id were never
+    declared REFERENCES (deliberately: a Claim must survive its origin note's deletion, so ON DELETE CASCADE is
+    wrong there - the right invariant is 'never create a new dangling one', which these two counts watch for).
+    Both bugs are now fixed at the source; these counts are the regression detector - either going above the
+    known, already-cleaned baseline again means the same class of bug came back."""
     t = time.time()
     res = connect().execute("PRAGMA quick_check").fetchone()[0]
     fk = connect().execute("PRAGMA foreign_key_check").fetchall()
-    info = {"ts": t, "ok": res == "ok" and not fk, "result": res, "foreign_key_violations": len(fk), "seconds": round(time.time() - t, 2)}
+    dup_evidence = connect().execute("""
+        SELECT COUNT(*) FROM (
+          SELECT 1 FROM claim_evidence GROUP BY claim_id, source_id, source_revision, locator, relation HAVING COUNT(*) > 1
+        )""").fetchone()[0]
+    dangling_origin = connect().execute(
+        "SELECT COUNT(*) FROM project_claims c WHERE c.origin_note_id IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM project_notes n WHERE n.id=c.origin_note_id)").fetchone()[0]
+    info = {"ts": t, "ok": res == "ok" and not fk and dup_evidence == 0, "result": res, "foreign_key_violations": len(fk),
+            "duplicate_claim_evidence": dup_evidence, "dangling_origin_note_id": dangling_origin, "seconds": round(time.time() - t, 2)}
     kv_set("db:last_integrity", json.dumps(info))
     return info
 
