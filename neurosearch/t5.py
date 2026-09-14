@@ -30,9 +30,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import contracts, cost_value, knowledge
+from . import claims as claims_mod
+from . import contracts, cost_value, db, knowledge, providers, usage
 
 TRIGGER_VERSION = "t5-trigger-v1"
+ADJUDICATE_TASK = "t5.adjudicate"
 
 # research_tensions.kind -> what that disagreement means in the mission doc's own vocabulary.
 _TRIGGER_KIND_BY_TENSION_KIND = {
@@ -94,3 +96,65 @@ def escalation_candidates(project_id: str, *, unit: str = "claim", window: str =
             "comparison_unit": unit, "comparison_window": window, "comparison_basis": detail,
             "comparison_supported": bool(comparison.get("supported")),
             "count": len(candidates), "candidates": candidates}
+
+
+def _evidence_lines(evidence: list[dict[str, Any]]) -> str:
+    lines = []
+    for e in evidence:
+        if e.get("stale"):
+            continue
+        indep = "independent" if e.get("independent") else "not independent"
+        excerpt = (e.get("excerpt") or "").strip().replace("\n", " ")
+        lines.append(f"- [{e.get('relation', '?')}, {indep}] {e.get('title') or e.get('source_id') or '?'}: {excerpt[:280]}")
+    return "\n".join(lines) or "(no evidence recorded on this Claim)"
+
+
+def adjudicate(project_id: str, tension_id: str, *, write: bool = True) -> dict[str, Any]:
+    """Run ONE live adjudication call for a specific open, high-impact tension this project's own deterministic
+    tension detection already flagged (see ``escalation_candidates`` -- this function refuses any ``tension_id``
+    that isn't currently one of its candidates, so it can never escalate something the trigger didn't select).
+
+    This makes a real, metered call through ``providers.invoke`` under the ``t5.adjudicate`` contract -- genuine
+    spend, never a simulation. It is forced onto the API backend (``providers.policy_context("api_only")``)
+    rather than the local Claude Code path, so the cost is exactly what ``usage.PRICES`` says for Sonnet, not an
+    ambiguous local-subscription call.
+
+    On success the verdict is written as a SUGGESTED finding (``db.add_project_note(..., status="suggested")``)
+    -- it lands in the project's ordinary review queue exactly like any other candidate research output.
+    Nothing here changes a Claim's or a tension's status; ``claims.set_status`` remains the only promotion door.
+    """
+    candidates = {c["tension_id"]: c for c in escalation_candidates(project_id)["candidates"]}
+    candidate = candidates.get(tension_id)
+    if candidate is None:
+        raise ValueError(f"{tension_id!r} is not an open, high-impact tension this project's escalation trigger currently flags")
+    claim = next((c for c in claims_mod.list_for_project(project_id) if c["id"] == candidate["claim_id"]), None)
+    if claim is None:
+        raise ValueError(f"claim {candidate['claim_id']!r} for tension {tension_id!r} was not found")
+    project = db.get_project(project_id)
+    if project is None:
+        raise ValueError(f"project {project_id!r} was not found")
+
+    system = ("You are adjudicating one research disagreement for a private research project. Read the Claim "
+              "and its recorded evidence, then give a short, direct verdict: which position the evidence "
+              "actually supports (if either), how confident that is, and what -- if anything -- would resolve "
+              "the ambiguity. Use only the evidence given to you; never invent a source or a number. Three to "
+              "five sentences, not an essay.")
+    user = (f"PROJECT: {project['name']}\nCLAIM: {claim['text']}\nTRIGGER: {candidate['trigger']}\n"
+           f"TENSION: {candidate['description']}\n\nRECORDED EVIDENCE:\n{_evidence_lines(claim.get('evidence') or [])}\n\n"
+           "Give your adjudication now.")
+
+    with providers.policy_context("api_only"):
+        resp = providers.invoke(ADJUDICATE_TASK, system=system, messages=[{"role": "user", "content": user}])
+    cost = usage.record_anthropic(resp, "adjudication", project_id=project_id)
+    verdict = providers.text_of(resp).strip()
+
+    result = {"trigger_version": TRIGGER_VERSION, "project_id": project_id, "tension_id": tension_id,
+             "claim_id": candidate["claim_id"], "trigger": candidate["trigger"], "tier_reason": candidate["tier_reason"],
+             "model": str(getattr(resp, "model", None) or contracts.contract(ADJUDICATE_TASK).model),
+             "cost": cost, "verdict": verdict, "written_note_id": None}
+    if write and verdict:
+        note = db.add_project_note(project_id,
+            content=f"[T5 adjudication -- {candidate['trigger']}] {candidate['description']}\n\nVerdict: {verdict}",
+            citations=[], status="suggested", importance=4)
+        result["written_note_id"] = note["id"]
+    return result

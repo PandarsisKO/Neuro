@@ -191,6 +191,17 @@ def _base() -> dict[str, InferenceContract]:
         InferenceContract("t4.research", "anthropic", CHEAP, local_capable=True, reversible=True,
                           gate="claims.set_status remains the only promotion door; every t4.research output is proposed state, never applied directly",
                           notes="T4 executor (selector: neurosearch.t4.select); backend chosen per-item by providers.route at call time, same seam every other task uses; unwired as of 0.63.90 -- see docs/T4-ADMISSION-2026-09-14.md"),
+        # T5 (0.63.90): the adjudication escalation trigger's real call. Reads one open, high-impact tension
+        # neurosearch.knowledge's own deterministic tension pass already flagged (see t5.escalation_candidates)
+        # and writes a verdict as a SUGGESTED finding -- claims.set_status remains the only promotion door; this
+        # never changes a Claim's or a tension's status itself. One tier above cheapest, per the brief's own
+        # "Supreme Court" framing; the escalation is justified by a live cost_value.by_model comparison computed
+        # at call time by t5.escalation_candidates(), not by a number frozen into this contract.
+        InferenceContract("t5.adjudicate", "anthropic", HELD_MODEL, reversible=True,
+                          tier_reason="evidence:t5.escalation_candidates() computes a live cost_value.by_model comparison per call, justifying escalation above the cheapest tier",
+                          gate="claims.set_status remains the only promotion door; every t5.adjudicate output is written as a suggested finding for review, never applied directly",
+                          thinking="disabled", max_output_tokens=1200,
+                          notes="T5 adjudicator (trigger: neurosearch.t5.escalation_candidates); live call, real spend -- see docs/T5-ADMISSION-2026-09-14.md"),
         InferenceContract("discover.quick", "anthropic", CHEAP, local_capable=True, max_output_tokens=3500, max_output_ceiling=5000, timeout=180.0, interactive=True, schema="discovery-v2",
                           reversible=True, gate="schema discovery-v2; every suggestion is reviewed before anything is acquired",
                           notes="structured (F3); discover.verify stays on the citation-capable text/tool path — citations and output_config.format are incompatible"),
