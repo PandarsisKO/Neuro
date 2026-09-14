@@ -2448,3 +2448,54 @@ Proceeding to `CL-3` (Findings' 5–6-line card → DESIGN.md's 2-line workbench
 riskiest piece of this rung and the one closest to the W4 bulk-review timing/row-height baseline, so it
 gets isolated, careful treatment and its own before/after timing check rather than bundling with the
 above.
+
+
+## Declutter rung 4 (part 2): CL-3 — Findings row → DESIGN.md §6's 2-line workbench row — 2026-09-14 (overnight, tenth follow-up)
+
+Second half of rung 4, landed as its own commit per the plan in the prior HANDOFF entry — this was
+flagged as the piece closest to rung W4's bulk-review timing/row-height baseline, so it got isolated
+treatment: implement, run the full targeted test set, live-verify in both themes, only then commit.
+
+**CL-3 — the Findings row is now DESIGN.md §6's Workbench row**, not a 5-6 line card. `findingCard()`
+used to render importance dots, a title line, a 2-3 line body, a wrapping badge/area/citation meta
+line, and a separate quote-only toggle — up to six lines per finding, well past the "one line of
+meaning underneath" the spec calls for. It's now two lines: title (15px/650, truncating), then one
+meaning line underneath carrying the body text, this finding's badges (`_badges`, unchanged from
+CL-1/`useBadges()`), and a single truncated source chip (`▶ Title @ timestamp`, capped ~24 chars) —
+all on one truncating line. Area, the full citation list (when there's more than one), and the
+evidence quote no longer sit on the row permanently; they move into a `.detail` strip, closed by
+default, opened by a `⋯` toggle that only renders when there's actually something to show
+(`hasDetail = area || snippet || extraCitations`). This reuses the existing inline-expand pattern
+already used for the quote (a lower-risk choice than building a new per-finding drawer subsystem) and
+generalizes it to also carry area and the full citation list.
+
+Verified live on the same 889-source/16450-finding project used for the rest of rung 4: rows render as
+a clean fixed-height two-line strip (e.g. "Cleaning/grooming/pest/accounting all require physical
+on-site labor" / body text + `weak` badge + `▶ 5 Boring Businesses Th… @ 4:44`, all truncating on one
+line); clicking `⋯` expands Area + the full citation + the italicized quote beneath that one row only,
+with no effect on neighboring row heights; collapsing and re-expanding is stable. Checked a run of
+eight consecutive rows in the "Copy of Acquisition Ace Deal Calculator" group (varying badge counts —
+`plan`, `2x`, `weak`, `stale source` — up to four badges plus the source chip) and every row held the
+same fixed height regardless of badge count, satisfying the "fixed row height; the row does not grow
+to fit its content" half of the spec. Re-verified in light theme after `toggleTheme()` — same rows,
+same shape, no CSS regressions from the new `.row2`/`.detail` rules on the shared `.f` block.
+
+**Files:** `neurosearch/web/js/research.js` (`findingCard()` rewritten), `neurosearch/web/styles.css`
+(`.f .ttl`/`.txt`/`.meta`/`.qtoggle`/`.quote` rules replaced with `.f .ttl`/`.row2`/`.detail`). No test
+file changes — the 3 existing call sites (`loadWorkbench`, `loadWorkbenchSource`, `sources.js`'s
+`toggleReserve`) were verified compatible with the new signature before the rewrite; none depended on
+the removed `.txt`/`.meta` DOM structure.
+
+`UI_VERSION` 0.63.86 → 0.63.87. `node --check` clean. Tests: 87/87 across
+`test_s44_frontend_integrity`, `test_s50_design_drift`, `test_s5_ui_syntax`, `test_n6_findings_workbench`,
+`test_n4_stale_triage`, `test_n5_source_value`, `test_n9_source_drawer`, `test_n8_research_shell`,
+`test_s11_findings_tab`, `test_s38_verdict_labels`, `test_s41_click_feedback`. Landed as commit
+`16ba80f`. `.worktrees/f0` repinned to `16ba80f`.
+
+Audit-instance restart followed the same pattern as always (stale-artifact first screenshot, real
+dialog on the second coordinate-close, Terminate, relaunch via the already-selected Finder row) —
+confirmed up via Chrome at `v0.63.87` after two ~8-10s waits.
+
+Rung 4 (`CL-2`/`CL-3`/`CL-4`/`CL-5`/`RD-6`/`RD-7`) is now fully landed. Proceeding to rung 5 —
+`CL-1` + `CL-6` + `SM-3` + `SM-5` + `SM-6` + `RD-5` — per the audit's suggested execution order and the
+standing "complete them all, most efficient manner" authorization.
