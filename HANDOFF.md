@@ -2187,3 +2187,61 @@ spots) are now resolved — one implemented, one checked and correctly rejected.
 work item is currently queued; the remaining open item from the fourth follow-up (a focused test for
 `loadHealth()`'s `raw()`/`esc()` rendering with populated `model_routing.mismatches`) is a coverage gap, not a
 design gap, and stays flagged rather than done under a design-focused mission's rung discipline.
+
+
+## Declutter rung 1: RD-1 + RD-2 landed — 2026-09-14 (overnight, sixth follow-up)
+
+Kyle: "Let's begin working through your findings. Complete them all in the most efficient manner" —
+authorization to implement all 22 findings from `docs/design-audit/2026-09-14-bd95e65/declutter-audit.md`,
+following that doc's own suggested execution order. This is rung 1 of 6.
+
+**RD-1 — one fun-stats block, not four.** The "research in numbers" card rendered on Home, the sidebar
+footer (a one-line `#wsNums` summary), Sources (`#srcFun`), and Settings (`#projFun`) — the same data
+reformatted four ways, three of which the person never asked to see (they were already on the page for a
+different reason: reading sources, changing settings). Kept Home's card only, and shrank it: no more dice
+"another comparison" reroll, no yardstick/book comparisons ("2.1× every Marvel movie back to back") — just
+hours read and approved findings, the two numbers that say something about the work rather than being a
+trivia aside. Removed the now-dead plumbing along with it: `loadFun()`, `FUN.n`/`FUN.seed`/`FUN.data`,
+`funReroll()`, the `YARDSTICKS`/`BOOKS` comparison tables, and the source-count-changed refresh hook in
+`sources.js` that only existed to keep the (now-gone) Sources fun card current.
+
+**RD-2 — one place for the local/paid split's dollar figures.** `statusBar()` (rendered in Home's header
+and every project's sidebar footer) used to append a `"50,010 AI calls · 4% local · $145.44 actual ·
+$606.19 avoided"` line. Settings' Health panel already shows this exact breakdown authoritatively —
+"Spend (recorded vs likely charged): today $/7 days $/month $ ... local path free (N calls, $X avoided)"
+— so the status-bar line was a second, differently-worded reading of the same money on two more surfaces.
+Removed it; `statusBar()` now shows only the blocked-warning, local-AI health dot, today's spend, and this
+month's spend.
+
+Net effect on Home's viewport: down from five dollar figures ("$0.00 today", "$148.04 this month", plus
+the removed fun-block's "spent"/"saved" pair and the removed status-bar "actual"/"avoided" pair) to two
+("$0.00 today", "$148.04 this month" in the header) — Settings' Health panel remains the one place for
+the recorded-vs-charged/avoided breakdown, as `RD-2`'s acceptance test asks for.
+
+**Files touched:** `neurosearch/web/js/utils.js` (`funCard()` collapsed to the compact form; `statusBar()`
+trimmed; `YARDSTICKS`/`BOOKS`/`funReroll` removed), `neurosearch/web/js/home.js` (`loadFun()` removed;
+its three call sites in `openProject()`/`showView()` removed; `goHome()`'s `funCard()` call updated to the
+new two-arg signature), `neurosearch/web/js/sources.js` (the `FUN.n`-driven refresh line removed),
+`neurosearch/web/index.html` (`#wsNums`, `#srcFun`, `#projFun` mount points removed).
+
+`UI_VERSION` 0.63.82 → 0.63.83. `node --check` clean on all touched JS. Tests: `test_s44_frontend_integrity`,
+`test_s50_design_drift`, `test_s5_ui_syntax` (26/26) plus `test_n5_source_value`, `test_n9_source_drawer`,
+`test_r3_spend_rate` (14/14, touched `sources.js` and money-adjacent rendering). Landed as commit `c19b530`.
+`.worktrees/f0` repinned to `c19b530`.
+
+Audit-instance restart: found the live window by reading its title/log directly via `computer_app_screenshot`
+(titled "RUN THIS - Audit Instance.command — Python"), hit a stale close-confirmation rendering artifact on
+the first screenshot (0 real AX elements via `computer_app_ax_find`) — closed by coordinate click as usual,
+which produced the real dialog (2 AX elements this time), clicked Terminate by `element_index`. Relaunched
+by double-clicking the already-selected "RUN THIS - Audit Instance.command" row in Finder. Confirmed up via
+Chrome (not `device_bash`'s curl — that shell is a separate sandboxed VM without access to the Mac's own
+localhost, a wrong assumption I made and corrected this rung) — `/?token=audit` loaded, header read
+`v0.63.83`. Live-verified in both themes: Home's compact fun card (482.9 h / 19152 findings, no reroll
+button), the sidebar footer with no `#wsNums` line between Brief and the status footer, Sources with no
+card above "+ Add sources", and Settings with no card between the facts-add row and "Spending valve" —
+Settings' Health panel still shows its full "Spend (recorded vs likely charged)" breakdown untouched.
+
+Proceeding directly to rung 2 (`SM-1` + `SM-2` + `RD-3` + `RD-4`: sidebar mode-toggle duplication, sidebar
+count-badge re-encoding, status-bar repetition across surfaces, Master Plan's duplicate stale-warning/rebuild
+controls) per Kyle's "complete them all... most efficient manner" instruction and DESIGN-MISSION.md's
+continue-through-eligible-rungs framework — no confirmation needed between rungs absent a genuine blocker.
