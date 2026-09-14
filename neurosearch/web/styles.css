@@ -250,8 +250,12 @@
   .swotgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
   .fun{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin:16px 0;box-shadow:var(--shadow)}
   .funh{font-weight:700;margin-bottom:8px}
-  aside nav .n.stale{color:var(--muted)}
-  aside nav .n.stale::after{content:'';position:absolute;top:-1px;right:-5px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+  /* Kyle 2026-09-14: the staleness dot sat at right:-5px relative to the .n span's own right edge,
+     which is only 1px wider than the dot itself -- for any number (a 5-digit Findings count included)
+     it landed on top of the last digit instead of beside it. Padding gives the dot its own lane so it
+     never overlaps the number, at any digit count. */
+  aside nav .n.stale{color:var(--muted);padding-right:9px}
+  aside nav .n.stale::after{content:'';position:absolute;top:-1px;right:1px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
   .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
   .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
