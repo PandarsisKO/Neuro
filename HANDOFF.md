@@ -2818,3 +2818,15 @@ Targets from `knowledge.list_targets`, ranking a governing target with no Claim 
 T1's `input_hash` for provenance; the merged, sorted list is byte-identical on a re-run against unchanged data.
 Full scope, explicit non-goals, and validation in `docs/T4-ADMISSION-2026-09-14.md`. Landed at `86ddab9`. Built
 alongside T5/T6 under Kyle's "do 4/5/6 now" authorization.
+
+## T5 admission — adjudication escalation trigger, propose only — 2026-09-14 (Claude, continuing the handoff)
+
+Built T5's escalation trigger. `neurosearch/t5.py` reads real, existing signals -- open, high-impact
+`CONTRADICTION` tensions ("sources materially disagree") and `NOVEL`/`WEAK_CONSENSUS` tensions ("ambiguous
+evidence") from `knowledge.list_tensions` -- and proposes an adjudication candidate for each, with a properly-
+formed `evidence:` tier_reason built from a live `cost_value.by_model` comparison and verified against the real
+`contracts.decision()` gate. Deliberately makes no live provider call in this pass -- Kyle's "do 4/5/6 now"
+authorized building T5 despite my earlier flagged spend concern, but building the capability and spending real
+money on it are different asks; validated only against the existing fake-provider harness. Whether/how to
+actually run an adjudication call live is Kyle's decision once he has seen this. Full scope in
+docs/T5-ADMISSION-2026-09-14.md. Landed at `ed37393`.

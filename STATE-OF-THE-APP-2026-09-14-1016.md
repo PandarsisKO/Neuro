@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Tested code baseline is `86ddab9`. App/package version is `0.63.90`.
+- Tested code baseline is `ed37393`. App/package version is `0.63.90`.
 - `repo-check` reports the same one pre-existing WARNING (`KEEP AWAKE - overnight.command` outside the root
   allowlist — Kyle's own operational file, unrelated to any mission and untouched). Commit-bound
   `release-check --no-pytest` is FAIL, for the same three pre-existing, unrelated reasons present at every prior
@@ -55,10 +55,15 @@ unexplained chunks (via T2's signals + T3's own extractor for cue-based prioriti
 Targets into a single reproducible, provenance-carrying work list. No executor is wired — nothing currently
 calls `t4.select`'s output. Full detail in `docs/T4-ADMISSION-2026-09-14.md`.
 
-**Next gate:** T5 (Sonnet-adjudicator escalation trigger) is next, in progress under Kyle's "do 4/5/6 now"
-authorization. It will be validated against the existing fake-provider test harness only in this pass — no
-live paid provider calls will be made; whether/how to exercise it live is Kyle's call once it is built. The T4
-executor interface remains future, separately-admitted work.
+**T5 admitted, propose only, no live spend (2026-09-14, commit `ed37393`):** `neurosearch/t5.py` proposes
+adjudication candidates from real open, high-impact tension signals (`CONTRADICTION` -> sources disagree;
+`NOVEL`/`WEAK_CONSENSUS` -> ambiguous evidence), each with a gate-admissible `evidence:` reason built from a
+live `cost_value.by_model` comparison. No live provider call has been made anywhere in this pass; output is not
+wired into any workflow. Full detail in `docs/T5-ADMISSION-2026-09-14.md`.
+
+Kyle's "do 4/5/6 now" set (T4 selector, T5 trigger, T6 assumption ledger) is now fully admitted. The T4
+executor interface, a live T5 adjudication call, and the T4 novel-cluster/stale-Claim signals remain future,
+separately-admitted work — none is auto-triggered by this closure.
 
 `origin/backup/2026-09-13-clean` is a separate history-free snapshot; protected `VIDEOS/`, `data/`, and
 `_to_delete/` paths are absent as of the last verified check.

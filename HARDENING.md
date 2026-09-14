@@ -2231,3 +2231,13 @@ nothing new. `repo-check` shows the same pre-existing `KEEP AWAKE` warning. Comm
 --no-pytest` shows the same pre-existing FAIL causes (`calculator_ok`, root-hygiene, `test_s43` race); every
 deterministic gate T4 could affect passes. Committed at `86ddab9`. Artifact:
 `evals/release/release-check-0.63.90-86ddab9-20260914-175734.json`.
+
+## T5 admission checkpoint — escalation trigger, propose only — 2026-09-14
+
+Focused `tests/test_t5_escalation.py` (10) plus the contract/cost_value/knowledge/claims suites it reads (70
+total) pass together. Full pytest: 1,382 passed / 15 failed, identical set to every checkpoint since the T3
+gold-adjudication closure -- nothing new. `repo-check` shows the same pre-existing `KEEP AWAKE` warning.
+Commit-bound `release-check --no-pytest` shows the same pre-existing FAIL causes; every deterministic gate T5
+could affect passes, including `test_every_proposed_reason_is_admissible_to_the_real_ladder` (every T5-proposed
+tier_reason is accepted by the real `contracts.decision()`, never UNJUSTIFIED). Committed at `ed37393`. Artifact:
+`evals/release/release-check-0.63.90-ed37393-20260914-180408.json`.

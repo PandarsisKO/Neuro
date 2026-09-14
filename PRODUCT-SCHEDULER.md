@@ -437,3 +437,9 @@ change NEXT/PARKED sequencing for T4/T5.
 T4's selector (ranked work list, no executor) is admitted at `86ddab9`, built alongside T5/T6 under Kyle's
 "do 4/5/6 now" authorization. The executor interface (Claude Code / local model / Haiku API / future cloud
 worker) remains future, separately-admitted work — nothing currently calls `t4.select`'s output or acts on it.
+
+## T5 admitted, propose only, no live spend — 2026-09-14
+
+T5's escalation trigger is admitted at `ed37393`, built alongside T4/T6 under Kyle's "do 4/5/6 now"
+authorization. No live adjudication call has been made anywhere -- `escalation_candidates()` output is not
+wired into any workflow yet. This is now the "do 4/5/6" set's last item; all three are admitted.
