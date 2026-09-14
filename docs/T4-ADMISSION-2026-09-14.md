@@ -460,3 +460,45 @@ change.
 
 Next: E3, the first native live run -- Kyle's to run on his own Mac with the app's real workers, not through the
 bridge. `execute(..., dry_run=True)` output is ready for his review before any live spend under E3.
+
+
+## Bug found and fixed in the first live run — claims.harvest() race — 2026-09-14
+
+E3's first live run (5 sources, `t4.execute(..., --live)`, $0 real spend -- see the E2 section for why) surfaced a
+real concurrency bug, not in anything E1/E2 built, but exposed BY running through them: `t4.execute()` enqueues
+several `suggest_findings` jobs together on purpose, so several now routinely finish within the same second.
+`jobs._after_done()` fires `claims.harvest(pid)` inline once per completed job with no coordination between
+worker threads. `harvest()` reads which notes are already claimed (`have`) before it writes, so two concurrent
+calls for the SAME project can both decide the same note is new and both try to insert a Claim for it;
+`project_claims`'s own `(project_id, origin_note_id)` UNIQUE index then rejects the second insert, and because
+harvest() runs inside one `db.batch()` transaction, that uncaught `IntegrityError` rolled back the WHOLE harvest.
+
+Live symptom: of two `extract_claims` jobs enqueued for the same project within the same second, one failed
+outright on the constraint; the other sat at 1% progress ("collecting new candidate claims" -- `harvest()`'s
+first line) for 15+ minutes before being killed. No data was lost either way -- confirmed after the fix by
+re-running `claims.harvest()` directly against the real project: `created: 0, merged: 0` (everything had already
+landed from the earlier races) in 3.4 seconds, and zero duplicate `origin_note_id` rows in the real table.
+
+Fix, in `neurosearch/claims.py`: a per-project `threading.Lock` (`_harvest_lock`) now serializes `harvest()` --
+a second call for the same project waits for the in-flight one and returns a no-op rather than racing it (the
+in-flight call already scans every note the waiter would have seen, so there is nothing left to do). This also
+closes the likely secondary contributor to the 15-minute stall: several full, expensive harvest scans running
+at once against the same project, not just the one that hit the constraint. As defense in depth against a
+same-note collision from a genuine second OS process (not just a second thread, which the lock already
+prevents), the `add_claim` call inside the loop now catches `sqlite3.IntegrityError` and skips that note --
+"idempotent per note" was already `harvest()`'s own stated contract; this makes it hold under real concurrency,
+not only in serial tests.
+
+3 new tests in `tests/test_claims_harvest_race.py`: 8 threads calling `harvest()` concurrently for the same
+project raise nothing and create no duplicate `origin_note_id`, with every note claimed exactly once across all
+callers; serial idempotency is unchanged (call twice, second is a no-op); a simulated cross-process collision
+(monkeypatched `add_claim` to raise mid-loop) is absorbed rather than fatal. All 3 pass; the first reproduces the
+live bug and failed before the fix.
+
+### Validation
+
+Focused: 3/3 new, 60/60 across the whole claims-adjacent test set (`test_k6_claims`, `test_o2_claims_workbench`,
+`test_p3_claim_triage`, `test_r7_claims_yield`, `test_r9_claims_arm`, `test_s9_cost_value`). Full suite in 4
+chunks: 15 failures, byte-identical to every checkpoint today -- zero new failures. `repo-check` PASS. Re-ran
+`claims.harvest()` directly against Kyle's real business-acquisition project (still the $0, no-model-call path)
+to confirm the fix against the actual data that hit the bug: 3.4 seconds, no error, zero duplicate claims.

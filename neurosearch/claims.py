@@ -21,6 +21,8 @@ import hashlib
 import json
 import logging
 import re
+import sqlite3
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -29,6 +31,30 @@ from . import db
 from .config import settings
 
 log = logging.getLogger("neurosearch.claims")
+
+# G5 concurrency note (2026-09-14, T4 E3 first live run): _after_done() fires harvest(pid) inline, once per
+# suggest_findings job that completes, with no coordination between worker threads -- fine when jobs finish minutes
+# apart, but T4's own batched executor (t4.execute) deliberately enqueues many sources together, so several
+# suggest_findings jobs now routinely finish within the same second. Each call independently reads "have" (the
+# already-harvested note ids) before any of them commit, so two concurrent harvest() calls for the SAME project can
+# both decide the same note is new and both insert a Claim for it -- project_claims' own
+# (project_id, origin_note_id) UNIQUE index (db.py) then rejects the second insert, and because harvest() runs
+# inside one db.batch() transaction, that uncaught IntegrityError rolled back the WHOLE harvest -- observed live as
+# one extract_claims job failing outright and another appearing stuck (it was waiting to re-acquire the write lock
+# behind a same-project harvest that kept re-running). _harvest_lock + the try/except below close both: only one
+# harvest() runs per project at a time, and a same-note race that still slips through (a second worker PROCESS,
+# not just thread) is treated as "harvested by someone else" rather than a hard failure -- harvest() already
+# promises "idempotent per note"; this makes that promise hold under real concurrency, not just in serial tests.
+_harvest_locks: dict[str, threading.Lock] = {}
+_harvest_locks_guard = threading.Lock()
+
+
+def _harvest_lock(project_id: str) -> threading.Lock:
+    with _harvest_locks_guard:
+        lock = _harvest_locks.get(project_id)
+        if lock is None:
+            lock = _harvest_locks[project_id] = threading.Lock()
+        return lock
 
 PROMPT_VERSION = "claims-1"
 TYPES = ("governing", "historical", "expert_interpretation", "practice", "experiential", "market", "causal", "novel_tactic", "other")
@@ -488,7 +514,23 @@ def _strip_cites(text: str) -> str:
 
 def harvest(project_id: str) -> dict[str, Any]:
     """Zero-cost candidate Claims from findings that already exist (approved → proposed candidate; suggested → candidate
-    for investigation, origin 'finding_suggested'). Idempotent per note. Never touches the model."""
+    for investigation, origin 'finding_suggested'). Idempotent per note. Never touches the model.
+
+    Serialized per project (_harvest_lock): a concurrent call for the SAME project waits for the in-flight harvest
+    to finish and returns a no-op rather than racing it -- the in-flight call already scans every currently
+    approved/suggested note, so there is nothing left for the waiter to do."""
+    lock = _harvest_lock(project_id)
+    if not lock.acquire(blocking=False):
+        with lock:                       # wait for the in-flight harvest; it already covers this call's notes
+            pass
+        return {"created": 0, "merged": 0, "note": "coalesced with a concurrent harvest already in flight for this project"}
+    try:
+        return _harvest_locked(project_id)
+    finally:
+        lock.release()
+
+
+def _harvest_locked(project_id: str) -> dict[str, Any]:
     created, merged = 0, 0
     have = {r["origin_note_id"] for r in db.connect().execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
     have |= {r["note_id"] for r in db.connect().execute("SELECT note_id FROM claim_evidence_notes")}
@@ -529,8 +571,14 @@ def harvest(project_id: str) -> dict[str, Any]:
                 merged += 1
                 continue
             ctype = guess_type(body, cls)
-            c = add_claim(project_id, text, claim_type=ctype, freshness_class=guess_freshness(body, ctype, cls), origin="finding" if status == "approved" else "finding_suggested",
-                          origin_note_id=n["id"], status="proposed", normalized=False, vocab=vocab)
+            try:
+                c = add_claim(project_id, text, claim_type=ctype, freshness_class=guess_freshness(body, ctype, cls), origin="finding" if status == "approved" else "finding_suggested",
+                              origin_note_id=n["id"], status="proposed", normalized=False, vocab=vocab)
+            except sqlite3.IntegrityError:
+                # another process already harvested this note (the in-process race is closed by _harvest_lock above;
+                # this only fires for a second OS-level worker) -- idempotent per note, so just skip it, not fail the batch
+                log.info("harvest: note %s already claimed by a concurrent harvest for %s, skipping", n["id"], project_id[:8])
+                continue
             existing.append(c)
             for cite in cites[:4]:
                 if cite.get("source_id") and db.get_source(cite["source_id"]):
