@@ -260,7 +260,6 @@ globalThis.loadSources = async function loadSources() {
   SRCG.loaded = true;
   const nReady = all.filter(r => r.status === 'ready').length;
   $('#nSources').textContent = nReady;
-  if (FUN.n !== undefined && FUN.n !== nReady) loadFun(state.view === 'sources' ? 'srcFun' : null);   // a new source landed: fresh numbers, fresh comparison
   // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
   const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
   const bucket = s => needsBrowser(s) ? 1 : (s.status === 'pending' || s.analysing) ? 0 : s.status === 'failed' ? 1 : s.status === 'ready' ? 2 : 3;

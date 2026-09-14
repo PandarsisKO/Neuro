@@ -15,7 +15,7 @@ globalThis.goHome = async function goHome() {
   if (location.hash) history.replaceState(null, '', location.pathname);
   const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
   $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
-  api('/api/stats/fun').then(f => { $('#homeFun').innerHTML = funCard(f, 'Your research in numbers', 'homeFun'); }).catch(() => {});
+  api('/api/stats/fun').then(f => { $('#homeFun').innerHTML = funCard(f, 'Your research in numbers'); }).catch(() => {});
   // M-1: a 0-source project previously read identically to an 876-source one -- an unambiguous,
   // data-grounded attention signal (no sources yet) plus a relative "last touched" reading, which is
   // more scannable than a bare calendar date, are the two the ladder asks for without inventing a
@@ -89,38 +89,23 @@ globalThis.openProject = async function openProject(id, view, conv) {
   $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
   $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
-  loadFun(null); loadStaleness();
+  loadStaleness();
   await loadChats();
   if (fresh || view !== state.view || conv !== state.conv) {
     if (view === 'chats') await selectChat(conv || (state.chats[0] && state.chats[0].id) || null, false);
     showView(view, false);
   }
 }
-globalThis.loadFun = async function loadFun(elId) {
-  if (!state.project) return;
-  try {
-    const f = await api('/api/stats/fun?project_id=' + state.project.id);
-    FUN.n = f.sources;
-    if (elId && $('#' + elId)) $('#' + elId).innerHTML = funCard(f, 'This project in numbers', elId);
-    const el = $('#wsNums');
-    if (el) {
-      if (!f.sources) { el.textContent = ''; return; }
-      const ok = YARDSTICKS.filter(([, n]) => f.hours / n >= 1.2 && f.hours / n <= 12);
-      const y = ok.length ? ok[(f.sources + FUN.seed) % ok.length] : null;
-      el.innerHTML = `📊 <b>${f.hours} h</b> read for you` + (y ? ` — ${(f.hours / y[1]).toFixed(1)}× ${esc(y[0])}` : '') + (f.spend ? ` · $${f.spend.toFixed(2)}` : '');
-    }
-  } catch (e) { /* stats are decoration */ }
-}
 globalThis.showView = function showView(v, push = true) {
   state.view = v;
   document.querySelectorAll('aside nav .item').forEach(i => i.classList.toggle('active', i.dataset.view === v));
   document.querySelectorAll('#main .view').forEach(s => s.classList.toggle('active', s.id === 'view-' + v));
-  if (v === 'sources') { loadSources(); loadJobs(); loadBoot(); loadFun('srcFun'); }
+  if (v === 'sources') { loadSources(); loadJobs(); loadBoot(); }
   if (v === 'chats') api('/api/projects/' + state.project.id).then(p => { state.project = p; $('#nSources').textContent = p.n_sources; if ($('#chat .empty')) emptyChat(); });
   if (v === 'findings') loadNotes();
   if (v === 'research') loadResearch();
   if (v === 'plan') loadPlan();
-  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadFun('projFun'); loadHealth(); }
+  if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadHealth(); }
   $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
