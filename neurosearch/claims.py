@@ -654,7 +654,10 @@ def assess(claim_id: str) -> dict[str, Any] | None:
             why.append(f"corroborative sufficiency: {n} independent supporting source(s) of {len(sup)} (needs {CORROBORATION['strong']} for strong)")
             if derivative:
                 names = sorted({e.get("title") or e["source_id"] for e in derivative})
-                why.append(f"{len(derivative)} source(s) repeat another source's passage and do not count as corroboration: " + "; ".join(str(x)[:40] for x in names[:3]))
+                def _trunc(x: str, n: int = 40) -> str:
+                    x = str(x)
+                    return x[:n - 1] + "\u2026" if len(x) > n else x
+                why.append(f"{len(derivative)} source(s) repeat another source's passage and do not count as corroboration: " + "; ".join(_trunc(x) for x in names[:3]))
             if ctype in ("novel_tactic", "causal") and strength == "strong" and n < CORROBORATION["strong"] + 1:
                 strength = "developing"
                 why.append(f"{ctype.replace('_', ' ')} Claims need stronger corroboration")
