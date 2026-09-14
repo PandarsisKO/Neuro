@@ -2731,3 +2731,31 @@ neither falls inside this mission's scope.
 
 This closes the standing "complete them all, most efficient manner" authorization. No further declutter-audit
 work remains queued; the next design/audit pass (if any) starts fresh against current `main`.
+
+## T3 comparative false-positive narrowing — 2026-09-14 (Codex, resumed)
+
+Landed the in-progress comparative-regex fix that was sitting uncommitted at the start of this session:
+`_COMPARATIVE`'s bare `more`/`less` branch now excludes a short filler-verb list (`use`, `go`, `do`, `make`,
+`get`, `have`, `about`, `like`) so narrative fragments like "more use smaller values" and "more about like..."
+no longer register as comparisons, while `than`-anchored and genuine comparatives are unaffected. Verified
+directly against all six reported cases plus the full adversarial suite. Focused T3/review: 26 passed. Full
+pytest: 1,382 passed, 15 failed — all pre-existing and unrelated (the documented `test_core.py`/
+`test_j3_fallback.py` embeddings-breaker cluster, the documented `test_s43_foundation.py` timing race, and one
+`test_s12_recall_precision.py` row that passes in isolation — a test-order flake, not a regression); confirmed
+identical at the prior commit before this patch, so none are introduced here. `repo-check` reports the same
+pre-existing `KEEP AWAKE - overnight.command` root-hygiene warning (Kyle's own file, untouched). Commit-bound
+`release-check --no-pytest` is FAIL for the same three pre-existing reasons; every deterministic proof this
+change could affect (schema/contracts/JS modules at `UI_VERSION 0.63.90`/Tier 1 frozen totals/retrieval
+baseline/cache layout/H1 gates/backup-restore) passes. Both read-only T3 evidence artifacts were regenerated
+from the same recorded backup; only the 2 manifest rows containing the excluded phrases changed, `gold` stays
+`null` throughout, and the 15-row gold-labeled sample is unaffected (neither phrase appears in it).
+
+Landed as commit `3ec5fff`. Full detail in `docs/T3-ADMISSION-2026-09-13.md`. **The T3 seeded-queue manual gold
+adjudication (60 rows, exact-span, all 15 kinds, adversarial negatives and boundaries) is now the only thing
+standing between T3 and persistence/selector/T4 work — that is the next gate, not further extractor narrowing,**
+unless a new false-positive/negative pattern surfaces during adjudication itself.
+
+Reconciliation note: `PRODUCT-SCHEDULER.md`'s "NOW" section still names the frontend CSS/module split as the
+active effort. That split and Claude's full 22-finding declutter audit are both already committed (see
+`PRODUCT-SCHEDULER.md`'s own reconciliation entry appended today). T3 manual gold adjudication is the actual
+active technical gate; design/audit is available for fresh evidence work but has no queued findings.

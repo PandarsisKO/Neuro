@@ -398,3 +398,22 @@ Narrative procedure/comparative false positives are narrowed under focused tests
 ## Audit runtime allowlist repair — 2026-09-13
 
 The hygiene checker now recognizes the documented `data-audit/` audit runtime; scheduler behavior is unchanged.
+
+## Reconciliation: NOW section is stale — 2026-09-14 10:16 PT
+
+This file's "NOW" header still names the `index.html` CSS/module split as the active effort. That split, and
+Claude's full 22-finding design/audit declutter pass built on top of it, are both already committed on `main`
+(declutter closed through commit `ee52d1a`/`6f30e76`; see `HANDOFF.md`). Not rewriting that section's history —
+appending instead, per this file's own append-only rule.
+
+The actual active technical gate is T3 manual gold adjudication: the 60-row seeded review queue
+(`evals/t3/seeded-review-manifest-20260913-150111.json`) needs exact-span, per-kind gold labels, including
+adversarial negatives and boundaries, before extraction can be persisted, trusted by a selector, used by T4, or
+exposed as user-facing state. The comparative false-positive narrowing landed today (`3ec5fff`) is extractor
+hardening discovered *during* that review, not a substitute for it. Design/audit ownership remains available for
+fresh evidence-driven work but has no queued findings; do not reopen closed F0/F1 findings without new evidence.
+
+## T3 comparative-narrowing checkpoint — 2026-09-14 10:16 PT
+
+Narrative-fragment false positives on bare more/less comparatives are narrowed and release-checked at `3ec5fff`;
+scheduler behavior is unchanged. Manual gold review of the 60-row queue remains the next gate.

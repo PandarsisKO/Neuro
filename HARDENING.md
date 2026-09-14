@@ -2187,3 +2187,18 @@ gold review.
 The documented gitignored `data-audit/` runtime is now allowed by repository hygiene. Its copied database remains
 separate from live `data/`; the allowlist change does not permit source-tree appendages. `repo-check` and the affected
 release test pass.
+
+## T3 comparative false-positive narrowing — 2026-09-14 10:05 PT
+
+Bare `more`/`less` comparative matching now excludes a short filler-verb follower list so narrative fragments
+are not misread as comparisons; `than`-anchored and genuine comparatives are unaffected. Both read-only evidence
+artifacts refreshed; `gold` remains `null`/unchanged throughout (no manual re-review triggered).
+
+## T3 comparative-narrowing release checkpoint — 2026-09-14 10:16 PT
+
+Committed at `3ec5fff`; focused T3/review is 26 passed, full pytest is 1,382 passed / 15 failed (all pre-existing
+and confirmed identical at the prior commit — embeddings-breaker cluster, `test_s43` timing race, one isolated-
+pass `test_s12` flake). `repo-check` and commit-bound `release-check --no-pytest` show the same pre-existing
+findings as the prior commit; every T3-relevant deterministic proof passes. Artifact:
+`evals/release/release-check-0.63.90-3ec5fff-20260914-171629.json`. The seeded 60-row queue still requires
+manual exact-span gold adjudication before persistence, a selector, or T4 work is admitted.

@@ -263,6 +263,7 @@ overall FAIL for the same three pre-existing reasons (Tier 1 `calculator_ok` tie
 cluster above, the root-hygiene warning, and the `test_s43` Foundation timing race); every deterministic proof
 this change could affect — schema registry, contracts, web JS modules (`UI_VERSION 0.63.90`), Tier 1 frozen
 totals, retrieval regression baseline, cache-layout gates, H1 prefilter gates, and backup/restore round trip —
-passes. Artifact: `evals/release/release-check-0.63.90-6f30e76-20260914-171351.json` (pre-patch baseline,
-recorded for the pre-existing-failure comparison above; this checkpoint's own commit-bound artifact is recorded
-in HANDOFF.md/HARDENING.md at the actual landing commit).
+passes. Commit-bound artifact: `evals/release/release-check-0.63.90-3ec5fff-20260914-171629.json`
+(commit `3ec5fff`). A pre-patch run at the prior commit (`6f30e76`,
+`evals/release/release-check-0.63.90-6f30e76-20260914-171351.json`) shows the identical three failures,
+confirming none of them are introduced by this change.
