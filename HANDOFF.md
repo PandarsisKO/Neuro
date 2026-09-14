@@ -2060,3 +2060,74 @@ builds and the display fix works on old data as-is.
 unrelated, pre-existing. `test_core`/`test_indestructible`: the same 12 pre-existing sandbox-environment failures
 as every prior rung, none new. Landed as commit `1ec4707`, `UI_VERSION` 0.63.78 → 0.63.79, worktree `f0` repinned,
 audit instance restarted and live-verified.
+
+## Apple-design pass: INSPIRATION review + tinted status pills — 2026-09-14 (overnight, fourth follow-up)
+
+Kyle asked, broadly: "I want to get closer to applying the Apple design philosophies as well as adopting things
+from our inspiration screenshots. How do we get closer?" Rather than working from the existing DESIGN.md summary
+of the INSPIRATION folder, he asked me to look at the actual images myself. Reviewed 8 of the 25 references
+directly (staged from the Mac, read with the image tool) — OrchestrateIQ's two dashboard screens, Salach.ai's
+meetings list, Vyra's health-intelligence dashboard, Zest, Bloom, and the two AEROVIA/Krowtt/Auxon reject-bucket
+confirmations — and came back with two concrete, implementation-sized candidates rather than a vague "make it more
+Apple" pass. Kyle authorized both: "Yes, add and implement both."
+
+**Pattern 1 — Vyra's tinted arrow-status badge, implemented.** DESIGN.md's Appendix has called for "soft-tinted
+status pills with dark text rather than saturated fills" since the 2026-09-12 INSPIRATION review, and
+`--ok-soft`/`--warn-soft`/`--bad-soft` tokens have existed in `styles.css` since then — but they were used in
+exactly one place in the whole stylesheet (`.pcard .meta .tag.warn`). The intent was documented and never really
+built. Added `.pill-stat` (`styles.css`) — a small rounded badge using the `-soft` tokens as background — and
+`pillHtml(isOk, pct)` (`sources.js`), applied to the three percentage-based rows in the project health panel
+(Settings tab → Health section): finding quote validity, finding citation rate, answer citation validity. Each now
+reads e.g. "↗ 98.8% of 28019 (327 rejected)" in a green-tinted pill instead of a bare percentage. Deliberately
+scoped to these three rows, not a blanket restyle of every `.status-ok/warn/bad` span — most of those are plain
+inline text color used throughout Sources/Research/Chat, not pills, and forcing backgrounds onto all of them would
+have been a much bigger, unrequested change.
+
+**Found and fixed while wiring the pill up: a real, silent pre-existing bug.** The health panel's render line
+(`$('#healthLine').innerHTML = rows.map(([k, v]) => ...esc(v)...)`) HTML-escaped every row value unconditionally —
+including the "Model the provider actually ran" row, which builds its own `<b>`/`<br>`/`<div>` markup when there
+are real model-routing mismatches to show. Whenever that row had content, it would have rendered as literal
+escaped tag text (`&lt;b&gt;...`) instead of formatted HTML. Added a small `raw()` marker next to `esc()` in
+`api.js` — a string wrapped in `raw()` is trusted and passed through untouched; every other row keeps going
+through `esc()` exactly as before. Used it for both the model-routing row (the pre-existing bug) and the new
+percentage-row pills (which need to emit real `<span>` markup). No test caught this because no test exercises
+`loadHealth()`'s rendering with a populated `model_routing.mismatches` list; live data on this project currently
+shows 0 real mismatches, so the pill fix could be live-verified but the escaping fix could only be verified by
+code inspection (confirmed `esc()`'s replace regex covers `<`/`>`/`&`/`"`/`'`, confirmed the one render call is the
+only place `#healthLine` is set, confirmed the model-routing row was the only other row building raw HTML).
+
+**Pattern 2 — Salach.ai's processing-status subtitle, checked, no code change needed.** Kyle also asked about the
+"AI summary ready · 5 scope points, 4 timeline items"-style specific status text instead of a generic spinner.
+Checked it against Sources rows, Chat's thinking indicator, and Master Plan build progress: the app already does
+this consistently — Sources shows counts and named states ("queued for a deep read", "N suggested findings
+waiting"), Chat's indicator carries a message, Master Plan shows named rebuild state. The remaining bare
+"Loading…" instances (`chats.js:22`, `research.js:866`, `sources.js:258`, `utils.js:44`) are all legitimate
+transient initial-page-load states, not violations of the principle. Recorded in DESIGN.md's appendix as
+"checked, no gap found" so a future audit doesn't re-open this as an open item.
+
+**DESIGN.md updated** (Appendix, after the Salach.ai paragraph) with both findings — this is implementation
+surfacing a genuine gap the frozen doc hadn't recorded (the arrow-badge pattern) and a genuine "already covered"
+confirmation (the processing-status pattern), which is exactly the exception DESIGN-MISSION.md §11 carves out for
+touching the frozen design docs during implementation.
+
+Live-verified on the "I want to start buying businesses…" project (Settings → Health): all three pills render
+correctly in both light and dark theme (dark theme confirmed via the in-app theme toggle) — "↗ 98.8% of 28019 (327
+rejected)", "↗ 100.0% of the 2305 counted since v0.63.24…", "↗ 100.0% of 1085", each in a green `.pill-stat.ok`
+badge. `test_s44_frontend_integrity`, `test_s50_design_drift`, `test_s5_ui_syntax` all pass (26/26); ran again
+after the DESIGN.md edit, still 26/26 (14/14 on the design-drift + integrity pair specifically). No test exercises
+`loadHealth()` end-to-end so the `esc()`/`raw()` fix has no direct regression test — flagging this as a coverage
+gap worth a future rung (a focused test that populates `model_routing.mismatches` and asserts the health panel
+renders real `<b>`/`<br>` tags, not escaped text) rather than adding one now, since DESIGN-MISSION.md's rung
+discipline is one coherent unit at a time and this rung was already the arrow-badge + escaping fix.
+
+Landed as commit `a026c17`, `UI_VERSION` 0.63.79 → 0.63.80. `.worktrees/f0` repinned to `a026c17`. Audit instance
+restart needed two tries this time: the first `RUN THIS - Audit Instance.command` window I closed (by content —
+repeated heartbeat/capture-pending polling, the same signature used to identify it in every prior rung) turned out
+not to be the one holding port 8788; a second window, titled identically but showing claims-extraction activity
+instead, was the actual audit-instance process. Confirmed via Activity Monitor that neither leftover "Python"
+process belonged to Neuro Search (both were an unrelated project's background processes), then found and closed
+the correct Terminal window and relaunched cleanly. Worth noting for whoever restarts this next: content-match on
+heartbeat/capture-pending traffic is not fully reliable when more than one Neuro Search-shaped window is open —
+check the window title text itself (readable via a screenshot even though titles are withheld from the window-list
+API) before closing, or check the port with `lsof -ti tcp:8788` if a Terminal window with "click" tier access is
+available for typing.
