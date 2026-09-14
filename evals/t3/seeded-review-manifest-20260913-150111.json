@@ -1,7 +1,7 @@
 {
   "artifact": "T3 seeded hand-label review manifest",
   "schema_version": "t3-review-manifest-v1",
-  "generated_at_utc": "2026-09-13T22:24:45.930230+00:00",
+  "generated_at_utc": "2026-09-14T17:05:57.329486+00:00",
   "seed": 20260913,
   "source_backup": "data/backups/neurosearch-20260913-1410.db",
   "source_backup_sha256": "bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220",
@@ -2768,19 +2768,12 @@
       "chunk_start": 102.16,
       "chunk_end": 137.959,
       "text": "[Putting it into a real product] like uh developers who are using Claude code. It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this. I wanted to know what happens when you took this idea of generating HTML and put it into like a real product in a chat application, what it looks like. And in this video I wanted to share with you how you can actually render this HTML in your chat application and instead of the markdown. Some downsides of that, uh some quirks that you are going to face if you are going to try to do this yourself. So, if you're interested in",
-      "predicted": [
-        {
-          "kind": "comparative",
-          "raw": "It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this.",
-          "normalized": "It's more about like generating HTML to share it with AI and how AI will perceive it and stuff like this.",
-          "start": 79,
-          "end": 184,
-          "attributes": {}
-        }
-      ],
+      "predicted": [],
       "gold": null,
       "review_status": "pending_manual_label",
-      "review_flags": []
+      "review_flags": [
+        "negative_empty_row"
+      ]
     },
     {
       "project_id": "d7a9f585076e49649b561649d71238c3",
@@ -3081,14 +3074,6 @@
           "normalized": "12",
           "start": 745,
           "end": 747,
-          "attributes": {}
-        },
-        {
-          "kind": "comparative",
-          "raw": "So, this is where using our 100 scale value, we can get into some more use smaller values.",
-          "normalized": "So, this is where using our 100 scale value, we can get into some more use smaller values.",
-          "start": 901,
-          "end": 991,
           "attributes": {}
         },
         {

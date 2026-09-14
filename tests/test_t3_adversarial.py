@@ -54,6 +54,7 @@ def test_t3_narrative_then_and_other_than_are_not_action_cues():
     assert not _rows("Then I joined the group.", "procedure")
     assert not _rows("Other than that, the result was fine.", "comparative")
     assert not _rows("We need one more pass.", "comparative")
+    assert not _rows("We can get into some more use smaller values.", "comparative")
 
 
 def test_t3_identifier_gate_keeps_explicit_isbn_and_rejects_ambiguous_digits():

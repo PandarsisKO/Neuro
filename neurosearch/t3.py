@@ -24,7 +24,7 @@ _PROCEDURE = re.compile(r"(?i)^(?:(?:first|second|third)\s+step\b|step\s+\d+|mak
 # Admit only explicit warning words or a small imperative verb list after them.
 _WARNING = re.compile(r"(?i)(?:\b(?:warning|warns?|caution|danger|beware|red\s+flag|watch\s+out)\b|\b(?:do\s+not|don't|never)\s+(?:skip|ignore|assume|use|share|send|put|forget|touch|buy|sign|delete|remove|enter|leave|call|rely|invest|miss|start|stop|worry)\b)")
 _EXCEPTION = re.compile(r"(?i)\b(?:except|unless|only\s+if|provided\s+that|with\s+the\s+exception|however|although)\b")
-_COMPARATIVE = re.compile(r"(?i)(?<!one )\b(?:more|less|higher|lower)\s+(?:than|[\w-]+)\b|\b(?:better|worse|best|worst|versus|vs\.?|compared\s+(?:with|to))\b")
+_COMPARATIVE = re.compile(r"(?i)(?<!one )\b(?:more|less|higher|lower)\s+(?:than|(?!use\b|go\b|do\b|make\b|get\b|have\b|about\b|like\b)[\w-]+)\b|\b(?:better|worse|best|worst|versus|vs\.?|compared\s+(?:with|to))\b")
 _HEDGE = re.compile(r"(?i)\b(?:may|might|could|likely|possibly|generally|often|usually|tends?\s+to|appears?|seems?|can\s+be)\b")
 _ENTITY = re.compile(r"(?i:\b(?:company|organization|organisation|firm|vendor|tool|product|platform)\s+called\s+)(?P<name>[A-Z][\w&-]*(?:\s+[A-Z][\w&-]*){0,3})")
 

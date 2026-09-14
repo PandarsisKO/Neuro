@@ -223,3 +223,46 @@ Seeded review identified narrative false positives from generic `Then` procedure
 phrases such as `Other than that` and `one more`. Those cues are now removed or require comparative context; explicit
 imperatives and comparison terms remain supported. Focused T3/review coverage is 26 passed, and both evidence artifacts
 were refreshed against the current extractor.
+
+## T3 comparative false-positive narrowing ("more use X") — 2026-09-14 10:05 PT
+
+Seeded-queue review surfaced one more narrative false positive the prior narrowing pass (16:20 PT, committed
+`ab8dfa1`) did not cover: `_COMPARATIVE`'s bare `more`/`less` branch admitted any following word, so filler
+phrases such as "we can get into some more use smaller values" and "it's more about like generating HTML"
+matched as comparisons with nothing actually being compared. The pattern's second alternative now excludes a
+short list of non-comparative followers (`use`, `go`, `do`, `make`, `get`, `have`, `about`, `like`) while the
+`than`-anchored branch and genuine comparatives ("more capital", "more effective than before", "less boring")
+are unaffected — confirmed directly against all six cases plus the existing adversarial suite. A regression test
+for the reported phrase was added to `tests/test_t3_adversarial.py`. Focused T3/review coverage remains 26
+passed (one new case added to an existing test, not a new test function).
+
+Both evidence artifacts were regenerated read-only from the same recorded backup (`data/backups/neurosearch-
+20260913-1410.db`, SHA-256 `bddf196c1cb4c70770daa5ffaa622530b8f96f1b83d3a7a4a3890ad6c1e1f220`): the 15-chunk
+gold-labeled sample is unaffected (neither excluded phrase appears in its text, so `predicted` and the existing
+gold/metrics are unchanged, byte-identical apart from the refresh timestamp) and the 60-row seeded manifest
+changed at exactly the two rows containing the excluded phrases — one comparative record removed from each; one
+row's predicted count dropped to zero and picked up its count-based `negative_empty_row` triage flag, the other
+stayed above the `dense_multi_span` threshold with one fewer span. `gold` remains `null` on every manifest row;
+no manual label was touched or required by this change. Updated triage counts: 19 dense_multi_span, 9
+negative_empty_row, 7 sentence_boundary_review, 3 cue_entity_review, 2 canonical_identifier_review (of 60 rows).
+The larger hand-label gold-adjudication gate remains the next required step; no persistence, selector, provider,
+queue, or T4 work is admitted by this change.
+
+## T3 comparative-narrowing release checkpoint — 2026-09-14 10:15 PT
+
+Committed together with its test, both refreshed evidence artifacts, and this documentation. Focused T3/review
+suite: 26 passed. Full pytest: 1,382 passed, 15 failed — all 15 are pre-existing and unrelated to this change:
+13 in `tests/test_core.py`/`tests/test_j3_fallback.py` (fake OpenAI-embeddings breaker state leaking across
+test order, unrelated to comparative extraction), the documented `test_s43_foundation.py` native-worker-restart
+timing race, and one `test_s12_recall_precision.py` link-check row that passes in isolation (test-order flake).
+None touch `neurosearch/t3.py`, `t3_review.py`, or their fixtures, and all were already present and
+documented as pre-existing throughout the prior design cycle at this same commit before this patch landed.
+`repo-check` reports one pre-existing WARNING (`KEEP AWAKE - overnight.command` not in the root allowlist —
+Kyle's own operational file, untouched by this change). Commit-bound `release-check --no-pytest` reports
+overall FAIL for the same three pre-existing reasons (Tier 1 `calculator_ok` tied to the embeddings-breaker
+cluster above, the root-hygiene warning, and the `test_s43` Foundation timing race); every deterministic proof
+this change could affect — schema registry, contracts, web JS modules (`UI_VERSION 0.63.90`), Tier 1 frozen
+totals, retrieval regression baseline, cache-layout gates, H1 prefilter gates, and backup/restore round trip —
+passes. Artifact: `evals/release/release-check-0.63.90-6f30e76-20260914-171351.json` (pre-patch baseline,
+recorded for the pre-existing-failure comparison above; this checkpoint's own commit-bound artifact is recorded
+in HANDOFF.md/HARDENING.md at the actual landing commit).
