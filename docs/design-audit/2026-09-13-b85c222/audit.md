@@ -328,6 +328,7 @@ depends on this rung landing first or alongside — see ladder ordering.
   picking a project. `[Visual]`
 - **`[M-3]`** Card-body clicks on Home give a focus ring but do not navigate; only the title text does — an
   acknowledgement gap between what looks clickable and what is. `[Runtime]`
+  **Re-checked, Rung W5 (2026-09-14):** current `home.js` already puts the navigation `onclick` on the whole `.pcard` div, not just the title — this is no longer reproducing against the code as of this audit's baseline commit. No code change made under W5; left here as a closed re-check rather than removed, per the ladder's own evidence discipline.
 - **`[M-4]`** Findings rows carry four to five badges (plan, 2×, weak, ⚠ stale source, topic) against `DESIGN.md`'s
   two-badge target; individually clear, cumulatively dense. `[Visual]`
 - **`[M-5]`** Findings' filter row has six selects plus a search box with no visible active-filter summary, making
