@@ -2,6 +2,23 @@
 
 **Status: PROPOSAL FOR MERGE, NOT CANONICAL.**
 
+**MERGED 2026-09-14 — archived, not canonical, kept for history only.** Every proposal in this file is already
+present in canonical `AUDIT.md`, in most cases with more Neuro-specific detail than proposed here:
+
+- runtime verification matrix and per-workflow evidence tagging (RUNTIME VERIFIED / SIMULATED RUNTIME /
+  STATIC ONLY / BLOCKED / CANNOT VERIFY) — `AUDIT.md` §4.5
+- failure-state verification using only existing safe mechanisms — `AUDIT.md` §4.5.1
+- timing baseline (`T_ack`/`T_state`/`T_result`) before proposing a timing threshold — `AUDIT.md` §4.6
+- interactive narrow-viewport verification — `AUDIT.md` §4.7 (plus a severity-cap interaction note this
+  proposal didn't have)
+- fixed-point closure pass and the bounded stopping rule — `AUDIT.md` Phase 9
+- the FULL AUDIT / RE-AUDIT invocation text — `AUDIT.md`'s own invocation blocks near the end of the file
+
+Per this file's own "Merge intent" (§7 below): now that the merge is done, this proposal is archived rather than
+left sitting alongside canonical `AUDIT.md` as a second, competing instruction set. `AUDIT.md` alone is
+canonical. The content below is preserved verbatim as a historical record of the gap this proposal identified
+and what it asked for.
+
 This file was produced in ChatGPT on 2026-09-12 after Claude identified a real gap in the current design audit: several important findings had been diagnosed from static code/markup inspection and passive display-state inspection, but the corresponding live workflows had not actually been exercised end to end.
 
 `AUDIT.md` remains canonical. The current repository copy of `AUDIT.md` has evolved beyond the earlier base used to draft this proposal, including Neuro-specific safety, audit-instance, design-source-of-truth, evidence-location, and frontend-contract rules. **Do not replace `AUDIT.md` wholesale with this file.** Instead, compare the two and merge only the additions below where they strengthen the canonical audit without regressing newer rules.
