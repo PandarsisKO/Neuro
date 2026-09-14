@@ -2769,3 +2769,12 @@ Attempted to refresh `backup/2026-09-13-clean` per the standing ritual: built a 
 terminal session. Local `main` (`2e48bee`) is unaffected; nothing was force-pushed or left partial. The snapshot
 tree is otherwise ready to push (`f8f56888e3ccb58a0ed4c6aaeb637b7fdd351530`) — from a terminal with GitHub auth,
 `git push origin f8f56888e3ccb58a0ed4c6aaeb637b7fdd351530:refs/heads/backup/2026-09-13-clean` completes it.
+
+## GitHub safety-snapshot refresh — closed — 2026-09-14 (Kyle, from his own terminal)
+
+The snapshot commit built last entry (`f8f56888e3ccb58a0ed4c6aaeb637b7fdd351530`) was pushed from Kyle's own
+terminal, which has GitHub auth this sandbox does not. As expected for a history-free snapshot branch, the
+first attempt was rejected as non-fast-forward (the new tree has no parent relationship to the old tip by
+design); `git push --force origin f8f56888...:refs/heads/backup/2026-09-13-clean` completed the forced update
+(`de9866d...f8f5688`). `backup/2026-09-13-clean` now matches local `main` at `f376832`. This is safe/expected
+practice for this specific disposable mirror branch only — never for `main` or any branch with dependents.
