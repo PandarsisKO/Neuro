@@ -106,6 +106,7 @@
 
   .themeBtn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:5px 9px;font-size:12px;border-radius:999px}
   #home .top{display:flex;align-items:flex-start;gap:12px} #home .top h1{flex:1}
+  #home .top .verTag{font-size:12px}
   /* ---- home ---- */
   #home{max-width:1000px;margin:0 auto;padding:28px 18px}
   #home h1{font-size:24px;margin:0 0 4px}
@@ -116,6 +117,19 @@
   .pcard .brief{color:var(--muted);font-size:13px;flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
   .pcard .meta{font-size:12px;color:var(--muted)}
   .pcard.new{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);box-shadow:none;background:transparent}
+  .pcard .meta .tag.warn{color:var(--warn);background:var(--warn-soft);margin-left:0}
+
+  /* ---- status component (Rung W5, H-1) ---- */
+  .statusbar{display:inline-flex;align-items:center;flex-wrap:wrap;row-gap:4px}
+  .statusbar .stbit{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-right:10px;padding-right:10px;border-right:1px solid var(--line)}
+  .statusbar .stbit:last-child{margin-right:0;padding-right:0;border-right:none}
+  aside .statusfoot{padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  aside .statusfoot .statusbar{flex-direction:column;align-items:flex-start;row-gap:3px}
+  aside .statusfoot .stbit{margin-right:0;padding-right:0;border-right:none}
+  aside .briefFoot{display:flex;gap:4px}
+  aside .briefFoot .footLabel{color:var(--text-faint);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;flex:0 0 auto;padding-top:1px}
+  aside .themefoot{padding:8px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  aside .themefoot .verTag{font-size:12px}
 
   /* ---- workspace ---- */
   #ws{display:none;height:100vh;height:100dvh}
@@ -213,6 +227,11 @@
   .funrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .funstat{background:var(--panel2);border-radius:10px;padding:10px 12px}
   .funstat b{display:block;font-size:22px;letter-spacing:-.01em}.funstat span{font-size:12.5px;color:var(--muted)}
+  /* M-2: on Home, this block was reading as more important than the project titles it sits below --
+     subordinate its numbers below .pcard .name's 16px there; the full-strength tile stays for the
+     per-project card, which isn't competing with anything for attention. */
+  .fun-sub .funstat b{font-size:15px}
+  .fun-sub .funh{font-weight:650;font-size:13px}
   .calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .ci{display:flex;gap:8px;align-items:center;padding:3px 0}.ci span{flex:1;font-size:13px}.ci input{width:140px;text-align:right}
   .co{display:flex;gap:8px;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}

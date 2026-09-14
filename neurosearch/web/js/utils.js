@@ -1,3 +1,41 @@
+// ---- shared status component (Rung W5, H-1/RC-F) ----
+// One place that turns the raw /api/usage payload into independently legible parts, ordered by what
+// needs noticing first: a blocked/paused warning (if any), local-AI health, today's spend, this
+// month's spend -- then, de-emphasized, the local/paid split richness the old single sentence also
+// carried (kept so nothing is lost, just no longer competing for the first glance). Used by both
+// Home's header line and the Chat sidebar footer (`H-1`'s propagation note).
+globalThis.healthInfo = function healthInfo(u) {
+  const la = (u && u.local_ai) || {};
+  if (la.profile !== 'local') return null;
+  const map = { ready: ['status-ok', 'Local AI ready'], checking: ['status-warn', 'Checking…'], unchecked: ['status-warn', 'Not checked'],
+    usage_limit: ['status-bad', 'Usage limit'], disabled: ['', 'Local AI off'] };
+  const [cls, label] = map[la.state] || ['status-bad', la.state ? String(la.state).replace(/_/g, ' ') : 'Unknown'];
+  return { cls, label, title: la.line || '' };
+}
+globalThis.statusBar = function statusBar(u) {
+  if (!u) return '';
+  const bits = [];
+  if (u.blocked) bits.push(`<span class="stbit status-warn" title="${esc(u.blocked)}">⏸ paused</span>`);
+  const h = healthInfo(u);
+  if (h) bits.push(`<span class="stbit" title="${esc(h.title)}"><span class="${h.cls}">●</span> ${esc(h.label)}</span>`);
+  bits.push(`<span class="stbit" title="spent today">$${u.today.toFixed(2)} today</span>`);
+  bits.push(`<span class="stbit" title="spent this month">$${u.month.toFixed(2)} this month</span>`);
+  const la = u.local_ai || {};
+  if (la.profile === 'local' && la.split && la.split.line) bits.push(`<span class="stbit">${esc(la.split.line)}</span>`);
+  return `<span class="statusbar">${bits.join('')}</span>`;
+}
+// A last-activity signal legible at a glance (M-1) -- relative for anything recent, an actual date once
+// it stops being useful as a "how recently" answer.
+globalThis.relTime = function relTime(ts) {
+  if (!ts) return '';
+  const s = Date.now() / 1000 - ts;
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  if (s < 86400 * 13) return `${Math.round(s / 86400)} days ago`;
+  return new Date(ts * 1000).toLocaleDateString();
+}
+
 // ---- shared list-state primitive (loading / empty / failed) — DESIGN.md SS7/SS11, Rung F2 ----
 // One shared three-state block for any list that renders from a fetch. `loading` shows on first
 // paint only (callers gate that themselves); `failed` always renders an explicit retry rather
@@ -48,7 +86,11 @@ globalThis.funCard = function funCard(f, title, elId) {
   const y = h >= 0.5 ? pick(YARDSTICKS, h) : null, b = f.words >= 20000 ? pick(BOOKS, f.words) : null;
   const plat = Object.entries(f.by_platform || {}).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${n} ${({ youtube: 'YouTube video', media: 'podcast/audio', web: 'web page', document: 'document', instagram: 'reel', spreadsheet: 'spreadsheet', file: 'file', manual: 'pasted text' })[k] || k}${n === 1 ? '' : 's'}`).join(' · ');
   const per = f.hours && f.spend ? `$${(f.spend / f.hours).toFixed(2)} per hour of material` : '';
-  return `<div class="fun"><div class="funh row" style="gap:8px">📊 ${title}<span class="grow"></span>${elId ? `<button class="small" data-el="${elId}" onclick="funReroll(this)" title="another comparison">🎲 another comparison</button>` : ''}</div>
+  // Rung W5/M-2: on Home specifically this block competes with the page's actual job (picking a
+  // project) by using larger type than any project title -- subordinate it there only; the same
+  // card at full strength inside a project (elId !== 'homeFun') isn't competing with anything.
+  const subCls = elId === 'homeFun' ? ' fun-sub' : '';
+  return `<div class="fun${subCls}"><div class="funh row" style="gap:8px">📊 ${title}<span class="grow"></span>${elId ? `<button class="small" data-el="${elId}" onclick="funReroll(this)" title="another comparison">🎲 another comparison</button>` : ''}</div>
     <div class="funrow">
       <div class="funstat"><b>${h.toLocaleString()}</b><span>hours of audio &amp; video, read for you</span></div>
       <div class="funstat"><b>${straight}</b><span>if you watched it all back to back${weeks >= 1 ? ` — ${weeks.toFixed(1)} working weeks` : ''}${h >= 2 ? `; still ${(h / 2).toFixed(0)} h at 2× speed` : ''}</span></div>

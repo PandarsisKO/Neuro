@@ -1,7 +1,12 @@
 // ================= home =================
 globalThis.loadSpend = async function loadSpend() {
-  try { const u = await api('/api/usage'); const la = u.local_ai || {}; const txt = `$${u.today.toFixed(2)} today · $${u.month.toFixed(2)} this month` + (u.blocked ? ' · ⏸ paused' : '') + (la.profile === 'local' ? ` · ${la.line || ''}${la.split && la.split.calls ? ` · ${la.split.line}` : ''}` : '');
-    const h = $('#homeSpend'); if (h) h.textContent = txt; const sd = $('#sideSpend'); if (sd) { sd.textContent = txt; sd.style.color = u.blocked ? 'var(--warn)' : ''; } state.usage = u; return u; } catch (e) { return null; }
+  try {
+    const u = await api('/api/usage');
+    const bar = statusBar(u);
+    const h = $('#homeSpend'); if (h) h.innerHTML = bar;
+    const sd = $('#sideSpend'); if (sd) sd.innerHTML = bar;
+    state.usage = u; return u;
+  } catch (e) { return null; }
 }
 globalThis.goHome = async function goHome() {
   loadSpend();
@@ -11,9 +16,13 @@ globalThis.goHome = async function goHome() {
   const [ps, st] = await Promise.all([api('/api/projects'), api('/api/stats')]);
   $('#homeStats').textContent = `${st.ready} sources · ${st.total_hours} h of material in the library.`;
   api('/api/stats/fun').then(f => { $('#homeFun').innerHTML = funCard(f, 'Your research in numbers', 'homeFun'); }).catch(() => {});
+  // M-1: a 0-source project previously read identically to an 876-source one -- an unambiguous,
+  // data-grounded attention signal (no sources yet) plus a relative "last touched" reading, which is
+  // more scannable than a bare calendar date, are the two the ladder asks for without inventing a
+  // staleness threshold nothing in evidence supports.
   $('#projGrid').innerHTML = ps.map(p => `<div class="pcard" onclick="location.hash='#p/${p.id}/chats'">
       <div class="name">${esc(p.name)}</div><div class="brief">${esc(p.goal || p.brief || 'No brief yet')}</div>
-      <div class="meta">${p.n_sources} sources · updated ${new Date(p.updated_at * 1000).toLocaleDateString()}</div></div>`).join('')
+      <div class="meta">${p.n_sources ? `${p.n_sources} sources · updated ${relTime(p.updated_at)}` : '<span class="tag warn">Needs sources</span>'}</div></div>`).join('')
     + `<div class="pcard new" onclick="newProjectDialog()">＋ New project</div>`;
 }
 globalThis.WIZ = { step: 0, data: {} };
