@@ -799,7 +799,7 @@ globalThis.loadNotes = async function loadNotes() {
   const p = await api('/api/projects/' + state.project.id);
   const c = p.counts || {};
   const nApproved = c.approved || 0, nSug = c.suggested || 0;
-  $('#nFindings').textContent = nApproved + (nSug ? ` +${nSug}` : '');
+  $('#nFindings').textContent = nApproved;
   const analysing = (p.analysing || {}).sources || 0;
   FWAVE.queued = (p.analysing || {}).queued || 0;
   globalThis.notesRev = JSON.stringify((await api(`/api/projects/${state.project.id}/tick`, { ack: false }).catch(() => ({}))).rev || null);

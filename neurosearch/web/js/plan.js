@@ -52,8 +52,7 @@ globalThis.renderPlan = function renderPlan(r) {
   const pending = pl.updates.filter(u => u.status === 'pending'), accepted = pl.updates.filter(u => u.status === 'accepted');
   const an = p.analysis || {}, facts = (state.project.facts || []);
   let h = `<div class="row mb-3"><h2 style="margin:0;flex:1">Master Plan <span class="muted" style="font-weight:400;font-size:13px">v${pl.version} · ${esc(p._generated || '')} · ${started ? '🚀 started' : 'planning'}</span></h2>
-    <button class="small" onclick="checkUpdates()">${r.research_changed ? '⚠ Research changed — check for updates' : 'Check for updates'}</button>
-    <button class="small" onclick="rebuildPrompt()">Rebuild…</button>
+    <button class="small" onclick="checkUpdates()">Check for updates</button>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.md" target="_blank">⬇ .md</a>
     <a class="chip fixed" href="/api/projects/${state.project.id}/plan.html" target="_blank">⬇ Share page</a></div>`;
   if (pending.length || accepted.length) {
@@ -207,7 +206,6 @@ globalThis.checkUpdates = async function checkUpdates() {
 }
 globalThis.updStatus = async function updStatus(id, status) { await post(`/api/plan-updates/${id}`, { status }); await loadPlan(); }
 globalThis.applyUpdates = async function applyUpdates() { $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding the plan with the accepted changes…</div>'); try { await post(`/api/projects/${state.project.id}/plan/apply`); } catch (e) { alert(e.message); } await loadPlan(); }
-globalThis.rebuildPrompt = async function rebuildPrompt() { const i = prompt('Any instructions for the rebuild? (optional — e.g. "assume a $300 budget", "we decided against Webflow")'); if (i === null) return; $('#planWrap').insertAdjacentHTML('afterbegin', '<div class="muted"><span class="spin"></span> rebuilding…</div>'); await buildPlan(i || null); }
 globalThis.startProject = async function startProject() { await post(`/api/plans/${planState.plan.id}/start`); await loadPlan(); }
 globalThis.researchThis = async function researchThis(q) {
   const c = await post('/api/conversations', { project_id: state.project.id, title: q.slice(0, 60) });

@@ -2,9 +2,8 @@
 globalThis.loadSpend = async function loadSpend() {
   try {
     const u = await api('/api/usage');
-    const bar = statusBar(u);
-    const h = $('#homeSpend'); if (h) h.innerHTML = bar;
-    const sd = $('#sideSpend'); if (sd) sd.innerHTML = bar;
+    const h = $('#homeSpend'); if (h) h.innerHTML = statusBar(u);
+    const sd = $('#sideSpend'); if (sd) sd.innerHTML = statusBar(u, true);
     state.usage = u; return u;
   } catch (e) { return null; }
 }
@@ -83,10 +82,10 @@ globalThis.openProject = async function openProject(id, view, conv) {
   $('#wsName').textContent = p.name; loadSpend();
   // 0.63.12 — the exact count, not the length of a capped list: this said "200" for a project with 17,845.
   $('#nSources').textContent = p.n_sources;
-  $('#nFindings').textContent = (p.counts && (p.counts.approved || 0) + (p.counts.suggested || 0)) || (p.notes || []).length;
+  $('#nFindings').textContent = (p.counts && (p.counts.approved || 0)) || (p.notes || []).length;
   $('#epName').value = p.name; $('#epBrief').value = p.brief || ''; $('#epTags').value = (p.tags || []).join(', '); $('#epContext').value = p.context || '';
   $('#epGoal').value = p.goal || ''; $('#epAudience').value = p.audience || ''; $('#epOutput').value = p.output_pref || ''; $('#epSourcePrefs').value = p.source_prefs || ''; $('#epQuestions').value = (p.questions || []).join('\n');
-  $('#nPlan').textContent = p.has_plan ? '✓' : ''; renderFacts(p.facts || []);
+  renderFacts(p.facts || []);
   $('#expFind').href = `/api/projects/${id}/findings.md`; $('#expPlan').href = `/api/projects/${id}/masterplan.md`; $('#expZip').href = `/api/projects/${id}/masterplan.zip`;
   $('#wsFoot').textContent = p.brief ? p.brief.slice(0, 140) + (p.brief.length > 140 ? '…' : '') : 'No brief yet — add one in Settings.';
   loadStaleness();
@@ -106,7 +105,6 @@ globalThis.showView = function showView(v, push = true) {
   if (v === 'research') loadResearch();
   if (v === 'plan') loadPlan();
   if (v === 'settings') { api('/api/projects/' + state.project.id).then(p => renderFacts(p.facts || [])); loadBudget(); loadHealth(); }
-  $('#modePlan').classList.toggle('active', v === 'plan'); $('#modeResearch').classList.toggle('active', v !== 'plan');
   if (push) setHash(v, v === 'chats' ? state.conv : null);
 }
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.83">
+<meta name="neurosearch-ui-version" content="0.63.84">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -26,7 +26,6 @@
       <div class="back" onclick="goHome()">← All projects</div>
       <div class="pname" id="wsName"></div>
     </div>
-    <div class="modes"><div id="modeResearch" class="active" onclick="if(state.view==='plan')showView('chats')">Research</div><div id="modePlan" onclick="showView('plan')">Plan</div></div>
     <nav>
       <div class="item" data-view="chats" onclick="showView('chats')">💬 Chats <span class="n" id="nChats"></span></div>
       <div class="item" data-view="sources" onclick="showView('sources')">📚 Sources <span class="n" id="nSources"></span></div>

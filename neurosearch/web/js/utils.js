@@ -12,8 +12,20 @@ globalThis.healthInfo = function healthInfo(u) {
   const [cls, label] = map[la.state] || ['status-bad', la.state ? String(la.state).replace(/_/g, ' ') : 'Unknown'];
   return { cls, label, title: la.line || '' };
 }
-globalThis.statusBar = function statusBar(u) {
+globalThis.statusBar = function statusBar(u, compact) {
   if (!u) return '';
+  // RD-3: the project sidebar footer used to render the exact same bar as Home's header -- health,
+  // today AND this month's spend, at the foot of every project, every time. The two figures that
+  // change while you're actually working a project (is local AI OK right now, what has today cost)
+  // are what the sidebar needs; the month total belongs to the page you came to Home or Settings for.
+  if (compact) {
+    if (u.blocked) return `<span class="statusbar"><span class="stbit status-warn" title="${esc(u.blocked)}">⏸ paused</span></span>`;
+    const h = healthInfo(u);
+    const bits = [];
+    if (h) bits.push(`<span class="stbit" title="${esc(h.title)}"><span class="${h.cls}">●</span> ${esc(h.label)}</span>`);
+    bits.push(`<span class="stbit" title="spent today">$${u.today.toFixed(2)} today</span>`);
+    return `<span class="statusbar">${bits.join('')}</span>`;
+  }
   const bits = [];
   if (u.blocked) bits.push(`<span class="stbit status-warn" title="${esc(u.blocked)}">⏸ paused</span>`);
   const h = healthInfo(u);
