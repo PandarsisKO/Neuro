@@ -2314,6 +2314,14 @@ The second throttled T4 batch used the existing findings pipeline for six more s
 5–26. Combined T4/T5 spend is `$2.346612`. No further paid calls are authorized under the current allowance;
 general T4 routing and structured-delta persistence remain gated.
 
+## Claude T4 third-batch checkpoint — 2026-09-14 12:50 PT
+
+The third T4 batch recorded 18 successful Sonnet calls, `$0.908735`, and 146 suggested findings across six
+sources. A first attempt made 17 billed calls before a five-minute timeout and lost approximately `$0.79` because
+the bridge had no incremental checkpoint; the rerun added checkpoint-after-each-source persistence. Recorded
+T4/T5 spend is `$3.255347`, while estimated actual provider billing is roughly `$4.04`. No further paid calls are
+authorized under the current allowance.
+
 ## Optional cleanup follow-through — 2026-09-14 12:44 PT
 
 The stale detached F0 worktree metadata was verified and pruned safely: no `design/f0` branch or live worktree

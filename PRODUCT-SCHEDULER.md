@@ -509,6 +509,14 @@ Claude ran six additional T4-selected sources through the unchanged findings pip
 83, while generic sources scored 5–26. Combined T4/T5 spend is `$2.346612`; no further paid calls are authorized
 under the current allowance. The general T4 executor and structured-delta path remain future admissions.
 
+## T4 third-batch checkpoint — 2026-09-14 12:50 PT
+
+Claude ran six more T4-selected sources through the unchanged findings pipeline: 18 successful real calls recorded
+`$0.908735` and materialized 146 suggested findings. “Buy then Build” scored substance 79. The first attempt made
+17 billed calls before a five-minute timeout without incremental checkpoints; approximately `$0.79` was spent with
+no usable output and no app-ledger row. The rerun now checkpoints after each source. Recorded T4/T5 spend is
+`$3.255347`; estimated actual billing is roughly `$4.04`. No further paid calls are authorized.
+
 ## Optional cleanup follow-through — 2026-09-14 12:44 PT
 
 The stale F0 worktree registration was pruned after verifying its path was gone and no `design/f0` branch existed.

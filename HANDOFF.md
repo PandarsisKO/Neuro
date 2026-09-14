@@ -2942,3 +2942,12 @@ After the T3 recall tests were added, the full suite passes **1,439 passed, 1 wa
 The two Claude T4 bridge scratch files were moved intact to `/Users/kyleowen/neuro-t4-bridge/` so the root stays
 within the documented allowlist without deleting provenance. The stale F0 registration is pruned; no active branch
 or worktree was affected.
+
+## T4 third-batch checkpoint and timeout disclosure — 2026-09-14 12:50 PT
+
+Claude ran six additional T4-selected sources through the unchanged findings pipeline. The successful rerun
+recorded 18 Sonnet calls at `$0.908735` and materialized 146 suggested findings; “Buy then Build” scored substance
+79. The first attempt made 17 real, billed calls before a five-minute timeout and had no incremental checkpoint,
+so approximately `$0.79` was spent without usable output or an app-ledger row. The rerun now checkpoints after each
+source. Recorded T4/T5 spend is `$3.255347`; estimated actual provider billing is roughly `$4.04`. No further paid
+calls are authorized.

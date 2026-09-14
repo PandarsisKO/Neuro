@@ -16,12 +16,14 @@ Current orientation source for the Neuro Search mission; older state files remai
   adjudicated with zero false positives; every per-kind and overall precision floor is 1.00. The two remaining
   T3 issues are recall-only structural gaps and are explicitly non-blocking.
 - T4 is shipped as a deterministic selector plus a tested **$0 executor-routing dry run**. Claude then exercised
-  the existing `findings.suggest_for_source()` pipeline through the documented bridge on seven sources: 39 real
-  Sonnet calls total, **$2.342844** across T4, 212 suggested findings, and useful substance separation on the two
-  acquisition-specific sources. The dry-run path itself still never calls `providers.route()` or starts a worker;
-  a general live executor and structured-delta write path remain separately admitted future work. Combined real
-  spend today (T4 + T5) is **$2.346612** of the authorized $20 cap. No further paid work is authorized under the
-  current allowance.
+  the existing `findings.suggest_for_source()` pipeline through the documented bridge on nine sources: 57
+  successfully recorded Sonnet calls, **$3.251579** recorded across T4, 358 suggested findings, and useful
+  substance separation on the acquisition-specific sources. A first third-batch attempt also made 17 real calls
+  before a five-minute timeout; those responses were not checkpointed and cost approximately **$0.79** outside the
+  app ledger. The rerun now checkpoints after each source. The dry-run path itself still never calls
+  `providers.route()` or starts a worker; a general live executor and structured-delta write path remain separately
+  admitted future work. Combined actual T4 + T5 spend today is approximately **$4.04** ($3.255347 recorded in-app
+  plus the disclosed lost spend). No further paid work is authorized under the current allowance.
 - T5 is shipped as a deterministic escalation proposal and a real adjudication-call path. One real adjudication
   was executed through a documented egress bridge because this device's MITM egress returns a false `401` for
   `api.anthropic.com`; the key was valid. It cost **$0.003768** (474 input / 282 output tokens), recorded in the
@@ -68,3 +70,10 @@ Claude ran the next six T4-selected sources through the unchanged findings pipel
 `$1.9937`, and 165 additional suggested findings were materialized. The two acquisition-specific sources scored
 substance 68 and 83; the other four scored 5–26. Combined T4/T5 spend is `$2.346612`; no further paid calls are
 authorized while allowance is constrained.
+
+## Claude T4 third-batch checkpoint — 2026-09-14 12:50 PT
+
+Claude ran six additional selected sources. The batch recorded `$0.908735` and 146 suggested findings; “Buy then
+Build” scored substance 79. A prior attempt made 17 real calls before timing out without checkpoints, losing about
+`$0.79` of billed spend and no usable output. The rerun added per-source checkpointing. Recorded T4/T5 spend is
+`$3.255347`; estimated actual provider billing is roughly `$4.04`. No further paid calls are authorized.
