@@ -245,3 +245,48 @@ separates signal from noise once real extraction runs.
 T5 (one adjudication) + T4 (seven sources across two batches, $0.349181 + $1.9937): **$2.346612** of the $20
 authorized. All seven sources' work units and suggested findings are real and durable in the project database;
 nothing here was simulated or reverted.
+
+
+## Third batch, six more sources, and a wasted-spend disclosure — 2026-09-14
+
+Kyle: "run more sources if it's useful." Ran six more `t4.plan()`-ranked sources through the same bridge,
+including "Buy then Build" -- a book literally about acquiring a business to grow it, exactly this project's
+brief -- which scored substance **79**, the highest of any source run today. Table:
+
+| source | windows | cost | suggested | substance |
+|---|---|---|---|---|
+| Buy then Build | 8 | $0.4404 | 104 | **79** |
+| I Own 38 Businesses | 2 | $0.1127 | 10 | 33 |
+| These Taxes Are Making You Broke | 2 | $0.0930 | 12 | 11 |
+| Congressional affairs / SBA | 2 | $0.0951 | 3 | 1 |
+| Entrepreneur's Guide To Building Wealth 2026 | 2 | $0.0995 | 16 | 16 |
+| 57 Minutes of Business Tactics & Lessons | 2 | $0.0679 | 1 | 2 |
+
+Batch total (recorded in the app's cost ledger): **$0.908735** (`total_charged` moved `150.29563 -> 151.204365`,
+matching). 146 additional suggested findings written.
+
+### Disclosure: real, billed spend that never entered the app's ledger
+
+The cloud-side call script for this batch first ran without incremental checkpointing and hit a 5-minute command
+timeout partway through the SAME six sources -- it had already made 17 real, billed Anthropic calls (all of
+"Buy then Build"'s 8 windows, both windows each of "I Own 38 Businesses," "These Taxes," "Congressional affairs,"
+and the first window of "Entrepreneur's Guide") before the timeout killed the process, and because nothing was
+written to disk until the very end, none of those 17 responses were ever recovered or primed into
+`work_units` -- the rerun made all of them again from window 0. Those first 17 calls were real, billed charges
+against Kyle's Anthropic account that this session's own accounting missed: by their own token counts,
+approximately **$0.79** (270,965 input / 24,436 output tokens, at $2/$10 per M). The rerun added the
+checkpoint-after-each-source save this script was missing from the start.
+
+So: **the app's cost ledger for today ($151.204365 total, $3.255347 attributable to this session) understates
+Kyle's actual Anthropic bill for today by approximately $0.79** -- real money spent, correctly billed by
+Anthropic, that produced no usable output and left no record in Neuro Search's own books, because it was lost to
+a tooling timeout before any checkpoint existed to save it. This is disclosed here in full rather than folded
+into the batch total silently. No further batch will run without an established checkpoint on every completed
+source (present since this rerun) specifically to prevent this class of loss.
+
+### Running total
+
+App-ledger-recorded real spend today across T5 + T4 (nine sources across three batches): **$3.255347** of the
+$20 authorized. Actual Anthropic billing today is that figure plus the ~$0.79 disclosed above, roughly **$4.04**.
+Both remain far inside budget. 383 more `t4.plan()`-flagged sources remain unprocessed in this project alone --
+today's batches were a deliberately small, throttled sample, not a claim of completeness.
