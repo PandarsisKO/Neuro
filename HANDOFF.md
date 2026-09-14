@@ -1677,3 +1677,15 @@ Every High and Medium finding in `audit.md` tied to a rung is RESOLVED or correc
 applicable (`M-3`, this pass's `L-3`); the cross-cutting RE-AUDIT (`reaudit.md`) found no regression across any
 touched surface after W5; C1 and P1 are both live-verified on the running instance. Nothing further is queued on
 this ladder.
+
+## Docs: AUDIT-V2-PROPOSED.md archived — already merged — 2026-09-14
+
+Commit `2f2cda0`. Reviewed `docs/design-audit/AUDIT-V2-PROPOSED.md` against canonical `AUDIT.md` section by
+section: every proposed addition (runtime verification matrix, RUNTIME VERIFIED/SIMULATED RUNTIME/STATIC ONLY/
+BLOCKED tagging, failure-state verification, `T_ack`/`T_state`/`T_result` timing baseline, interactive
+narrow-viewport check, fixed-point closure pass / bounded stopping rule, the FULL AUDIT/RE-AUDIT invocation text)
+is already present in `AUDIT.md` §4.5–4.7 and Phase 9, in each case with more Neuro-specific detail than the
+proposal had. The merge itself was done in an earlier session; only the proposal's own closing instruction
+("after merging, remove or archive this proposal") had been left undone, leaving two nominally-competing
+documents. Moved to `docs/design-audit/archive/AUDIT-V2-PROPOSED-2026-09-12.md` with a note mapping each
+proposed section to where it landed in `AUDIT.md`, rather than deleted.
