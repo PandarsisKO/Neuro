@@ -2586,3 +2586,85 @@ light and dark theme (`toggleTheme()`) — no CSS regressions.
 Proceeding to `CL-6` (Emoji still serve as glyphs across the app) — the last rung-5 finding, given its own
 commit for the reasons above — then rung 6 (`DOC-1`–`DOC-3`, folded into whichever file each touches) to
 close out all 22 findings, per the standing "complete them all, most efficient manner" authorization.
+
+
+## Declutter rung 5 close-out: CL-6 — 2026-09-14 (overnight, twelfth follow-up)
+
+Last of rung 5's six findings, given its own commit as planned (much larger surface than the other five
+combined). The audit's own worked example set the line: "an emoji beside a text label is removed unless it
+distinguishes siblings in a row (nav qualifies; a button labelled 'Rebuild in the background' does not)."
+
+**What changed.** Every `<button>` whose visible label was an emoji glyph immediately followed by a word or
+short phrase already saying the same thing — "🧮 Calculator", "🔬 Read deeper", "📦 Rebuild in the background",
+"⏩ Rebuild now", "🎯 Snapshot & verify now" and so on — had the emoji stripped, keeping the word. A mechanical
+regex sweep (`>` + emoji + optional space + `[A-Za-z]...` + `</button>`) caught 38 sites in one pass across
+`index.html`(9), `chats.js`(1), `plan.js`(3), `research.js`(14), `sources.js`(11); `git diff` reviewed
+afterward to confirm nothing outside that shape moved, and that `title="..."` tooltip text (which legitimately
+carries emoji) was untouched — the regex only matches text immediately after `>`. Four more sites use
+template-literal interpolation the simple regex can't reach and were hand-fixed: the two REVIEW rebuild-option
+buttons in `research.js` (`onclick="rebuildTier(...)"`, "📦 ${label} in the background" / "⏩ ${label} now") and
+their two toast messages in `rebuildTier()` itself.
+
+Two non-button sites got the same treatment because they're the same pattern in spirit: `useBadges()`'s
+stale-source tag lost its redundant "⚠" (the tag is already rendered in `.status-warn` color — the glyph told
+you nothing the color and the word "stale source" didn't already); and `sources.js`'s `loadHealth()`, which
+had SIX inline ternaries producing bare ✅/⚠️/🧪/🔎/⏸ across roughly two dozen rows (Models, provider health,
+release check, two spend rows, cost-per-kept-finding), all rewritten to `.status-ok`/`.status-warn` colored
+text — "OK"/"Warn"/"Test"/"Checking"/"Paused" — the exact same conversion the audit specified verbatim for
+finding-row status glyphs ("Status glyphs (✅/⚠️) become the existing .status-* text colour plus a word"),
+applied here since Health's rows are the same status-glyph pattern in a different view. Cache-hit-rate's
+decorative 📈 was dropped outright (not a status, nothing to convert it to).
+
+**What was deliberately left alone**, per the audit's own exception and the interpretive line drawn for this
+rung: nav items (💬 Chats, 📌 Sources, 🚩 Findings, 🧠 Research, ✅ Master Plan, ⚙ Settings) — the audit's named
+exception, distinguishing siblings in a fixed short list; the Sources filter chip row (All/Failed/Ready/🎥 Deep
+content/Skipped) and similar chip legends — same sibling-distinguishing shape as nav, not literally named as a
+violation; the sourceDrawer's plan/chat origin badges already converted in SM-3; and all emoji inside actual
+page or transcript content (video titles, chat answers, source excerpts) — DESIGN.md §6 territory, untouched
+by design.
+
+**New ceiling test.** `tests/test_s50_design_drift.py` gained `emoji_prefixed_buttons()` (same regex shape as
+the sweep, run against the live `HTML`/`JS` fixtures) and
+`test_emoji_beside_a_label_the_button_already_states_is_removed()`, `MAX_EMOJI_PREFIXED_BUTTONS = 0` — unlike
+this file's other measures, which ratchet a pre-existing baseline down, this one starts at its floor: 0 found
+immediately after the sweep, so any future PR that reintroduces the pattern fails it on the first commit. A
+self-test line was added to the file's own bottom ratchet-detector-works check, proving the new finder
+actually flags `<button>🔄 Retry</button>`.
+
+**Files:** `neurosearch/web/index.html`, `neurosearch/web/js/chats.js`, `neurosearch/web/js/plan.js`,
+`neurosearch/web/js/research.js` (button sweep + the 4 hand-fixed rebuild-button/toast sites + `useBadges()`'s
+stale-source tag), `neurosearch/web/js/sources.js` (button sweep + `loadHealth()`'s 6 status-glyph
+conversions), `tests/test_s50_design_drift.py` (new detector, test, ceiling constant, docstring, self-test
+line).
+
+`UI_VERSION` 0.63.88 → 0.63.89. `node --check` clean on every touched JS file. Tests: 129/129 on the targeted
+suites (all of rung 4 and 5's suites, confirmed unaffected), 9/9 on `test_s50_design_drift.py` including the
+new test. Full suite (split in half, `device_bash`'s 180s cap): 601/614 and 782/783 — the same pre-existing
+`test_core.py`/`test_j3_fallback.py` failures (tracing to `neurosearch/t3.py`, Codex's in-progress file) and
+the same `test_s43_foundation.py` native-worker-restart timing race flagged in rung 5 part 1's HANDOFF entry,
+neither touched by this rung's files.
+
+Landed as commit `875115f`. `.worktrees/f0` repinned to `875115f`. Audit-instance restart: the first
+`app_screenshot` after granting Terminal/Finder access this segment showed the Terminate dialog already up
+from a prior close attempt, but with 0 actionable AX elements (a stale artifact); clicking the close coordinate
+`[13,13]` a second time produced the real dialog (2 actionable elements, Cancel/Terminate) — same pattern
+documented in every prior restart this cycle. Relaunched via the already-selected Finder row, confirmed up via
+`document.lastModified` (fresh, matching restart time) and a direct `grep` of the worktree's `state.js`/
+`index.html`/`__init__.py` all showing `0.63.89` (the in-page `UI_VERSION` read itself kept tripping the
+browser tool's own JWT-looking-string filter on the returned value — a tooling quirk, not a product issue;
+worked around by reading the version from disk instead).
+
+Live-verified on the same 889-source/16,450-finding project used throughout this cycle, in dark and then light
+theme (`toggleTheme()`): Settings' Health panel shows "OK Database integrity", "OK Verified backup", "OK
+Queue", "OK Finding quotes verified", "OK Global Library", "Warn Slowest endpoints", "OK Spend", "OK Who pays
+for local calls", "Warn Provider batches", "OK Cost per kept finding" — all colored words, zero bare ✅/⚠️
+glyphs, both themes clean. Research's Overview tab reconfirmed RD-5 and SM-5 from the prior commit still
+correct (plain "Evidence may be outdated" titles with area shown only in the chip; "Open questions" tab label
+carries no stale count). A source row's "..." menu (Suggest findings / Transcript / ☆ Make priority / Remove
+from project / Delete everywhere) was already plain-text, confirming the CL-6 scope correctly left menu items
+alone (they were never emoji-prefixed to begin with).
+
+**Rung 5 is now fully complete: RD-5, SM-5, SM-3, SM-6, CL-1, CL-6 — all six findings landed, tested, and
+live-verified.** Proceeding to rung 6, the final rung: `DOC-1`–`DOC-3` (doc-level findings — folded into
+whichever file each touches), to close out all 22 findings per the standing "complete them all, most efficient
+manner" authorization.
