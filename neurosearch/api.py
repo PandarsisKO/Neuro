@@ -174,7 +174,20 @@ mcp_app = mcp.streamable_http_app(
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 app.mount("/mcp", mcp_app)
-app.mount("/js", StaticFiles(directory=WEB_DIR / "js"), name="web-js")
+class _NoCacheStaticFiles(StaticFiles):
+    """0.63.76 - the 0.60.4 fix above (NO_STORE on index.html, no-cache on styles.css) never covered `/js`, which
+    is where the actual UI code lives. Starlette's default StaticFiles sends Last-Modified/ETag but no
+    Cache-Control, so a browser's heuristic cache is free to keep serving an old module for days after a deploy -
+    exactly the "v0.53.1 in the corner while the server ran 0.60.3" failure, just one directory over. Revalidating
+    every load (not disabling caching outright) keeps 304s cheap while guaranteeing a version bump is never
+    silently missed."""
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/js", _NoCacheStaticFiles(directory=WEB_DIR / "js"), name="web-js")
 app.add_middleware(PerfMiddleware)
 app.add_middleware(ClientVersionMiddleware)
 app.add_middleware(TokenPathMiddleware)

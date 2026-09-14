@@ -63,3 +63,6 @@ def test_external_stylesheet_is_linked_and_served(client):
     module = client.get('/js/app.js')
     assert module.status_code == 200
     assert module.headers['content-type'].startswith('text/javascript')
+    # 0.63.76 - /js never got the 0.60.4 no-cache fix that styles.css/index.html did; a browser could keep
+    # serving a stale module for days after a deploy. Every static JS response must revalidate.
+    assert module.headers['cache-control'] == 'no-cache'
