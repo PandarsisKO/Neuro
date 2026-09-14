@@ -122,3 +122,28 @@ def test_batch_transport_enqueues_one_suggest_findings_batch_job(e2_db, monkeypa
     assert len(rows) == 1 and rows[0]["kind"] == "suggest_findings_batch"
     payload = json.loads(rows[0]["payload"])
     assert sorted(payload["source_ids"]) == sorted(sids)
+
+
+def test_execution_policy_none_is_the_prior_default(e2_db, monkeypatch):
+    project, sids = _project_with_sources(1)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    t4.execute(project["id"], budget_usd=10.0, dry_run=False)
+    row = db.connect().execute("SELECT execution_policy FROM jobs").fetchone()
+    assert row["execution_policy"] == "local_preferred"          # db.create_job's own default, unchanged
+
+
+def test_execution_policy_api_requested_is_forced_through(e2_db, monkeypatch):
+    project, sids = _project_with_sources(1)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    result = t4.execute(project["id"], budget_usd=10.0, dry_run=False, execution_policy="api_requested")
+    assert result["execution_policy"] == "api_requested"
+    row = db.connect().execute("SELECT execution_policy FROM jobs").fetchone()
+    assert row["execution_policy"] == "api_requested"
+
+
+def test_execution_policy_api_requested_on_batch_transport(e2_db, monkeypatch):
+    project, sids = _project_with_sources(2)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    t4.execute(project["id"], budget_usd=10.0, dry_run=False, transport="batch", execution_policy="api_requested")
+    row = db.connect().execute("SELECT execution_policy FROM jobs WHERE kind='suggest_findings_batch'").fetchone()
+    assert row["execution_policy"] == "api_requested"

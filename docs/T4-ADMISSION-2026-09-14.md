@@ -535,3 +535,56 @@ in place, all $0.
 workbench (the plan's gate: at least 100 findings adjudicated across >=4 sources; this run cleared that with
 room to spare). Nothing past E4 can be measured without it -- E5's Haiku/Sonnet decision rule needs a kept rate
 to compare against.
+
+
+## E5 prep (built while Kyle was away, $0, nothing run) — 2026-09-14
+
+E4 (Kyle's kept-rate review) is his to do -- I did not touch any finding's status, since faking that would
+corrupt the exact number E5 needs. What I could safely prepare: E5 requires comparing real dollar cost per kept
+finding between Sonnet and Haiku, but `t4.execute()`'s jobs default to `execution_policy="local_preferred"` --
+the free path E3 actually used (`claude_code.local_is_free()` is `True` here) -- so both arms would show $0 and
+there would be nothing to compare.
+
+Added `execution_policy: str | None = None` to `t4.execute()` (and threaded it through `jobs.enqueue()`, which
+did not expose the parameter before). `None` is byte-for-byte the prior behaviour for every existing caller;
+passing `"api_requested"` forces every job the call enqueues onto the metered path regardless of local
+availability. Exposed as `neurosearch t4 execute <project> ... --paid` on the CLI. 3 new tests in
+`tests/test_t4_execute.py` (now 12 total): the default forwards nothing and `db.create_job`'s own default
+(`local_preferred`) applies; `execution_policy="api_requested"` lands on the enqueued job's row for both
+interactive and batch transport. Focused 12/12, wider T4/findings/jobs/cli set 202/204 (2 known failures), full
+suite 15 known failures across 4 chunks (zero new), `repo-check` PASS.
+
+**The 8 E5 candidate sources** (top of `t4.select()`'s ranked list, past the 5 E3 already ran, all confirmed
+not-yet-current as of this writing):
+
+| relevance | source | source_id |
+|---|---|---|
+| 0.611 | Everything You Need To Know About The Recent SBA Changes | `21274fb9125848cfa58e06517adc3ce1` |
+| 0.610 | Live Deal Teardown: A $422K Cash-Flow Listing | `1c309a3c978846ef8e9d2c14f53716c4` |
+| 0.609 | The Difference Between a Good Business and a Good Acquisition | `77311b566b8342018a61153036597475` |
+| 0.608 | The 3 Most Important Factors When Buying A Business | `8899039e74304275bffecc2396e150d1` |
+| 0.608 | AI found the business. AI helped finance it. I make $850k/yr | `6d5f072cf3ca46d899b4b0f9e851444e` |
+| 0.607 | 5-Minute CIM Review for Busy Business Buyers | `b76454d32f0441ac9d0901c8bb2687db` |
+| 0.602 | Recession-Proof Portfolio Builder.pdf | `3b6b9cc84b334248b6d0fb34e01a0555` |
+| 0.600 | How To Buy A Business With Seller Financing (Step-By-Step) | `1bba2517c73a46308749bcdf3263ea4d` |
+
+No `--sources` selection flag was needed: run in relevance order 4 at a time, the first `--live` call marks its
+4 sources current, so a second sequential call naturally advances to the next 4 -- exactly "4 on Sonnet, 4 on
+Haiku" from the same ranked pool, with zero overlap, no new code required.
+
+**Once E4 is done**, on Kyle's Mac with `neurosearch worker` running:
+
+```
+.venv/bin/neurosearch t4 execute c752ed152ec942dd97b9a94c3f1b3b96 --budget 1.5 --max-sources 4 --floor 30 --paid --live
+```
+
+(Sonnet, the current `findings.extract` contract -- unchanged), then:
+
+```
+NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5 .venv/bin/neurosearch t4 execute c752ed152ec942dd97b9a94c3f1b3b96 --budget 1.5 --max-sources 4 --floor 30 --paid --live
+```
+
+(Haiku, via `contracts.py`'s existing per-task env override -- no production contract edited). `--paid` forces
+real metered spend on both so `cost_value.by_model()` has something to compare; without it, both would run free
+and measure nothing. Then Kyle reviews all 8 (E4 rules) and the decision rule from the plan applies: Haiku wins
+only if its cost per KEPT finding is lower AND its kept rate is within 10 points of Sonnet's.

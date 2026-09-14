@@ -230,7 +230,7 @@ def _source_estimate(project_id: str, source_id: str, *, substance_floor: int | 
 
 def execute(project_id: str, *, budget_usd: float, max_sources: int | None = None,
            substance_floor: int | None = 30, min_relevance: float | None = None,
-           dry_run: bool = True, transport: str = "interactive") -> dict[str, Any]:
+           dry_run: bool = True, transport: str = "interactive", execution_policy: str | None = None) -> dict[str, Any]:
     """The executor: turn ``select()``'s ranked ``by_source`` list into real ``findings.extract`` work, under a
     dollar cap, source by source in relevance order. This is T4's second half made real -- ``plan()`` above stays
     the $0 per-ITEM routing dry run; this is the per-SOURCE budgeted walk that actually enqueues (or, with
@@ -269,6 +269,13 @@ def execute(project_id: str, *, budget_usd: float, max_sources: int | None = Non
     Writes nothing itself either way -- ``findings.suggest_for_source`` (via the enqueued job) remains the only
     thing that ever calls a provider or writes a suggested finding; ``claims.set_status`` remains the only
     promotion door for anything downstream of that.
+
+    ``execution_policy`` (E5, 2026-09-14): ``None`` (the default) is the prior behaviour -- every enqueued job
+    lets ``db.create_job`` apply its own default (``local_preferred``, which is what made E3's first live run
+    free on a machine where ``claude_code.local_is_free()`` is true). Pass ``"api_requested"`` to FORCE the
+    metered path for every job this call enqueues -- needed whenever the point of the run is measuring real
+    dollar cost (E5's Sonnet-vs-Haiku comparison), since two model arms that both ran for $0 would have nothing
+    for ``cost_value.by_model()`` to compare.
     """
     from . import db as db_mod
     from . import findings
@@ -306,8 +313,8 @@ def execute(project_id: str, *, budget_usd: float, max_sources: int | None = Non
         "execute_version": EXECUTE_VERSION, "selector_version": selection["selector_version"],
         "project_id": project_id, "budget_usd": budget_usd, "max_sources": max_sources,
         "substance_floor": substance_floor, "min_relevance": min_relevance, "transport": transport,
-        "sources": chosen, "count": len(chosen), "total_estimate": round(total_estimate, 4),
-        "executed": False, "job_ids": [],
+        "execution_policy": execution_policy, "sources": chosen, "count": len(chosen),
+        "total_estimate": round(total_estimate, 4), "executed": False, "job_ids": [],
     }
     if dry_run or not chosen:
         plan_out["note"] = "dry run: no job was enqueued" if dry_run else "nothing to execute: no eligible source within budget"
@@ -318,7 +325,7 @@ def execute(project_id: str, *, budget_usd: float, max_sources: int | None = Non
     if transport == "batch":
         plan_out["substance_floor_note"] = "substance_floor does not apply to batch transport (all windows submit together); ignored"
         job = jobs.enqueue("suggest_findings_batch", {"project_id": project_id, "source_ids": [s["source_id"] for s in chosen]},
-                           lane="low")
+                           lane="low", **({"execution_policy": execution_policy} if execution_policy else {}))
         plan_out["job_ids"] = [job["id"]]
     else:
         job_ids = []
@@ -327,7 +334,7 @@ def execute(project_id: str, *, budget_usd: float, max_sources: int | None = Non
                                                      "substance_floor": substance_floor,
                                                      "t4_execute_version": EXECUTE_VERSION,
                                                      "t4_selector_version": selection["selector_version"]},
-                               lane="low")
+                               lane="low", **({"execution_policy": execution_policy} if execution_policy else {}))
             job_ids.append(job["id"])
         plan_out["job_ids"] = job_ids
     plan_out["executed"] = True

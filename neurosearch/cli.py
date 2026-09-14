@@ -648,6 +648,7 @@ def t4_execute_cmd(project: str, budget: float = typer.Option(..., "--budget", h
                    min_relevance: Optional[float] = typer.Option(None, "--min-relevance", help="Skip sources scored below this (unscored sources are skipped too, once this is set)"),
                    live: bool = typer.Option(False, "--live", help="Actually enqueue jobs; without this, only prints the plan and estimate"),
                    batch: bool = typer.Option(False, "--batch", help="Use the Message Batches transport (one job for every selected source) instead of one job per source"),
+                   paid: bool = typer.Option(False, "--paid", help="Force the metered API path (execution_policy=api_requested) instead of the default free-when-available local execution -- needed to measure real dollar cost (e.g. E5's Sonnet vs Haiku comparison)"),
                    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt before a --live enqueue")) -> None:
     """T4 E2: the budgeted executor. Ranks this project's sources by relevance (t4.select), then walks them in
     that order enqueuing real findings-extraction work until BUDGET or MAX_SOURCES is hit. Defaults to a dry run
@@ -658,8 +659,10 @@ def t4_execute_cmd(project: str, budget: float = typer.Option(..., "--budget", h
         typer.echo(f"no project matches {project!r}", err=True)
         raise typer.Exit(code=1)
     sub_floor = None if floor is not None and floor < 0 else floor
+    exec_policy = "api_requested" if paid else None
     plan = t4.execute(pid, budget_usd=budget, max_sources=max_sources, substance_floor=sub_floor,
-                      min_relevance=min_relevance, dry_run=True, transport="batch" if batch else "interactive")
+                      min_relevance=min_relevance, dry_run=True, transport="batch" if batch else "interactive",
+                      execution_policy=exec_policy)
     typer.echo(json.dumps(plan, indent=2))
     if not live:
         return
@@ -669,5 +672,6 @@ def t4_execute_cmd(project: str, budget: float = typer.Option(..., "--budget", h
     if not yes and not typer.confirm(f"Enqueue {plan['count']} source(s), estimated ${plan['total_estimate']:.4f}?"):
         raise typer.Exit(code=0)
     result = t4.execute(pid, budget_usd=budget, max_sources=max_sources, substance_floor=sub_floor,
-                        min_relevance=min_relevance, dry_run=False, transport="batch" if batch else "interactive")
+                        min_relevance=min_relevance, dry_run=False, transport="batch" if batch else "interactive",
+                        execution_policy=exec_policy)
     typer.echo(json.dumps(result, indent=2))

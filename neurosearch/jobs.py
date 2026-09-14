@@ -264,8 +264,8 @@ def poll_external_once() -> int:
 
 # ------------------------------------------------------------------ running a job
 
-def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal") -> dict[str, Any]:
-    return db.create_job(kind, payload, lane=lane)
+def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal", execution_policy: str = "local_preferred") -> dict[str, Any]:
+    return db.create_job(kind, payload, lane=lane, execution_policy=execution_policy)
 
 
 def run_job(job: dict[str, Any]) -> dict[str, Any]:
