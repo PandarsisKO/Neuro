@@ -136,22 +136,63 @@ globalThis.srcRowHtml = function srcRowHtml(s) {
       ${liveLine ? `<div style="margin-top:3px;font-size:13px">${liveLine}</div>` : ''}
       ${s.summary ? `<div class="muted mt-1">${s.legacy_analysis ? `<span class="tag status-warn" title="Preserved from Neuro Search 0.15 — its original project context cannot be verified. Re-analyse to replace it.">⚠ legacy analysis</span> ` : ''}${s.substance != null ? `<span class="tag" style="color:${s.substance >= 60 ? 'var(--ok)' : s.substance >= 30 ? 'var(--warn)' : 'var(--bad)'}">substance ${s.substance}/100</span> ` : ''}${esc(s.summary)}</div>` : ''}
       ${s.status === 'ready' ? `<div class="muted mt-1">${s.analysing ? `<span class="spin"></span> ${s.analysis_job && s.analysis_job.status === 'running' ? esc(s.analysis_job.message || 'reading…') + (s.analysis_job.progress ? ` <span class="muted">· ${Math.round(s.analysis_job.progress * 100)}%</span>` : '') : s.analysis_job && s.analysis_job.status === 'queued' ? `queued${s.analysis_job.depth === 'deep' ? ' for a deep read (slow lane — other work keeps running)' : ' for findings'}` : 'reading transcript for findings…'}` : s.suggested ? `<a href="#" onclick="openSourceSuggestions('${s.id}','suggested');return false" class="status-warn">📌 ${s.suggested} suggested finding${s.suggested === 1 ? '' : 's'} waiting for review</a>` : s.approved ? `<a href="#" onclick="sourceDrawer('${s.id}');return false">📌 ${esc(s.value && s.value.label && s.value.label !== 'nothing yet' ? s.value.label : `${s.approved} approved finding${s.approved === 1 ? '' : 's'}`)}</a>${s.value && s.value.stale ? ` <span class="tag status-warn" title="${esc((s.value.stale_reasons || []).join('; '))}">⚠ stale</span>` : ''}` : s.analysed ? '📌 analysed — nothing worth suggesting' : '📌 not analysed yet'}${s.reserve ? ` · <a href="#" onclick="toggleReserve('${s.id}', this);return false" title="Findings the model extracted beyond the length-aware cap — lower importance, kept rather than thrown away. Promote the ones worth keeping.">+${s.reserve} more extracted</a>` : ''}</div><div class="reserve" id="reserve-${s.id}" hidden></div>` : ''}
-      <div class="actions">
-        ${s.status === 'ready' ? `<button class="small" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button><button class="small" onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>${s.platform === 'spreadsheet' ? `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>` : ''}<button class="small" title="Reads this source with the model to extract findings — uses your model budget" onclick="suggestSource('${s.id}')">Suggest findings</button>${(() => {
-          // 0.63.17 — offer only what is NOT already in the library, and say when it is: the row went on saying
-          // "not added yet" after Kyle had added the video and it had finished transcribing.
-          const all = s.video_embeds || [], done = s.video_embeds_added || [], left = all.filter(v => !done.includes(v));
-          if (!all.length) return '';
-          if (!left.length) return `<span class="tag" title="${esc(done.join(', '))}">🎬 ${done.length} video${done.length === 1 ? '' : 's'} from this page added</span>`;
-          return `<button class="small primary" title="This page embeds ${left.length} video (${esc(left.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)).join(', '))}). Adding it downloads and transcribes it, which costs money — the page's own notes were free." onclick="addPageVideos('${s.id}', ${left.length})">🎬 Add the ${left.length} video${left.length === 1 ? '' : 's'} on this page</button>`;
-        })()}${s.platform === 'image' ? `<button class="small" title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">👁 Read again with the model</button>` : ''}${s.long ? (s.depth === 'deep' ? `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>` : `<button class="small" title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`) : ''}` : ''}
-        ${needsBrowser ? '' : s.status === 'failed' || (s.status === 'pending' && !s.job) ? `<button class="small" onclick="retry('${s.id}')">Retry</button>` : ''}
-        ${s.status === 'skipped' ? `<button class="small" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>` : ''}
-        <button class="small ghost" title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>
-        <button class="small ghost" onclick="removeFromProject('${s.id}')">Remove from project</button>
-        <button class="small ghost danger" onclick="delSource('${s.id}')">Delete everywhere</button>
-      </div>
+      ${sourceRowActions(s, needsBrowser)}
     </div></div>`;
+}
+// 0.63.69 (W4): H-4 found six-plus equal-weight actions on every one of 1,348 rows, "Remove from project" (reversible)
+// sitting next to "Delete everywhere" (irreversible) distinguished only by color, and F0 addendum 4's runtime walk
+// found a sharper version — row height varies (extra buttons on long-form/video/image sources, extra tag lines),
+// so a fast repeated click at a fixed offset can miss its row entirely, not just its button. Fix: one primary action
+// by task context — the thing that moves this source forward — stays visible; a rare, high-value, source-type
+// action (Calculator, add embedded videos) stays visible alongside it because F0 addendum 4's own bulk-review
+// baseline showed exactly this shape of action used on a large share of rows, so it is not buried; everything else,
+// destructive actions especially, moves one deliberate step behind a "⋯" overflow menu — same `.menu` component
+// already used for chat's Copy/Share menus, so this reuses an existing pattern rather than inventing one. What any
+// action does, costs or confirms is unchanged: delSource's confirm() already scales to "Delete everywhere"'s
+// irreversibility; this only changes where these buttons sit.
+globalThis.sourceRowActions = function sourceRowActions(s, needsBrowser) {
+  const canRetry = !needsBrowser && (s.status === 'failed' || (s.status === 'pending' && !s.job));
+  // The stated rule, so the choice is never arbitrary: primary = the one action that makes progress on the reason
+  // this row is in the list right now. Ingest/Retry when it is not yet in the library; analyse when it has not
+  // been read; review what it gave once it has — matching DESIGN.md's outcome-over-implementation labelling.
+  let primary = '';
+  if (s.status === 'skipped') primary = `<button class="small primary" title="Fetch it even though it is older than the cutoff" onclick="retry('${s.id}')">⏵ Ingest anyway</button>`;
+  else if (canRetry) primary = `<button class="small primary" onclick="retry('${s.id}')">Retry</button>`;
+  else if (s.status === 'ready') primary = s.analysed
+    ? `<button class="small primary" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is" onclick="sourceDrawer('${s.id}')">What this gave</button>`
+    : `<button class="small primary" title="Reads this source with the model to extract findings — uses your model budget" onclick="suggestSource('${s.id}')">Suggest findings</button>`;
+
+  // Rare, source-type-specific and already high-value when present — F0 addendum 4's bulk-review baseline is why
+  // these stay a second visible control instead of folding into the overflow with the genuinely rare ones.
+  let special = '';
+  if (s.status === 'ready' && s.platform === 'spreadsheet') special = `<button class="small primary" onclick="openCalc('${s.id}')">🧮 Calculator</button>`;
+  const allVideos = s.video_embeds || [], doneVideos = s.video_embeds_added || [], leftVideos = allVideos.filter(v => !doneVideos.includes(v));
+  if (s.status === 'ready' && leftVideos.length) special += `<button class="small primary" title="This page embeds ${leftVideos.length} video (${esc(leftVideos.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)).join(', '))}). Adding it downloads and transcribes it, which costs money — the page's own notes were free." onclick="addPageVideos('${s.id}', ${leftVideos.length})">🎬 Add the ${leftVideos.length} video${leftVideos.length === 1 ? '' : 's'} on this page</button>`;
+  else if (s.status === 'ready' && allVideos.length) special += `<span class="tag" title="${esc(doneVideos.join(', '))}">🎬 ${doneVideos.length} video${doneVideos.length === 1 ? '' : 's'} from this page added</span>`;
+  if (s.status === 'ready' && s.long && s.depth === 'deep') special += `<span class="tag" title="This source was read with Read deeper: smaller windows, every specific finding kept">🔬 deep-read</span>`;
+
+  const items = [];
+  if (s.status === 'ready') {
+    if (s.analysed) items.push(`<button onclick="suggestSource('${s.id}')" title="Reads this source with the model to extract findings again — uses your model budget">Suggest findings</button>`);
+    else items.push(`<button onclick="sourceDrawer('${s.id}')" title="Everything this source gave the project: findings, the Claims they became, where it was used, how fresh it is">What this gave</button>`);
+    items.push(`<button onclick="viewTranscript('${s.id}')">${s.platform === 'spreadsheet' ? 'Contents' : s.platform === 'book' ? '📖 Read' : 'Transcript'}</button>`);
+    if (s.platform === 'image') items.push(`<button title="Read the picture again with the model instead of the free local OCR. Costs a small amount, and is worth it when the free read missed labels or small type. Text already stored is never replaced by a shorter read." onclick="readImageAgain('${s.id}')">👁 Read again with the model</button>`);
+    if (s.long && s.depth !== 'deep') items.push(`<button title="A long-form source. Reads it again in smaller parts with a depth instruction and keeps every specific finding (books, courses, podcasts, long interviews). $0 on Claude Code; API cost otherwise." onclick="readDeeper('${s.id}')">🔬 Read deeper</button>`);
+  }
+  if (!canRetry && !needsBrowser && (s.status === 'failed' || s.status === 'pending')) items.push(`<button onclick="retry('${s.id}')">Retry</button>`);
+  items.push(`<button title="${s.priority ? 'Stop favouring this source in answers' : 'Favour this source in answers (a top-tier / authoritative source for this project)'}" onclick="setPriority('${s.id}', ${s.priority ? 'false' : 'true'})">${s.priority ? '★ Priority' : '☆ Make priority'}</button>`);
+  items.push(`<button onclick="removeFromProject('${s.id}')">Remove from project</button>`);
+  items.push(`<div style="border-top:1px solid var(--line);margin:4px 0"></div>`);
+  items.push(`<button class="danger" onclick="delSource('${s.id}')">Delete everywhere</button>`);
+
+  return `<div class="actions">${primary}${special}<button class="small ghost" onclick="toggleMenu(this)" aria-label="More actions for this source" title="More actions">⋯</button><div class="menu" hidden>${items.join('')}</div></div>`;
+}
+globalThis.toggleMenu = function toggleMenu(btn) {
+  const m = btn.nextElementSibling; if (!m || !m.classList.contains('menu')) return;
+  const willOpen = m.hidden;
+  document.querySelectorAll('.menu').forEach(x => { if (x !== m) x.hidden = true; });
+  m.hidden = !m.hidden;
+  if (willOpen) setTimeout(() => document.addEventListener('click', function h(e) { if (!m.contains(e.target) && e.target !== btn) { m.hidden = true; document.removeEventListener('click', h); } }), 0);
 }
 globalThis.renderSourceList = function renderSourceList() {
   const rows = SRCG.rows;
