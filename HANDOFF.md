@@ -3002,3 +3002,40 @@ Kyle authorized removal of the retired recordings from Git history. `main` was r
 `backup/2026-09-13-clean` mirror is refreshed from the final documentation tree; verify its tip with
 `git ls-remote --heads origin backup/2026-09-13-clean`. The earlier
 "main intentionally blocked" note above is superseded by this section.
+
+
+## E3 through E5 done — Haiku is now the findings.extract default — 2026-09-14 (Claude, continuing the handoff)
+
+Full detail lives in `docs/T4-ADMISSION-2026-09-14.md`; the short version for anyone else touching this repo:
+
+- **E3** (first native live run, Kyle's Mac, real workers): 5 sources, 195 findings, $0 -- every job ran through
+  free local Claude Code because `NEUROSEARCH_AI_PROFILE=local` and `claude_code.local_is_free()` is true here.
+  The batched completion pattern exposed a real concurrency bug: `claims.harvest()` raced with itself across
+  worker threads and one `IntegrityError` rolled back a whole harvest. Fixed with a per-project lock plus an
+  `IntegrityError` guard inside the insert loop (`d13aa34`), reproduction test in
+  `tests/test_claims_harvest_race.py`, verified against the real database.
+- **E4** (Kyle's review): he flagged, honestly, that his review has been batch-approve-everything rather than
+  filtering. `project_notes.status = 'approved'` is therefore NOT a quality signal anywhere in this database.
+  Anything downstream that treats approved-count as kept-rate (cost_value.by_model, the refinery, E7's morning
+  report) is measuring review-queue throughput, not quality. Open product question, not a code task.
+- **E5** (Sonnet vs Haiku): 4 sources each, real metered spend via the new `--paid` flag
+  (`execution_policy="api_requested"` threaded through `t4.execute()` and `jobs.enqueue()`, `d622ac3`).
+  Sonnet $0.1051 / 133 findings; Haiku $0.0542 / 158 findings. Manual spot-check across all 8 sources:
+  indistinguishable quality. **Haiku is now the default** via `.env`
+  (`NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5`) -- no contract or code change, remove the line
+  to revert. `contracts.contract("findings.extract").model` confirms it live.
+- Two gotchas worth knowing: (1) the per-task env override is read by the long-running `worker` process at
+  startup, NOT by the one-off `t4 execute` command that enqueues -- setting it on the enqueue command does
+  nothing. (2) `neurosearch eval --prefilter` (E6) and any Tier-1 eval touching a local-capable task is not
+  actually deterministic on this machine: `route()` ignores `settings.fake_ai` and goes to the real `claude`
+  CLI whenever `ai_profile=local`. Deterministic only in CI where `ai_profile` defaults to cloud.
+- Kyle's Mac crashed the worker three times today with an identical signature (SIGBUS in `walFindFrame`, a
+  worker thread failing to page library code from disk). Not our bug; no data lost; crash-recovery re-queued
+  correctly each time. If it recurs, suspect the machine, not the app.
+- Still hanging: E6 (must run on Kyle's Mac), E7, the 798 stale sources in the review panel, the long-running
+  8,065-claim `extract_claims` job (`7c5c0df6`, legitimate, free, keeps getting restarted by the crashes), and
+  the Sonnet cost estimator undershooting ~2.5x (Haiku's estimate was accurate) -- real calibration data for
+  `PROBE_DISCOUNT` now exists.
+
+`.env` is git-ignored, so the Haiku default is a machine-local setting. Codex: if you touch `contracts.py`'s
+`FINDINGS_MODEL`, know that the env override wins over it here.
