@@ -142,10 +142,45 @@ globalThis.renderPlan = function renderPlan(r) {
     if (p.gotchas?.length) h += `<h2>Beginner gotchas</h2>` + p.gotchas.map(g => `<div class="item"><div class="body"><span class="k">${esc(g.gotcha)}</span><div class="muted">${esc(g.avoid || '')}</div></div></div>`).join('');
   }
   if (tab === 'evidence') {
-    const evs = Object.entries(E); h += evs.length ? `<h2>Evidence used by this plan</h2><div class="muted">${evs.map(([id, e]) => `<span class="chip">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)} <span class="basis">${esc(e.kind)}</span></span>`).join(' ')}</div>` : '<p class="muted">No evidence map.</p>';
+    // 2026-09-14 - a mature project's evidence map can run into the thousands (Kyle's laundromat plan: 1,804
+    // entries). Rendered flat, that was an unbroken wall of same-weight chips with no search, no grouping, no way
+    // to find one thing - and 16 of them read as literally identical text ("F22 · pinned finding research",
+    // "F23 · pinned finding research", ...) because uncited findings all fell back to the same placeholder label
+    // (fixed at the source in planner.py's _evidence()). Grouped by id prefix (U/F/S/C - facts, pinned findings,
+    // sources, research chunks) behind collapsible sections, plus a text filter, so the same data is navigable at
+    // any scale instead of a scroll-forever wall.
+    const evs = Object.entries(E);
+    if (!evs.length) { h += '<p class="muted">No evidence map.</p>'; }
+    else {
+      const GROUP_LABEL = { U: 'Facts you told us', F: 'Pinned findings', S: 'Sources', C: 'Research chunks' };
+      const groups = {};
+      for (const [id, e] of evs) { const prefix = id.replace(/\d+$/, ''); (groups[prefix] = groups[prefix] || []).push([id, e]); }
+      const order = [...new Set(['U', 'F', 'S', 'C', ...Object.keys(groups)])];
+      h += `<h2>Evidence used by this plan <span class="muted" style="font-weight:400;font-size:13px">— ${evs.length} total</span></h2>
+        <input id="evFilter" placeholder="Filter evidence by title…" oninput="filterEvidence(this.value)" style="width:100%;margin-bottom:10px">`;
+      for (const prefix of order) {
+        const items = groups[prefix]; if (!items?.length) continue;
+        h += `<details class="evgroup" ${items.length <= 30 ? 'open' : ''}><summary><b>${esc(GROUP_LABEL[prefix] || prefix)}</b> <span class="muted">(${items.length})</span></summary>
+          <div class="muted evchips">${items.map(([id, e]) => `<span class="chip" data-evtext="${esc((id + ' ' + e.label).toLowerCase())}">${id} · ${e.link ? `<a href="${esc(e.link)}" target="_blank">${esc(e.label)}</a>` : esc(e.label)}</span>`).join(' ')}</div>
+        </details>`;
+      }
+    }
   }
   h += `</div>`;
   $('#planWrap').innerHTML = h;
+}
+globalThis.filterEvidence = function filterEvidence(q) {
+  q = q.trim().toLowerCase();
+  document.querySelectorAll('.evgroup').forEach(group => {
+    let anyVisible = false;
+    group.querySelectorAll('.chip').forEach(chip => {
+      const match = !q || (chip.dataset.evtext || '').includes(q);
+      chip.style.display = match ? '' : 'none';
+      if (match) anyVisible = true;
+    });
+    group.style.display = anyVisible ? '' : 'none';
+    if (q && anyVisible) group.open = true;
+  });
 }
 globalThis.answerQ = async function answerQ(i, text) {
   text = (text || '').trim(); if (!text) return;

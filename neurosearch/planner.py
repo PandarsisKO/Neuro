@@ -139,7 +139,12 @@ def _evidence(project_id: str, project: dict[str, Any], strict: bool = False) ->
     for n in reversed(db.list_project_notes(project_id)):
         cites = n.get("citations") or []
         first = cites[0] if cites else None
-        label = (first["title"] + " @ " + first["timestamp"]) if first else "pinned finding"
+        # 2026-09-14 - the "pinned finding" fallback was a fixed string, so every uncited note rendered as an
+        # identical, indistinguishable chip in the Master Plan's Evidence tab (Kyle found 16 of them on one plan,
+        # all reading "F22 - pinned finding research" / "F23 - pinned finding research" / ...). Fall back to the
+        # note's own content instead, same as the fact branch above (f['content'][:80]) - always distinguishing,
+        # never a placeholder.
+        label = (first["title"] + " @ " + first["timestamp"]) if first else n["content"][:80]
         add("F", label, n["content"][:1200], first["link"] if first else None, source_id=(first or {}).get("source_id") or n.get("source_id"))
     sids = db.project_source_ids(project_id)
     analysis = db.project_analysis(project_id, "summary")         # summaries/substance are project-relative
