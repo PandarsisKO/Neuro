@@ -502,6 +502,13 @@ T4-selected source through the documented egress bridge: six real Sonnet calls c
 This does not change the admission boundary: the general T4 executor, provider routing, and structured-delta
 write path remain future work; only this one throttled extraction was run.
 
+## T4 second-batch checkpoint — 2026-09-14 12:47 PT
+
+Claude ran six additional T4-selected sources through the unchanged findings pipeline: 33 real Sonnet calls cost
+`$1.9937` and materialized 165 more suggested findings. The acquisition-specific sources scored substance 68 and
+83, while generic sources scored 5–26. Combined T4/T5 spend is `$2.346612`; no further paid calls are authorized
+under the current allowance. The general T4 executor and structured-delta path remain future admissions.
+
 ## Optional cleanup follow-through — 2026-09-14 12:44 PT
 
 The stale F0 worktree registration was pruned after verifying its path was gone and no `design/f0` branch existed.

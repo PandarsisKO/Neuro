@@ -2307,6 +2307,13 @@ Sonnet calls (`$0.3492`), materializing 47 suggested findings and a 12/100 subst
 Together with T5, real spend today is `$0.352949`. The bridge did not add a new executor or provider path; general
 T4 live routing and structured-delta persistence remain gated future work.
 
+## Claude T4 second-batch checkpoint — 2026-09-14 12:47 PT
+
+The second throttled T4 batch used the existing findings pipeline for six more sources (33 real Sonnet calls,
+`$1.9937`, 165 suggested findings). Acquisition-specific substance scores were 68 and 83; generic sources scored
+5–26. Combined T4/T5 spend is `$2.346612`. No further paid calls are authorized under the current allowance;
+general T4 routing and structured-delta persistence remain gated.
+
 ## Optional cleanup follow-through — 2026-09-14 12:44 PT
 
 The stale detached F0 worktree metadata was verified and pruned safely: no `design/f0` branch or live worktree

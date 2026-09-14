@@ -2,7 +2,7 @@
 
 Current orientation source for the Neuro Search mission; older state files remain archived evidence.
 
-- Local `main` is at documentation tip `ec8ee86`; the latest tested code checkpoint is `ceca6e5` (Claude's T5
+- Local `main` is at documentation tip `7331e69`; the latest tested code checkpoint is `ceca6e5` (Claude's T5
   evidence correction is in ancestor `39f27f4`), and the latest product-code checkpoint remains `1e6b632`.
   App/package version is `0.63.90`.
 - The post-cleanup full suite is **1,439 passed, 1 warning**. The sole pre-cleanup failure was the
@@ -15,11 +15,13 @@ Current orientation source for the Neuro Search mission; older state files remai
 - T3's exact-span gold gate is **closed**: 252 predicted records across the 60-row seeded queue were manually
   adjudicated with zero false positives; every per-kind and overall precision floor is 1.00. The two remaining
   T3 issues are recall-only structural gaps and are explicitly non-blocking.
-- T4 is shipped as a deterministic selector plus a tested **$0 executor-routing dry run**. Claude also ran one
-  bridge-assisted real extraction through the existing `findings.suggest_for_source()` pipeline: six Sonnet calls,
-  **$0.3492**, and 47 suggested findings on source `559438c56dbb4be1b1116f8da76698b2`. The dry-run path itself
-  still never calls `providers.route()` or starts a worker; a general live executor and structured-delta write path
-  remain separately admitted future work. Combined real spend today (T4 + T5) is **$0.352949**.
+- T4 is shipped as a deterministic selector plus a tested **$0 executor-routing dry run**. Claude then exercised
+  the existing `findings.suggest_for_source()` pipeline through the documented bridge on seven sources: 39 real
+  Sonnet calls total, **$2.342844** across T4, 212 suggested findings, and useful substance separation on the two
+  acquisition-specific sources. The dry-run path itself still never calls `providers.route()` or starts a worker;
+  a general live executor and structured-delta write path remain separately admitted future work. Combined real
+  spend today (T4 + T5) is **$2.346612** of the authorized $20 cap. No further paid work is authorized under the
+  current allowance.
 - T5 is shipped as a deterministic escalation proposal and a real adjudication-call path. One real adjudication
   was executed through a documented egress bridge because this device's MITM egress returns a false `401` for
   `api.anthropic.com`; the key was valid. It cost **$0.003768** (474 input / 282 output tokens), recorded in the
@@ -59,3 +61,10 @@ the repository root remains clean under `repo-check`.
 The stale detached F0 worktree metadata was verified and pruned; no `design/f0` branch or live worktree existed.
 `tests/test_s43_foundation.py` passes **18/18**, and T3's bracket-label and unpunctuated-cue recall gaps now have
 explicit regression coverage. No production extractor or scheduler behavior changed.
+
+## Claude T4 second-batch checkpoint — 2026-09-14 12:47 PT
+
+Claude ran the next six T4-selected sources through the unchanged findings pipeline: 33 real Sonnet calls cost
+`$1.9937`, and 165 additional suggested findings were materialized. The two acquisition-specific sources scored
+substance 68 and 83; the other four scored 5–26. Combined T4/T5 spend is `$2.346612`; no further paid calls are
+authorized while allowance is constrained.
