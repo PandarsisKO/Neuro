@@ -725,14 +725,21 @@ globalThis.loadHealth = async function loadHealth() {
     const h = await api('/api/health');
     const ago = ts => { if (!ts) return 'never'; const m = Math.round((Date.now() / 1000 - ts) / 60); return m < 1 ? 'just now' : m < 90 ? `${m} min ago` : `${(m / 60).toFixed(1)} h ago`; };
     const ok = b => b ? '✅' : '⚠️';
+    // 2026-09-14 - DESIGN.md's adopt list has called for soft-tinted status pills since the INSPIRATION review
+    // (Vyra's "↗ Normal" / "↘ Low" arrow-badges), but --ok-soft/--warn-soft/--bad-soft were defined in styles.css
+    // and used almost nowhere. These three percentage rows are exactly the "vital sign" shape Vyra's pattern is
+    // for, so they get the badge first rather than a blanket restyle of every .status-* span (most of those are
+    // plain-color inline text, not pills, and forcing backgrounds onto all of them would be a much bigger, riskier
+    // change nobody asked for).
+    const pillHtml = (isOk, pct) => `<span class="pill-stat ${isOk ? 'ok' : 'warn'}">${isOk ? '↗' : '↘'} ${pct.toFixed(1)}%</span>`;
     const it = h.db.integrity, bk = h.backup.last_verified, ev = h.evidence;
     const rows = [
       [`${ok(it && it.ok)} Database integrity`, it ? `${it.result} · checked ${ago(it.ts)}` + (it.duplicate_claim_evidence ? ` · ${it.duplicate_claim_evidence} duplicate citation row(s) - needs a look` : '') + (it.dangling_origin_note_id ? ` · ${it.dangling_origin_note_id} claim(s) with an unrecoverable origin-note link (pre-0.63.75, informational only)` : '') : 'not checked yet'],
       [`${ok(bk)} Verified backup`, bk ? `${ago(bk.ts)} · ${(bk.bytes / 1e6).toFixed(1)} MB · ${bk.counts.sources} sources, ${bk.counts.messages} messages` : (h.backup.last_error ? 'FAILED: ' + h.backup.last_error.error : 'none yet')],
       [`${ok(!h.jobs.stale_running)} Queue`, `${h.jobs.queued || 0} queued · ${h.jobs.running || 0} running · ${h.jobs.failed || 0} failed` + (h.jobs.stale_running ? ` · ${h.jobs.stale_running} stale` : '')],
-      [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? `${(ev.finding_quote_validity * 100).toFixed(1)}% of ${ev.findings_checked} (${ev.findings_rejected} rejected)` : 'none yet'],
-      [`${ok(ev.finding_citation_rate == null || ev.finding_citation_rate >= 0.99)} Verified findings that can be cited`, ev.citation_rate_since ? `${(ev.finding_citation_rate * 100).toFixed(1)}% of the ${ev.citation_rate_since} counted since v0.63.24${ev.findings_uncitable ? ` (${ev.findings_uncitable} with no locator)` : ''}${ev.locator_from_quote ? ` · ${ev.locator_from_quote} located from the quote` : ''}` : 'nothing counted yet'],
-      [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? `${(ev.citation_validity * 100).toFixed(1)}% of ${ev.citations_checked}` : 'none yet'],
+      [`${ok(ev.finding_quote_validity == null || ev.finding_quote_validity >= 0.98)} Finding quotes verified`, ev.findings_checked ? raw(`${pillHtml(ev.finding_quote_validity >= 0.98, ev.finding_quote_validity * 100)} of ${ev.findings_checked} (${ev.findings_rejected} rejected)`) : 'none yet'],
+      [`${ok(ev.finding_citation_rate == null || ev.finding_citation_rate >= 0.99)} Verified findings that can be cited`, ev.citation_rate_since ? raw(`${pillHtml(ev.finding_citation_rate >= 0.99, ev.finding_citation_rate * 100)} of the ${ev.citation_rate_since} counted since v0.63.24${ev.findings_uncitable ? ` (${ev.findings_uncitable} with no locator)` : ''}${ev.locator_from_quote ? ` · ${ev.locator_from_quote} located from the quote` : ''}`) : 'nothing counted yet'],
+      [`${ok(ev.citation_validity == null || ev.citation_validity >= 0.99)} Answer citations valid`, ev.citations_checked ? raw(`${pillHtml(ev.citation_validity >= 0.99, ev.citation_validity * 100)} of ${ev.citations_checked}`) : 'none yet'],
       // 0.63.28 — `model_routing` has been computed since 0.56.3 and rendered NOWHERE. On Kyle's machine it held
       // 363 findings calls where the contract asked for claude-sonnet-5 and the local Claude Code CLI returned
       // claude-haiku-4-5, which is both a quality substitution the app never chose AND the reason paid API
@@ -744,7 +751,7 @@ globalThis.loadHealth = async function loadHealth() {
       (() => { const ms = h.model_routing?.mismatches || [], real = ms.filter(m => (m.since_fix ?? m.count) > 0),
                      stale = ms.reduce((a, m) => a + (m.before_fix || 0), 0);
         return [`${ok(!real.length)} Model the provider actually ran`, real.length
-          ? (real.map(m => `<b>${esc(m.task || '')}</b>: asked ${esc(m.requested || '?')}, got ${esc(m.actual || '?')} on ${esc(m.executed_by || '?')} — ${m.since_fix ?? m.count}×`).join('<br>')
+          ? raw(real.map(m => `<b>${esc(m.task || '')}</b>: asked ${esc(m.requested || '?')}, got ${esc(m.actual || '?')} on ${esc(m.executed_by || '?')} — ${m.since_fix ?? m.count}×`).join('<br>')
              + `<div class="muted" style="margin-top:3px">The app has no model-substitution path, so every row here is a provider overriding a contract — usually the local CLI. Local work is free on a subscription but is not the model the task was measured on.</div>`)
           : `every call ran the model its contract asked for${stale ? ` · ${stale} earlier row${stale === 1 ? '' : 's'} were mis-readings corrected in v0.63.29, kept rather than deleted` : ''}`]; })(),
       [`${ok(!h.disk.free_gb || h.disk.free_gb > 5)} Disk`, h.disk.free_gb != null ? `${h.disk.free_gb} GB free · database ${h.disk.db_mb} MB` : '—'],
@@ -786,7 +793,10 @@ globalThis.loadHealth = async function loadHealth() {
       ]] : []),
     ];
     const sb = $('#settleBtn'); if (sb) sb.hidden = !(h.batches && h.batches.unsettled);
-    $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${esc(v)}</span></div>`).join('');
+    // 2026-09-14 - v used to always go through esc(), which silently mangled the model-routing row's own
+    // <b>/<br>/<div> markup into literal escaped text. Rows that build safe HTML themselves now wrap it in raw()
+    // (see api.js) to say so explicitly; everything else keeps going through esc() exactly as before.
+    $('#healthLine').innerHTML = rows.map(([k, v]) => `<div><b>${k}</b><br><span class="muted">${v && v.__raw ? v.html : esc(v)}</span></div>`).join('');
   } catch (e) { $('#healthLine').textContent = 'health unavailable: ' + e.message; }
 }
 globalThis.settleBatches = async function settleBatches() {

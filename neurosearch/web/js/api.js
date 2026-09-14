@@ -1,6 +1,13 @@
 
 globalThis.$ = s => document.querySelector(s);
 globalThis.esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// 2026-09-14 - `esc()` is the default for every rendered value, correctly, since almost all of it is data-derived text.
+// A few call sites (the health panel's model-routing row, the new status pills below) build their OWN safe HTML
+// out of already-escaped pieces and need to hand it to innerHTML untouched. raw() marks a string as "already safe,"
+// nothing more - callers still esc() every dynamic piece before wrapping it. Without this, a caller's only option
+// was to let esc() mangle its own markup into literal text (the model-routing row's <b>/<br>/<div> tags rendered
+// as visible tag characters instead of formatting - a real, silent bug, not hypothetical).
+globalThis.raw = html => ({ __raw: true, html });
 // ================= 0.63.32: every press is acknowledged within one frame =================
 // Kyle: "every single button needs instant feedback that SOMETHING has happened even if it takes many
 // seconds to truly do something. right now I click a button and the button doesnt respond for 1-5

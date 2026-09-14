@@ -10,7 +10,7 @@ globalThis.toggleTheme = function toggleTheme() { applyTheme(document.documentEl
 try { applyTheme(localStorage.getItem('ns_theme') || 'light'); } catch (e) { applyTheme('light'); }
 
 // ================= routing =================
-globalThis.UI_VERSION = '0.63.79';
+globalThis.UI_VERSION = '0.63.80';
 globalThis.showVersion = function showVersion(server) {
   // next to every theme toggle: the page version, plus the server version when it differs (0.24.1)
   const t = server && server !== UI_VERSION ? `v${UI_VERSION} · server ${server}` : `v${UI_VERSION}`;
