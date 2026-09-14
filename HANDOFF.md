@@ -2964,3 +2964,20 @@ plus morning report (E7, ~$2 first night). ~$10–12 total, over at least three 
 the `t4.research` call remain deferred until E4 shows findings alone miss something specific. Executor rules
 at the bottom of the plan: two commits per rung, disclose any unrecorded spend, never edit the production
 contract to run an experiment.
+
+
+## E1 and E2 done — 2026-09-14
+
+E1: `substance_floor` now threads through `findings.suggest_for_project` and the `suggest_findings` job kind
+(including the crash-recovery re-enqueue), so a resumed run keeps probing. 4 new tests, $0.
+
+E2: `t4.execute()` is real -- the budgeted executor that turns `t4.select()`'s ranked list into
+`suggest_findings` (or `suggest_findings_batch`) jobs under a dollar cap, in relevance order, skipping current
+sources, relying on the existing single-source dedupe key rather than new machinery. `neurosearch t4 execute
+<project> --budget N [--live] [--batch] [...]` is the CLI. 9 new tests, full suite unchanged at 15 known
+failures, `repo-check` PASS, a real `--live` CLI smoke run against a scratch fake-AI database confirmed the path
+end to end. $0 spent, no touch to Kyle's real database.
+
+Both rungs committed to `main` (`2bff02e`, `a4d7e11`). Next per `docs/T4-EXECUTION-PLAN-2026-09-14.md`: E3, the
+first native live run -- Kyle's own call, on his own Mac, since it needs the app's real workers rather than the
+bridge. `t4.execute(..., dry_run=True)` is ready for his review before any spend there.
