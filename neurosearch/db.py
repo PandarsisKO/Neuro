@@ -3779,7 +3779,16 @@ def replace_suggestions(project_id: str, source_id: str, notes: list[dict[str, A
     srev = prov.get("source_revision") or source_revision(source_id)
     brev = prov.get("brief_revision") or brief_revision(project_id)
     with tx() as conn:
-        conn.execute("DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status IN ('suggested','reserve')", (project_id, source_id))
+        # Only delete pending suggestions that nothing has adopted yet. harvest() (claims.py) can turn a
+        # still-'suggested'/'reserve' note into a Claim's origin (project_claims.origin_note_id) or fold it in as
+        # evidence (claim_evidence_notes) without ever changing the note's own status - so a blanket delete here
+        # would silently orphan that Claim's provenance link the next time this source is re-suggested. Exclude
+        # any note a Claim has already adopted; genuinely-untouched pending suggestions are unaffected.
+        conn.execute(
+            "DELETE FROM project_notes WHERE project_id=? AND source_id=? AND status IN ('suggested','reserve') "
+            "AND id NOT IN (SELECT origin_note_id FROM project_claims WHERE origin_note_id IS NOT NULL) "
+            "AND id NOT IN (SELECT note_id FROM claim_evidence_notes)",
+            (project_id, source_id))
         t = now()
         conn.executemany(
             "INSERT INTO project_notes (project_id, content, citations, created_at, status, source_id, importance, title, model, prompt_version, source_revision, brief_revision, input_hash, transport, batch_id, routing) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
