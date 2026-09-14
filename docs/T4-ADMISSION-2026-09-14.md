@@ -206,3 +206,9 @@ THIS project -- not a wasted selector pick, a correctly low-substance read.
 
 Combined real spend today across T5 (one adjudication) and T4 (one source, six windows): **$0.352949** of the
 $20 authorized -- both rungs have now executed for real, not just against the fake-provider harness.
+
+## Bridge scratch provenance — 2026-09-14 12:46 PT
+
+The request/response JSON and the small priming script used for this bridge were preserved intact outside the
+repository at `/Users/kyleowen/neuro-t4-bridge/`. They are operational provenance only and are not part of the
+product or executor path.

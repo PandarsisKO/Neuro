@@ -2935,3 +2935,10 @@ and all user reference directories remain intact.
 The historical native worker-restart race is not reproducing: `tests/test_s43_foundation.py` passes **18/18**.
 T3's two known recall-only cases now have explicit adversarial regression coverage (bracket-topic labels and cue
 sentences without terminal punctuation); the conservative precision guards remain unchanged.
+
+## Final optional-validation checkpoint — 2026-09-14 12:46 PT
+
+After the T3 recall tests were added, the full suite passes **1,439 passed, 1 warning**. `repo-check` is PASS.
+The two Claude T4 bridge scratch files were moved intact to `/Users/kyleowen/neuro-t4-bridge/` so the root stays
+within the documented allowlist without deleting provenance. The stale F0 registration is pruned; no active branch
+or worktree was affected.

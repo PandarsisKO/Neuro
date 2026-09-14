@@ -2313,3 +2313,9 @@ The stale detached F0 worktree metadata was verified and pruned safely: no `desi
 existed, and only the broken `.git/worktrees/f0` registration was removed. The native worker-restart race is
 currently green under `tests/test_s43_foundation.py` (**18 passed**). Two T3 recall-only cases now have explicit
 tests preserving the current conservative behavior; no extractor production code changed.
+
+## Final optional-validation checkpoint — 2026-09-14 12:46 PT
+
+Full pytest after the optional tests is **1,439 passed, 1 warning**. `repo-check` remains PASS. Claude's bridge
+scratch request/response pair was moved intact outside the repository to `/Users/kyleowen/neuro-t4-bridge/`; no
+user data was deleted and no production behavior changed.

@@ -507,3 +507,9 @@ write path remain future work; only this one throttled extraction was run.
 The stale F0 worktree registration was pruned after verifying its path was gone and no `design/f0` branch existed.
 The native worker-restart foundation suite is green (**18 passed**), and T3's bracket-label and unpunctuated-cue
 recall gaps are now pinned by explicit regression tests. No scheduler or production behavior changed.
+
+## Final optional-validation checkpoint — 2026-09-14 12:46 PT
+
+The current full suite is **1,439 passed, 1 warning**, with `repo-check` PASS. The stale F0 registration and
+Claude's root-level T4 bridge scratch entries were cleaned up safely: the former was pruned after branch/worktree
+verification, and the latter were moved intact to `/Users/kyleowen/neuro-t4-bridge/`. No scheduler behavior changed.

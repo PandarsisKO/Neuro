@@ -5,7 +5,7 @@ Current orientation source for the Neuro Search mission; older state files remai
 - Local `main` is at documentation tip `ec8ee86`; the latest tested code checkpoint is `ceca6e5` (Claude's T5
   evidence correction is in ancestor `39f27f4`), and the latest product-code checkpoint remains `1e6b632`.
   App/package version is `0.63.90`.
-- The post-cleanup full suite is **1,438 passed, 1 warning**. The sole pre-cleanup failure was the
+- The post-cleanup full suite is **1,439 passed, 1 warning**. The sole pre-cleanup failure was the
   release-check test asserting PASS while `repo-check` saw Kyle's operational `KEEP AWAKE - overnight.command`
   root entry. That helper was moved intact to `/Users/kyleowen/KEEP AWAKE - overnight.command` without broadening
   the repository allowlist, and the failing test now passes in isolation; `repo-check` is now PASS and
@@ -46,6 +46,13 @@ The active work is deterministic control-plane and reliability cleanup only:
 
 No live T5 execution, paid inference, T4 provider routing, or structured-delta write path is authorized by this
 checkpoint.
+
+## Final optional-validation checkpoint — 2026-09-14 12:46 PT
+
+The full current suite passes **1,439/1,439** with the existing Starlette deprecation warning. The known native
+restart race remains green (18/18), and the two documented T3 recall-only gaps have explicit tests. Claude's T4
+bridge scratch request/response files were preserved outside the repository at `/Users/kyleowen/neuro-t4-bridge/`;
+the repository root remains clean under `repo-check`.
 
 ## Optional cleanup follow-through — 2026-09-14 12:44 PT
 
