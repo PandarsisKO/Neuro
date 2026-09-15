@@ -636,6 +636,10 @@ def _start_workers(n: int | None = None) -> None:
         log.info("re-queued %d interrupted jobs (they resume from their last completed stage)", requeued)
     _stop.clear()
     _lease_stop.clear()
+    # L-21 (EXECUTION-LADDER.md): no-op off macOS / without `caffeinate` -- power_assertion.start() reports that
+    # honestly rather than pretending to hold an assertion it can't.
+    from . import power_assertion
+    power_assertion.start()
     local = settings.ai_profile == "local"
     for i in range(n):
         # local profile: general workers keep ingestion and leave the AI kinds to the two AI pools
@@ -782,6 +786,8 @@ def _backup_loop(every: float = 3600.0) -> None:
 
 def stop_workers(timeout: float = 10.0) -> None:
     """Stop admission, drain work, then stop heartbeats. Never forget a surviving thread."""
+    from . import power_assertion
+    power_assertion.stop()
     with _lifecycle_lock:
         _stop.set()
         deadline = time.monotonic() + timeout

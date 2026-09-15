@@ -133,6 +133,17 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
                 r.check("last autonomous-execution preflight (L-10)", False, f"REFUSED: {json.loads(pf_fail)}")
             else:
                 r.check("last autonomous-execution preflight (L-10)", True, "none run yet — no autonomous envelope has started", warn=True)
+            # L-21 (EXECUTION-LADDER.md): host-honest by construction -- reports exactly what's known (a
+            # caffeinate assertion is held or not, right now) and nothing about lid-closed reliability, which is
+            # NOT provable from software alone (see neurosearch/power_assertion.py's own docstring) and stays
+            # unproven until measured on the real machine.
+            from . import power_assertion
+            pa = power_assertion.status()
+            if pa["available"]:
+                r.check("power assertion (L-21) — display-sleep only, NOT proven to survive a closed lid", pa["watching"],
+                       f"held right now: {pa['held']}", warn=True)
+            else:
+                r.check("power assertion (L-21)", True, "not on macOS, or caffeinate not on PATH — no keep-awake claim made", warn=True)
             jobs = h["jobs"]
             r.check("no stale running jobs", not jobs.get("stale_running"), f"queued {jobs.get('queued', 0)} · running {jobs.get('running', 0)} · failed {jobs.get('failed', 0)} · external {jobs.get('external_pending', 0)}")
             so = h["structured_outputs"]
