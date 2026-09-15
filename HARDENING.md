@@ -2334,3 +2334,27 @@ tests preserving the current conservative behavior; no extractor production code
 Full pytest after the optional tests is **1,439 passed, 1 warning**. `repo-check` remains PASS. Claude's bridge
 scratch request/response pair was moved intact outside the repository to `/Users/kyleowen/neuro-t4-bridge/`; no
 user data was deleted and no production behavior changed.
+
+## L-04 — prefilter eval measured (fake tier), decision: NOT enabling yet — 2026-09-15 (Claude)
+
+L-02's eval-isolation fix let `neurosearch eval --prefilter` run against the fake for the first time on a
+machine with `NEUROSEARCH_AI_PROFILE=local` (confirmed: every result shows `returned model fake-claude`, not a
+real CLI call — the exact failure E6 hit on 2026-09-14 is fixed). Ran it (isolated venv, fake tier, $0),
+artifact at `evals/prefilter-2026-09-15.json`, verified from a fresh venv+deps install (see HANDOFF.md).
+
+Production mode is "whole window" (the eval's own label; the other mode is explicitly an experiment). Numbers:
+relevant-window recall 100%, 0 false negatives (passes the simple rule: recall ≥ 0.98). Interactive net savings
++$0.0526 (+17.9%), leverage 1.54× (passes "net savings > 0"). But the eval's own composite economic gate — which
+also requires the BACKGROUND/batch path to clear ≥10% net and ≥1.25× leverage — is not uniform: the
+"Haiku filter (standard) + Sonnet BATCH" background variant nets **-15.2%** (leverage 0.77×, a real loss), while
+the "Haiku filter BATCHED + Sonnet batch" variant nets +17.9%/1.54× (same as interactive). The tool's own
+printed verdict is **FAIL**.
+
+**Decision: NOT enabling `NEUROSEARCH_FINDINGS_PREFILTER=1` yet.** The simple two-condition rule I was handed
+(recall + net>0) would say "enable," but it doesn't look at the background/batch path, and the eval was built
+specifically to catch exactly this kind of mixed result — one real deployment shape (standard filter + batched
+extraction) loses money. Overriding the tool's own more rigorous verdict to hit a checklist item is exactly the
+kind of manufactured-significance call the mission's quality rules warn against. If background/batched work
+(sequential filter-then-extract batches) is not actually how findings.extract runs in production, that
+background variant may not matter — that's Kyle's call to make by reading this entry, not mine to assume.
+`.env` unchanged; `findings.extract` stays unfiltered.

@@ -1,0 +1,587 @@
+{
+ "eval": "prefilter",
+ "tier": "fake",
+ "fixture": {
+  "sources": 13,
+  "windows": 16,
+  "relevant_windows": 10,
+  "irrelevant_windows": 6,
+  "nuggets": 12,
+  "chars": 348101
+ },
+ "contracts": {
+  "prefilter": {
+   "task": "findings.prefilter",
+   "model": "claude-haiku-4-5",
+   "schema": "prefilter-v1",
+   "prompt_version": "prefilter-c259be0e",
+   "price_in": 1.0,
+   "price_out": 5.0
+  },
+  "extract": {
+   "task": "findings.extract",
+   "model": "claude-sonnet-5",
+   "schema": "findings-v2",
+   "price_in": 2.0,
+   "price_out": 10.0
+  }
+ },
+ "modes": {
+  "whole window": {
+   "sample_chars": 0,
+   "label": "whole window",
+   "decisions": {
+    "keep": 7,
+    "uncertain": 3,
+    "drop": 6
+   },
+   "fail_open": 0,
+   "false_negatives": [],
+   "lost_relevant_sources": [],
+   "unreachable_nuggets": [],
+   "windows_dropped": 6,
+   "chars_dropped": 209524,
+   "per_source": {
+    "yt01": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "yt02": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "yt03": {
+     "windows": 2,
+     "decisions": [
+      "keep",
+      "keep"
+     ],
+     "relevant": [
+      true,
+      true
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "pod": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "vlog": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "article": {
+     "windows": 1,
+     "decisions": [
+      "uncertain"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "report": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "calc": {
+     "windows": 1,
+     "decisions": [
+      "uncertain"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "sourdough": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "beekeeping": {
+     "windows": 2,
+     "decisions": [
+      "drop",
+      "drop"
+     ],
+     "relevant": [
+      false,
+      false
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "marathon": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "mixed": {
+     "windows": 2,
+     "decisions": [
+      "drop",
+      "keep"
+     ],
+     "relevant": [
+      false,
+      true
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "tangent": {
+     "windows": 1,
+     "decisions": [
+      "uncertain"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    }
+   },
+   "filtered_evidence_recall": 0.9167,
+   "provenance_example": {
+    "windows": 2,
+    "keep": 0,
+    "uncertain": 0,
+    "drop": 2,
+    "fail_open": 0,
+    "dropped_chars": 92445,
+    "model": "fake-claude",
+    "configured_model": "claude-haiku-4-5",
+    "prompt_version": "prefilter-c259be0e",
+    "schema_version": "prefilter-v1",
+    "cost": 0.073278
+   },
+   "scenarios": {
+    "interactive": {
+     "label": "interactive: Haiku filter (standard) + Sonnet 5 standard on kept windows  vs  Sonnet 5 standard",
+     "baseline_cost": 0.294444,
+     "filter_cost": 0.097305,
+     "kept_extract_cost": 0.14454,
+     "total_cost": 0.241845,
+     "avoided_cost": 0.149904,
+     "net_saved": 0.052599,
+     "net_saved_share": 0.1786,
+     "leverage": 1.54,
+     "break_even_irrelevant_token_share": 0.3305,
+     "batch_stages": 1,
+     "latency": "adds one short model call per window before extraction"
+    },
+    "background": {
+     "label": "background: Haiku filter (standard) + Sonnet 5 BATCH on kept windows  vs  Sonnet 5 batch",
+     "baseline_cost": 0.147222,
+     "filter_cost": 0.097305,
+     "kept_extract_cost": 0.07227,
+     "total_cost": 0.169575,
+     "avoided_cost": 0.074952,
+     "net_saved": -0.022353,
+     "net_saved_share": -0.1518,
+     "leverage": 0.77,
+     "break_even_irrelevant_token_share": 0.6609,
+     "batch_stages": 1,
+     "latency": "filter runs interactively while the batch is planned; no added batch stage"
+    },
+    "background_batched_filter": {
+     "label": "background: Haiku filter BATCHED + Sonnet 5 batch on kept windows  vs  Sonnet 5 batch",
+     "baseline_cost": 0.147222,
+     "filter_cost": 0.048653,
+     "kept_extract_cost": 0.07227,
+     "total_cost": 0.120923,
+     "avoided_cost": 0.074952,
+     "net_saved": 0.026299,
+     "net_saved_share": 0.1786,
+     "leverage": 1.54,
+     "break_even_irrelevant_token_share": 0.3305,
+     "batch_stages": 2,
+     "latency": "TWO sequential batches: the findings batch can only be formed after the filter batch ends \u2014 each stage may take up to 24 h"
+    }
+   },
+   "recall": 1.0,
+   "windows_dropped_share": 0.375,
+   "tokens_dropped_share": 0.574,
+   "extract_input_tokens_total": 99222,
+   "extract_input_tokens_avoided": 56952,
+   "extract_output_tokens_avoided": 3600,
+   "filter_input_tokens": 95690,
+   "filter_output_tokens": 323,
+   "filter_cost": 0.097305,
+   "avoided_cost": 0.149904,
+   "net_saved": 0.052599,
+   "leverage": 1.54,
+   "unfiltered_extract_cost": 0.294444,
+   "net_saved_share": 0.1786,
+   "returned_models": [
+    "fake-claude"
+   ],
+   "gates": {
+    "recall_100": true,
+    "zero_false_negatives": true,
+    "nuggets_reachable": true,
+    "no_relevant_source_emptied": true,
+    "evidence_recall_preserved": true,
+    "background_net_saving_10pct": false,
+    "background_leverage_1_25": false
+   },
+   "quality_pass": true,
+   "economics_pass": false,
+   "pass": false
+  },
+  "sampled 8,000 chars": {
+   "sample_chars": 8000,
+   "label": "sampled 8,000 chars",
+   "decisions": {
+    "keep": 6,
+    "uncertain": 3,
+    "drop": 7
+   },
+   "fail_open": 0,
+   "false_negatives": [
+    {
+     "source": "tangent",
+     "window": 0
+    }
+   ],
+   "lost_relevant_sources": [
+    "tangent"
+   ],
+   "unreachable_nuggets": [
+    {
+     "source": "tangent",
+     "window": 0,
+     "quote": "negotiate a working capital peg equal to the trailing twelve month average",
+     "why": "one nugget in 95% filler: the filter must keep this window"
+    }
+   ],
+   "windows_dropped": 7,
+   "chars_dropped": 238548,
+   "per_source": {
+    "yt01": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "yt02": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "yt03": {
+     "windows": 2,
+     "decisions": [
+      "keep",
+      "keep"
+     ],
+     "relevant": [
+      true,
+      true
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "pod": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "vlog": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "article": {
+     "windows": 1,
+     "decisions": [
+      "uncertain"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "report": {
+     "windows": 1,
+     "decisions": [
+      "keep"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "calc": {
+     "windows": 1,
+     "decisions": [
+      "uncertain"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "sourdough": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "beekeeping": {
+     "windows": 2,
+     "decisions": [
+      "drop",
+      "drop"
+     ],
+     "relevant": [
+      false,
+      false
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "marathon": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      false
+     ],
+     "fail_open": [
+      null
+     ]
+    },
+    "mixed": {
+     "windows": 2,
+     "decisions": [
+      "drop",
+      "uncertain"
+     ],
+     "relevant": [
+      false,
+      true
+     ],
+     "fail_open": [
+      null,
+      null
+     ]
+    },
+    "tangent": {
+     "windows": 1,
+     "decisions": [
+      "drop"
+     ],
+     "relevant": [
+      true
+     ],
+     "fail_open": [
+      null
+     ]
+    }
+   },
+   "filtered_evidence_recall": 0.8333,
+   "provenance_example": {
+    "windows": 2,
+    "keep": 0,
+    "uncertain": 0,
+    "drop": 2,
+    "fail_open": 0,
+    "dropped_chars": 92445,
+    "model": "fake-claude",
+    "configured_model": "claude-haiku-4-5",
+    "prompt_version": "prefilter-c259be0e",
+    "schema_version": "prefilter-v1",
+    "cost": 0.016152
+   },
+   "scenarios": {
+    "interactive": {
+     "label": "interactive: Haiku filter (standard) + Sonnet 5 standard on kept windows  vs  Sonnet 5 standard",
+     "baseline_cost": 0.294444,
+     "filter_cost": 0.029332,
+     "kept_extract_cost": 0.122504,
+     "total_cost": 0.151836,
+     "avoided_cost": 0.17194,
+     "net_saved": 0.142608,
+     "net_saved_share": 0.4843,
+     "leverage": 5.86,
+     "break_even_irrelevant_token_share": 0.0996,
+     "batch_stages": 1,
+     "latency": "adds one short model call per window before extraction"
+    },
+    "background": {
+     "label": "background: Haiku filter (standard) + Sonnet 5 BATCH on kept windows  vs  Sonnet 5 batch",
+     "baseline_cost": 0.147222,
+     "filter_cost": 0.029332,
+     "kept_extract_cost": 0.061252,
+     "total_cost": 0.090584,
+     "avoided_cost": 0.08597,
+     "net_saved": 0.056638,
+     "net_saved_share": 0.3847,
+     "leverage": 2.93,
+     "break_even_irrelevant_token_share": 0.1992,
+     "batch_stages": 1,
+     "latency": "filter runs interactively while the batch is planned; no added batch stage"
+    },
+    "background_batched_filter": {
+     "label": "background: Haiku filter BATCHED + Sonnet 5 batch on kept windows  vs  Sonnet 5 batch",
+     "baseline_cost": 0.147222,
+     "filter_cost": 0.014666,
+     "kept_extract_cost": 0.061252,
+     "total_cost": 0.075918,
+     "avoided_cost": 0.08597,
+     "net_saved": 0.071304,
+     "net_saved_share": 0.4843,
+     "leverage": 5.86,
+     "break_even_irrelevant_token_share": 0.0996,
+     "batch_stages": 2,
+     "latency": "TWO sequential batches: the findings batch can only be formed after the filter batch ends \u2014 each stage may take up to 24 h"
+    }
+   },
+   "recall": 0.9,
+   "windows_dropped_share": 0.4375,
+   "tokens_dropped_share": 0.6548,
+   "extract_input_tokens_total": 99222,
+   "extract_input_tokens_avoided": 64970,
+   "extract_output_tokens_avoided": 4200,
+   "filter_input_tokens": 27687,
+   "filter_output_tokens": 329,
+   "filter_cost": 0.029332,
+   "avoided_cost": 0.17194,
+   "net_saved": 0.142608,
+   "leverage": 5.86,
+   "unfiltered_extract_cost": 0.294444,
+   "net_saved_share": 0.4843,
+   "returned_models": [
+    "fake-claude"
+   ],
+   "gates": {
+    "recall_100": false,
+    "zero_false_negatives": false,
+    "nuggets_reachable": false,
+    "no_relevant_source_emptied": false,
+    "evidence_recall_preserved": false,
+    "background_net_saving_10pct": true,
+    "background_leverage_1_25": true
+   },
+   "quality_pass": false,
+   "economics_pass": true,
+   "pass": false
+  }
+ },
+ "unfiltered_evidence_recall": 0.9167,
+ "seconds": 0.8,
+ "production_mode": "whole window",
+ "pass": false
+}

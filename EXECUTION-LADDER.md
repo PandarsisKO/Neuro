@@ -98,7 +98,7 @@ checkpoint. Gate: every scenario is one of those three; no open-ended rewrite pr
 
 ## Stage 2 — P5 T4 evidence loop (Claude lane) — parallel with Stage 1
 
-### L-02 `[~] claude 2026-09-15` P5.2a eval isolation — lane: claude · tier: sonnet · needs: — · $0
+### L-02 `[x] 01fa165` P5.2a eval isolation — lane: claude · tier: sonnet · needs: — · $0
 `neurosearch eval --prefilter` (and any Tier-1 eval of a `local_capable` task) routes to the real `claude` CLI
 when `NEUROSEARCH_AI_PROFILE=local`, because `providers.route()` ignores `settings.fake_ai`. Fix ONLY the
 isolation: in `cli.eval_cmd`, when `not live`, call `evals.pin_api_transport()` (exists, `evals.py:1091`) and
@@ -106,13 +106,13 @@ restore on exit, so the fake `anthropic_client` serves every call. Test: with `a
 `fake_ai=True`, `route("findings.extract") == ("api", ...)` inside the eval. Gate: `neurosearch eval --prefilter`
 completes on Kyle's Mac with `tier: fake` and $0. Wider set: `tests/test_r4_local_model.py`, `tests/test_p1_perf.py`.
 
-### L-03 `[~] claude 2026-09-15` `.env` task overrides leak into pytest — lane: claude · tier: haiku · needs: — · $0
+### L-03 `[x] 01fa165` `.env` task overrides leak into pytest — lane: claude · tier: haiku · needs: — · $0
 `tests/conftest.py` already pins profile/flags (lines 13–23). Add: delete every `NEUROSEARCH_TASK_*` from
 `os.environ` at import, so a developer's `.env` model override never changes what a routing test asserts.
 Gate: `python -m pytest tests/test_r4_local_model.py tests/test_p1_perf.py -q` passes WITHOUT blanking the
 variable on the shell; step 4 above drops its blanking clause.
 
-### L-04 `[k]` P5.2b measure the prefilter — lane: kyle runs, claude decides · tier: sonnet · needs: L-02 · $0
+### L-04 `[x] pending-sha` P5.2b measure the prefilter — lane: kyle runs, claude decides · tier: sonnet · needs: L-02 · $0
 On the Mac: `.venv/bin/neurosearch eval --prefilter --out evals/prefilter-<date>.json`. Claude reads the artifact
 (it is a file, not the DB). Decision rule (T4 plan E6, unchanged): enable `NEUROSEARCH_FINDINGS_PREFILTER=1`
 only if net savings > 0 AND relevant-window recall ≥ 0.98. Record the decision in `HARDENING.md` (frozen-number
