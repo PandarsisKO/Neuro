@@ -292,10 +292,18 @@ real night: `neurosearch nightly report` the morning after L-30's run (CLI added
 `impact.for_claim(claim_id) -> {disagreement: from research_tensions, plan_impact: claim cited by plan_items,
 value: high|some|unknown}`. Unknown when neither is provable. No LLM score. Gate: deterministic tests.
 
-### L-51 `[ ]` exception queue — needs: L-50
-Findings/claims grouped by twin/cluster; queue = high Decision Impact ∪ disagreement ∪ evidence-weak, capped;
-representative review with inspectability; never auto-approve on confidence. Gate (rulings P4): Kyle's
-project with thousands of proposals yields a short defensible queue that still shows consequential disagreement.
+### L-51 `[~] claude 2026-09-15 -- code+tests done at 3ea00da, gate needs Kyle's real project` exception queue — needs: L-50
+`neurosearch/review_queue.py`: `build(project_id, limit=25)`. Review unit = the proposed Claim (harvest already
+folds twin findings into one Claim and merges duplicate Claims via `superseded_by`), so each item is one
+representative proposition with inspectable members (findings folded in, Claims merged in). Inclusion =
+disagreement ∪ plan_impact (both L-50's real signals) ∪ evidence_weak; novelty/irreversibility/provenance/
+freshness NOT used and named as absent in `basis`. Cap applies only to plan_impact/evidence_weak -- disagreement
+is never dropped, `counts.not_shown` reports exactly what was hidden by reason. Structurally cannot approve
+(no writes, no `set_status`; pinned by an AST test). Surfaces: `GET /api/projects/{id}/claims/review-queue`,
+`neurosearch project review-queue <project> [--limit N] [--json]`. 9 tests; the gate is tested literally with
+2,000 proposed Claims (60 disagreeing, limit 25 → all 60 shown, 0 weak, hidden counted). Full suite 1548,
+`repo-check: PASS`. Gate needs Kyle's real project: `neurosearch project review-queue <project>` -- is the list
+short, does every line justify itself, and is the disagreement you know about in it? (`docs/KYLE-GATES-2026-09-15.md`)
 
 ### L-52 `[ ]` Morning Report v2: "What needs me?" — needs: L-51
 

@@ -3531,3 +3531,16 @@ Full suite 1539, repo-check PASS.
 
 Also wrong: deferring L-51 as "too big to start cold." It is unblocked (needs L-50, done) and in my lane.
 Starting it next, not waiting.
+
+## L-51 exception queue: code+tests done, gate needs Kyle's real project (2026-09-15, later)
+
+`neurosearch/review_queue.py` (commits `3ea00da`, CLI `+1`): the P4 exception queue over proposed Claims,
+using only L-50's two real signals plus deterministic evidence strength; disagreement never capped; hidden
+counts reported; structurally cannot approve. API route + CLI. 9 tests including a literal 2,000-claim gate
+test. The remaining gate is Kyle running `neurosearch project review-queue <project>` against his real
+data and judging "short, defensible, disagreement present" — added to `docs/KYLE-GATES-2026-09-15.md`.
+
+Design note for whoever picks up L-52 (Morning Report v2, "What needs me?"): `report.py` already has a
+`what_needs_the_user` slot that v1 deliberately leaves empty; v2 is `review_queue.build(pid, limit=small)`'s
+queue rendered into that slot -- but ONLY once L-51's gate has passed on real data, because that is what
+makes "what needs me" a defensible claim rather than the ranking rulings §7 forbids. Do not wire it before.

@@ -55,3 +55,14 @@ Two yes/no answers, recorded in `EXECUTION-LADDER.md` under L-21, closes it.
 
 - L-06: the ~20-minute blind review of the kept-rate sample (L-05 built it). L-07 and Stage 9 wait on this.
 - L-08: the brief-text relevance backtest needs a Mac run with your OpenAI key (~$0.03 in embeddings).
+
+## L-51 — the exception queue, against your real project
+
+No spend, reads only, approves nothing:
+
+```
+neurosearch project review-queue "<your project name>"
+```
+
+The gate is three questions: is it short? does every line say why it's there? is the disagreement you already
+know about in it (it can never be hidden by the cap)? Add `--json` for the data behind each line.
