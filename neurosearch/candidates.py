@@ -301,21 +301,31 @@ CREATOR_MIN_FINDINGS = 10
 
 def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
     """channel → what it has given THIS project: ingested sources, findings, findings that became Claims, evidence
-    rows, and the evidence classes it has actually supplied. $0, derived on read, no model, no schema change."""
+    rows, and the evidence classes it has actually supplied. $0, derived on read, no model, no schema change.
+
+    SC0b additions (read-only, project-scoped, never collapsed into a single score): claim_types/topics actually
+    yielded (what KIND of claim this creator tends to produce for this project, not just how many), targets this
+    creator has previously helped close (`candidate_links` rows this project marked `satisfied`, joined through
+    `candidates.creator` — the same field a source's own `channel` is set from on acquisition), and cadence as the
+    plain spread of this creator's own `published_at` dates for sources already in this project (min/max/count of
+    dated sources) — a fact, not a schedule prediction."""
     conn = db.connect()
     ids = set(db.project_source_ids(project_id, ready_only=False))
     if not ids:
         return {}
     chan: dict[str, str] = {}
+    published: dict[str, str] = {}
     for sid in ids:
         s = db.get_source(sid)
         if s and (s.get("channel") or "").strip():
             chan[sid] = s["channel"].strip()
+            if s.get("published_at"):
+                published[sid] = s["published_at"]
     if not chan:
         return {}
     out: dict[str, dict[str, Any]] = {}
     for c in set(chan.values()):
-        out[c] = {"sources": 0, "findings": 0, "claims": 0, "evidence": 0, "classes": {}}
+        out[c] = {"sources": 0, "findings": 0, "claims": 0, "evidence": 0, "classes": {}, "claim_types": {}, "topics": {}, "targets_helped": 0, "cadence": None}
     for sid, c in chan.items():
         out[c]["sources"] += 1
     ph = ",".join("?" * len(chan))
@@ -323,10 +333,15 @@ def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
     for r in conn.execute(f"SELECT source_id, COUNT(*) n FROM project_notes WHERE project_id=? AND source_id IN ({ph}) GROUP BY source_id",
                           (project_id, *args)).fetchall():
         out[chan[r["source_id"]]]["findings"] += r["n"]
-    for r in conn.execute(f"""SELECT n.source_id sid, COUNT(*) n FROM project_claims c JOIN project_notes n ON n.id=c.origin_note_id
-                              WHERE c.project_id=? AND n.source_id IN ({ph}) GROUP BY n.source_id""",
+    for r in conn.execute(f"""SELECT n.source_id sid, c.claim_type ct, c.topic tp, COUNT(*) n FROM project_claims c JOIN project_notes n ON n.id=c.origin_note_id
+                              WHERE c.project_id=? AND n.source_id IN ({ph}) GROUP BY n.source_id, c.claim_type, c.topic""",
                           (project_id, *args)).fetchall():
-        out[chan[r["sid"]]]["claims"] += r["n"]
+        row = out[chan[r["sid"]]]
+        row["claims"] += r["n"]
+        if r["ct"]:
+            row["claim_types"][r["ct"]] = row["claim_types"].get(r["ct"], 0) + r["n"]
+        if r["tp"]:
+            row["topics"][r["tp"]] = row["topics"].get(r["tp"], 0) + r["n"]
     for r in conn.execute(f"""SELECT e.source_id sid, e.evidence_class cls, COUNT(*) n FROM claim_evidence e
                               JOIN project_claims c ON c.id=e.claim_id
                               WHERE c.project_id=? AND e.source_id IN ({ph}) GROUP BY e.source_id, e.evidence_class""",
@@ -335,6 +350,22 @@ def creator_yield(project_id: str) -> dict[str, dict[str, Any]]:
         row["evidence"] += r["n"]
         if r["cls"]:
             row["classes"][r["cls"]] = row["classes"].get(r["cls"], 0) + r["n"]
+    for r in conn.execute("""SELECT ca.creator cr, COUNT(DISTINCT cl.ref_id) n FROM candidate_links cl
+                             JOIN candidates ca ON ca.id=cl.candidate_id
+                             WHERE cl.project_id=? AND cl.kind='evidence_target' AND cl.state='satisfied' AND ca.creator IS NOT NULL
+                             GROUP BY ca.creator""",
+                          (project_id,)).fetchall():
+        c = (r["cr"] or "").strip()
+        if c in out:
+            out[c]["targets_helped"] = r["n"]
+    by_creator_dates: dict[str, list[str]] = {}
+    for sid, c in chan.items():
+        d = published.get(sid)
+        if d:
+            by_creator_dates.setdefault(c, []).append(d)
+    for c, dates in by_creator_dates.items():
+        dates.sort()
+        out[c]["cadence"] = {"count": len(dates), "earliest": dates[0], "latest": dates[-1]}
     for c, row in out.items():
         row["per_source"] = round(row["findings"] / row["sources"], 1) if row["sources"] else 0.0
     # the bar is this project's own top quartile, computed over creators with enough read sources to mean anything

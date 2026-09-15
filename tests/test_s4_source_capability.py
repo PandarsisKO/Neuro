@@ -321,3 +321,72 @@ def test_a_big_unread_pile_cannot_outrank_measured_yield(proj):
     out = candidates.where_to_look(proj)
     order = [r["creator"] for r in out["rows"]]
     assert order.index("High Yield") < order.index("Low Yield"), order
+
+
+# ------------------------------------------------------------------ SC0b: capability view completeness
+# Read-only, project-scoped, $0 additions to creator_yield: claim types/topics actually yielded, targets this
+# creator has previously helped close (candidate_links satisfied), and cadence as the plain spread of dated
+# sources — never collapsed into a single score.
+
+def test_creator_yield_reports_claim_types_and_topics_yielded(proj):
+    a = _src(proj, "Deal mechanics", "0:01 sellers finance ten percent of the price", "Chase AI")
+    n1 = db.add_project_note(proj, "Sellers finance 10% of the price", [], source_id=a)
+    n1id = n1["id"] if isinstance(n1, dict) else n1
+    from neurosearch import claims as claims_mod
+    claims_mod.add_claim(proj, "Sellers commonly finance part of the price", claim_type="practice",
+                         topic="seller_financing", origin="finding", origin_note_id=n1id)
+    y = candidates.creator_yield(proj)
+    assert y["Chase AI"]["claim_types"] == {"practice": 1}
+    assert y["Chase AI"]["topics"] == {"seller_financing": 1}
+
+
+def test_creator_yield_targets_helped_counts_satisfied_links_for_that_creator(proj):
+    a = _src(proj, "Deal mechanics", "0:01 sellers finance ten percent of the price", "Chase AI")
+    from neurosearch import candidates as cmod
+    cid = "cand-sc0b-1"
+    db.connect().execute(
+        "INSERT INTO candidates (id, platform, external_id, url, title, creator, first_seen_at, last_seen_at, availability) "
+        "VALUES (?,?,?,?,?,?,?,?, 'available')", (cid, "youtube", cid, f"u/{cid}", "helped close it", "Chase AI", db.now(), db.now()))
+    db.connect().commit()
+    cmod.link(cid, proj, "evidence_target", "some-target-id", relevance=80, why="closes the gap")
+    db.connect().execute("UPDATE candidate_links SET state='satisfied' WHERE candidate_id=? AND project_id=?", (cid, proj))
+    db.connect().commit()
+    y = candidates.creator_yield(proj)
+    assert y["Chase AI"]["targets_helped"] == 1
+
+
+def test_creator_yield_targets_helped_is_zero_when_no_links_satisfied(proj):
+    _src(proj, "Deal mechanics", "0:01 sellers finance ten percent of the price", "Chase AI")
+    y = candidates.creator_yield(proj)
+    assert y["Chase AI"]["targets_helped"] == 0
+
+
+def test_creator_yield_cadence_reports_the_spread_of_dated_sources(proj):
+    a = _src(proj, "Early", "0:01 an early video", "Chase AI")
+    b = _src(proj, "Late", "0:01 a later video", "Chase AI")
+    db.connect().execute("UPDATE sources SET published_at=? WHERE id=?", ("2024-01-01", a))
+    db.connect().execute("UPDATE sources SET published_at=? WHERE id=?", ("2024-06-15", b))
+    db.connect().commit()
+    y = candidates.creator_yield(proj)
+    assert y["Chase AI"]["cadence"] == {"count": 2, "earliest": "2024-01-01", "latest": "2024-06-15"}
+
+
+def test_creator_yield_cadence_is_none_when_no_source_has_a_date(proj):
+    _src(proj, "Undated", "0:01 a video with no published_at", "Chase AI")
+    y = candidates.creator_yield(proj)
+    assert y["Chase AI"]["cadence"] is None
+
+
+def test_creator_yield_completeness_fields_never_leak_across_projects(proj):
+    """The same G4 boundary as findings/claims: another project's claim types, satisfied links, or dates must
+    never surface in this project's capability profile."""
+    other = db.create_project("Other SC0b project", brief="something else")
+    oid = other["id"] if isinstance(other, dict) else other
+    a = _src(oid, "Other's video", "0:01 something", "Shared Channel")
+    n = db.add_project_note(oid, "A finding that belongs to the other project", [], source_id=a)
+    nid = n["id"] if isinstance(n, dict) else n
+    from neurosearch import claims as claims_mod
+    claims_mod.add_claim(oid, "An other-project claim", claim_type="market", topic="other_topic",
+                         origin="finding", origin_note_id=nid)
+    y = candidates.creator_yield(proj)
+    assert y.get("Shared Channel") is None
