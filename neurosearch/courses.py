@@ -105,6 +105,16 @@ def add_page_videos(project_id: str, source_id: str, cookies: list[dict[str, Any
 
 def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[str, Any]],
                   cookies: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """mission CS, amendment #11: a video can be the lesson for more than one row (a shared intro, a recap linked
+    from two modules) — acquire it once, but keep telling the truth about every lesson that uses it. A duplicate
+    ACQUISITION is never a duplicate MEMBERSHIP, so lessons are grouped by their normalised video url before any
+    job is enqueued, `sources_for_urls` is asked (amendment: derived truth, no second "added" flag) so an already-
+    downloaded video is reported, not re-queued, and every url referenced by more than one lesson is named in
+    `shared` even though it only produced one job.
+
+    amendment #10: normalise_embed only canonicalises the providers scan-lib.js's IDENTITY table treats as stable
+    (Loom/Vimeo/YouTube) — a direct/CDN url is passed through untouched and grouped on its literal string, which is
+    conservative (it may miss a dedupe a signed-url provider would allow) rather than wrong."""
     if not db.get_project(project_id):
         raise RuntimeError("project not found")
     title = (course.get("title") or urlparse(course.get("url", "")).netloc or "Course").strip()[:150]
@@ -112,7 +122,8 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
     db.add_project_collections(project_id, [coll["id"]])
     cookies_file = write_cookie_file(cookies, coll["id"]) if cookies else None
 
-    queued, skipped, no_video = 0, 0, []
+    by_url: dict[str, dict[str, Any]] = {}   # normalised video url -> {referer, titles: [lesson titles using it]}
+    no_video = []
     for i, les in enumerate(lessons, 1):
         vids = [normalise_embed(v) for v in (les.get("video_urls") or []) if isinstance(v, str) and v.startswith("http")]
         if not vids:
@@ -121,12 +132,25 @@ def import_course(project_id: str, course: dict[str, Any], lessons: list[dict[st
         module = (les.get("module") or "").strip()
         lesson_title = (les.get("title") or f"Lesson {i}").strip()
         full_title = f"{module} › {lesson_title}" if module else lesson_title
-        for j, v in enumerate(vids):
-            t = full_title if len(vids) == 1 else f"{full_title} ({j + 1})"
-            jobs.enqueue("ingest_url", {
-                "url": v, "tags": [], "project_id": project_id, "force": False,
-                "cookies_file": cookies_file, "referer": les.get("page_url"), "title": t, "collection_id": coll["id"],
-            })
-            queued += 1
+        for v in vids:
+            entry = by_url.setdefault(v, {"referer": les.get("page_url"), "titles": []})
+            entry["titles"].append(full_title)
+
+    have = db.sources_for_urls(list(by_url))
+    shared = [u for u, e in by_url.items() if len(e["titles"]) > 1]
+
+    queued = 0
+    for u, e in by_url.items():
+        if u in have:
+            continue
+        titles = e["titles"]
+        t = titles[0] if len(titles) == 1 else f"{titles[0]} (+{len(titles) - 1} more lesson{'s' if len(titles) > 2 else ''})"
+        jobs.enqueue("ingest_url", {
+            "url": u, "tags": [], "project_id": project_id, "force": False,
+            "cookies_file": cookies_file, "referer": e["referer"], "title": t, "collection_id": coll["id"],
+        })
+        queued += 1
+
     return {"collection_id": coll["id"], "title": title, "lessons": len(lessons), "queued": queued,
-            "skipped": skipped, "no_video": no_video, "cookies": bool(cookies_file)}
+            "already_present": [have[u] for u in by_url if u in have], "shared": shared, "no_video": no_video,
+            "cookies": bool(cookies_file)}

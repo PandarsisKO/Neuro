@@ -355,6 +355,45 @@ def test_course_import(client):
     assert client.get("/extension.zip", headers=H).status_code == 200
 
 
+def test_course_import_dedupes_a_video_shared_by_two_lessons_but_keeps_both_memberships(client):
+    """mission CS, amendment #11: two lessons pointing at the same Loom recap must acquire it once (one
+    ingest_url job) while still telling the truth that both lessons use it -- a duplicate acquisition is not a
+    duplicate membership."""
+    p = client.post("/api/projects", headers=H, json={"name": "Shared Video Course", "brief": "b"}).json()
+    r = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Onboarding", "url": "https://school.example.com/courses/onboarding"},
+        "lessons": [
+            {"title": "Welcome", "module": "Module 1", "page_url": "https://school.example.com/l/1", "video_urls": ["https://www.loom.com/embed/shared1"]},
+            {"title": "Welcome (recap)", "module": "Module 2", "page_url": "https://school.example.com/l/2", "video_urls": ["https://www.loom.com/embed/shared1"]},
+        ], "cookies": None}).json()
+    assert r["queued"] == 1, "one job, not two, for the same underlying video"
+    assert r["shared"] == ["https://www.loom.com/share/shared1"]
+    assert r["already_present"] == []
+    jobs_ = [j for j in client.get(f"/api/projects/{p['id']}/jobs", headers=H).json() if j["kind"] == "ingest_url"]
+    assert len(jobs_) == 1
+    assert jobs_[0]["payload"]["title"] == "Module 1 › Welcome (+1 more lesson)"
+
+
+def test_course_import_reports_a_video_already_in_the_library_instead_of_requeueing_it(client):
+    """amendment #11/derived-truth (0.63.17's rule, reused): a lesson pointing at a video already downloaded is
+    told so, not queued again -- `sources_for_urls` is asked, no second "added" flag is invented."""
+    p = client.post("/api/projects", headers=H, json={"name": "Repeat Import", "brief": "b"}).json()
+    first = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Course A", "url": "https://school.example.com/courses/a"},
+        "lessons": [{"title": "Intro", "page_url": "https://school.example.com/a/1", "video_urls": ["https://www.loom.com/embed/already1"]}],
+        "cookies": None}).json()
+    assert first["queued"] == 1 and first["already_present"] == []
+    # simulate the video having finished ingesting by giving it a source row directly, the way `ingest_url` would
+    db.upsert_source(platform="loom", external_id="already1", url="https://www.loom.com/share/already1",
+                      canonical_url="https://www.loom.com/share/already1", title="Intro", status="ready")
+    second = client.post(f"/api/projects/{p['id']}/course-import", headers=H, json={
+        "course": {"title": "Course A", "url": "https://school.example.com/courses/a"},
+        "lessons": [{"title": "Intro", "page_url": "https://school.example.com/a/1", "video_urls": ["https://www.loom.com/embed/already1"]}],
+        "cookies": None}).json()
+    assert second["queued"] == 0, "already in the library — not requeued"
+    assert len(second["already_present"]) == 1
+
+
 def test_rate_limit_backoff(monkeypatch):
     from neurosearch import media
     monkeypatch.setattr(media.settings, "yt_delay", 0.0)
