@@ -219,12 +219,22 @@ measured-reality gate.
 
 ## Stage 4 — P2 E7 Nightly Refinery backend (lane: claude, reassigned 2026-09-15 -- see Stage 1 header; tier: sonnet) — needs: L-20
 
-### L-30 `[ ]` nightly envelope
-`settings.t4_nightly_budget` (default 0 = off) + `settings.t4_nightly_hour`; a housekeeping entry (pattern:
-`jobs._housekeeping_loop` / `_backfill_research`) that, per active project, runs preflight (L-10) then
-`t4.execute(pid, budget_usd=..., dry_run=False, transport="batch")` inside one envelope id. Never reopens current
-sources (t4 already skips them). Gate (rulings P2): one real night on Kyle's project at $2: no duplicate source
-work, spend ≤ budget, provenance traceable, ledger matches.
+### L-30 `[~] claude 2026-09-15 -- code+tests done at 6f48da3, blocked on Kyle's real night` nightly envelope
+`neurosearch/nightly.py` built and tested: `settings.t4_nightly_budget` (default 0 = off) + `settings.t4_nightly_hour`
+gate `due()`; `run()` calls `db.preflight_autonomous()` first (L-10, refuses and records rather than proceeding on
+a dirty DB), then per active project (most-recently-active first) `t4.execute(pid, budget_usd=remaining, dry_run=False,
+transport="batch")`, walking `remaining` down by each project's own `total_estimate` so the budget is a SHARED TOTAL
+across the night, never re-applied per project. One project's exception is caught/logged without aborting the rest
+of the night. Idempotent per calendar date via `kv`. Wired into `jobs._housekeeping_loop`; `doctor()` reports today's
+envelope status. 6 tests (off-by-default, due()'s three gates, single-project no-duplicate-work + same-day no-op,
+budget-walk-down across projects, preflight-refusal-stops-the-night, one-project-failure-doesn't-abort-the-rest).
+Full suite 1516 passed, `repo-check: PASS`. The gate itself (rulings P2) is explicitly a measured-reality gate like
+L-21's: "one real night on Kyle's project at $2: no duplicate source work, spend ≤ budget, provenance traceable,
+ledger matches" needs Kyle's real database, Kyle's spend authorization, and an actual overnight run -- none of
+which this sandbox can produce or fake (never touches `data/neurosearch.db`, never manufactures paid evidence).
+To run it: set `NEUROSEARCH_T4_NIGHTLY_BUDGET_USD=2` (and `NEUROSEARCH_T4_NIGHTLY_HOUR` if 2am local isn't wanted)
+and leave the worker running overnight; check `neurosearch doctor`'s nightly line and `nightly.last_run()` the next
+day. Gate remains open until Kyle runs it and confirms the ledger reconciles -- code-complete, not gate-complete.
 
 ### L-31 `[ ]` Project Delta v0 (data only) — needs: L-30
 One function `delta.for_envelope(envelope_id) -> dict`: sources read, findings suggested, sources stopped by the

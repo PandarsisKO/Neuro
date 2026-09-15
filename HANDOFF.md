@@ -3388,3 +3388,48 @@ and the result is not fabricated or assumed either way.
 
 Stage 3 (L-20, L-21) is otherwise complete pending that one measurement. Moving to Stage 4 (L-30 nightly
 envelope) next, since it does not depend on L-21's outcome.
+
+## L-30 nightly envelope: code+tests done, gate deliberately left open pending Kyle's real night (2026-09-15)
+
+`neurosearch/nightly.py` (new module, committed `6f48da3`): one bounded, preflighted autonomous execution per
+calendar day, off by default (`settings.t4_nightly_budget=0`). `due()` gates on budget>0 + local hour past
+`t4_nightly_hour` + not already run today (kv-recorded, idempotency lives inside `due()` itself so no caller
+needs its own). `run()` calls `db.preflight_autonomous()` first (L-10) — a refusal is recorded and nothing is
+enqueued, never a partial unsafe run. Walks active projects most-recently-active first, calling
+`t4.execute(pid, budget_usd=remaining, dry_run=False, transport="batch")` and decrementing `remaining` by each
+project's own `total_estimate` — a deliberate design choice: the nightly budget is a SHARED TOTAL across the
+whole night, never re-applied per project (applying the full budget to every project would silently multiply an
+amount Kyle authorized once as a single ceiling). One project's exception is caught and logged without aborting
+the rest of the night.
+
+One real interaction worth recording: `t4.execute()` has its own pre-existing, deliberate "always include at
+least one eligible source, even one whose own estimate exceeds the `budget_usd` it was given" floor (E2, commit
+`08e3dcf`) — so nightly's shared-budget walk can, in the worst case, overrun the nightly total by up to one
+source's cost on the last project it touches. This is not a bug nightly.py introduces; it is t4.execute()'s own
+single-project contract surfacing through a multi-project caller. My first draft of the budget-sharing test
+asserted a strict `spent_total <= budget` ceiling and failed against real behavior — rewritten to assert the
+actual invariant nightly.py owns (the `budget_usd` handed to each successive project call walks down what's
+left, never resets to the full nightly budget), which is the thing this rung exists to prevent (per-project
+multiplication), not a claim that t4's own floor is eliminated.
+
+`settings.t4_nightly_budget`/`t4_nightly_hour` added to `config.py`; `jobs._housekeeping_loop` now checks
+`nightly.due()`/`nightly.run()` each tick (own try/except, never breaks housekeeping); `release.py doctor()`
+reports today's envelope status (off / not yet run / last result).
+
+New test file: `tests/test_p2_nightly_envelope.py` (6 tests). Validated via `~/ns-verify`: full suite 1516
+passed, 0 failed; `repo-check: PASS`.
+
+NOT marked closed on the ladder (`[~]`, not `[x]`) — same pattern as L-21. The gate itself (rulings P2) is a
+measured-reality gate: "one real night on Kyle's project at $2: no duplicate source work, spend ≤ budget,
+provenance traceable, ledger matches" needs Kyle's real database, his spend authorization, and an actual
+overnight run — none of which this sandbox can produce or fake (never touches `data/neurosearch.db`, never
+manufactures paid evidence). To run it: set `NEUROSEARCH_T4_NIGHTLY_BUDGET_USD=2`, leave the worker running
+overnight, check `neurosearch doctor`'s nightly line and `nightly.last_run()` the next day. Everything
+preparable is done; the human step (one overnight run plus a look at the ledger) is as small as it can be made.
+
+Both Stage 3's L-21 and Stage 4's L-30 are now in the same state: code-complete, tested, committed, and
+correctly left open pending a measurement only Kyle's real machine/database/spend authorization can produce.
+Per the continuous-execution directive, moving on to L-31 (Project Delta v0) next — its own ladder entry marks
+it "needs: L-30," and L-31 only needs `nightly.py`'s code to exist and its `envelope_id` shape to be stable
+(both true now), not the gate's live-night measurement to have landed — so it is not blocked by L-30 staying
+open.
