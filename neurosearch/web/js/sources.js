@@ -413,9 +413,9 @@ globalThis.accelEstimate = function accelEstimate(b, n, order) {
   return { cost, mins, n: pick.length };
 }
 globalThis.accelMins = function accelMins(m) { return m == null ? '' : m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; }
-globalThis.loadBacklog = async function loadBacklog() {
+globalThis.loadBacklog = async function loadBacklog(quiet) {
   const el = $('#backlog'); if (!el || !state.project) return;
-  let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`); } catch (e) { el.innerHTML = ''; return; }
+  let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`, quiet ? { ack: false } : {}); } catch (e) { el.innerHTML = ''; return; }
   if (!b.local_queued || !b.local_ready) { el.innerHTML = ''; return; }
   state.backlog = b;
   const btn = (n, order, label) => {

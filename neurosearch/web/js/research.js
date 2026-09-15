@@ -567,10 +567,19 @@ globalThis.toggleJobsBox = function toggleJobsBox() {
   try { localStorage.setItem('ns_jobsbox', JOBSBOX.expanded ? 'all' : 'hot'); } catch (e) {}
   loadJobs();
 }
-globalThis.loadJobs = async function loadJobs() {
+globalThis.loadJobs = async function loadJobs(quiet) {
+  // `quiet` (L-19, 2026-09-15): true only when pollTick's own background /tick loop called this --
+  // never when a click handler did (retry/cancel/etc. call loadJobs() with no argument all over
+  // sources.js, and THOSE should light the top bar; that is the acknowledgement it exists for).
+  // Before this, every one of loadJobs()'s own requests defaulted to ack:true regardless of who
+  // called it, so the background poll -- which correctly marks its OWN /tick call ack:false -- lit
+  // the bar right back up every time it turned around and called loadJobs() because a job changed.
+  // On a project with active jobs that is every ~3s, forever: Kyle's "constant blue bar, every 3
+  // seconds, never stops" on the Sources page.
+  const q = quiet ? { ack: false } : {};
   clearTimeout(jobsTimer);
   let js;
-  try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`); globalThis.pollFails = 0; $('#offline')?.remove(); }
+  try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`, q); globalThis.pollFails = 0; $('#offline')?.remove(); }
   catch (e) {
     // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet
     globalThis.pollFails++;
@@ -590,11 +599,11 @@ globalThis.loadJobs = async function loadJobs() {
   // The queue itself is not touched: this is what the box draws, not what the workers do.
   const isHot = j => j._budget || j.status === 'running' || j.status === 'failed' || j.status === 'cancelling'
     || (j.state || j.status) === 'external_pending' || j.bumped;
-  const st = await api('/api/stats'); const u = await loadSpend();
+  const st = await api('/api/stats', q); const u = await loadSpend(quiet);
   $('#jobsCard').hidden = !(show.length || st.youtube?.paused || u?.blocked);
   if (u?.blocked) show.unshift({ status: 'queued', payload: { url: `⏸ Queue paused — ${u.blocked}. Nothing is lost; it continues from where it stopped.` }, progress: 0, message: '', _budget: true, _recheck: !u.paused });
   if (st.youtube?.paused) show.unshift({ status: 'queued', payload: { url: `YouTube asked us to slow down — downloads resume automatically in ~${Math.ceil(st.youtube.seconds_left / 60)} min` }, progress: 0, message: '' });
-  loadBacklog();
+  loadBacklog(quiet);
   // 0.51.0: the RATE is the number a human notices. A daily total says nothing about $5 in ten minutes.
   const rt = u && u.rate ? u.rate : null;
   const rateBit = rt ? ` · <span title="spend in the last hour · the ceiling that holds paid background work is $${rt.ceiling.toFixed(2)}/h" style="${rt.blocked ? 'color:var(--warn);font-weight:600' : rt.rate > rt.ceiling * 0.6 ? 'color:var(--warn)' : ''}">$${rt.rate.toFixed(2)}/h</span>` : '';
@@ -635,14 +644,14 @@ globalThis.pollTick = async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
   let t;
   try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); }
-  catch (e) { loadJobs(); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
+  catch (e) { loadJobs(true); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
   const rev = t.rev, prev = globalThis.lastRev;
   const changed = k => !prev || prev[k] !== rev[k];
   const full = ++globalThis.ticksSinceFull >= RECONCILE_EVERY;
   if (full) globalThis.ticksSinceFull = 0;
   globalThis.lastRev = rev;
   const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
-  if (full || changed('jobs')) loadJobs(); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
+  if (full || changed('jobs')) loadJobs(true); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
   if (srcChanged) loadSources().catch(() => {});
   if (full || changed('jobs') || changed('sources')) loadBoot();
 }

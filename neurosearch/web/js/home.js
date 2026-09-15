@@ -1,7 +1,7 @@
 // ================= home =================
-globalThis.loadSpend = async function loadSpend() {
+globalThis.loadSpend = async function loadSpend(quiet) {
   try {
-    const u = await api('/api/usage');
+    const u = await api('/api/usage', quiet ? { ack: false } : {});
     const h = $('#homeSpend'); if (h) h.innerHTML = statusBar(u);
     const sd = $('#sideSpend'); if (sd) sd.innerHTML = statusBar(u, true);
     state.usage = u; return u;
