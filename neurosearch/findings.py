@@ -723,17 +723,17 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             from .breakers import ProviderUnavailable
             from .jobs import Yield
             from .usage import BudgetPaused
-            if isinstance(e, Yield):
-                # L-12 (EXECUTION-LADDER.md): a governing input changed mid-flight -- jobs.execute() requeues this
-                # same job (no delay, no attempt penalty) on Yield, so let it propagate rather than swallowing it
-                # here as a per-source failure. Sources already completed under the old inputs are durably
-                # persisted (db.work_unit_complete) and will be re-checked as current/skippable on retry.
-                raise
-            if isinstance(e, (BudgetPaused, ProviderUnavailable)):
-                # hand the remaining sources back to the queue as a fresh job and stop
-                remaining = ids[i:]
-                db.create_job("suggest_findings", {"project_id": project_id, "source_ids": remaining, "depth": depth,
-                                                    "substance_floor": substance_floor})
+            if isinstance(e, (Yield, BudgetPaused, ProviderUnavailable)):
+                # L-12/L-14 (EXECUTION-LADDER.md): jobs.execute() already requeues THIS SAME job on any of these
+                # three -- immediate uncounted requeue for Yield, wait_reason='budget' + not_before for
+                # BudgetPaused, a provider-wait park for ProviderUnavailable -- preserving the job's full
+                # original source_ids. This used to ALSO hand the remaining sources back as a separate, freshly
+                # created job right here for BudgetPaused/ProviderUnavailable (L-14 audit finding): that second
+                # job had no wait gating at all (not_before=None, immediately claimable), so it raced straight
+                # past the very budget/provider wait that caused the pause, and left two jobs both covering the
+                # same remaining source(s). Already-completed sources among the resumed original job's
+                # source_ids are skipped via the existing is_current/input_hash check (suggest_for_source), so
+                # nothing is lost by simply re-raising and letting jobs.execute() handle all three uniformly.
                 raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)
