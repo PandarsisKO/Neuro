@@ -92,3 +92,46 @@ In Findings, on a stale tier's row, press **When…** and pick **tonight** (free
 batch** (half price). Leave the Mac the way you normally would. In the morning the same card says what happened.
 The gate: was the outcome clear from that card alone, without opening the jobs console? If you closed the lid and
 nothing ran, that is L-21's known limit and the card should have said "eligible from", not promised a time.
+
+## L-06 → L-07 — the kept-rate review, then one command
+
+Produce the sample (on the Mac; reads your real project, writes one JSON, changes nothing):
+
+```
+.venv/bin/python tools/sample_findings.py --out evals/p53-sample-2026-09-15.json
+```
+
+Fill in every `review` block (~20 minutes, blind to model). Then the decision is:
+
+```
+.venv/bin/python tools/decide_kept_rate.py --sample evals/p53-sample-2026-09-15.json
+```
+
+It prints the E5 rule's verdict and the numbers behind it, and refuses to decide on a partial review.
+
+## L-08 — brief-text relevance backtest (~$0.03 in embeddings, needs your OpenAI key)
+
+```
+.venv/bin/python tools/relevance_backtest.py --project <your project id>
+```
+
+## L-70 — the P7 estimate you decide on ($0 to produce; the experiment itself waits on L-07)
+
+```
+.venv/bin/python tools/p7_estimate.py --project "<your project name>" --out evals/p7-estimate-2026-09-15.json
+```
+
+Arm A is priced the way the app prices any findings pass; Arm B is labelled as an assumption (no Arm B exists yet).
+
+## L-52 — after you've judged L-51 on your real project
+
+If the queue was short, defensible and showed the disagreement you know about, set
+`NEUROSEARCH_MORNING_REPORT_NEEDS_ME=1` where the worker runs. That is the whole of v2.
+
+## Push
+
+Everything above is committed locally and not on GitHub (the sandbox can't push):
+
+```
+git -C "/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO" push origin main
+```

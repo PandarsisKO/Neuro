@@ -3596,3 +3596,28 @@ shown as a retry in the console and "Start next" would have bumped it to nowhere
 `nogit` in the artifact name because it ran from the `~/ns-verify` copy; pytest half passed separately, 1572).
 
 Exhaustion pass follows below.
+
+## Exhaustion pass — every admitted rung, verified against the repo (2026-09-15, end of day)
+
+| Rung | State | Blocker (exact) | Upstream prep done today |
+|---|---|---|---|
+| L-00 | BLOCKED ON KYLE | his overnight rebuild on his data | now one click via L-40 (When… → tonight); ladder text updated |
+| L-01 | BLOCKED ON KYLE | his `.zshrc` | — |
+| L-02–L-05, L-10–L-17, L-20, L-50 | DONE | — | — |
+| L-06 | BLOCKED ON KYLE | ~20-min blind human review of `evals/p53-sample-*.json` | sample tool existed; command in gates doc |
+| L-07 | BLOCKED ON KYLE (via L-06) | needs the filled review | `tools/decide_kept_rate.py` — the decision is one command (19dc1a7) |
+| L-08 | BLOCKED ON ENVIRONMENT + SPEND | OpenAI key not reachable from sandbox; ~$0.03 needs authorization | tool existed; command in gates doc |
+| L-21 | BLOCKED ON KYLE | physical lid/display measurement | code+tests+doc done |
+| L-30 | BLOCKED ON AUTHORIZED SPEND + KYLE | one real $2 night on the live DB | `neurosearch nightly run` with disclosure; docs |
+| L-31, L-41, L-60, L-61 | BLOCKED ON KYLE (via L-30) | need the real envelope L-30 produces | all read straight off it; no further code |
+| L-40 | BLOCKED ON KYLE | one real scheduled rebuild + reading the card | shipped today (ed87c06) |
+| L-51 | BLOCKED ON KYLE | judgment on his real project's queue | API + CLI |
+| L-52 | BLOCKED ON KYLE (via L-51) | rulings §7: the ranking's gate | built behind a flag (d7d37ce); flip = ship |
+| L-70 | BLOCKED ON KYLE (via L-07) + SPEND | needs L-07 and a yes on the $ | `tools/p7_estimate.py` states the $ (d9468c0) |
+| Stages 10–13 | NOT ADMITTED | ladder text | — |
+| push to GitHub | BLOCKED ON ENVIRONMENT | no credential / no SSH egress from the sandbox | command in gates doc |
+
+No ACTIONABLE NOW items remain. Every blocked row above either names a measurement only Kyle can take, a
+credential/egress the sandbox does not have, or spend that needs his yes. `STATE-OF-THE-APP-2026-09-15-1400.md`
+is the fresh snapshot; `PRODUCT-SCHEDULER.md` NOW = L-40 (its gate). Next eligible item for a fresh agent:
+none until one of the gates above lands; when L-30's night runs, L-31/L-41/L-60/L-61 close from its report.

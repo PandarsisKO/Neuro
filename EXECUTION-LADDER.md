@@ -35,10 +35,14 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked ·
 ## Stage 0 — Tonight and standing prerequisites
 
 ### L-00 `[k]` Rebuild the 409 stale carrying-weight sources overnight, $0 — lane: kyle
-No scheduler exists yet (that is L-20). Rulings §4: never promise "2 AM". Tonight's honest path:
+Updated 2026-09-15: the scheduler (L-20) and its UI (L-40) now exist, so this is one click. Rulings §4 still
+apply: never promise "2 AM". Tonight's honest path:
 - Findings → review panel → "Accept 389 as still usable" (instant, free).
-- Restart the worker awake: `caffeinate -i .venv/bin/neurosearch worker` (lid open, plugged in).
-- Click "Rebuild · $0 · Claude Code (4 at a time)" for the 409. ~2h17m local, waits (never pays) on usage limits.
+- On the "stale AND carrying weight" row: **When… → Rebuild tonight · $0** (eligible from the nightly hour; the
+  card says so). The worker holds a keep-awake assertion while work is pending (L-21) -- lid OPEN, plugged in;
+  a closed lid is the known limit L-21's test measures.
+- Morning: the same card says what happened. (Old path still works: `caffeinate -i .venv/bin/neurosearch worker`
+  + "Rebuild · $0" now.)
 Gate: morning Findings panel shows the 409 current; `usage` shows $0 for them.
 
 ### L-01 `[k]` `.zshrc` dead `deno/env` line — lane: kyle · 5 seconds
@@ -170,7 +174,7 @@ why-not. Gate: script + rubric committed; Kyle can complete it in ≤ 20 minutes
 ### L-06 `[k]` P5.3 Kyle reviews the sample — lane: kyle · ~20 min · needs: L-05
 Real judgments, not batch. Writes answers into the JSON the script produced.
 
-### L-07 `[ ]` P5.3 decision — lane: claude · tier: sonnet · needs: L-06 · $0
+### L-07 `[ ]` P5.3 decision — lane: claude · tier: sonnet · needs: L-06 · $0 — prepped 19dc1a7: `tools/decide_kept_rate.py --sample evals/p53-sample-<date>.json` is the whole computation
 Compute kept-rate per model, cost per KEPT finding (cost data already in the admission doc). Rule (T4 plan E5):
 Haiku stays only if cost-per-kept is lower AND kept-rate within 10 points of Sonnet. Otherwise revert the `.env`
 line and say so. Gate: written decision in the admission doc + HANDOFF; `.env` matches the decision.
@@ -314,7 +318,10 @@ is never dropped, `counts.not_shown` reports exactly what was hidden by reason. 
 `repo-check: PASS`. Gate needs Kyle's real project: `neurosearch project review-queue <project>` -- is the list
 short, does every line justify itself, and is the disagreement you know about in it? (`docs/KYLE-GATES-2026-09-15.md`)
 
-### L-52 `[ ]` Morning Report v2: "What needs me?" — needs: L-51
+### L-52 `[~] claude 2026-09-15 -- built behind a flag at d7d37ce; the flag IS the gate` Morning Report v2: "What needs me?" — needs: L-51
+`settings.morning_report_needs_me` (`NEUROSEARCH_MORNING_REPORT_NEEDS_ME`, default off) fills each project's
+"Needs you" from `review_queue.build(pid, limit=5)`, each item with its reason; never the banned phrasing (tested).
+Off = v1 byte-identical. Flip to 1 ONLY after L-51's gate passes on Kyle's real project (rulings §7).
 
 ---
 
@@ -346,7 +353,7 @@ what you'd check? Nothing extra to run: it appears at the bottom of `neurosearch
 
 ## Stage 9 — P7 Structured Delta experiment (Claude lane, T4 owner) — needs: L-07
 ### L-70 `[ ]` ~20 varied long-form sources; Arm A findings vs Arm B structured prototype; written measured
-decision BEFORE any persistence. `kyle-decides` on the $ estimate (state it first).
+decision BEFORE any persistence. `kyle-decides` on the $ estimate (state it first) -- prepped d9468c0: `tools/p7_estimate.py --project <name>` states it ($0, Arm B labelled as an assumption).
 
 ## Stage 10 — P8 Continuous Research — needs: L-30, L-50 · not admitted; do not start without scheduler entry
 ## Stage 11 — P9 Beyond-corpus (capability intel, adaptive discovery + exploration quota, field map) — not admitted
