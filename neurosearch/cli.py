@@ -866,8 +866,10 @@ def project_needs(project: str, limit: int = typer.Option(25, "--limit"),
 @project_app.command("plan-impact")
 def project_plan_impact(project: str, claim: Optional[str] = typer.Option(None, "--claim"),
                         tension: Optional[str] = typer.Option(None, "--tension"),
+                        explain: bool = typer.Option(False, "--explain", help="LP2: add a templated why-sentence per item; still no model call"),
                         as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
-    """LP1 (P10 Living Master Plan): which plan items a Claim (or the tension on it) touches. $0, reads only."""
+    """LP1 (P10 Living Master Plan): which plan items a Claim (or the tension on it) touches. $0, reads only.
+    --explain adds LP2's plain-language why over the same result."""
     from . import plan_impact
     _init()
     pid = _project_id(project)
@@ -877,7 +879,11 @@ def project_plan_impact(project: str, claim: Optional[str] = typer.Option(None, 
     if not claim and not tension:
         typer.echo("pass --claim or --tension", err=True)
         raise typer.Exit(code=1)
-    r = plan_impact.affected_items(pid, claim_id=claim, tension_id=tension)
+    if explain:
+        from . import plan_narrative
+        r = plan_narrative.explain(pid, claim_id=claim, tension_id=tension)
+    else:
+        r = plan_impact.affected_items(pid, claim_id=claim, tension_id=tension)
     if as_json:
         typer.echo(json.dumps(r, indent=2, default=str))
         return
@@ -888,4 +894,30 @@ def project_plan_impact(project: str, claim: Optional[str] = typer.Option(None, 
         typer.echo("this claim touches nothing in the current plan")
         return
     for it in r["items"]:
-        typer.echo(f"- {it['path']} ({it['strength']}): {it.get('label') or ''}")
+        if "why" in it:
+            typer.echo(f"- {it['path']} ({it['strength']}): {it['why']}")
+        else:
+            typer.echo(f"- {it['path']} ({it['strength']}): {it.get('label') or ''}")
+
+
+@project_app.command("due")
+def project_due(project: str, as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
+    """CR2: which of CR1's research needs are worth checking tonight, in ranked categories (critical /
+    worth_checking / low), each with an estimated -- never spent -- cost and its basis. $0, reads only; records a
+    check-cooldown so a need already surfaced recently is not repeated while budget remains."""
+    from . import research_needs
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    due = research_needs.due_tonight(pid)
+    if as_json:
+        typer.echo(json.dumps(due, indent=2, default=str))
+        return
+    if not due:
+        typer.echo("nothing due right now (or everything was already surfaced recently)")
+        return
+    for n in due:
+        typer.echo(f"- [{n['due_category']}] [{n['kind']}] {(n.get('text') or '')[:120]}")
+        typer.echo(f"    ~${n['estimated_cost_usd']:.4f} ({n['cost_basis']})")

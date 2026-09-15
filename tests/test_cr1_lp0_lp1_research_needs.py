@@ -312,3 +312,166 @@ def test_morning_report_shows_research_needs_count_only_when_nonzero(rn_db, monk
     assert rep["projects"][0]["research_needs_count"] == 1
     text = report.render_text(rep)
     assert "1 thing(s) may need fresh evidence" in text
+
+
+# ------------------------------------------------------------- CR2: due policy
+
+
+def _target(project_id, tid, question, sufficiency="corroborative", status="open"):
+    db.connect().execute(
+        "INSERT INTO project_evidence_targets (id, project_id, question, sufficiency, status, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?)", (tid, project_id, question, sufficiency, status, db.now(), db.now()))
+    db.connect().commit()
+
+
+def test_due_categories_read_the_needs_own_recorded_fields(rn_db):
+    p = db.create_project("CR2 category", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c_stale", freshness_status="stale", freshness_class="rates_pricing")
+    _fold("c_stale", n["id"])
+    plan = {"first_steps": [{"action": "x", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    _claim(pid, "c_hi")
+    _tension(pid, "t_hi", "c_hi", kind="CONTRADICTION")
+    db.connect().execute("UPDATE research_tensions SET impact='high' WHERE id='t_hi'")
+    _claim(pid, "c_lo")
+    _tension(pid, "t_lo", "c_lo", kind="NOVEL")
+    db.connect().execute("UPDATE research_tensions SET impact='low' WHERE id='t_lo'")
+    _target(pid, "tg_gov", "governing q?", sufficiency="governing")
+    _target(pid, "tg_cor", "corroborative q?", sufficiency="corroborative")
+    db.connect().commit()
+
+    due = research_needs.due_tonight(pid)
+    by_key = {(d["kind"], d.get("claim_id") or d.get("target_id")): d["due_category"] for d in due}
+    assert by_key[("plan_impact_stale", "c_stale")] == "critical"
+    assert by_key[("disagreement", "c_hi")] == "critical"
+    assert by_key[("disagreement", "c_lo")] == "worth_checking"
+    assert by_key[("open_target", "tg_gov")] == "worth_checking"
+    assert by_key[("open_target", "tg_cor")] == "low"
+    # ranked: every critical before every worth_checking before every low
+    cats = [d["due_category"] for d in due]
+    assert cats == sorted(cats, key=lambda c: {"critical": 0, "worth_checking": 1, "low": 2}[c])
+
+
+def test_due_estimates_cost_from_a_real_untapped_candidate_when_one_exists(rn_db):
+    from neurosearch import candidates as cand_mod
+    p = db.create_project("CR2 cost", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    # a candidate this need's routing can point at: same creator/class the claim's topic would route through --
+    # simplest reliable path is to monkeypatch where_to_look's rows directly rather than fabricate a full yield history.
+    import neurosearch.research_needs as rn
+    orig_route = rn._route
+    rn._route = lambda *a, **k: [{"creator": "acme channel", "untapped": 3, "why": ["x"]}]
+    cid = db.connect().execute(
+        "INSERT INTO candidates (id, platform, external_id, url, creator, duration, first_seen_at, last_seen_at, availability) "
+        "VALUES ('cand1','youtube','e1','u1','acme channel',1200,?,?, 'available')", (db.now(), db.now())).lastrowid
+    db.connect().execute("INSERT INTO candidate_projects (project_id, candidate_id, state, first_seen_at, updated_at) VALUES (?,?,?,?,?)",
+                         (pid, "cand1", "available", db.now(), db.now()))
+    db.connect().commit()
+    try:
+        due = research_needs.due_tonight(pid)
+    finally:
+        rn._route = orig_route
+    assert due and "acme channel" in due[0]["cost_basis"] and due[0]["estimated_cost_usd"] > 0
+
+
+def test_due_skips_a_need_checked_recently_but_resurfaces_after_the_ttl(rn_db):
+    p = db.create_project("CR2 ttl", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    first = research_needs.due_tonight(pid)
+    assert len(first) == 1
+    again = research_needs.due_tonight(pid)
+    assert again == []   # recorded in kv, within the TTL
+
+    key = f"disagreement:c1"
+    db.kv_set(f"research:checked:{key}", __import__("json").dumps({"ts": 0.0, "category": "critical"}))   # simulate an expired check
+    later = research_needs.due_tonight(pid)
+    assert len(later) == 1
+
+
+# ------------------------------------------------------------- LP2: plan_narrative.explain
+
+
+def test_explain_passes_through_unknown_from_lp1(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP2 unknown", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    r = plan_narrative.explain(pid, claim_id="c1")
+    assert r == {"known": False, "items": [], "reason": "no plan yet"}
+
+
+def test_explain_names_the_step_and_the_freshness_condition(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP2 stale", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", freshness_status="stale", text="the claim under review")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "buy the thing", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+
+    r = plan_narrative.explain(pid, claim_id="c1")
+    assert r["known"] is True
+    why = r["items"][0]["why"]
+    assert "buy the thing" in why and "the claim under review" in why and "stale" in why and "directly relies" in why
+
+
+def test_explain_says_possible_relation_for_a_superseded_claim(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP2 merged", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "old", strength="weak")
+    _claim(pid, "survivor")
+    db.connect().execute("UPDATE project_claims SET superseded_by=? WHERE id=?", ("survivor", "old"))
+    db.connect().commit()
+    _fold("old", n["id"])
+    plan = {"tools": [{"need": "a tool", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+
+    r = plan_narrative.explain(pid, claim_id="survivor")
+    assert "absorbed via merge" in r["items"][0]["why"]
+
+
+# ------------------------------------------------------------- CLI: due, plan-impact --explain
+
+
+def test_cli_due(rn_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cli due", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    _tension(pid, "t1", "c1")
+    db.connect().execute("UPDATE research_tensions SET impact='high' WHERE id='t1'")
+    db.connect().commit()
+    r = CliRunner().invoke(app, ["project", "due", pid])
+    assert r.exit_code == 0, r.output
+    assert "[critical]" in r.output
+
+
+def test_cli_plan_impact_explain_flag(rn_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cli explain", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", freshness_status="stale", text="the claim")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "step one", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+
+    plain = CliRunner().invoke(app, ["project", "plan-impact", pid, "--claim", "c1"])
+    assert "step one" in plain.output and "cites" not in plain.output
+
+    explained = CliRunner().invoke(app, ["project", "plan-impact", pid, "--claim", "c1", "--explain"])
+    assert explained.exit_code == 0, explained.output
+    assert "cites the claim" in explained.output and "stale" in explained.output
