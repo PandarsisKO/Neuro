@@ -59,7 +59,7 @@ every job in it (rulings §1.G). Also: `db.integrity_check()`'s `ok` must includ
 (baseline is 0 since `tools/db_cleanup_legacy.py`, 2026-09-14). Tests: preflight refuses a malformed copy;
 one backup per envelope across N jobs. Gate: tests green; `doctor` reports last preflight.
 
-### L-11 `[ ]` P0.A repeated execution — needs: —
+### L-11 `[x] 957e31c` P0.A repeated execution — needs: —
 Test: `t4.execute(pid, budget, dry_run=False)` twice on a fake-AI temp DB with the same inputs → second run
 enqueues 0 jobs (dedupe_key `findings:{pid}:{sid}` + `is_current`), 0 new `project_notes`, 0 new `project_claims`,
 0 new `usage` rows. Then with the `suggest_findings` jobs actually run by a fake worker. Gate: all four zeros.
