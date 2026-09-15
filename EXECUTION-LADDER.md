@@ -198,7 +198,7 @@ overnight change without opening Findings.
 
 ## Stage 7 — P4 Review at Scale (Claude lane + Codex signals, tier: sonnet) — needs: L-41
 
-### L-50 `[ ]` Decision Impact v1 = two real signals (rulings §6)
+### L-50 `[x] bc998d4` Decision Impact v1 = two real signals (rulings §6) — pulled forward, non-colliding, unblocked
 `impact.for_claim(claim_id) -> {disagreement: from research_tensions, plan_impact: claim cited by plan_items,
 value: high|some|unknown}`. Unknown when neither is provable. No LLM score. Gate: deterministic tests.
 
