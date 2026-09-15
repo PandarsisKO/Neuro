@@ -20,10 +20,15 @@ needs Kyle's machine (no catalogue network route from this sandbox).
 deterministic rerank on top -- disposition rate (not raw count), stale link-outcome correction, and a
 bounded-lookahead diversity cap that defers rather than drops. No new UI, no schema, no model call in either.
 
-Next eligible in the Claude lane: **AD3** (exploration quota) is READY AFTER AD2 but needs a plan+pause first --
-what "outside the pattern" concretely means is a genuine product decision, not one repo evidence resolves on
-its own. CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for a
-second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
+**AD3 landed** (`b303562`): a single, quality-floor-gated, deterministic exploration slot on the fit-ranked
+batch, per Kyle's own 12-section product-decision spec. Reuses AD2's learned/neutral disposition split and the
+existing WORTH_A_LOOK floor rather than any new classifier, randomness, or persistent state; every other sort
+mode is untouched; displaced items are deferred, never dropped; `base_potential` is preserved for AD4.
+
+Next eligible in the Claude lane: **AD4** (static vs. adaptive measurement) is READY AFTER AD3 but needs its own
+plan+pause first, per Kyle's explicit instruction not to assume the answer in advance. CR7 (real-project gate)
+and FM1's live validation remain Kyle-gated. Parallel prep still open for a second agent: LP5 (codex-shaped,
+READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 

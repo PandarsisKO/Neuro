@@ -485,11 +485,16 @@ bounded RATE over decided `acquired`/`user_dismissed`/`skipped_low_relevance` ou
 never `skipped_limit`/`skipped_cost`/`duplicate`), `_stale_linked_targets` (AD0's secondary link-outcome
 signal -- demotes a candidate whose linked target closed through a different candidate), and a bounded-lookahead
 diversity cap that defers, never drops. `rank_by` values other than `fit` are untouched. Gate: tests.
-### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five outside the pattern) — with AD2, now
-unblocked. What "outside the pattern" means is a genuine product decision (repo evidence supports more than one
-reasonable definition) -- plan + pause before implementing, per the Model Handoff Rule's own condition C.
-### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate, yield, targets closed, novel
-families, review burden.
+### AD3 `[x] b303562` exploration slot targets the unknown, not the badly ranked — DONE · lane: claude
+Kyle's own 12-section product-decision spec resolved what "outside the pattern" means: EXPLORE reuses AD2's own
+learned/neutral distinction (creator_disposition adjust==0, not negative) rather than any new classifier or
+randomness. `apply_exploration` gates on both a non-neutral learned signal existing in the lookahead AND a
+qualifying neutral candidate clearing the existing WORTH_A_LOOK ("worth a look") floor; at most one
+`exploratory:true` slot per batch, deterministic, scoped to `next_batch`'s `rank_by=="fit"` path only -- every
+other sort mode untouched. Displaced top-N items are never dropped, only deferred. `rerank` now also preserves
+`base_potential` (pre-adjustment score) for AD4. Gate: tests.
+### AD4 `[ ]` static vs adaptive measurement — READY; needs its own plan + pause per Kyle's explicit instruction
+(do not assume the answer). Capture rate, yield, targets closed, novel families, review burden.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`

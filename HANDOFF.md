@@ -4191,3 +4191,48 @@ item recovery, explicit rank_by preservation, AD1 invariants holding under AD2).
 Ladder marked `[x] 528209c`. AD3 is next but stops at a plan+pause: "outside the pattern" is a real product
 decision with more than one reasonable shape, not something this arc's existing evidence resolves on its own —
 consistent with the Model Handoff Rule's own condition C and Kyle's explicit instruction not to guess at it.
+
+## AD3 — exploration slot targets the unknown, not the badly ranked (`b303562`)
+
+Kyle sent a full 12-section product-decision spec resolving exactly what AD3's earlier "outside the pattern"
+placeholder had left open, so no further product judgment was needed to implement it:
+
+1. **EXPLORE reuses AD2's own learned/neutral distinction** — `creator_disposition`'s existing `adjust` field:
+   `adjust==0` (or no disposition yet) is neutral/explore-eligible, `adjust<0` is negative and never eligible,
+   `adjust>0` is exploit. No new classifier, no randomness, no persistent shown/seen state.
+2. **Two-condition gate before a slot is even considered**: a non-neutral learned disposition signal must exist
+   *somewhere* in the batch's lookahead (proof a pattern has actually formed) AND at least one qualifying
+   neutral candidate must exist. Neither condition alone is enough — a project with no learned pattern yet
+   never gets an exploration slot, matching Kyle's "do not invent an arbitrary click-count threshold" note.
+3. **One slot is a ceiling, not a quota.** At most one `exploratory:true` item per `next_batch` call; never
+   forced if nothing qualifies; no generalized quota optimizer for arbitrary `n`.
+4. **Quality floor**: `WORTH_A_LOOK = 40`, extracted from `pool()`'s own existing "worth a look" literal — the
+   same bar the pool's own summary chip already uses, not a new number.
+5. **Deterministic selection**: prefer the best qualifying neutral item already inside the top-N; otherwise
+   displace the weakest top-N item for the best qualifying neutral item beyond it, preferring a fresh creator.
+   The displaced item is *never* dropped — it remains eligible for a later batch, same discipline as AD2's
+   diversity defer.
+6. **Explainability, no persistence**: `exploratory: true` / `exploration_why: "..."` on the batch item only;
+   not a DB column, not telemetry, not a new event system.
+7. **Hard boundaries preserved**: dismissed/stale-linked/negative-disposition candidates can never enter through
+   exploration; `skipped_cost`/`skipped_limit` remain purely operational (never read as a quality signal);
+   no auto-capture; nothing here is evidence until actually acquired; no cross-project leakage (disposition and
+   exploration are both computed fresh per `project_id`, same as AD2).
+8. **Scoped to `rank_by=="fit"` only** — every explicit sort mode (`newest`, `relevance`, etc.) is byte-for-byte
+   untouched, proven directly by a dedicated test.
+9. **AD4 prep, not AD4 itself**: `rerank()` now also stashes `base_potential` (the pre-disposition-adjustment
+   score) on every item, so AD4 can eventually compare baseline vs. adaptive vs. exploratory outcomes without
+   AD3 having guessed at what that measurement will look like. No telemetry, no Findings/Claims/target-yield
+   logic added — that's explicitly AD4's own rung.
+
+10 new tests (`tests/test_n7_pool.py`): no-op with no learned pattern yet, a slot appearing when both gate
+conditions hold, the quality floor blocking a weak neutral candidate (fixture uses five distinct positively-
+disposed creators rather than one, so AD2's own diversity cap doesn't force a weak item into the batch for
+unrelated reasons — a diversity-cap artifact, not a quality-floor bug, caught while first writing this test),
+a negatively-learned creator excluded even when neutral-looking on the surface, a dismissed candidate never
+returning via exploration, at most one exploratory slot in a five-item batch, a displaced exploit candidate
+remaining eligible in a later batch, no cross-project leakage, explicit sort modes never getting a slot, and
+`base_potential` preserved alongside the adjusted score. Full suite 1666/1666, `repo-check: PASS`.
+
+Ladder marked `[x] b303562`. Per Kyle's explicit instruction, AD4 is NOT started as part of this — it's a
+measurement/evaluation rung that needs its own plan and pause ("do not assume AD4's answer in advance").
