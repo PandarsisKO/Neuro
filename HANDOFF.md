@@ -3699,3 +3699,35 @@ Deliberately NOT built: any table, any LLM importance score, a monitoring dashbo
 separate), the Plan-tab UI line (LP2), P11.
 
 READY FOR EXECUTION MODEL
+
+## CR1 + LP0/LP1 executed (2026-09-15 17:00, commit `2cbc82f`)
+
+Fast drift check before executing (per the Model Handoff Rule's step 4): HEAD was still `8c0d0fb` (the plan-then-
+pause checkpoint), working tree clean apart from pre-existing untracked eval artifacts, scheduler NOW still
+pointed at CR1+LP0/LP1. Nothing material changed since the plan was approved — executed as prepared, no drift
+reconciliation needed.
+
+Built exactly the approved plan: `neurosearch/research_needs.py` (CR1), `planner._evidence` now records each
+F<n>'s real note_id in the plan's frozen `_evidence` map (LP0), `decision_impact._plan_cited_note_ids` prefers
+that stable mapping over re-derivation, `neurosearch/plan_impact.py` (LP1) walks plan citations against a Claim's
+folded findings (direct) and its superseded chain (possible). Surfaces: `GET .../research-needs`, `GET
+.../plan/impact`, `neurosearch project needs` / `plan-impact`, one Morning Report line ("N thing(s) may need
+fresh evidence", shown only when nonzero — deliberately NOT folded into `material_change`, so a quiet night stays
+quiet; the full list stays behind the CLI/API, consistent with the "no new dashboard, contextual disclosure only"
+rule).
+
+18 new tests; full suite 1598 passed (was 1580); repo-check PASS. No UI_VERSION bump (no frontend files touched).
+
+One design decision worth recording: research_needs_count is informational and standing (it reflects current
+project state, not an overnight delta), so it does not affect the "nothing important changed overnight" short
+circuit. A project can have open research needs on a quiet night and the Morning Report will still say nothing
+changed — `neurosearch project needs` is the read for that. This matches mission §12's explicit ban on Continuous
+Research auto-surfacing noise; revisit only if Kyle says the omission is wrong on real data.
+
+Ladder updated: CR1/LP0/LP1 marked `[x] 2cbc82f`. Scheduler NOW moved to CR2→CR5 (P8 vertical slice) and
+LP2→LP3 (explainable impact → proposed patch), both READY AFTER their landed prerequisite, both Claude lane.
+
+Per the Model Handoff Rule: this was an EXECUTION phase on an already-approved plan, so no pause was required
+between commits. The next substantial rung (CR2/LP2, whichever is picked up) needs its own PLAN → PAUSE →
+"READY FOR EXECUTION MODEL" checkpoint before any implementation begins, since it is new unplanned work beyond
+what was approved at `8c0d0fb`.

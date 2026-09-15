@@ -4,13 +4,13 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-Updated 2026-09-15 (acceleration directive; mission §12). Every previously admitted rung is code-complete; the
+Updated 2026-09-15 17:00 (CR1 + LP0/LP1 landed, `2cbc82f`). Every previously admitted rung is code-complete; the
 open ones are Kyle-gated measurements (`docs/KYLE-GATES-2026-09-15.md`). Active now, in the Claude lane:
 
-**CR1 research needs + LP0/LP1 plan-evidence seam and affected-step detector** (`EXECUTION-LADDER.md` Stages
-10–11). Two thin read-only adapters over existing state that together unlock Continuous Research, Living Plan,
-source routing for refresh, and better Morning Report / review-queue lines. Non-colliding (disjoint files).
-Execution follows the plan-then-pause handoff recorded in HANDOFF.md.
+**CR2 (due policy, READY AFTER CR1) → CR5 (one Claim refreshed end-to-end, the P8 vertical slice)** and **LP2
+(explainable impact, READY AFTER LP1) → LP3 (proposed plan patch)** (`EXECUTION-LADDER.md` Stages 10–11). Both
+pairs build directly on the CR1/LP0/LP1 adapters just landed; both are Claude lane. Per the plan-then-pause
+handoff (HANDOFF.md), planning for whichever is picked up first happens before any implementation begins.
 
 Parallel prep allowed for a second agent (disjoint files): SC0b, AD0, FM0, CR3 (Codex-shaped).
 

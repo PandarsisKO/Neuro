@@ -381,7 +381,7 @@ Audit (CR0, done 2026-09-15, recorded in HANDOFF): freshness policy EXISTS (`cla
 `last_escalation`); reservoirs EXIST (`collections`, `candidates` with first/last_seen, `where_to_look`);
 scheduler + nightly EXIST. Missing: the selection step, rescan of a known reservoir, and the end-to-end refresh.
 
-### CR1 `[ ]` research needs — ADMITTED NOW · lane: claude · needs: —
+### CR1 `[x] 2cbc82f` research needs — DONE · lane: claude · needs: —
 `research_needs.for_project(project_id) -> {needs:[...], counts}`: read-only projection over accepted Claims with
 `freshness_status` in (stale, needs_refresh); open CONTRADICTION/NOVEL/WEAK_CONSENSUS tensions; open Evidence
 Targets; plan-cited weak Claims (`decision_impact`). Each need: kind, ref id, question/proposition, why, consequence
@@ -425,12 +425,12 @@ Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first
 the note id, so `decision_impact` re-derives F<n>→note by re-numbering and must say "unknown" whenever notes
 changed since the plan; `plan_updates` already holds previous/proposed/reason/status — the patch substrate exists.
 
-### LP0 `[ ]` plan-evidence seam — ADMITTED NOW · lane: claude · needs: —
+### LP0 `[x] 2cbc82f` plan-evidence seam — DONE · lane: claude · needs: —
 `planner._evidence` records `note_id` (and fact id) in the stored emap for every F/U entry; `decision_impact`
 prefers the stored ids and falls back to re-derivation for older plans. Additive, no migration (plan JSON). Gate:
 plan_impact stays known after notes change for a plan built after this seam; older plans unchanged.
 
-### LP1 `[ ]` affected-step detector — ADMITTED NOW · lane: claude · needs: LP0 (same commit is fine)
+### LP1 `[x] 2cbc82f` affected-step detector — DONE · lane: claude · needs: LP0 (same commit)
 `plan_impact.affected_items(project_id, claim_id|tension_id) -> [{key, section, text, via: [note ids], strength:
 possible|indicated}]` — deterministic over evidence links; `indicated` only when the link is a direct citation,
 `possible` when via a merged/superseded Claim; unknown stays unknown. Surface: one Plan-tab line "1 step may need
