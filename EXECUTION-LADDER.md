@@ -466,9 +466,11 @@ satisfied), cadence (published_at spread). Read-only; project-scoped; never a si
 ### SC3 — folded into CR1 (`where` per need). `[ ]` closes with CR1.
 
 ### Stage 13 — P9B Adaptive Discovery (Claude lane) — needs: SC view (exists)
-### AD0 `[ ]` feedback inventory — PARALLEL PREP · $0 · needs: —
+### AD0 `[x] 866edc8` feedback inventory — DONE · lane: claude · $0 · needs: —
 Written matrix of durable signals that already exist: `candidates.mark` states (dismissed/acquired/skipped_*),
 `candidate_links.state`, findings status, `claims.set_status`, target closure. Decide which feed AD2. No telemetry.
+See `docs/AD0-FEEDBACK-INVENTORY.md`: AD2 reranks off candidate disposition (primary) + link outcome (secondary);
+findings/claim status and target closure are reserved for AD4's retrospective measurement, not the rerank loop.
 ### AD1 `[ ]` small-batch discovery — READY AFTER AD0. "5 best next" from `candidates.pool`, keep/reject/capture,
 "5 more". ### AD2 `[ ]` deterministic rerank (target fit, preferred class, SC view, dismissals, diversity,
 freshness) — READY AFTER AD1. ### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five outside the
