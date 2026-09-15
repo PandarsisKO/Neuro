@@ -52,7 +52,7 @@ AUDIT, not build (rulings §1). Each scenario: write the test that exercises EXI
 pass/fail in `docs/P0-AUDIT-<date>.md`, fix only a measured failure, re-run. Boundary is `t4.execute(...)`.
 `needs`: nothing. May run in parallel with Stage 2.
 
-### L-10 `[ ]` P0.G database safety preflight — needs: —
+### L-10 `[x] c086341` P0.G database safety preflight — needs: —
 Add `db.preflight_autonomous(envelope_id)` : full `PRAGMA integrity_check` (NOT quick_check) → require `ok` →
 `db.backup()` (already verifies) → record `{envelope_id, ts, backup_path}` in `kv`. Once per envelope, shared by
 every job in it (rulings §1.G). Also: `db.integrity_check()`'s `ok` must include `dangling_origin_note_id == 0`
