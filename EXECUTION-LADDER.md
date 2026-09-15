@@ -106,10 +106,15 @@ hits `BudgetPaused` mid-project, asserts exactly one job remains, gated behind t
 preserved, nothing half-written for the paused source, completed source's analysis stays current. Full suite:
 1496 passed; `repo-check: PASS`.
 
-### L-15 `[ ]` P0.E promotion boundary — needs: —
-Prove by test that no autonomous path (`suggest_findings`, `extract_claims`, harvest, `_after_done`) calls
-`claims.set_status` or writes `status='accepted'`; only user-driven API routes do. `grep` + a test that runs the
-whole T4 path and asserts every new claim is `proposed`. Gate: test green.
+### L-15 `[x] 22292fe` P0.E promotion boundary — needs: —
+Two proofs, no violation found (this rung closes the gate, it doesn't fix a bug). Static: every `.py` under
+`neurosearch/` grepped for a `claims.set_status(`/`set_status(` call site -- only `claims.py` (the definition),
+`api.py` (direct route) and `claims_view.py` (`bulk_status`, called only from `require_auth`-gated POST routes)
+match. Dynamic: the real harvest/assess/map pipeline (`claims.ensure()`, reusing `test_k6_claims.py`'s proven
+multi-claim G5 acceptance fixture) run end-to-end under fake AI -- every resulting Claim's status is
+`proposed` or `superseded` (the one legitimate autonomous transition: dedup/merge of a still-proposed duplicate,
+gated `AND status='proposed'` in `claims.py` so it can never touch an already-accepted Claim), never `accepted`
+or `rejected`. Full suite: 1498 passed; `repo-check: PASS`.
 
 ### L-16 `[ ]` P0.F concurrent completion — needs: L-11
 Run 8 `suggest_findings` completions across 4 threads against one project (pattern:

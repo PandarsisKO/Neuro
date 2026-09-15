@@ -3291,3 +3291,12 @@ Validated via `~/ns-verify`: full suite 1496 passed, 0 failed; `repo-check: PASS
 
 Next per EXECUTION-LADDER.md: L-15 (P0.E promotion boundary — needs: nothing), L-16 (concurrent completion),
 L-17 (P0 closeout doc, needs L-10 through L-16 all done).
+
+## L-15 closed — promotion-boundary gate proven, no violation found (2026-09-15)
+
+Unlike L-12/L-14, this rung found nothing wrong -- it closes the mission's evidence-hierarchy gate (`claims.set_status`
+is the sole promotion door) with two independent proofs rather than a fix. See EXECUTION-LADDER.md's L-15 entry
+for what each proves. New test file: `tests/test_p0_promotion_boundary.py`.
+
+Next per EXECUTION-LADDER.md: L-16 (P0.F concurrent completion, needs L-11), L-17 (P0 closeout doc, needs
+L-10 through L-16 all done -- L-10 through L-15 are now all closed, so L-16 is the last item before L-17).
