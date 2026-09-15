@@ -154,13 +154,13 @@ completes on Kyle's Mac with `tier: fake` and $0. Wider set: `tests/test_r4_loca
 Gate: `python -m pytest tests/test_r4_local_model.py tests/test_p1_perf.py -q` passes WITHOUT blanking the
 variable on the shell; step 4 above drops its blanking clause.
 
-### L-04 `[x] pending-sha` P5.2b measure the prefilter — lane: kyle runs, claude decides · tier: sonnet · needs: L-02 · $0
+### L-04 `[x] 477113c` P5.2b measure the prefilter — lane: kyle runs, claude decides · tier: sonnet · needs: L-02 · $0
 On the Mac: `.venv/bin/neurosearch eval --prefilter --out evals/prefilter-<date>.json`. Claude reads the artifact
 (it is a file, not the DB). Decision rule (T4 plan E6, unchanged): enable `NEUROSEARCH_FINDINGS_PREFILTER=1`
 only if net savings > 0 AND relevant-window recall ≥ 0.98. Record the decision in `HARDENING.md` (frozen-number
 rule). Gate: committed artifact + written decision, either way.
 
-### L-05 `[x] pending-sha` P5.3 kept-rate sample design — lane: claude · tier: sonnet · needs: — · $0
+### L-05 `[x] aa53a9c` P5.3 kept-rate sample design — lane: claude · tier: sonnet · needs: — · $0
 Haiku default is SHIPPED-PROVISIONAL (rulings §5). Design the smallest review that can contradict it: from the 8
 E5 sources (4 Sonnet / 4 Haiku, ids in docs/T4-ADMISSION-2026-09-14.md), a stratified sample of ~40 findings
 (5 per source, importance-stratified), blind to model, exported by a `tools/sample_findings.py` Kyle runs on the
@@ -257,7 +257,7 @@ JSON -- no further code is needed (see `docs/KYLE-GATES-2026-09-15.md`).
 
 ---
 
-## Stage 5 — P1B "Tonight" UI (Claude lane, tier: sonnet) — needs: L-20 AND Codex's frontend split landed
+## Stage 5 — P1B "Tonight" UI (Claude lane, tier: sonnet) — needs: L-20 (done) AND Codex's frontend split (landed 2026-09-13 at `7480352`; `neurosearch/web/js/*` + `styles.css`)
 
 ### L-40 `[ ]` Now / Tonight / Overnight batch on the stale-rebuild action
 Progressive disclosure; pending state visible; cancellable; the host-honesty copy from L-20; on return the

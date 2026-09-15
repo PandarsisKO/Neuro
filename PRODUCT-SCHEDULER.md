@@ -1,14 +1,17 @@
 # Neuro Search product scheduler
 
-Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-13. This is distinct from the parked runtime scheduler design in SCHEDULER.md.
+Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW section; the rest reflects 2026-09-13/14 and EXECUTION-LADDER.md is the live per-item state). This is distinct from the parked runtime scheduler design in SCHEDULER.md.
 
 ## NOW — one active effort
 
-Kyle's 2026-09-13 override: split `neurosearch/web/index.html` into static CSS and native ES modules,
-without a build step or visual/behavior changes. ACTIVE: CSS extraction first, then state/API/shared formatting,
-view modules and bootstrap/router in independently mergeable steps. Acceptance: affected frontend gates after
-each step; full pytest, Tier 1 and commit-bound release-check at release boundaries. Initial CSS landing is
-Kyle's direction-check checkpoint before the JavaScript split. Progress and isolation details: `HANDOFF.md`.
+Updated 2026-09-15. The frontend split that was NOW here is DONE (delivered 2026-09-13, `7480352` / `5f667a1`;
+`neurosearch/web/index.html` + `styles.css` + `js/` native ES modules, no build step; see HANDOFF.md "Frontend
+split — delivered"). It stayed listed here for two days after landing and misdirected planning: L-40 was wrongly
+treated as blocked on it. Stale blockers in this section are a real cost.
+
+Active now: `EXECUTION-LADDER.md` Stage 5, **L-40 — the "Tonight" UI** (P1B, Claude lane): the stale-rebuild
+action gains Now / Tonight / Overnight batch on top of L-20's `not_before` backend. Everything else admitted is
+code-complete and gated on Kyle (`docs/KYLE-GATES-2026-09-15.md`).
 
 ## SUSPENDED — RESUME FIRST
 
@@ -40,7 +43,7 @@ The ordered, agent-executable runbook for everything admitted here is `EXECUTION
 2. **P1A — Scheduled Execution Backend / CLI** (Codex lane, after P0). `not_before` productized: durable
    requested time, exact-once, dedupe, cancel, restart recovery, budget, preflight, missed-window policy
    (rulings §4), honest host-availability state. First candidate: the stale-source rebuild.
-   P1B (the "Tonight" UI, Claude lane) waits for the frontend split to clear.
+   P1B (the "Tonight" UI, Claude lane): frontend split landed 2026-09-13 -- P1B is L-40, active (see NOW).
 3. **P5 — remaining T4 evidence loop** (Claude lane, parallel, non-colliding): P5.2 E6 eval isolation +
    measurement; P5.3 kept-rate quality sample (Haiku default is SHIPPED, PROVISIONAL pending this);
    P5.1 brief-text relevance backtest.
