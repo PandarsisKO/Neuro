@@ -4331,3 +4331,20 @@ Findings:
   proposed anywhere in this pass.
 
 Docs-only commit, no code, no schema, no tests to run. Working tree clean after commit.
+
+## Fix — local Claude Code health transitions log once, loudly (`da04fbb`)
+
+Not a ladder rung — an incident fix. Kyle's terminal filled with a dozen near-identical WARNING lines a minute
+(2026-09-15, midday) when his local Claude Code OAuth session expired mid-session; `rank_proposed` kept retrying
+and failing with no signal loud enough to prompt the actual one-line fix, so it went unnoticed for hours.
+
+I need to correct something I told Kyle in this conversation: I said the app was silently falling back to paid
+API calls while this was happening. That was wrong, and worth recording so it isn't repeated. `local_api_fallback`
+defaults to `false` and Kyle's `.env` doesn't override it; `providers.route()` deliberately keeps routing to
+"local" in that case specifically so the failure comes back typed and visible rather than silently spent (its own
+docstring says so). No paid spend happened. The real cost was time, not money.
+
+Fix: `claude_code.note_failure`/`note_success` now log once, at ERROR/INFO, only on an actual state transition —
+reusing the cached per-model verdict these functions already maintain, no new state, no new table, no polling.
+The failure message names the fix and says plainly whether paid fallback is on or off. 9 new tests. Full suite
+1687/1687, repo-check PASS.
