@@ -77,11 +77,21 @@ propagate through `suggest_for_project()` (re-raised before the generic except, 
 asserts `"queued"`, zero attempt penalty, immediate `not_before`, nothing written under the stale brief, then a
 clean retry completes under the post-edit brief revision. Full suite 1494 passed; `repo-check: PASS`.
 
-### L-13 `[ ]` P0.C restart/retry — needs: L-11
-Kill a fake worker mid-`suggest_findings` (after the provider call, before `replace_suggestions` commits); restart;
-confirm crash-recovery re-queues, the second attempt does not double-record `usage` where the first call's
-result was lost, `work_units` count equals windows read. Gate: test green; if double-spend is unavoidable, the
-audit doc says so and why.
+### L-13 `[x] b0b406b` P0.C restart/retry — needs: L-11
+Audit finding: this exact claim was already proven in two separate halves before this rung started --
+`test_s46_r4_durable_units.py::test_completed_windows_survive_parent_crash_and_retry_runs_only_missing` (windows/
+work_units durability + "retry pays only for missing windows", but with `_call` mocked -- never touches the real
+`usage` table) and `test_indestructible.py::test_crash_matrix_findings[findings_persisted_before_done]` (real
+`usage` table not double-recorded across a real job-level crash+restart via `crashkit.Sim`, but only for a
+whole-source crash AFTER every window already completed). Neither combines real usage recording + a real
+job-level restart + a genuine partial (some windows done, one not) crash, so a narrow gap in test coverage
+remained. New test `tests/test_p0_restart_retry.py` closes it: forces windows sequential
+(`concurrency.limit_for` patched to 1 -- otherwise both fake-AI calls complete before either thread reaches the
+crash point, since findings.extract normally fans multi-window sources across a small thread pool), crashes at
+`findings_window_persisted` after window 0, restarts via `crashkit.Sim` (the real lease-recovery path), and
+asserts exactly 1 `usage` row + 1 `work_unit` after the crash, exactly 2 of each after the clean retry -- never
+double-recorded, never dropped. No production bug found (unlike L-12) -- this closed a coverage gap, not a
+defect. Full suite: 1495 passed; `repo-check: PASS`.
 
 ### L-14 `[ ]` P0.D budget exhaustion — needs: L-11
 `usage.guard` / daily budget hit mid-run: remaining jobs `wait_reason='budget'` with `not_before`, nothing

@@ -3244,3 +3244,23 @@ rebuild recipe): full suite 1494 passed, 0 failed; `repo-check: PASS`.
 Next per `EXECUTION-LADDER.md` / the continuous-execution directive / Codex's temporary reassignment (Codex off
 until the weekend reset, ~5 days from 2026-09-15): L-13 (P0.C restart/retry — crash-recovery double-spend),
 L-14 (P0.D budget exhaustion), L-15 (promotion boundary), L-16 (concurrent completion), L-17 (P0 closeout doc).
+
+## L-13 closed — restart/retry double-spend audited, one coverage gap closed (2026-09-15)
+
+Unlike L-12, this rung found no production bug — it found a real gap in test *coverage* for a claim the system
+already satisfies. Two pre-existing tests each proved half of L-13's claim (see EXECUTION-LADDER.md's L-13 entry
+for the precise citation and what each does and doesn't cover); neither combined real `usage`-table recording,
+a real job-level crash+restart, and a genuine partial-window crash. `tests/test_p0_restart_retry.py` closes that
+combination with one new test.
+
+One non-obvious thing worth recording for whoever writes the next crash/concurrency test in this file:
+`findings.extract` fans multi-window sources across a thread pool by default whenever it's running inside a real
+job context (`concurrency.limit_for("findings.extract")`, `neurosearch/concurrency.py`). With only 2 windows and
+the fake-AI provider (which returns near-instantly), both windows' calls typically complete before either
+worker thread reaches a crash point — there is no real "mid-flight, one done one not" moment to crash at without
+forcing `concurrency.limit_for` to return 1 for the duration of the test. Any future test wanting a genuinely
+partial multi-window crash needs this same patch, or a much larger number of windows to make it probabilistically
+reachable (which would make the test flaky) — the sequential-force is the deterministic choice.
+
+Next per EXECUTION-LADDER.md / the continuous-execution directive: L-14 (P0.D budget exhaustion), L-15 (promotion
+boundary), L-16 (concurrent completion), L-17 (P0 closeout doc).
