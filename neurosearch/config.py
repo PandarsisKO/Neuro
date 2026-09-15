@@ -104,6 +104,12 @@ class Settings:
     monthly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_MONTHLY_BUDGET_USD", "50") or 50))
     prices_json: str | None = field(default_factory=lambda: _env("NEUROSEARCH_PRICES"))
     auto_suggest: bool = field(default_factory=lambda: (_env("NEUROSEARCH_AUTO_SUGGEST", "true") or "").lower() == "true")
+    # L-30 (EXECUTION-LADDER.md P2, E7 Nightly Refinery): 0 (the default) means off -- nothing runs
+    # unattended until a caller explicitly sets a per-night dollar cap. t4_nightly_hour is a LOCAL hour
+    # (0-23); the envelope only fires once it's due AND hasn't already run for today's date (see
+    # neurosearch/nightly.py), never "at that hour exactly" -- same host-honesty rule as L-20's CLI.
+    t4_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_T4_NIGHTLY_BUDGET_USD", "0") or 0))
+    t4_nightly_hour: int = field(default_factory=lambda: int(_env("NEUROSEARCH_T4_NIGHTLY_HOUR", "2") or 2))
 
     # Chunking (seconds)
     chunk_target_seconds: int = field(default_factory=lambda: int(_env("NEUROSEARCH_CHUNK_SECONDS", "60") or 60))

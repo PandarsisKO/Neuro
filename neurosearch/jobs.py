@@ -694,6 +694,15 @@ def _housekeeping_loop(every: float = 120.0) -> None:
         if _stop.is_set():
             break
         try:
+            # L-30 (EXECUTION-LADDER.md Stage 4): checked on the same cadence as WAL checkpointing -- off by
+            # default (settings.t4_nightly_budget == 0), and due() itself is the idempotency guard (kv-recorded
+            # per calendar date), so a missed or repeated check here can never double-run the night.
+            from . import nightly
+            if nightly.due():
+                nightly.run()
+        except Exception as e:  # noqa: BLE001
+            log.warning("nightly envelope check skipped: %s", e)
+        try:
             r = db.checkpoint_wal()
             if r.get("checkpointed"):
                 log.info("housekeeping: WAL %.1f MB -> %.1f MB", (r.get("was") or 0) / 1e6, r["wal_bytes"] / 1e6)

@@ -144,6 +144,16 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
                        f"held right now: {pa['held']}", warn=True)
             else:
                 r.check("power assertion (L-21)", True, "not on macOS, or caffeinate not on PATH — no keep-awake claim made", warn=True)
+            from . import nightly
+            nb = nightly.last_run()
+            if settings.t4_nightly_budget <= 0:
+                r.check("nightly envelope (L-30)", True, "off — t4_nightly_budget is 0", warn=True)
+            elif nb is None:
+                r.check("nightly envelope (L-30)", True, "on, nothing has run yet today", warn=True)
+            else:
+                r.check("nightly envelope (L-30)", nb.get("ok", False),
+                       f"~${nb.get('spent_estimate', 0):.2f} of ${nb.get('budget', 0):.2f} · {len(nb.get('projects', []))} project(s)" if nb.get("ok")
+                       else nb.get("reason"))
             jobs = h["jobs"]
             r.check("no stale running jobs", not jobs.get("stale_running"), f"queued {jobs.get('queued', 0)} · running {jobs.get('running', 0)} · failed {jobs.get('failed', 0)} · external {jobs.get('external_pending', 0)}")
             so = h["structured_outputs"]
