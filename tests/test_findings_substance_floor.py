@@ -113,7 +113,7 @@ def test_suggest_for_project_passes_the_floor_through(fresh, monkeypatch):
     read = _install(monkeypatch, [12, 90, 90])
     result = findings.suggest_for_project(project["id"], [sid], substance_floor=30)
     assert read == [0]
-    assert result == {"sources": 1, "done": 1, "failed": 0}
+    assert result == {"sources": 1, "done": 1, "failed": 0, "skipped": 0}   # substance-floor stop is not "skipped": it read window 0 for real, floor just stopped the rest
     probe = _analysis_prefilter(project["id"], sid)["substance_probe"]
     assert probe["stopped"] is True and probe["windows_skipped"] == 2
 

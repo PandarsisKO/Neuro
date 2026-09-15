@@ -390,7 +390,22 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     try:
         result = run_job(job)
         _record_execution(jid)
-        db.finish_job(jid, run_id, "done", message="done", result=result)
+        # 2026-09-15 -- `message` used to be the literal string "done" no matter what happened, so a real
+        # no-op (every source already current, or an in-flight batch -- findings.py's `_skipped()`) was
+        # indistinguishable from genuine work without opening `result`'s JSON or querying invocations/work_units
+        # by hand (the exact diagnosis this cost during E5, docs/T4-ADMISSION-2026-09-14.md). Two known result
+        # shapes carry a skip signal: a single-item `_skipped()`-style dict (top-level "skipped" key, a short
+        # reason string), and suggest_for_project's per-project summary ("sources"/"done"/"failed"/"skipped"
+        # counts). Surface it as the headline message when every source in the job was skipped; leave the
+        # ordinary "done" alone when only some were (that's real work, just not all of it).
+        done_message = "done"
+        if isinstance(result, dict):
+            reason = result.get("skipped")
+            if isinstance(reason, str) and reason:
+                done_message = f"skipped: {reason}"
+            elif isinstance(reason, int) and reason and reason == result.get("sources"):
+                done_message = f"skipped: all {reason} source(s) already current or in flight"
+        db.finish_job(jid, run_id, "done", message=done_message, result=result)
         log.info("job done in %.1fs", time.time() - t0)
         _after_done(job)
         return "done"

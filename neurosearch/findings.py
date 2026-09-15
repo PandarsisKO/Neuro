@@ -698,7 +698,7 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
     queue -- so a resumed job keeps probing at the same floor rather than silently reverting to reading every
     window. ``None`` (the default) is byte-for-byte the pre-existing behaviour."""
     ids = source_ids or db.sources_needing_suggestions(project_id)
-    done, failed = 0, []
+    done, failed, skipped = 0, [], 0
     for i, sid in enumerate(ids):
         if progress:
             progress(i / max(len(ids), 1), f"reading {i + 1}/{len(ids)}")
@@ -708,9 +708,14 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
             if progress:
                 progress(max(0.02, (_i + frac) / max(len(ids), 1)), (f"{_i + 1}/{len(ids)} · " if len(ids) > 1 else "") + msg + f" — {_title[:50]}")
         try:
-            suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub, r6_wave=r6_wave, r6_provisional=r6_provisional,
-                               substance_floor=substance_floor)
+            r = suggest_for_source(project_id, sid, force=force, depth=depth, progress=sub, r6_wave=r6_wave, r6_provisional=r6_provisional,
+                                   substance_floor=substance_floor)
             done += 1
+            # 2026-09-15 -- this loop used to discard suggest_for_source's own return entirely, so a source that
+            # raced past is_current (E5's exact incident) or hit an in-flight batch counted as ordinary "done"
+            # work with zero visibility -- the only way to tell was querying invocations/work_units by hand.
+            if isinstance(r, dict) and r.get("skipped"):
+                skipped += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
             from .usage import BudgetPaused
@@ -722,4 +727,4 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
                 raise
             log.warning("suggest failed for %s: %s", sid, e)
             failed.append(sid)
-    return {"sources": len(ids), "done": done, "failed": len(failed)}
+    return {"sources": len(ids), "done": done, "failed": len(failed), "skipped": skipped}

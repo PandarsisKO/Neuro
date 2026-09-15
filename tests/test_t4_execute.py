@@ -207,3 +207,38 @@ def test_source_estimate_uses_the_windows_own_system_prompt(e2_db, monkeypatch):
     monkeypatch.setattr(U, "estimate_findings", spy)
     t4._source_estimate(project["id"], sids[0], substance_floor=None)
     assert seen["system_chars"] is not None and seen["system_chars"] > 0
+
+
+def test_a_job_that_races_past_is_current_reports_why_it_skipped(e2_db, monkeypatch, run_queued_job):
+    """2026-09-14's E5 race, made visible instead of requiring a raw invocations/work_units query to diagnose:
+    a source became current between selection and the job actually running (something else -- a background
+    Rebuild -- analyzed it in between). `suggest_for_project` used to discard `suggest_for_source`'s own return
+    entirely (no skip count anywhere in `result`), and the job's headline `message` hard-coded "done" regardless
+    -- so the only way to tell a real no-op from real work was opening the lower-level tables by hand."""
+    from neurosearch import findings
+    project, sids = _project_with_sources(2)
+    job = db.create_job("suggest_findings", {"project_id": project["id"], "source_ids": sids})
+    monkeypatch.setattr(findings, "is_current", lambda proj, sid, depth=None: True)   # races current by execute time
+    run_queued_job(job["id"])
+    row = db.get_job(job["id"])
+    result = row["result"]
+    assert row["status"] == "done"
+    assert result == {"sources": 2, "done": 2, "failed": 0, "skipped": 2}
+    assert row["message"] == "skipped: all 2 source(s) already current or in flight", row["message"]
+
+
+def test_a_partially_skipped_job_keeps_the_ordinary_done_message(e2_db, monkeypatch, run_queued_job):
+    """Only SOME sources in the job raced current -- that's real work plus a partial skip, not a pure no-op, so
+    the headline message stays "done" (the per-source detail is still in `result["skipped"]` for anyone who
+    looks, just not promoted to the headline the way an all-skipped job's is)."""
+    from neurosearch import findings
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)     # source 1 is NOT skipped -- it takes the real extract path
+    project, sids = _project_with_sources(2)
+    job = db.create_job("suggest_findings", {"project_id": project["id"], "source_ids": sids})
+    monkeypatch.setattr(findings, "is_current", lambda proj, sid, depth=None: sid == sids[0])
+    run_queued_job(job["id"])
+    row = db.get_job(job["id"])
+    result = row["result"]
+    assert result["skipped"] == 1 and result["sources"] == 2
+    assert row["message"] == "done", row["message"]
