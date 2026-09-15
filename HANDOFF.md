@@ -3565,3 +3565,18 @@ surface an assumption only when it has expired, a measured constant drifted, a p
 assumption, or it materially affects a recommendation. `neurosearch/assumptions.py` exists (see its
 `evidence=` fields) -- the work is a deterministic "which assumptions changed what you should know" read that
 feeds delta/report, same read-only discipline as L-50/L-51.
+
+## L-61 T6 surfacing: code+tests done (2026-09-15, later)
+
+`t6.py` + ledger extension (`measured_on`, `exercised_by`, four night-relevant entries), wired into delta and
+rendered last/collapsed in the Morning Report. Commit `a541e5a`. Full suite 1566 with `-rf`, clean.
+
+Design decision worth recording: the first cut surfaced every unmeasured number whose mechanism fired, which
+meant the two unmeasured concurrency defaults would have appeared EVERY night any source was read -- exactly
+the "data to display" noise P6 forbids. Fixed by kind: only threshold/weight/budget numbers (which change what
+gets merged, stopped or spent) can surface; kind="default" (concurrency, ETAs, lookahead) changes speed, not
+knowledge, and never surfaces unless it is broken. Rendering is capped at 3 lines and sits last.
+
+Stage 8 is now the last stage on my side with code done. Every remaining rung is gated on Kyle (L-06/L-07/
+L-08, L-21, L-30/31/41, L-51, L-60/61 -- all in `docs/KYLE-GATES-2026-09-15.md`), on Codex's frontend split
+(L-40), or explicitly not admitted (Stages 10-13). Nothing unblocked remains that I can honestly start.

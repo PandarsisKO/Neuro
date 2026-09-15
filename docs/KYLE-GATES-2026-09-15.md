@@ -79,3 +79,9 @@ neurosearch nightly run --budget 2 --t5-budget 1
 Next morning the Morning Report has an "Adjudicated N disagreement(s)" line and each verdict is a suggested
 finding in the ordinary review. The gate is: were those verdicts worth their line — did they change what you
 know or would do? Nothing was decided for you; no Claim or tension status moved.
+
+## L-61 — T6 in the report (nothing extra to run)
+
+When a night's output leaned on a number nobody has measured against your data, the last lines of
+`neurosearch nightly report` say so, capped at three. On a quiet night there is no such line. The gate is the
+same as L-60's: was it worth its line — did it change what you'd check?

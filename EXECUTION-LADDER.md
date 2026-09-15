@@ -322,8 +322,18 @@ CLI: `neurosearch nightly run --budget 2 --t5-budget 1`. 8 tests + 1 CLI test; a
 unchanged. Full suite 1557, `repo-check: PASS`. Gate (P6: "appears because it changes what the user should know
 or do"): one real night with `--t5-budget` on Kyle's project, then read the adjudication verdicts in the Morning
 Report / Findings review and judge whether they were worth their line (`docs/KYLE-GATES-2026-09-15.md`).
-### L-61 `[ ]` T6 surfacing only where it changes a decision: expired assumption, constant drifted, plan depends
+### L-61 `[~] claude 2026-09-15 -- code+tests done at a541e5a, gate = Kyle judges the line on a real night` T6 surfacing only where it changes a decision: expired assumption, constant drifted, plan depends
 on unmeasured assumption. No dashboard.
+`neurosearch/t6.py` (read-only): reads which mechanisms the night's envelope record PROVES fired and intersects
+with the ledger's new `exercised_by` tags. Surfaces only: unresolvable constants (code moved -- always, first),
+never-measured thresholds/weights that shaped tonight's output, and measured ones >60 days old that fired
+(a re-check, not a verdict). Operational defaults never surface unless broken. Ledger gained `measured_on` +
+`exercised_by` and the four numbers the night itself leans on (`DEFAULT_SUBSTANCE_FLOOR` -- now a real t4
+constant, honestly unmeasured for recall -- `PROBE_DISCOUNT`, `LOCAL_MINUTES_PER_WINDOW`, `SCHEDULED_LOOKAHEAD`).
+Rendered LAST in the Morning Report, collapsed, only when non-empty; a quiet night says nothing. 9 tests, the
+negatives pinned as hard as the positives. Not built and not pretended: automatic re-measurement. Full suite
+1566 (-rf), `repo-check: PASS`. Gate (P6): on a real night's report, was the line worth reading -- did it change
+what you'd check? Nothing extra to run: it appears at the bottom of `neurosearch nightly report` when earned.
 
 ## Stage 9 — P7 Structured Delta experiment (Claude lane, T4 owner) — needs: L-07
 ### L-70 `[ ]` ~20 varied long-form sources; Arm A findings vs Arm B structured prototype; written measured
