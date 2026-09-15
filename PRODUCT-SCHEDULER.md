@@ -25,10 +25,18 @@ batch, per Kyle's own 12-section product-decision spec. Reuses AD2's learned/neu
 existing WORTH_A_LOOK floor rather than any new classifier, randomness, or persistent state; every other sort
 mode is untouched; displaced items are deferred, never dropped; `base_potential` is preserved for AD4.
 
-Next eligible in the Claude lane: **AD4** (static vs. adaptive measurement) is READY AFTER AD3 but needs its own
-plan+pause first, per Kyle's explicit instruction not to assume the answer in advance. CR7 (real-project gate)
-and FM1's live validation remain Kyle-gated. Parallel prep still open for a second agent: LP5 (codex-shaped,
-READY AFTER LP3), CR3 (Codex-shaped).
+**AD4A landed** (`364c1b9`): Kyle's AD4 plan review found a real methodological gap -- AD1/AD2/AD3 persist no
+record of what any batch showed or omitted, so a retrospective static-ranking counterfactual can't be honestly
+built from current state. AD4 split into AD4A (build the $0 measurement capability now, from existing durable
+state, descriptive only) and AD4B (the actual static-vs-adaptive verdict, deferred to real usage). AD4A's report
+(`discovery_measure.report`) covers candidate decisions with an honest denominator, downstream finding/Claim/
+target yield through valid provenance, review burden, and an evidence-sufficiency guard that refuses a confident
+read on a thin sample.
+
+Next eligible in the Claude lane: nothing is READY with no further Kyle input right now -- AD4B needs real usage
+to accumulate before it says anything, and everything else Claude-lane-ready (CR7, FM1's live validation) is
+already Kyle-gated on his own machine. Parallel prep still open for a second agent: LP5 (codex-shaped, READY
+AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 

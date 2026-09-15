@@ -4236,3 +4236,64 @@ remaining eligible in a later batch, no cross-project leakage, explicit sort mod
 
 Ladder marked `[x] b303562`. Per Kyle's explicit instruction, AD4 is NOT started as part of this — it's a
 measurement/evaluation rung that needs its own plan and pause ("do not assume AD4's answer in advance").
+
+## AD4A — adaptive-discovery outcome measurement, no static-vs-adaptive verdict yet (`364c1b9`)
+
+Kyle's plan review for AD4 caught a real problem in my proposed approach before any code was written: I had
+suggested reconstructing a "static baseline" retrospectively from `base_potential` (the pre-adjustment score
+AD2/AD3 already preserve). Kyle correctly rejected that — a rank difference computed from today's pool is not
+evidence of what an earlier batch actually contained or what the user was actually shown, since AD1/AD2/AD3
+persist no record of batch membership, served rank, or what diversity/exploration deferred past the top N. A user
+cannot be said to have rejected a candidate a batch never surfaced. Manufacturing that counterfactual would have
+been dishonest measurement dressed up as data.
+
+Kyle's resolution: split AD4 into two gates.
+
+- **AD4A (this rung, done)**: build the $0 measurement capability now, from existing durable state only,
+  descriptive-only, no causal claim. `discovery_measure.py` (new, small, deliberately NOT folded into
+  `cost_value.py` — that module's whole contract is cost/count and this report has no dollar dimension at all).
+  Follows `cost_value.py`'s exact discipline: deterministic, reconciling, "zero is a valid result," honest about
+  what can't be computed rather than guessing.
+- **AD4B (open, Kyle-gated)**: the actual static-vs-adaptive verdict, deferred until real usage accumulates and
+  only built if AD4A's real numbers leave the adaptive system's value ambiguous enough to be worth a genuine
+  prospective experiment (controlled interleaving or occasional static control batches, designed around the exact
+  unresolved question at that point — not decided now, and explicitly never a general analytics/event platform).
+
+What AD4A actually measures, all traced through provenance that already exists:
+
+1. **Candidate decisions** — `acquired` / `user_dismissed` / `skipped_low_relevance` as the only genuine
+   preference-bearing states (reuses `candidates.DISPOSITION_STATES` directly, so this report and AD2's rerank
+   can never quietly disagree about what counts as a decision). `skipped_limit` / `skipped_cost` / `duplicate`
+   kept strictly separate as operational, never folded into a capture rate.
+2. **Acquired-source resolution**, split into not-yet-resolved / ingest-incomplete / ready — an acquisition is
+   never silently treated as "evaluated" before its ingest actually finishes.
+3. **Downstream finding and Claim yield**, traced only through `project_notes.source_id` /
+   `project_claims.origin_note_id` provenance that actually runs through a Candidate Index acquisition — never
+   "every finding in the project."
+4. **Evidence-target contribution** via `candidate_links` (same `kind='evidence_target'` semantics SC0b and AD2
+   already use), with raw link-row counts kept separate from distinct-target counts so one target satisfied
+   through two candidates is never reported as two targets helped.
+5. **Project-scoped novel creators** — first acquisition falling inside the measurement window.
+6. **Review burden** — decisions per acquisition, rejection rate, low-relevance rate, unresolved pool size.
+   Deliberately never called "per batch": no durable batch record exists to count.
+7. **A cohort comparison** — Candidate Index acquisitions vs. sources acquired some other way, on downstream
+   yield — explicitly labeled as "does Adaptive Discovery produce useful research," not a static-ranking
+   comparison (the other-path cohort was never ranked by Adaptive Discovery at all).
+8. **An evidence-sufficiency guard** (`no_usage` / `thin_sample` / `usable_sample`, simple documented thresholds,
+   not a statistical-significance claim) that keeps the verdict descriptive-only and explicitly refuses to sound
+   confident on a thin sample — a project with 3 acquisitions and 2 dismissals gets "too little usage yet," never
+   "Adaptive Discovery is performing well."
+
+Surfaces: `neurosearch project discover-report`, `GET /api/projects/{id}/discover/report`. No frontend, no
+`UI_VERSION` bump, no schema, no model/provider calls.
+
+12 new tests (`tests/test_s53_discovery_measure.py`): project isolation, operational skips excluded from
+decisions, honest capture-rate denominator, unresolved/incomplete ingests never counted as yield, findings/Claims
+trace only through valid provenance, target links vs. distinct targets, project-scoped novelty, zero-usage and
+thin-usage reports refusing a confident verdict, the report reconciling its own totals, and the report never
+writing. Full suite 1678/1678, `repo-check: PASS`.
+
+Ladder marked `AD4A [x] 364c1b9`, `AD4B [k]` (Kyle-gated / future evidence — record the distinction as its own
+line, not folded into a single "AD4 done"). AD3's exploration-specific marginal value stays unresolved for the
+same reason AD4B does: it deliberately isn't persisted, and reversing that just to make one metric interesting
+was explicitly ruled out.

@@ -493,8 +493,21 @@ qualifying neutral candidate clearing the existing WORTH_A_LOOK ("worth a look")
 `exploratory:true` slot per batch, deterministic, scoped to `next_batch`'s `rank_by=="fit"` path only -- every
 other sort mode untouched. Displaced top-N items are never dropped, only deferred. `rerank` now also preserves
 `base_potential` (pre-adjustment score) for AD4. Gate: tests.
-### AD4 `[ ]` static vs adaptive measurement — READY; needs its own plan + pause per Kyle's explicit instruction
-(do not assume the answer). Capture rate, yield, targets closed, novel families, review burden.
+### AD4A `[x] 364c1b9` adaptive-discovery outcome measurement — DONE · lane: claude
+Kyle's own AD4 decision split "static vs adaptive measurement" into two gates once the plan surfaced a real
+methodological problem: AD1/AD2/AD3 persist no record of what any batch showed or omitted (no `base_potential`,
+no `exploratory`, no served rank, no batch membership), so a retrospective static-ranking counterfactual cannot
+be honestly reconstructed -- the user never evaluated candidates a batch never surfaced. `discovery_measure.report`
+answers the answerable half instead: how Adaptive Discovery has actually performed, from existing durable state
+only (candidate decisions with an honest denominator, downstream finding/Claim/target yield traced through valid
+provenance, review burden, project-scoped novel creators), with an evidence-sufficiency guard (no_usage /
+thin_sample / usable_sample) that keeps the verdict descriptive and refuses confidence on a thin sample. No
+schema, no persisted batch telemetry, no reversal of AD3's "exploratory is not persisted" decision. Gate: tests.
+### AD4B `[k]` true static vs adaptive comparison — Kyle-gated / future evidence. Only worth building once AD4A's
+real-usage numbers make the adaptive system's value ambiguous enough that the static counterfactual actually
+matters; the smallest prospective design (controlled interleaving, occasional static control batches, or similar)
+gets chosen then, around the exact unresolved question -- not built speculatively now, and never a general
+analytics/event platform.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`
