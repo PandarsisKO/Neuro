@@ -31,6 +31,7 @@ do not silently delete it.
 
 Governing document: `PRODUCT-INTELLIGENCE-MISSION.md` (mission + CTO rulings, 2026-09-14; rulings win on conflict).
 Pre-read order before any rung is rulings §8, CLAUDE.md first.
+The ordered, agent-executable runbook for everything admitted here is `EXECUTION-LADDER.md` (item ids L-xx).
 
 1. **P0 — Autonomous Execution Admission Audit** (Codex lane). An AUDIT, not a build: prove the existing
    machinery (revision pinning, input_hash/is_current, dedupe_key, budgets, rate ceiling, set_status boundary,

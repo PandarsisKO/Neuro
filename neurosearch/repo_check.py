@@ -26,7 +26,7 @@ ROOT_FILES = {
     "FIELD-MAP-RUNG.md", "FOUNDATION-HANDOFF.md", "HANDOFF.md", "HARDENING.md", "PRODUCT-SCHEDULER.md",
     "APPLE-DESIGN-REFERENCES.md",
     "QA-STABILIZATION-MISSION.md", "QA-STABILIZATION-PROMPT.md", "QUALITY-CONTRACT.md", "README.md",
-    "PRODUCT-INTELLIGENCE-MISSION.md", "SCHEDULER.md", "SOURCE-CAPABILITY-RUNG.md", "SPEED-MISSION.md", "TRANSCRIPT-INTELLIGENCE-MISSION.md",
+    "EXECUTION-LADDER.md", "PRODUCT-INTELLIGENCE-MISSION.md", "SCHEDULER.md", "SOURCE-CAPABILITY-RUNG.md", "SPEED-MISSION.md", "TRANSCRIPT-INTELLIGENCE-MISSION.md",
     "VESTIGIAL-INVENTORY.md", "fly.toml", "pyproject.toml", "restart.command", "start", "start.command",
     "run-findings-haiku-test.command", "run-haiku-comparison.command", "RUN THIS - Audit Instance.command",
 }
