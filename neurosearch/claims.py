@@ -516,18 +516,24 @@ def harvest(project_id: str) -> dict[str, Any]:
     """Zero-cost candidate Claims from findings that already exist (approved → proposed candidate; suggested → candidate
     for investigation, origin 'finding_suggested'). Idempotent per note. Never touches the model.
 
-    Serialized per project (_harvest_lock): a concurrent call for the SAME project waits for the in-flight harvest
-    to finish and returns a no-op rather than racing it -- the in-flight call already scans every currently
-    approved/suggested note, so there is nothing left for the waiter to do."""
-    lock = _harvest_lock(project_id)
-    if not lock.acquire(blocking=False):
-        with lock:                       # wait for the in-flight harvest; it already covers this call's notes
-            pass
-        return {"created": 0, "merged": 0, "note": "coalesced with a concurrent harvest already in flight for this project"}
-    try:
+    Serialized per project (_harvest_lock): a concurrent call for the SAME project waits for the in-flight
+    harvest to finish, then ALWAYS runs its own real scan rather than assuming a no-op.
+
+    L-16 (EXECUTION-LADDER.md P0.F, 2026-09-15): this used to coalesce -- a waiter that found the lock held would
+    wait for it to release and then return {"created": 0, "merged": 0} without scanning again, on the assumption
+    that "the in-flight call already scans every currently approved/suggested note, so there is nothing left for
+    the waiter to do." That assumption breaks under real concurrency: the in-flight call's note scan is a
+    snapshot taken when IT acquired the lock; a note this waiter's own suggest_findings job wrote to
+    project_notes AFTER that snapshot but BEFORE the waiter's harvest() call is real, current, and eligible --
+    but the in-flight call never saw it, and the waiter's coalesced no-op never looked either. Found with a real
+    8-jobs/4-threads test: intermittently (roughly 1 in 10 runs), the last note to land was never harvested into
+    a Claim -- silently, since _after_done() swallows every exception from harvest() and there is no other
+    automatic trigger for that project. Fixed by removing the coalesce entirely: every caller does its own real
+    scan once it holds the lock, seeing the DB state as of ITS acquire time. harvest() is $0 and fast (measured
+    652 ms for 605 findings on a real database), so a few callers doing back-to-back scans that mostly find
+    nothing new is a cheap, correct trade against a silent, permanent lost harvest."""
+    with _harvest_lock(project_id):
         return _harvest_locked(project_id)
-    finally:
-        lock.release()
 
 
 def _harvest_locked(project_id: str) -> dict[str, Any]:
