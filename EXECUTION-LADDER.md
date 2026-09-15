@@ -407,7 +407,7 @@ adds only new candidates; a second rescan adds none.
 `candidates.metadata_revision`/`last_verified_at`, `sources.revision`, published_at: cheap comparison first;
 nothing is re-read unchanged. Gate: unchanged reservoir costs $0 and enqueues nothing.
 
-### CR5 `[ ]` one important Claim refreshed end-to-end — READY AFTER CR1, CR2 (SC3 folded into CR1) · lane: claude
+### CR5 `[x] d72537b` one important Claim refreshed end-to-end — DONE · lane: claude
 Due Claim → `where` → bounded research through existing paths (`knowledge.pursue` steps 1–3 free; the captured
 source through the ordinary ingest+findings jobs) → `claims.assess` recomputes strength/freshness → delta reports
 strengthened / weakened / contradicted / unchanged for that Claim → no status change → Morning Report line only if
@@ -442,7 +442,7 @@ Given a delta (changed Claim/tension), produce affected Claim → decision/depen
 indicated, by templating over LP1 (no model call). Feeds `delta.for_envelope` "what decision or plan element
 could be affected". Gate: scenario A text reads correctly from fixtures.
 
-### LP3 `[ ]` proposed plan patch — READY AFTER LP2 · lane: claude
+### LP3 `[x] d72537b` proposed plan patch — DONE · lane: claude
 Write a `plan_updates` row (pending) per affected step: move/insert prerequisite/flag blocked/mark dependency
 unresolved/revisit decision, with reason + claim linkage. Never mutates the accepted plan. Gate: row shape; the
 existing accept/reject route promotes it; nothing else does.

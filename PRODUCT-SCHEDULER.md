@@ -4,14 +4,15 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-Updated 2026-09-15 17:30 (CR2 + LP2 landed, `c215849`). Every previously admitted rung is code-complete; the
+Updated 2026-09-15 18:00 (CR5 + LP3 landed, `d72537b`). Every previously admitted rung is code-complete; the
 open ones are Kyle-gated measurements (`docs/KYLE-GATES-2026-09-15.md`). Active now, in the Claude lane:
 
-**CR5 (one important Claim refreshed end-to-end, the P8 vertical slice — READY AFTER CR1+CR2)** and **LP3
-(proposed plan patch — READY AFTER LP2)** (`EXECUTION-LADDER.md` Stages 10–11). Both are the first end-to-end
-demonstrations of their loops, not just adapters — CR5 is the mission §12 vertical slice Kyle can actually judge
-on a real project; LP3 is the first thing that writes a `plan_updates` row from this machinery. Both Claude lane.
-Per the plan-then-pause handoff (HANDOFF.md), planning happens before any implementation begins.
+**CR6 (nightly integration — READY AFTER CR5, done)** and **LP4 (stable state semantics — PARALLEL PREP after
+LP1, long eligible, not yet picked up)** (`EXECUTION-LADDER.md` Stages 10–11). CR6 wires `research_refresh` into
+`nightly.run()` under its own explicit cap, the way T5 already does; LP4 derives Known/Assumed/Chosen/Uncertain/
+Blocked/Monitored state over `plan_items` + Claim strength/freshness, persisting nothing unless the derivation
+proves insufficient. Both Claude lane. Per the plan-then-pause handoff (HANDOFF.md), planning happens before any
+implementation begins. CR7 (real-project gate) still needs Kyle's night, after CR6.
 
 Parallel prep allowed for a second agent (disjoint files): SC0b, AD0, FM0, CR3 (Codex-shaped).
 

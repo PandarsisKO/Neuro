@@ -3923,3 +3923,36 @@ dashboard); LP4/LP5 (their own checkpoints); anything that mutates a Claim's `st
 row without going through the existing accept route.
 
 READY FOR EXECUTION MODEL
+
+## CR5 + LP3 executed (2026-09-15 18:00, commit `d72537b`)
+
+Fast drift check before executing: HEAD was still `6e5a9c3` (the CR5/LP3 plan-then-pause checkpoint), working
+tree clean apart from the same pre-existing untracked eval artifacts, scheduler NOW still pointed at CR5/LP3.
+Nothing material changed — executed as prepared.
+
+The open design question from the checkpoint (Target vs. synthetic target for Claim-shaped needs) resolved in
+favor of a real Target row: `research_refresh._resolve_target` reuses an existing open Target for the Claim when
+one exists, else creates one (`origin="research_needs"`), so `knowledge.pursue` always has somewhere durable to
+record `last_escalation`. The flagged collision risk (plan_updates' delete-before-insert) is now fixed with an
+additive `origin` column — a real regression test proves an LP3 write and a planner (LLM) write on the same plan
+survive each other.
+
+CR5 stops at the request boundary deliberately: `request_refresh()` enqueues the same `ingest_url` job the rest
+of the app uses and returns immediately; the findings/claims harvest that follows is the existing pipeline,
+completely unchanged, running async on the job queue. `check()` is a separate, idempotent read of what actually
+happened, any time after — "unchanged" is a normal outcome, not a failure. This was a deliberate scope
+boundary, not an oversight: CR5 owns "start a real refresh and report on it honestly," not "own the harvest
+pipeline," which already has its own tests. The end-to-end test proves the boundary (a real `ingest_url` job with
+the right payload gets enqueued); a second test exercises `check()`'s before/after logic directly against
+`claims.add_evidence` + `claims.assess` (the harvest pipeline's own known steps) rather than re-testing the
+harvest pipeline itself.
+
+13 new tests; full suite 1619 passed (was 1606); repo-check PASS. No UI_VERSION bump.
+
+Ladder updated: CR5/LP3 marked `[x] d72537b`. Scheduler NOW moved to CR6 (nightly integration — READY AFTER CR5,
+done) and LP4 (stable state semantics — PARALLEL PREP after LP1, long eligible, picked up now). CR7 (real-project
+gate) still needs Kyle's own night, after CR6 lands.
+
+Per the Model Handoff Rule: both CR6 and LP4 are new, unplanned work — CR6 touches `nightly.run()`, a shared hot
+path several other rungs (T4/T5/T6) already depend on, and LP4 is a new derived-state concept. Both need their
+own PLAN → PAUSE checkpoint before implementation.
