@@ -2717,6 +2717,28 @@ def api_claims_review_queue(project_id: str, limit: int = 25) -> dict[str, Any]:
     return review_queue.build(project_id, limit=max(1, min(limit, 500)))
 
 
+@app.get("/api/projects/{project_id}/research-needs", dependencies=[Depends(require_auth)])
+def api_research_needs(project_id: str, limit: int = 25) -> dict[str, Any]:
+    """CR1 (P8 Continuous Research, mission §12): what could use fresh or better evidence right now. $0, read-only,
+    no provider call -- one adapter over existing signals (freshness, disagreement, open targets, plan impact)."""
+    from . import research_needs
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return {"needs": research_needs.for_project(project_id, limit=max(1, min(limit, 200)))}
+
+
+@app.get("/api/projects/{project_id}/plan/impact", dependencies=[Depends(require_auth)])
+def api_plan_impact(project_id: str, claim_id: str | None = None, tension_id: str | None = None) -> dict[str, Any]:
+    """LP1 (P10 Living Master Plan, mission §12): which plan items a Claim (or the tension on it) touches. $0,
+    read-only. known: False (never a guess) when the plan predates the evidence seam and notes have since moved."""
+    from . import plan_impact
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    if not claim_id and not tension_id:
+        raise HTTPException(400, "claim_id or tension_id required")
+    return plan_impact.affected_items(project_id, claim_id=claim_id, tension_id=tension_id)
+
+
 class ClaimsBulkIn(BaseModel):
     claim_ids: list[str]
     status: str                      # proposed | accepted | rejected

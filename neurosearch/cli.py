@@ -836,3 +836,56 @@ def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", 
                    + (f" · tension: {x['tensions'][0]['kind']} ({x['tensions'][0].get('impact')})" if x["tensions"] else ""))
     if not q["queue"]:
         typer.echo("nothing needs your judgment right now")
+
+
+@project_app.command("needs")
+def project_needs(project: str, limit: int = typer.Option(25, "--limit"),
+                  as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
+    """CR1 (P8 Continuous Research): what could use fresh or better evidence right now, in priority order. $0,
+    reads only, no provider call."""
+    from . import research_needs
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    needs = research_needs.for_project(pid, limit=limit)
+    if as_json:
+        typer.echo(json.dumps(needs, indent=2, default=str))
+        return
+    if not needs:
+        typer.echo("nothing currently needs fresh evidence")
+        return
+    for n in needs:
+        typer.echo(f"- [{n['kind']}] {(n.get('text') or '')[:140]}")
+        typer.echo(f"    {n['reason']}")
+        for r in n.get("where_to_look") or []:
+            typer.echo(f"    -> {r['creator']}: {r['untapped']} untapped ({'; '.join(r['why'][:2])})")
+
+
+@project_app.command("plan-impact")
+def project_plan_impact(project: str, claim: Optional[str] = typer.Option(None, "--claim"),
+                        tension: Optional[str] = typer.Option(None, "--tension"),
+                        as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
+    """LP1 (P10 Living Master Plan): which plan items a Claim (or the tension on it) touches. $0, reads only."""
+    from . import plan_impact
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    if not claim and not tension:
+        typer.echo("pass --claim or --tension", err=True)
+        raise typer.Exit(code=1)
+    r = plan_impact.affected_items(pid, claim_id=claim, tension_id=tension)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    if not r["known"]:
+        typer.echo(f"unknown: {r.get('reason')}")
+        return
+    if not r["items"]:
+        typer.echo("this claim touches nothing in the current plan")
+        return
+    for it in r["items"]:
+        typer.echo(f"- {it['path']} ({it['strength']}): {it.get('label') or ''}")

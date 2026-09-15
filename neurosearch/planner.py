@@ -128,10 +128,15 @@ def _evidence(project_id: str, project: dict[str, Any], strict: bool = False) ->
     ev: list[dict[str, Any]] = []
     emap: dict[str, dict[str, Any]] = {}
 
-    def add(prefix: str, label: str, text: str, link: str | None = None, kind: str = "research", source_id: str | None = None) -> str:
+    def add(prefix: str, label: str, text: str, link: str | None = None, kind: str = "research", source_id: str | None = None,
+            note_id: int | None = None) -> str:
         eid = f"{prefix}{sum(1 for e in ev if e['id'].startswith(prefix)) + 1}"
         ev.append({"id": eid, "text": text})
-        emap[eid] = {"label": label, "link": link, "kind": kind, **({"source_id": source_id} if source_id else {})}
+        # LP0 (mission §12): record the note's real id alongside the display label, so a later reader (decision_impact,
+        # plan_impact) can resolve F<n> -> note_id from the plan's own frozen emap instead of re-deriving it from the
+        # CURRENT note ordering, which breaks the moment a note is added, approved, or removed after the plan is built.
+        emap[eid] = {"label": label, "link": link, "kind": kind, **({"source_id": source_id} if source_id else {}),
+                     **({"note_id": note_id} if note_id is not None else {})}
         return eid
 
     for f in db.list_facts(project_id):
@@ -145,7 +150,8 @@ def _evidence(project_id: str, project: dict[str, Any], strict: bool = False) ->
         # note's own content instead, same as the fact branch above (f['content'][:80]) - always distinguishing,
         # never a placeholder.
         label = (first["title"] + " @ " + first["timestamp"]) if first else n["content"][:80]
-        add("F", label, n["content"][:1200], first["link"] if first else None, source_id=(first or {}).get("source_id") or n.get("source_id"))
+        add("F", label, n["content"][:1200], first["link"] if first else None, source_id=(first or {}).get("source_id") or n.get("source_id"),
+            note_id=n["id"])
     sids = db.project_source_ids(project_id)
     analysis = db.project_analysis(project_id, "summary")         # summaries/substance are project-relative
     srcs = [s for s in db.list_sources(limit=100000) if s["id"] in set(sids)]

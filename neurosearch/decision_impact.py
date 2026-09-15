@@ -38,21 +38,37 @@ def _walk_evidence_ids(node: Any, out: set[str]) -> None:
 
 
 def _plan_cited_note_ids(project_id: str) -> set[int] | None:
-    """Note ids cited (as "F<n>") anywhere in the latest plan's evidence arrays, or None if there's no plan or
-    the note set has changed since the plan was built (can't trust the F<n> -> note_id mapping any more)."""
+    """Note ids cited (as "F<n>") anywhere in the latest plan's evidence arrays, or None if there's no plan and
+    nothing can be resolved at all.
+
+    LP0 (mission §12): planner._evidence() now records each F<n>'s real note_id in the plan's own frozen `_evidence`
+    map at build time (plan["plan"]["_evidence"][fid]["note_id"]) -- that mapping is stable forever, regardless of
+    what happens to the project's notes afterwards. Prefer it. Only for an OLDER plan, built before this seam
+    existed, do we fall back to re-deriving the mapping from the CURRENT note ordering -- and only when the note
+    count still matches what the plan was built against, exactly as before."""
     plan = db.latest_plan(project_id)
     if not plan:
         return None
+    cited: set[str] = set()
+    _walk_evidence_ids(plan.get("plan"), cited)
+    fids = {c for c in cited if c.startswith("F")}
+    if not fids:
+        return set()
+
+    emap = (plan.get("plan") or {}).get("_evidence") or {}
+    from_emap = {emap[f]["note_id"] for f in fids if isinstance(emap.get(f), dict) and emap[f].get("note_id") is not None}
+    missing = {f for f in fids if not (isinstance(emap.get(f), dict) and emap[f].get("note_id") is not None)}
+    if not missing:
+        return from_emap  # every citation resolved from the plan's own frozen record -- no re-derivation needed
+
     current_notes = db.list_project_notes(project_id)
     if plan.get("snapshot", {}).get("notes") != len(current_notes):
-        return None  # notes changed since the plan was built -- the F<n> labels may no longer line up
+        # can't safely re-derive the rest; report what the emap DOES know rather than discarding it
+        return from_emap if from_emap else None
 
     # Reproduce planner._evidence()'s exact F<n> numbering: sequential over reversed(list_project_notes()).
     fid_to_note_id = {f"F{i + 1}": n["id"] for i, n in enumerate(reversed(current_notes))}
-
-    cited: set[str] = set()
-    _walk_evidence_ids(plan.get("plan"), cited)
-    return {fid_to_note_id[c] for c in cited if c in fid_to_note_id}
+    return from_emap | {fid_to_note_id[f] for f in missing if f in fid_to_note_id}
 
 
 def decision_impact(project_id: str, claim_ids: list[str] | None = None) -> dict[str, dict[str, Any]]:

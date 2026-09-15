@@ -54,6 +54,13 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
         item = {**pd, "staleness_tiers": tiers}
         if settings.morning_report_needs_me:
             item["what_needs_the_user"] = _needs_me(pid, list(pd.get("what_needs_the_user") or []))
+        # CR1 (mission §12): a single $0 count, never a dashboard -- "N things may need fresh evidence", nothing
+        # shown when there is nothing to say. Full detail stays behind `neurosearch project needs`.
+        try:
+            from . import research_needs
+            item["research_needs_count"] = len(research_needs.for_project(pid, limit=50))
+        except Exception:  # noqa: BLE001 -- an informational count must never blank out the rest of the report
+            item["research_needs_count"] = None
         projects.append(item)
 
     material_change = bool(d["new_tensions_total"]) or bool((d.get("adjudication") or {}).get("count")) or any(
@@ -141,6 +148,9 @@ def render_text(report: dict[str, Any]) -> str:
                 lines.append(f"Needs you: {item.get('reason', item)}")
         else:
             lines.append("Needs you: nothing")
+
+        if pd.get("research_needs_count"):
+            lines.append(f"Research: {pd['research_needs_count']} thing(s) may need fresh evidence (neurosearch project needs).")
 
         # 4. What Neuro handled (secondary)
         lines.append(f"What Neuro did: read {wn['sources_read']} source(s)"
