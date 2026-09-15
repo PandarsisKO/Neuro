@@ -725,3 +725,75 @@ def t4_execute_cmd(project: str, budget: float = typer.Option(..., "--budget", h
                         min_relevance=min_relevance, dry_run=False, transport="batch" if batch else "interactive",
                         execution_policy=exec_policy)
     typer.echo(json.dumps(result, indent=2))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# L-30 / L-41 CLI surface (EXECUTION-LADDER.md Stages 4 and 6). Without these, nightly.run() and
+# report.render_text() existed but could only be reached by writing Python -- which made the "human step" for
+# those rungs' gates larger than it needed to be, not smaller.
+# ---------------------------------------------------------------------------------------------------------------
+nightly_app = typer.Typer(help="Nightly envelope: one bounded, preflighted autonomous run per day, and its Morning Report.", no_args_is_help=True)
+app.add_typer(nightly_app, name="nightly")
+
+
+@nightly_app.command("status")
+def nightly_status() -> None:
+    """Is the nightly envelope on, has it run today, and what did it do? $0, reads only."""
+    from . import nightly
+    _init()
+    on = settings.t4_nightly_budget > 0
+    typer.echo(f"nightly envelope: {'ON' if on else 'OFF'} (NEUROSEARCH_T4_NIGHTLY_BUDGET_USD={settings.t4_nightly_budget}, "
+               f"NEUROSEARCH_T4_NIGHTLY_HOUR={settings.t4_nightly_hour})")
+    if not on:
+        typer.echo("  set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD to a per-night dollar cap (e.g. 2) to turn it on; the worker's "
+                   "housekeeping loop then runs it once per day after the configured local hour")
+    last = nightly.last_run()
+    if last is None:
+        typer.echo("  today: has not run yet" + (f" (due now: {nightly.due()})" if on else ""))
+        return
+    typer.echo(json.dumps(last, indent=2))
+
+
+@nightly_app.command("run")
+def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", help="Per-night dollar cap for THIS run (overrides NEUROSEARCH_T4_NIGHTLY_BUDGET_USD for this invocation only)"),
+                    force: bool = typer.Option(False, "--force", help="Run even if today's envelope already ran (a second envelope today; never bypasses the budget-off guard)"),
+                    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt")) -> None:
+    """Run tonight's envelope now, in the foreground, and print the record. This ENQUEUES REAL PAID WORK up to the
+    budget (the worker then executes it) -- so it always states the authorized amount and asks first, unless --yes.
+    Preflight (full integrity_check + verified backup, L-10) runs first and refuses on a dirty database."""
+    from . import nightly
+    _init()
+    if budget is not None:
+        settings.t4_nightly_budget = float(budget)
+    if settings.t4_nightly_budget <= 0:
+        typer.echo("nightly envelope is OFF (budget 0). Pass --budget N or set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD.", err=True)
+        raise typer.Exit(code=1)
+    if not force and nightly.last_run() is not None:
+        typer.echo(f"today's envelope already ran ({nightly._today_key()}); pass --force to run a second one")
+        raise typer.Exit(code=0)
+    projects = [p for p in db.list_projects() if p.get("n_sources")]
+    typer.echo(f"authorizing up to ${settings.t4_nightly_budget:.2f} TOTAL across {len(projects)} active project(s) "
+               f"(shared cap, walked down project by project -- not ${settings.t4_nightly_budget:.2f} each)")
+    if not yes and not typer.confirm("Run the nightly envelope now?"):
+        raise typer.Exit(code=0)
+    r = nightly.run(force=force)
+    typer.echo(json.dumps(r, indent=2, default=str))
+    if not r.get("ran"):
+        raise typer.Exit(code=1)
+
+
+@nightly_app.command("report")
+def nightly_report_cmd(date: Optional[str] = typer.Option(None, "--date", help="YYYY-MM-DD of the envelope to report on (default: today)"),
+                       as_json: bool = typer.Option(False, "--json", help="Print the underlying data instead of the readable report")) -> None:
+    """The Morning Report (L-41) for one night's envelope, readable in under a minute. $0, reads only.
+    Honest by construction: never claims 'these are the N things you need to review' (rulings section 7)."""
+    from . import nightly, report
+    _init()
+    envelope_id = f"nightly-{date or nightly._today_key()}"
+    rep = report.for_envelope(envelope_id)
+    if as_json:
+        typer.echo(json.dumps(rep, indent=2, default=str))
+        return
+    typer.echo(report.render_text(rep), nl=False)
+    if not rep.get("found"):
+        raise typer.Exit(code=1)
