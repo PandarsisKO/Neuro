@@ -3328,3 +3328,18 @@ Validated via `~/ns-verify`: full suite 1499 passed, 0 failed; `repo-check: PASS
 summarizing L-10 through L-16 -- gate now satisfied). After that, per Kyle's ownership reassignment (Codex off
 until the weekend reset), Stage 3 (L-20 `not_before` productized, L-21 macOS power-assertion -- the latter needs
 Kyle physically) and Stage 4 (L-30 nightly envelope, L-31 Project Delta v0) become the critical path.
+
+## P0 (Stage 1, L-10..L-17) fully closed (2026-09-15)
+
+All 7 audit rungs done under Claude's temporary reassignment (Codex off until the weekend reset). Closeout doc:
+`docs/P0-AUDIT-2026-09-15.md` — read that first for the full scenario table; this entry is just the pointer.
+Four real production bugs found and fixed along the way (L-10 integrity-check boolean, L-12 stale-input retry
+gap, L-14 un-gated duplicate job racing a budget pause, L-16 lost-harvest race under real concurrency) — none of
+them were things anyone had reported; all were found by actually driving the code through `~/ns-verify`, not by
+reading it. Full suite at closeout: 1499 passed; `repo-check: PASS`.
+
+Per the ownership reassignment and EXECUTION-LADDER.md's own ordering, next up is Stage 3 (L-20: `not_before`
+productized on `create_job`/`enqueue` -- the precise starting point was already documented in an earlier
+HANDOFF.md section this segment, citing exact file/line references; L-21: macOS power-assertion / lid-open-vs-
+closed testing, which needs Kyle physically and stays blocked regardless of stage ownership) and Stage 4 (L-30:
+nightly envelope, L-31: Project Delta v0, needs L-30). Continuing to L-20 now.

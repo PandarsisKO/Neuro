@@ -130,9 +130,11 @@ coalesce -- every caller now does its own real scan once it holds the lock. New 
 (`tests/test_p0_concurrent_completion.py`) reproduced the bug on its first run pre-fix; 30 consecutive green runs
 post-fix (gate asked for 20). Full suite: 1499 passed; `repo-check: PASS`.
 
-### L-17 `[ ]` P0 closeout — needs: L-10…L-16
-`docs/P0-AUDIT-<date>.md` with a scenario table (pass / fixed-at-sha / documented-limitation). Scheduler + HANDOFF
-checkpoint. Gate: every scenario is one of those three; no open-ended rewrite proposed.
+### L-17 `[x] 5a2573d` P0 closeout — needs: L-10…L-16
+`docs/P0-AUDIT-2026-09-15.md`: scenario table for all 7 rungs (L-10..L-16). 4 real defects found and fixed
+(L-10, L-12, L-14, L-16 -- see each rung's own entry above for commit shas), 3 scenarios where the system
+already behaved correctly and the gap was in test coverage rather than behavior (L-11, L-13, L-15), 0 documented
+limitations, 0 open-ended rewrites. **P0 (Stage 1) is now fully closed.**
 
 ---
 
