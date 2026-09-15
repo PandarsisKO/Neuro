@@ -538,6 +538,7 @@ def _best_fit(t: set[str], qs: list[tuple[str, str, set[str]]], qindex: dict[str
 
 
 LINKED_BOOST = 45            # AD2 reuses this exact figure to undo the boost when the link it rewarded has since closed
+WORTH_A_LOOK = 40            # the pool's own "worth a look" boundary -- AD3 reuses it as its exploration floor
 
 
 def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str],
@@ -833,7 +834,7 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             "creator": lambda i: (0 if i["same_creator_as_priority"] else 1, -i["potential"])}.get(rank_by, lambda i: (-i["potential"],))
     items = sorted(items, key=keyf, reverse=(rank_by == "newest"))   # never sort the cached list in place
     counts = {"skipped": sum(1 for i in items if i["kind"] == "skipped"), "candidates": sum(1 for i in items if i["kind"] == "candidate"),
-              "worth_a_look": sum(1 for i in items if i["potential"] >= 40), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
+              "worth_a_look": sum(1 for i in items if i["potential"] >= WORTH_A_LOOK), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
     return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,
             "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}
 
@@ -854,13 +855,67 @@ def next_batch(project_id: str, *, n: int = 5, rank_by: str = "fit", q: str | No
     lookahead = max(n, min(n * BATCH_LOOKAHEAD_MULT, 50))    # AD2: bounded, cheap (`_pool_items` is cached; this
     r = pool(project_id, q=q, rank_by=rank_by, limit=lookahead, kind="candidates")   # only slices/reranks metadata)
     items = r["items"]
-    if rank_by == "fit":                       # AD2 is a FIT adaptive rerank; every other explicit mode keeps its
-        items = rerank(project_id, items, max_per_creator=BATCH_MAX_PER_CREATOR)   # own documented primary ordering
+    if rank_by == "fit":                       # AD2/AD3 are a FIT adaptive path; every other explicit mode keeps
+        items = rerank(project_id, items, max_per_creator=BATCH_MAX_PER_CREATOR)     # its own documented ordering
+        items = apply_exploration(project_id, items, n)
     batch = items[:n]
+    if rank_by == "fit":
+        batch = [dict(i, exploratory=bool(i.get("exploratory"))) for i in batch]     # explicit false, never absent
     return {"items": batch, "remaining": max(0, r["counts"]["candidates"] - len(batch)),
             "explain": "Up to N candidates never yet captured or rejected, best first. Resolve each with capture "
                        "or reject; call again for the next best unresolved ones -- there is no separate queue or "
                        "session, just what has not been decided yet."}
+
+
+# ---------------------------------------------------------------- AD3: exploration quota
+#
+# The purpose is narrow and specific: prevent Adaptive Discovery from becoming increasingly confident inside the
+# preferences it has already learned. It is NOT randomness, not a low-relevance pick, not a second recommendation
+# model, and not "different for the sake of different" -- `rerank`'s diversity cap already solves "don't show five
+# of one creator"; this solves a different problem: "don't let a learned preference signal crowd out a promising
+# candidate from a creator/source pattern this project has barely evaluated." EXPLORE = neutral/insufficient
+# disposition history (`creator_disposition`'s own `adjust == 0`), never a negatively-learned creator, never a
+# dismissed or acquired one (both already excluded from `items` by `_pool_items` itself), and never below the
+# same "worth a look" floor the rest of the pool uses. No randomness, no persistent exploration state, no new
+# schema, no second model call -- one deterministic pick per call, at most, reusing signals AD2 already computes.
+
+EXPLORATION_MIN_BATCH = 2     # below this, "4 exploit + up to 1 explore" doesn't mean anything -- no-op
+
+
+def apply_exploration(project_id: str, items: list[dict[str, Any]], n: int) -> list[dict[str, Any]]:
+    """Tags at most one item among `items[:n]` as `exploratory` -- either one that already naturally qualifies, or
+    the single best eligible candidate found beyond the top-n, swapped in for the current lowest-potential slot.
+    Only runs when the project has SOME learned disposition signal at all (`adjust != 0` for at least one creator
+    in this lookahead); with nothing learned yet, ordinary ranking is already exploratory, so this is a no-op."""
+    if n < EXPLORATION_MIN_BATCH or len(items) <= n:
+        return items
+    disp = creator_disposition(project_id)
+    if not any(d["adjust"] != 0 for d in disp.values()):
+        return items
+    stale = _stale_linked_targets(project_id, [i["id"] for i in items])
+
+    def is_eligible(item: dict[str, Any]) -> bool:
+        d = disp.get((item.get("creator") or "").strip())
+        neutral = d is None or d["adjust"] == 0
+        negative = bool(d and d["adjust"] < 0)
+        return neutral and not negative and item["id"] not in stale and item["potential"] >= WORTH_A_LOOK
+
+    top, rest = items[:n], items[n:]
+    in_top = [i for i in top if is_eligible(i)]
+    why = "Promising fit from a source pattern this project has not evaluated much yet."
+    if in_top:
+        chosen_id = max(in_top, key=lambda i: i["potential"])["id"]
+        return [dict(i, exploratory=True, exploration_why=why) if i["id"] == chosen_id else i for i in top] + rest
+    beyond = [i for i in rest if is_eligible(i)]
+    if not beyond:
+        return items
+    top_creators = {(i.get("creator") or "").strip() for i in top}
+    fresh = [i for i in beyond if (i.get("creator") or "").strip() not in top_creators]
+    best = max(fresh or beyond, key=lambda i: i["potential"])
+    new_top = top[:-1] + [dict(best, exploratory=True, exploration_why=why)]
+    new_top.sort(key=lambda i: (-i["potential"], i["title"]))
+    new_rest = [i for i in rest if i["id"] != best["id"]]
+    return new_top + new_rest
 
 
 # ---------------------------------------------------------------- AD2: deterministic rerank
@@ -957,7 +1012,8 @@ def rerank(project_id: str, items: list[dict[str, Any]], *, max_per_creator: int
     for i in items:
         item = dict(i)
         item["why"] = list(item.get("why") or [])
-        d = disp.get((i.get("creator") or "").strip())
+        item["base_potential"] = item["potential"]      # AD4 prep: the pre-adjustment score, kept alongside the
+        d = disp.get((i.get("creator") or "").strip())   # adaptive one -- no telemetry, just one derived field
         if d and d["adjust"]:
             item["potential"] = max(0, min(100, item["potential"] + d["adjust"]))
             item["why"].append(d["why"])

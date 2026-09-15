@@ -715,3 +715,178 @@ def test_ad1_invariants_hold_under_ad2(monkeypatch):
     after = candidates.next_batch(pid, n=50)
     after_ids = {i["id"] for i in after["items"]}
     assert cap_id not in after_ids and keep_id in after_ids
+
+
+# ------------------------------------------------------------------ AD3: exploration quota
+#
+# EXPLORE = a still-relevant candidate from a creator/source pattern this project has neutral/insufficient
+# disposition history about -- never a negatively-learned creator, never randomness, never merely "a different
+# creator" (that's the diversity cap's job). At most one per batch, deterministic, reusing creator_disposition
+# and the "worth a look" floor AD2/pool() already compute -- no new state, no schema, no model call.
+
+def test_no_exploration_when_nothing_learned_yet(monkeypatch):
+    """All-neutral history: ordinary ranking is already exploratory. AD3 must not force a tag just to fill a
+    quota that has no basis yet."""
+    pid, ids = _fixture(monkeypatch)
+    for i in range(3):
+        candidates.remember([{"external_id": f"noaB{i}", "url": f"https://example.org/noaB{i}",
+                              "title": f"Untested creator item {i} about seller financing", "creator": f"Untested {i}"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    batch = candidates.next_batch(pid, n=5)
+    assert not any(i.get("exploratory") for i in batch["items"])
+    assert all("exploratory" in i for i in batch["items"])         # explicit false, never absent (fit path)
+
+
+def test_exploration_slot_appears_when_a_pattern_and_a_strong_neutral_candidate_exist(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "learned", "Learned Channel", "acquired", 5)          # gives disposition SOME signal
+    # five strong, positively-learned-creator items to fill the top of the batch
+    for i in range(5):
+        cid = candidates.remember([{"external_id": f"expA{i}", "url": f"https://example.org/expA{i}",
+                                    "title": f"SBA seller note standby part {i}", "creator": "Learned Channel"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    # one strong, neutral-history candidate that should be able to enter as the exploration slot
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    neutral = candidates.remember([{"external_id": "expB0", "url": "https://example.org/expB0",
+                                    "title": "A fresh take on seller-note standby terms", "creator": "Unproven Channel"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.link(neutral, pid, "evidence_target", tgt["id"])           # gives it a strong base potential
+    batch = candidates.next_batch(pid, n=5)
+    tagged = [i for i in batch["items"] if i.get("exploratory")]
+    assert len(tagged) == 1
+    assert tagged[0]["id"] == neutral
+    assert tagged[0]["exploration_why"]
+
+
+def test_quality_floor_blocks_a_weak_neutral_candidate(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    # A learned pattern needs to exist somewhere for AD3's gate to even consider an exploration slot, and there
+    # need to be enough strong, distinctly-sourced candidates that a diversity-capped top-5 does not have to fall
+    # back on the weak one just to fill the batch (a single shared creator would trip BATCH_MAX_PER_CREATOR and
+    # force the weak item in regardless of the quality floor -- not what this test is checking).
+    for i in range(5):
+        _mark_many(pid, f"learned2c{i}", f"Learned Channel {i}", "acquired", 3)
+        candidates.remember([{"external_id": f"floorA{i}", "url": f"https://example.org/floorA{i}",
+                              "title": "What are the SBA rules on seller notes and how long should the seller "
+                                       f"stay on {i}", "creator": f"Learned Channel {i}"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    weak = candidates.remember([{"external_id": "floorB0", "url": "https://example.org/floorB0",
+                                 "title": "zzz nothing to do with anything", "creator": "Weak Unproven Channel"}],
+                               platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    weak_row = next(i for i in candidates.pool(pid, kind="candidates")["items"] if i["id"] == weak)
+    assert weak_row["potential"] < candidates.WORTH_A_LOOK, "fixture assumption: the weak item must be below floor"
+    batch = candidates.next_batch(pid, n=5)
+    assert weak not in {i["id"] for i in batch["items"]}
+    assert not any(i.get("exploratory") for i in batch["items"])
+
+
+def test_negatively_learned_creator_cannot_enter_through_exploration(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "poslearn", "Positive Channel", "acquired", 5)
+    _mark_many(pid, "neglearn", "Negative Channel", "user_dismissed", 5)
+    for i in range(5):
+        candidates.remember([{"external_id": f"negA{i}", "url": f"https://example.org/negA{i}",
+                              "title": f"SBA seller note standby part {i}", "creator": "Positive Channel"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    neg_item = candidates.remember([{"external_id": "negB0", "url": "https://example.org/negB0",
+                                     "title": "Another seller-note standby take", "creator": "Negative Channel"}],
+                                   platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.link(neg_item, pid, "evidence_target", tgt["id"])          # would otherwise be a strong candidate
+    batch = candidates.next_batch(pid, n=5)
+    tagged = [i for i in batch["items"] if i.get("exploratory")]
+    assert all(i["id"] != neg_item for i in tagged)
+
+
+def test_dismissed_candidate_never_returns_via_exploration(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "distest", "Some Channel", "acquired", 5)
+    dismissed_id = candidates.remember([{"external_id": "dismA", "url": "https://example.org/dismA",
+                                         "title": "Will be dismissed, about seller financing", "creator": "Gone Channel"}],
+                                       platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.dismiss(pid, dismissed_id, "not relevant")
+    for i in range(5):
+        candidates.remember([{"external_id": f"distestA{i}", "url": f"https://example.org/distestA{i}",
+                              "title": f"seller financing item {i}", "creator": "Some Channel"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    batch = candidates.next_batch(pid, n=10)
+    assert dismissed_id not in {i["id"] for i in batch["items"]}
+
+
+def test_at_most_one_exploration_slot_in_a_five_item_batch(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "maxone", "Learned Channel 3", "acquired", 5)
+    for i in range(3):
+        candidates.remember([{"external_id": f"maxoneA{i}", "url": f"https://example.org/maxoneA{i}",
+                              "title": f"SBA seller note standby part {i}", "creator": "Learned Channel 3"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    for i in range(3):
+        nid = candidates.remember([{"external_id": f"maxoneB{i}", "url": f"https://example.org/maxoneB{i}",
+                                    "title": f"Fresh take on seller-note standby terms {i}", "creator": f"Unproven {i}"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+        candidates.link(nid, pid, "evidence_target", tgt["id"])
+    batch = candidates.next_batch(pid, n=5)
+    assert sum(1 for i in batch["items"] if i.get("exploratory")) <= 1
+
+
+def test_displaced_exploit_candidate_remains_eligible_later(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "displace", "Learned Channel 4", "acquired", 5)
+    exploit_ids = [candidates.remember([{"external_id": f"dispA{i}", "url": f"https://example.org/dispA{i}",
+                                         "title": f"SBA seller note standby part {i}", "creator": "Learned Channel 4"}],
+                                       platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+                  for i in range(5)]
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    neutral = candidates.remember([{"external_id": "dispB0", "url": "https://example.org/dispB0",
+                                    "title": "A fresh take on seller-note standby terms", "creator": "Unproven Channel 2"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.link(neutral, pid, "evidence_target", tgt["id"])
+    first = candidates.next_batch(pid, n=5)
+    first_ids = {i["id"] for i in first["items"]}
+    displaced = [cid for cid in exploit_ids if cid not in first_ids]
+    assert displaced, "one exploit item should have been displaced to make room"
+    for cid in first_ids:
+        candidates.dismiss(pid, cid, "resolved") if cid != neutral else candidates.capture(cid, pid)
+    later = candidates.next_batch(pid, n=5)
+    assert set(displaced) & {i["id"] for i in later["items"]}
+
+
+def test_exploration_does_not_leak_across_projects(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    other = db.create_project("AD3 other project", "brief")
+    oid = other["id"] if isinstance(other, dict) else other
+    _mark_many(pid, "leakad3", "Leak Channel", "user_dismissed", 5)
+    d_other = candidates.creator_disposition(oid)
+    assert "Leak Channel" not in d_other
+    batch_other = candidates.next_batch(oid, n=5)
+    assert not any(i.get("exploratory") for i in batch_other["items"])
+
+
+def test_explicit_sort_modes_never_get_an_exploration_slot(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "sortad3", "Learned Channel 5", "acquired", 5)
+    for i in range(5):
+        candidates.remember([{"external_id": f"sortA{i}", "url": f"https://example.org/sortA{i}",
+                              "title": f"seller financing item {i}", "creator": "Learned Channel 5"}],
+                            platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    for mode in ("newest", "relevance", "creator"):
+        batch = candidates.next_batch(pid, n=5, rank_by=mode)
+        assert not any(i.get("exploratory") for i in batch["items"])
+        assert all("exploratory" not in i for i in batch["items"])
+
+
+def test_base_potential_is_preserved_alongside_the_adjusted_score(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "basepot", "Some Learned Channel", "acquired", 5)
+    new = candidates.remember([{"external_id": "basepot-new", "url": "https://example.org/basepot-new",
+                                "title": "A brand new item about seller financing", "creator": "Some Learned Channel"}],
+                              platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    plain = next(i for i in candidates.pool(pid, kind="candidates")["items"] if i["id"] == new)
+    reranked = next(i for i in candidates.rerank(pid, candidates.pool(pid, kind="candidates")["items"]) if i["id"] == new)
+    assert reranked["base_potential"] == plain["potential"]
+    assert reranked["potential"] != reranked["base_potential"]
