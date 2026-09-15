@@ -95,3 +95,22 @@ def test_doctor_names_every_task_a_global_override_is_overriding(monkeypatch):
     rep2 = release.doctor(progress=lambda *a: None, fake_smoke=False)
     line2 = next(c for c in rep2["checks"] if "local model follows each contract" in c["check"])
     assert line2["result"] == "PASS" and "findings.extract" in str(line2["detail"])
+
+
+def test_pin_api_transport_forces_findings_extract_off_local(monkeypatch):
+    """L-02 (EXECUTION-LADDER.md): providers.route() ignores settings.fake_ai entirely -- it decides local-vs-api
+    purely from ai_profile / policy / claude_code.health(). On a machine whose .env sets
+    NEUROSEARCH_AI_PROFILE=local (Kyle's), a Tier-1 eval that only sets fake_ai=True still routed local_capable
+    tasks to the real `claude` CLI. `evals.pin_api_transport()` is the fix `cli.eval_cmd` now applies for every
+    non---live run: it forces the policy to api_only so route() returns "api" regardless of ai_profile, and
+    `unpin_api_transport` restores the developer's own profile afterward."""
+    from neurosearch import evals
+    monkeypatch.setattr(settings, "ai_profile", "local")
+    assert providers.route("findings.extract")[0] == "local", "sanity: this task would route local unpinned"
+    was, mod = evals.pin_api_transport()
+    try:
+        assert providers.route("findings.extract") == ("api", "policy:api_only")
+    finally:
+        evals.unpin_api_transport(was, mod)
+    assert settings.ai_profile == "local", "unpin must restore the developer's own profile"
+    assert providers.route("findings.extract")[0] == "local", "and routing must go back to how it was"

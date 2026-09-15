@@ -32,6 +32,14 @@ os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 import tempfile
 os.environ["NEUROSEARCH_DATA_DIR"] = tempfile.mkdtemp(prefix="ns_pytest_")
 
+# L-03 (EXECUTION-LADDER.md): a developer .env may set NEUROSEARCH_TASK_MODEL_* / NEUROSEARCH_TASK_* overrides
+# for their own local worker. Those must never leak into routing/model-selection tests -- a test asserting the
+# contract's default model would otherwise pass or fail depending on whoever's .env happens to be on disk.
+# Strip every NEUROSEARCH_TASK_* var at collection time, once, here (the one place all 78+ test modules pass
+# through before any of them import neurosearch.contracts).
+for _k in [k for k in os.environ if k.startswith("NEUROSEARCH_TASK_")]:
+    del os.environ[_k]
+
 
 @pytest.fixture(scope="session")
 def client():

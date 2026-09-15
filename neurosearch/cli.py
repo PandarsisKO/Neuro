@@ -228,132 +228,144 @@ def eval_cmd(live: bool = typer.Option(False, help="Tier 2: use the real models 
     tmp = Path(tempfile.mkdtemp(prefix="ns_eval_"))
     settings.data_dir = tmp                      # never touch the real database
     settings.fake_ai = not live
-    if live and retrieval and rerank:
-        if not (settings.openai_api_key and settings.anthropic_api_key):
-            raise typer.BadParameter("--retrieval --rerank --live needs OPENAI_API_KEY (embeddings) and ANTHROPIC_API_KEY (the Haiku reranker)")
-    elif live and retrieval:
-        if not settings.openai_api_key:
-            raise typer.BadParameter("--retrieval --live needs OPENAI_API_KEY (embeddings only; it makes no Anthropic calls)")
-    elif live and not settings.anthropic_api_key:
-        raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
-    db.init_db()
-    if retrieval and rerank:
-        from . import retrieval_eval as RE
-        rep = RE.run_rerank_compare(progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(rep["text"])
-        d = Path("evals") / "retrieval"
-        d.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        art = d / f"rerank-compare-{stamp}-{rep['tier']}.json"
-        art.write_text(json.dumps({k: v for k, v in rep.items() if k not in ("text", "base_report", "cand_report")}, indent=1, default=str))
-        (d / f"rerank-compare-{stamp}-{rep['tier']}.txt").write_text(rep["text"])
-        typer.echo(f"artifact: {art}")
-        if out:
-            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0 if rep["verdict"] == "ADOPT" else 1)
-    if retrieval:
-        from . import retrieval_eval as RE
-        rep = RE.run(progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(rep["text"])
-        if out:
-            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
-        if baseline:
-            from . import __version__
-            d = Path("evals") / "retrieval"
-            d.mkdir(parents=True, exist_ok=True)
-            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip() or "nogit"
-            bp = d / f"baseline-retrieval-{__version__}-{rep['tier']}.json"
-            if bp.exists() and not force:
-                raise typer.BadParameter(f"{bp} exists (use --force)")
-            bp.write_text(json.dumps({**{k: v for k, v in rep.items() if k != "text"}, "app_version": __version__, "git_sha": sha}, indent=1, default=str))
-            typer.echo(f"baseline frozen: {bp}")
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0)
-    if prefilter:
-        from . import prefilter_eval as PE
-        rep = PE.run(progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(rep["text"])
-        if out:
-            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
-        if keep:
-            typer.echo(f"database kept at {tmp}")
-        else:
-            shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0 if rep["pass"] else 1)
-    if cache_layout:
-        from . import cache_layout as CL
-        if live:
-            raise typer.BadParameter("--cache-layout is a fake-tier measurement (the provider's cache is simulated exactly); there is no live mode")
-        rep = CL.run(progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(rep["text"])
-        if out:
-            out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0)
-    if migration_compare:
-        from . import migration
-        cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m),
-                                              baseline_model=baseline_model or migration.BASELINE_MODEL,
-                                              candidate_model=candidate_model or migration.CANDIDATE_MODEL)
-        typer.echo("")
-        typer.echo(cmp["text"])
-        if out:
-            out.write_text(json.dumps({k: v for k, v in cmp.items() if k != "text"}, indent=1, default=str))
-        if keep:
-            typer.echo(f"database kept at {tmp}")
-        else:
-            shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0 if all(v != "FAIL" for v in cmp["summary"].values()) else 1)
-    if ranking_compare or findings_compare:
-        fn = evals.run_findings_compare if findings_compare else evals.run_ranking_compare
-        cmp = fn(live=live, baseline_model=baseline_model or evals.BASELINE_MODEL, candidate_model=candidate_model or evals.CANDIDATE_MODEL,
-                 progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(cmp["text"])
-        if out:
-            out.write_text(json.dumps({k: v for k, v in cmp.items() if k != "text"}, indent=1))
-        if keep:
-            typer.echo(f"database kept at {tmp}")
-        else:
-            shutil.rmtree(tmp, ignore_errors=True)
-        raise typer.Exit(code=0 if cmp["verdict"]["verdict"] != "FAIL" else 1)
-    if ranking:
-        rep = evals.run_ranking(live=live, progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(evals.format_ranking_report(rep))
-    else:
-        rep = evals.run(live=live, progress=lambda m: typer.echo("  · " + m))
-        typer.echo("")
-        typer.echo(evals.format_report(rep))
-    if compare:
-        base = json.loads(compare.read_text())
-        if (base.get("eval") == "ranking") != ranking:
-            typer.echo(f"\nREFUSING to compare: {compare} is a {'ranking' if base.get('eval') == 'ranking' else 'pipeline'} baseline and this is a {'ranking' if ranking else 'pipeline'} run")
-            raise typer.Exit(code=2)
-        typer.echo("\nVS BASELINE " + str(compare))
-        for line in (evals.compare_ranking if ranking else evals.compare)(rep, base) or ["  no differences"]:
-            typer.echo("  " + line)
-    if baseline:
-        d = Path("evals"); d.mkdir(exist_ok=True)
-        f = d / f"baseline-{'rank-' if ranking else ''}{rep['app_version']}-{rep['git_sha']}-{rep['model'].replace('/', '_').replace('claude-', '')}.json"
-        if f.exists() and not force:
-            typer.echo(f"\nREFUSING to overwrite the existing baseline {f} — a baseline is a historical measurement; pass --force if you really mean it")
-            raise typer.Exit(code=2)
-        f.write_text(json.dumps(rep, indent=1))
-        typer.echo(f"\nbaseline written → {f}")
-    if out:
-        out.write_text(json.dumps(rep, indent=1))
-    if keep:
-        typer.echo(f"database kept at {tmp}")
-    else:
-        shutil.rmtree(tmp, ignore_errors=True)
-    raise typer.Exit(code=0 if rep["pass"] else 1)
+    # L-02 (EXECUTION-LADDER.md): providers.route() decides local-vs-api purely from settings.ai_profile /
+    # current_policy() / claude_code.health() -- it never looks at settings.fake_ai. On a machine whose .env
+    # sets NEUROSEARCH_AI_PROFILE=local (Kyle's), a Tier-1 eval with fake_ai=True still routes local_capable
+    # tasks (e.g. findings.extract under --prefilter) to the REAL claude CLI, so it is not actually free or
+    # deterministic. Pin the transport to api_only whenever we're not --live, so the fake anthropic_client
+    # serves every call regardless of the developer's local profile; always restore on the way out.
+    _pin = evals.pin_api_transport() if not live else None
+    try:
+            if live and retrieval and rerank:
+                if not (settings.openai_api_key and settings.anthropic_api_key):
+                    raise typer.BadParameter("--retrieval --rerank --live needs OPENAI_API_KEY (embeddings) and ANTHROPIC_API_KEY (the Haiku reranker)")
+            elif live and retrieval:
+                if not settings.openai_api_key:
+                    raise typer.BadParameter("--retrieval --live needs OPENAI_API_KEY (embeddings only; it makes no Anthropic calls)")
+            elif live and not settings.anthropic_api_key:
+                raise typer.BadParameter("--live needs ANTHROPIC_API_KEY (and OPENAI_API_KEY for embeddings)")
+            db.init_db()
+            if retrieval and rerank:
+                from . import retrieval_eval as RE
+                rep = RE.run_rerank_compare(progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(rep["text"])
+                d = Path("evals") / "retrieval"
+                d.mkdir(parents=True, exist_ok=True)
+                stamp = time.strftime("%Y%m%d-%H%M%S")
+                art = d / f"rerank-compare-{stamp}-{rep['tier']}.json"
+                art.write_text(json.dumps({k: v for k, v in rep.items() if k not in ("text", "base_report", "cand_report")}, indent=1, default=str))
+                (d / f"rerank-compare-{stamp}-{rep['tier']}.txt").write_text(rep["text"])
+                typer.echo(f"artifact: {art}")
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0 if rep["verdict"] == "ADOPT" else 1)
+            if retrieval:
+                from . import retrieval_eval as RE
+                rep = RE.run(progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(rep["text"])
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+                if baseline:
+                    from . import __version__
+                    d = Path("evals") / "retrieval"
+                    d.mkdir(parents=True, exist_ok=True)
+                    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip() or "nogit"
+                    bp = d / f"baseline-retrieval-{__version__}-{rep['tier']}.json"
+                    if bp.exists() and not force:
+                        raise typer.BadParameter(f"{bp} exists (use --force)")
+                    bp.write_text(json.dumps({**{k: v for k, v in rep.items() if k != "text"}, "app_version": __version__, "git_sha": sha}, indent=1, default=str))
+                    typer.echo(f"baseline frozen: {bp}")
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0)
+            if prefilter:
+                from . import prefilter_eval as PE
+                rep = PE.run(progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(rep["text"])
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+                if keep:
+                    typer.echo(f"database kept at {tmp}")
+                else:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0 if rep["pass"] else 1)
+            if cache_layout:
+                from . import cache_layout as CL
+                if live:
+                    raise typer.BadParameter("--cache-layout is a fake-tier measurement (the provider's cache is simulated exactly); there is no live mode")
+                rep = CL.run(progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(rep["text"])
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in rep.items() if k != "text"}, indent=1, default=str))
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0)
+            if migration_compare:
+                from . import migration
+                cmp = migration.run_migration_compare(live=live, progress=lambda m: typer.echo("  · " + m),
+                                                      baseline_model=baseline_model or migration.BASELINE_MODEL,
+                                                      candidate_model=candidate_model or migration.CANDIDATE_MODEL)
+                typer.echo("")
+                typer.echo(cmp["text"])
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in cmp.items() if k != "text"}, indent=1, default=str))
+                if keep:
+                    typer.echo(f"database kept at {tmp}")
+                else:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0 if all(v != "FAIL" for v in cmp["summary"].values()) else 1)
+            if ranking_compare or findings_compare:
+                fn = evals.run_findings_compare if findings_compare else evals.run_ranking_compare
+                cmp = fn(live=live, baseline_model=baseline_model or evals.BASELINE_MODEL, candidate_model=candidate_model or evals.CANDIDATE_MODEL,
+                         progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(cmp["text"])
+                if out:
+                    out.write_text(json.dumps({k: v for k, v in cmp.items() if k != "text"}, indent=1))
+                if keep:
+                    typer.echo(f"database kept at {tmp}")
+                else:
+                    shutil.rmtree(tmp, ignore_errors=True)
+                raise typer.Exit(code=0 if cmp["verdict"]["verdict"] != "FAIL" else 1)
+            if ranking:
+                rep = evals.run_ranking(live=live, progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(evals.format_ranking_report(rep))
+            else:
+                rep = evals.run(live=live, progress=lambda m: typer.echo("  · " + m))
+                typer.echo("")
+                typer.echo(evals.format_report(rep))
+            if compare:
+                base = json.loads(compare.read_text())
+                if (base.get("eval") == "ranking") != ranking:
+                    typer.echo(f"\nREFUSING to compare: {compare} is a {'ranking' if base.get('eval') == 'ranking' else 'pipeline'} baseline and this is a {'ranking' if ranking else 'pipeline'} run")
+                    raise typer.Exit(code=2)
+                typer.echo("\nVS BASELINE " + str(compare))
+                for line in (evals.compare_ranking if ranking else evals.compare)(rep, base) or ["  no differences"]:
+                    typer.echo("  " + line)
+            if baseline:
+                d = Path("evals"); d.mkdir(exist_ok=True)
+                f = d / f"baseline-{'rank-' if ranking else ''}{rep['app_version']}-{rep['git_sha']}-{rep['model'].replace('/', '_').replace('claude-', '')}.json"
+                if f.exists() and not force:
+                    typer.echo(f"\nREFUSING to overwrite the existing baseline {f} — a baseline is a historical measurement; pass --force if you really mean it")
+                    raise typer.Exit(code=2)
+                f.write_text(json.dumps(rep, indent=1))
+                typer.echo(f"\nbaseline written → {f}")
+            if out:
+                out.write_text(json.dumps(rep, indent=1))
+            if keep:
+                typer.echo(f"database kept at {tmp}")
+            else:
+                shutil.rmtree(tmp, ignore_errors=True)
+            raise typer.Exit(code=0 if rep["pass"] else 1)
 
+
+    finally:
+        if _pin is not None:
+            evals.unpin_api_transport(*_pin)
 
 @app.command()
 def closeout(live: bool = typer.Option(False, help="After the free deterministic phase, run the ONE paid Mission F closeout (findings, ranking, planner.update, discover.quick, Planner V1 vs V3)"),
