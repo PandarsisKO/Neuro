@@ -29,14 +29,24 @@ do not silently delete it.
 
 ## NEXT — admitted priorities (maximum three)
 
-1. Continue D2 (`ladder.md` F1–P1) one bounded design surface at a time, using
-   Claude's ownership boundaries and append-only handoff rules. The completed
-   T1 cohort is recorded in `docs/T1-ADMISSION-2026-09-12.md` and
-   `evals/t1/cohort-20260913-105835.json`.
-2. Continue the deliberately deferred, non-blocking R8 retention observation; revisit after 2026-10-11 17:28 PT and admit no retention cutoff before then.
-3. Preserve R9(c)'s numeric revisit trigger and keep `bge-m3` reserved for a
-   later full-space migration gate. See `docs/R9-ADMISSION-2026-09-11.md` and
-   `docs/PRE-T1-GATE-AUDIT-2026-09-12.md`.
+Governing document: `PRODUCT-INTELLIGENCE-MISSION.md` (mission + CTO rulings, 2026-09-14; rulings win on conflict).
+Pre-read order before any rung is rulings §8, CLAUDE.md first.
+
+1. **P0 — Autonomous Execution Admission Audit** (Codex lane). An AUDIT, not a build: prove the existing
+   machinery (revision pinning, input_hash/is_current, dedupe_key, budgets, rate ceiling, set_status boundary,
+   tensions, recovery, full integrity_check + verified backup) passes scenarios A–G under unattended execution;
+   fix only measured gaps. Integration boundary `t4.execute(...)`. Closes on the scenarios passing.
+2. **P1A — Scheduled Execution Backend / CLI** (Codex lane, after P0). `not_before` productized: durable
+   requested time, exact-once, dedupe, cancel, restart recovery, budget, preflight, missed-window policy
+   (rulings §4), honest host-availability state. First candidate: the stale-source rebuild.
+   P1B (the "Tonight" UI, Claude lane) waits for the frontend split to clear.
+3. **P5 — remaining T4 evidence loop** (Claude lane, parallel, non-colliding): P5.2 E6 eval isolation +
+   measurement; P5.3 kept-rate quality sample (Haiku default is SHIPPED, PROVISIONAL pending this);
+   P5.1 brief-text relevance backtest.
+
+Carried forward, not displacing the three above: the deliberately deferred R8 retention observation (revisit after
+2026-10-11 17:28 PT); R9(c)'s numeric revisit trigger with `bge-m3` reserved (docs/R9-ADMISSION-2026-09-11.md);
+D2 (`ladder.md` F1–P1) resumes as the Claude design lane once P1B/P3 need those surfaces.
 
 The governing downstream sequence is R4 → R4 abuse gate → R5 → concurrency gate → R6 → R7 → formal Foundation
 closeout → Transcript Intelligence. R6 and R7 share Foundation Phase 9 but require separate implementation and evidence.
@@ -528,3 +538,14 @@ recall gaps are now pinned by explicit regression tests. No scheduler or product
 The current full suite is **1,439 passed, 1 warning**, with `repo-check` PASS. The stale F0 registration and
 Claude's root-level T4 bridge scratch entries were cleaned up safely: the former was pruned after branch/worktree
 verification, and the latter were moved intact to `/Users/kyleowen/neuro-t4-bridge/`. No scheduler behavior changed.
+
+## Product Intelligence Mission admitted — 2026-09-14 evening
+
+`PRODUCT-INTELLIGENCE-MISSION.md` adopted with Kyle's CTO rulings (P0 is an audit rung; P1 splits into P1A backend
+/ P1B UI; host sleep is a hard product constraint with a missed-window policy; E5 is SHIPPED-PROVISIONAL pending
+P5.3; Decision Impact v1 = disagreement + plan impact only; Morning Report v1 must not fake a ranked "what needs
+me"; CLAUDE.md heads the pre-read; Claude keeps T4 experiments, Codex owns scheduling/preflight/E7 orchestration
+around `t4.execute`). NEXT above rewritten to P0 → P1A → (P5 in parallel). The NOW item (Codex's frontend split)
+is unchanged and P1B waits behind it. Today's earlier entries under "T4 shipped / T5 real call ready" are
+superseded on two facts: T4 E3–E5 ran for real (docs/T4-ADMISSION-2026-09-14.md) and T5's real adjudication did
+run once via the bridge (HANDOFF.md).

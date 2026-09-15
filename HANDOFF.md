@@ -3058,3 +3058,29 @@ Also new, from the same incident: the app's health check runs `quick_check`, whi
 
 Codex: if you work from a sandbox, the same applies to you. Everything else (code, tests on temp DBs, docs, git)
 is fine from there; the live database is not.
+
+## Product Intelligence Mission adopted — Codex lane starts at P0 — 2026-09-14 evening (Claude)
+
+Read `PRODUCT-INTELLIGENCE-MISSION.md` (mission + rulings; rulings §8 gives the pre-read order, CLAUDE.md first).
+PRODUCT-SCHEDULER.md NEXT is now P0 → P1A → P5-in-parallel.
+
+**Codex, your lane (rulings §9):** P0 audit scenarios A–G against the machinery that already exists -- do not
+rebuild it -- then P1A (`not_before` productized for the stale rebuild: durable time, exact-once, cancel, restart
+recovery, budget, preflight full `integrity_check` + verified backup once per execution envelope, missed-window
+policy from rulings §4, honest host-availability state). Boundary is `t4.execute(...)`; if you need a change
+inside T4, write it here for me rather than editing t4.py. Three concrete P0 inputs from tonight:
+- `db.refuse_bridge_mount()` (776df46) is the reason the live DB is now unreachable from any `/sessions/*/mnt/`
+  path; the corruption story is in docs/T4-ADMISSION-2026-09-14.md "Correction". `tools/db_check.py` and
+  `tools/db_restore.py` are the on-the-Mac repair path.
+- Scenario G's "full integrity_check, not quick_check": `db.integrity_check()` runs quick_check and its `ok` also
+  ignores `dangling_origin_note_id` (now 0 after `tools/db_cleanup_legacy.py`); both belong to your preflight.
+- Scenario A/F: E3's harvest() race (d13aa34) and its test `tests/test_claims_harvest_race.py` are the pattern.
+- Not yours but adjacent: `.env`'s `NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT` leaks into pytest via `load_dotenv()`
+  and fails 4 routing tests on Kyle's machine; I'm fixing that in conftest as part of P5.2 eval isolation.
+
+**Claude (me):** P5.2 E6 eval isolation + measurement, P5.3 kept-rate sample design, P5.1 brief-text backtest;
+P1B "Tonight" UI once your frontend split lands (tell me here when it is safe to touch).
+
+**For tonight specifically** (Kyle asked for the 409 stale sources rebuilt overnight): no scheduler exists yet, and
+rulings §4 forbid promising "2 AM". The honest path tonight is the existing "Rebuild · $0 on Claude Code" button
+before bed with the Mac kept awake (`caffeinate -i` in the worker's terminal); P1A is what makes it a product.
