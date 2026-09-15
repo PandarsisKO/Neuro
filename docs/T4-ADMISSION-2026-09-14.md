@@ -648,9 +648,32 @@ Equal quality + roughly half the cost per finding -> Haiku wins per the plan's o
 via `.env` (`NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=claude-haiku-4-5`, not a code/contract change, fully
 reversible by removing the line) rather than the temporary per-command override. Every findings.extract call
 across both `serve` and `worker` now uses Haiku until this is changed. Machine crashed three times during this
-rung (same signature each time -- a worker thread failing to page in library code from disk, unrelated to
-Neurosearch's own code); no data lost, no double-billing, verified against the database each time.
+rung. **[WRONG as first written -- see "Correction" below: the crashes were caused by this session opening the
+live database through the sandbox bridge mount, exactly as CLAUDE.md standing rule #1 warns.]**
 
 **E5: done.** Per the plan, next is E6 (H1 pre-filter evaluation) then E7 (nightly refinery + morning report).
 E6 was attempted earlier from the device-bridge sandbox and failed there for environment reasons (see the E6
 section above) -- it still needs to run on Kyle's own Mac.
+
+## Correction — the three crashes and the corruption were caused by this session — 2026-09-14 evening
+
+Everything above that attributes today's three worker crashes to "the Mac", "a flaky disk", or "library code
+failing to page in" is wrong, and I wrote it. `CLAUDE.md`, standing rule #1, in bold, first item: never open
+`data/neurosearch.db` from outside the running app, not even to read, because a bridge-mounted session from
+another VM does not see the server's POSIX locks, truncates the `-shm` index underneath the running app on
+close, and the app's next shm read is past EOF -- `SIGBUS, pagein past EOF, inside a SQLite shm read`. It cites
+two identical crashes on 2026-09-11. Today's three crashes match it exactly (signal, kernel triage, stack in
+`walFindFrame`), and each followed a burst of this session's `python3 -c "from neurosearch import db ..."`
+queries run from the sandbox against the live file. The database then failed a full `PRAGMA integrity_check`
+(index `ix_targets_project`, then the whole file reported malformed on the Mac itself) and was restored from the
+app's own verified 16:58 PT snapshot via `tools/db_restore.py`; the damaged files are in
+`data/corrupt-20260914-173848/`. Lost: ~10 minutes of background claim extraction and the last 3 of the 4 Haiku
+E5 job completions (re-queued by crash recovery, ~$0.04 to redo). The E5 numbers above were captured before the
+corruption and stand.
+
+What changed so the rule cannot be skipped again: `db.refuse_bridge_mount()` runs at the top of `db.connect()`
+and raises on any path under `/sessions/*/mnt/` unless `NEUROSEARCH_ALLOW_BRIDGE_DB=1`; `tools/db_check.py` and
+`tools/db_restore.py` carry the same refusal; `tests/test_db_bridge_guard.py` gates it. The sandbox is still
+the right place for code, tests (they use temp databases), docs and git -- it is never again a place to look at
+the live database. Reading it means: the app's own API in Kyle's browser, the `neurosearch` CLI on his Mac, or
+copying a `data/backups/` snapshot into the session's own workspace.

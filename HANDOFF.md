@@ -3029,9 +3029,10 @@ Full detail lives in `docs/T4-ADMISSION-2026-09-14.md`; the short version for an
   nothing. (2) `neurosearch eval --prefilter` (E6) and any Tier-1 eval touching a local-capable task is not
   actually deterministic on this machine: `route()` ignores `settings.fake_ai` and goes to the real `claude`
   CLI whenever `ai_profile=local`. Deterministic only in CI where `ai_profile` defaults to cloud.
-- Kyle's Mac crashed the worker three times today with an identical signature (SIGBUS in `walFindFrame`, a
-  worker thread failing to page library code from disk). Not our bug; no data lost; crash-recovery re-queued
-  correctly each time. If it recurs, suspect the machine, not the app.
+- Kyle's Mac crashed the worker three times today with an identical signature (SIGBUS in `walFindFrame`).
+  **CORRECTION, same evening: this was NOT the machine. It was this session opening the live database through
+  the sandbox bridge mount -- CLAUDE.md standing rule #1, verbatim -- and it went on to corrupt the file.** See
+  the next section.
 - Still hanging: E6 (must run on Kyle's Mac), E7, the 798 stale sources in the review panel, the long-running
   8,065-claim `extract_claims` job (`7c5c0df6`, legitimate, free, keeps getting restarted by the crashes), and
   the Sonnet cost estimator undershooting ~2.5x (Haiku's estimate was accurate) -- real calibration data for
@@ -3039,3 +3040,21 @@ Full detail lives in `docs/T4-ADMISSION-2026-09-14.md`; the short version for an
 
 `.env` is git-ignored, so the Haiku default is a machine-local setting. Codex: if you touch `contracts.py`'s
 `FINDINGS_MODEL`, know that the env override wins over it here.
+
+## Correction: the crashes were mine, and the database was restored — 2026-09-14 evening (Claude)
+
+The "suspect the machine" line above is retracted. All three crashes match `CLAUDE.md` standing rule #1 exactly
+(a bridge-mounted session from another VM opening the WAL database, truncating `-shm` under the running server,
+SIGBUS on the server's next shm read) and each followed my own `db.connect()` calls from the Cowork sandbox.
+The file then failed a full integrity check and was restored from the verified `data/backups/neurosearch-20260914-1658.db`
+with `tools/db_restore.py` (dry-run then `--yes`; damaged files kept in `data/corrupt-20260914-173848/`).
+Lost: ~10 min of `extract_claims` progress and 3 Haiku E5 job completions (re-queued automatically, ~$0.04).
+
+Made mechanical so it cannot recur by reading-comprehension alone: `db.refuse_bridge_mount()` at the top of
+`db.connect()` raises on any `/sessions/*/mnt/` path (escape hatch `NEUROSEARCH_ALLOW_BRIDGE_DB=1`, for a COPY);
+`tools/db_check.py` / `tools/db_restore.py` refuse the same way; `tests/test_db_bridge_guard.py`.
+Also new, from the same incident: the app's health check runs `quick_check`, which does not validate indexes --
+`db.backup()`'s verification (full `integrity_check`) is what caught it. Worth considering a periodic full check.
+
+Codex: if you work from a sandbox, the same applies to you. Everything else (code, tests on temp DBs, docs, git)
+is fine from there; the live database is not.

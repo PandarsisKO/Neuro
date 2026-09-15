@@ -761,11 +761,35 @@ CREATE INDEX IF NOT EXISTS ix_project_reuse_state ON project_reuse(project_id, s
 _local = threading.local()
 
 
+BRIDGE_MOUNT_MARKERS = ("/sessions/", "/mnt/")   # a Cowork/Claude device-bridge sandbox sees the Mac's folder at /sessions/<id>/mnt/<folder>/
+
+
+def refuse_bridge_mount(path: str | os.PathLike[str]) -> None:
+    """CLAUDE.md standing rule #1, made mechanical (2026-09-14). A SQLite WAL database opened through a bridge mount
+    from another VM does not see the server's POSIX locks, believes it is the only connection, and truncates the
+    -shm index underneath the running app on close -- the server's next shm page read is past EOF and macOS kills it
+    with SIGBUS. That crashed the live server twice on 2026-09-11 and THREE times on 2026-09-14 (every crash blamed
+    on the machine at the time), then corrupted the database. Reading is enough to do it; `mode=ro` does not help.
+    Refuse here, where every connection starts, instead of relying on the next session having read the rule.
+    NEUROSEARCH_ALLOW_BRIDGE_DB=1 is the escape hatch for someone who has read this and is opening a COPY."""
+    if os.environ.get("NEUROSEARCH_ALLOW_BRIDGE_DB") == "1":
+        return
+    resolved = os.path.realpath(str(path))
+    if all(m in resolved for m in BRIDGE_MOUNT_MARKERS):
+        raise RuntimeError(
+            f"refusing to open {resolved}: this is the live database reached through a sandbox bridge mount. "
+            "Opening it from here (even read-only) crashes the running app and can corrupt the file -- CLAUDE.md, "
+            "standing rule #1. Use the app's API, the neurosearch CLI on the Mac, or cp a data/backups/ snapshot "
+            "into the session's own workspace and open the copy. NEUROSEARCH_ALLOW_BRIDGE_DB=1 overrides, on purpose.")
+
+
 def connect() -> sqlite3.Connection:
     """Thread-local connection."""
     conn = getattr(_local, "conn", None)
     if conn is None:
-        conn = sqlite3.connect(str(getattr(_local, "db_path", settings.db_path)), timeout=30, check_same_thread=False)
+        db_path = str(getattr(_local, "db_path", settings.db_path))
+        refuse_bridge_mount(db_path)
+        conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
