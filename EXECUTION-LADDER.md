@@ -471,11 +471,17 @@ Written matrix of durable signals that already exist: `candidates.mark` states (
 `candidate_links.state`, findings status, `claims.set_status`, target closure. Decide which feed AD2. No telemetry.
 See `docs/AD0-FEEDBACK-INVENTORY.md`: AD2 reranks off candidate disposition (primary) + link outcome (secondary);
 findings/claim status and target closure are reserved for AD4's retrospective measurement, not the rerank loop.
-### AD1 `[ ]` small-batch discovery — READY AFTER AD0. "5 best next" from `candidates.pool`, keep/reject/capture,
-"5 more". ### AD2 `[ ]` deterministic rerank (target fit, preferred class, SC view, dismissals, diversity,
-freshness) — READY AFTER AD1. ### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five outside the
-pattern) — with AD2. ### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate, yield, targets
-closed, novel families, review burden.
+### AD1 `[x] 77e26bf` small-batch discovery — DONE · lane: claude
+"5 best next" from `candidates.pool` (kind="candidates" only), capture/reject through the existing durable
+`candidate_projects.state` vocabulary, "5 more" by calling again — no new shown/seen/cursor/session state; a
+resolved item already drops out on its own (`project_pool_revision` already tracks `mark()`), an undecided one
+is correctly shown again. `candidates.capture()` extracted as the one shared CAPTURE path (was duplicated
+inline in two API handlers). CLI (`project discover` / `discover-decide`) + `GET .../discover/next`. No new
+frontend — the ladder names no UI gate for AD1; the existing Sources-tab pool table is untouched.
+### AD2 `[ ]` deterministic rerank (target fit, preferred class, SC view, dismissals, diversity,
+freshness) — READY AFTER AD1 (now unblocked). ### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five
+outside the pattern) — with AD2. ### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate,
+yield, targets closed, novel families, review burden.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`

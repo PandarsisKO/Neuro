@@ -4113,3 +4113,33 @@ Ladder marked `[x]` for all three with their real shas. Scheduler NOW updated: t
 closed out; the next eligible Claude-lane item is AD1 (small-batch discovery, now unblocked by AD0) -- a real
 feature build rather than further prep, so it gets its own plan checkpoint on the next turn rather than being
 folded silently into this batch. CR7 and FM1's live validation remain Kyle-gated, unchanged.
+
+## AD1 executed (2026-09-15, `77e26bf`)
+
+Plan approved with two semantic corrections before execution, both applied:
+
+1. **CAPTURE, not "keep."** The positive decision that actually ingests/attaches a candidate is named CAPTURE
+   throughout (CLI, API route naming, docstrings, tests) — matching the existing durable
+   `candidate_projects.state` vocabulary. No "keep" alias was introduced anywhere.
+2. **"5 more" is a small decision batch, not pagination.** No `shown`/`seen`/cursor/session state was built.
+   `next_batch` calls the same `pool()` that already excludes resolved items via `project_pool_revision`'s
+   existing invalidation on `mark()`; an undecided item is correctly returned again on the next call, because
+   Neuro has not received a decision on it — proven directly in
+   `test_a_captured_candidate_does_not_reappear_and_an_undecided_one_does`, not just asserted.
+
+Also per the plan: no new frontend (the ladder's AD1 entry names no user-facing-browser gate, so CLI/API is the
+complete surface, not a partial one), and the CAPTURE path was collapsed from two inline duplicates
+(`api_candidate_acquire`, `api_pool_capture_many`) into one `candidates.capture()` both now call — proven
+behavior-preserving (all 22 pre-existing pool/candidate tests pass unchanged).
+
+Decision surface is CAPTURE / REJECT only — no third "keep for later" state was invented; that stays a
+separate, later product decision if real usage shows it's needed.
+
+Tests: 7 new in `tests/test_n7_pool.py` (scoping to `kind="candidates"` only, `n`/`remaining` accounting,
+resolved-vs-undecided reappearance, `capture()`'s attach and enqueue branches proven directly, `LookupError` on
+an unknown candidate, a CLI smoke test for `discover`/`discover-decide` including its `capture|reject` guard).
+Full suite 1645/1645, `repo-check: PASS`. No `UI_VERSION` bump.
+
+Ladder: AD1 marked `[x] 77e26bf`; AD2/AD3/AD4 noted as depending on it, AD2 now unblocked. Scheduler NOW moved
+to AD2 (deterministic rerank) as the next Claude-lane item, which implements the signal choice AD0 already
+wrote up rather than re-deciding it.

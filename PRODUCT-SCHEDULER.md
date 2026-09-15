@@ -16,10 +16,14 @@ disposition + link outcome, reserving findings/claim status and target closure f
 prototype reference-list clustering, not heading clustering, and flagged that the real go/no-go evidence run
 needs Kyle's machine (no catalogue network route from this sandbox).
 
-Next eligible in the Claude lane: **AD1** (small-batch discovery — READY AFTER AD0, now unblocked) is a real
-feature build, not further parallel prep — worth its own plan checkpoint rather than folding silently into this
-batch. CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for a
-second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
+**AD1 landed** (`77e26bf`): small-batch discovery ("5 best next" / capture / reject / "5 more") over the
+existing pool, with the CAPTURE path deduplicated into one shared function. No new UI — the ladder names no
+browser-interaction gate for AD1.
+
+Next eligible in the Claude lane: **AD2** (deterministic rerank, READY AFTER AD1, now unblocked) — needs its
+own plan checkpoint (AD0's decision on which signals feed it is already written; this is where that gets
+implemented). CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for
+a second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 
