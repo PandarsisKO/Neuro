@@ -66,3 +66,16 @@ neurosearch project review-queue "<your project name>"
 
 The gate is three questions: is it short? does every line say why it's there? is the disagreement you already
 know about in it (it can never be hidden by the cap)? Add `--json` for the data behind each line.
+
+## L-60 — T5 adjudication on a real night (optional add-on to the L-30 run)
+
+Same command as L-30 with one more flag. It's a second, separate cap (Sonnet-tier calls), disclosed separately
+before it asks:
+
+```
+neurosearch nightly run --budget 2 --t5-budget 1
+```
+
+Next morning the Morning Report has an "Adjudicated N disagreement(s)" line and each verdict is a suggested
+finding in the ordinary review. The gate is: were those verdicts worth their line — did they change what you
+know or would do? Nothing was decided for you; no Claim or tension status moved.

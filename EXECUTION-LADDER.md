@@ -310,8 +310,18 @@ short, does every line justify itself, and is the disagreement you know about in
 ---
 
 ## Stage 8 — P6 T5/T6 operationalization (tier: sonnet) — needs: L-50
-### L-60 `[ ]` T5 triggers: high-impact contradiction / weak consensus on a decision / strong sources disagree /
+### L-60 `[~] claude 2026-09-15 -- code+tests done at fee162c, gate needs a real night with --t5-budget` T5 triggers: high-impact contradiction / weak consensus on a decision / strong sources disagree /
 plan-critical uncertainty → `t5.adjudicate` produces a PROPOSED resolution (never canonical). Budgeted per night.
+`t5.escalation_candidates(decision_aware=True)` adds `weak_consensus_on_decision` and `plan_critical_uncertainty`
+(any-impact WEAK_CONSENSUS / CONTRADICTION-NOVEL on a Claim the current plan cites -- L-50's real `plan_impact`,
+unknown never escalates). `t5.run_nightly()`: high impact first, each call estimated from its real prompt, stops
+at the cap, never adjudicates a tension twice across nights (kv `t5:adjudicated:*`), verdicts only ever land as
+SUGGESTED findings. `settings.t5_nightly_budget` (`NEUROSEARCH_T5_NIGHTLY_BUDGET_USD`, default 0) is a SEPARATE
+cap from the findings budget; `nightly.run()` runs it after the findings walk; delta + Morning Report surface it.
+CLI: `neurosearch nightly run --budget 2 --t5-budget 1`. 8 tests + 1 CLI test; all 18 pre-existing T5 tests
+unchanged. Full suite 1557, `repo-check: PASS`. Gate (P6: "appears because it changes what the user should know
+or do"): one real night with `--t5-budget` on Kyle's project, then read the adjudication verdicts in the Morning
+Report / Findings review and judge whether they were worth their line (`docs/KYLE-GATES-2026-09-15.md`).
 ### L-61 `[ ]` T6 surfacing only where it changes a decision: expired assumption, constant drifted, plan depends
 on unmeasured assumption. No dashboard.
 

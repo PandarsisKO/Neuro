@@ -3544,3 +3544,24 @@ Design note for whoever picks up L-52 (Morning Report v2, "What needs me?"): `re
 `what_needs_the_user` slot that v1 deliberately leaves empty; v2 is `review_queue.build(pid, limit=small)`'s
 queue rendered into that slot -- but ONLY once L-51's gate has passed on real data, because that is what
 makes "what needs me" a defensible claim rather than the ranking rulings §7 forbids. Do not wire it before.
+
+## L-60 T5 operationalization: code+tests done, gate needs a real night (2026-09-15, later)
+
+`t5.py` gained decision-aware triggers (grounded in L-50's `plan_impact`, unknown never escalates) and a
+budgeted `run_nightly()` (estimate-before-call, stop at cap, never twice across nights, suggested findings
+only). Separate `t5_nightly_budget` cap, wired into `nightly.run()` after the findings walk, surfaced in delta
+and the Morning Report, disclosed separately by `neurosearch nightly run --t5-budget`. Commits `fee162c`,
+`9beb81c`. All 18 pre-existing T5 tests unchanged.
+
+Honesty note on the suite: two full-suite runs in a row showed "1 failed, 1556 passed" while I was landing
+the `--t5-budget` CLI test, and I had NOT run them with `-rf`, so the failing test's name was not captured.
+The touched suites passed 6/6 in isolation and the full suite then passed 4 consecutive times (1557) with
+`-rf` on. I could not reproduce it. Treat it as an unidentified intermittent until it shows again -- and
+always run the full suite with `-rf` so the name is captured when it does. Do not read "4 green" as "it was
+nothing".
+
+L-61 (T6 surfacing) is the last unblocked rung on my side. Its shape per the mission doc: NOT a dashboard;
+surface an assumption only when it has expired, a measured constant drifted, a plan depends on an unmeasured
+assumption, or it materially affects a recommendation. `neurosearch/assumptions.py` exists (see its
+`evidence=` fields) -- the work is a deterministic "which assumptions changed what you should know" read that
+feeds delta/report, same read-only discipline as L-50/L-51.
