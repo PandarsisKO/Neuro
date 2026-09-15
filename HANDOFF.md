@@ -3834,3 +3834,92 @@ AFTER CR1+CR2, both now done) and LP3 (proposed plan patch — READY AFTER LP2, 
 adapters just shipped: CR5 is the first rung that spends money and calls `knowledge.pursue`/ingest/findings on a
 live source, and LP3 is the first rung that writes a `plan_updates` row. Per the Model Handoff Rule, both need
 their own PLAN → PAUSE checkpoint before implementation — not a continuation of this one.
+
+## Planning checkpoint — CR5 + LP3 (2026-09-15 17:45, plan-then-pause handoff)
+
+CR2/LP2 shipped at `c215849`/`7677d10`. CR5 and LP3 are each the first END-TO-END rung of their loop — larger and
+riskier than the adapters so far (CR5 spends real money and calls the live ingest/findings pipeline; LP3 writes
+to a table an existing paid LLM path already writes to) — so this is a fresh PLAN → PAUSE per the Model Handoff
+Rule, not a continuation.
+
+### Approved-plan checkpoint for the execution model
+
+Rung / objective: CR5 (one important Claim refreshed end-to-end — the P8 vertical slice mission §12 names as the
+actual proof this works) and LP3 (a proposed plan patch written from LP2's deterministic output). Not disjoint in
+risk profile from each other's file surfaces, but disjoint in the files they touch.
+
+Why next: both are READY (CR5 needs CR1+CR2, done; LP3 needs LP2, done); both are the first rung in their family
+Kyle can actually evaluate against a real project rather than a fixture.
+
+Reused: research_needs.due_tonight (CR2, picks the Claim + creator + estimated cost); knowledge.pursue (steps
+1–3, free except a tiny embeddings call — BUT it operates on an Evidence Target, not a Claim directly, see open
+question below); candidates.where_to_look / the untapped candidate CR2 already resolves; the existing ingest job
++ findings.suggest_for_source pipeline (unchanged — CR5 must not build a second path into the project); claims.
+assess (recomputes strength/freshness after new evidence lands); plan_narrative.explain (LP2, the why-text for
+LP3's `reason` field); db.add_plan_updates/set_update_status (the existing plan-patch write/accept path — LP3
+must not invent a second one).
+
+Approach:
+1. CR5, new `neurosearch/research_refresh.py`: `refresh_one(project_id, need=None) -> dict`. Picks the top
+   `due_tonight` item under `estimated_cost_usd` <= a caller-supplied cap (nightly integration, CR6, supplies the
+   real cap later; this rung's own gate uses a small fixed test cap). OPEN QUESTION, to resolve before writing
+   code, not during: `knowledge.pursue` is Target-shaped, but three of CR1's four need kinds (plan_impact_stale,
+   disagreement, weak_plan_cited) are Claim-shaped with no Evidence Target row. Two honest options: (a) for a
+   Claim-shaped need, synthesize a throwaway Target-like dict `{"question": claim.text, "preferred_classes": []}`
+   and drive candidate selection through `candidates.where_to_look` directly (already done by CR1/CR2) rather than
+   through `knowledge.pursue`, since `pursue` needs a real `target_id` to record `last_escalation` against; (b)
+   require a real Target to exist first (open_target needs already have one; a Claim-shaped need would need one
+   created on the fly via `knowledge.add_target(... claim_id=...)`, giving CR5 a durable place to record the
+   escalation, at the cost of a target existing for every refresh even a one-off). (b) is more consistent with
+   the existing data model and simpler to reason about — leaning there, but this is a real design choice with
+   asymmetric costs on Claim-shaped needs, not just an implementation detail, so it is named here rather than
+   decided silently mid-execution. Once a candidate source is chosen: enqueue the SAME ingest job the rest of the
+   app uses (no shortcut path), then `findings.suggest_for_source`, then `claims.assess(claim_id)`. Compares
+   before/after (strength, freshness_status) and returns `{"claim_id", "before", "after", "changed": bool,
+   "spend_usd"}` — never flips claim.status itself (mission §12: no auto-accept).
+2. LP3: add one additive column `plan_updates.origin TEXT` (nullable; existing rows read as NULL = "planner",
+   the current LLM-suggested source) — schema-additive only, matches CLAUDE.md's standing rule. New function
+   `neurosearch/plan_narrative.py` (extends LP2, same module — LP3 is "the same why, written as a patch" not a
+   separate concern): `propose_updates(project_id, claim_id=None, tension_id=None) -> list[dict]` — for each LP2
+   item, one `plan_updates` row: `section=path` (e.g. `first_steps.0`), `previous=label`, `proposed=` a short
+   templated instruction ("re-verify against current evidence before relying on this" for indicated/stale;
+   "review — evidence for this step was merged from a claim that no longer stands alone" for possible), `reason=`
+   LP2's why-sentence, `origin="lp3"`. db.add_plan_updates's existing `DELETE ... WHERE status='pending'` before
+   insert is a real collision with the LLM path's own pending updates on the SAME plan — needs a narrower delete
+   (`AND origin=?`) so LP3 and `suggest_updates` don't clobber each other's pending queue. This is the one actual
+   code change to `db.py` in this slice, small and additive. Surface: `neurosearch project propose-updates
+   <project> --claim/--tension` (writes, so distinct from the read-only `plan-impact`/`due` commands — should
+   state plainly in its own output that it wrote pending rows). Accept/reject/apply stays on the existing routes,
+   unchanged.
+
+Files: research_refresh.py (new), plan_narrative.py (add propose_updates), db.py (add_plan_updates: narrower
+delete + origin column, additive), cli.py (+2 commands: `refresh-need`, `propose-updates`), tests (new file(s)).
+
+Tests/gates: CR5 — fixture scenario where a stale Claim's supporting source is refreshed and freshness_status
+moves to current, and a scenario where nothing changes (the "unchanged" outcome is a success, not a failure);
+never calls `set_status`; spend is bounded by the cap and reported honestly. LP3 — row shape and `origin='lp3'`;
+a pending LP3 row survives a `suggest_updates` call on the same plan (and vice versa) — the collision test that
+justifies the narrower delete; the existing accept route promotes an LP3 row exactly like a planner one; nothing
+else auto-accepts. Full suite -rf; repo-check; release-check only if any frontend surface changes (none currently
+planned — CLI/API only again).
+
+Risks/collisions: the plan_updates delete-scoping change touches a path the existing (unrelated) `suggest_updates`
+also uses — needs its own regression test, not just a new-feature test, since a bug here would visibly break
+Kyle's existing "check for plan updates" flow. CR5 is the first rung this whole mission-§12 effort has that
+actually spends money and touches ingest — needs the SAME preflight/budget discipline as the rest of the app
+(`db.preflight_autonomous` or an equivalent bounded-spend guard), not a bespoke one.
+
+Unlocks: CR6 (nightly integration — a real bounded cap and envelope wiring around CR5); LP4 (stable state
+semantics, parallel-eligible once LP1 lands — already true); LP5 (patch acceptance provenance, Codex-shaped,
+needs LP3's rows to exist).
+
+Assumptions remaining: the Target-vs-synthetic-target question above is the one real open design call; whichever
+way it resolves, CR1/CR2/CR5's public shape (`for_project`/`due_tonight`/`refresh_one`) does not need to change,
+only refresh_one's internals. The fixed test cap for CR5's own gate (vs. CR6's real nightly cap) is a testing
+convenience, not a product decision.
+
+Deliberately NOT built: CR6 nightly wiring (its own future checkpoint); a real cost cap UI (still no new
+dashboard); LP4/LP5 (their own checkpoints); anything that mutates a Claim's `status` or promotes a plan_updates
+row without going through the existing accept route.
+
+READY FOR EXECUTION MODEL
