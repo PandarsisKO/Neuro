@@ -4,13 +4,14 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-Updated 2026-09-15 17:00 (CR1 + LP0/LP1 landed, `2cbc82f`). Every previously admitted rung is code-complete; the
+Updated 2026-09-15 17:30 (CR2 + LP2 landed, `c215849`). Every previously admitted rung is code-complete; the
 open ones are Kyle-gated measurements (`docs/KYLE-GATES-2026-09-15.md`). Active now, in the Claude lane:
 
-**CR2 (due policy, READY AFTER CR1) → CR5 (one Claim refreshed end-to-end, the P8 vertical slice)** and **LP2
-(explainable impact, READY AFTER LP1) → LP3 (proposed plan patch)** (`EXECUTION-LADDER.md` Stages 10–11). Both
-pairs build directly on the CR1/LP0/LP1 adapters just landed; both are Claude lane. Per the plan-then-pause
-handoff (HANDOFF.md), planning for whichever is picked up first happens before any implementation begins.
+**CR5 (one important Claim refreshed end-to-end, the P8 vertical slice — READY AFTER CR1+CR2)** and **LP3
+(proposed plan patch — READY AFTER LP2)** (`EXECUTION-LADDER.md` Stages 10–11). Both are the first end-to-end
+demonstrations of their loops, not just adapters — CR5 is the mission §12 vertical slice Kyle can actually judge
+on a real project; LP3 is the first thing that writes a `plan_updates` row from this machinery. Both Claude lane.
+Per the plan-then-pause handoff (HANDOFF.md), planning happens before any implementation begins.
 
 Parallel prep allowed for a second agent (disjoint files): SC0b, AD0, FM0, CR3 (Codex-shaped).
 

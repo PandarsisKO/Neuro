@@ -392,7 +392,7 @@ SC3). Deterministic order: plan-impact+stale first, then disagreement, then open
 may need fresh evidence") only when non-empty. Gate: deterministic tests incl. "a static Claim never becomes a
 need by age alone"; on Kyle's project the list reads as things worth checking (his judgment, recorded).
 
-### CR2 `[ ]` due policy — READY AFTER CR1 · lane: claude
+### CR2 `[x] c215849` due policy — DONE · lane: claude
 When is a need DUE tonight: `freshness_status` (not raw age) × consequence (plan_impact/disagreement) × cost of the
 check (`usage.estimate_source_findings` on the reservoir's next unread). Categories, not a fake score. Records
 `kv research:checked:<need>` so nothing is rechecked because budget remains. Gate: tests for each freshness class.
@@ -437,7 +437,7 @@ possible|indicated}]` — deterministic over evidence links; `indicated` only wh
 revision" (progressive disclosure) + `GET .../plan/impact?claim_id=`. Gate: deterministic tests; the demo claim in
 `test_decision_impact` maps to exactly its cited step.
 
-### LP2 `[ ]` explainable impact — READY AFTER LP1 · lane: claude
+### LP2 `[x] c215849` explainable impact — DONE · lane: claude
 Given a delta (changed Claim/tension), produce affected Claim → decision/dependency → step → why → possible vs
 indicated, by templating over LP1 (no model call). Feeds `delta.for_envelope` "what decision or plan element
 could be affected". Gate: scenario A text reads correctly from fixtures.

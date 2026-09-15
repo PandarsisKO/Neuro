@@ -3806,3 +3806,31 @@ sibling concern, deferred until the UI has a real reason to change — no fronte
 CR3/CR4 (Codex-shaped, untouched); LP3/LP4/LP5 (their own future checkpoints).
 
 READY FOR EXECUTION MODEL
+
+## CR2 + LP2 executed (2026-09-15 17:30, commit `c215849`)
+
+Fast drift check before executing: HEAD was still `663b2b0` (the CR2/LP2 plan-then-pause checkpoint), working
+tree clean apart from the same pre-existing untracked eval artifacts, scheduler NOW still pointed at CR2/LP2.
+Nothing material changed — executed as prepared.
+
+Built as planned: `research_needs.due_tonight()` (CR2) categorises needs as critical/worth_checking/low from
+freshness × consequence, prices the next check from a real untapped candidate's duration when routing resolves
+one (candidates are pre-ingest, so `usage.estimate_video` is used directly rather than
+`usage.estimate_source_findings`, which needs a `source_id`), falls back honestly through project-average then a
+generic estimate, and records a 12h check-cooldown in the existing kv store. `plan_narrative.explain()` (LP2)
+templates LP1's structured result into one why-sentence per affected step — no model call, its own module rather
+than folded into `plan_impact.py` per the thin-shared-seams rule. `for_project()` now also carries `impact`
+(disagreement) and `sufficiency` (open_target) as real fields, not parsed from the reason string — a small,
+in-scope extension to CR1 needed for CR2 to categorise honestly.
+
+Surfaces: `neurosearch project due`, `neurosearch project plan-impact --explain`. No new API routes this slice
+(the plan scoped it to CLI only — CR5/LP3 are the first real consumers that would justify one, per mission §12's
+"don't build a surface before it has a consumer" rule).
+
+8 new tests; full suite 1606 passed (was 1598); repo-check PASS. No UI_VERSION bump.
+
+Ladder updated: CR2/LP2 marked `[x] c215849`. Scheduler NOW moved to CR5 (P8's actual vertical slice — READY
+AFTER CR1+CR2, both now done) and LP3 (proposed plan patch — READY AFTER LP2, done). These are larger than the
+adapters just shipped: CR5 is the first rung that spends money and calls `knowledge.pursue`/ingest/findings on a
+live source, and LP3 is the first rung that writes a `plan_updates` row. Per the Model Handoff Rule, both need
+their own PLAN → PAUSE checkpoint before implementation — not a continuation of this one.
