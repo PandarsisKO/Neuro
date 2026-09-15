@@ -3198,3 +3198,17 @@ test suite and `neurosearch` CLI end-to-end -- not just patch code and hope. Reb
 into the copy so `ROOT/.venv/bin/neurosearch`-shaped test assumptions resolve. Never points at the live database
 -- only ever tmp_path fixtures, exactly like pytest already guarantees. Future sessions: reuse it instead of
 rebuilding, or extend it if dependencies drift from `pyproject.toml`.
+
+## Ownership reassignment — Codex off until the weekend reset, Claude takes Stages 1/3/4 — 2026-09-15 (Kyle)
+
+Kyle: Codex will not run again until the weekend reset (~5 days out). Rather than let P0/P1A/P2 sit idle,
+Claude now owns Stages 1, 3 and 4 of EXECUTION-LADDER.md too (P0 audit, P1A scheduled backend, P2 nightly
+refinery) for the duration -- headers updated in the ladder. This is a real reassignment, not a
+license to rebuild what already exists: Stage 1 is still explicitly an AUDIT (rulings §1), and every prior
+"don't invent a competing scheduler" rule still applies -- there's just no Codex-collision risk to wait on for
+the next 5 days. Starting with L-10 (P0.G database safety preflight) since P0 is the explicit first priority in
+the mission's own dependency order (a reliability/integrity gap makes every later autonomous rung less safe).
+
+One exception noted up front: L-21 (macOS power-assertion behavior, lid open vs closed) needs someone to
+physically open/close Kyle's laptop lid and watch what happens -- that stays `[k]`-shaped even during the
+reassignment; the code half of Stage 3 (L-20) does not.

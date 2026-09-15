@@ -46,7 +46,7 @@ Gate: morning Findings panel shows the 409 current; `usage` shows $0 for them.
 
 ---
 
-## Stage 1 — P0 Autonomous Execution Admission Audit (Codex lane, tier: sonnet)
+## Stage 1 — P0 Autonomous Execution Admission Audit (lane: claude 2026-09-15 through the weekend reset -- Codex is off until then, Kyle reassigned this stage so it isn't idle for 5 days; tier: sonnet)
 
 AUDIT, not build (rulings §1). Each scenario: write the test that exercises EXISTING machinery, run it, record
 pass/fail in `docs/P0-AUDIT-<date>.md`, fix only a measured failure, re-run. Boundary is `t4.execute(...)`.
@@ -142,7 +142,7 @@ committed; decision recorded; if switched, `t4-selector-v3` and tests.
 
 ---
 
-## Stage 3 — P1A Scheduled Execution Backend (Codex lane, tier: sonnet) — needs: L-17
+## Stage 3 — P1A Scheduled Execution Backend (lane: claude, reassigned 2026-09-15 -- see Stage 1 header; tier: sonnet) — needs: L-17
 
 ### L-20 `[ ]` `not_before` productized for one operation
 `staleness.rebuild(..., not_before=ts)` → `jobs.enqueue(..., not_before, wait_reason="scheduled")`; the resume
@@ -161,7 +161,7 @@ reality; no claim about lid-closed unless proven.
 
 ---
 
-## Stage 4 — P2 E7 Nightly Refinery backend (Codex lane, tier: sonnet) — needs: L-20
+## Stage 4 — P2 E7 Nightly Refinery backend (lane: claude, reassigned 2026-09-15 -- see Stage 1 header; tier: sonnet) — needs: L-20
 
 ### L-30 `[ ]` nightly envelope
 `settings.t4_nightly_budget` (default 0 = off) + `settings.t4_nightly_hour`; a housekeeping entry (pattern:
