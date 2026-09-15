@@ -4348,3 +4348,34 @@ Fix: `claude_code.note_failure`/`note_success` now log once, at ERROR/INFO, only
 reusing the cached per-model verdict these functions already maintain, no new state, no new table, no polling.
 The failure message names the fix and says plainly whether paid fallback is on or off. 9 new tests. Full suite
 1687/1687, repo-check PASS.
+
+## Fix — claims.harvest() short-circuits when nothing is new (`8860de6`, L-18)
+
+Not a ladder rung — an incident fix, same live-production thread as the Claude Code health fix above. After that
+one shipped, Kyle saw his `neurosearch worker` process's CPU climb without bottoming out (99.9% -> 331.5%, still
+rising) and the terminal repeating "lost the lease on job X — another worker owns it now" for jobs that had
+already logged "done" minutes earlier, recurring every 30s and accumulating more job IDs over time. A transient
+"database is locked" error on the sources job progress panel, seen and then cleared on its own during the same
+window, is almost certainly the same root cause (DB contention from the extra load below).
+
+Root cause: L-16 (`aef8d4a`, earlier the same day) fixed a real lost-note race by removing `claims.harvest()`'s
+coalescing — correct, every concurrent caller for a project now does its own real scan rather than trusting an
+in-flight call already covered it. But every pass unconditionally fetched every approved/suggested note's FULL
+TEXT (`list_project_notes`: "11,767 notes and about 8 MB" on Kyle's business project, per its own docstring) and
+rebuilt a fuzzy-match index over every existing Claim, even when nothing had changed since the previous caller a
+moment ago did the identical scan. `_after_done()` calls `harvest()` synchronously inside `jobs.execute()`,
+*before* the `finally` that removes the job from `jobs._running` — so under real load (many `suggest_findings`
+jobs finishing back to back for one project), each completion queued up behind `_harvest_lock` and re-ran the
+same multi-MB scan, and every job stuck waiting its turn still read as "running" to the lease keeper, which kept
+heartbeating and warning about it every 30s while it wasn't actually doing anything but waiting in line.
+
+Fix: check just the note IDs first (a few KB) before doing anything expensive; when nothing is new — the common
+case in a burst — return immediately instead of repeating the full scan. This keeps L-16's correctness guarantee
+(still a real check, every call, nothing coalesced away) and turns a redundant call back into the cheap no-op it
+should be. `test_p0_concurrent_completion.py` (L-16's own repro) and every harvest-focused test still pass. Full
+suite has pre-existing failures unrelated to this file — reproduced identically against unmodified `claims.py` —
+covering local-model/provider env-dependent tests and a handful of cross-test breaker-state-pollution failures
+that pass individually. repo-check: 1 pre-existing unrelated finding (a stray root file), unchanged.
+
+Not yet independently confirmed on Kyle's live worker (CPU trending back down, warnings stopping for old job
+IDs) — check `ps aux | grep neurosearch` and the worker terminal after this lands and the worker restarts.
