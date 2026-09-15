@@ -524,7 +524,7 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         return out
     head = _head(project, src)
     windows = _windows(segs, src["platform"], source_id, window_chars=DEEP_WINDOW_CHARS if depth == "deep" else WINDOW_CHARS)
-    from .jobs import check_cancel, crash_point
+    from .jobs import Yield, check_cancel, crash_point
     kept, pf_summary = window_plan(project, src, windows)
     results: list[tuple[str, dict[str, Any]]] = []
     found = 0
@@ -550,7 +550,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
         i, w = item
         check_cancel()                                   # safe boundary: nothing of this source is written yet
         if not _inputs_current():
-            raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+            raise Yield("findings inputs changed during analysis (governing input changed mid-flight) -- "
+                               "completed compatible windows are durably kept; retrying now under the current inputs")
         crash_point("findings_before_response")
         unit_key = work_unit_key(project, src, w, i, len(windows), depth=depth)
         with db.work_unit_lock(unit_key):
@@ -578,7 +579,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
                 crash_point("findings_window_persisted")
                 check_cancel()                           # keep the paid response, but never materialise a cancelled parent
                 if not _inputs_current():
-                    raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+                    raise Yield("findings inputs changed during analysis (governing input changed mid-flight) -- "
+                               "completed compatible windows are durably kept; retrying now under the current inputs")
                 res["_neurosearch_call_diagnostics"] = _call_diagnostics()
                 return w, res, str(model), routing, len(res.get("findings") or []), False
             except Exception:
@@ -636,7 +638,8 @@ def suggest_for_source(project_id: str, source_id: str, max_findings: int | None
     if routings:
         last_routing = routings[-1]
     if not _inputs_current():
-        raise RuntimeError("findings inputs changed during analysis; completed compatible windows were kept for retry")
+        raise Yield("findings inputs changed during analysis (governing input changed mid-flight) -- "
+                               "completed compatible windows are durably kept; retrying now under the current inputs")
     if probe is not None:
         pf_summary = {**(pf_summary or {}), "substance_probe": probe}
     return materialize(project_id, source_id, results, model=models[-1] if models else _last_model.get("model"), transport="interactive",
@@ -718,7 +721,14 @@ def suggest_for_project(project_id: str, source_ids: list[str] | None = None, pr
                 skipped += 1
         except Exception as e:  # noqa: BLE001
             from .breakers import ProviderUnavailable
+            from .jobs import Yield
             from .usage import BudgetPaused
+            if isinstance(e, Yield):
+                # L-12 (EXECUTION-LADDER.md): a governing input changed mid-flight -- jobs.execute() requeues this
+                # same job (no delay, no attempt penalty) on Yield, so let it propagate rather than swallowing it
+                # here as a per-source failure. Sources already completed under the old inputs are durably
+                # persisted (db.work_unit_complete) and will be re-checked as current/skippable on retry.
+                raise
             if isinstance(e, (BudgetPaused, ProviderUnavailable)):
                 # hand the remaining sources back to the queue as a fresh job and stop
                 remaining = ids[i:]

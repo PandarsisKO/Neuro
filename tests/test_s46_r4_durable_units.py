@@ -162,7 +162,7 @@ def test_brief_change_during_call_keeps_old_unit_but_cannot_finish_parent(fresh,
 
     monkeypatch.setattr(findings, "_call", invoke)
     old_hash = findings.input_hash(project, source_id)
-    with pytest.raises(RuntimeError, match="inputs changed"):
+    with pytest.raises(jobs.Yield, match="inputs changed"):
         findings.suggest_for_source(project["id"], source_id, force=True)
 
     assert len(db.work_units_for_parent("findings.extract", project["id"], source_id, old_hash)) == 1
@@ -188,7 +188,7 @@ def test_source_revision_change_during_call_cannot_materialize_mixed_units(fresh
 
     monkeypatch.setattr(findings, "_call", invoke)
     old_hash = findings.input_hash(project, source_id)
-    with pytest.raises(RuntimeError, match="inputs changed"):
+    with pytest.raises(jobs.Yield, match="inputs changed"):
         findings.suggest_for_source(project["id"], source_id, force=True)
     assert len(db.work_units_for_parent("findings.extract", project["id"], source_id, old_hash)) == 1
     assert db.get_analysis(project["id"], source_id, "summary") is None
