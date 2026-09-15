@@ -232,9 +232,9 @@ Full suite 1516 passed, `repo-check: PASS`. The gate itself (rulings P2) is expl
 L-21's: "one real night on Kyle's project at $2: no duplicate source work, spend ≤ budget, provenance traceable,
 ledger matches" needs Kyle's real database, Kyle's spend authorization, and an actual overnight run -- none of
 which this sandbox can produce or fake (never touches `data/neurosearch.db`, never manufactures paid evidence).
-To run it: set `NEUROSEARCH_T4_NIGHTLY_BUDGET_USD=2` (and `NEUROSEARCH_T4_NIGHTLY_HOUR` if 2am local isn't wanted)
-and leave the worker running overnight; check `neurosearch doctor`'s nightly line and `nightly.last_run()` the next
-day. Gate remains open until Kyle runs it and confirms the ledger reconciles -- code-complete, not gate-complete.
+To run it: `neurosearch nightly run --budget 2` (prints the authorized amount and asks first; commit 4c6867e added
+the CLI), leave the worker running, then `neurosearch nightly report` the next morning -- see
+`docs/KYLE-GATES-2026-09-15.md`. Gate remains open until Kyle runs it and confirms the ledger reconciles -- code-complete, not gate-complete.
 
 ### L-31 `[~] claude 2026-09-15 -- code+tests done at 175e856, blocked on a real L-30 night` Project Delta v0 (data only) — needs: L-30
 `neurosearch/delta.py` built and tested: `for_envelope(envelope_id) -> dict` reads the envelope's own kv record
@@ -252,9 +252,8 @@ row(s) it claims to summarize, in-window vs. out-of-window rows both exercised. 
 `for_envelope()` call, producing the exact JSON the gate asks for with every number reconciling.
 The gate itself ("JSON for a real envelope; every number reconciles to the tables it came from") means a REAL
 envelope -- i.e. depends on L-30's own gate (an actual overnight run on Kyle's project) having happened first;
-nothing here can honestly satisfy "for a real envelope" before one exists. Once Kyle runs L-30's two-minute
-setup and a real `nightly-{date}` envelope has run, `delta.for_envelope("nightly-{that date}")` closes this gate
-immediately -- no further code is needed.
+nothing here can honestly satisfy "for a real envelope" before one exists. Once a real `nightly-{date}` envelope has run, `neurosearch nightly report --json` for that date IS this gate's
+JSON -- no further code is needed (see `docs/KYLE-GATES-2026-09-15.md`).
 
 ---
 
@@ -282,8 +281,8 @@ rendering a report against a project with zero actual stale sources and seeing "
 pinned with a regression test. 7 tests. Full suite 1532 passed, `repo-check: PASS`.
 Gate (rulings P3): "Kyle explains the overnight change without opening Findings" -- a real human-comprehension
 measurement, same shape as L-21/L-30/L-31's gates: needs Kyle to actually read a real rendered report from a
-real night (which itself needs L-30's real night to exist first). Code-complete, not gate-complete; nothing
-further to build here until that reading happens.
+real night: `neurosearch nightly report` the morning after L-30's run (CLI added at 4c6867e; see
+`docs/KYLE-GATES-2026-09-15.md`). Code-complete, not gate-complete.
 
 ---
 

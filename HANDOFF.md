@@ -3519,3 +3519,15 @@ Stage 7 (L-51) needs L-50 (done, unblocked) but is a genuinely bigger, more judg
 queue construction against Kyle's real project data, with its own gate about a "short defensible queue"
 against thousands of real proposals) — a reasonable next candidate, but a heavier one to start cold at the
 end of a long continuous session. Recording the state here cleanly rather than starting it partially.
+
+## Correction: the "human step" for L-30/L-31/L-41 was not actually small yet (2026-09-15, later)
+
+Kyle asked whether everything within my power had been done. It hadn't. `nightly.run()` and
+`report.render_text()` existed but had no CLI or API surface — Kyle would have had to write Python to run a
+night or read the report. That is the opposite of "shrink the human step." Added `neurosearch nightly
+status|run|report` (commit `4c6867e`, 7 CliRunner tests, `run` pins cost-disclosure-then-confirm since it is
+real spend), and `docs/KYLE-GATES-2026-09-15.md` — one page, copy-paste commands, for all four open gates.
+Full suite 1539, repo-check PASS.
+
+Also wrong: deferring L-51 as "too big to start cold." It is unblocked (needs L-50, done) and in my lane.
+Starting it next, not waiting.
