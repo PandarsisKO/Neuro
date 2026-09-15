@@ -186,14 +186,21 @@ committed; decision recorded; if switched, `t4-selector-v3` and tests.
 
 ## Stage 3 — P1A Scheduled Execution Backend (lane: claude, reassigned 2026-09-15 -- see Stage 1 header; tier: sonnet) — needs: L-17
 
-### L-20 `[ ]` `not_before` productized for one operation
-`staleness.rebuild(..., not_before=ts)` → `jobs.enqueue(..., not_before, wait_reason="scheduled")`; the resume
-sweeps (`api.py:645`, `db.py:1817`) must skip `wait_reason='scheduled'`; missed-window policy from rulings §4
-(run at next eligible start unless not-current / cancelled / deadline passed; record scheduled, actual, reason);
-cancel-before-start; exact-once via existing dedupe. CLI: `neurosearch project rebuild-stale <pid> --tier
-rebuild_matters --at 02:00`. Preflight from L-10 wraps the envelope. Host honesty: the CLI prints "runs when the
-worker is next available", never "at 02:00". Gate (rulings §3 P1A): schedule from CLI, exit the shell, worker
-runs it exactly once later with provenance; restart in between does not duplicate it.
+### L-20 `[x] f183ab5` `not_before` productized for one operation
+Built exactly as scoped: `db.create_job(..., not_before=ts)` (sets the column, tags `wait_reason='scheduled'`,
+preserves the request in `payload["_scheduled_for"]` since claiming nulls the column itself) →
+`jobs.enqueue(..., not_before=ts)` → `staleness.rebuild(..., not_before=ts)` threading it into every job it
+creates. `jobs.execute()` records missed-window provenance (`scheduled_run_started` job_event:
+scheduled/actual/delay/reason) for every scheduled job, and cancels-not-runs one whose `payload["_deadline"]`
+already passed. Real bug found: `api.py`'s budget/pause resume sweep (`POST /api/usage/budget`) unconditionally
+cleared `not_before` for every queued job -- raising the budget or clicking Resume would wake a "run at 2am"
+schedule immediately; fixed to skip `wait_reason='scheduled'` (the `db.py:1817` sweep, `release_budget_waits()`,
+was already correctly scoped -- no change needed there, only `api.py`'s). CLI:
+`neurosearch project rebuild-stale <project> --tier <tier> --at HH:MM`, host-honest by construction ("runs when
+the worker is next available, no earlier than..."). Gate verified: two `staleness.rebuild()` calls for the same
+still-in-flight source produce no duplicate job (`assess()` itself excludes sources with a live job, on top of
+`create_job`'s existing dedupe); not_before gates claiming and survives a restart (manually verified beyond the
+5-test suite). Full suite: 1504 passed; `repo-check: PASS`.
 
 ### L-21 `[ ]` macOS power assertion, measured not assumed — needs: L-20
 Investigate `caffeinate`-equivalent from the worker (IOPMAssertion via `caffeinate -w <pid>` or a subprocess)

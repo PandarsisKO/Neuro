@@ -3343,3 +3343,35 @@ productized on `create_job`/`enqueue` -- the precise starting point was already 
 HANDOFF.md section this segment, citing exact file/line references; L-21: macOS power-assertion / lid-open-vs-
 closed testing, which needs Kyle physically and stays blocked regardless of stage ownership) and Stage 4 (L-30:
 nightly envelope, L-31: Project Delta v0, needs L-30). Continuing to L-20 now.
+
+## L-20 closed — not_before is now a caller-facing schedule, not just internal retry machinery (2026-09-15)
+
+Built to the precise scope the earlier "P1A precise starting point" HANDOFF section (above, same date) laid
+out — the exactly-once/lease infrastructure was already real and tested; the actual gap was a caller-facing
+entry point plus missed-window provenance. Implementation: `db.create_job(..., not_before=ts)`,
+`jobs.enqueue(..., not_before=ts)`, `staleness.rebuild(..., not_before=ts)`, a CLI command
+(`neurosearch project rebuild-stale`), an API field (`RebuildIn.not_before`), and missed-window recording in
+`jobs.execute()` (scheduled/actual/delay/reason, plus a deadline-passed cancel path via
+`payload["_deadline"]`, not yet exposed by any caller but ready for the first one that needs it).
+
+Real bug found along the way: `api.py`'s budget/pause resume sweep (`POST /api/usage/budget`) would have woken
+a caller's 2am-scheduled job immediately the moment anyone raised the daily budget or clicked Resume — it
+cleared `not_before` for every queued job unconditionally, not just genuine budget waits. Fixed by scoping it to
+skip `wait_reason='scheduled'`. The OTHER resume sweep the ladder flagged (`db.py:1817`,
+`release_budget_waits()`) turned out to already be correctly scoped to `wait_reason='budget'` only — no change
+needed there, confirmed by reading it rather than assuming the ladder's flag meant both sweeps had the bug.
+
+Scope decision, recorded rather than silently made: `staleness.rebuild()`'s `assess()` call still runs at
+schedule time (now), not deferred to the scheduled execution time. This is NOT a "no longer current" gap —
+findings' own `is_current`/`input_hash` check already makes a scheduled job for a source that becomes current
+again in the meantime a $0 no-op — and manually verified that calling `rebuild()` twice for the same in-flight
+source produces zero duplicate jobs (`assess()` itself excludes sources with a live job). A deferred-assess
+design (re-run `assess()` at execution time, not schedule time) would be a bigger, different feature nothing has
+asked for yet — not built speculatively.
+
+New test file: `tests/test_p1a_scheduled_execution.py` (5 tests). Validated via `~/ns-verify`: full suite 1504
+passed, 0 failed; `repo-check: PASS`.
+
+Next per EXECUTION-LADDER.md Stage 3: L-21 (macOS power assertion, measured not assumed) — needs Kyle physically
+per the earlier reassignment caveat, so this stays blocked regardless of stage ownership. After that, Stage 4
+(L-30 nightly envelope, L-31 Project Delta v0) becomes the critical path.
