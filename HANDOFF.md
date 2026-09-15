@@ -3212,3 +3212,35 @@ the mission's own dependency order (a reliability/integrity gap makes every late
 One exception noted up front: L-21 (macOS power-assertion behavior, lid open vs closed) needs someone to
 physically open/close Kyle's laptop lid and watch what happens -- that stays `[k]`-shaped even during the
 reassignment; the code half of Stage 3 (L-20) does not.
+
+## L-12 closed — governing-input mid-flight change now requeues, not fails (2026-09-15)
+
+Real bug, found by running the actual job path (not by reading code): `findings.suggest_for_source()`'s
+pre-existing `_inputs_current()` guard raised a bare `RuntimeError("...kept for retry")`, but
+`jobs.execute()`'s retry classification only auto-retries typed/regex-matched transient errors — a plain
+`RuntimeError` whose text doesn't match `TRANSIENT` falls through to a terminal "failed" job. Compounding this,
+`suggest_for_project()`'s per-source `try/except Exception` caught it as an ordinary per-source failure before
+it ever reached `jobs.execute()`.
+
+Fix (commit `57f3fc7`): raise `jobs.Yield` at all 3 `_inputs_current()` check sites in `findings.py`, and
+re-raise it (not swallow it) in `suggest_for_project()`'s per-source loop, same pattern as the existing
+`BudgetPaused`/`ProviderUnavailable` re-raise. `jobs.execute()` already handles `Yield` correctly (immediate
+uncounted requeue) — no change needed there.
+
+New test: `tests/test_p0_governing_input_change.py` — real `db.create_job` -> `db.claim_job` -> `jobs.execute()`
+path, with a monkeypatched `db.get_project` that fires a concurrent brief edit mid-run. Note: this test shares
+its `monkeypatch` fixture instance with the `p0b_db` fixture (function-scoped, both injected into the same test
+function) — calling `monkeypatch.undo()` mid-test would roll back `p0b_db`'s own `fake_ai`/`data_dir` patches
+too, not just the intended one. Worked around by patching/restoring `db.get_project` by hand instead of via
+`monkeypatch.setattr`/`.undo()`.
+
+Two pre-existing tests in `tests/test_s46_r4_durable_units.py` called `suggest_for_source()` directly and
+asserted `pytest.raises(RuntimeError, match="inputs changed")` — updated to `pytest.raises(jobs.Yield, ...)`,
+same message text, since `Yield` subclasses `Exception` directly, not `RuntimeError`.
+
+Validated via the `~/ns-verify` isolated venv (see the "Autonomous execution pass" section below for the
+rebuild recipe): full suite 1494 passed, 0 failed; `repo-check: PASS`.
+
+Next per `EXECUTION-LADDER.md` / the continuous-execution directive / Codex's temporary reassignment (Codex off
+until the weekend reset, ~5 days from 2026-09-15): L-13 (P0.C restart/retry — crash-recovery double-spend),
+L-14 (P0.D budget exhaustion), L-15 (promotion boundary), L-16 (concurrent completion), L-17 (P0 closeout doc).

@@ -64,11 +64,18 @@ Test: `t4.execute(pid, budget, dry_run=False)` twice on a fake-AI temp DB with t
 enqueues 0 jobs (dedupe_key `findings:{pid}:{sid}` + `is_current`), 0 new `project_notes`, 0 new `project_claims`,
 0 new `usage` rows. Then with the `suggest_findings` jobs actually run by a fake worker. Gate: all four zeros.
 
-### L-12 `[ ]` P0.B governing input changes mid-flight — needs: L-11
-Queue against brief revision A; `db.update_project(brief=...)` before the job runs; run it. Verify the written
-findings carry `brief_revision` A (they do -- `findings.py:128`) and that `is_current` reports them stale under B.
-Document whether that is sufficient (it likely is) or fix the narrow gap (e.g. the job re-reads the brief at run
-time and writes B-content tagged A). Gate: a written finding in the audit doc, or a test + fix.
+### L-12 `[x] 57f3fc7` P0.B governing input changes mid-flight — needs: L-11
+Found a real, narrow gap (not just an audit): `findings.suggest_for_source()`'s pre-existing `_inputs_current()`
+mid-flight guard already refused to write stale-tagged results, but raised a bare `RuntimeError` that
+`jobs.execute()`'s retry classification (`TRANSIENT` regex) doesn't match -- so the job was marked terminally
+"failed", never retried, despite its own message promising "kept for retry". `suggest_for_project()`'s per-source
+try/except then swallowed it as an ordinary per-source failure on top of that. Fixed by raising `jobs.Yield`
+(the existing safe-boundary requeue mechanism -- immediate, uncounted) at all 3 check sites, and letting it
+propagate through `suggest_for_project()` (re-raised before the generic except, alongside the existing
+`BudgetPaused`/`ProviderUnavailable` re-raise) instead of being counted as a source failure. New end-to-end test
+(`tests/test_p0_governing_input_change.py`) drives the real `create_job` -> `claim_job` -> `jobs.execute()` path:
+asserts `"queued"`, zero attempt penalty, immediate `not_before`, nothing written under the stale brief, then a
+clean retry completes under the post-edit brief revision. Full suite 1494 passed; `repo-check: PASS`.
 
 ### L-13 `[ ]` P0.C restart/retry — needs: L-11
 Kill a fake worker mid-`suggest_findings` (after the provider call, before `replace_suggestions` commits); restart;
