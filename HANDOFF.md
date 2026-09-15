@@ -3128,3 +3128,35 @@ Mac; L-06 needs Kyle to actually fill in `tools/sample_findings.py`'s output; L-
 
 **Kyle**: the overnight rebuild (L-00) and the `caffeinate` command I gave you separately are still yours to
 kick off by hand; I can't start either from here (device_bash is a VM on your machine, not your machine itself).
+
+## P1A precise starting point, verified against real code, not guessed — 2026-09-15 (Claude)
+
+Continuous-execution pass: audited the actual `jobs` schema and code paths so P1A starts from what's real, not
+from re-derived assumptions (directive: "do not invent a new infrastructure layer if the existing mechanism
+passes the gate"). Findings:
+
+**Already built, don't rebuild**: `jobs.not_before` (REAL, nullable) exists and `claim_job()` already honors it
+correctly (`WHERE status='queued' AND (not_before IS NULL OR not_before<=?)`, `db.py:2234`) with proper
+claim-time clearing (`db.py:2304`). `run_id`, `dedupe_key` (+ `dedupe_key_for`), `execution_policy`,
+`dependency_policy`/`blocked_by`, `attempts`, `worker_id`/`claimed_at`/`heartbeat_at`/`lease_until` (lease-based
+exactly-once claiming), `cancel_requested_at`, `wait_reason` all exist and are exercised today for
+retry/budget/rate-limit waits (`neurosearch/db.py:1817`, `2355`, `3379`, `3402` — search `not_before` there for
+every existing caller). This is a real, tested exactly-once claim-and-lease system already.
+
+**The actual gap** (verified by reading `db.create_job()` and `jobs.enqueue()`, `neurosearch/jobs.py:267` and
+`neurosearch/db.py:2036`): neither function accepts `not_before` as a parameter. Today `not_before` is set ONLY
+by internal retry/budget/rate-limit code paths (`breakers.py` et al) — never by a caller requesting "run this
+later." So P1A is NOT "build a scheduler" — the scheduler already exists and is production-tested. P1A is:
+1. Add `not_before: float | None = None` to `create_job()`'s signature and INSERT, thread through `enqueue()`.
+2. CLI/API surface for a caller to request a future time (the "Tonight" P1B UI's backend).
+3. **Missed-window policy** (rulings §4, not yet built anywhere): today if the app is asleep past `not_before`,
+   `claim_job()` just picks it up whenever a worker next polls — that's ALREADY the right passive behavior for
+   "run at next eligible wake" (nothing needs building there), but nothing currently records *why* a run was
+   late or distinguishes "ran 6 hours late, fine" from "deadline passed, should not run silently." That's the
+   real missing piece — likely a `payload` convention (e.g. `{"stale_after": ts}`) checked once at claim or
+   execute time, not a schema change.
+4. Full `integrity_check` + verified backup once per autonomous execution envelope (already flagged, P0's own
+   item — `db.integrity_check().ok` still doesn't count `dangling_origin_note_id`, see the P0 pointer above).
+
+Net: P1A's actual build surface is small (a function signature, a CLI flag, a staleness-on-claim check) — the
+hard exactly-once/lease/retry infrastructure is already there and doesn't need re-architecting.
