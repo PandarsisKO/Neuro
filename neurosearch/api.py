@@ -2614,6 +2614,17 @@ def api_claims_query(project_id: str, q: str | None = None, status: str = "all",
                              topic=topic, area=area, sort=sort, limit=limit, offset=offset)
 
 
+@app.get("/api/projects/{project_id}/claims/review-queue", dependencies=[Depends(require_auth)])
+def api_claims_review_queue(project_id: str, limit: int = 25) -> dict[str, Any]:
+    """L-51 (P4 Review at Scale): the exception queue -- the few proposed Claims that actually need a human, each
+    naming why (disagreement / plan_impact / evidence_weak) with its inspectable members. Disagreement is never
+    capped; `counts.not_shown` says exactly what the cap hid. Read-only; approving stays on the existing routes."""
+    from . import review_queue
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return review_queue.build(project_id, limit=max(1, min(limit, 500)))
+
+
 class ClaimsBulkIn(BaseModel):
     claim_ids: list[str]
     status: str                      # proposed | accepted | rejected
