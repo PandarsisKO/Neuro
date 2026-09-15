@@ -3580,3 +3580,19 @@ knowledge, and never surfaces unless it is broken. Rendering is capped at 3 line
 Stage 8 is now the last stage on my side with code done. Every remaining rung is gated on Kyle (L-06/L-07/
 L-08, L-21, L-30/31/41, L-51, L-60/61 -- all in `docs/KYLE-GATES-2026-09-15.md`), on Codex's frontend split
 (L-40), or explicitly not admitted (Stages 10-13). Nothing unblocked remains that I can honestly start.
+
+## Correction + L-40 shipped (2026-09-15, later)
+
+Kyle caught a control-plane error: I had recorded L-40 as blocked on Codex's frontend split without checking.
+The split landed 2026-09-13 (`7480352`). `PRODUCT-SCHEDULER.md` still named it the NOW blocker two days later
+and that stale line misdirected me. Fixed at `5bf451d` (scheduler NOW = L-40; L-04 -> 477113c, L-05 -> aa53a9c
+replacing `pending-sha`). Lesson recorded: a "needs X" on the ladder is a claim to VERIFY against `git log`,
+not a fact to repeat.
+
+L-40 shipped at `ed87c06` (0.63.91): Now / Tonight / Overnight batch on the stale-rebuild action, host-honest
+copy, scheduled state visible, cancel + run-now, "since you were away". Found and fixed a real L-20 gap on the
+way: `db.derived_status` mapped `wait_reason='scheduled'` to "retry_wait", so a user's schedule would have
+shown as a retry in the console and "Start next" would have bumped it to nowhere. Release-check PASS (sha
+`nogit` in the artifact name because it ran from the `~/ns-verify` copy; pytest half passed separately, 1572).
+
+Exhaustion pass follows below.

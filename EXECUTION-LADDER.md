@@ -259,9 +259,18 @@ JSON -- no further code is needed (see `docs/KYLE-GATES-2026-09-15.md`).
 
 ## Stage 5 — P1B "Tonight" UI (Claude lane, tier: sonnet) — needs: L-20 (done) AND Codex's frontend split (landed 2026-09-13 at `7480352`; `neurosearch/web/js/*` + `styles.css`)
 
-### L-40 `[ ]` Now / Tonight / Overnight batch on the stale-rebuild action
+### L-40 `[~] claude 2026-09-15 -- code+tests done at ed87c06 (0.63.91), gate = Kyle uses it once` Now / Tonight / Overnight batch on the stale-rebuild action
 Progressive disclosure; pending state visible; cancellable; the host-honesty copy from L-20; on return the
 panel says what was scheduled, whether it ran, what happened, cost, attention needed. Gate (rulings §3 P1B).
+Shipped: each triage tier keeps one primary ("Rebuild · price" = now) plus a "When…" disclosure (now on the API /
+tonight / overnight as a batch / in the background). The card shows what is scheduled (sources · eligible from
+HH:MM tonight · how · cost) with Run now instead / Cancel, and on return "Since you were away: N re-read · failed ·
+missed the window · $ · needs a look". Copy is host-honest and internals-free (pinned by test). Server owns
+"tonight" (`staleness.next_tonight`, host clock, nightly hour); `GET .../scheduled`, `POST .../scheduled/cancel`,
+`POST /jobs/{id}/run-now`; a scheduled job is its own visible state ("scheduled", was falling through to "retry
+wait" -- a real L-20 gap). 6 tests; frontend gates 43/43; full suite 1572; repo-check PASS; release-check PASS at
+0.63.91. Gate: Kyle schedules one real rebuild for tonight, leaves the Mac as he normally would, and reads the card
+in the morning -- is the outcome clear without opening the jobs console? (`docs/KYLE-GATES-2026-09-15.md`)
 
 ---
 

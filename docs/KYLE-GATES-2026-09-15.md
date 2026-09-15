@@ -85,3 +85,10 @@ know or would do? Nothing was decided for you; no Claim or tension status moved.
 When a night's output leaned on a number nobody has measured against your data, the last lines of
 `neurosearch nightly report` say so, capped at three. On a quiet night there is no such line. The gate is the
 same as L-60's: was it worth its line — did it change what you'd check?
+
+## L-40 — the "Tonight" UI, once for real
+
+In Findings, on a stale tier's row, press **When…** and pick **tonight** (free on Claude Code) or **overnight as a
+batch** (half price). Leave the Mac the way you normally would. In the morning the same card says what happened.
+The gate: was the outcome clear from that card alone, without opening the jobs console? If you closed the lid and
+nothing ran, that is L-21's known limit and the card should have said "eligible from", not promised a time.
