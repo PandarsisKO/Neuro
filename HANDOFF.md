@@ -3475,3 +3475,47 @@ whatever L-30's real run produces — no separate action needed once L-30 has ru
 EXECUTION-LADDER.md's own ordering, the next unblocked rung not gated on Kyle is worth identifying before
 stopping — checking the ladder now for what Stage 5+ (or any other not-yet-admitted stage explicitly cleared to
 start) contains that doesn't depend on L-21/L-30/L-31's real-world gates.
+
+## L-41 Morning Report v1: code+tests done, gate blocked on Kyle reading a real report (2026-09-15)
+
+`neurosearch/report.py` (new module, committed `16169e3`): `for_envelope(envelope_id) -> dict` and
+`render_text(report) -> str` turn `delta.for_envelope()`'s per-project data plus `staleness.triage()`'s
+tiers (explicitly labeled provisional, per rulings section 7) into the mission doc's own P3 primary
+hierarchy — what changed (max emphasis), why it matters, what needs me, what Neuro handled (secondary),
+operational details (collapsed, last) — with "nothing important changed" as a genuinely short, first-class
+outcome rather than a special case bolted onto the normal path.
+
+The one hard constraint from rulings section 7 ("MORNING REPORT V1 MUST NOT PRETEND P4 EXISTS") got its own
+direct test rather than just careful writing: neither the rendered text nor the raw dict may ever contain any
+form of "these are the N things you need to review" — that claim needs Stage 7's Decision Impact ranking
+(L-50 done, L-51 not yet built) to be defensible, and isn't yet. `test_never_claims_a_ranked_judgment_queue`
+checks both the string output and `json.dumps(rep)` for the banned phrasing.
+
+One real bug caught before it reached the test suite, worth recording because it's the kind of thing that
+would have shipped a confidently wrong number: `staleness.triage()`'s tiers are already per-tier SUMMARY
+dicts (`{"count": ..., "sources": [...], "api_cost": ..., ...}` — 11 keys), not bare lists of stale-source
+rows. An early draft of `report.py` did `len(t["tiers"][k])`, which silently returns the dict's *key count*
+(always 11) instead of the tier's actual source count, for every project, every time. Caught by manually
+rendering a real report against a project with exactly zero stale sources (freshly created, nothing to
+rebuild) and seeing "11 rebuild matters, 11 retry failed" — an obviously wrong number for that fixture.
+Fixed to read `tiers[k]["count"]` directly; `test_stale_risk_tiers_are_pulled_from_triages_own_summary_counts_not_miscounted`
+pins the real (zero) count against the same fixture so this can't silently regress. Recorded here as a
+reminder: manually rendering/inspecting real output before trusting a test suite around it catches bugs a
+narrowly-scoped unit test can miss (the earlier tests would have needed a project WITH real stale sources
+to catch this at all, and I hadn't written one yet when I found it).
+
+New test file: `tests/test_p3_morning_report.py` (7 tests). Full suite 1532 passed, `repo-check: PASS`.
+
+NOT marked closed on the ladder (`[~]`) — same shape as L-21/L-30/L-31: the gate ("Kyle explains the
+overnight change without opening Findings") is a real human-comprehension measurement that needs an actual
+rendered report from an actual night, which in turn needs L-30's real night to have happened. Code-complete,
+not gate-complete.
+
+Four items now open pending Kyle, all in the same honest shape: L-21 (physical test), L-30 (one real $2
+night), L-31 and L-41 (both close automatically once L-30's real night produces a real envelope — no
+further code needed for either). Checked EXECUTION-LADDER.md for what's next that does NOT depend on one of
+these real-world gates: Stage 5 (L-40) needs Codex's frontend split (not reassigned, stays with Codex/Kyle);
+Stage 7 (L-51) needs L-50 (done, unblocked) but is a genuinely bigger, more judgment-heavy rung (exception
+queue construction against Kyle's real project data, with its own gate about a "short defensible queue"
+against thousands of real proposals) — a reasonable next candidate, but a heavier one to start cold at the
+end of a long continuous session. Recording the state here cleanly rather than starting it partially.

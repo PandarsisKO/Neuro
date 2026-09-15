@@ -268,11 +268,22 @@ panel says what was scheduled, whether it ran, what happened, cost, attention ne
 
 ## Stage 6 — P3 Morning Report v1 (Claude lane, tier: sonnet) — needs: L-31
 
-### L-41 `[ ]` report v1, honest about P4 not existing (rulings §7)
-Surface: what changed (coverage delta, new tensions) → what Neuro researched → stale/risky via existing
-`staleness.triage` tiers marked provisional → spend → operational details collapsed. "Nothing important
-changed" is a first-class outcome. NO "the 2 things you need to review". Gate (rulings P3): Kyle explains the
-overnight change without opening Findings.
+### L-41 `[~] claude 2026-09-15 -- code+tests done at 16169e3, blocked on Kyle reading a real one` report v1, honest about P4 not existing (rulings §7)
+`neurosearch/report.py` built and tested: `for_envelope(envelope_id) -> dict` assembles `delta.for_envelope()`'s
+data with `staleness.triage()`'s tiers (marked explicitly provisional); `render_text(report) -> str` renders the
+mission doc's own primary hierarchy (what changed, max emphasis → why it matters → what needs me → what Neuro
+handled, secondary → operational details, collapsed). "Nothing important changed" is a first-class short path,
+never a fallback. Neither the rendered text nor the raw dict can ever contain any form of "the N things you need
+to review" -- checked directly by test, not just by inspection -- since that claim needs Stage 7's Decision
+Impact ranking (not yet built) to be defensible. A real bug was caught before it reached tests: `staleness.triage()`'s
+tiers are per-tier SUMMARY dicts (each already carrying its own `"count"`), not bare row lists -- an early draft's
+`len(tiers[k])` silently reported the dict's key count (11) as every tier's source count; caught by manually
+rendering a report against a project with zero actual stale sources and seeing "11 rebuild matters", fixed, and
+pinned with a regression test. 7 tests. Full suite 1532 passed, `repo-check: PASS`.
+Gate (rulings P3): "Kyle explains the overnight change without opening Findings" -- a real human-comprehension
+measurement, same shape as L-21/L-30/L-31's gates: needs Kyle to actually read a real rendered report from a
+real night (which itself needs L-30's real night to exist first). Code-complete, not gate-complete; nothing
+further to build here until that reading happens.
 
 ---
 
