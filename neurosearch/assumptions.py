@@ -35,6 +35,9 @@ class Assumption:
     evidence: str                # what was measured, when, on what corpus — or "not yet measured" if measured=False
     how_to_verify: str          # the concrete check that would re-validate this against CURRENT live data
     kind: str = "threshold"      # "threshold" | "default" | "budget" | "weight"
+    measured_on: str | None = None       # ISO date of the cited measurement, when there is one (L-61: age is a real signal)
+    exercised_by: tuple[str, ...] = ()   # L-61: mechanism keys a nightly envelope reports (see t6.MECHANISMS) that this
+                                         # number shaped -- so "tonight leaned on this" is a fact read off the record, not a guess
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -52,6 +55,8 @@ REGISTRY: tuple[Assumption, ...] = (
         how_to_verify="re-sample duplicate-candidate pairs across score bands on the current largest project's "
                         "approved findings and check the boundary still separates genuine reworded duplicates from "
                         "same-topic-different-content pairs",
+        measured_on="2026-09-10",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="CONTAIN_RATIO", module="neurosearch.findings_quality", attr="CONTAIN_RATIO",
@@ -61,6 +66,8 @@ REGISTRY: tuple[Assumption, ...] = (
                   "(a shorter restatement of a longer finding, Jaccard as low as 0.12) at high sampled precision",
         how_to_verify="sample containment-only duplicate candidates (high CONTAIN_RATIO, low NEAR_JACCARD) on the "
                         "current corpus and confirm they are still genuine restatements, not coincidental overlap",
+        measured_on="2026-09-10",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="SET_JACCARD", module="neurosearch.findings_quality", attr="SET_JACCARD",
@@ -70,6 +77,8 @@ REGISTRY: tuple[Assumption, ...] = (
                   "0.30-0.35 clearly mixed; 0.50 chosen conservatively since a false duplicate costs a real finding",
         how_to_verify="sample set-Jaccard-only duplicate candidates on the current corpus at and near 0.50 and "
                         "confirm the precision/recall tradeoff still favors the conservative side",
+        measured_on="2026-09-10",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="SET_MIN_SHARED", module="neurosearch.findings_quality", attr="SET_MIN_SHARED",
@@ -82,6 +91,8 @@ REGISTRY: tuple[Assumption, ...] = (
         how_to_verify="this constant documents a known gap, not a tunable boundary; re-verify by hand-sampling "
                         "low-set-Jaccard pairs on the current corpus to confirm the gap is still real and still "
                         "requires embeddings rather than a better lexical threshold",
+        measured_on="2026-09-10",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="PAIR_BUDGET", module="neurosearch.findings_quality", attr="PAIR_BUDGET",
@@ -94,6 +105,8 @@ REGISTRY: tuple[Assumption, ...] = (
         how_to_verify="re-run duplicate review on the current largest project's finding count and confirm no "
                         "partial-budget warning fires, and that raising the budget further does not change the "
                         "cluster count or signature",
+        measured_on="2026-09-13",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="TITLE_ECHO", module="neurosearch.findings_quality", attr="TITLE_ECHO",
@@ -103,6 +116,7 @@ REGISTRY: tuple[Assumption, ...] = (
         evidence="not yet measured against live data — currently a stated value with no cited sampling",
         how_to_verify="sample findings flagged as title-echo at and near this threshold on a live project and "
                         "confirm they read as adding no information beyond the source title",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="SHORT_CONTENT_TOKENS", module="neurosearch.findings_quality", attr="SHORT_CONTENT_TOKENS",
@@ -111,6 +125,7 @@ REGISTRY: tuple[Assumption, ...] = (
         evidence="not yet measured against live data — currently a stated value with no cited sampling",
         how_to_verify="sample findings at and near this content-word count on a live project and confirm they "
                         "read as genuinely thin rather than merely concise",
+        exercised_by=('findings_clusters',),
     ),
     Assumption(
         name="local unit concurrency default", module="neurosearch.concurrency", attr="_LOCAL_UNIT_CONCURRENCY_DEFAULT",
@@ -124,6 +139,7 @@ REGISTRY: tuple[Assumption, ...] = (
                         "concurrency 1, 2, 3, and 4 on the actual machine running the worker, and confirm the "
                         "default still reflects a reasonable floor rather than a stale guess",
         kind="default",
+        exercised_by=('findings_extract',),
     ),
     Assumption(
         name="api unit concurrency default", module="neurosearch.concurrency", attr="_API_UNIT_CONCURRENCY_DEFAULT",
@@ -134,6 +150,42 @@ REGISTRY: tuple[Assumption, ...] = (
         how_to_verify="measure API rate-limit headroom and cost-per-minute at concurrency 1 through 4 on a real "
                         "provider account and confirm the default is not needlessly conservative or too aggressive",
         kind="default",
+        exercised_by=('findings_extract',),
+    ),
+    # --- L-61: the numbers the autonomous night itself leans on ------------------------------------------------
+    Assumption(
+        name="DEFAULT_SUBSTANCE_FLOOR", module="neurosearch.t4", attr="DEFAULT_SUBSTANCE_FLOOR",
+        why="first-window substance score below which the probe stops reading a source (T4 executor default)",
+        measured=False,
+        evidence="not yet measured as a RECALL boundary: PROBE_DISCOUNT measured that floor=30 halves spend, not "
+                  "that 30 is where real findings stop -- nobody has sampled sources stopped at 25-35 for missed findings",
+        how_to_verify="take the sources the probe stopped on a real night, read their remaining windows once, count "
+                        "findings that would have been kept; move the floor if the loss is material",
+        exercised_by=("substance_probe",),
+    ),
+    Assumption(
+        name="PROBE_DISCOUNT", module="neurosearch.t4", attr="PROBE_DISCOUNT",
+        why="fraction of a source's full findings cost the executor budgets when the substance probe is on",
+        measured=True, measured_on="2026-09-14",
+        evidence="20 real sources, 2026-09-14: substance_floor=30 roughly halved spend (docs/T4-ADMISSION-2026-09-14.md)",
+        how_to_verify="compare estimate vs recorded usage per source on a real night's batch; re-fit if off by >20%",
+        kind="weight", exercised_by=("nightly_budget_walk",),
+    ),
+    Assumption(
+        name="LOCAL_MINUTES_PER_WINDOW", module="neurosearch.staleness", attr="LOCAL_MINUTES_PER_WINDOW",
+        why="wall-clock minutes one findings window takes on the local Claude Code path (the 'free' ETA in triage)",
+        measured=True, measured_on="2026-09-08",
+        evidence="observed 2026-09-08: ~one window per minute on Claude Code (Sonnet)",
+        how_to_verify="time a local rebuild of a known-window-count source; the ETA the card quoted vs what happened",
+        kind="default", exercised_by=("staleness_triage",),
+    ),
+    Assumption(
+        name="SCHEDULED_LOOKAHEAD", module="neurosearch.power_assertion", attr="SCHEDULED_LOOKAHEAD",
+        why="how far ahead a scheduled job justifies holding the macOS keep-awake assertion (24h)",
+        measured=False,
+        evidence="not yet measured -- a stated bound; L-21's physical test will show whether the assertion matters at all",
+        how_to_verify="after L-21's measurement, check whether jobs scheduled inside vs outside this window ran on time",
+        kind="default", exercised_by=("power_assertion",),
     ),
 )
 
@@ -147,6 +199,7 @@ def _resolve(a: Assumption) -> dict[str, Any]:
     return {
         "name": a.name, "module": a.module, "attr": a.attr, "value": value, "kind": a.kind,
         "why": a.why, "measured": a.measured, "evidence": a.evidence, "how_to_verify": a.how_to_verify,
+        "measured_on": a.measured_on, "exercised_by": list(a.exercised_by),
     }
 
 

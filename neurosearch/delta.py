@@ -178,7 +178,7 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
     total_spend = round(sum(pd.pop("_spend_usd") for pd in projects), 4)
     total_new_tensions = sum(pd.pop("_new_tensions_count") for pd in projects)
 
-    return {
+    out = {
         "envelope_id": envelope_id, "found": True, "ok": bool(record.get("ok", False)),
         "window": {"start": start_ts, "end": end_ts},
         "budget": {"authorized_usd": float(record.get("budget") or 0),
@@ -188,6 +188,13 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
         "new_tensions_total": total_new_tensions,
         "needs_user": needs_user,
         "adjudication": _adjudication_summary(record.get("adjudication")),
+        "assumptions": None,   # filled below: t6.surface() needs the assembled dict
         "preflight_backup": record.get("preflight_backup"),
         "ts": time.time(),
     }
+    try:
+        from . import t6
+        out["assumptions"] = t6.surface(out)
+    except Exception as e:  # noqa: BLE001 -- the ledger read failing must never blank out the delta
+        out["assumptions"] = {"error": str(e), "items": []}
+    return out

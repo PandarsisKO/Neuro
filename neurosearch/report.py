@@ -73,9 +73,15 @@ def render_text(report: dict[str, Any]) -> str:
     lines.append(f"Morning Report — {report['envelope_id']}" + ("" if report.get("ok") else "  [run did not complete cleanly]"))
     lines.append("")
 
-    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]):
+    broken = [x for x in (report.get("assumptions") or {}).get("items") or [] if x["kind"] == "unresolvable"]
+    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and not broken:
         lines.append("Nothing important changed overnight.")
         lines.append(f"Spend: {_fmt_usd(report['budget']['actual_usd'])} of {_fmt_usd(report['budget']['authorized_usd'])} authorized.")
+        return "\n".join(lines)
+    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and broken:
+        lines.append("Nothing important changed overnight -- but one of the numbers the system runs on is broken:")
+        from . import t6
+        lines.extend(t6.render_lines({"items": broken}))
         return "\n".join(lines)
 
     for pd in report["projects"]:
@@ -136,4 +142,6 @@ def render_text(report: dict[str, Any]) -> str:
         lines.append("")
     lines.append(f"Total spend: {_fmt_usd(report['budget']['actual_usd'])} of {_fmt_usd(report['budget']['authorized_usd'])} authorized"
                  f" ({_fmt_usd(report['budget']['estimated_usd'])} estimated).")
+    from . import t6
+    lines.extend(t6.render_lines(report.get("assumptions") or {}))     # L-61: last, collapsed, only when non-empty
     return "\n".join(lines).rstrip() + "\n"

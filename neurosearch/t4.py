@@ -214,6 +214,7 @@ def plan(project_id: str, *, limit: int | None = None, chunk_limit: int | None =
 
 
 EXECUTE_VERSION = "t4-execute-v1"
+DEFAULT_SUBSTANCE_FLOOR = 30   # registered in assumptions.py (L-61): measured for cost, NOT yet for recall
 PROBE_DISCOUNT = 0.5   # measured 2026-09-14 on 20 real sources: substance_floor=30 roughly halved spend (docs/T4-ADMISSION-2026-09-14.md)
 
 
@@ -239,7 +240,7 @@ def _source_estimate(project_id: str, source_id: str, *, substance_floor: int | 
 
 
 def execute(project_id: str, *, budget_usd: float, max_sources: int | None = None,
-           substance_floor: int | None = 30, min_relevance: float | None = None,
+           substance_floor: int | None = DEFAULT_SUBSTANCE_FLOOR, min_relevance: float | None = None,
            dry_run: bool = True, transport: str = "interactive", execution_policy: str | None = None) -> dict[str, Any]:
     """The executor: turn ``select()``'s ranked ``by_source`` list into real ``findings.extract`` work, under a
     dollar cap, source by source in relevance order. This is T4's second half made real -- ``plan()`` above stays
