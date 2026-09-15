@@ -122,6 +122,17 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
             r.check("verified backup exists", bool(bk), f"{age_h:.1f} h old" if bk else "none yet — a snapshot is taken hourly while the server runs", warn=not bk)
             if bk:
                 r.check("latest backup file present", Path(bk["path"]).exists(), bk["path"], warn=True)
+            pf = db.kv_get("db:last_preflight")
+            pf_fail = db.kv_get("db:last_preflight_failure")
+            if pf:
+                info = json.loads(pf)
+                age_h = (time.time() - info["ts"]) / 3600
+                r.check("last autonomous-execution preflight (L-10)", info.get("ok", False),
+                       f"envelope {info.get('envelope_id')} · {age_h:.1f} h ago · backup {info.get('backup_path')}")
+            elif pf_fail:
+                r.check("last autonomous-execution preflight (L-10)", False, f"REFUSED: {json.loads(pf_fail)}")
+            else:
+                r.check("last autonomous-execution preflight (L-10)", True, "none run yet — no autonomous envelope has started", warn=True)
             jobs = h["jobs"]
             r.check("no stale running jobs", not jobs.get("stale_running"), f"queued {jobs.get('queued', 0)} · running {jobs.get('running', 0)} · failed {jobs.get('failed', 0)} · external {jobs.get('external_pending', 0)}")
             so = h["structured_outputs"]

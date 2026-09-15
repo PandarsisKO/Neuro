@@ -2998,9 +2998,41 @@ def integrity_check() -> dict[str, Any]:
     dangling_origin = connect().execute(
         "SELECT COUNT(*) FROM project_claims c WHERE c.origin_note_id IS NOT NULL "
         "AND NOT EXISTS (SELECT 1 FROM project_notes n WHERE n.id=c.origin_note_id)").fetchone()[0]
-    info = {"ts": t, "ok": res == "ok" and not fk and dup_evidence == 0, "result": res, "foreign_key_violations": len(fk),
-            "duplicate_claim_evidence": dup_evidence, "dangling_origin_note_id": dangling_origin, "seconds": round(time.time() - t, 2)}
+    info = {"ts": t, "ok": res == "ok" and not fk and dup_evidence == 0 and dangling_origin == 0, "result": res,
+            "foreign_key_violations": len(fk), "duplicate_claim_evidence": dup_evidence,
+            "dangling_origin_note_id": dangling_origin, "seconds": round(time.time() - t, 2)}
     kv_set("db:last_integrity", json.dumps(info))
+    return info
+
+
+def preflight_autonomous(envelope_id: str) -> dict[str, Any]:
+    """L-10 (EXECUTION-LADDER.md P0.G, CTO rulings §1.G): once per autonomous execution envelope, before any job
+    in it may run -- full ``PRAGMA integrity_check`` on the LIVE database (not ``quick_check``: see
+    ``verify_database``'s own reasoning, this is the check that actually caught 2026-09-14's real corruption,
+    quick_check would not have), then a freshly taken and verified backup. Raises, never proceeds silently, if
+    the live database is not clean -- refusing to start autonomous work against a database already known broken
+    is the entire point.
+
+    Idempotent per envelope: a second call with the same ``envelope_id`` (multiple jobs sharing one envelope)
+    returns the ORIGINAL recorded preflight instead of re-running the check and taking a second backup -- but
+    only once it has actually SUCCEEDED. A failed attempt is never cached as final (that would permanently lock
+    an envelope out even after the database is repaired); it is recorded for `doctor` under
+    ``db:last_preflight_failure`` and raised every time until a preflight for that envelope actually passes."""
+    key = f"preflight:{envelope_id}"
+    existing = kv_get(key)
+    if existing:
+        return json.loads(existing)
+    t = time.time()
+    live = connect().execute("PRAGMA integrity_check").fetchone()[0]
+    if live != "ok":
+        failure = {"envelope_id": envelope_id, "ts": t, "ok": False, "live_integrity": live}
+        kv_set("db:last_preflight_failure", json.dumps(failure))
+        raise RuntimeError(f"preflight refused for envelope {envelope_id!r}: live database integrity_check "
+                           f"reported {live!r}, not 'ok' -- refusing to start autonomous work against it")
+    backup_path = backup()   # raises RuntimeError itself if the fresh copy doesn't independently verify
+    info = {"envelope_id": envelope_id, "ts": t, "ok": True, "live_integrity": live, "backup_path": str(backup_path)}
+    kv_set(key, json.dumps(info))
+    kv_set("db:last_preflight", json.dumps(info))
     return info
 
 
