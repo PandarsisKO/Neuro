@@ -743,7 +743,8 @@ def nightly_status() -> None:
     _init()
     on = settings.t4_nightly_budget > 0
     typer.echo(f"nightly envelope: {'ON' if on else 'OFF'} (NEUROSEARCH_T4_NIGHTLY_BUDGET_USD={settings.t4_nightly_budget}, "
-               f"NEUROSEARCH_T4_NIGHTLY_HOUR={settings.t4_nightly_hour})")
+               f"NEUROSEARCH_T4_NIGHTLY_HOUR={settings.t4_nightly_hour}, T5 adjudication "
+               f"NEUROSEARCH_T5_NIGHTLY_BUDGET_USD={settings.t5_nightly_budget})")
     if not on:
         typer.echo("  set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD to a per-night dollar cap (e.g. 2) to turn it on; the worker's "
                    "housekeeping loop then runs it once per day after the configured local hour")
@@ -756,6 +757,7 @@ def nightly_status() -> None:
 
 @nightly_app.command("run")
 def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", help="Per-night dollar cap for THIS run (overrides NEUROSEARCH_T4_NIGHTLY_BUDGET_USD for this invocation only)"),
+                    t5_budget: Optional[float] = typer.Option(None, "--t5-budget", help="SEPARATE per-night cap for T5 adjudication (Sonnet-tier calls; L-60). Default: NEUROSEARCH_T5_NIGHTLY_BUDGET_USD, 0 = off"),
                     force: bool = typer.Option(False, "--force", help="Run even if today's envelope already ran (a second envelope today; never bypasses the budget-off guard)"),
                     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt")) -> None:
     """Run tonight's envelope now, in the foreground, and print the record. This ENQUEUES REAL PAID WORK up to the
@@ -765,6 +767,8 @@ def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", hel
     _init()
     if budget is not None:
         settings.t4_nightly_budget = float(budget)
+    if t5_budget is not None:
+        settings.t5_nightly_budget = float(t5_budget)
     if settings.t4_nightly_budget <= 0:
         typer.echo("nightly envelope is OFF (budget 0). Pass --budget N or set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD.", err=True)
         raise typer.Exit(code=1)
@@ -774,6 +778,11 @@ def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", hel
     projects = [p for p in db.list_projects() if p.get("n_sources")]
     typer.echo(f"authorizing up to ${settings.t4_nightly_budget:.2f} TOTAL across {len(projects)} active project(s) "
                f"(shared cap, walked down project by project -- not ${settings.t4_nightly_budget:.2f} each)")
+    if settings.t5_nightly_budget > 0:
+        typer.echo(f"plus up to ${settings.t5_nightly_budget:.2f} for T5 adjudication of open disagreements (separate cap; each verdict "
+                   "lands as a suggested finding, nothing is decided for you)")
+    else:
+        typer.echo("T5 adjudication: off (pass --t5-budget N to enable)")
     if not yes and not typer.confirm("Run the nightly envelope now?"):
         raise typer.Exit(code=0)
     r = nightly.run(force=force)

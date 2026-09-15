@@ -111,3 +111,15 @@ def test_report_json_returns_the_underlying_data(cli_db):
     assert r.exit_code == 0, r.output
     data = json.loads(r.output)
     assert data["found"] is True and data["budget"]["authorized_usd"] == 2.0
+
+
+def test_run_discloses_the_separate_t5_cap(cli_db):
+    _project_with_source()
+    r = runner.invoke(app, ["nightly", "run", "--budget", "2", "--t5-budget", "1"], input="n\n")
+    assert r.exit_code == 0, r.output
+    assert "authorizing up to $2.00 TOTAL" in r.output and "plus up to $1.00 for T5 adjudication" in r.output
+    assert nightly.last_run() is None
+    from neurosearch.config import settings
+    settings.t5_nightly_budget = 0.0            # --t5-budget sets process settings; a real CLI run is one process
+    r = runner.invoke(app, ["nightly", "run", "--budget", "2"], input="n\n")
+    assert "T5 adjudication: off" in r.output
