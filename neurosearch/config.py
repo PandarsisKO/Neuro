@@ -113,6 +113,10 @@ class Settings:
     # L-60: a SEPARATE per-night cap for T5 adjudication (each paid adjudication is a Sonnet-tier call, not a
     # Haiku findings read) -- off by default, authorized independently of the findings budget above.
     t5_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_T5_NIGHTLY_BUDGET_USD", "0") or 0))
+    # L-52 prep: Morning Report v2 "What needs me?" -- OFF until L-51's gate passes on Kyle's real project (rulings
+    # section 7: the claim needs a defensible ranking; L-51 is that ranking, and its gate is the proof). Flip to 1
+    # only after that; nothing else is needed to ship v2.
+    morning_report_needs_me: bool = field(default_factory=lambda: _env("NEUROSEARCH_MORNING_REPORT_NEEDS_ME", "0") in ("1", "true", "yes"))
 
     # Chunking (seconds)
     chunk_target_seconds: int = field(default_factory=lambda: int(_env("NEUROSEARCH_CHUNK_SECONDS", "60") or 60))

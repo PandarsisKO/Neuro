@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 from . import delta
+from .config import settings
 
 # staleness.triage()'s own tiers, in the order this report surfaces them -- rebuild_matters first (why-backed,
 # the only tier the ruling's "provisional prioritization aid" language is really about), retry_failed next
@@ -50,12 +51,34 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
             tiers = {k: {"count": int((t["tiers"].get(k) or {}).get("count") or 0)} for k in _TIER_ORDER}
         except Exception as e:  # noqa: BLE001 — a triage read failing must never blank out this project's delta
             tiers = {"error": str(e)}
-        projects.append({**pd, "staleness_tiers": tiers})
+        item = {**pd, "staleness_tiers": tiers}
+        if settings.morning_report_needs_me:
+            item["what_needs_the_user"] = _needs_me(pid, list(pd.get("what_needs_the_user") or []))
+        projects.append(item)
 
     material_change = bool(d["new_tensions_total"]) or bool((d.get("adjudication") or {}).get("count")) or any(
         (pd.get("what_neuro_did") or {}).get("findings_suggested") for pd in d["projects"] if "error" not in pd)
 
     return {**d, "projects": projects, "material_change": material_change, "report_ts": time.time()}
+
+
+NEEDS_ME_LIMIT = 5
+
+
+def _needs_me(project_id: str, existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """L-52 (Morning Report v2): the review queue's top items as "what needs me" -- only when
+    settings.morning_report_needs_me is on, which is only after L-51's gate has passed on real data. Each item
+    carries its reason, so the report can say WHY it needs a person, never just "review these"."""
+    from . import review_queue
+    q = review_queue.build(project_id, limit=NEEDS_ME_LIMIT)
+    out = list(existing)
+    for x in q["queue"][:NEEDS_ME_LIMIT]:
+        out.append({"reason": f"{', '.join(r.replace('_', ' ') for r in x['reasons'])}: {x['text'][:140]}",
+                    "claim_id": x["claim_id"], "reasons": x["reasons"]})
+    hidden = q["counts"]["hidden_total"] + max(0, len(q["queue"]) - NEEDS_ME_LIMIT)
+    if hidden:
+        out.append({"reason": f"and {hidden} more in the review queue (neurosearch project review-queue)", "more": hidden})
+    return out
 
 
 def _fmt_usd(x: float) -> str:
@@ -74,11 +97,12 @@ def render_text(report: dict[str, Any]) -> str:
     lines.append("")
 
     broken = [x for x in (report.get("assumptions") or {}).get("items") or [] if x["kind"] == "unresolvable"]
-    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and not broken:
+    needs = any(pd.get("what_needs_the_user") for pd in report["projects"])   # v2: something asking for a person is never "nothing"
+    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and not broken and not needs:
         lines.append("Nothing important changed overnight.")
         lines.append(f"Spend: {_fmt_usd(report['budget']['actual_usd'])} of {_fmt_usd(report['budget']['authorized_usd'])} authorized.")
         return "\n".join(lines)
-    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and broken:
+    if not report.get("material_change") and not any("error" in pd for pd in report["projects"]) and broken and not needs:
         lines.append("Nothing important changed overnight -- but one of the numbers the system runs on is broken:")
         from . import t6
         lines.extend(t6.render_lines({"items": broken}))

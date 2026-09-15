@@ -142,3 +142,31 @@ def test_spend_and_budget_lines_reconcile_to_the_envelope_record(p3_db):
     assert f"of $2.00 authorized" in text
     assert rep["budget"]["authorized_usd"] == 2.0
     assert rep["budget"]["estimated_usd"] == r["spent_estimate"]
+
+
+def test_needs_me_is_off_by_default_and_on_fills_the_slot_with_reasons(p3_db, monkeypatch):
+    """L-52 prep: v2's "What needs me?" exists behind a flag that stays OFF until L-51's gate passes on real data
+    (rulings section 7). Off: identical to v1. On: the review queue's items fill what_needs_the_user, each with
+    its reason -- still never the banned "the N things you need to review" phrasing."""
+    import json
+    from neurosearch.config import settings
+    project, sids = _project("solo", 1)
+    db.connect().execute("INSERT INTO project_claims (id, project_id, text, claim_type, topic, status, strength, freshness_class, created_at, updated_at) "
+                         "VALUES ('c_d', ?, 'sellers discount for speed', 'other', 't', 'proposed', 'strong', 'slow_changing', ?, ?)", (project["id"], db.now(), db.now()))
+    db.connect().execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, description, status, impact, created_at, updated_at) "
+                         "VALUES ('t', ?, 'CONTRADICTION', 'c_d', 'd', 'open', 'high', ?, ?)", (project["id"], db.now(), db.now()))
+    db.connect().commit()
+    r = nightly.run()
+
+    assert settings.morning_report_needs_me is False
+    off = report.for_envelope(r["envelope_id"])
+    assert off["projects"][0]["what_needs_the_user"] == []
+
+    monkeypatch.setattr(settings, "morning_report_needs_me", True)
+    on = report.for_envelope(r["envelope_id"])
+    items = on["projects"][0]["what_needs_the_user"]
+    assert len(items) == 1 and items[0]["claim_id"] == "c_d" and items[0]["reasons"] == ["disagreement"]
+    assert items[0]["reason"].startswith("disagreement: sellers discount")
+    text = report.render_text(on)
+    assert "Needs you: disagreement: sellers discount for speed" in text
+    assert "need to review" not in text.lower() and "need to review" not in json.dumps(on).lower()
