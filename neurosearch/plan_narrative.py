@@ -48,3 +48,30 @@ def explain(project_id: str, claim_id: str | None = None, tension_id: str | None
     claim = _claim_summary(resolved) if resolved else None
     items = [{**it, "why": _why(it.get("label"), it["strength"], claim)} for it in r["items"]]
     return {"known": True, "items": items}
+
+
+
+def _instruction(strength: str, condition: str) -> str:
+    if "stale" in condition or "needs refresh" in condition:
+        return "re-verify against current evidence before relying on this" if strength == "indicated" else \
+               "review — evidence for this step was merged from a claim whose freshness is now in question"
+    if "weak" in condition or "unsupported" in condition:
+        return "strengthen the evidence before relying on this" if strength == "indicated" else \
+               "review — evidence for this step was merged from a claim that no longer stands alone"
+    return "review — the evidence behind this step has changed"
+
+
+def propose_updates(project_id: str, claim_id: str | None = None, tension_id: str | None = None) -> list[dict[str, Any]]:
+    """LP3: write one pending `plan_updates` row per plan item LP2 finds affected, `origin='lp3'` so this never
+    collides with the existing LLM-based suggest_updates() queue on the same plan (db.add_plan_updates scopes its
+    clear-before-insert by origin). $0, deterministic, templated -- never a model call, never auto-accepted: the
+    existing accept/reject route (`POST /api/plan-updates/{id}`) is the only thing that promotes a row, unchanged.
+    Returns [] (writing nothing) when LP1/LP2 cannot resolve the citation -- never a guessed patch."""
+    r = explain(project_id, claim_id=claim_id, tension_id=tension_id)
+    if not r.get("known") or not r.get("items"):
+        return []
+    plan = db.latest_plan(project_id)
+    updates = [{"section": it["path"], "previous": it.get("label"),
+               "proposed": _instruction(it["strength"], it["why"]), "reason": it["why"]} for it in r["items"]]
+    db.add_plan_updates(plan["id"], updates, origin="lp3")
+    return [u for u in db.get_plan(plan["id"])["updates"] if u.get("origin") == "lp3" and u.get("status") == "pending"]

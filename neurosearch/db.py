@@ -950,6 +950,11 @@ MIGRATIONS = [
     # rows already stored were produced by the old one — so Kyle's screen still offered an Airbnb video as a strong
     # match for AI UI/UX work after the fix shipped. A stored judgement has to know what made it.
     ("project_reuse", "scan_version", "ALTER TABLE project_reuse ADD COLUMN scan_version TEXT"),
+    # LP3 (mission §12): which path proposed this plan_updates row -- NULL/'planner' = the existing LLM-based
+    # suggest_updates(); 'lp3' = plan_narrative.propose_updates(), the $0 deterministic path over a stale/weak
+    # Claim. Lets add_plan_updates scope its pending-row cleanup by origin so the two paths never clobber each
+    # other's pending queue on the same plan.
+    ("plan_updates", "origin", "ALTER TABLE plan_updates ADD COLUMN origin TEXT"),
 ]
 
 
@@ -4180,11 +4185,17 @@ def set_item_status(plan_id: str, key: str, status: str, note: str | None = None
                      (plan_id, key, status, note, now()))
 
 
-def add_plan_updates(plan_id: str, updates: list[dict[str, Any]]) -> None:
+def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | None = None) -> None:
+    """LP3: `origin` scopes both the clear and the insert, so the LLM-based suggest_updates() path (origin=None)
+    and plan_narrative.propose_updates() (origin='lp3') each own their own pending queue on the same plan and
+    never clear the other's rows out from under it."""
     with tx() as conn:
-        conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending'", (plan_id,))
-        conn.executemany("INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, created_at) VALUES (?,?,?,?,?,?)",
-                         [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), now()) for u in updates])
+        if origin is None:
+            conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending' AND origin IS NULL", (plan_id,))
+        else:
+            conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending' AND origin=?", (plan_id, origin))
+        conn.executemany("INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, origin, created_at) VALUES (?,?,?,?,?,?,?)",
+                         [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), origin, now()) for u in updates])
 
 
 def set_update_status(update_id: int, status: str) -> dict[str, Any] | None:

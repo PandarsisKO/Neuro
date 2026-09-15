@@ -475,3 +475,205 @@ def test_cli_plan_impact_explain_flag(rn_db):
     explained = CliRunner().invoke(app, ["project", "plan-impact", pid, "--claim", "c1", "--explain"])
     assert explained.exit_code == 0, explained.output
     assert "cites the claim" in explained.output and "stale" in explained.output
+
+
+# ------------------------------------------------------------- LP3: plan_narrative.propose_updates
+
+
+def test_propose_updates_writes_pending_lp3_rows_and_never_collides_with_the_planner_queue(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP3 propose", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", freshness_status="stale", text="the claim")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "step one", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    saved = db.save_plan(pid, plan, db.project_snapshot(pid))
+    # a pending row from the OTHER (LLM) path, on the same plan, must survive an LP3 write and vice versa
+    db.add_plan_updates(saved["id"], [{"section": "goal", "proposed": "planner says X", "reason": "llm"}])   # origin=None
+
+    updates = plan_narrative.propose_updates(pid, claim_id="c1")
+    assert len(updates) == 1 and updates[0]["origin"] == "lp3" and updates[0]["section"] == "first_steps.0"
+    assert updates[0]["status"] == "pending"
+
+    all_pending = [u for u in db.get_plan(saved["id"])["updates"] if u["status"] == "pending"]
+    assert {u.get("origin") for u in all_pending} == {None, "lp3"}   # both queues intact
+
+    # a SECOND lp3 propose call must clear only its own prior pending rows, never the planner's
+    updates2 = plan_narrative.propose_updates(pid, claim_id="c1")
+    assert len(updates2) == 1
+    all_pending2 = [u for u in db.get_plan(saved["id"])["updates"] if u["status"] == "pending"]
+    assert len([u for u in all_pending2 if u.get("origin") is None]) == 1
+    assert len([u for u in all_pending2 if u.get("origin") == "lp3"]) == 1
+
+
+def test_propose_updates_accepted_via_the_existing_route(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP3 accept", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="weak", text="the claim")
+    _fold("c1", n["id"])
+    plan = {"decisions": [{"decision": "d1", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    updates = plan_narrative.propose_updates(pid, claim_id="c1")
+    row = db.set_update_status(updates[0]["id"], "accepted")
+    assert row["status"] == "accepted"
+
+
+def test_propose_updates_returns_nothing_when_lp1_cannot_resolve(rn_db):
+    from neurosearch import plan_narrative
+    p = db.create_project("LP3 unknown", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    assert plan_narrative.propose_updates(pid, claim_id="c1") == []
+
+
+def test_cli_propose_updates(rn_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cli propose", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", freshness_status="stale", text="the claim")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "step one", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    r = CliRunner().invoke(app, ["project", "propose-updates", pid, "--claim", "c1"])
+    assert r.exit_code == 0, r.output
+    assert "wrote 1 pending plan update(s)" in r.output
+
+
+# ------------------------------------------------------------- CR5: research_refresh
+
+
+def _candidate_row(cid, creator, title, duration=600, project_id=None, state="available"):
+    db.connect().execute(
+        "INSERT INTO candidates (id, platform, external_id, url, title, creator, duration, first_seen_at, last_seen_at, availability) "
+        "VALUES (?,?,?,?,?,?,?,?,?, 'available')", (cid, "youtube", cid, f"u/{cid}", title, creator, duration, db.now(), db.now()))
+    if project_id:
+        db.connect().execute("INSERT INTO candidate_projects (project_id, candidate_id, state, first_seen_at, updated_at) VALUES (?,?,?,?,?)",
+                             (project_id, cid, state, db.now(), db.now()))
+    db.connect().commit()
+
+
+def test_resolve_target_reuses_an_existing_open_target_for_the_claim(rn_db):
+    from neurosearch import knowledge, research_refresh
+    p = db.create_project("CR5 reuse", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    tg = knowledge.add_target(pid, "existing question", claim_id="c1")
+    got = research_refresh._resolve_target(pid, {"kind": "disagreement", "claim_id": "c1"})
+    assert got == tg["id"]
+
+
+def test_resolve_target_creates_one_when_none_exists(rn_db):
+    from neurosearch import knowledge, research_refresh
+    p = db.create_project("CR5 create", "brief")
+    pid = p["id"]
+    _claim(pid, "c1", text="the claim text")
+    tid = research_refresh._resolve_target(pid, {"kind": "disagreement", "claim_id": "c1", "question": "the claim text"})
+    tg = knowledge.get_target(tid)
+    assert tg["claim_id"] == "c1" and tg["origin"] == "research_needs"
+
+
+def test_request_refresh_reports_when_nothing_is_due_under_cap(rn_db):
+    from neurosearch import research_refresh
+    p = db.create_project("CR5 nodue", "brief")
+    r = research_refresh.request_refresh(p["id"], cap_usd=0.0001)
+    assert r["started"] is False and "nothing due" in r["reason"]
+
+
+def test_request_refresh_refuses_an_open_target_need_with_no_claim(rn_db):
+    from neurosearch import research_refresh
+    p = db.create_project("CR5 noclaim", "brief")
+    need = {"kind": "open_target", "target_id": "tg1", "claim_id": None}
+    r = research_refresh.request_refresh(p["id"], need=need)
+    assert r["started"] is False and "no claim" in r["reason"]
+
+
+def test_request_refresh_end_to_end_enqueues_the_real_ingest_job(rn_db):
+    from neurosearch import jobs, research_refresh
+    p = db.create_project("CR5 e2e", "brief")
+    pid = p["id"]
+    _claim(pid, "c1", text="acme pricing changed recently")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand1", "acme channel", "acme pricing update video", project_id=pid)
+
+    need = {"kind": "disagreement", "claim_id": "c1", "question": "acme pricing changed recently", "text": "acme pricing changed recently"}
+    r = research_refresh.request_refresh(pid, need=need)
+    assert r["started"] is True and r["claim_id"] == "c1" and len(r["capture"]) == 1
+    assert r["capture"][0]["how"] == "job"
+    job = db.get_job(r["capture"][0]["job_id"])
+    assert job["kind"] == "ingest_url" and job["payload"]["project_id"] == pid
+
+
+def test_check_reports_unknown_before_a_refresh_was_requested(rn_db):
+    from neurosearch import research_refresh
+    p = db.create_project("CR5 unknown", "brief")
+    pid = p["id"]
+    _claim(pid, "c1")
+    r = research_refresh.check(pid, "c1")
+    assert r["known"] is False
+
+
+def test_check_unchanged_is_an_honest_normal_outcome(rn_db):
+    from neurosearch import research_refresh
+    p = db.create_project("CR5 unchanged", "brief")
+    pid = p["id"]
+    _claim(pid, "c1", text="acme pricing changed recently")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand2", "acme channel", "acme pricing update video", project_id=pid)
+    need = {"kind": "disagreement", "claim_id": "c1", "question": "acme pricing changed recently"}
+    research_refresh.request_refresh(pid, need=need)
+
+    r = research_refresh.check(pid, "c1")
+    assert r["known"] is True and r["changed"] is False
+
+
+def test_check_reports_changed_once_new_evidence_lands(rn_db):
+    """CR5's own responsibility is the before/after comparison -- the findings/claims harvest that actually
+    produces new evidence is the existing pipeline, already covered by its own tests, so this exercises the
+    boundary directly: request a refresh (snapshotting "before"), then simulate what the harvest pipeline does
+    when it succeeds (adds evidence, which triggers claims.assess), then confirm check() sees it."""
+    from neurosearch import claims as claims_mod, research_refresh
+    p = db.create_project("CR5 changed", "brief")
+    pid = p["id"]
+    _claim(pid, "c1", text="acme pricing changed recently", strength="unsupported")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand3", "acme channel", "acme pricing update video", project_id=pid)
+    need = {"kind": "disagreement", "claim_id": "c1", "question": "acme pricing changed recently"}
+    research_refresh.request_refresh(pid, need=need)
+
+    sid = db.upsert_source(platform="youtube", external_id="src1", url="u/src1", title="acme pricing update video", status="ready")["id"]
+    claims_mod.add_evidence("c1", sid, locator="0:10", relation="SUPPORTS")
+    claims_mod.assess("c1")   # the harvest pipeline's own step, already tested elsewhere -- exercised directly here
+
+    r = research_refresh.check(pid, "c1")
+    assert r["known"] is True and r["changed"] is True
+    assert r["before"]["strength"] == "unsupported" and r["after"]["strength"] != "unsupported"
+
+
+# ------------------------------------------------------------- CLI: refresh-need, refresh-check
+
+
+def test_cli_refresh_need_and_check(rn_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cli refresh", "brief")
+    pid = p["id"]
+    _claim(pid, "c1", text="acme pricing changed recently")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand4", "acme channel", "acme pricing update video", project_id=pid)
+
+    r = CliRunner().invoke(app, ["project", "refresh-need", pid, "--claim", "c1"])
+    assert r.exit_code == 0, r.output
+    assert "refresh requested for claim c1" in r.output
+
+    r2 = CliRunner().invoke(app, ["project", "refresh-check", pid, "--claim", "c1"])
+    assert r2.exit_code == 0, r2.output
+    assert "unchanged:" in r2.output

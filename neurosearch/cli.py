@@ -921,3 +921,80 @@ def project_due(project: str, as_json: bool = typer.Option(False, "--json", help
     for n in due:
         typer.echo(f"- [{n['due_category']}] [{n['kind']}] {(n.get('text') or '')[:120]}")
         typer.echo(f"    ~${n['estimated_cost_usd']:.4f} ({n['cost_basis']})")
+
+
+@project_app.command("propose-updates")
+def project_propose_updates(project: str, claim: Optional[str] = typer.Option(None, "--claim"),
+                            tension: Optional[str] = typer.Option(None, "--tension"),
+                            as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
+    """LP3: writes pending plan_updates rows from LP2's deterministic why-text (origin='lp3', never collides with
+    the existing suggest_updates() queue). $0, no model call. This WRITES (pending rows) -- promoting one still
+    goes through the existing `POST /api/plan-updates/{id}` accept route; nothing here auto-accepts anything."""
+    from . import plan_narrative
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    if not claim and not tension:
+        typer.echo("pass --claim or --tension", err=True)
+        raise typer.Exit(code=1)
+    updates = plan_narrative.propose_updates(pid, claim_id=claim, tension_id=tension)
+    if as_json:
+        typer.echo(json.dumps(updates, indent=2, default=str))
+        return
+    if not updates:
+        typer.echo("nothing to propose (no plan, or LP1/LP2 could not resolve this citation)")
+        return
+    typer.echo(f"wrote {len(updates)} pending plan update(s) (origin=lp3) -- accept or reject via the existing plan-updates route:")
+    for u in updates:
+        typer.echo(f"- {u['section']}: {u['proposed']}")
+
+
+@project_app.command("refresh-need")
+def project_refresh_need(project: str, claim: Optional[str] = typer.Option(None, "--claim", help="Refresh this claim's need directly, skipping the due-tonight pick"),
+                         cap: float = typer.Option(1.0, "--cap", help="Won't start a need estimated above this many dollars")) -> None:
+    """CR5: starts one Claim's refresh through the EXISTING ingest path (knowledge.pursue + capture_best) --
+    never a second pipeline. Returns immediately; ingest/findings/claim reassessment run on the normal job queue.
+    Use `refresh-check --claim` afterward to see what changed, once those jobs have run."""
+    from . import research_needs, research_refresh
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    need = None
+    if claim:
+        need = next((n for n in research_needs.for_project(pid, limit=200) if n.get("claim_id") == claim), None)
+        if need is None:
+            typer.echo(f"no open research need for claim {claim!r}", err=True)
+            raise typer.Exit(code=1)
+    r = research_refresh.request_refresh(pid, need=need, cap_usd=cap)
+    if not r.get("started") and "reason" in r and "claim_id" not in r:
+        typer.echo(r["reason"])
+        raise typer.Exit(code=1)
+    typer.echo(f"refresh requested for claim {r['claim_id']} (target {r['target_id']}, ~${r.get('estimated_cost_usd') or 0:.4f} estimated); "
+              f"{len(r.get('capture') or [])} item(s) started -- check back with `refresh-check --claim {r['claim_id']}`")
+
+
+@project_app.command("refresh-check")
+def project_refresh_check(project: str, claim: str = typer.Option(..., "--claim"), as_json: bool = typer.Option(False, "--json")) -> None:
+    """CR5: what actually changed since a `refresh-need` request -- read any time after, never blocking on the
+    job queue. "Unchanged" is a normal outcome here, not a failure."""
+    from . import research_refresh
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    r = research_refresh.check(pid, claim)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    if not r["known"]:
+        typer.echo(r["reason"])
+        return
+    if r["changed"]:
+        typer.echo(f"changed: {r['before']} -> {r['after']}")
+    else:
+        typer.echo(f"unchanged: {r['after']}")
