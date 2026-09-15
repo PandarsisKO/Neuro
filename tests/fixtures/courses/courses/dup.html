@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Dup</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h2 id="h">Course</h2><div id="body"></div><div id="list"></div></main>
+<script>
+const L=[["Part one","ffff1111ffff1111ffff1111ffff1111"],["Part two","ffff2222ffff2222ffff2222ffff2222"],["Part one again","ffff1111ffff1111ffff1111ffff1111"]];
+const list=document.getElementById('list');
+L.forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson '+(k+1)+' · '+l[0];document.getElementById('body').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};list.appendChild(b);});
+</script></body></html>

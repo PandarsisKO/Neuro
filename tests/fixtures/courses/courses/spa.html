@@ -1,0 +1,21 @@
+<!doctype html><html><head><title>Classroom</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<nav><a href="/">Home</a><a href="/partners/">Partners</a><button>Toggle Sidebar</button></nav>
+<main id="main"></main>
+<script>
+const COURSE={"Getting Started":[["Welcome aboard","loom","11111111111111111111111111111111",5],["Your first deal","loom","22222222222222222222222222222222",7]],
+              "Deal Economics":[["SDE explained","loom","33333333333333333333333333333333",9],["Multiples","loom","44444444444444444444444444444444",null],["Working capital","vimeo","987654",12]]};
+const main=document.getElementById('main');
+function home(){main.innerHTML='<h2>Paths</h2><div class="grid">'+Object.keys(COURSE).map(t=>'<button class="card">'+t+'<span>'+COURSE[t].length+' lessons</span></button>').join('')+'</div><div class="recorded"><h2>Recorded calls</h2><a href="/recorded/1/">Member call Sep 14</a></div>';
+  main.querySelectorAll('.card').forEach(b=>b.onclick=()=>openModule(b.textContent.replace(/\d+ lessons/,'').trim()));}
+function openModule(title){render(title,0);}
+function render(title,i){const L=COURSE[title];const [name,prov,id,dur]=L[i];
+  const src=prov==='loom'?'https://www.loom.com/embed/'+id+'?hide_owner=true':'https://player.vimeo.com/video/'+id+'?h=zz';
+  main.innerHTML='<ol data-slot="breadcrumb-list"><li><button data-slot="breadcrumb-link">Learning</button></li><li>'+title+'</li></ol><button>Start course</button>'+
+   '<h2>Lesson '+(i+1)+' · '+name+'</h2><div class="player"><iframe src="'+src+'" allow="autoplay"></iframe></div>'+
+   '<div><button>Prev</button><button>Complete &amp; next</button></div>'+
+   '<div data-slot="item-group">'+L.map((l,k)=>'<button data-slot="item">'+(k+1)+'. '+l[0]+(l[3]?'<span>'+l[3]+'m</span>':'')+'</button>').join('')+'</div>'+
+   '<h4>Quiz</h4><div><button>A. First answer</button><button>B. Second answer</button></div><button>Submit quiz</button><button>Purchase the advanced course</button>';
+  main.querySelector('[data-slot=breadcrumb-link]').onclick=home;
+  main.querySelectorAll('[data-slot=item]').forEach((b,k)=>b.onclick=()=>setTimeout(()=>render(title,k),20));}
+home();
+</script></body></html>

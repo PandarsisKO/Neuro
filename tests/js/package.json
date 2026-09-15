@@ -1,0 +1,6 @@
+{
+  "name": "neurosearch-scanner-gate",
+  "private": true,
+  "description": "jsdom harness for the shipped extension/scan-lib.js (tests/test_s32_course_scanner.py). Install with `npm ci --prefix tests/js`.",
+  "devDependencies": { "jsdom": "26.1.0" }
+}

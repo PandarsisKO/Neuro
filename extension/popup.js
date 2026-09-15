@@ -34,6 +34,7 @@ async function load() {
       }
       chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
     } catch (e) { /* no capture context: the ordinary buttons still work */ }
+    refreshScan();
   }
 }
 
@@ -203,60 +204,124 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
-$('#scan').onclick = async () => {
-  $('#scan').disabled = true; $('#scanMsg').textContent = 'scanning…'; $('#result').style.display = 'none';
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  chrome.runtime.onMessage.addListener(onMsg);
-  try { await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['scanner.js'] }); }
-  catch (e) { $('#scanMsg').textContent = 'Cannot scan this page: ' + e.message; $('#scan').disabled = false; }
-};
+// ---- 1.7.0 (mission CS): the popup is a VIEW of a scan, not its owner. The background keeps the durable record
+// (`scan:<tabId>` in chrome.storage.local) and the course tab does the traversal; this popup can be closed and
+// reopened at any point and shows whatever is true now. Words here are the user's words — lessons, videos,
+// "needs attention" — never strategies, DOM mechanics or cookies (progressive disclosure: the detail sits under
+// a fold, and cookies are collected only at the moment of the explicit import press, as before).
+let TAB = null, SCAN = null, SUMMARY = null;
 
-function onMsg(m) {
-  if (m.type === 'progress') $('#scanMsg').textContent = `reading lesson pages… ${m.done}/${m.total}`;
-  if (m.type === 'result') { chrome.runtime.onMessage.removeListener(onMsg); showResult(m); }
+async function currentTab() { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return tab; }
+const bg = msg => new Promise(res => chrome.runtime.sendMessage(msg, r => { void chrome.runtime.lastError; res(r || {}); }));
+
+async function refreshScan() {
+  if (!TAB) TAB = await currentTab();
+  const r = await bg({ type: 'scan-get', tabId: TAB.id });
+  SCAN = r.scan || null; SUMMARY = r.summary || null;
+  renderScan();
 }
 
-async function showResult(m) {
-  result = m; $('#scan').disabled = false;
-  const withV = m.lessons.filter(l => l.video_urls.length);
-  // 1.6.0 — the old message named ONE cause ("are you logged in?") for every empty result, and on the course Kyle
-  // reported it was the wrong one: he was logged in, on the course page, and the course simply cannot be listed
-  // from a page. A message that guesses is worse than a message that says what it saw.
-  const d = m.diagnosis || {};
-  $('#scanMsg').textContent = withV.length ? ''
-    : d.app_rendered ? `This course keeps one address for every lesson (${d.clickable_lessonish} lesson rows, no lesson links), so it cannot be listed from here. Open a lesson and use “Send this page” instead.`
-    : !d.candidates ? 'No lesson links on this page — open the course home page that lists the lessons.'
-    : `Found ${d.candidates} lesson page${d.candidates === 1 ? '' : 's'} but no video in any of them. If the videos only appear after you press play, open a lesson and use “Send this page”.`;
-  $('#courseTitle').value = m.course.title;
-  $('#lessons').innerHTML = m.lessons.map((l, i) => `<div class="les ${l.video_urls.length ? '' : 'nov'}"><input type="checkbox" data-i="${i}" ${l.video_urls.length ? 'checked' : 'disabled'}><div class="t">${esc(l.title)}${l.module ? ` <span class="m">· ${esc(l.module)}</span>` : ''}<div class="m">${l.video_urls.length ? l.video_urls.map(v => v.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60)).join(', ') : 'no video found'}</div></div></div>`).join('');
-  $('#summary').textContent = `${withV.length} of ${m.lessons.length} lessons have a video${m.truncated ? ' (first 120 pages only)' : ''}. Session cookies for this site and the video hosts will be sent so the app can download them.`;
+const ACTIVE = new Set(['finding', 'scanning']);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const OUTCOME_WORDS = { video_found: 'video ready', multiple_videos: 'several videos', no_video: 'no video on this lesson', needs_user_play: 'video appears only after you press play',
+                        blocked: 'not readable with your access', scan_failed: 'could not be read', not_scanned: 'not reached' };
+const REASON_WORDS = { tab_closed: 'the tab was closed', origin_changed: 'the tab left the course site', navigated: 'the page was reloaded or navigated away', runner_silent: 'the page stopped responding',
+                       browser_restarted: 'Chrome was restarted', cancelled: 'you stopped it', inject_failed: 'the page could not be read', runner_error: 'the scan hit an error' };
+
+function renderScan() {
+  const s = SCAN, sum = SUMMARY;
+  const sameTab = s && TAB && s.tab_id === TAB.id;
+  $('#scan').disabled = !!(s && sameTab && ACTIVE.has(s.status));
+  $('#cancelScan').style.display = s && sameTab && ACTIVE.has(s.status) ? '' : 'none';
+  if (!s || !sameTab) { $('#scanMsg').textContent = ''; $('#result').style.display = 'none'; return; }
+  const lessonWord = n => plural(n, 'lesson');
+  if (s.status === 'finding') { $('#scanMsg').textContent = 'Finding lessons…'; $('#result').style.display = 'none'; return; }
+  if (s.status === 'scanning') {
+    const last = s.lessons[s.lessons.length - 1];
+    const line1 = s.expected ? `${lessonWord(s.expected)} found` : 'Lessons found';
+    const line2 = last ? `Reading ${Math.min(s.lessons.length + 1, s.expected || s.lessons.length + 1)} of ${s.expected || '?'}${last.title ? `: ${last.title}` : ''}` : 'Reading the first lesson…';
+    $('#scanMsg').innerHTML = `${esc(line1)}<br>${esc(line2)}<br>${esc(plural(sum.ready, 'video'))} found so far`;
+    $('#result').style.display = 'none'; return;
+  }
+  // finished, in one of: done · partial · cancelled · interrupted · failed
+  const d = s.diagnosis || {};
+  let head;
+  if (s.status === 'failed') head = `<span class="bad">The scan could not run${s.errors && s.errors[0] ? ` — ${esc(s.errors[0])}` : ''}.</span>`;
+  else if (!s.lessons.length) {
+    // 1.6.0's rule, kept: name what was seen, never guess "are you logged in?"
+    head = d.strategy === 'none' && !d.links && !d.controls && !d.modules ? 'No lessons found on this page — open the course home page that lists the lessons.'
+         : d.strategy === 'interactive' ? `Found ${plural(d.controls || d.modules, d.controls ? 'lesson' : 'module')} but could not open any of them.`
+         : `Found ${plural(d.links, 'lesson page')} but no video in any of them. If the videos only appear after you press play, open a lesson and use “Send this page”.`;
+  } else {
+    const total = Math.max(s.expected || 0, s.lessons.length);
+    head = `<b>${sum.ready} of ${lessonWord(total)} ready</b>`;
+    if (sum.attention) head += `<br>${sum.attention} need${sum.attention === 1 ? 's' : ''} attention`;
+    if (sum.unread) head += `<br>${sum.unread} could not be read`;
+    if (s.status === 'partial' && s.reason && s.reason !== 'cancelled') head += `<br><span class="warn">Stopped early: ${esc(REASON_WORDS[s.reason] || s.reason)}. What was read is kept.</span>`;
+    if (s.status === 'cancelled') head += `<br><span class="muted">Stopped by you. What was read is kept.</span>`;
+    if (s.status === 'interrupted') head += `<br><span class="warn">Interrupted: ${esc(REASON_WORDS[s.reason] || s.reason)}.</span>`;
+  }
+  $('#scanMsg').innerHTML = head;
+  if (!s.lessons.length) { $('#result').style.display = 'none'; return; }
+  $('#courseTitle').value = (s.course && s.course.title) || s.title || '';
+  const dupOf = {}; Object.entries(s.duplicates || {}).forEach(([k, idxs]) => idxs.forEach(i => { dupOf[i] = idxs.length; }));
+  $('#lessons').innerHTML = s.lessons.map((l, i) => {
+    const ok = l.outcome === 'video_found' || l.outcome === 'multiple_videos';
+    const what = ok ? (l.media || []).map(m => m.provider === 'direct' ? 'video file' : m.provider).join(', ') : OUTCOME_WORDS[l.outcome] || l.outcome;
+    return `<div class="les ${ok ? '' : 'nov'}"><input type="checkbox" data-i="${i}" ${ok ? 'checked' : 'disabled'}><div class="t">${esc(l.title)}${l.module && l.module !== l.title ? ` <span class="m">· ${esc(l.module)}</span>` : ''}<div class="m">${esc(what)}${dupOf[i] ? ` · same video as ${dupOf[i] - 1} other lesson${dupOf[i] > 2 ? 's' : ''}` : ''}${l.detail && !ok ? ` — ${esc(l.detail)}` : ''}</div></div></div>`;
+  }).join('');
+  const dupCount = Object.keys(s.duplicates || {}).length;
+  $('#summary').textContent = `${sum.ready} of ${s.lessons.length} lessons have a video${dupCount ? ` (${plural(dupCount, 'video')} shared between lessons — downloaded once)` : ''}. Your session for this site and the video hosts is sent only when you press Send.`;
+  $('#result').style.display = '';
+  loadProjectsInto('#project');
+}
+
+async function loadProjectsInto(sel) {
   try {
     const ps = await api('/api/projects');
-    $('#project').innerHTML = ps.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
+    $(sel).innerHTML = ps.map(p => `<option value="${p.id}" ${p.id === cfg.lastProject ? 'selected' : ''}>${esc(p.name)}</option>`).join('') || '<option value="">(create a project in the app first)</option>';
   } catch (e) { $('#summary').textContent = 'Could not load projects: ' + e.message; }
-  $('#result').style.display = '';
 }
 
+$('#scan').onclick = async () => {
+  $('#scan').disabled = true; $('#scanMsg').textContent = 'Finding lessons…'; $('#result').style.display = 'none';
+  TAB = await currentTab();
+  const r = await bg({ type: 'scan-start', tabId: TAB.id });
+  if (r.error) { $('#scanMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; $('#scan').disabled = false; }
+  await refreshScan();
+};
+$('#cancelScan').onclick = async () => { if (!TAB) return; $('#cancelScan').disabled = true; await bg({ type: 'scan-cancel', tabId: TAB.id }); $('#cancelScan').disabled = false; await refreshScan(); };
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !TAB) return;
+  if (changes[`scan:${TAB.id}`]) { SCAN = changes[`scan:${TAB.id}`].newValue || null; bg({ type: 'scan-get', tabId: TAB.id }).then(r => { SUMMARY = r.summary; renderScan(); }); }
+});
+
 $('#send').onclick = async () => {
-  if (!result || !$('#project').value) return;
-  $('#send').disabled = true; $('#sendMsg').textContent = 'collecting cookies…';
-  const picked = [...document.querySelectorAll('#lessons input:checked')].map(cb => result.lessons[+cb.dataset.i]);
-  const hosts = new Set([new URL(result.course.url).hostname]);
-  picked.forEach(l => l.video_urls.forEach(v => { try { hosts.add(new URL(v).hostname); } catch (e) {} }));
+  if (!SCAN || !$('#project').value) return;
+  $('#send').disabled = true; $('#sendMsg').textContent = 'collecting your session…';
+  const picked = [...document.querySelectorAll('#lessons input:checked')].map(cb => SCAN.lessons[+cb.dataset.i]);
+  // cookies: only now, only for the course host and the hosts of the videos actually picked
+  const hosts = new Set([new URL(SCAN.url).hostname]);
+  picked.forEach(l => (l.video_urls || []).forEach(v => { try { hosts.add(new URL(v).hostname); } catch (e) {} }));
   let cookies = [];
   for (const h of hosts) {
     const base = h.split('.').slice(-2).join('.');
-    for (const dom of new Set([h, base, '.' + base])) {
-      try { cookies = cookies.concat(await chrome.cookies.getAll({ domain: dom })); } catch (e) {}
-    }
+    for (const dom of new Set([h, base, '.' + base])) { try { cookies = cookies.concat(await chrome.cookies.getAll({ domain: dom })); } catch (e) {} }
   }
   const seen = new Set(); cookies = cookies.filter(c => { const k = c.domain + '|' + c.name + '|' + c.path; if (seen.has(k)) return false; seen.add(k); return true; });
-  $('#sendMsg').textContent = `sending ${picked.length} lessons…`;
+  $('#sendMsg').textContent = `sending ${plural(picked.length, 'lesson')}…`;
   try {
     const r = await api(`/api/projects/${$('#project').value}/course-import`, { method: 'POST', body: JSON.stringify({
-      course: { title: $('#courseTitle').value, url: result.course.url }, lessons: picked,
+      course: { title: $('#courseTitle').value, url: SCAN.url },
+      lessons: picked.map(l => ({ title: l.title, module: l.module, page_url: l.page_url, video_urls: l.video_urls, outcome: l.outcome, ordinal: l.ordinal })),
       cookies: cookies.map(c => ({ domain: c.domain, name: c.name, value: c.value, path: c.path, secure: c.secure, expirationDate: c.expirationDate })) }) });
-    $('#sendMsg').innerHTML = `<span class="ok">Queued ${r.queued} videos.</span> Watch progress in the app's Sources tab.`;
+    await chrome.storage.local.set({ lastProject: $('#project').value });
+    const bits = [`<span class="ok">Queued ${plural(r.queued, 'video')}.</span>`];
+    if (r.already_present && r.already_present.length) bits.push(`${plural(r.already_present.length, 'video')} already in your library — not downloaded again.`);
+    if (r.shared && r.shared.length) bits.push(`${plural(r.shared.length, 'video')} shared by more than one lesson — downloaded once.`);
+    bits.push('Watch progress in the app\'s Sources tab.');
+    $('#sendMsg').innerHTML = bits.join(' ');
   } catch (e) { $('#sendMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; $('#send').disabled = false; }
 };
 

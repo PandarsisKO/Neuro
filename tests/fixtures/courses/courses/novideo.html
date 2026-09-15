@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Mixed</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h2 id="h">Course</h2><div id="body"></div><div id="list"></div></main>
+<script>
+const L=[["Video lesson","<iframe src='https://www.loom.com/embed/eeee1111eeee1111eeee1111eeee1111'></iframe>"],["Reading","<p>Just text, no player at all.</p>"],["Locked bonus","<p>Sign in to watch this lesson.</p>"]];
+const list=document.getElementById('list');
+L.forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson '+(k+1)+' · '+l[0];document.getElementById('body').innerHTML=l[1];};list.appendChild(b);});
+</script></body></html>

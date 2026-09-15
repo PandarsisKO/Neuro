@@ -182,7 +182,7 @@ def test_the_extension_asks_before_adding_and_sends_every_embed_hosts_cookies():
 def test_the_extension_version_moved_again():
     import json as _json
     mf = _json.loads((__import__("pathlib").Path(__file__).resolve().parent.parent / "extension" / "manifest.json").read_text())
-    assert mf["version"] == "1.6.1"
+    assert mf["version"] == "1.7.0"  # mission CS: Scan this course hardening
 
 
 # ── 0.63.17 — and then it said "not added yet" about a video that was already transcribed ───────────────────────

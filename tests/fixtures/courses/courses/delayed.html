@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Delayed</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h2 id="h">Course</h2><div id="player"></div><ul id="list"></ul></main>
+<script>
+const L=[["Slow one","dddd1111dddd1111dddd1111dddd1111"],["Slow two","dddd2222dddd2222dddd2222dddd2222"]];
+const list=document.getElementById('list');
+L.forEach((l,k)=>{const li=document.createElement('li');const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0]+' 4m';b.onclick=()=>{document.getElementById('h').textContent='Lesson '+(k+1)+' · '+l[0];document.getElementById('player').innerHTML='<div class="video-container">loading…</div>';setTimeout(()=>{document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';},250);};li.appendChild(b);list.appendChild(li);});
+</script></body></html>

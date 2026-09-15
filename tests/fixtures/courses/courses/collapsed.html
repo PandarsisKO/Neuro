@@ -1,0 +1,10 @@
+<!doctype html><html><head><title>Accordion course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h1>Accordion course</h1><h2 id="h">Pick a lesson</h2><div id="player"></div>
+<div id="acc"></div></main>
+<script>
+const M={"Module A":[["Intro","aaaa1111aaaa1111aaaa1111aaaa1111"],["Setup","aaaa2222aaaa2222aaaa2222aaaa2222"]],"Module B":[["Deep dive","bbbb1111bbbb1111bbbb1111bbbb1111"],["Wrap up","bbbb2222bbbb2222bbbb2222bbbb2222"],["Bonus","bbbb3333bbbb3333bbbb3333bbbb3333"]]};
+const acc=document.getElementById('acc');
+for(const t of Object.keys(M)){const sec=document.createElement('section');sec.innerHTML='<button class="mod">'+t+' <span>'+M[t].length+' lessons</span></button><div class="rows"></div>';acc.appendChild(sec);
+  const rows=sec.querySelector('.rows');
+  sec.querySelector('.mod').onclick=()=>{ if(rows.children.length){rows.innerHTML='';return;} M[t].forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};rows.appendChild(b);}); };}
+</script></body></html>

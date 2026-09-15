@@ -1,0 +1,7 @@
+<!doctype html><html><head><title>Partial</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h2 id="h">Course</h2><div id="body"></div><div id="list"></div></main>
+<script>
+const L=[["Fine","aaaa9999aaaa9999aaaa9999aaaa9999"],["Broken button",null],["Also fine","bbbb9999bbbb9999bbbb9999bbbb9999"],["Vanishes","cccc9999cccc9999cccc9999cccc9999"]];
+const list=document.getElementById('list');
+L.forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{ if(!l[1]) return; document.getElementById('h').textContent='Lesson '+(k+1)+' · '+l[0];document.getElementById('body').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>'; if(k===2) list.lastElementChild.remove(); };list.appendChild(b);});
+</script></body></html>

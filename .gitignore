@@ -22,3 +22,6 @@ data_backup_*/
 # design audit instance (tools/audit-instance.command) — private copy of a backup, never tracked
 data-audit/
 .worktrees/
+
+# scanner gate deps (npm ci --prefix tests/js)
+tests/js/node_modules/
