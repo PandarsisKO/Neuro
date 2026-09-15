@@ -63,6 +63,25 @@ def outcomes(r: dict) -> list[tuple[str, str]]:
     return [(l["title"], l["outcome"]) for l in r["summary"]["lessons"]]
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _jsdom_installed():
+    """mission CS, amendment #13: `tests/js` is part of the deterministic verify/release environment, not a
+    manually-remembered extra step. If the pinned dependency isn't there yet, install it from the committed
+    lockfile (`npm ci` — reproducible, never `npm install`) before any scan() runs; if that install itself fails
+    (no network, no npm), fail the whole module loudly rather than letting each test skip or silently pass on
+    stale/no coverage."""
+    js_dir = ROOT / "tests" / "js"
+    if (js_dir / "node_modules" / "jsdom").exists():
+        return
+    npm = shutil.which("npm")
+    if not npm:
+        pytest.fail("npm is not on this machine — the scanner gate needs `npm ci --prefix tests/js` (pinned jsdom); "
+                     "this is a broken verify environment, not something to skip")
+    out = subprocess.run([npm, "ci", "--prefix", str(js_dir)], capture_output=True, text=True, timeout=180)
+    if out.returncode != 0:
+        pytest.fail(f"`npm ci --prefix tests/js` failed — the scanner gate cannot run without its pinned jsdom:\n{out.stderr[-2000:]}")
+
+
 # ------------------------------------------------------------------ the files parse, the version moved
 
 def test_every_extension_script_parses():
