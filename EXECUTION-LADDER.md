@@ -417,7 +417,7 @@ consequential. Gate: fixture scenario A and C from mission §12 pass; no `set_st
 A third bounded work source in `nightly.run()` under its own explicit cap (like T5's); "nothing changed" is a
 successful outcome recorded on the envelope. Gate: envelope test; no need refreshed twice in a night.
 
-### CR7 `[k]` real-project gate — needs: CR6 + Kyle's night. Never faked.
+### CR7 `[k]` real-project gate — needs: CR6. **Kyle action**: let the nightly worker run once, unattended, on a real project (same path L-00 already uses for the stale-source rebuild). Next morning, check the Morning Report / Findings panel for CR6's envelope line ("N Claim(s) refreshed" or an honest "nothing changed" — both count as a pass) and tell Claude what it showed. Never faked, never simulated with a fixture -- this gate is specifically "did it happen for real."
 
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
@@ -456,7 +456,7 @@ Ensure an accepted `plan_updates` row carries previous/resulting state, reason, 
 (system proposal vs user). Additive columns only if a real field is missing. Gate: "your plan changed in one
 place" is reconstructible from rows.
 
-### LP6 `[k]` real evidence-change demo — needs: LP3 + a real delta.
+### LP6 `[k]` real evidence-change demo — needs: LP3. **Kyle action**: the next time CR5/CR6's nightly refresh actually changes a Claim's status on a real project (strengthened / weakened / contradicted -- CR7 is where this is first observed), tell Claude the Claim id. Claude verifies the resulting `plan_updates` row alone reconstructs "your plan changed in one place" (previous state, resulting state, reason, claim linkage, system vs user provenance) with no other lookup needed.
 
 ### Stage 12 — P9A Source Capability — mostly SHIPPED at 0.58.3 (`candidates.creator_yield` = SC0 view;
 `where_to_look` = SC1 routing; `_creator_term` in `_potential` = SC2, capped so yield never dominates).
@@ -503,11 +503,7 @@ only (candidate decisions with an honest denominator, downstream finding/Claim/t
 provenance, review burden, project-scoped novel creators), with an evidence-sufficiency guard (no_usage /
 thin_sample / usable_sample) that keeps the verdict descriptive and refuses confidence on a thin sample. No
 schema, no persisted batch telemetry, no reversal of AD3's "exploratory is not persisted" decision. Gate: tests.
-### AD4B `[k]` true static vs adaptive comparison — Kyle-gated / future evidence. Only worth building once AD4A's
-real-usage numbers make the adaptive system's value ambiguous enough that the static counterfactual actually
-matters; the smallest prospective design (controlled interleaving, occasional static control batches, or similar)
-gets chosen then, around the exact unresolved question -- not built speculatively now, and never a general
-analytics/event platform.
+### AD4B `[k]` true static vs adaptive comparison — needs: real usage. **Kyle action**: keep using Adaptive Discovery normally (capture/reject through `project discover` or the UI) for a while, then run `neurosearch project discover-report <project>` yourself, or ask Claude to run it, once the report says `usable_sample` rather than `thin_sample`/`no_usage`. Only if THAT report's numbers leave the adaptive system's value genuinely ambiguous is AD4B worth building -- the smallest prospective design for the exact unresolved question (controlled interleaving, occasional static control batches, or similar), chosen then, never built speculatively now, never a general analytics/event platform.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`

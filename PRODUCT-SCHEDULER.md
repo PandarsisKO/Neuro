@@ -33,10 +33,15 @@ state, descriptive only) and AD4B (the actual static-vs-adaptive verdict, deferr
 target yield through valid provenance, review burden, and an evidence-sufficiency guard that refuses a confident
 read on a thin sample.
 
-Next eligible in the Claude lane: nothing is READY with no further Kyle input right now -- AD4B needs real usage
-to accumulate before it says anything, and everything else Claude-lane-ready (CR7, FM1's live validation) is
-already Kyle-gated on his own machine. Parallel prep still open for a second agent: LP5 (codex-shaped, READY
-AFTER LP3), CR3 (Codex-shaped).
+Next eligible in the Claude lane: nothing is READY with no further Kyle input right now. Three small, concrete
+things are waiting on Kyle -- exact wording and gate in EXECUTION-LADDER.md:
+- **CR7**: let the nightly worker run once on a real project, then say what the next morning's report showed.
+- **LP6**: next time a real Claim's status actually changes overnight, hand Claude the Claim id.
+- **AD4B**: keep using Adaptive Discovery normally; revisit only once `project discover-report` says
+  `usable_sample` and its numbers leave the adaptive system's value genuinely ambiguous.
+FM1's live validation against Crossref/OpenAlex is likewise Kyle-machine-gated (sandbox has no route there), but
+FM1's own code is Claude-lane and not yet started. Parallel prep still open for a second agent: LP5 (codex-shaped,
+READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 

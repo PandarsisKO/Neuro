@@ -4297,3 +4297,37 @@ Ladder marked `AD4A [x] 364c1b9`, `AD4B [k]` (Kyle-gated / future evidence — r
 line, not folded into a single "AD4 done"). AD3's exploration-specific marginal value stays unresolved for the
 same reason AD4B does: it deliberately isn't persisted, and reversing that just to make one metric interesting
 was explicitly ruled out.
+
+## Control-plane audit — Kyle-gated rungs tightened, no code (2026-09-15)
+
+Kyle asked for a docs-only audit after AD4A landed: do `PRODUCT-SCHEDULER.md`/`EXECUTION-LADDER.md`/`HANDOFF.md`
+agree, does every `[x]` rung carry a real commit SHA, and does every `[k]` (Kyle-gated) rung say exactly what
+real-world evidence unblocks it, as small and understandable as possible. No telemetry, no dashboards, no
+speculative future rungs, no Neuro Everywhere work — audit and fix only.
+
+Findings:
+
+- **Every `[x]` SHA verified real** (`git cat-file -e` against all 24 completed rungs' commit hashes) — no
+  `pending-sha` or placeholder bookkeeping anywhere in the three files. The only `pending-sha`/`TBD` text left is
+  historical narrative inside old `HANDOFF.md` entries describing a *past* fix, correctly past-tense.
+- **The three files agreed on current state** — no action needed there; the "Reconciliation: NOW section is
+  stale" note lower in `PRODUCT-SCHEDULER.md` is itself a preserved historical entry from 2026-09-14, dated and
+  superseded by the top `NOW` section, not a live contradiction.
+- **Three `[k]` rungs were vague about the actual Kyle action**: CR7 said "needs: CR6 + Kyle's night. Never
+  faked" (never said WHAT to check or WHERE); LP6 said "needs: LP3 + a real delta" (never said what delta, or
+  what to hand back); AD4B (written last rung) said "Kyle-gated / future evidence. Only worth building once
+  AD4A's real-usage numbers make the adaptive system's value ambiguous" — accurate but gave Kyle no concrete
+  trigger to act on. All three tightened to name the exact, small action: CR7 → let the nightly worker run once
+  on a real project, report what the Morning Report showed; LP6 → next time a Claim's status really changes
+  overnight, hand over the Claim id; AD4B → keep using Adaptive Discovery normally, run `project discover-report`
+  once it would read `usable_sample`, only reopen AD4B if those numbers are genuinely ambiguous. `PRODUCT-
+  SCHEDULER.md`'s NOW section updated to summarize the same three actions in one place, pointing to the ladder
+  for exact wording, rather than repeating "Kyle-gated" with no next step.
+- **FM1 checked, left alone**: `[ ]` READY AFTER FM0 go is correct as written — FM1's own prototype code is
+  Claude-lane and not started; only its LIVE validation against Crossref/OpenAlex needs Kyle's machine (no
+  network route from this sandbox), and that distinction was already stated correctly in both files.
+- **No new rungs added.** P11 Neuro Everywhere untouched (still `FUTURE / NICE TO HAVE / no active rungs` in the
+  ladder, still explicitly excluded from the NEXT queue in the scheduler). No telemetry/dashboard/infrastructure
+  proposed anywhere in this pass.
+
+Docs-only commit, no code, no schema, no tests to run. Working tree clean after commit.
