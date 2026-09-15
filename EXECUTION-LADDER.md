@@ -413,7 +413,7 @@ source through the ordinary ingest+findings jobs) → `claims.assess` recomputes
 strengthened / weakened / contradicted / unchanged for that Claim → no status change → Morning Report line only if
 consequential. Gate: fixture scenario A and C from mission §12 pass; no `set_status` call anywhere on the path.
 
-### CR6 `[ ]` nightly integration — READY AFTER CR5 · lane: claude/codex interface first
+### CR6 `[x] 690d3f2` nightly integration — DONE · lane: claude/codex interface first
 A third bounded work source in `nightly.run()` under its own explicit cap (like T5's); "nothing changed" is a
 successful outcome recorded on the envelope. Gate: envelope test; no need refreshed twice in a night.
 
@@ -447,7 +447,7 @@ Write a `plan_updates` row (pending) per affected step: move/insert prerequisite
 unresolved/revisit decision, with reason + claim linkage. Never mutates the accepted plan. Gate: row shape; the
 existing accept/reject route promotes it; nothing else does.
 
-### LP4 `[ ]` stable state semantics — PARALLEL PREP after LP1 · lane: claude
+### LP4 `[x] 690d3f2` stable state semantics — DONE · lane: claude
 Known/Assumed/Chosen/Uncertain/Blocked/Monitored as DERIVED state over plan_items + linked Claim strength/
 freshness + assumptions; persist nothing unless the derivation proves insufficient. Gate: derivation tests.
 

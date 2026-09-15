@@ -4039,3 +4039,40 @@ states (explicitly deferred per the rung's own gate); a Plan-tab UI line for LP4
 change to plan_items.status's existing meaning.
 
 READY FOR EXECUTION MODEL
+
+## CR6 + LP4 executed (2026-09-15, `690d3f2`)
+
+Fast drift check at resume: HEAD was `690d3f2` (clean tree modulo known non-authoritative untracked dirs —
+`INSPIRATION/`, `SCREENSHOT AUDIT/`, `evals/release/*`), matching the approved plan checkpoint at `a1091f9`
+exactly. No overlapping agent work landed on top. Proceeded straight to closing bookkeeping under the new
+"ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" rule.
+
+**What shipped**: CR6 wires `research_refresh` into `nightly.run()` as a third bounded work source, off by
+default (`NEUROSEARCH_RESEARCH_REFRESH_NIGHTLY_BUDGET_USD`, mirrors T5's exact pattern — per-project loop,
+budget-first via `research_needs.due_tonight`, one project's exception never aborts the rest, own kv-recorded
+record, own `delta.for_envelope`/`report.py` line worded as "requested" not "changed"). LP4 adds
+`neurosearch/plan_state.py`: `derive(project_id)` — read-only, derives Known/Assumed/Chosen/Uncertain/Blocked/
+Monitored per plan item from `plan_impact.affected_items` + Claim strength/freshness + `decision_impact`
+disagreement + the plan's own `dependencies`/`basis` fields. Nothing persisted (per the rung's own deferral
+gate). Surfaced via `neurosearch project plan-state <project>` CLI only — no UI line yet.
+
+One deliberate course-correction during execution (per rule §3, "execution may adapt"): the plan checkpoint
+called for a new `Assumption` registry entry for the CR6 budget constant. On inspecting `assumptions.py`'s
+actual registry, the precedent spend-authorization budgets (`t4_nightly_budget`, `t5_nightly_budget`) are
+deliberately NOT registered there — they're authorized amounts, not measured/unmeasured judgment thresholds.
+Skipped the new entry to stay consistent with that precedent; recorded here rather than treated as a pause
+trigger.
+
+Tests: 1633/1633 passing (`tests/test_cr1_lp0_lp1_research_needs.py` grown to 53 cases across CR1–CR6/LP0–LP4
+this arc). `repo-check: PASS`. No `UI_VERSION` bump — no frontend file touched by any rung in this arc.
+
+Ladder/scheduler updated: `EXECUTION-LADDER.md` CR6 and LP4 marked `[x] 690d3f2`. `PRODUCT-SCHEDULER.md` NOW
+section moved to SC0b / AD0 / FM0 (all PARALLEL PREP, mission §12 Stages 12–14, disjoint files, $0).
+
+**Unlocks**: CR7 (Kyle's real-project gate — CR1 through CR6 now form one complete, testable, honest chain
+ready for a real night); LP5 (patch acceptance provenance, Codex-shaped, does not need LP4 but a future
+Plan-tab UI surfacing LP4's states would).
+
+Per the new rule, continuing directly into SC0b next — same execution session, no new pause, since SC0b/AD0/
+FM0 are explicitly flagged PARALLEL PREP within the same mission §12 acceleration objective and touch no file
+CR6/LP4 touched.

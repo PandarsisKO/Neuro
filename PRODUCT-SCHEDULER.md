@@ -4,17 +4,17 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-Updated 2026-09-15 18:00 (CR5 + LP3 landed, `d72537b`). Every previously admitted rung is code-complete; the
-open ones are Kyle-gated measurements (`docs/KYLE-GATES-2026-09-15.md`). Active now, in the Claude lane:
+Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
+code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that
+authorized CR6/LP4 also covers continuing straight into the remaining PARALLEL PREP rungs in the same mission §12
+dependency chain, no new pause required. Active now, in the Claude lane:
 
-**CR6 (nightly integration — READY AFTER CR5, done)** and **LP4 (stable state semantics — PARALLEL PREP after
-LP1, long eligible, not yet picked up)** (`EXECUTION-LADDER.md` Stages 10–11). CR6 wires `research_refresh` into
-`nightly.run()` under its own explicit cap, the way T5 already does; LP4 derives Known/Assumed/Chosen/Uncertain/
-Blocked/Monitored state over `plan_items` + Claim strength/freshness, persisting nothing unless the derivation
-proves insufficient. Both Claude lane. Per the plan-then-pause handoff (HANDOFF.md), planning happens before any
-implementation begins. CR7 (real-project gate) still needs Kyle's night, after CR6.
+**SC0b (capability view completeness), AD0 (feedback inventory), FM0 ($0 experiment)** — all PARALLEL PREP,
+small in scope, $0, disjoint files from each other and from CR/LP. `EXECUTION-LADDER.md` Stages 12–14. CR7
+(real-project gate) still needs Kyle's own night, now that CR1–CR6 form a complete, testable chain — that one
+remains Kyle-gated and is not attempted here.
 
-Parallel prep allowed for a second agent (disjoint files): SC0b, AD0, FM0, CR3 (Codex-shaped).
+Parallel prep still open for a second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 
