@@ -4379,3 +4379,43 @@ that pass individually. repo-check: 1 pre-existing unrelated finding (a stray ro
 
 Not yet independently confirmed on Kyle's live worker (CPU trending back down, warnings stopping for old job
 IDs) — check `ps aux | grep neurosearch` and the worker terminal after this lands and the worker restarts.
+
+## Mission CS — "Scan this course" hardened, CS0–CS4 landed (`dccc3bd`, `0daae83`, `6e0e928`, `8da1a01`)
+
+Kyle's mission: harden the course scanner beyond 1.6.0's "app-rendered course cannot be listed" conclusion, using
+SMB Market's classroom as the first real acceptance test (not a patch target — no platform-specific selector
+landed in the generic path). Full design and rationale: `docs/COURSE-SCANNER-2026-09-15.md`; durable facts:
+`CLAUDE.md` → "Scan this course" entry under Foundation ownership boundaries.
+
+What landed:
+- **CS0** (`dccc3bd`): measured SMB Market in Kyle's real, logged-in tab via Claude in Chrome before writing any
+  selector — module/lesson shape, settle timing, player identity, dangerous controls, throttling behaviour. No
+  password/MFA/session data recorded; only URLs, counts, timings and attribute names.
+- **CS1** (`0daae83`): `extension/scan-lib.js` — the strategy pipeline (linked pages / SPA traversal / rendered-
+  player inspection), positive-identification control classification, multi-signal `changed()`, per-tab durable
+  scan state with `scan_id` nonce-guarding in `background.js`, a pure-view `popup.js`, and a jsdom test harness
+  (21 tests, 8 fixtures) proving it against the shipped file. Fixed a test-authoring bug found while finishing
+  this (a quote-matching regex mismatch, not a scanner defect) and the pinned-version regression in
+  `test_s33_page_videos.py` (bumped to 1.7.0).
+- **CS3** (`6e0e928`): `import_course` (`courses.py`) groups lessons by normalised video url before enqueueing —
+  a shared video acquires once, `shared` still names every lesson using it, `already_present` reports what's
+  already in the library via `db.sources_for_urls` (no second "added" flag). **This live-patched
+  `neurosearch/courses.py` — if `serve --reload` was running, it restarted picking this up.**
+- **CS4** (`8da1a01`): the jsdom dependency installs itself (`npm ci --prefix tests/js`, pinned lockfile) the
+  first time the gate needs it and FAILS loudly (not a skip) if that can't succeed, so `python -m pytest tests` —
+  already `release_check`'s gate — exercises the scanner's full coverage without a separate remembered step.
+
+Verification: full suite run in chunks against a synced `~/ns-verify` copy. Every failure found was confirmed
+pre-existing by reproducing it identically with this mission's diff `git stash`-ed out — sandbox has no network
+for embedding/link-check tests, and Kyle's local `.env` pins `NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT`, which a
+few model-policy tests weren't written to tolerate. Neither touches the scanner or courses.py.
+
+Not yet done:
+- **CS5** — live SMB Market acceptance gate: scan + enumerate only (explicitly not a bulk import/download test),
+  comparing the scanned count against the module cards' "N lessons" labels (43, from CS0), plus popup close/
+  reopen mid-scan, cancellation, partial-coverage reporting.
+- **CS5 generalization check** — confirm an older linked-course fixture still passes end to end in the real
+  extension (the jsdom fixture already does; this is the live-browser counterpart).
+- Reload the unpacked extension in Kyle's Chrome (still 1.6.1 there as of CS1) before CS5 can run at all.
+
+Next session: pick up at CS5. Read `docs/COURSE-SCANNER-2026-09-15.md`'s CS5 section first.
