@@ -93,9 +93,18 @@ asserts exactly 1 `usage` row + 1 `work_unit` after the crash, exactly 2 of each
 double-recorded, never dropped. No production bug found (unlike L-12) -- this closed a coverage gap, not a
 defect. Full suite: 1495 passed; `repo-check: PASS`.
 
-### L-14 `[ ]` P0.D budget exhaustion — needs: L-11
-`usage.guard` / daily budget hit mid-run: remaining jobs `wait_reason='budget'` with `not_before`, nothing
-half-written, accepted claims untouched. Gate: test green.
+### L-14 `[x] 9c85f40` P0.D budget exhaustion — needs: L-11
+Real bug found (not just an audit): `suggest_for_project()`'s BudgetPaused/ProviderUnavailable handling created
+a SEPARATE fresh `suggest_findings` job for the remaining sources, then re-raised so `jobs.execute()` ALSO
+requeued the original job (full source list, correctly `wait_reason='budget'` + `not_before` gated). The fresh
+job had no wait fields at all (`not_before=None`) -- immediately claimable, racing straight past the very
+budget/provider wait that caused the pause, and leaving two jobs covering the same remaining source(s). Fixed
+by folding `BudgetPaused`/`ProviderUnavailable` into the same re-raise branch as `Yield` (L-12) -- `jobs.execute()`
+already handles all three uniformly and correctly; any source completed before the pause skips on resume via the
+existing `is_current`/`input_hash` check. New test (`tests/test_p0_budget_exhaustion.py`): two sources, second
+hits `BudgetPaused` mid-project, asserts exactly one job remains, gated behind the budget wait, full source list
+preserved, nothing half-written for the paused source, completed source's analysis stays current. Full suite:
+1496 passed; `repo-check: PASS`.
 
 ### L-15 `[ ]` P0.E promotion boundary — needs: —
 Prove by test that no autonomous path (`suggest_findings`, `extract_claims`, harvest, `_after_done`) calls

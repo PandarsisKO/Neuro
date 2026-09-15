@@ -3264,3 +3264,30 @@ reachable (which would make the test flaky) — the sequential-force is the dete
 
 Next per EXECUTION-LADDER.md / the continuous-execution directive: L-14 (P0.D budget exhaustion), L-15 (promotion
 boundary), L-16 (concurrent completion), L-17 (P0 closeout doc).
+
+## L-14 closed — budget/provider pause no longer races an un-gated duplicate job (2026-09-15)
+
+Real bug, found by driving the actual code path (not by reading it): `suggest_for_project()`'s
+`BudgetPaused`/`ProviderUnavailable` handling manually created a second `suggest_findings` job for the
+remaining sources -- `db.create_job(...)` with no wait fields -- then re-raised so `jobs.execute()` would ALSO
+requeue the original job with proper wait gating (`wait_reason='budget'` + `not_before`, or a provider-wait
+park). The manual job was immediately claimable and would race straight past the very pause that created it --
+verified with a throwaway probe script before writing the real fix (a 2-source project, second source raises
+`BudgetPaused`: before the fix, 2 `suggest_findings` jobs existed after the pause, one of them `not_before=None`;
+after the fix, exactly 1, correctly gated).
+
+Fix (commit `9c85f40`): folded `BudgetPaused`/`ProviderUnavailable` into the same re-raise branch as `Yield`
+(L-12's fix) in `suggest_for_project()`'s per-source `except` -- `jobs.execute()` already requeues/parks the
+SAME job correctly for all three exception types, and a source that completed before the pause is skipped on
+resume via the pre-existing `is_current`/`input_hash` check, so nothing is lost by removing the manual fresh-job
+creation.
+
+New test: `tests/test_p0_budget_exhaustion.py` -- real `db.create_job` -> `db.claim_job` -> `jobs.execute()`
+path, two sources, `BudgetPaused` raised for the second. Asserts exactly one job remains (not two), gated
+behind the budget wait, full original `source_ids` preserved for resume, nothing half-written for the paused
+source, and the completed source's analysis stays `current`.
+
+Validated via `~/ns-verify`: full suite 1496 passed, 0 failed; `repo-check: PASS`.
+
+Next per EXECUTION-LADDER.md: L-15 (P0.E promotion boundary — needs: nothing), L-16 (concurrent completion),
+L-17 (P0 closeout doc, needs L-10 through L-16 all done).
