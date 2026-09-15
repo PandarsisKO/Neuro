@@ -14,6 +14,12 @@ product never claims a sleeping host will wake itself).
 
 Never reopens current sources: `t4.execute`'s own selector already skips a source with a current analysis
 (`findings.is_current`) before it ever reaches the budget walk -- nothing new needed here for that guarantee.
+
+Each per-project record also carries a `snapshot_before` (L-31): a cheap `t1.coverage_view(pid, limit=0)` call
+taken immediately before `t4.execute`, excluding the large per-chunk `chunks` list. This is the ONLY point in
+the system where a real "before" state for the night's work exists to capture -- `delta.for_envelope()` (L-31)
+reads it back to compute an honest coverage delta; without it, a delta computed only from tables mutated by the
+run itself would not be a real before/after comparison, it would be a guess.
 """
 from __future__ import annotations
 
@@ -77,16 +83,25 @@ def run(force: bool = False) -> dict[str, Any]:
     for p in projects:
         if remaining <= 0:
             break
+        # L-31: capture a real "before" coverage snapshot now, the only moment it can honestly be taken --
+        # after t4.execute runs, "before" no longer exists to observe. A snapshot failure never blocks the
+        # night's work; it just leaves delta.for_envelope() unable to compute a coverage delta for this project.
+        try:
+            from . import t1
+            snapshot_before = t1.coverage_view(p["id"], limit=0)
+        except Exception as e:  # noqa: BLE001
+            log.warning("nightly envelope %s: before-snapshot failed for project %s: %s", envelope_id, p["id"], e)
+            snapshot_before = None
         try:
             r = t4.execute(p["id"], budget_usd=remaining, dry_run=False, transport="batch")
         except Exception as e:  # noqa: BLE001 — one project's failure must never abort the rest of the night
             log.warning("nightly envelope %s: t4.execute failed for project %s: %s", envelope_id, p["id"], e)
-            per_project.append({"project_id": p["id"], "error": str(e)})
+            per_project.append({"project_id": p["id"], "error": str(e), "snapshot_before": snapshot_before})
             continue
         spent = float(r.get("total_estimate") or 0)
         remaining = max(0.0, remaining - spent)
         per_project.append({"project_id": p["id"], "executed": r.get("executed"), "estimate": spent,
-                            "job_ids": r.get("job_ids"), "count": r.get("count")})
+                            "job_ids": r.get("job_ids"), "count": r.get("count"), "snapshot_before": snapshot_before})
 
     record = {"ok": True, "envelope_id": envelope_id, "ts": time.time(), "budget": budget,
               "spent_estimate": round(budget - remaining, 4), "projects": per_project,
