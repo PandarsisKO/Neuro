@@ -4,14 +4,15 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-Updated 2026-09-15. The frontend split that was NOW here is DONE (delivered 2026-09-13, `7480352` / `5f667a1`;
-`neurosearch/web/index.html` + `styles.css` + `js/` native ES modules, no build step; see HANDOFF.md "Frontend
-split — delivered"). It stayed listed here for two days after landing and misdirected planning: L-40 was wrongly
-treated as blocked on it. Stale blockers in this section are a real cost.
+Updated 2026-09-15 (acceleration directive; mission §12). Every previously admitted rung is code-complete; the
+open ones are Kyle-gated measurements (`docs/KYLE-GATES-2026-09-15.md`). Active now, in the Claude lane:
 
-Active now: `EXECUTION-LADDER.md` Stage 5, **L-40 — the "Tonight" UI** (P1B, Claude lane): the stale-rebuild
-action gains Now / Tonight / Overnight batch on top of L-20's `not_before` backend. Everything else admitted is
-code-complete and gated on Kyle (`docs/KYLE-GATES-2026-09-15.md`).
+**CR1 research needs + LP0/LP1 plan-evidence seam and affected-step detector** (`EXECUTION-LADDER.md` Stages
+10–11). Two thin read-only adapters over existing state that together unlock Continuous Research, Living Plan,
+source routing for refresh, and better Morning Report / review-queue lines. Non-colliding (disjoint files).
+Execution follows the plan-then-pause handoff recorded in HANDOFF.md.
+
+Parallel prep allowed for a second agent (disjoint files): SC0b, AD0, FM0, CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 
@@ -31,6 +32,12 @@ are tracked. Local `INSPIRATION/`, `Claude outputs/`, `SCREENSHOT AUDIT/`, and
 do not silently delete it.
 
 ## NEXT — admitted priorities (maximum three)
+
+(2026-09-15) After CR1 + LP1: **CR2 → CR5** (one Claim refreshed end-to-end, the P8 vertical slice) and **LP2 → LP3**
+(explainable impact → proposed patch) — both READY AFTER their gate, both Claude lane. P11 Neuro Everywhere is
+FUTURE / NICE TO HAVE and not in this queue. The three items below are the 2026-09-14 admissions, all now
+code-complete and Kyle-gated; kept for history.
+
 
 Governing document: `PRODUCT-INTELLIGENCE-MISSION.md` (mission + CTO rulings, 2026-09-14; rulings win on conflict).
 Pre-read order before any rung is rulings §8, CLAUDE.md first.

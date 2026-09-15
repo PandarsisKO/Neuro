@@ -355,12 +355,146 @@ what you'd check? Nothing extra to run: it appears at the bottom of `neurosearch
 ### L-70 `[ ]` ~20 varied long-form sources; Arm A findings vs Arm B structured prototype; written measured
 decision BEFORE any persistence. `kyle-decides` on the $ estimate (state it first) -- prepped d9468c0: `tools/p7_estimate.py --project <name>` states it ($0, Arm B labelled as an assumption).
 
-## Stage 10 — P8 Continuous Research — needs: L-30, L-50 · not admitted; do not start without scheduler entry
-## Stage 11 — P9 Beyond-corpus (capability intel, adaptive discovery + exploration quota, field map) — not admitted
-## Stage 12 — P10 Living Master Plan (Known/Assumed/Chosen/Uncertain/Blocked/Monitored; explainable changes;
-material-change thresholds; versions) — needs: L-52 · not admitted
-## Stage 13 — P11 Neuro Everywhere (inbox, external AI access, multi-user with identity/ACL) — not admitted
-## Parked — P12 Bidirectional Scheduler: only on measured starvation/latency/contention/cost/fairness.
+## Stages 10–15 — the acceleration plan (mission §12, 2026-09-15). Dependencies are REAL, not feature-family order.
+
+Admission classes: **ADMITTED NOW** · **READY AFTER GATE <x>** · **PARALLEL PREP** (may proceed, non-colliding) ·
+**EXPERIMENT ONLY** · **PARKED**. Every rung is a vertical slice: existing state → tiny adapter → bounded
+behavior → minimal surface → measurement → decision. No new table until a slice proves persistence is needed.
+
+Dependency graph (arrows are real code dependencies; anything not connected may run in parallel):
+
+    CR1 research needs ──┬──> CR2 due policy ──> CR5 one-Claim refresh ──> CR6 nightly ──> CR7 real gate
+                         │                              ▲
+    SC3 claim→reservoir ─┘ (feeds CR5's "where")        │
+    CR3 reservoir rescan ──> CR4 change detection ──────┘
+    LP0 seam (plan `_evidence` note ids) ──> LP1 affected steps ──> LP2 explainable impact ──> LP3 proposed patch ──> LP5 acceptance ──> LP6 demo
+                                          (LP4 state semantics: derived, alongside LP2)
+    AD0 feedback inventory ──> AD1 small batch ──> AD2 rerank (uses SC view) ──> AD3 exploration ──> AD4 measure
+    FM0 $0 experiment ──> FM1 proposals ──> FM2 accept → existing object ──> FM3 route via pursue/where_to_look
+
+Parallel-safe now: {CR1, LP0+LP1, FM0, AD0} touch disjoint files. CR1 and LP1 both READ decision_impact; neither
+edits it beyond LP0's additive note-id seam. Do not run two agents on `report.py`/`delta.py` at once.
+
+### Stage 10 — P8 Continuous Research (Claude lane: semantics; Codex lane: CR3/CR4 plumbing) — needs: L-30 code (exists), L-50
+Audit (CR0, done 2026-09-15, recorded in HANDOFF): freshness policy EXISTS (`claims.FRESHNESS_RULES`,
+`freshness_status`); stale-source logic EXISTS (`staleness`); targets + escalation EXIST (`knowledge.pursue`,
+`last_escalation`); reservoirs EXIST (`collections`, `candidates` with first/last_seen, `where_to_look`);
+scheduler + nightly EXIST. Missing: the selection step, rescan of a known reservoir, and the end-to-end refresh.
+
+### CR1 `[ ]` research needs — ADMITTED NOW · lane: claude · needs: —
+`research_needs.for_project(project_id) -> {needs:[...], counts}`: read-only projection over accepted Claims with
+`freshness_status` in (stale, needs_refresh); open CONTRADICTION/NOVEL/WEAK_CONSENSUS tensions; open Evidence
+Targets; plan-cited weak Claims (`decision_impact`). Each need: kind, ref id, question/proposition, why, consequence
+(disagreement/plan_impact), freshness class + status, existing coverage (evidence count, newest age), last
+escalation, and `where` = `candidates.where_to_look` adapted from the Claim's topic + evidence classes (this IS
+SC3). Deterministic order: plan-impact+stale first, then disagreement, then open targets; no LLM score. Surfaces:
+`GET /api/projects/{id}/research-needs`, `neurosearch project needs <project>`, one Morning-Report line ("N things
+may need fresh evidence") only when non-empty. Gate: deterministic tests incl. "a static Claim never becomes a
+need by age alone"; on Kyle's project the list reads as things worth checking (his judgment, recorded).
+
+### CR2 `[ ]` due policy — READY AFTER CR1 · lane: claude
+When is a need DUE tonight: `freshness_status` (not raw age) × consequence (plan_impact/disagreement) × cost of the
+check (`usage.estimate_source_findings` on the reservoir's next unread). Categories, not a fake score. Records
+`kv research:checked:<need>` so nothing is rechecked because budget remains. Gate: tests for each freshness class.
+
+### CR3 `[ ]` known-reservoir rescan — PARALLEL PREP (Codex-shaped) · needs: — 
+For ONE collection kind first (YouTube channel/playlist via `media.enumerate_entries`): "has this reservoir produced
+new candidate material since the last scan?" New items flow into the existing Candidate Index via
+`candidates.remember` — no second ingestion pipeline, nothing auto-ingested. Gate: rescan of a fixture channel
+adds only new candidates; a second rescan adds none.
+
+### CR4 `[ ]` change detection before analysis — READY AFTER CR3 · lane: codex-shaped
+`candidates.metadata_revision`/`last_verified_at`, `sources.revision`, published_at: cheap comparison first;
+nothing is re-read unchanged. Gate: unchanged reservoir costs $0 and enqueues nothing.
+
+### CR5 `[ ]` one important Claim refreshed end-to-end — READY AFTER CR1, CR2 (SC3 folded into CR1) · lane: claude
+Due Claim → `where` → bounded research through existing paths (`knowledge.pursue` steps 1–3 free; the captured
+source through the ordinary ingest+findings jobs) → `claims.assess` recomputes strength/freshness → delta reports
+strengthened / weakened / contradicted / unchanged for that Claim → no status change → Morning Report line only if
+consequential. Gate: fixture scenario A and C from mission §12 pass; no `set_status` call anywhere on the path.
+
+### CR6 `[ ]` nightly integration — READY AFTER CR5 · lane: claude/codex interface first
+A third bounded work source in `nightly.run()` under its own explicit cap (like T5's); "nothing changed" is a
+successful outcome recorded on the envelope. Gate: envelope test; no need refreshed twice in a night.
+
+### CR7 `[k]` real-project gate — needs: CR6 + Kyle's night. Never faked.
+
+### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
+Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
+`plan_items` keys mirror those paths; `plan["_evidence"]` (emap) stores label/link/kind/source_id per id but NOT
+the note id, so `decision_impact` re-derives F<n>→note by re-numbering and must say "unknown" whenever notes
+changed since the plan; `plan_updates` already holds previous/proposed/reason/status — the patch substrate exists.
+
+### LP0 `[ ]` plan-evidence seam — ADMITTED NOW · lane: claude · needs: —
+`planner._evidence` records `note_id` (and fact id) in the stored emap for every F/U entry; `decision_impact`
+prefers the stored ids and falls back to re-derivation for older plans. Additive, no migration (plan JSON). Gate:
+plan_impact stays known after notes change for a plan built after this seam; older plans unchanged.
+
+### LP1 `[ ]` affected-step detector — ADMITTED NOW · lane: claude · needs: LP0 (same commit is fine)
+`plan_impact.affected_items(project_id, claim_id|tension_id) -> [{key, section, text, via: [note ids], strength:
+possible|indicated}]` — deterministic over evidence links; `indicated` only when the link is a direct citation,
+`possible` when via a merged/superseded Claim; unknown stays unknown. Surface: one Plan-tab line "1 step may need
+revision" (progressive disclosure) + `GET .../plan/impact?claim_id=`. Gate: deterministic tests; the demo claim in
+`test_decision_impact` maps to exactly its cited step.
+
+### LP2 `[ ]` explainable impact — READY AFTER LP1 · lane: claude
+Given a delta (changed Claim/tension), produce affected Claim → decision/dependency → step → why → possible vs
+indicated, by templating over LP1 (no model call). Feeds `delta.for_envelope` "what decision or plan element
+could be affected". Gate: scenario A text reads correctly from fixtures.
+
+### LP3 `[ ]` proposed plan patch — READY AFTER LP2 · lane: claude
+Write a `plan_updates` row (pending) per affected step: move/insert prerequisite/flag blocked/mark dependency
+unresolved/revisit decision, with reason + claim linkage. Never mutates the accepted plan. Gate: row shape; the
+existing accept/reject route promotes it; nothing else does.
+
+### LP4 `[ ]` stable state semantics — PARALLEL PREP after LP1 · lane: claude
+Known/Assumed/Chosen/Uncertain/Blocked/Monitored as DERIVED state over plan_items + linked Claim strength/
+freshness + assumptions; persist nothing unless the derivation proves insufficient. Gate: derivation tests.
+
+### LP5 `[ ]` patch acceptance provenance — READY AFTER LP3 · lane: codex-shaped
+Ensure an accepted `plan_updates` row carries previous/resulting state, reason, claim linkage, and provenance
+(system proposal vs user). Additive columns only if a real field is missing. Gate: "your plan changed in one
+place" is reconstructible from rows.
+
+### LP6 `[k]` real evidence-change demo — needs: LP3 + a real delta.
+
+### Stage 12 — P9A Source Capability — mostly SHIPPED at 0.58.3 (`candidates.creator_yield` = SC0 view;
+`where_to_look` = SC1 routing; `_creator_term` in `_potential` = SC2, capped so yield never dominates).
+### SC0b `[ ]` capability view completeness — PARALLEL PREP · lane: claude · needs: —
+Add to `creator_yield`: claim types/topics yielded, targets previously helped close (`candidate_links` state
+satisfied), cadence (published_at spread). Read-only; project-scoped; never a single score. Gate: tests.
+### SC3 — folded into CR1 (`where` per need). `[ ]` closes with CR1.
+
+### Stage 13 — P9B Adaptive Discovery (Claude lane) — needs: SC view (exists)
+### AD0 `[ ]` feedback inventory — PARALLEL PREP · $0 · needs: —
+Written matrix of durable signals that already exist: `candidates.mark` states (dismissed/acquired/skipped_*),
+`candidate_links.state`, findings status, `claims.set_status`, target closure. Decide which feed AD2. No telemetry.
+### AD1 `[ ]` small-batch discovery — READY AFTER AD0. "5 best next" from `candidates.pool`, keep/reject/capture,
+"5 more". ### AD2 `[ ]` deterministic rerank (target fit, preferred class, SC view, dismissals, diversity,
+freshness) — READY AFTER AD1. ### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five outside the
+pattern) — with AD2. ### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate, yield, targets
+closed, novel families, review burden.
+
+### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
+### FM0 `[ ]` $0 experiment — PARALLEL PREP · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`
+Reference-list clusters vs headings of 2–3 review works, compared with the project's Claims/targets/sources
+vocabulary. Written go/no-go. No paid pass unless the $0 method fails AND the paid one has clear decision value.
+### FM1 `[ ]` blind-spot PROPOSALS (never "you are missing X") — READY AFTER FM0 go.
+### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — with FM1.
+### FM3 `[ ]` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.
+
+### Stage 9 (unchanged) — P7 Structured Delta: EXPERIMENT ONLY (L-70), needs L-07 + Kyle's $ yes. Must not block
+Stages 10–14 unless a real dependency is found.
+
+### Stage 15 — Opportunistic $0 unlocks (never displacing the loop)
+### H1 `[ ]` semantic finding dedupe — PARKED: `project_notes.embedding`/`project_claims.embedding` columns exist
+but NO writer populates them (verified 2026-09-15), so this still needs paid embeddings → measured cost/quality
+gate first. ### H2 `[ ]` chapter/segment digests — PARKED pending a check that `work_units.result` per-window
+`summary` fields are populated and readable without a new pass (per-source summaries exist in
+`project_source_analysis`). ### H3 speaker structure — PARKED.
+
+### P11 — Neuro Everywhere: FUTURE / NICE TO HAVE / no active rungs (mission §12). `EXTERNAL-AI-ACCESS-MISSION.md`
+preserved. ### P12 — Bidirectional Scheduler: trigger-only; do not resurrect without measured contention.
 
 ---
 

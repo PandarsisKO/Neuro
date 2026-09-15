@@ -3621,3 +3621,81 @@ No ACTIONABLE NOW items remain. Every blocked row above either names a measureme
 credential/egress the sandbox does not have, or spend that needs his yes. `STATE-OF-THE-APP-2026-09-15-1400.md`
 is the fresh snapshot; `PRODUCT-SCHEDULER.md` NOW = L-40 (its gate). Next eligible item for a fresh agent:
 none until one of the gates above lands; when L-30's night runs, L-31/L-41/L-60/L-61 close from its report.
+
+## Acceleration directive — planning checkpoint (2026-09-15, plan-then-pause handoff)
+
+Kyle's Product Intelligence Acceleration Directive was verified against `main` and written into the control
+plane: mission §12 (the strategy), ladder Stages 10–15 (real dependency graph, admission classes, parallel
+eligibility), scheduler NOW/NEXT. Per the new model-handoff rule, planning stops here; implementation begins
+only after Kyle's continuation message.
+
+**Stale premises found while verifying (repo won):**
+- Source Capability is mostly SHIPPED (0.58.3): `candidates.creator_yield` (project-scoped view), `where_to_look`
+  (target → reservoir routing), `_creator_term` in `_potential` (capped ranking term). `SOURCE-CAPABILITY-RUNG.md`
+  says "not built" — its header already says PARTIALLY SHIPPED. Ladder now has only SC0b (view completeness) and
+  SC3 (folded into CR1).
+- Refresh policy already exists: `claims.FRESHNESS_RULES` + `freshness_status()` per class — CR2 reuses, never
+  re-invents.
+- The plan-patch substrate exists: `plan_updates` (previous/proposed/reason/pending|accepted|rejected). LP3/LP5
+  are additive.
+- H1 semantic dedupe: `project_notes.embedding` / `project_claims.embedding` columns exist but nothing writes
+  them → still paid → PARKED behind a measured gate. H2: per-source summaries exist; per-window is unverified →
+  PARKED pending a $0 check.
+- Nothing about P11 was started; `EXTERNAL-AI-ACCESS-MISSION.md` untouched.
+
+**Dependencies removed:** P8→P9→P10 serialization. LP1 needs only L-50 + plan evidence links (not P8). SC view
+needs nothing (exists). FM0 needs only scholar tooling. AD0 needs nothing.
+**Parallelizable now (disjoint files):** CR1 · LP0+LP1 · SC0b · AD0 · FM0 · CR3(Codex-shaped).
+**Ownership:** Claude — CR1/CR2/CR5, LP*, AD*, FM*, SC0b (semantics/UX). Codex — CR3/CR4/CR6 plumbing, LP5
+provenance. Interface first where they meet (CR5↔CR6: the need record; LP3↔LP5: the plan_updates row).
+**Active collisions:** none (Codex idle until the weekend reset).
+
+### Approved-plan checkpoint for the execution model
+
+Rung / objective: **CR1 research needs** (the Research Need read-only adapter, incl. SC3 routing) then **LP0 +
+LP1** (plan-evidence note-id seam + affected-step detector). Two vertical slices, disjoint files.
+
+Why next: highest critical-path unblock value with lowest risk — both are $0, deterministic, read-only adapters
+over verified existing objects; CR1 has three immediate consumers (CR2/CR5, Morning Report, review queue), LP1
+unlocks LP2–LP6 and fixes decision_impact's fragile F<n> mapping.
+
+Reused: `claims.list_for_project` + `freshness_status`/`FRESHNESS_RULES`; `knowledge.list_tensions`,
+`list_targets`, `last_escalation`; `decision_impact.decision_impact`; `candidates.where_to_look`
+(adapted from a Claim's topic + `claim_evidence.evidence_class` set); `claims.evidence_source_ids`; plan JSON
+`_evidence` emap + `plan_items` keys + `planner._evidence`.
+
+Approach:
+1. `neurosearch/research_needs.py` (new, read-only): `for_project(pid, limit=25)`. Sources of needs, each a dict
+   {kind: claim_stale|claim_needs_refresh|tension|target|plan_weak, ref_id, text, why, freshness:{class,status,
+   why}, consequence:{disagreement, plan_impact}, coverage:{evidence, independent_sources, newest_age_days},
+   last_escalation, where:[top 3 rows from where_to_look with cited numbers]}. Order: plan_impact+stale first,
+   then disagreement, then open targets, then weak plan-cited; static/historical/experiential classes never
+   become a need by age (their rules are None/None). `counts` incl. by kind and "suppressed_by_class".
+2. Surfaces: `GET /api/projects/{id}/research-needs` (require_auth, read-only); CLI `neurosearch project needs
+   <project> [--json]`; Morning Report: one line "N things may need fresh evidence" under "what should happen
+   next", only when non-empty (no dashboard).
+3. `planner._evidence`: `add(..., note_id=n["id"])` / fact ids into emap (additive keys in plan JSON).
+   `decision_impact._plan_cited_note_ids`: prefer emap note ids; fall back to re-derivation; "unknown" only when
+   neither is available.
+4. `neurosearch/plan_impact.py` (new, read-only): `affected_items(pid, claim_id=None, tension_id=None)` walks
+   the latest plan's evidence arrays by path (first_steps.N, decisions.N, tools.N, costs) → items whose evidence
+   ids resolve to notes folded into the Claim (`claim_evidence_notes`) or into Claims it superseded. `strength`:
+   indicated (direct note citation) | possible (via superseded/merged Claim). Returns [] with `known: False`
+   when the mapping is unavailable. Surface: `GET .../plan/impact?claim_id=` + `neurosearch project plan-impact`.
+   Plan-tab line deferred to LP2 (keeps this slice read-only; the UI line needs LP2's wording).
+Files: research_needs.py (new), plan_impact.py (new), planner.py (one function, additive), decision_impact.py
+(mapping preference), api.py (+2 GET routes), cli.py (+2 commands), report.py (+1 line), tests (2 new files +
+1 test in test_p3_morning_report / test_decision_impact).
+Tests/gates: deterministic fixtures for every need kind and every freshness class (static never a need by age);
+where-routing cites numbers; plan_impact stays known after notes change for a post-seam plan; affected step ==
+the cited step, superseded-claim path == possible; API 404/auth; CLI output; full suite `-rf`; `repo-check`;
+release-check not needed (no UI_VERSION bump — no index.html/JS change in this slice).
+Risks/collisions: none active. `report.py`/`delta.py` are shared hot files — one small addition each, one agent.
+Unlocks: CR2, CR5, LP2, LP3, SC3 (closed with CR1), Morning-Report lines, review-queue enrichment.
+Assumptions remaining: `where_to_look` accepts a synthetic target dict {question, preferred_classes} (it does —
+it reads only those keys); Claim topic strings match `_gap_terms` vocabulary loosely (routing quality is
+Kyle's judgment at CR1's gate, not a code assumption).
+Deliberately NOT built: any table, any LLM importance score, a monitoring dashboard, CR3 rescan (Codex-shaped,
+separate), the Plan-tab UI line (LP2), P11.
+
+READY FOR EXECUTION MODEL

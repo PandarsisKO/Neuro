@@ -1599,3 +1599,62 @@ verify existing mechanism → expose the real gap → fix only that gap → prov
 The purpose of this mission is not to create more architecture.
 
 It is to make the architecture Neuro already has finally behave like a trustworthy research partner.
+
+### 12. ACCELERATION STRATEGY — CURRENT EXECUTION INTERPRETATION (2026-09-15)
+
+Accepted (Kyle's Product Intelligence Acceleration Directive, 2026-09-15). Verified against `main` before
+writing; where the repo already had something, the repo wins and the ladder was adapted rather than the code.
+
+**Objective.** Maximise meaningful product capability per development cycle while preserving the trust, evidence,
+cost and promotion boundaries above. The product target: Neuro knows what deserves attention.
+
+**Priority change.** P11 Neuro Everywhere (external ChatGPT/Claude access, Project Inbox, multi-user/ACLs,
+external write-back) is FUTURE / NICE TO HAVE / NOT ON THE CRITICAL PATH. `EXTERNAL-AI-ACCESS-MISSION.md` is
+preserved unchanged and its security/provenance requirements stand; the only present obligation is that P8–P10
+interfaces stay coherent and provenance-preserving so a future external consumer is not designed out. P12
+(bidirectional scheduler) stays trigger-only. Cloud hosting is not a prerequisite for anything below.
+
+**The five capabilities, and the one loop they share.** Continuous Research (A) and Living Master Plan (B) are the
+primary product goals; Source Capability (C), Adaptive Discovery (D) and Field Map (E) are the research-expansion
+goals. They are NOT five systems. They share one loop over objects that already exist:
+
+    PROJECT STATE (Claims + freshness_status · tensions · Evidence Targets · plan evidence links · assumptions)
+      → RESEARCH NEED (read-only projection — see below)
+      → RESEARCH PRIORITY (Decision Impact · freshness class · known reservoirs via candidates.where_to_look)
+      → BOUNDED RESEARCH (existing nightly envelope; t4.execute; knowledge.pursue; candidates/collections)
+      → PROJECT DELTA (delta.for_envelope — the change contract)
+      → Morning Report · review queue · Decision Impact · plan impact
+      → PROPOSED action / plan patch (plan_updates; claims.set_status remains the only promotion door)
+
+**Thin shared seams, verified to exist (reuse, do not duplicate):** `claims.FRESHNESS_RULES` +
+`freshness_status()` (the refresh policy: class × age, "uncertain" never invents confidence); `knowledge.pursue`
+(project → library → candidates → external escalation, recorded in `last_escalation`); `candidates.creator_yield`
+/ `untapped_by_creator` / `where_to_look` / `_creator_term` (the project-scoped source-capability view and its
+ranking term — SOURCE-CAPABILITY-RUNG.md's "not built" is stale: 0.58.3 shipped most of it);
+`decision_impact.decision_impact` (disagreement, plan_impact); `plans._evidence` + `plan_items` keys +
+`plan_updates` (previous/proposed/reason/pending|accepted|rejected — the patch substrate already exists);
+`delta.for_envelope`; `nightly.run`; `candidates` index (`first_seen_at`/`last_seen_at`/`metadata_revision`) +
+`collections`/`source_collections` (known reservoirs); `sources.revision`; `work_units`.
+
+**Research Need is an adapter, not a table.** A read-only projection over: accepted Claims whose
+`freshness_status` is `stale`/`needs_refresh`; open high-impact tensions; open Evidence Targets; plan-cited Claims
+that are weak; assumptions the night exercised. It carries the underlying object type/id, why, consequence (from
+Decision Impact), freshness requirement, and where to look (from `where_to_look`). It is admitted only because it
+has three immediate consumers: continuous-research candidate selection (CR1), source routing for refresh (SC3),
+and the Morning Report / review queue. No schema until a vertical slice proves persistence is needed.
+
+**Project Delta remains the change contract.** Extended only when a consumer proves it must be. The distinction
+observed evidence → AI interpretation → accepted Claim → user decision → plan proposal is preserved at every step.
+
+**Ladder rule.** `EXECUTION-LADDER.md` Stages 10–15 now encode REAL dependencies and mark parallel eligibility;
+P8/P9/P10 are not serial. Admission is per small slice (SC0-sized), never per feature family. UI: contextual
+progressive disclosure on existing surfaces, one-click defaults with inspectable detail — no new dashboards.
+Cost order: deterministic data → existing derived objects → Global Library → local → off-hours batch →
+interactive paid only when decision value justifies it. Success is measured in consequential changes surfaced,
+stale Claims usefully refreshed, unnecessary refreshes avoided, targets closed, plan steps correctly identified,
+attention avoided, cost per useful result — never raw counts.
+
+**Closed-loop scenarios (to be built as the pieces land):** A (stale plan-supporting Claim → due → reservoir →
+contradiction → delta → plan impact → one report item, nothing auto-accepted); B (Field Map proposal → accepted
+target → exploration → capture → target gains evidence); C (monitored Claim checked, nothing changed, report says
+nothing important changed).

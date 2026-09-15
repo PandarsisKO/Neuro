@@ -62,3 +62,10 @@ Not admitted — Stages 10–13 (P8–P11), by the ladder's own text.
 Never open `data/neurosearch.db` from the sandbox (enforced by `db.refuse_bridge_mount`); cost disclosure before
 any spend; `claims.set_status` is the only promotion door; two commits per rung; a `[x]` means the gate passed,
 `[~]` means code-complete and the gate is a measurement someone still has to take.
+
+## Addendum 15:00 — acceleration directive absorbed
+
+Mission §12, ladder Stages 10–15 (dependency graph + admission classes), scheduler NOW = CR1 + LP0/LP1 (planned,
+not started; plan-then-pause handoff in HANDOFF). Verified: Source Capability mostly shipped at 0.58.3; refresh
+policy exists in `claims.FRESHNESS_RULES`; plan patches already persist in `plan_updates`; finding embeddings are
+unpopulated (H1 parked). P11 Neuro Everywhere = future/nice-to-have. No code changed since 0.63.91.
