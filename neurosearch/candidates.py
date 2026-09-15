@@ -111,6 +111,27 @@ def restore(project_id: str, candidate_id: str) -> int:
     return mark(project_id, [candidate_id], "available", "restored by the user")
 
 
+def capture(candidate_id: str, project_id: str, *, reason: str | None = None) -> dict[str, Any]:
+    """AD1: the one CAPTURE path, through the NORMAL lifecycle (ingest_url -> G1 identity) -- never a parallel one.
+    Attach-if-already-owned, else enqueue the real acquisition job; either way `mark(..., "acquired", ...)` records
+    the durable disposition AD0 named as AD2's primary rerank signal. Extracted from `api.api_candidate_acquire`
+    (0.63.9x had this same three-line sequence duplicated in `api_pool_capture_many`'s bulk path too -- both now
+    call this one function). Raises `LookupError` for an unknown candidate; callers map that to their own "not
+    found" (the API layer's 404)."""
+    c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone())
+    if not c:
+        raise LookupError(candidate_id)
+    if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
+        from . import identity
+        r = identity.attach_existing(project_id, c["source_id"])          # already owned: attach, no acquisition
+        mark(project_id, [candidate_id], "acquired", "attached from the library")
+        return {"ok": True, "job_id": None, "source_id": c["source_id"], "identity": r.state, "url": c["url"]}
+    from . import jobs
+    job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False})
+    mark(project_id, [candidate_id], "acquired", reason or "acquired from the Candidate Index")
+    return {"ok": True, "job_id": job["id"], "url": c["url"]}
+
+
 def _fts_query(q: str) -> str:
     import re
     terms = [t for t in re.findall(r"[\w']+", q.lower()) if len(t) > 1]
@@ -812,3 +833,22 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
               "worth_a_look": sum(1 for i in items if i["potential"] >= 40), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
     return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,
             "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}
+
+
+# ---------------------------------------------------------------- AD1: small-batch discovery
+#
+# "5 best next" over the SAME ranked pool `pool()` already assembles -- not a parallel surface. Deliberately no new
+# `shown`/`seen`/cursor/session state: a resolved item (captured -> state='acquired', rejected -> state=
+# 'user_dismissed') already drops out of `_pool_items()` on the very next call, because `project_pool_revision`
+# already changes when `mark()` writes a new `candidate_projects.state` (see its own docstring on what it tracks).
+# So "5 more" is just calling this again after resolving what's in front of you -- an unresolved item is correctly
+# allowed to come back, because Neuro has not received a decision on it yet. Scoped to kind="candidates" only:
+# "skipped" sources are the ingest-review cutoff's own list, a different, already-served flow (the full pool
+# table's retry path) -- AD1 is about genuinely new discovery, not that backlog.
+
+def next_batch(project_id: str, *, n: int = 5, rank_by: str = "fit", q: str | None = None) -> dict[str, Any]:
+    r = pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(n, 50)), kind="candidates")
+    return {"items": r["items"], "remaining": max(0, r["counts"]["candidates"] - len(r["items"])),
+            "explain": "Up to N candidates never yet captured or rejected, best first. Resolve each with capture "
+                       "or reject; call again for the next best unresolved ones -- there is no separate queue or "
+                       "session, just what has not been decided yet."}

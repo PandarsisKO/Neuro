@@ -1028,3 +1028,59 @@ def project_plan_state(project: str, as_json: bool = typer.Option(False, "--json
         return
     for key, s in states.items():
         typer.echo(f"- {key}: {s['state']} ({s['why']})")
+
+
+@project_app.command("discover")
+def project_discover(project: str, n: int = typer.Option(5, "--n", help="How many not-yet-resolved candidates to show"),
+                     rank_by: str = typer.Option("fit", "--rank-by"), as_json: bool = typer.Option(False, "--json")) -> None:
+    """AD1: up to N best not-yet-resolved Candidate Index items, best first. Resolve each with `discover-decide
+    <candidate_id> capture|reject`, then run this again -- there is no separate queue or session; a resolved item
+    drops out on its own (the same pool `project pool` uses), and an unresolved one is correctly shown again."""
+    from . import candidates
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    r = candidates.next_batch(pid, n=n, rank_by=rank_by)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    if not r["items"]:
+        typer.echo("nothing left to discover" + (f" ({r['remaining']} more beyond this batch)" if r["remaining"] else ""))
+        return
+    for i in r["items"]:
+        typer.echo(f"[{i['id']}] {i['title']} -- {i.get('creator') or 'unknown creator'} (potential {i['potential']}/100)")
+        if i.get("why"):
+            typer.echo(f"    {'; '.join(i['why'])}")
+    typer.echo(f"\n{r['remaining']} more beyond this batch. Resolve with `discover-decide <id> capture|reject`, "
+              f"then `discover` again for the next best unresolved ones.")
+
+
+@project_app.command("discover-decide")
+def project_discover_decide(project: str, candidate_id: str, decision: str,
+                            reason: Optional[str] = typer.Option(None, "--reason")) -> None:
+    """AD1: resolve one candidate from `discover` -- CAPTURE (through the normal ingest lifecycle) or REJECT
+    ("not for this project"). No third "keep for later" state: undecided already means "shown again next time"."""
+    from . import candidates
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    if decision not in ("capture", "reject"):
+        typer.echo("decision must be 'capture' or 'reject'", err=True)
+        raise typer.Exit(code=1)
+    if decision == "reject":
+        candidates.dismiss(pid, candidate_id, reason)
+        typer.echo(f"rejected {candidate_id}")
+        return
+    try:
+        r = candidates.capture(candidate_id, pid, reason=reason)
+    except LookupError:
+        typer.echo(f"no candidate {candidate_id!r}", err=True)
+        raise typer.Exit(code=1)
+    if r.get("job_id") is None:
+        typer.echo(f"captured {candidate_id} -- already owned, attached from the library")
+    else:
+        typer.echo(f"captured {candidate_id} -- ingest queued (job {r['job_id']})")

@@ -428,6 +428,17 @@ def api_pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit:
     return candidates.pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(limit, 500)), kind=kind)
 
 
+@app.get("/api/projects/{project_id}/discover/next", dependencies=[Depends(require_auth)])
+def api_discover_next(project_id: str, n: int = 5, rank_by: str = "fit", q: str | None = None) -> dict[str, Any]:
+    """AD1: up to `n` best not-yet-resolved candidates, best first. Resolve each through the existing
+    `/api/candidates/{id}/acquire` (capture) or `/dismiss` (reject) routes, then call this again for the next
+    best unresolved ones -- no separate queue, cursor, or session state; see `candidates.next_batch`."""
+    from . import candidates
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return candidates.next_batch(project_id, n=max(1, min(n, 50)), rank_by=rank_by, q=q)
+
+
 class PoolCaptureIn(BaseModel):
     kind: str = "all"          # all | skipped | candidates — same meaning as the pool's own `kind`
     rank_by: str = "fit"
@@ -441,7 +452,7 @@ def api_pool_capture_many(project_id: str, body: PoolCaptureIn) -> dict[str, Any
     """S5: 'capture the N that fit' — every pool item at or above a potential threshold, up to `limit`, in ONE action.
     Exactly the per-item paths a single Capture click takes (retry for skipped, attach-or-acquire for a candidate) —
     never a parallel path — so a bulk capture behaves identically to clicking each row by hand."""
-    from . import candidates, identity
+    from . import candidates
     if not db.get_project(project_id):
         raise HTTPException(404)
     r = candidates.pool(project_id, q=body.q, rank_by=body.rank_by, limit=2000, kind=body.kind)
@@ -458,16 +469,10 @@ def api_pool_capture_many(project_id: str, body: PoolCaptureIn) -> dict[str, Any
                 _retry_source(src)
                 jobs_queued += 1
             else:
-                cid = i["id"]
-                c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone())
-                if not c:
-                    failed.append(cid); continue
-                if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
-                    identity.attach_existing(project_id, c["source_id"])       # already owned: attach, no acquisition
-                    candidates.mark(project_id, [cid], "acquired", "attached from the library")
+                cap = candidates.capture(i["id"], project_id)          # AD1: the one shared capture path
+                if cap.get("job_id") is None:
                     attached += 1
                 else:
-                    jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False})
                     jobs_queued += 1
             captured.append(i["id"])
         except Exception as e:  # noqa: BLE001
@@ -537,17 +542,10 @@ def api_candidate_restore(candidate_id: str, body: CandidateActIn) -> dict[str, 
 def api_candidate_acquire(candidate_id: str, body: CandidateActIn) -> dict[str, Any]:
     """Acquire a seen candidate through the NORMAL lifecycle (ingest_url → G1 identity): never a parallel path."""
     from . import candidates
-    c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (candidate_id,)).fetchone())
-    if not c:
+    try:
+        return candidates.capture(candidate_id, body.project_id, reason=body.reason)
+    except LookupError:
         raise HTTPException(404)
-    if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
-        from . import identity
-        r = identity.attach_existing(body.project_id, c["source_id"])                    # already owned: attach, no acquisition
-        candidates.mark(body.project_id, [candidate_id], "acquired", "attached from the library")
-        return {"ok": True, "job_id": None, "source_id": c["source_id"], "identity": r.state}
-    job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": body.project_id, "force": False, "review": False})
-    candidates.mark(body.project_id, [candidate_id], "acquired", body.reason or "acquired from the Candidate Index")
-    return {"ok": True, "job_id": job["id"], "url": c["url"]}
 
 
 class ClassifyIn(BaseModel):

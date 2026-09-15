@@ -411,3 +411,113 @@ def test_check_now_unparks_a_timer_wait_and_is_a_noop_otherwise(monkeypatch):
     with pytest.raises(Exception):
         api.api_check_now("does-not-exist")
     assert api.api_check_now(still_waiting["id"]) == {"ok": True}      # still queued -> checking it now succeeds
+
+
+# ------------------------------------------------------------------ AD1: small-batch discovery
+#
+# "5 best next" is `candidates.next_batch` over the SAME ranked pool `pool()` already assembles, scoped to
+# kind="candidates" only (never the "skipped" ingest-review backlog, which stays on the full pool table's own
+# retry path). Deliberately no new shown/seen/cursor/session state: a resolved item drops out because
+# `project_pool_revision` already changes on `mark()`; an unresolved one is correctly shown again next call.
+
+def test_next_batch_returns_only_unresolved_candidates_never_skipped_sources(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    corro = [t for t in knowledge.list_targets(pid, status="open") if t["sufficiency"] == "corroborative"][0]
+    knowledge.pursue(corro["id"], external=False)                      # the fixture's one open candidate
+    _skipped(pid, "old-timeless", "Seller transition checklist", "A framework for the usual seller transition.", relevance=35)
+    r = candidates.next_batch(pid, n=5)
+    assert r["items"], r
+    assert all(i["kind"] == "candidate" for i in r["items"])           # never the skipped-source backlog
+    assert "remaining" in r and r["remaining"] >= 0
+
+
+def test_next_batch_respects_n_and_reports_what_is_left(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    for t in knowledge.list_targets(pid, status="open"):
+        knowledge.pursue(t["id"], external=False)
+    candidates.remember([{"external_id": f"ad1-{i}", "url": f"https://example.org/ad1-{i}",
+                          "title": f"Bonus candidate {i} about seller financing", "creator": "AD1 Channel"}
+                         for i in range(8)], platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    full = candidates.next_batch(pid, n=50)
+    total_candidates = len(full["items"])
+    assert total_candidates >= 6
+    small = candidates.next_batch(pid, n=3)
+    assert len(small["items"]) == 3
+    assert small["remaining"] == total_candidates - 3
+
+
+def test_a_captured_candidate_does_not_reappear_and_an_undecided_one_does(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    for t in knowledge.list_targets(pid, status="open"):
+        knowledge.pursue(t["id"], external=False)
+    candidates.remember([{"external_id": "ad1-keep", "url": "https://example.org/ad1-keep",
+                          "title": "Candidate that stays undecided about seller financing", "creator": "AD1 Channel"},
+                         {"external_id": "ad1-capture", "url": "https://example.org/ad1-capture",
+                          "title": "Candidate that gets captured about seller financing", "creator": "AD1 Channel"},
+                         {"external_id": "ad1-reject", "url": "https://example.org/ad1-reject",
+                          "title": "Candidate that gets rejected about seller financing", "creator": "AD1 Channel"}],
+                        platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    before = candidates.next_batch(pid, n=50)
+    ids_before = {i["id"] for i in before["items"]}
+    cap_id = next(c["id"] for c in candidates.list_for_project(pid) if c["external_id"] == "ad1-capture")
+    rej_id = next(c["id"] for c in candidates.list_for_project(pid) if c["external_id"] == "ad1-reject")
+    keep_id = next(c["id"] for c in candidates.list_for_project(pid) if c["external_id"] == "ad1-keep")
+    candidates.capture(cap_id, pid)
+    candidates.dismiss(pid, rej_id, "not relevant")
+    after = candidates.next_batch(pid, n=50)
+    ids_after = {i["id"] for i in after["items"]}
+    assert cap_id not in ids_after and rej_id not in ids_after         # resolved -> gone
+    assert keep_id in ids_after                                        # undecided -> shown again, not lost
+    assert ids_after == ids_before - {cap_id, rej_id}
+
+
+def test_capture_attaches_when_already_owned_and_enqueues_when_not(monkeypatch):
+    """The one shared CAPTURE path both API call sites now use — proven directly, not just through the API."""
+    pid, ids = _fixture(monkeypatch)
+    other = db.create_project("AD1 capture other", "brief")
+    oid = other["id"] if isinstance(other, dict) else other
+    ready = db.upsert_source(platform="youtube", external_id="ad1-owned", url="https://example.org/ad1-owned",
+                             title="Already in the library", status="ready")
+    cid = candidates.remember([{"external_id": "ad1-owned", "url": "https://example.org/ad1-owned",
+                                "title": "Already in the library", "creator": "AD1 Channel", "source_id": ready["id"]}],
+                              platform="youtube", project_id=oid, origin={"kind": "exploration"})[0]
+    r1 = candidates.capture(cid, oid)
+    assert r1["job_id"] is None and r1["source_id"] == ready["id"]     # attached, no new acquisition
+    assert candidates.list_for_project(oid, "acquired")[0]["id"] == cid
+
+    cid2 = candidates.remember([{"external_id": "ad1-new", "url": "https://example.org/ad1-new",
+                                 "title": "Not yet in the library", "creator": "AD1 Channel"}],
+                               platform="youtube", project_id=oid, origin={"kind": "exploration"})[0]
+    r2 = candidates.capture(cid2, oid)
+    assert r2["job_id"] and db.get_job(r2["job_id"])["kind"] == "ingest_url"    # the normal lifecycle, real job
+
+
+def test_capture_raises_lookup_error_for_an_unknown_candidate(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    with pytest.raises(LookupError):
+        candidates.capture("does-not-exist", pid)
+    with pytest.raises(Exception):
+        api.api_candidate_acquire("does-not-exist", api.CandidateActIn(project_id=pid))
+
+
+def test_discover_cli_shows_a_batch_and_decide_resolves_it(monkeypatch):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    pid, ids = _fixture(monkeypatch)
+    claims.ensure(pid); knowledge.refresh(pid)
+    for t in knowledge.list_targets(pid, status="open"):
+        knowledge.pursue(t["id"], external=False)
+    r = CliRunner().invoke(app, ["project", "discover", pid, "--n", "5"])
+    assert r.exit_code == 0, r.output
+    assert "discover-decide" in r.output
+    cid = next(c["id"] for c in candidates.list_for_project(pid) if c.get("state") in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"))
+    r2 = CliRunner().invoke(app, ["project", "discover-decide", pid, cid, "reject", "--reason", "not needed"])
+    assert r2.exit_code == 0 and "rejected" in r2.output
+    assert candidates.list_for_project(pid, "user_dismissed") and candidates.list_for_project(pid, "user_dismissed")[0]["id"] == cid
+    r3 = CliRunner().invoke(app, ["project", "discover-decide", pid, "does-not-exist", "capture"])
+    assert r3.exit_code != 0
+    r4 = CliRunner().invoke(app, ["project", "discover-decide", pid, cid, "maybe-later"])
+    assert r4.exit_code != 0 and "capture" in r4.output
