@@ -3731,3 +3731,78 @@ Per the Model Handoff Rule: this was an EXECUTION phase on an already-approved p
 between commits. The next substantial rung (CR2/LP2, whichever is picked up) needs its own PLAN → PAUSE →
 "READY FOR EXECUTION MODEL" checkpoint before any implementation begins, since it is new unplanned work beyond
 what was approved at `8c0d0fb`.
+
+## Planning checkpoint — CR2 + LP2 (2026-09-15 17:15, plan-then-pause handoff)
+
+Per the Model Handoff Rule: CR1/LP0/LP1 (the approved plan) shipped at `2cbc82f`/`de8630c`. CR2 and LP2 are new,
+unplanned work beyond that approval, so this is a fresh PLAN → PAUSE, not a continuation.
+
+### Approved-plan checkpoint for the execution model
+
+Rung / objective: CR2 (due policy — is a Research Need worth checking tonight) and LP2 (explainable impact — what
+a changed Claim/tension means for the plan, in words). Two small, disjoint-file slices, both READY AFTER what
+just landed (CR2 needs CR1; LP2 needs LP1).
+
+Why next: both are one step past code just shipped, on the critical path to the two vertical slices the mission
+prioritizes (CR5 — one Claim refreshed end-to-end; LP3 — a proposed plan patch), and neither touches a file the
+other does.
+
+Reused: research_needs.for_project (CR1, the need list CR2 filters); claims.FRESHNESS_RULES/freshness_status
+(already carries refresh/stale day thresholds per class — CR2 reads categories from these, does not reinvent
+them); usage.estimate_source_findings (cost estimate, the same figure the stale triage quotes); decision_impact.
+decision_impact (consequence signal, already computed); plan_impact.affected_items (LP1, the whole basis for
+LP2's per-step text); db.kv_get/kv_set (the existing key-value store CR2 records checks in — no new table).
+
+Approach:
+1. CR2, in `research_needs.py` (additive, same file — this IS the "when is a need due" layer over CR1's list, not
+   a separate concern): `due_tonight(project_id, needs=None, budget_reservoir=None) -> list[dict]`. For each need
+   (defaults to `for_project(project_id)`), classify DUE-ness as a category, not a score: `critical` (plan_impact
+   True AND freshness stale/needs_refresh, or disagreement with impact=high), `worth_checking` (plan_impact True
+   with weak evidence, or disagreement any impact, or an open target with sufficiency=governing), `low` (open
+   target, corroborative, no plan citation). Cost: `usage.estimate_source_findings` against the first candidate
+   source the need's `where_to_look` names as untapped and read-worthy — falling back to a per-platform average
+   (`t4`'s own estimator already has one) when no specific untapped source is resolvable, always labelling which
+   basis was used (no false precision). Records `db.kv_set(f"research:checked:{need_key}", json.dumps({"ts":...,
+   "category":...}))` after a need is surfaced once tonight so a later call in the same nightly window does not
+   recheck it while budget remains — `need_key` = `f"{kind}:{claim_id or target_id}"`. Pure function otherwise:
+   no provider call, no write to any Claim/target row.
+2. LP2, new `neurosearch/plan_narrative.py` (kept separate from plan_impact.py — LP1 is the deterministic WHERE,
+   this is the deterministic WHY-IN-WORDS layer over it, and mission §12's "thin shared seams" rule argues against
+   folding a templating concern into the same module as the citation walker): `explain(project_id, claim_id=None,
+   tension_id=None) -> dict` — calls `plan_impact.affected_items` first (reused, not recomputed), then templates
+   one sentence per affected item over the Claim's own fields (no model call): "`<label>` cites <claim text
+   summary>, which is now <stale|weak|contradicted> — <indicated: this step directly relies on it|possible: this
+   step relies on a claim it absorbed>." Returns `{"known": bool, "items": [...as LP1, plus "why": str], "reason"?
+   :str}` — a strict superset of LP1's shape so a caller that only wants LP1 can ignore the extra key.
+3. Surfaces: CLI `neurosearch project due <project> [--json]` (CR2); `neurosearch project plan-impact` (existing,
+   LP1) gets a `--explain` flag that calls LP2 instead when set, rather than a second command, since the two
+   differ only in whether "why" is templated. `delta.for_envelope`: no change yet (deferred to when CR5/LP3 need
+   it — mission §12 rule against building a surface before it has a real consumer).
+
+Files: research_needs.py (additive function), plan_narrative.py (new), cli.py (+1 command, +1 flag), tests (2 new
+files, or one file continuing test_cr1_lp0_lp1_research_needs.py's naming — TBD at implementation time, sorted
+after test_core.py either way).
+
+Tests/gates: category boundaries for each freshness×consequence combination; kv_set dedupes a second call in the
+same window; cost basis falls back cleanly when no untapped source resolves and says so; LP2's templated text
+names the right Claim/step for both indicated and possible strength; `--explain` output differs from plain
+plan-impact only in the added "why"; full suite -rf; repo-check; no UI_VERSION bump (no frontend change).
+
+Risks/collisions: none active — Codex is still off until the weekend reset, no other agent has touched
+research_needs.py, plan_impact.py, or cli.py since the last commit.
+
+Unlocks: CR5 (one Claim refreshed end-to-end — needs CR2's due-ness to pick tonight's candidate), LP3 (proposed
+plan patch — needs LP2's why-text to write a defensible `plan_updates.reason`).
+
+Assumptions remaining: an untapped source can usually be resolved from a need's own `where_to_look` rows (CR1
+already computes these) well enough for a real per-source cost estimate; where it can't, the platform-average
+fallback is an honest enough number for a category decision (never for an actual spend commitment — CR5 will
+re-estimate against the real chosen source before spending). The `--explain` flag vs. a second CLI command is a
+minor UX call Kyle may want to weigh in on rather than delegate.
+
+Deliberately NOT built: any scoring formula (categories only, per mission §12 ruling); a second ingestion or
+candidate-selection pipeline (CR3 remains the only place new candidates enter); a Plan-tab UI line (still LP2's
+sibling concern, deferred until the UI has a real reason to change — no frontend touched this slice either);
+CR3/CR4 (Codex-shaped, untouched); LP3/LP4/LP5 (their own future checkpoints).
+
+READY FOR EXECUTION MODEL
