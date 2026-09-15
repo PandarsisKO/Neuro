@@ -171,3 +171,99 @@ def test_a_junk_timeout_falls_back_to_the_default(monkeypatch):
     finally:
         monkeypatch.delenv("NEUROSEARCH_CLAIMS_TIMEOUT", raising=False)
         importlib.reload(contracts)
+
+
+# ------------------------------------------------------------------ 6. loud once, on transition, not on every call (2026-09-15)
+#
+# Kyle's OAuth session expired mid-day; `rank_proposed` retried and failed in a tight loop, each failure logged
+# as one relevance.py WARNING per batch -- a dozen near-identical lines a minute, indistinguishable from routine
+# noise unless you were staring at the terminal. Paid fallback was never the actual risk (`local_api_fallback`
+# defaults to and stays `false`, so `route()` deliberately keeps sending the job to "local" so the failure stays
+# typed and visible rather than silently spent) -- the real cost was TIME: nothing loud enough ever said "this
+# just broke, here's the one-line fix." These tests are the fix: `note_failure`/`note_success` log once, only on
+# an actual state transition, never on every call.
+
+def test_a_transition_into_a_bad_state_logs_once_loudly(caplog):
+    import logging
+    with caplog.at_level(logging.ERROR, logger="neurosearch.claude_code"):
+        CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 1
+    assert "not_signed_in" in errors[0].message
+    assert "claude" in errors[0].message.lower()          # the fix hint is in the message itself
+
+
+def test_repeated_failures_in_the_same_bad_state_log_only_once(caplog):
+    import logging
+    with caplog.at_level(logging.ERROR, logger="neurosearch.claude_code"):
+        for _ in range(12):        # the exact shape of Kyle's log: a dozen retries in the same broken state
+            CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 1, f"expected exactly one loud line for one real state change, got {len(errors)}"
+
+
+def test_moving_between_two_different_bad_states_logs_again(caplog):
+    import logging
+    with caplog.at_level(logging.ERROR, logger="neurosearch.claude_code"):
+        CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+        CC.note_failure(CC.LocalLimit("usage limit reached", reset_hint="in 2 hours"), model="claude-sonnet-5")
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 2, "not_signed_in -> usage_limit is a real second transition, not a repeat"
+
+
+def test_recovery_from_a_bad_state_logs_once_at_info(caplog):
+    import logging
+    CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+    with caplog.at_level(logging.INFO, logger="neurosearch.claude_code"):
+        CC.note_success("claude-sonnet-5")
+    infos = [r for r in caplog.records if "recovered" in r.message]
+    assert len(infos) == 1
+    assert "ready" in infos[0].message
+
+
+def test_the_first_ever_success_is_not_a_recovery(caplog):
+    """No prior state at all (never probed, never failed) must not read as a transition worth announcing."""
+    import logging
+    with caplog.at_level(logging.INFO, logger="neurosearch.claude_code"):
+        CC.note_success("claude-sonnet-5")
+    assert not any("recovered" in r.message for r in caplog.records)
+
+
+def test_repeated_successes_while_already_ready_do_not_log_again(caplog):
+    import logging
+    CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+    with caplog.at_level(logging.INFO, logger="neurosearch.claude_code"):
+        CC.note_success("claude-sonnet-5")     # the one real recovery
+        CC.note_success("claude-sonnet-5")     # still ready -- must not repeat
+        CC.note_success("claude-sonnet-5")
+    assert sum(1 for r in caplog.records if "recovered" in r.message) == 1
+
+
+def test_the_write_stays_unconditional_even_though_the_log_is_gated():
+    """0.63.35's own fix (`checked_at` must move on every success) must survive this change -- only the LOG is
+    gated on a transition, never the state write itself."""
+    CC.note_success("claude-sonnet-5")
+    first = CC._state["by_model"][CC._hkey("claude-sonnet-5")]["checked_at"]
+    time.sleep(0.02)
+    CC.note_success("claude-sonnet-5")         # already ready -- no log, but checked_at must still refresh
+    second = CC._state["by_model"][CC._hkey("claude-sonnet-5")]["checked_at"]
+    assert second > first
+
+
+def test_different_models_transition_independently(caplog):
+    import logging
+    with caplog.at_level(logging.ERROR, logger="neurosearch.claude_code"):
+        CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+        CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-opus-5")
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(errors) == 2, "each model's own first failure is its own real transition"
+
+
+def test_fallback_state_is_named_in_the_transition_log(caplog, monkeypatch):
+    """The message must say plainly whether this is costing money -- not just that something broke."""
+    import logging
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "local_api_fallback", False)
+    with caplog.at_level(logging.ERROR, logger="neurosearch.claude_code"):
+        CC.note_failure(CC.LocalUnavailable("not_signed_in", "OAuth session expired"), model="claude-sonnet-5")
+    assert "OFF" in caplog.records[-1].message

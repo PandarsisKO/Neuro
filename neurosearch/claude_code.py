@@ -313,18 +313,45 @@ def states_by_model() -> dict[str, dict[str, Any]]:
         return {k: dict(v) for k, v in (_state["by_model"] or {}).items()}
 
 
+# 2026-09-15 — Kyle's OAuth session expired mid-day and nobody noticed for hours: `rank_proposed` retried and
+# failed in a tight loop, each failure logged as one `relevance.py` WARNING per BATCH (a dozen near-identical
+# lines a minute), indistinguishable from routine noise unless you were staring at the terminal. Paid fallback
+# was never the actual risk here (`local_api_fallback` defaults to and stayed `false`, so `route()` deliberately
+# keeps sending the job to "local" so the failure is typed and visible rather than silently spent — see `route`'s
+# own docstring) — the real cost was TIME: every local-capable job just sat failing/retrying with no signal loud
+# enough to prompt the one-line fix. So `note_failure`/`note_success` log ONCE, at the moment the cached verdict
+# actually CHANGES state, never on every call — reusing the verdict this function was already computing, no new
+# state, no new table, no polling loop.
+_FIX_HINT = {
+    "not_signed_in": "run `claude` once in Terminal and sign in again",
+    "not_installed": "install Claude Code, or set NEUROSEARCH_CLAUDE_CODE_BIN",
+    "usage_limit": "wait for the local usage limit to reset",
+    "error": "run `claude --version` and see what it says",
+}
+
+
 def note_failure(e: LocalUnavailable, model: str | None = None) -> None:
     """A failure seen by a real call updates the cached verdict at once (the next router decision must not wait for
     the TTL) — for THAT MODEL only (0.63.30). A global verdict meant one model's structured-output failure refused
-    local work for every other model too, and every refusal is a paid API call."""
+    local work for every other model too, and every refusal is a paid API call.
+
+    Logs once, loudly, on the transition INTO a bad state — not on every failed call (relevance.py and similar
+    call sites already log their own per-attempt WARNING; this is the one line meant to actually get read)."""
     key = _hkey(model)
+    new_state = "usage_limit" if isinstance(e, LocalLimit) else ("not_signed_in" if e.kind == "not_signed_in" else "not_installed" if e.kind == "not_installed" else "error")
     with _lock:
         h = dict(_state["by_model"].get(key) or {})
-        h.update({"state": "usage_limit" if isinstance(e, LocalLimit) else ("not_signed_in" if e.kind == "not_signed_in" else "not_installed" if e.kind == "not_installed" else "error"),
-                  "detail": (e.detail or str(e))[:300], "reset_hint": getattr(e, "reset_hint", None),
+        prev_state = h.get("state")
+        h.update({"state": new_state, "detail": (e.detail or str(e))[:300], "reset_hint": getattr(e, "reset_hint", None),
                   "checked_at": time.time(), "probed_model": key})
         _state["by_model"][key] = h
         _state["health"] = h
+    if prev_state != new_state:
+        log.error("Claude Code local health for %s just went from %r to %r (%s) -- %s. Every local-capable job "
+                  "will keep failing until this is fixed. Paid API fallback is %s, so nothing is being silently "
+                  "spent while it's down -- but nothing local is getting done either.",
+                  key, prev_state, new_state, (e.detail or str(e))[:160], _FIX_HINT.get(new_state, "check Claude Code"),
+                  "ON" if settings.local_api_fallback else "OFF")
 
 
 def note_success(model: str | None = None) -> None:
@@ -349,9 +376,16 @@ def note_success(model: str | None = None) -> None:
     key = _hkey(model)
     with _lock:
         h = dict(_state["by_model"].get(key) or {})
+        prev_state = h.get("state")
         h.update({"state": "ready", "detail": "answered", "checked_at": time.time(), "probed_model": key})
         _state["by_model"][key] = h
         _state["health"] = h
+    # The write above stays unconditional (that is the 0.63.35 fix above, in full) -- only the LOG is gated on an
+    # actual transition, the same "once, on change, not on every call" discipline `note_failure` uses, so a
+    # recovery is as easy to notice in a running terminal as the failure was.
+    if prev_state not in (None, "ready"):
+        log.info("Claude Code local health for %s just recovered (%s -> ready) -- local-capable work resumes.",
+                 key, prev_state)
 
 
 def _probe(model: str | None = None) -> dict[str, Any]:
