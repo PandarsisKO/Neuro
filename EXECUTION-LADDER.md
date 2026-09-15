@@ -460,7 +460,7 @@ place" is reconstructible from rows.
 
 ### Stage 12 — P9A Source Capability — mostly SHIPPED at 0.58.3 (`candidates.creator_yield` = SC0 view;
 `where_to_look` = SC1 routing; `_creator_term` in `_potential` = SC2, capped so yield never dominates).
-### SC0b `[ ]` capability view completeness — PARALLEL PREP · lane: claude · needs: —
+### SC0b `[x] 29952b0` capability view completeness — DONE · lane: claude · needs: —
 Add to `creator_yield`: claim types/topics yielded, targets previously helped close (`candidate_links` state
 satisfied), cadence (published_at spread). Read-only; project-scoped; never a single score. Gate: tests.
 ### SC3 — folded into CR1 (`where` per need). `[ ]` closes with CR1.
