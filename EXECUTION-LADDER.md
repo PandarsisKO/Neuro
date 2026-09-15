@@ -133,7 +133,7 @@ Compute kept-rate per model, cost per KEPT finding (cost data already in the adm
 Haiku stays only if cost-per-kept is lower AND kept-rate within 10 points of Sonnet. Otherwise revert the `.env`
 line and say so. Gate: written decision in the admission doc + HANDOFF; `.env` matches the decision.
 
-### L-08 `[ ]` P5.1 brief-text relevance backtest — lane: claude · tier: sonnet · needs: — · ~$0.03 (embeddings)
+### L-08 `[~] claude 2026-09-15` P5.1 brief-text relevance backtest -- tooling ready, needs a Mac run + decision — lane: claude · tier: sonnet · needs: — · ~$0.03 (embeddings)
 `embeddings.embed_query(project["brief"])` cached in `kv` by brief revision; `t4.source_relevance()` candidate =
 max(centroid-sim, brief-sim). Re-run the 20-source backtest from docs/T4-ADMISSION-2026-09-14.md (needs the
 embedding provider → a `tools/` script Kyle runs, or a backup copy in the session workspace). Switch the ranking
