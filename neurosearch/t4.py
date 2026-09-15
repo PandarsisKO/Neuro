@@ -217,12 +217,22 @@ EXECUTE_VERSION = "t4-execute-v1"
 PROBE_DISCOUNT = 0.5   # measured 2026-09-14 on 20 real sources: substance_floor=30 roughly halved spend (docs/T4-ADMISSION-2026-09-14.md)
 
 
+def _system_chars(window: dict[str, Any]) -> int:
+    """Character count of the system prompt exactly as this window will send it (str, or a list of text blocks)."""
+    s = window.get("system")
+    if isinstance(s, str):
+        return len(s)
+    if isinstance(s, list):
+        return sum(len(b.get("text", "")) for b in s if isinstance(b, dict))
+    return 0
+
+
 def _source_estimate(project_id: str, source_id: str, *, substance_floor: int | None) -> float:
     """Sum of usage.estimate_findings over every window findings.suggest_for_source would actually send right
     now, discounted for a substance floor's measured early-stop savings. A pure estimate: no provider call."""
     from . import findings, usage
     windows = findings.canonical_requests(project_id, source_id)
-    total = sum(usage.estimate_findings(len(w["messages"][0]["content"])) for w in windows)
+    total = sum(usage.estimate_findings(len(w["messages"][0]["content"]), system_chars=_system_chars(w)) for w in windows)
     if substance_floor is not None and len(windows) > 1:
         total *= PROBE_DISCOUNT
     return total

@@ -29,6 +29,16 @@ WEB_SEARCH_PER_CALL = 0.01
 CACHE_WRITE_MULT = 1.25      # 5-minute cache writes cost 1.25x the normal input price
 CACHE_READ_MULT = 0.10       # cache reads cost 0.1x
 CACHE_MIN_CHARS = 4500       # ~1024 tokens: prefixes shorter than this are never cached by the API, so don't mark them
+
+# findings.extract estimate, calibrated 2026-09-14 (T4 E5) against 8 real metered windows -- 4 Sonnet, 4 Haiku,
+# every one a single window, every one cache_read=0 (docs/T4-ADMISSION-2026-09-14.md). The old formula
+# (chars/4 in, 600 out, no system prompt) ran 2.0-2.7x UNDER actual spend on both models; these three constants
+# are what the data says. tests/test_t4_execute.py::test_estimate_reproduces_measured_spend freezes the points.
+FINDINGS_CHARS_PER_TOKEN = 2.5   # measured 2.4-2.6 on Sonnet, 2.9-3.4 on Haiku; 2.5 over-estimates Haiku ~15%, the safe side for a budget gate
+FINDINGS_OUT_TOKENS = 1300       # measured mean 1271 (Sonnet) / 1295 (Haiku), range 957-1556, over all 8 windows
+FINDINGS_SYSTEM_CHARS = 6200     # fallback when the caller has no request in hand: ~2,000 chars of fixed instructions + the project brief
+                                 # (measured 6,222 on the real project; a one-line-brief fixture is ~2,100). Over on small projects = safe side.
+                                 # t4._source_estimate passes the exact value; test_estimate_tracks_real_system_prompt guards the fixed part.
 BATCH_MULT = 0.5             # Message Batches: 50% off MODEL tokens (input, cache, output) — not off web search, transcription or embeddings
 
 
@@ -454,12 +464,20 @@ def observed_rate_per_minute(min_sources: int = 5) -> float | None:
     return None
 
 
-def estimate_findings(n_chars: int, batch: bool = False) -> float:
-    """~4 chars per token in, ~600 tokens out per window; batch=True applies the Message Batches discount to the MODEL
-    cost only (this is not a claim that all of Neuro Search's processing is halved)."""
+def estimate_findings(n_chars: int, batch: bool = False, system_chars: int | None = None) -> float:
+    """Per-window findings.extract estimate at list price: the user content, PLUS the system prompt (billed as a
+    cache WRITE at CACHE_WRITE_MULT -- all 8 measured calls were cold-cache, cache_read=0), PLUS the measured
+    output allowance. Calibrated 2026-09-14 against real metered spend (constants above); before that it ran
+    2-2.7x low, which is what made E5's dry-run say $0.042 for a batch that cost $0.105. `system_chars` defaults
+    to the measured prompt size; a caller holding the real request (t4._source_estimate) passes the exact one.
+    batch=True applies the Message Batches discount to the MODEL cost only (this is not a claim that all of
+    Neuro Search's processing is halved)."""
     from .contracts import contract
     pin, pout = _price(contract("findings.extract").model)
-    return (n_chars / 4 / 1e6 * pin + 0.0006 * pout) * (BATCH_MULT if batch else 1.0)
+    sys_chars = FINDINGS_SYSTEM_CHARS if system_chars is None else system_chars
+    in_tokens = n_chars / FINDINGS_CHARS_PER_TOKEN
+    sys_tokens = sys_chars / FINDINGS_CHARS_PER_TOKEN * CACHE_WRITE_MULT
+    return ((in_tokens + sys_tokens) / 1e6 * pin + FINDINGS_OUT_TOKENS / 1e6 * pout) * (BATCH_MULT if batch else 1.0)
 
 
 def estimate_model_call(task: str, n_chars: int) -> float:

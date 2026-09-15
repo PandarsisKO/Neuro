@@ -766,7 +766,9 @@ def test_stale_rebuild_in_background_plan_waits_and_sources_land_one_by_one(monk
     db.update_project(pid, brief="Now the project is about SELLING a small business, not buying one")
     s1 = staleness.assess(pid)
     assert s1["stale_sources"] == 8 and s1["plan"]["status"] == "stale"
-    assert abs(s1["estimate"]["findings_background"] - s1["estimate"]["findings"] * 0.5) < 1e-6 and s1["estimate"]["total_background"] < s1["estimate"]["total"]
+    # both figures are round(..., 4)'d independently in staleness.assess, so "exactly half" only holds to one
+    # rounding unit (a 1e-6 tolerance passed by luck while the estimates were small; the 2026-09-14 calibration exposed it)
+    assert abs(s1["estimate"]["findings_background"] - s1["estimate"]["findings"] * 0.5) < 1e-4 and s1["estimate"]["total_background"] < s1["estimate"]["total"]
     r = staleness.rebuild(pid, ["findings", "plan"], transport="batch")
     assert r["queued"] == 2 and r["transport"] == "batch"
     bj, pj = (db.get_job(i) for i in r["job_ids"])

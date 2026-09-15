@@ -147,3 +147,63 @@ def test_execution_policy_api_requested_on_batch_transport(e2_db, monkeypatch):
     t4.execute(project["id"], budget_usd=10.0, dry_run=False, transport="batch", execution_policy="api_requested")
     row = db.connect().execute("SELECT execution_policy FROM jobs WHERE kind='suggest_findings_batch'").fetchone()
     assert row["execution_policy"] == "api_requested"
+
+
+# ---------------------------------------------------------------- estimator calibration (E5, 2026-09-14)
+# 8 real metered windows: (user chars, system chars, actual list-price cost). Every one a single window, cold cache.
+_MEASURED = {   # model -> (list price in/out per Mtok as _price() returned it that day, [(user chars, system chars, actual cost)])
+    "claude-sonnet-5": ((2.0, 10.0), [(10360, 6222, 0.0298), (2461, 6222, 0.0194), (2295, 6222, 0.0179), (21031, 6222, 0.0380)]),
+    "claude-haiku-4-5": ((1.0, 5.0), [(15566, 6222, 0.0133), (7785, 6222, 0.0121), (5296, 6222, 0.0089), (34253, 6222, 0.0199)]),
+}
+
+
+def test_estimate_reproduces_measured_spend(monkeypatch):
+    """The calibration is frozen against real spend: every window within -15%/+40% of actual, each model's
+    4-window total within -10%/+25%. Over is the safe side for a budget gate; far under is what E5 caught."""
+    from neurosearch import usage as U
+    for model, (price, points) in _MEASURED.items():
+        monkeypatch.setattr(U, "_price", lambda m, _p=price: _p)
+        est_total = act_total = 0.0
+        for n_chars, sys_chars, actual in points:
+            est = U.estimate_findings(n_chars, system_chars=sys_chars)
+            assert 0.85 <= est / actual <= 1.40, (model, n_chars, est, actual)
+            est_total += est
+            act_total += actual
+        assert 0.90 <= est_total / act_total <= 1.25, (model, est_total, act_total)
+
+
+def test_old_formula_would_fail_the_same_points(monkeypatch):
+    """Regression guard on the guard: the pre-calibration formula (chars/4, 600 out, no system prompt) is the
+    thing that said $0.042 for a $0.105 batch. If someone quietly reverts the constants, this fails."""
+    (pin, pout), points = _MEASURED["claude-sonnet-5"]
+    for n_chars, _, actual in points:
+        old = n_chars / 4 / 1e6 * pin + 0.0006 * pout
+        assert old / actual < 0.6
+
+
+def test_estimate_tracks_real_system_prompt(e2_db):
+    """The system prompt = a FIXED instructions block + the project brief (grows with the project). Two guards:
+    the fixed block stays in its measured band (a rewrite that doubles it shows up here), and the fallback
+    constant is never BELOW what even a one-line-brief project actually sends (under is the unsafe side)."""
+    from neurosearch import usage as U
+    project, sids = _project_with_sources(1)
+    ws = findings.canonical_requests(project["id"], sids[0])
+    assert ws, "fixture produced no window"
+    blocks = ws[0]["system"]
+    assert isinstance(blocks, list) and blocks
+    fixed = len(blocks[0]["text"])                      # measured 1,959 on 2026-09-14
+    assert 1400 <= fixed <= 3000, fixed
+    assert t4._system_chars(ws[0]) <= U.FINDINGS_SYSTEM_CHARS
+
+
+def test_source_estimate_uses_the_windows_own_system_prompt(e2_db, monkeypatch):
+    from neurosearch import usage as U
+    project, sids = _project_with_sources(1)
+    seen = {}
+    real_fn = U.estimate_findings
+    def spy(n_chars, batch=False, system_chars=None):
+        seen["system_chars"] = system_chars
+        return real_fn(n_chars, batch=batch, system_chars=system_chars)
+    monkeypatch.setattr(U, "estimate_findings", spy)
+    t4._source_estimate(project["id"], sids[0], substance_floor=None)
+    assert seen["system_chars"] is not None and seen["system_chars"] > 0
