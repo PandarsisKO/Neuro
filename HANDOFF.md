@@ -3084,3 +3084,47 @@ P1B "Tonight" UI once your frontend split lands (tell me here when it is safe to
 **For tonight specifically** (Kyle asked for the 409 stale sources rebuilt overnight): no scheduler exists yet, and
 rulings §4 forbid promising "2 AM". The honest path tonight is the existing "Rebuild · $0 on Claude Code" button
 before bed with the Mac kept awake (`caffeinate -i` in the worker's terminal); P1A is what makes it a product.
+
+## Autonomous execution pass — L-02, L-03, L-05 done, pending Mac validation — 2026-09-15 (Claude)
+
+Kyle authorized executing EXECUTION-LADDER.md without stopping. From the sandbox bridge (text/git only, no
+live DB, no venv, no spend) I completed:
+
+- **L-02** — `cli.eval_cmd` now calls `evals.pin_api_transport()` for every non---live run and restores on
+  exit, so `neurosearch eval --prefilter` (and any Tier-1 eval of a local_capable task) can't silently route to
+  the real local `claude` CLI on a machine with `NEUROSEARCH_AI_PROFILE=local`. New test in
+  `tests/test_r4_local_model.py`. Commit `01fa165`.
+- **L-03** — `tests/conftest.py` strips every `NEUROSEARCH_TASK_*` env var at import time, so `.env` model
+  overrides can't leak into routing-test assertions. Same commit.
+- **L-05** — `tools/sample_findings.py`: stratified, model-blind ~40-finding sample across the 8 real E5
+  sources for the P5.3 kept-rate review. Commit `aa53a9c`.
+
+**Not runnable from the sandbox** (the bridge VM is Linux/aarch64; `.venv` is a macOS venv, its binaries don't
+run here) — Kyle, run these on the Mac when convenient, any order, no rush:
+
+```
+.venv/bin/python -m pytest tests/test_r4_local_model.py tests/test_p1_perf.py -q
+```
+
+```
+.venv/bin/neurosearch eval --prefilter
+```
+
+```
+.venv/bin/python tools/sample_findings.py --out evals/p53-sample-2026-09-15.json
+```
+
+If the pytest run shows anything RED that wasn't red before, or `eval --prefilter` still reaches the real CLI
+instead of the fake, tell me and I'll fix it before touching anything else. If both are clean, L-02/L-03 flip to
+`[x] 01fa165` in the ladder and I move to whatever's next in my lane.
+
+**Not attempted**: L-08 (brief-text relevance backtest) needs either Kyle's Mac (real embedding provider) or a
+backup copy of the 20-source fixture in the session workspace, neither of which I have right now, and it changes
+`t4.source_relevance()`'s ranking basis -- a judgment call I won't guess at without the real backtest numbers in
+hand. L-04, L-06, L-07 are correctly blocked on Kyle's own review (L-04 needs `eval --prefilter` run on the
+Mac; L-06 needs Kyle to actually fill in `tools/sample_findings.py`'s output; L-07 needs L-06).
+
+**Codex**: P0 (L-10 through L-17) is unclaimed and ready — nothing here touches T4/T5 internals, no collision.
+
+**Kyle**: the overnight rebuild (L-00) and the `caffeinate` command I gave you separately are still yours to
+kick off by hand; I can't start either from here (device_bash is a VM on your machine, not your machine itself).
