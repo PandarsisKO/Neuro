@@ -116,10 +116,19 @@ multi-claim G5 acceptance fixture) run end-to-end under fake AI -- every resulti
 gated `AND status='proposed'` in `claims.py` so it can never touch an already-accepted Claim), never `accepted`
 or `rejected`. Full suite: 1498 passed; `repo-check: PASS`.
 
-### L-16 `[ ]` P0.F concurrent completion — needs: L-11
-Run 8 `suggest_findings` completions across 4 threads against one project (pattern:
-`tests/test_claims_harvest_race.py`). Assert no IntegrityError, no duplicate `(project_id, origin_note_id)`, no
-lost harvest. Gate: 20 consecutive green runs.
+### L-16 `[x] aef8d4a` P0.F concurrent completion — needs: L-11
+Real bug found (not just an audit) -- and found BECAUSE this rung drove the layer the existing
+`tests/test_claims_harvest_race.py` doesn't (real job completions via `db.create_job` -> `db.claim_job` ->
+`jobs.execute()`, 4 threads racing 8 jobs for one project, so `_after_done()`'s inline `claims.harvest(pid)`
+fires concurrently, not a direct `harvest()` call). `harvest()`'s per-project lock used to coalesce: a caller
+that found the lock held would wait for release and return a no-op, trusting "the in-flight call already scans
+every currently approved/suggested note." That assumption breaks under real concurrency -- the in-flight call's
+note scan is a snapshot from when IT acquired the lock, so a note the WAITER's own job wrote afterward but before
+the waiter's own `harvest()` call was silently never scanned by anyone. ~1 run in 10 lost a note permanently
+(silent: `_after_done()` swallows harvest's exceptions and nothing else retries). Fixed by removing the
+coalesce -- every caller now does its own real scan once it holds the lock. New test
+(`tests/test_p0_concurrent_completion.py`) reproduced the bug on its first run pre-fix; 30 consecutive green runs
+post-fix (gate asked for 20). Full suite: 1499 passed; `repo-check: PASS`.
 
 ### L-17 `[ ]` P0 closeout — needs: L-10…L-16
 `docs/P0-AUDIT-<date>.md` with a scenario table (pass / fixed-at-sha / documented-limitation). Scheduler + HANDOFF

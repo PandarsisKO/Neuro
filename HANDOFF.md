@@ -3300,3 +3300,31 @@ for what each proves. New test file: `tests/test_p0_promotion_boundary.py`.
 
 Next per EXECUTION-LADDER.md: L-16 (P0.F concurrent completion, needs L-11), L-17 (P0 closeout doc, needs
 L-10 through L-16 all done -- L-10 through L-15 are now all closed, so L-16 is the last item before L-17).
+
+## L-16 closed — a real intermittent lost-harvest race, found by the ladder's own repro pattern (2026-09-15)
+
+`tests/test_claims_harvest_race.py` (the earlier 2026-09-14 fix) proves `claims.harvest()` itself is safe under
+8 concurrent in-process callers. L-16 asked for the layer above that: real `suggest_findings` JOB completions
+(the path a real worker takes, where `_after_done()` fires `claims.harvest(pid)` inline) racing across threads.
+Driving that layer surfaced a genuine bug the direct-harvest test couldn't see: harvest()'s coalescing let a
+waiter skip its own scan on the assumption the in-flight call already covered it -- an assumption that's false
+whenever the waiter's own note lands in `project_notes` AFTER the in-flight call's scan snapshot but before the
+waiter's own call. Roughly 1 run in 10 lost a note permanently and silently (nothing surfaces it -- the job
+still reports "done", `_after_done()` swallows harvest's exceptions, and nothing else automatically retries
+harvest for that project).
+
+Fix (commit `aef8d4a`): removed the coalesce entirely in `neurosearch/claims.py`'s `harvest()` -- every caller
+now does a plain blocking lock acquire and its own real scan, seeing the DB state as of its own acquire time.
+Cheap trade: harvest() is $0 and fast (652ms for 605 findings, per its own docstring), so a few redundant
+scans that mostly find nothing new cost far less than a silent permanent data loss.
+
+New test: `tests/test_p0_concurrent_completion.py` -- 8 real jobs, 4 threads, the exact `_after_done()` path.
+Reproduced the bug on its first run before the fix (caught it immediately, not after many iterations);
+30 consecutive green runs after (the ladder's 20-run gate).
+
+Validated via `~/ns-verify`: full suite 1499 passed, 0 failed; `repo-check: PASS`.
+
+**P0 Stage 1 (L-10 through L-16) is now fully closed.** Next: L-17 (P0 closeout doc, `docs/P0-AUDIT-<date>.md`
+summarizing L-10 through L-16 -- gate now satisfied). After that, per Kyle's ownership reassignment (Codex off
+until the weekend reset), Stage 3 (L-20 `not_before` productized, L-21 macOS power-assertion -- the latter needs
+Kyle physically) and Stage 4 (L-30 nightly envelope, L-31 Project Delta v0) become the critical path.
