@@ -3433,3 +3433,45 @@ Per the continuous-execution directive, moving on to L-31 (Project Delta v0) nex
 it "needs: L-30," and L-31 only needs `nightly.py`'s code to exist and its `envelope_id` shape to be stable
 (both true now), not the gate's live-night measurement to have landed — so it is not blocked by L-30 staying
 open.
+
+## L-31 Project Delta v0: code+tests done, gate blocked on a real L-30 night (2026-09-15)
+
+`neurosearch/delta.py` (new module, committed `175e856`): `for_envelope(envelope_id) -> dict` answers
+PRODUCT-INTELLIGENCE-MISSION.md section 6's five Project Delta questions for one already-run autonomous
+execution envelope, reading today's only envelope producer (`nightly.run()`'s `"nightly-{date}"` kv record —
+hence "needs: L-30" in the ladder). Everything is counted live, filtered to the envelope's real time window
+(`[preflight ts, now]`), from tables that already existed: `project_notes` (findings suggested),sprint
+`project_source_analysis.prefilter` (sources the substance probe stopped early — findings.py's window-1 probe,
+existing since T4/2026-09-14), `research_tensions` (new tensions by kind), `usage` (spend), `sources.revision`
+(revision-at-run, for later audit of "did this source change again after we read it"). No schema migration —
+purely additive reads.
+
+One real design decision worth recording: a coverage-state DELTA needs a real "before" snapshot, and by the
+time `for_envelope()` runs (after the night is over), "before" no longer exists to observe from any table —
+computing it from post-hoc queries would be a guess, not a measurement. Rather than accept that gap or fabricate
+a plausible-looking "before" state, `nightly.py` was extended (small, additive change, re-verified against all
+existing L-30 tests) to capture a cheap `t1.coverage_view(pid, limit=0)` snapshot per project immediately before
+calling `t4.execute` — the only point in the whole system where a genuine before-state exists to capture. This
+is the kind of small real fix the continuous-execution directive asks for over "probably fine" — the alternative
+would have been an honest "coverage delta: not available" for every envelope, forever.
+
+New test file: `tests/test_p2_project_delta.py` (9 tests). Every test checks a *reconciliation* — that a number
+`for_envelope()` reports matches the actual table row(s) it claims to summarize — not just that the function
+runs without raising, and each in-window assertion is paired with an out-of-window row that must NOT be counted
+(a boundary bug in the time-window filtering would fail loudly, not silently pass). Manually verified end to end
+once outside the test suite too: a real fake-AI nightly run, a real `suggest_findings_batch` job driven to
+completion, then `delta.for_envelope()` on the resulting envelope — produced the exact JSON shape the gate asks
+for, every field reconciling.
+
+NOT marked closed on the ladder (`[~]`) — its own gate literally asks for "JSON for a real envelope," which
+means a genuine `nightly.run()` night, not a synthetic one. That in turn depends on L-30's own still-open gate
+(Kyle's real $2 overnight run) having actually happened. Once it has, `delta.for_envelope("nightly-{that
+date}")` closes L-31 immediately with no further code needed — this rung is finished except for waiting on L-30's
+gate, which is Kyle's step, not mine.
+
+Three items are now open pending Kyle, all in the same honest shape (code done, gate is a real-world
+measurement): L-21 (physical two-minute power-assertion test), L-30 (one real $2 overnight run), L-31 (reads
+whatever L-30's real run produces — no separate action needed once L-30 has run). Per
+EXECUTION-LADDER.md's own ordering, the next unblocked rung not gated on Kyle is worth identifying before
+stopping — checking the ladder now for what Stage 5+ (or any other not-yet-admitted stage explicitly cleared to
+start) contains that doesn't depend on L-21/L-30/L-31's real-world gates.

@@ -236,11 +236,25 @@ To run it: set `NEUROSEARCH_T4_NIGHTLY_BUDGET_USD=2` (and `NEUROSEARCH_T4_NIGHTL
 and leave the worker running overnight; check `neurosearch doctor`'s nightly line and `nightly.last_run()` the next
 day. Gate remains open until Kyle runs it and confirms the ledger reconciles -- code-complete, not gate-complete.
 
-### L-31 `[ ]` Project Delta v0 (data only) — needs: L-30
-One function `delta.for_envelope(envelope_id) -> dict`: sources read, findings suggested, sources stopped by the
-probe, coverage-state deltas from `t1.coverage_view`, new tensions, spend vs budget, revision at run. No UI, no
-schema migration -- a computed view over existing tables, stored in `kv` per envelope. Gate: JSON for a real
-envelope; every number reconciles to the tables it came from.
+### L-31 `[~] claude 2026-09-15 -- code+tests done at 175e856, blocked on a real L-30 night` Project Delta v0 (data only) — needs: L-30
+`neurosearch/delta.py` built and tested: `for_envelope(envelope_id) -> dict` reads the envelope's own kv record
+(today, only `nightly.run()`'s `"nightly-{date}"` shape) and, per touched project, counts sources read, findings
+suggested, sources stopped by the substance probe, revision-at-run per touched source, new tensions, and spend --
+every one filtered to the envelope's real time window `[preflight ts, now]` and counted live from the tables that
+actually recorded it (`project_notes`, `project_source_analysis.prefilter`, `research_tensions`, `usage`,
+`sources.revision`) -- plus a real coverage-state delta from `t1.coverage_view`, made possible by a small
+additive change to `nightly.py`: it now captures a per-project "before" `coverage_view` snapshot immediately
+before calling `t4.execute` (the only moment a real "before" exists to observe) and stores it in the envelope
+record. A failed project reports its error and a `needs_user` entry rather than raising; the rest of the
+envelope's projects still get a normal delta. 9 tests, each checking a reported number against the real table
+row(s) it claims to summarize, in-window vs. out-of-window rows both exercised. Full suite 1525 passed,
+`repo-check: PASS`. Manually verified end to end against a real (fake-AI) run + real batch-job completion +
+`for_envelope()` call, producing the exact JSON the gate asks for with every number reconciling.
+The gate itself ("JSON for a real envelope; every number reconciles to the tables it came from") means a REAL
+envelope -- i.e. depends on L-30's own gate (an actual overnight run on Kyle's project) having happened first;
+nothing here can honestly satisfy "for a real envelope" before one exists. Once Kyle runs L-30's two-minute
+setup and a real `nightly-{date}` envelope has run, `delta.for_envelope("nightly-{that date}")` closes this gate
+immediately -- no further code is needed.
 
 ---
 
