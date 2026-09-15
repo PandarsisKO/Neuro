@@ -202,11 +202,18 @@ still-in-flight source produce no duplicate job (`assess()` itself excludes sour
 `create_job`'s existing dedupe); not_before gates claiming and survives a restart (manually verified beyond the
 5-test suite). Full suite: 1504 passed; `repo-check: PASS`.
 
-### L-21 `[ ]` macOS power assertion, measured not assumed — needs: L-20
-Investigate `caffeinate`-equivalent from the worker (IOPMAssertion via `caffeinate -w <pid>` or a subprocess)
-while scheduled/active autonomous work exists. Test on the real MacBook: lid open + display off → runs? lid
-closed → runs? Record both answers in the audit doc. Gate: the product's host-state message matches measured
-reality; no claim about lid-closed unless proven.
+### L-21 `[~] claude 2026-09-15 -- code+tests done at 7b5e5cc, blocked on Kyle's physical test` macOS power
+assertion, measured not assumed — needs: L-20
+`neurosearch/power_assertion.py` built and tested: holds `caffeinate -s` for exactly as long as active/near-future
+scheduled work exists, wired into `jobs.start_workers()`/`stop_workers()`, reported by `doctor`, honestly
+unavailable off macOS. 6 tests prove the software plumbing (queue-state-driven start/stop, no double-spawn,
+24h lookahead, honest unavailability) -- deliberately NOT a claim about lid-closed reliability, which is not
+provable in software (documented Apple/developer behavior: a caffeinate assertion does not survive a closed lid
+without an external display -- stated in the module's own docstring, not tested this session because it can't
+be from here). The one thing genuinely still needed: Kyle running the two-minute test in
+`docs/L21-POWER-ASSERTION.md` (lid open + display off vs. lid closed, ~10 min each) and recording both answers
+here. Gate remains open until that measurement lands -- this is not a code-complete gate, it is explicitly a
+measured-reality gate.
 
 ---
 

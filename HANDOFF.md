@@ -3375,3 +3375,16 @@ passed, 0 failed; `repo-check: PASS`.
 Next per EXECUTION-LADDER.md Stage 3: L-21 (macOS power assertion, measured not assumed) — needs Kyle physically
 per the earlier reassignment caveat, so this stays blocked regardless of stage ownership. After that, Stage 4
 (L-30 nightly envelope, L-31 Project Delta v0) becomes the critical path.
+
+## L-21 prepped, deliberately left open pending Kyle's physical test (2026-09-15)
+
+All code-side prep is done and committed (`7b5e5cc`): `neurosearch/power_assertion.py`, wired into the worker
+lifecycle, reported by `doctor`, 6 tests. This is NOT marked closed on the ladder, and shouldn't be treated as
+done — its own gate explicitly requires measuring reality on Kyle's real MacBook (lid open + display off vs.
+lid closed), which nothing in this sandbox can substitute for. `docs/L21-POWER-ASSERTION.md` has the exact
+two-minute test and where to record the answer. This is the continuous-execution directive's "Kyle/manual
+blocker" pattern applied honestly: everything preparable is done, the human step is made as small as it can be,
+and the result is not fabricated or assumed either way.
+
+Stage 3 (L-20, L-21) is otherwise complete pending that one measurement. Moving to Stage 4 (L-30 nightly
+envelope) next, since it does not depend on L-21's outcome.
