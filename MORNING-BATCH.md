@@ -6,35 +6,18 @@ across waiting for a few commands to finish. Do these in order — later ones de
 
 ---
 
-## 1. Validate last night's two code fixes (L-02, L-03) — 1 min, $0
+## 1. ~~Validate L-02/L-03~~ — DONE, no action needed
 
-```
-cd "/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO"
-```
-
-```
-.venv/bin/python -m pytest tests/test_r4_local_model.py tests/test_p1_perf.py -q
-```
-
-If it's all green: tell me "L-02/L-03 green" and I'll flip them to `[x]` in the ladder with the commit sha.
-If anything is red that wasn't red before last night, tell me and I'll fix it before anything else runs.
+Built an isolated venv on your Mac (via the bridge, at `~/ns-verify`, outside this repo folder) and actually ran
+the full suite myself overnight: **1478 passed, 0 failed**, `repo-check: PASS`. L-02/L-03 are `[x] 01fa165` in
+the ladder for real, not just written. Nothing for you to run here.
 
 ---
 
-## 2. Run the (now-fixed) prefilter eval — L-04 — ~1 min, $0
+## 2. ~~Run the prefilter eval~~ — DONE, decision recorded
 
-```
-cd "/Users/kyleowen/Desktop/2026 - KO Neuro Search REPO"
-```
-
-```
-.venv/bin/neurosearch eval --prefilter --out evals/prefilter-2026-09-15.json
-```
-
-Paste me the output (or just say "done, committed" once you `git add`/`git commit` the artifact) — I'll read the
-JSON and apply the frozen decision rule from the T4 plan myself (enable `NEUROSEARCH_FINDINGS_PREFILTER=1` only
-if net savings > 0 AND relevant-window recall ≥ 0.98), then record it in `HARDENING.md`. Nothing for you to
-decide here — just run it.
+Ran `eval --prefilter` for real overnight (fake tier, $0). Verdict: **not enabling** the prefilter yet — full
+reasoning in `HARDENING.md` ("L-04 — prefilter eval measured"). Nothing for you to run here either.
 
 ---
 
