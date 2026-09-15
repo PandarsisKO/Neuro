@@ -537,6 +537,9 @@ def _best_fit(t: set[str], qs: list[tuple[str, str, set[str]]], qindex: dict[str
     return best, best_s
 
 
+LINKED_BOOST = 45            # AD2 reuses this exact figure to undo the boost when the link it rewarded has since closed
+
+
 def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab: set[str], relevance: int | None, linked: list[str],
                creator: str | None = None, creator_stats: dict[str, dict[str, Any]] | None = None,
                want_classes: set[str] | None = None, qindex: dict[str, Any] | None = None) -> tuple[int, str | None, list[str]]:
@@ -550,7 +553,7 @@ def _potential(title: str, desc: str, qs: list[tuple[str, str, set[str]]], vocab
     why = []
     score = 0
     if linked:
-        score += 45; why.append(f"already found for: {linked[0][:60]}")
+        score += LINKED_BOOST; why.append(f"already found for: {linked[0][:60]}")
     if best_s >= FIT_MIN_SHARE:
         score += int(35 * min(1.0, best_s)); why.append(f"fits an open question: {best}")
     cov = len(t & vocab) / max(4, len(vocab)) if vocab else 0
@@ -847,8 +850,131 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
 # table's retry path) -- AD1 is about genuinely new discovery, not that backlog.
 
 def next_batch(project_id: str, *, n: int = 5, rank_by: str = "fit", q: str | None = None) -> dict[str, Any]:
-    r = pool(project_id, q=q, rank_by=rank_by, limit=max(1, min(n, 50)), kind="candidates")
-    return {"items": r["items"], "remaining": max(0, r["counts"]["candidates"] - len(r["items"])),
+    n = max(1, min(n, 50))
+    lookahead = max(n, min(n * BATCH_LOOKAHEAD_MULT, 50))    # AD2: bounded, cheap (`_pool_items` is cached; this
+    r = pool(project_id, q=q, rank_by=rank_by, limit=lookahead, kind="candidates")   # only slices/reranks metadata)
+    items = r["items"]
+    if rank_by == "fit":                       # AD2 is a FIT adaptive rerank; every other explicit mode keeps its
+        items = rerank(project_id, items, max_per_creator=BATCH_MAX_PER_CREATOR)   # own documented primary ordering
+    batch = items[:n]
+    return {"items": batch, "remaining": max(0, r["counts"]["candidates"] - len(batch)),
             "explain": "Up to N candidates never yet captured or rejected, best first. Resolve each with capture "
                        "or reject; call again for the next best unresolved ones -- there is no separate queue or "
                        "session, just what has not been decided yet."}
+
+
+# ---------------------------------------------------------------- AD2: deterministic rerank
+#
+# Adjusts the SAME `potential` score `pool()` already computed -- never a replacement, never touching `_potential()`
+# or the full pool table. Two signals AD0 (`docs/AD0-FEEDBACK-INVENTORY.md`) named for AD2, both reused from
+# existing state, no new schema, no model call:
+#   PRIMARY   candidate disposition (`candidate_projects.state`) -- a creator this project keeps ACQUIRING should
+#             rank higher; one it keeps REJECTING should rank lower. A rate, not a raw count (an 8-dismissal
+#             creator with 80 decisions is mostly accepted; a 3-dismissal creator with 3 decisions is not), gated
+#             on a minimum decided count so one early rejection never becomes a verdict, and capped well below
+#             `_potential`'s own target-fit terms so history adjusts the ranking, never overrides it.
+#   SECONDARY link outcome (`candidate_links.state`) -- `_potential` already rewards a candidate linked to a
+#             still-open evidence target (`LINKED_BOOST`); what it cannot see is a target that closed through a
+#             DIFFERENT candidate after this link was recorded, since only the acquired candidate's own links get
+#             marked `satisfied` (`satisfy_links`). This corrects exactly that stale case, nothing else.
+# Only `candidate_projects.state='acquired' | 'user_dismissed' | 'skipped_low_relevance'` count as a preference
+# signal: `skipped_limit` / `skipped_cost` / `duplicate` are operational (a review cap, a budget, an identity
+# collision) and are never read as "this project dislikes this creator."
+#
+# Diversity is a small-BATCH composition rule, not a source-quality judgment: it caps how many of one creator's
+# items can fill the batch RETURNED right now, over a bounded lookahead window so a real alternative can actually
+# surface (`next_batch` asks `pool()` for more than `n` before reranking) -- it never drops anything; a deferred
+# item is simply pushed past the cap and stays eligible for a later `next_batch` call, same as any undecided item.
+
+BATCH_LOOKAHEAD_MULT = 4     # next_batch looks this many times past `n` before reranking -- bounded, not paginated
+BATCH_MAX_PER_CREATOR = 2    # at most this many of one creator in a single returned batch
+DISPOSITION_MIN_DECISIONS = 3       # fewer decided outcomes than this and a creator's rate is not a signal yet --
+DISPOSITION_MAX_ADJUST = 12         # mirrors CREATOR_MIN_SOURCES's own "one data point proves nothing" discipline
+DISPOSITION_STATES = ("acquired", "user_dismissed", "skipped_low_relevance")   # the only preference-bearing states
+
+
+def creator_disposition(project_id: str) -> dict[str, dict[str, Any]]:
+    """creator -> how this project has actually decided on that creator's OTHER items, as a bounded rate-based
+    adjustment, never a raw count. `skipped_low_relevance` counts as a soft negative (its own reason string is a
+    genuine relevance judgment made in review, not an operational constraint); `skipped_limit`/`skipped_cost`/
+    `duplicate`/`available` never do -- a review cap or a budget ceiling is not "Kyle dislikes this creator"."""
+    conn = db.connect()
+    rows = conn.execute(f"""SELECT c.creator cr, cp.state st, COUNT(*) n FROM candidate_projects cp
+                            JOIN candidates c ON c.id=cp.candidate_id
+                            WHERE cp.project_id=? AND cp.state IN ({",".join("?" * len(DISPOSITION_STATES))}) AND c.creator IS NOT NULL
+                            GROUP BY c.creator, cp.state""", (project_id, *DISPOSITION_STATES)).fetchall()
+    by_creator: dict[str, dict[str, int]] = {}
+    for r in rows:
+        by_creator.setdefault(r["cr"].strip(), {})[r["st"]] = r["n"]
+    out: dict[str, dict[str, Any]] = {}
+    for creator, counts in by_creator.items():
+        pos = counts.get("acquired", 0)
+        neg = counts.get("user_dismissed", 0) + 0.5 * counts.get("skipped_low_relevance", 0)
+        decided = counts.get("acquired", 0) + counts.get("user_dismissed", 0) + counts.get("skipped_low_relevance", 0)
+        if decided < DISPOSITION_MIN_DECISIONS:
+            out[creator] = {"adjust": 0, "decided": decided, "pos": pos, "neg": neg, "why": None}
+            continue
+        rate = max(-1.0, min(1.0, (pos - neg) / decided))
+        adjust = int(round(DISPOSITION_MAX_ADJUST * rate))
+        why = None
+        if adjust:
+            why = (f"this project has mostly acquired {creator}'s items before ({pos} of {decided} decided)" if adjust > 0
+                  else f"this project has mostly rejected {creator}'s items before ({int(counts.get('user_dismissed', 0))} of {decided} decided)")
+        out[creator] = {"adjust": adjust, "decided": decided, "pos": pos, "neg": neg, "why": why}
+    return out
+
+
+def _stale_linked_targets(project_id: str, candidate_ids: list[str]) -> set[str]:
+    """Candidate ids whose ONLY open evidence-target link(s) point to a target that is no longer actually open --
+    `_potential` rewarded them for a need that has since closed through some OTHER candidate (only the candidate
+    that closes it gets its own links marked `satisfied`; this reads the target's real, current status instead of
+    trusting a link row that was never told). One read-only query, no new gap-routing system."""
+    if not candidate_ids:
+        return set()
+    conn = db.connect()
+    ph = ",".join("?" * len(candidate_ids))
+    fresh: set[str] = set()
+    any_link: set[str] = set()
+    for r in conn.execute(f"""SELECT l.candidate_id cid, t.status st FROM candidate_links l
+                              LEFT JOIN project_evidence_targets t ON t.id=l.ref_id
+                              WHERE l.project_id=? AND l.kind='evidence_target' AND l.state='open'
+                              AND l.candidate_id IN ({ph})""", (project_id, *candidate_ids)).fetchall():
+        any_link.add(r["cid"])
+        if (r["st"] or "open") == "open":
+            fresh.add(r["cid"])
+    return any_link - fresh
+
+
+def rerank(project_id: str, items: list[dict[str, Any]], *, max_per_creator: int = BATCH_MAX_PER_CREATOR) -> list[dict[str, Any]]:
+    """AD2. Adjusts a copy of `items` (as `pool()` already scored and sorted them) with disposition + stale-link
+    corrections, re-sorts, then applies the batch-local diversity cap. Nothing is dropped: over-cap items are
+    deferred to the tail, not discarded, so a later `next_batch` call still sees them."""
+    if not items:
+        return items
+    disp = creator_disposition(project_id)
+    stale = _stale_linked_targets(project_id, [i["id"] for i in items])
+    adjusted = []
+    for i in items:
+        item = dict(i)
+        item["why"] = list(item.get("why") or [])
+        d = disp.get((i.get("creator") or "").strip())
+        if d and d["adjust"]:
+            item["potential"] = max(0, min(100, item["potential"] + d["adjust"]))
+            item["why"].append(d["why"])
+        if i["id"] in stale:
+            item["potential"] = max(0, item["potential"] - LINKED_BOOST)
+            item["why"] = [w for w in item["why"] if not w.startswith("already found for")]
+            item["why"].append("the question it was linked to is no longer open")
+        adjusted.append(item)
+    adjusted.sort(key=lambda i: (-i["potential"], i["title"]))
+    capped: list[dict[str, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
+    for i in adjusted:
+        c = (i.get("creator") or "").strip()
+        if seen.get(c, 0) >= max_per_creator:
+            deferred.append(i)
+        else:
+            seen[c] = seen.get(c, 0) + 1
+            capped.append(i)
+    return capped + deferred

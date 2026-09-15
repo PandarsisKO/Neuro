@@ -521,3 +521,197 @@ def test_discover_cli_shows_a_batch_and_decide_resolves_it(monkeypatch):
     assert r3.exit_code != 0
     r4 = CliRunner().invoke(app, ["project", "discover-decide", pid, cid, "maybe-later"])
     assert r4.exit_code != 0 and "capture" in r4.output
+
+
+# ------------------------------------------------------------------ AD2: deterministic rerank
+#
+# Adjusts the SAME potential score pool() already computed, on next_batch's fit path only -- never a rebuild of
+# _potential(), never touching the full pool table. Two AD0-assigned signals: candidate disposition (primary,
+# a bounded RATE not a raw count) and stale link outcome (secondary), plus a batch-local diversity cap over a
+# bounded lookahead window. Nothing is ever dropped -- only deferred to a later batch.
+
+def _mark_many(pid, prefix, creator, state, count, *, offset=0):
+    ids = candidates.remember([{"external_id": f"{prefix}{offset + i}", "url": f"https://example.org/{prefix}{offset + i}",
+                                "title": f"{prefix} item {offset + i} about seller financing", "creator": creator}
+                               for i in range(count)], platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    candidates.mark(pid, ids, state)
+    return ids
+
+
+def test_creator_disposition_is_neutral_below_the_minimum_decided_count(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "thin", "Thin History", "acquired", 2)          # 2 decided, below DISPOSITION_MIN_DECISIONS (3)
+    d = candidates.creator_disposition(pid)
+    assert d["Thin History"]["adjust"] == 0
+
+
+def test_positive_learning_creator_ranks_higher_after_repeated_acquisitions(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "pos", "Reliable Channel", "acquired", 5)
+    d = candidates.creator_disposition(pid)
+    assert d["Reliable Channel"]["adjust"] > 0
+    assert d["Reliable Channel"]["adjust"] <= candidates.DISPOSITION_MAX_ADJUST
+    new = candidates.remember([{"external_id": "pos-new", "url": "https://example.org/pos-new",
+                                "title": "A brand new item about seller financing", "creator": "Reliable Channel"}],
+                              platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    plain = next(i for i in candidates.pool(pid, kind="candidates")["items"] if i["id"] == new)
+    reranked = next(i for i in candidates.rerank(pid, candidates.pool(pid, kind="candidates")["items"]) if i["id"] == new)
+    assert reranked["potential"] > plain["potential"]
+    assert reranked["potential"] - plain["potential"] <= candidates.DISPOSITION_MAX_ADJUST
+
+
+def test_negative_learning_lowers_but_never_excludes(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "neg", "Rejected Channel", "user_dismissed", 5)
+    d = candidates.creator_disposition(pid)
+    assert d["Rejected Channel"]["adjust"] < 0
+    new = candidates.remember([{"external_id": "neg-new", "url": "https://example.org/neg-new",
+                                "title": "A brand new item about seller financing", "creator": "Rejected Channel"}],
+                              platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    items = candidates.rerank(pid, candidates.pool(pid, kind="candidates")["items"])
+    row = next(i for i in items if i["id"] == new)
+    assert row["potential"] >= 0                                     # lowered, never negative / never excluded
+    assert any("mostly rejected" in w for w in row["why"])
+
+
+def test_exposure_safety_rate_beats_raw_count(monkeypatch):
+    """8 dismissals out of 80 decisions (mostly acquired) must NOT read as more negative than 3 dismissals out of
+    3 decisions (nothing but rejection), even though 8 > 3 in raw count."""
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "hivol-acq", "High Volume", "acquired", 72)
+    _mark_many(pid, "hivol-dis", "High Volume", "user_dismissed", 8, offset=72)
+    _mark_many(pid, "lowvol", "Low Volume", "user_dismissed", 3)
+    d = candidates.creator_disposition(pid)
+    assert d["High Volume"]["decided"] == 80 and d["Low Volume"]["decided"] == 3
+    assert d["High Volume"]["adjust"] > 0                             # mostly accepted despite 8 raw dismissals
+    assert d["Low Volume"]["adjust"] < 0
+    assert d["Low Volume"]["adjust"] <= d["High Volume"]["adjust"]
+
+
+def test_disposition_feedback_does_not_leak_across_projects(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    other = db.create_project("AD2 other project", "brief")
+    oid = other["id"] if isinstance(other, dict) else other
+    _mark_many(pid, "leak", "Cross Project Channel", "user_dismissed", 5)
+    d_other = candidates.creator_disposition(oid)
+    assert "Cross Project Channel" not in d_other
+
+
+def test_operational_states_are_never_read_as_preference(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "opcost", "Budget Limited Channel", "skipped_cost", 5)
+    _mark_many(pid, "oplimit", "Budget Limited Channel", "skipped_limit", 5, offset=5)
+    d = candidates.creator_disposition(pid)
+    assert d.get("Budget Limited Channel", {"decided": 0})["decided"] == 0
+    assert d.get("Budget Limited Channel", {"adjust": 0})["adjust"] == 0
+
+
+def test_link_outcome_demotes_a_candidate_whose_target_closed_elsewhere(monkeypatch):
+    from neurosearch import knowledge
+    pid, ids = _fixture(monkeypatch)
+    tgt = knowledge.add_target(pid, "How long should the seller stay on after closing?")
+    stale_cid = candidates.remember([{"external_id": "link-stale", "url": "https://example.org/link-stale",
+                                      "title": "Seller stays on after the sale for a while", "creator": "Link Channel"}],
+                                    platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    fresh_cid = candidates.remember([{"external_id": "link-fresh", "url": "https://example.org/link-fresh",
+                                      "title": "Another take on seller staying on after the sale", "creator": "Link Channel"}],
+                                    platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.link(stale_cid, pid, "evidence_target", tgt["id"])
+    candidates.link(fresh_cid, pid, "evidence_target", tgt["id"])
+    # the target closed through some OTHER candidate -- this link row is still 'open' (never told)
+    db.connect().execute("UPDATE project_evidence_targets SET status='satisfied' WHERE id=?", (tgt["id"],))
+    db.connect().commit()
+    stale = candidates._stale_linked_targets(pid, [stale_cid, fresh_cid])
+    assert stale == {stale_cid, fresh_cid}                            # both point at the now-closed target
+    # reopen one of the two targets used by fresh_cid to prove the "at least one open link" rule
+    tgt2 = knowledge.add_target(pid, "What does the SBA require in a standby agreement?")
+    candidates.link(fresh_cid, pid, "evidence_target", tgt2["id"])
+    stale2 = candidates._stale_linked_targets(pid, [stale_cid, fresh_cid])
+    assert stale2 == {stale_cid}                                      # fresh_cid now has one genuinely open link
+    before = candidates.pool(pid, kind="candidates")["items"]
+    after = candidates.rerank(pid, before)
+    b_stale = next(i for i in before if i["id"] == stale_cid)
+    a_stale = next(i for i in after if i["id"] == stale_cid)
+    assert a_stale["potential"] < b_stale["potential"]
+    assert any("no longer open" in w for w in a_stale["why"])
+
+
+def test_diversity_lookahead_surfaces_a_different_creator(monkeypatch):
+    """Baseline: 5 candidates from creator A rank 1-5, one from creator B ranks 6th. A requested batch of 5 must
+    be able to include creator B -- impossible without a lookahead window bigger than the requested n."""
+    pid, ids = _fixture(monkeypatch)
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    a_ids = []
+    for i in range(5):
+        cid = candidates.remember([{"external_id": f"divA{i}", "url": f"https://example.org/divA{i}",
+                                    "title": f"SBA seller note standby explained part {i}", "creator": "Creator A"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+        candidates.link(cid, pid, "evidence_target", tgt["id"])       # every A item gets the +45 linked boost
+        a_ids.append(cid)
+    # enough Creator B / fixture-default-creator supply that a strict per-creator cap can actually fill n=5:
+    # 2 (Creator A) + 2 (Creator B) + 1 (the fixture's own pre-existing "CPA Deals" candidate) == 5, exactly n,
+    # with no cap ever exceeded -- proving the cap holds precisely, not just "B appears somewhere."
+    b_ids = candidates.remember([{"external_id": f"divB{i}", "url": f"https://example.org/divB{i}",
+                                  "title": f"A different take on seller financing, unlinked, part {i}", "creator": "Creator B"}
+                                 for i in range(3)], platform="youtube", project_id=pid, origin={"kind": "exploration"})
+    base = candidates.pool(pid, kind="candidates")["items"]
+    order = [i["id"] for i in base]
+    assert all(order.index(b) > 4 for b in b_ids), "fixture assumption: B ranks below the top 5 before diversity"
+    batch = candidates.next_batch(pid, n=5)
+    batch_ids = {i["id"] for i in batch["items"]}
+    assert batch_ids & set(b_ids), "creator B must be able to enter the batch"
+    assert sum(1 for cid in a_ids if cid in batch_ids) <= candidates.BATCH_MAX_PER_CREATOR
+    assert sum(1 for cid in b_ids if cid in batch_ids) <= candidates.BATCH_MAX_PER_CREATOR
+
+
+def test_diversity_defers_rather_than_drops(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    from neurosearch import knowledge
+    tgt = knowledge.add_target(pid, "What seller-note standby terms does the SBA actually require?")
+    a_ids = []
+    for i in range(5):
+        cid = candidates.remember([{"external_id": f"defA{i}", "url": f"https://example.org/defA{i}",
+                                    "title": f"SBA seller note standby explained part {i}", "creator": "Creator A"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+        candidates.link(cid, pid, "evidence_target", tgt["id"])
+        a_ids.append(cid)
+    first = candidates.next_batch(pid, n=5)
+    first_ids = {i["id"] for i in first["items"]}
+    deferred = [cid for cid in a_ids if cid not in first_ids]
+    assert deferred, "diversity should have deferred at least one Creator A item"
+    for cid in first_ids:
+        if cid in a_ids:
+            candidates.dismiss(pid, cid, "resolved")
+    later = candidates.next_batch(pid, n=5)
+    later_ids = {i["id"] for i in later["items"]}
+    assert set(deferred) <= later_ids | {i["id"] for i in candidates.pool(pid, kind="candidates")["items"]}
+    assert set(deferred) & later_ids, "a deferred item must remain eligible, never silently lost"
+
+
+def test_explicit_rank_by_mode_is_not_silently_reranked(monkeypatch):
+    pid, ids = _fixture(monkeypatch)
+    _mark_many(pid, "modeneg", "Rejected For Real", "user_dismissed", 5)
+    new = candidates.remember([{"external_id": "mode-new", "url": "https://example.org/mode-new",
+                                "title": "Rejected creator's newest item about seller financing",
+                                "creator": "Rejected For Real", "published_at": "2030-01-01"}],
+                              platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    plain_newest = candidates.pool(pid, rank_by="newest", kind="candidates")["items"]
+    batch_newest = candidates.next_batch(pid, n=len(plain_newest), rank_by="newest")["items"]
+    assert [i["id"] for i in batch_newest] == [i["id"] for i in plain_newest]   # untouched: same order, same scores
+    assert next(i for i in batch_newest if i["id"] == new)["potential"] == next(i for i in plain_newest if i["id"] == new)["potential"]
+
+
+def test_ad1_invariants_hold_under_ad2(monkeypatch):
+    """Resolved candidates still disappear and undecided ones still reappear, with AD2's rerank layered on top."""
+    pid, ids = _fixture(monkeypatch)
+    cap_id = candidates.remember([{"external_id": "inv-cap", "url": "https://example.org/inv-cap",
+                                   "title": "Will be captured, about seller financing", "creator": "Invariant Channel"}],
+                                 platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    keep_id = candidates.remember([{"external_id": "inv-keep", "url": "https://example.org/inv-keep",
+                                    "title": "Stays undecided, about seller financing", "creator": "Invariant Channel"}],
+                                  platform="youtube", project_id=pid, origin={"kind": "exploration"})[0]
+    candidates.capture(cap_id, pid)
+    after = candidates.next_batch(pid, n=50)
+    after_ids = {i["id"] for i in after["items"]}
+    assert cap_id not in after_ids and keep_id in after_ids
