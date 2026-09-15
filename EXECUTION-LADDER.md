@@ -478,9 +478,12 @@ pattern) — with AD2. ### AD4 `[ ]` static vs adaptive measurement — READY AF
 closed, novel families, review burden.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
-### FM0 `[ ]` $0 experiment — PARALLEL PREP · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`
+### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`
 Reference-list clusters vs headings of 2–3 review works, compared with the project's Claims/targets/sources
 vocabulary. Written go/no-go. No paid pass unless the $0 method fails AND the paid one has clear decision value.
+See `docs/FM0-EXPERIMENT.md`: GO on reference-list clustering (additive to scholar.py, no new capability); NO-GO
+on heading clustering (needs a new extraction primitive, real acquisition cost). Live evidence on a real project
+is Kyle-gated (sandbox has no route to Crossref/OpenAlex) -- FM1 stays gated on this decision, not built here.
 ### FM1 `[ ]` blind-spot PROPOSALS (never "you are missing X") — READY AFTER FM0 go.
 ### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — with FM1.
 ### FM3 `[ ]` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.

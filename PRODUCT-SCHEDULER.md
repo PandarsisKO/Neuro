@@ -9,12 +9,17 @@ code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule,
 authorized CR6/LP4 also covers continuing straight into the remaining PARALLEL PREP rungs in the same mission §12
 dependency chain, no new pause required. Active now, in the Claude lane:
 
-**SC0b (capability view completeness), AD0 (feedback inventory), FM0 ($0 experiment)** — all PARALLEL PREP,
-small in scope, $0, disjoint files from each other and from CR/LP. `EXECUTION-LADDER.md` Stages 12–14. CR7
-(real-project gate) still needs Kyle's own night, now that CR1–CR6 form a complete, testable chain — that one
-remains Kyle-gated and is not attempted here.
+**SC0b, AD0, FM0 all landed** (`29952b0`, `866edc8`, `0da834b`) — every PARALLEL PREP rung in
+Stages 12–14 that was eligible with no further Kyle input is now code-complete or decided. SC0b extended
+`creator_yield` (claim types/topics, targets helped close, cadence). AD0 decided AD2 reranks off candidate
+disposition + link outcome, reserving findings/claim status and target closure for AD4. FM0 decided FM1 should
+prototype reference-list clustering, not heading clustering, and flagged that the real go/no-go evidence run
+needs Kyle's machine (no catalogue network route from this sandbox).
 
-Parallel prep still open for a second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
+Next eligible in the Claude lane: **AD1** (small-batch discovery — READY AFTER AD0, now unblocked) is a real
+feature build, not further parallel prep — worth its own plan checkpoint rather than folding silently into this
+batch. CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for a
+second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 

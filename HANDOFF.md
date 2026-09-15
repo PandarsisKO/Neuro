@@ -4076,3 +4076,40 @@ Plan-tab UI surfacing LP4's states would).
 Per the new rule, continuing directly into SC0b next — same execution session, no new pause, since SC0b/AD0/
 FM0 are explicitly flagged PARALLEL PREP within the same mission §12 acceleration objective and touch no file
 CR6/LP4 touched.
+
+## SC0b + AD0 + FM0 executed (2026-09-15, `29952b0` / `866edc8` / `0da834b`)
+
+Continued straight from the CR6/LP4 closing commit into the three PARALLEL PREP rungs flagged in the same
+mission §12 batch, per the ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION rule -- no new pause, since all three are
+small, disjoint-file, $0 work within the already-authorized objective.
+
+**SC0b** (`29952b0`): extended `candidates.creator_yield` with claim_types/topics yielded (via `project_claims`
+joined through `origin_note_id`, the same seam findings counting already uses), `targets_helped` (distinct
+`candidate_links` rows this project marked `satisfied`, joined to `candidates.creator`), and `cadence` (count +
+earliest/latest of a creator's own sources' `published_at`, already on the `sources` row -- no candidates-table
+join needed for this part). Read-only, project-scoped, no new table. 6 new tests in
+`tests/test_s4_source_capability.py` (creator_yield's existing home).
+
+**AD0** (`866edc8`): written matrix of the five durable feedback signals already in the schema
+(`candidate_projects.state`, `candidate_links.state`, `project_notes.status`, `project_claims.status`,
+`project_evidence_targets.status`). Decision: AD2's rerank loop should use candidate disposition (primary,
+updates synchronously at click time) and link outcome (secondary, already read by SC0b/`where_to_look`);
+findings/claim status and target closure arrive on the harvest pipeline's own schedule and are reserved for
+AD4's retrospective measurement instead. No new table, column, or event log -- no telemetry, as required.
+
+**FM0** (`0da834b`): written go/no-go between the two candidate Field Map methods. GO on reference-list
+clustering -- Crossref/OpenAlex both already return reference lists in the same request `scholar.search` makes,
+so it is additive to existing code (a field addition + parse step), reuses `claims.project_vocab`, and is fully
+testable with fixture data. NO-GO for now on heading clustering -- no existing extraction primitive, a real
+acquisition cost, and FM0's own gate says the cheaper method goes first. Confirmed directly that this sandbox
+has no outbound route to `api.crossref.org`/`api.openalex.org` (a `curl` connection reset), so the document
+reasons from what each method requires rather than a live run; the actual go/no-go EVIDENCE on a real project
+stays Kyle-gated, same as CR7 -- FM1 itself is not built here, it stays gated on this decision.
+
+Full suite 1639/1639 (SC0b's 6 new tests), `repo-check: PASS` after SC0b's code change; AD0/FM0 are docs-only,
+no test surface. No `UI_VERSION` bump anywhere in this batch -- no frontend file touched.
+
+Ladder marked `[x]` for all three with their real shas. Scheduler NOW updated: this parallel-prep batch is
+closed out; the next eligible Claude-lane item is AD1 (small-batch discovery, now unblocked by AD0) -- a real
+feature build rather than further prep, so it gets its own plan checkpoint on the next turn rather than being
+folded silently into this batch. CR7 and FM1's live validation remain Kyle-gated, unchanged.
