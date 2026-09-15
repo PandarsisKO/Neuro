@@ -540,6 +540,27 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
     created, merged = 0, 0
     have = {r["origin_note_id"] for r in db.connect().execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
     have |= {r["note_id"] for r in db.connect().execute("SELECT note_id FROM claim_evidence_notes")}
+    # L-18 (2026-09-15): cheap short-circuit BEFORE the expensive part. L-16 made every concurrent caller for a
+    # busy project run its own full pass rather than coalescing into the in-flight one -- correct (no more lost
+    # notes) but every pass used to start by fetching every approved/suggested note's FULL TEXT
+    # (list_project_notes returns full content -- "11,767 notes and about 8 MB" on Kyle's business project, per
+    # that function's own docstring) and building a TwinIndex over every existing Claim, even when nothing had
+    # changed since the caller one job ago did the exact same scan. Under a real burst -- many suggest_findings
+    # jobs completing back to back for one project -- that turned into N sequential full multi-MB passes queued
+    # behind _harvest_lock, each costing the same as the first. Observed on Kyle's machine as the worker's CPU
+    # climbing without bottoming out and jobs still logging "lost the lease" warnings minutes after they'd
+    # already logged "done" -- because _after_done() calls harvest() synchronously, before execute()'s `finally`
+    # clears the job from `_running`, so a job stuck waiting its turn on this lock still reads as "running" to
+    # the lease keeper. Checking just the NOTE IDS first -- not the bodies -- answers "is there actually
+    # anything new" for a few KB instead of several MB: the common case in a burst (nothing changed since the
+    # last caller a moment ago) now returns almost immediately instead of repeating the full scan.
+    ids_by_status = {
+        status: {r["id"] for r in db.connect().execute(
+            "SELECT id FROM project_notes WHERE project_id=? AND status=?", (project_id, status))}
+        for status in ("approved", "suggested")
+    }
+    if not ((ids_by_status["approved"] | ids_by_status["suggested"]) - have):
+        return {"created": 0, "merged": 0}
     existing = [c for c in list_for_project(project_id, with_evidence=False) if c["status"] != "rejected"]
     index = TwinIndex(existing)
     touched: set[str] = set()
