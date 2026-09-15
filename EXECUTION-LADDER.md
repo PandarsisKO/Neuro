@@ -478,10 +478,18 @@ resolved item already drops out on its own (`project_pool_revision` already trac
 is correctly shown again. `candidates.capture()` extracted as the one shared CAPTURE path (was duplicated
 inline in two API handlers). CLI (`project discover` / `discover-decide`) + `GET .../discover/next`. No new
 frontend — the ladder names no UI gate for AD1; the existing Sources-tab pool table is untouched.
-### AD2 `[ ]` deterministic rerank (target fit, preferred class, SC view, dismissals, diversity,
-freshness) — READY AFTER AD1 (now unblocked). ### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five
-outside the pattern) — with AD2. ### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate,
-yield, targets closed, novel families, review burden.
+### AD2 `[x] 528209c` deterministic rerank — DONE · lane: claude
+Target fit / preferred class / SC view / freshness are `_potential()`'s existing terms, reused as-is (not
+rebuilt). AD2's own additions, scoped to `next_batch`'s `rank_by="fit"` path only: `creator_disposition` (a
+bounded RATE over decided `acquired`/`user_dismissed`/`skipped_low_relevance` outcomes -- never a raw count,
+never `skipped_limit`/`skipped_cost`/`duplicate`), `_stale_linked_targets` (AD0's secondary link-outcome
+signal -- demotes a candidate whose linked target closed through a different candidate), and a bounded-lookahead
+diversity cap that defers, never drops. `rank_by` values other than `fit` are untouched. Gate: tests.
+### AD3 `[ ]` exploration quota (explicit, simple; e.g. one of five outside the pattern) — with AD2, now
+unblocked. What "outside the pattern" means is a genuine product decision (repo evidence supports more than one
+reasonable definition) -- plan + pause before implementing, per the Model Handoff Rule's own condition C.
+### AD4 `[ ]` static vs adaptive measurement — READY AFTER AD3; capture rate, yield, targets closed, novel
+families, review burden.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`

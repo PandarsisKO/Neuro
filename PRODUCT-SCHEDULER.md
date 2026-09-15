@@ -16,14 +16,14 @@ disposition + link outcome, reserving findings/claim status and target closure f
 prototype reference-list clustering, not heading clustering, and flagged that the real go/no-go evidence run
 needs Kyle's machine (no catalogue network route from this sandbox).
 
-**AD1 landed** (`77e26bf`): small-batch discovery ("5 best next" / capture / reject / "5 more") over the
-existing pool, with the CAPTURE path deduplicated into one shared function. No new UI — the ladder names no
-browser-interaction gate for AD1.
+**AD1 + AD2 landed** (`77e26bf`, `528209c`): small-batch discovery over the existing pool, then a
+deterministic rerank on top -- disposition rate (not raw count), stale link-outcome correction, and a
+bounded-lookahead diversity cap that defers rather than drops. No new UI, no schema, no model call in either.
 
-Next eligible in the Claude lane: **AD2** (deterministic rerank, READY AFTER AD1, now unblocked) — needs its
-own plan checkpoint (AD0's decision on which signals feed it is already written; this is where that gets
-implemented). CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for
-a second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
+Next eligible in the Claude lane: **AD3** (exploration quota) is READY AFTER AD2 but needs a plan+pause first --
+what "outside the pattern" concretely means is a genuine product decision, not one repo evidence resolves on
+its own. CR7 (real-project gate) and FM1's live validation remain Kyle-gated. Parallel prep still open for a
+second agent: LP5 (codex-shaped, READY AFTER LP3), CR3 (Codex-shaped).
 
 ## SUSPENDED — RESUME FIRST
 

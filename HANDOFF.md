@@ -4143,3 +4143,51 @@ Full suite 1645/1645, `repo-check: PASS`. No `UI_VERSION` bump.
 Ladder: AD1 marked `[x] 77e26bf`; AD2/AD3/AD4 noted as depending on it, AD2 now unblocked. Scheduler NOW moved
 to AD2 (deterministic rerank) as the next Claude-lane item, which implements the signal choice AD0 already
 wrote up rather than re-deciding it.
+
+## AD2 executed (2026-09-15, `528209c`)
+
+Plan approved with corrections, all applied — the checkpoint was materially wrong on two counts, not just under-
+specified, and both were fixed before any code was written:
+
+1. **Full AD0 contract, not dismissals alone.** `creator_disposition(project_id)` is a bounded RATE over
+   `acquired` (positive) vs `user_dismissed` + half-weighted `skipped_low_relevance` (negative) — verified
+   against `ingest.py`'s actual review-approval code before treating `skipped_low_relevance` as any kind of
+   signal (its reason string, "ranked below the relevance cutoff in review," is a genuine relevance judgment,
+   not an operational constraint). `skipped_limit`/`skipped_cost`/`duplicate` are excluded entirely — proven by
+   a test that marks a creator with only those states and confirms zero decided count, zero adjustment.
+2. **Exposure safety is real, not assumed.** Rate, not raw count: a creator with 8 dismissals out of 80 decided
+   (mostly accepted) computes a POSITIVE adjustment; a creator with 3 dismissals out of 3 computes a negative
+   one — proven directly in `test_exposure_safety_rate_beats_raw_count`, the literal scenario the correction
+   described. Gated on a minimum decided count (mirrors `CREATOR_MIN_SOURCES`'s own "one data point proves
+   nothing"), capped at `DISPOSITION_MAX_ADJUST=12` — well below `_potential()`'s own target-fit terms (up to
+   80), so history adjusts the ranking, never overrides a strong current fit.
+3. **AD0's secondary link-outcome signal implemented**, not skipped. `_stale_linked_targets` reads each open
+   evidence-target link's actual current target status (a target can close through a DIFFERENT candidate than
+   the one whose link row still reads `'open'`, since `satisfy_links` only updates the acquiring candidate's own
+   links) and demotes exactly the candidates whose ONLY open links point at an already-closed target — one
+   read-only query, no new gap-routing system, no schema.
+4. **Diversity lookahead fixed.** `next_batch` now asks `pool()` for `min(n * 4, 50)` candidates before
+   reranking, not just `n` — without this, a 5-of-one-creator top ranking could never surface an alternative.
+   Caught a real bug in my first draft here: an early test wrote too strict a per-creator assertion against a
+   fixture that physically couldn't satisfy it (3 creators, one with only 1 item, can't fill 5 slots at a
+   strict cap of 2) — fixed the FIXTURE (gave the alternative creator enough supply that the cap holds exactly),
+   not the code, since the implementation's actual behavior (fill the cap first, backfill from excess only when
+   there's nowhere else to draw from) was correct.
+5. **`rank_by` semantics preserved.** AD2 only runs on `rank_by="fit"`; `next_batch` with `"newest"`/`"relevance"`
+   returns byte-for-byte what `pool()` alone would have, proven directly.
+6. **Diversity stays a batch-composition rule.** The cap only affects what's returned in one `next_batch` call;
+   deferred items are never dropped and are proven to resurface once the batch ahead of them gets resolved.
+
+Reused, not rebuilt: `_potential()` (target fit, preferred class, SC view, freshness — all four of AD2's other
+named inputs already lived there); `pool()`/the full Sources-tab table — untouched. `LINKED_BOOST` extracted
+as a named constant (was a bare `45` literal) so AD2's stale-link correction undoes exactly what `_potential()`
+granted, not an approximation.
+
+11 new tests (positive/negative learning, exposure safety, minimum-decided gate, project isolation, operational-
+state exclusion, stale link outcome, diversity surfacing an alternative creator within the lookahead, deferred-
+item recovery, explicit rank_by preservation, AD1 invariants holding under AD2). Full suite 1656/1656,
+`repo-check: PASS`. No `UI_VERSION` bump.
+
+Ladder marked `[x] 528209c`. AD3 is next but stops at a plan+pause: "outside the pattern" is a real product
+decision with more than one reasonable shape, not something this arc's existing evidence resolves on its own —
+consistent with the Model Handoff Rule's own condition C and Kyle's explicit instruction not to guess at it.
