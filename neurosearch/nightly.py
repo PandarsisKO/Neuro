@@ -103,8 +103,22 @@ def run(force: bool = False) -> dict[str, Any]:
         per_project.append({"project_id": p["id"], "executed": r.get("executed"), "estimate": spent,
                             "job_ids": r.get("job_ids"), "count": r.get("count"), "snapshot_before": snapshot_before})
 
+    # L-60: T5 adjudication under its OWN per-night cap (settings.t5_nightly_budget, default 0 = off), after the
+    # findings walk. Separate authorization on purpose: an adjudication is a Sonnet-tier call, and folding it into
+    # the findings budget would let one silently eat the other. Same rule as above: a failure here never loses the
+    # findings record.
+    adjudication: dict[str, Any] | None = None
+    if settings.t5_nightly_budget > 0:
+        try:
+            from . import t5
+            adjudication = t5.run_nightly([p["id"] for p in projects], budget_usd=settings.t5_nightly_budget, envelope_id=envelope_id)
+        except Exception as e:  # noqa: BLE001
+            log.warning("nightly envelope %s: T5 adjudication pass failed: %s", envelope_id, e)
+            adjudication = {"ran": False, "error": str(e), "budget": settings.t5_nightly_budget}
+
     record = {"ok": True, "envelope_id": envelope_id, "ts": time.time(), "budget": budget,
               "spent_estimate": round(budget - remaining, 4), "projects": per_project,
+              "adjudication": adjudication,
               "preflight_backup": preflight.get("backup_path")}
     db.kv_set(f"nightly:{key}", json.dumps(record))
     log.info("nightly envelope %s: %d project(s) touched, ~$%.4f of $%.2f estimated",

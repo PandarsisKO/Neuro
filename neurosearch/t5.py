@@ -28,6 +28,8 @@ comparison, not by this document."
 """
 from __future__ import annotations
 
+import json
+import time
 from typing import Any
 
 from . import claims as claims_mod
@@ -60,13 +62,20 @@ def _comparison_detail(*, unit: str, window: str) -> tuple[str, dict[str, Any]]:
     return detail, report
 
 
-def escalation_candidates(project_id: str, *, unit: str = "claim", window: str = "month") -> dict[str, Any]:
+def escalation_candidates(project_id: str, *, unit: str = "claim", window: str = "month", decision_aware: bool = False) -> dict[str, Any]:
     """Return proposed adjudication candidates for ``project_id``: open tensions that meet T5's escalation bar,
     each paired with a properly-formed, gate-admissible ``evidence:`` tier_reason.
 
     Read-only: queries ``knowledge.list_tensions`` and ``cost_value.by_model``, both existing read paths; writes
     no row, calls no provider, and registers nothing in ``contracts.py``'s contract table. The returned
     ``proposed_model`` is never executed here — a future rung decides whether and how to actually run one.
+
+    ``decision_aware=True`` (L-60, EXECUTION-LADDER.md Stage 8): adds the mission doc's two decision-shaped
+    triggers, both grounded in L-50's real ``plan_impact`` signal rather than a guessed importance --
+    ``weak_consensus_on_decision`` (an open WEAK_CONSENSUS tension, any impact, on a Claim the current plan
+    cites) and ``plan_critical_uncertainty`` (an open CONTRADICTION/NOVEL tension, any impact, on such a Claim).
+    When ``plan_impact`` is "unknown" (no plan, or notes changed since it was built) these add nothing -- unknown
+    never escalates, same rule as decision_impact itself. Off by default so existing callers are unchanged.
     """
     detail, comparison = _comparison_detail(unit=unit, window=window)
     tier_reason = f"evidence:{detail}"
@@ -74,11 +83,19 @@ def escalation_candidates(project_id: str, *, unit: str = "claim", window: str =
     assert contracts.policy_reason_ok(tier_reason), f"T5 produced an inadmissible tier_reason: {tier_reason!r}"
 
     adjudicator_model = contracts.TIERS[1]  # one tier above cheapest — Sonnet, not Haiku, per the brief's framing
+    plan_cited: set[str] = set()
+    if decision_aware:
+        from . import decision_impact
+        plan_cited = {cid for cid, v in decision_impact.decision_impact(project_id).items() if v.get("plan_impact") is True}
     candidates: list[dict[str, Any]] = []
     for tension in knowledge.list_tensions(project_id, status="open"):
         trigger = _TRIGGER_KIND_BY_TENSION_KIND.get(tension["kind"])
-        if trigger is None or tension.get("impact") != "high":
+        if trigger is None:
             continue
+        if tension.get("impact") != "high":
+            if not (decision_aware and tension.get("claim_id") in plan_cited):
+                continue
+            trigger = "weak_consensus_on_decision" if tension["kind"] == "WEAK_CONSENSUS" else "plan_critical_uncertainty"
         proposed = contracts.InferenceContract(
             task=f"adjudication.{tension['id']}", provider="anthropic", model=adjudicator_model,
             tier_reason=tier_reason, reversible=True,
@@ -109,7 +126,7 @@ def _evidence_lines(evidence: list[dict[str, Any]]) -> str:
     return "\n".join(lines) or "(no evidence recorded on this Claim)"
 
 
-def adjudicate(project_id: str, tension_id: str, *, write: bool = True) -> dict[str, Any]:
+def adjudicate(project_id: str, tension_id: str, *, write: bool = True, decision_aware: bool = False) -> dict[str, Any]:
     """Run ONE live adjudication call for a specific open, high-impact tension this project's own deterministic
     tension detection already flagged (see ``escalation_candidates`` -- this function refuses any ``tension_id``
     that isn't currently one of its candidates, so it can never escalate something the trigger didn't select).
@@ -123,7 +140,7 @@ def adjudicate(project_id: str, tension_id: str, *, write: bool = True) -> dict[
     -- it lands in the project's ordinary review queue exactly like any other candidate research output.
     Nothing here changes a Claim's or a tension's status; ``claims.set_status`` remains the only promotion door.
     """
-    candidates = {c["tension_id"]: c for c in escalation_candidates(project_id)["candidates"]}
+    candidates = {c["tension_id"]: c for c in escalation_candidates(project_id, decision_aware=decision_aware)["candidates"]}
     candidate = candidates.get(tension_id)
     if candidate is None:
         raise ValueError(f"{tension_id!r} is not an open, high-impact tension this project's escalation trigger currently flags")
@@ -157,4 +174,61 @@ def adjudicate(project_id: str, tension_id: str, *, write: bool = True) -> dict[
             content=f"[T5 adjudication -- {candidate['trigger']}] {candidate['description']}\n\nVerdict: {verdict}",
             citations=[], status="suggested", importance=4)
         result["written_note_id"] = note["id"]
+        db.kv_set(f"t5:adjudicated:{tension_id}", json.dumps({"note_id": note["id"], "ts": time.time(), "cost": cost}))
     return result
+
+
+def already_adjudicated(tension_id: str) -> bool:
+    return db.kv_get(f"t5:adjudicated:{tension_id}") is not None
+
+
+def estimate_adjudication(project_id: str, claim_id: str | None) -> float:
+    """What one adjudicate() call would cost, from the same prompt size it would actually send (usage.estimate_model_call
+    on the t5.adjudicate contract), never a flat guess."""
+    claim = next((c for c in claims_mod.list_for_project(project_id) if c["id"] == claim_id), None) if claim_id else None
+    n_chars = 600 + (len(claim["text"]) + len(_evidence_lines(claim.get("evidence") or [])) if claim else 0)
+    return usage.estimate_model_call(ADJUDICATE_TASK, n_chars)
+
+
+def run_nightly(project_ids: list[str], *, budget_usd: float, envelope_id: str) -> dict[str, Any]:
+    """L-60: budgeted per night. Walks the given projects' decision-aware candidates, most consequential first
+    (high impact before decision-triggered, then oldest tension), skipping any tension already adjudicated on a
+    previous night (kv ``t5:adjudicated:*`` -- the same disagreement is never paid for twice), estimating each
+    call before making it and stopping at the first that would exceed ``budget_usd``. Every verdict lands as a
+    SUGGESTED finding (adjudicate()'s only write); no Claim or tension status ever changes here.
+
+    ``budget_usd <= 0`` means off: returns immediately having called nothing. One project's failure never aborts
+    the others. Returns the per-call record the nightly envelope stores."""
+    out: dict[str, Any] = {"envelope_id": envelope_id, "budget": budget_usd, "spent_estimate": 0.0, "spent": 0.0,
+                           "adjudicated": [], "skipped_already": 0, "stopped_by_budget": None, "errors": []}
+    if budget_usd <= 0:
+        return {**out, "ran": False, "reason": "t5_nightly_budget is 0 (off)"}
+    remaining = float(budget_usd)
+    queue: list[tuple[tuple, str, dict[str, Any]]] = []
+    for pid in project_ids:
+        try:
+            for c in escalation_candidates(pid, decision_aware=True)["candidates"]:
+                if already_adjudicated(c["tension_id"]):
+                    out["skipped_already"] += 1
+                    continue
+                rank = (0 if c["impact"] == "high" else 1, c["tension_id"])
+                queue.append((rank, pid, c))
+        except Exception as e:  # noqa: BLE001
+            out["errors"].append({"project_id": pid, "error": str(e)})
+    queue.sort(key=lambda x: x[0])
+    for _, pid, c in queue:
+        est = estimate_adjudication(pid, c.get("claim_id"))
+        if est > remaining:
+            out["stopped_by_budget"] = {"tension_id": c["tension_id"], "estimate": round(est, 4), "remaining": round(remaining, 4)}
+            break
+        try:
+            r = adjudicate(pid, c["tension_id"], decision_aware=True)
+        except Exception as e:  # noqa: BLE001 -- one failed call never aborts the night's other adjudications
+            out["errors"].append({"project_id": pid, "tension_id": c["tension_id"], "error": str(e)})
+            continue
+        remaining -= est
+        out["spent_estimate"] = round(out["spent_estimate"] + est, 4)
+        out["spent"] = round(out["spent"] + float(r.get("cost") or 0), 4)
+        out["adjudicated"].append({"project_id": pid, "tension_id": c["tension_id"], "claim_id": c.get("claim_id"),
+                                   "trigger": c["trigger"], "note_id": r.get("written_note_id"), "cost": r.get("cost")})
+    return {**out, "ran": True}

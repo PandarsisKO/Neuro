@@ -110,6 +110,9 @@ class Settings:
     # neurosearch/nightly.py), never "at that hour exactly" -- same host-honesty rule as L-20's CLI.
     t4_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_T4_NIGHTLY_BUDGET_USD", "0") or 0))
     t4_nightly_hour: int = field(default_factory=lambda: int(_env("NEUROSEARCH_T4_NIGHTLY_HOUR", "2") or 2))
+    # L-60: a SEPARATE per-night cap for T5 adjudication (each paid adjudication is a Sonnet-tier call, not a
+    # Haiku findings read) -- off by default, authorized independently of the findings budget above.
+    t5_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_T5_NIGHTLY_BUDGET_USD", "0") or 0))
 
     # Chunking (seconds)
     chunk_target_seconds: int = field(default_factory=lambda: int(_env("NEUROSEARCH_CHUNK_SECONDS", "60") or 60))

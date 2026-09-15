@@ -141,6 +141,17 @@ def _project_delta(conn: Any, pid: str, p: dict[str, Any], start_ts: float, end_
     }
 
 
+def _adjudication_summary(a: dict[str, Any] | None) -> dict[str, Any] | None:
+    """L-60: what the night's T5 pass did, straight off the envelope record (its own budget, its own numbers)."""
+    if not a:
+        return None
+    if not a.get("ran"):
+        return {"ran": False, "reason": a.get("reason") or a.get("error"), "budget": a.get("budget")}
+    return {"ran": True, "budget": a.get("budget"), "spent": a.get("spent"), "count": len(a.get("adjudicated") or []),
+            "items": a.get("adjudicated") or [], "skipped_already": a.get("skipped_already", 0),
+            "stopped_by_budget": a.get("stopped_by_budget"), "errors": a.get("errors") or []}
+
+
 def for_envelope(envelope_id: str) -> dict[str, Any]:
     """Compute the Project Delta for one already-run autonomous execution envelope. Returns
     ``{"found": False, ...}`` for an unknown or not-yet-run envelope id -- never raises for that, since "nothing
@@ -176,6 +187,7 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
         "projects": projects,
         "new_tensions_total": total_new_tensions,
         "needs_user": needs_user,
+        "adjudication": _adjudication_summary(record.get("adjudication")),
         "preflight_backup": record.get("preflight_backup"),
         "ts": time.time(),
     }
