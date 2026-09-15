@@ -3956,3 +3956,86 @@ gate) still needs Kyle's own night, after CR6 lands.
 Per the Model Handoff Rule: both CR6 and LP4 are new, unplanned work — CR6 touches `nightly.run()`, a shared hot
 path several other rungs (T4/T5/T6) already depend on, and LP4 is a new derived-state concept. Both need their
 own PLAN → PAUSE checkpoint before implementation.
+
+## Planning checkpoint — CR6 + LP4 (2026-09-15 18:15, plan-then-pause handoff)
+
+CR5/LP3 shipped at `d72537b`/`3bcb44a`. CR6 (nightly integration) and LP4 (stable state semantics) are new,
+unplanned work: CR6 touches `nightly.run()`, a shared hot path T4/T5/T6 already depend on; LP4 introduces a new
+derived-state concept over plan items. Fresh PLAN → PAUSE per the Model Handoff Rule.
+
+### Approved-plan checkpoint for the execution model
+
+Rung / objective: CR6 (a third bounded work source in `nightly.run()`, mirroring exactly how L-60/T5 was added)
+and LP4 (Known/Assumed/Chosen/Uncertain/Blocked/Monitored as state DERIVED over `plan_items` + linked Claim
+strength/freshness — read-only, persists nothing).
+
+Why next: CR6 is the only thing standing between CR5 (proven to work on one Claim, by hand) and CR7 (Kyle's real-
+project gate); LP4 is PARALLEL PREP that has been eligible since LP1 landed and touches no file CR6 does.
+
+Reused: nightly.run()'s existing per-project loop and its T5 pattern exactly (`if settings.<x>_budget > 0: try:
+... except Exception: ...`, own kv-recorded record, own line in `delta.for_envelope`/`report.py`); research_needs.
+due_tonight (CR2); research_refresh.request_refresh (CR5); t6.assumptions/Assumption dataclass (CR6's own budget
+constant needs an honest measured_on/exercised_by entry, same discipline as T5's did at L-61); plan_impact.
+affected_items (LP1) + claims fields (strength/freshness_status) for LP4's derivation; plan_items keys (LP4 reads
+them, never writes them — execution status and evidence-confidence state are different axes, kept separate
+rather than overloading plan_items.status with a second meaning).
+
+Approach:
+1. CR6, additive in `nightly.py`: `settings.research_refresh_nightly_budget` (env
+   `NEUROSEARCH_RESEARCH_REFRESH_NIGHTLY_BUDGET_USD`, default 0 = off — same off-by-default discipline as T5).
+   After the T5 block: if budget > 0, walk `research_needs.due_tonight(pid)` per project (already ranked
+   critical-first), call `research_refresh.request_refresh(pid, need=n, cap_usd=remaining)` for each until the
+   budget is spent or needs run out, skip a claim already refreshed within CHECK_TTL_S (due_tonight's own
+   cooldown already does this), catch one project's exception without aborting the rest (T5's pattern). Record
+   `{ran, budget, requested: [{claim_id, target_id, job_id}], stopped_by_budget}` as `record["research_refresh"]`.
+   `delta.for_envelope`/`report.py`: one more summary line, "N refresh(es) requested ($X of $Y)" — never claims a
+   claim actually changed tonight (that requires the async harvest to finish, which CR6 does not wait for);
+   Morning Report already has a `research_needs_count` line (CR1) for the standing count, this is the delta of
+   what got REQUESTED, a different fact, stated as such. New Assumption entry for the budget constant itself
+   (mission §12 / L-61 discipline: never a bare unmeasured default).
+2. LP4, new `neurosearch/plan_state.py`: `derive(project_id) -> dict[str, dict]` — for every keyed plan item
+   (`first_steps.N`, `decisions.N`, `tools.N`, `costs`) with resolvable evidence (via `plan_impact.affected_items`
+   run against every Claim the plan cites, not one at a time — needs a small batch-shaped variant or a loop over
+   distinct cited claim_ids, TBD at implementation whether that's a new `plan_impact.affected_items_for_plan`
+   helper or just calling the existing one in a loop; either is fine, decided during implementation, not a
+   product question), a state in {known, assumed, chosen, uncertain, blocked, monitored}: `known` = a strong,
+   current Claim directly cites it; `uncertain` = a stale/needs_refresh or weak/unsupported Claim cites it
+   (mirrors CR1's own definition of a need, reused rather than re-derived); `monitored` = an open disagreement
+   touches it (decision_impact.disagreement, reused); `blocked` = the plan's own `dependencies`/`risks` name it
+   as blocking (existing plan JSON fields, read only); `assumed`/`chosen` = the item's own `basis` field already
+   distinguishes "planner"/"estimate" (assumed) from an item where alternatives were compared and one picked
+   (`decisions[].recommended` present — chosen); an item with no resolvable evidence and no basis stays
+   unclassified rather than guessed. Nothing persisted unless a caller proves the derive-on-read cost matters on
+   a real project (explicitly deferred, per the rung's own "persist nothing unless the derivation proves
+   insufficient" gate). Surface: `neurosearch project plan-state <project>` CLI only for now — no UI line yet
+   (LP4 itself is prep; a Plan-tab surface is LP5/UI work, out of scope here).
+
+Files: nightly.py (additive block), config.py (+1 setting), assumptions.py (+1 entry), delta.py/report.py (+1
+line each), plan_state.py (new), cli.py (+1 command), tests (2+ new files or continuing the existing CR/LP test
+file).
+
+Tests/gates: CR6 — off by default; walks due needs budget-first, stops at cap; a project's exception doesn't
+abort the rest; record shape; Morning Report line only when nonzero, worded as "requested" not "changed"; full
+suite -rf; repo-check; no UI_VERSION bump (report.py text only, no frontend file). LP4 — each of the six states
+derived correctly from a fixture plan+claims; an item with no evidence and no basis is left unclassified, never
+guessed; nothing written to any table (read-only assertion, same AST-based pin style as L-51's review_queue.py).
+
+Risks/collisions: nightly.py and report.py are shared hot files multiple rungs already touch (T4/T5/T6) — one
+small additive block each, same pattern as before, low risk given the precedent. plan_state.py touches nothing
+CR6 does.
+
+Unlocks: CR7 (Kyle's real-project gate — needs CR6 to exist so a real night can exercise it); LP5 (patch
+acceptance provenance, Codex-shaped) does not need LP4, but a future Plan-tab UI surfacing LP4's states would.
+
+Assumptions remaining: the exact shape of a possible `plan_impact.affected_items_for_plan` batch helper (or a
+loop) is an implementation detail, not a product question, and does not change the plan's approved surfaces.
+Whether CR6's requested-but-not-yet-confirmed refreshes should show up anywhere Kyle actually reads (vs. just
+the CLI/API) is worth his input once CR7 runs on a real project and he can react to whether "N refresh(es)
+requested" is useful or noise.
+
+Deliberately NOT built: waiting for the async harvest to finish before reporting (CR6 stays honest about what it
+started, not what it achieved — CR7 is where Kyle judges the actual outcome by hand); persisting LP4's derived
+states (explicitly deferred per the rung's own gate); a Plan-tab UI line for LP4 (separate, later work); any
+change to plan_items.status's existing meaning.
+
+READY FOR EXECUTION MODEL
