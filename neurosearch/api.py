@@ -439,6 +439,17 @@ def api_discover_next(project_id: str, n: int = 5, rank_by: str = "fit", q: str 
     return candidates.next_batch(project_id, n=max(1, min(n, 50)), rank_by=rank_by, q=q)
 
 
+@app.get("/api/projects/{project_id}/discover/report", dependencies=[Depends(require_auth)])
+def api_discover_report(project_id: str, window: str = "all") -> dict[str, Any]:
+    """AD4A: how Adaptive Discovery has actually performed on this project -- capture rate, downstream finding/
+    Claim/target yield, review burden, evidence-sufficiency. Never a static-vs-adaptive comparison; see
+    `discovery_measure`'s module docstring for why that comparison cannot be reconstructed from current state."""
+    from . import discovery_measure
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return discovery_measure.report(project_id, window=window)
+
+
 class PoolCaptureIn(BaseModel):
     kind: str = "all"          # all | skipped | candidates — same meaning as the pool's own `kind`
     rank_by: str = "fit"

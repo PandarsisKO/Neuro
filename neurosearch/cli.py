@@ -1084,3 +1084,31 @@ def project_discover_decide(project: str, candidate_id: str, decision: str,
         typer.echo(f"captured {candidate_id} -- already owned, attached from the library")
     else:
         typer.echo(f"captured {candidate_id} -- ingest queued (job {r['job_id']})")
+
+
+@project_app.command("discover-report")
+def project_discover_report(project: str, window: str = typer.Option("all", "--window"),
+                            as_json: bool = typer.Option(False, "--json")) -> None:
+    """AD4A: how Adaptive Discovery has actually performed on this project so far -- capture rate, downstream
+    finding/Claim/target yield, review burden, and an honest evidence-sufficiency read. Never a static-vs-adaptive
+    comparison (nothing durable records what a batch showed or omitted); see docs/AD4-DECISION-2026-09-15 for why."""
+    from . import discovery_measure
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    r = discovery_measure.report(pid, window=window)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    u, rv, rb, suf = r["usage"], r["research_value"], r["review_burden"], r["evidence_sufficiency"]
+    typer.echo(f"Evidence: {suf['category']} ({suf['decided_total']} genuine decisions) -- {suf['note']}")
+    typer.echo(f"Capture rate: {u['capture_rate']} ({u['candidate_decisions']})")
+    typer.echo(f"Operational skips (not preference signals): {u['operational_skips']}")
+    typer.echo(f"Acquired sources: {rv['acquired_sources']}")
+    typer.echo(f"Findings: {rv['findings']['by_status']}  Claims: {rv['claims']['by_status']}")
+    typer.echo(f"Evidence targets: {rv['evidence_targets']}")
+    typer.echo(f"Novel creators in window: {r['breadth']['novel_creators_in_window']}")
+    typer.echo(f"Review burden: {rb}")
+    typer.echo(f"\nVerdict: {r['verdict']}")
