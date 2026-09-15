@@ -547,6 +547,7 @@ globalThis.retryJob = async function retryJob(id) { await post(`/api/jobs/${id}/
 globalThis.retryFailed = async function retryFailed() { const r = await post('/api/jobs/retry-failed', { project_id: state.project.id }); toast(`↻ ${r.retried} job${r.retried === 1 ? '' : 's'} queued again`); loadJobs(); }
 globalThis.dismissJob = async function dismissJob(id) { await post(`/api/jobs/${id}/dismiss`, {}).catch(e => toast(e.message || e, 'err')); loadJobs(); }
 globalThis.cancelJob = async function cancelJob(id) { await post(`/api/jobs/${id}/cancel`, {}).catch(e => alert(e.message || e)); globalThis.rvSig = null; loadJobs(); loadReviews(); }
+globalThis.runNowJob = async function runNowJob(id) { await post(`/api/jobs/${id}/run-now`, {}).catch(e => toast(e.message || e, 'err')); toast('starting now'); loadJobs(); loadStaleness(); }
 globalThis.bumpJob = async function bumpJob(id) { await post(`/api/jobs/${id}/bump`, {}).catch(e => toast(e.message || e, 'err')); toast('⏫ moved to the front of the queue'); loadJobs(); }
 globalThis.CHECK_NOW_STATES = new Set(['budget_wait', 'rate_limit_wait', 'provider_wait', 'retry_wait']);
 globalThis.checkNowJob = async function checkNowJob(id) { await post(`/api/jobs/${id}/check-now`, {}).catch(e => toast(e.message || e, 'err')); toast('🔄 checking now — this will run next'); loadJobs(); }
@@ -578,9 +579,9 @@ globalThis.loadJobs = async function loadJobs() {
     return;
   }
   const active = js.filter(j => j.status === 'queued' || j.status === 'running' || j.status === 'external_pending');
-  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
-  const stateClass = st => ({ blocked: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
-  const jobMsg = j => j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || '');
+  const STATE_LABEL = { queued: 'queued', running: 'running', blocked: 'blocked', scheduled: 'scheduled', retry_wait: 'retry wait', budget_wait: 'budget wait', rate_limit_wait: 'rate-limit wait', provider_wait: 'waiting for provider', external_pending: 'in background', external_tentative: 'verifying', external_handle_ambiguous: 'verifying', cancelling: 'cancelling', failed: 'failed', done: 'done', cancelled: 'cancelled' };
+  const stateClass = st => ({ blocked: 'queued', scheduled: 'queued', retry_wait: 'queued', budget_wait: 'queued', rate_limit_wait: 'queued', provider_wait: 'queued', external_pending: 'queued', external_tentative: 'queued', external_handle_ambiguous: 'queued', cancelling: 'running' })[st] || st;
+  const jobMsg = j => j.state === 'scheduled' && j.not_before ? `eligible from ${new Date(j.not_before * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · this Mac must be awake` : j.provider_wait ? j.provider_wait.message : j.batch ? j.batch.label : (j.message || '');
   const depLine = j => { const d = j.dependencies; if (!d) return ''; const bad = [...(d.failed || []), ...(d.cancelled || [])]; return `<div class="muted" style="font-size:12px;width:100%;padding-left:8px">${d.done}/${d.total} upstream done${d.pending ? ` · ${d.pending} pending` : ''}${bad.length ? ` · <span class="status-bad">${bad.length} failed: ${esc(bad.map(x => x.label || x.id.slice(0, 8)).join(', '))}</span> <button class="small" onclick="retryJob('${bad[0].id}')">↻ Retry failed analysis</button>` : ''}</div>`; };
   const recentFailed = js.filter(j => j.status === 'failed' && (Date.now() / 1000 - (j.finished_at || j.created_at || 0)) < 6 * 3600).slice(0, 5);
   const show = [...active, ...recentFailed];
@@ -615,7 +616,7 @@ globalThis.loadJobs = async function loadJobs() {
 
   $('#jobs').innerHTML = (u ? `<div class="row" style="padding:4px 0 8px;font-size:12.5px"><span class="muted grow">Spend: $${u.today.toFixed(2)} of $${u.daily_budget.toFixed(2)} today · $${u.month.toFixed(2)} of $${u.monthly_budget.toFixed(2)} this month${rateBit}</span><button class="small ${u.paused ? 'primary' : ''}" onclick="togglePause(${!u.paused})">${u.paused ? '▶ Resume queue' : '⏸ Pause queue'}</button><button class="small ${u.background_paused ? 'primary' : 'ghost'}" title="${u.background_paused ? 'Let the speculative work run again — it resumes where it left off' : 'Hold the bulk background work — claim passes (whatever lane they run on), caption recovery, metadata backfill — so it stays out of the way. Your own ingests, findings, ranking and chats keep running.'}" onclick="toggleBackground(${!u.background_paused})">${u.background_paused ? '▶ Resume background' : '⏸ Pause background'}</button><button class="small danger" onclick="cancelQueued()">Cancel queued</button>${recentFailed.length > 1 ? `<button class="small" onclick="retryFailed()">↻ Retry all failed</button>` : ''}<button class="small ghost" onclick="showView('settings')">Budget…</button></div>` : '') + coldLine + drawn.map(j => j._budget ? `<div class="banner" style="margin:4px 0 8px">${esc(j.payload.url)}${j._rate ? ` <button class="small ghost" title="Let paid background work run again now. It will be held again if the rate goes back over the ceiling." onclick="rateResume()">▶ Carry on anyway</button>` : ''}${j._recheck ? ` <button class="small ghost" title="Re-check the account now — if you raised the limit or added credits this clears the block and lets the queue try again. Costs nothing: a refusal fails before any work is done." onclick="recheckAccount()">Re-check account</button>` : ''}</div>` : `<div class="job" style="flex-wrap:wrap"><span class="st ${stateClass(j.state || j.status)}" title="${esc(j.state || j.status)}${j.run_id ? ' · run ' + j.run_id.slice(0, 8) : ''}${j.attempts ? ' · attempts ' + j.attempts : ''}">${j.external_provider === 'browser' && (j.state || j.status) === 'external_pending' ? '🌐 browser needed' : STATE_LABEL[j.state || j.status] || j.status}</span>
     <span style="flex:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${j.bumped ? '<span title="moved to the front of the queue">⏫ </span>' : ''}${esc(jobLabel(j))}${j.executed_by ? ` <span class="muted" title="${esc(j.fallback_reason ? 'meant local, ran on the API: ' + j.fallback_reason : 'which AI provider ran this job')}" style="font-size:11px">${j.executed_by === 'local' ? '🖥 local' : j.executed_by === 'mixed' ? '🖥/☁ mixed' : '☁ API' + (j.fallback_reason ? ' (fallback)' : '')}</span>` : (j.execution_policy && j.execution_policy !== 'local_preferred' && (j.status === 'queued' || j.status === 'running') ? ` <span class="muted" style="font-size:11px">${esc(j.execution_policy.replace('_', ' '))}</span>` : '')}</span>
-    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
+    <div class="bar"><i style="width:${Math.round((j.batch && j.batch.sources ? j.batch.done / j.batch.sources : j.progress) * 100)}%"></i></div><span class="muted grow">${esc(jobMsg(j))}${j.status === 'running' && j.started_at ? ` <span title="running for">· ${ago(j.started_at)}</span>` : ''}${liveTag(j)}</span>${j.status === 'queued' && j.id && CHECK_NOW_STATES.has(j.state) ? `<button class="small ghost" title="Its stored message is a snapshot from when it was first parked — make a fresh attempt right now instead of waiting" onclick="checkNowJob('${j.id}')">Check now</button>` : ''}${j.status === 'queued' && j.id && j.state === 'scheduled' ? `<button class="small ghost" title="Start it now instead of waiting for its scheduled time" onclick="runNowJob('${j.id}')">Run now</button>` : j.status === 'queued' && j.id && !j.bumped ? `<button class="small ghost" title="Run this next, ahead of everything else queued" onclick="bumpJob('${j.id}')">⏫ Start next</button>` : ''}${(j.status === 'queued' || j.status === 'running' || j.status === 'external_pending') && j.id && !j.cancel_requested_at ? `<button class="small ghost" title="${j.status === 'queued' ? 'Remove from the queue' : 'Stop at the next safe point'}" aria-label="Cancel job" onclick="cancelJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.status === 'failed' && j.id ? `<button class="small" title="Try again" onclick="retryJob('${j.id}')">↻ Retry</button><button class="small ghost" title="Hide this error" aria-label="Hide this error" onclick="dismissJob('${j.id}')"><svg class="ic"><use href="#ic-dismiss"></use></svg></button>` : ''}${j.id ? `<button class="small ghost" title="History" onclick="jobHistory('${j.id}', this)">⋯</button>` : ''}${depLine(j)}</div>`).join('');
   clearTimeout(jobsTimer);
   const analysing = (SRCG.rows || []).some(s => s.analysing || (s.job && s.job.status === 'running'));
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
@@ -679,10 +680,18 @@ globalThis.renderTriageCard = async function renderTriageCard(elId) {
   const el = $('#' + elId); if (!el) return;
   const s = STALE.data; if (!s) { el.innerHTML = ''; return; }
   const reb = s.sources.filter(x => x.status === 'rebuilding');
-  if (!s.stale_sources && !s.legacy_sources && !reb.length) { el.innerHTML = ''; syncFindingsReview(); return; }
   if (STALE.left) { el.innerHTML = ''; syncFindingsReview(); return; }
+  if (!s.stale_sources && !s.legacy_sources && !reb.length) {
+    // nothing stale -- but a schedule, or what happened to one, still deserves its line
+    let sc = null; try { sc = await api(`/api/projects/${state.project.id}/scheduled`); } catch (e) { sc = null; }
+    STALE.scheduled = sc;
+    const block = scheduledBlock(sc);
+    el.innerHTML = block ? reviewItem('Scheduled analysis', sc.pending.jobs ? 'queued for later' : 'what happened', block, true) : '';
+    syncFindingsReview(); return;
+  }
   let t; try { t = await api(`/api/projects/${state.project.id}/staleness/triage`); } catch (e) { el.innerHTML = ''; syncFindingsReview(); return; }
   STALE.triage = t;
+  try { STALE.scheduled = await api(`/api/projects/${state.project.id}/scheduled`); } catch (e) { STALE.scheduled = null; }
   const T = t.tiers;
   const row = (key, label, btn, danger) => { const x = T[key]; if (!x || !x.count) return '';
     const names = x.sources.slice(0, 3).map(r => esc((r.title || '').slice(0, 48))).join(' · ') + (x.count > 3 ? ` · +${x.count - 3}` : '');
@@ -692,10 +701,18 @@ globalThis.renderTriageCard = async function renderTriageCard(elId) {
   // 0.45.2: both currencies on every button. The local price is time, the API price is dollars; the card shows each tier's
   // two options side by side so "faster" is a thing you can SEE and press, not something you have to know exists.
   // 0.45.3: three prices, because there are three. Free-but-hours, half-price-in-the-background, full-price-now.
-  const fastBtn = (x, key, label) => !x.api_cost ? '' :
-    ` <button class="small ${x.local_line ? '' : 'primary'}" title="One background batch through the Message Batches API — half the price of running it now, and it does not tie up Claude Code. Results land source by source." onclick="rebuildTier('${key}', 'batch')">${label} in the background · ${esc(x.batch_line.replace(' on the API in the background', ''))}</button>` +
-    (x.local_line ? ` <button class="small" title="Queues them and moves them straight onto the API pool — minutes instead of hours" onclick="rebuildTier('${key}', 'api')">${label} now · ${esc(x.api_line)}</button>` : '');
-  const rebuildBtns = (x, key) => `<button class="small ${x.local_line ? 'primary' : ''}" title="${t.local ? 'Runs on Claude Code in the background — $0, but slow' : 'Runs on the API'}" onclick="rebuildTier('${key}')">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, key, 'Rebuild')}`;
+  // L-40 (P1B): ONE primary action per tier -- "<Verb> · price" runs it now, the way it always did -- and one
+  // disclosure, "When…", that reveals the other times: now on the API (when local is the default), tonight, and
+  // an overnight batch. The choices say what will happen; none of them names not_before, leases or dedupe.
+  const whenMenu = (x, key, label) => `<div class="when-menu" id="when-${key}" hidden>` +
+    (x.local_line ? `<button class="small" title="Queues them and moves them straight onto the API pool — minutes instead of hours" onclick="rebuildTier('${key}', 'api')">${label} now on the API · ${esc(x.api_line)}</button>` : '') +
+    `<button class="small" title="Queued now, eligible from tonight's hour. This Mac must be awake with Neuro Search running for it to start." onclick="rebuildTier('${key}', 'tonight')">${label} tonight · ${esc(x.cost_line)}</button>` +
+    (x.api_cost ? `<button class="small" title="One background batch through the Message Batches API, eligible from tonight's hour — half the price of running it now. Results land by morning if this Mac stays awake." onclick="rebuildTier('${key}', 'overnight')">${label} overnight as a batch · ${esc(x.batch_line.replace(' on the API in the background', ''))}</button>` : '') +
+    (x.api_cost ? `<button class="small ghost" title="One background batch through the Message Batches API, starting now — half the price of running it now. Results land source by source." onclick="rebuildTier('${key}', 'batch')">${label} in the background · ${esc(x.batch_line.replace(' on the API in the background', ''))}</button>` : '') +
+    `</div>`;
+  const whenBtn = key => ` <button class="small ghost" aria-expanded="false" aria-controls="when-${key}" title="Run it at a different time, or a different way" onclick="toggleWhen('${key}', this)">When…</button>`;
+  const fastBtn = (x, key, label) => !x.api_cost ? '' : whenBtn(key) + whenMenu(x, key, label);
+  const rebuildBtns = (x, key) => `<button class="small primary" title="${t.local ? 'Runs on Claude Code in the background — $0, but slow' : 'Runs on the API'}" onclick="rebuildTier('${key}')">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, key, 'Rebuild')}`;
   const acceptBtns = x => `<button class="small" onclick="acceptTier('accept')">Accept ${x.count} as still usable</button> <button class="small ghost" onclick="rebuildTier('accept')" title="Re-read them anyway">Rebuild · ${esc(x.cost_line)}</button>${fastBtn(x, 'accept', 'Rebuild')}`;
   const retryBtns = x => `<button class="small" onclick="rebuildTier('retry_failed')">Retry ${x.count} · ${esc(x.cost_line)}</button>${fastBtn(x, 'retry_failed', 'Retry')}`;
   // 0.61.0: a warning that says ZERO is worse than no warning. This card appears whenever anything is
@@ -704,7 +721,7 @@ globalThis.renderTriageCard = async function renderTriageCard(elId) {
   const head = t.stale_total
     ? `⚠ ${t.stale_total} source${t.stale_total === 1 ? '' : 's'} analysed against older inputs`
     : (reb.length ? `⟳ Re-analysing ${reb.length} source${reb.length === 1 ? '' : 's'}` : 'Source analysis');
-  const body = `${t.accepted ? `<span class="muted">${t.accepted} accepted as still usable.</span>` : ''}${t.stale_total && reb.length ? ` <span class="muted">${reb.length} re-analysing.</span>` : ''}
+  const body = `${scheduledBlock(STALE.scheduled)}${t.accepted ? `<span class="muted">${t.accepted} accepted as still usable.</span>` : ''}${t.stale_total && reb.length ? ` <span class="muted">${reb.length} re-analysing.</span>` : ''}
     <div class="muted">Every option below shows both prices — hours on Claude Code, or dollars on the API — and nothing runs unless you ask.${t.local ? '' : ' Claude Code is not active: costs are API dollars.'}</div>
     ${row('rebuild_matters', 'stale AND carrying weight', x => rebuildBtns(x, 'rebuild_matters'))}
     ${row('rebuild_transcript', 'whose transcript changed', x => rebuildBtns(x, 'rebuild_transcript'))}
@@ -719,14 +736,55 @@ globalThis.rebuildTier = async function rebuildTier(tier, mode) {
   const slow = T.local_line ? T.local_line.replace('$0 · about ', '').replace(' on Claude Code', '').replace(/ \(\d+ at a time\)/, '') : 'hours';
   if (mode === 'batch' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} as one background batch for about $${(T.batch_cost || 0).toFixed(2)}?\n\nThat is half what running them now costs ($${(T.api_cost || 0).toFixed(2)}) because the Message Batches API discounts the model tokens. It runs in the background and results land source by source, so it does not tie up Claude Code or make you wait ${slow}.`)) return;
   if (mode === 'api' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} on the API right now for about ${T.api_line}?\n\nThey finish in minutes instead of ${slow} on Claude Code. The same work as a background batch is about half this ($${(T.batch_cost || 0).toFixed(2)}) if you can wait. Each job still passes the daily budget on its own.`)) return;
-  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], tier, transport: mode === 'batch' ? 'batch' : 'interactive' });
+  const HOST = 'This Mac must be awake with Neuro Search running for it to start; it runs at the next chance after that time, not at the exact minute. You can cancel it any time before it starts.';
+  if (mode === 'tonight' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} tonight (${T.cost_line})?\n\n${HOST}`)) return;
+  if (mode === 'overnight' && !confirm(`Re-read ${T.count} source${T.count === 1 ? '' : 's'} overnight as one background batch for about $${(T.batch_cost || 0).toFixed(2)}?\n\nHalf the price of running them now. ${HOST}`)) return;
+  const scheduled = mode === 'tonight' || mode === 'overnight';
+  const r = await post(`/api/projects/${state.project.id}/rebuild-stale`, { what: ['findings'], tier, transport: (mode === 'batch' || mode === 'overnight') ? 'batch' : 'interactive', when: scheduled ? 'tonight' : 'now' });
   let msg = `${r.queued} job${r.queued === 1 ? '' : 's'} queued`;
   if (mode === 'batch') msg = `${T.count} queued as one background batch · est. $${(T.batch_cost || 0).toFixed(2)}`;
+  if (scheduled && r.schedule) msg = `${T.count} scheduled · eligible from ${r.schedule.eligible_from} ${r.schedule.day}${mode === 'overnight' ? ` · est. $${(T.batch_cost || 0).toFixed(2)}` : ''}`;
   if (mode === 'api' && r.queued) {
     const a = await post(`/api/projects/${state.project.id}/accelerate`, { n: r.queued, order: 'value' });
     msg += ` · ${a.moved} moved to the API, est. $${(a.api_cost || 0).toFixed(2)}`;
   }
   toast(msg); loadStaleness(); loadJobs();
+}
+globalThis.toggleWhen = function toggleWhen(key, btn) {
+  const m = document.getElementById('when-' + key); if (!m) return;
+  m.hidden = !m.hidden; if (btn) btn.setAttribute('aria-expanded', String(!m.hidden));
+}
+// L-40: the few facts about a schedule, in the words the server chose (host-honest: "eligible from", never "runs at").
+globalThis.scheduledBlock = function scheduledBlock(sc) {
+  if (!sc) return '';
+  const p = sc.pending, r = sc.recent;
+  const parts = [];
+  if (p && p.jobs) {
+    const when = p.schedule ? `eligible from ${esc(p.schedule.eligible_from)} ${esc(p.schedule.day)}` : 'waiting';
+    const how = p.transport === 'batch' ? 'as one background batch' : 'one by one';
+    const cost = p.estimate_usd ? `about $${p.estimate_usd.toFixed(2)}` : '$0 if Claude Code is active';
+    parts.push(`<div class="row sched"><span class="grow min-w-0"><b>${p.sources} source${p.sources === 1 ? '' : 's'} scheduled</b> · ${when} · ${how} · ${cost}${p.started ? ` · <span class="st running">${p.started} started</span>` : ''}<div class="muted text-xs">${esc(p.schedule ? p.schedule.host_note : '')}</div></span>` +
+      (p.waiting ? `<button class="small ghost" title="Start the scheduled work right now instead" onclick="runScheduledNow()">Run now instead</button><button class="small ghost" title="Remove the scheduled work that has not started" onclick="cancelScheduled()">Cancel</button>` : '') + `</div>`);
+  }
+  if (r && (r.done || r.failed || r.missed_window || r.cancelled)) {
+    const bits = [];
+    if (r.done) bits.push(`${r.done_sources} source${r.done_sources === 1 ? '' : 's'} re-read`);
+    if (r.failed) bits.push(`<span class="status-bad">${r.failed} failed</span>`);
+    if (r.missed_window) bits.push(`<span class="status-bad">${r.missed_window} missed the window</span>`);
+    if (r.cancelled) bits.push(`${r.cancelled} cancelled`);
+    parts.push(`<div class="row sched"><span class="grow min-w-0"><b>Since you were away:</b> ${bits.join(' · ')}${r.spend_usd ? ` · $${r.spend_usd.toFixed(2)}` : ' · $0'}${r.needs_attention ? ' · <b>needs a look</b> — see In progress below' : ''}</span></div>`);
+  }
+  return parts.join('');
+}
+globalThis.cancelScheduled = async function cancelScheduled() {
+  const r = await post(`/api/projects/${state.project.id}/scheduled/cancel`, {}).catch(e => { toast(e.message || e, 'err'); return null; });
+  if (r) toast(`${r.cancelled} scheduled job${r.cancelled === 1 ? '' : 's'} cancelled`);
+  loadStaleness(); loadJobs();
+}
+globalThis.runScheduledNow = async function runScheduledNow() {
+  const ids = (STALE.scheduled && STALE.scheduled.pending && STALE.scheduled.pending.job_ids) || [];
+  for (const id of ids) await post(`/api/jobs/${id}/run-now`, {}).catch(() => {});
+  toast(ids.length ? 'starting now' : 'nothing scheduled'); loadStaleness(); loadJobs();
 }
 globalThis.acceptTier = async function acceptTier(tier) {
   const r = await post(`/api/projects/${state.project.id}/staleness/accept`, { tier });

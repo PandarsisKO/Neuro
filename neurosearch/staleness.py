@@ -19,6 +19,18 @@ CURRENT, STALE, REBUILDING, MISSING, SUPERSEDED, LEGACY = "current", "stale", "r
 
 
 ACCEPTED = "current_accepted"     # S1: stale by inputs, accepted by the user as still usable (until the inputs change again)
+def next_tonight(now_ts: float | None = None) -> float:
+    """L-40: the next occurrence of the nightly hour (settings.t4_nightly_hour, local) -- today's if it hasn't
+    passed, else tomorrow's. One definition of "tonight" for the UI, the CLI and the nightly envelope, computed
+    on the host's own clock. It is when the job becomes ELIGIBLE, never a promise of when it runs."""
+    import time as _t
+    from .config import settings as _s
+    t = now_ts if now_ts is not None else _t.time()
+    lt = _t.localtime(t)
+    target = _t.mktime(_t.struct_time((lt.tm_year, lt.tm_mon, lt.tm_mday, int(_s.t4_nightly_hour), 0, 0, 0, 0, -1)))
+    return target if target > t else target + 86400
+
+
 LOCAL_MINUTES_PER_WINDOW = 1.2    # observed 2026-09-08: ~one findings window per minute on Claude Code (Sonnet)
 
 

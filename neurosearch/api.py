@@ -2083,6 +2083,7 @@ class RebuildIn(BaseModel):
     transport: str = "interactive"         # findings rebuild: interactive (now) | batch (background); the plan is never batched
     tier: str | None = None                # S1: rebuild_matters | rebuild_transcript | retry_failed | accept — the triage tier's sources
     not_before: float | None = None        # L-20: epoch seconds; run no earlier than this (the "Tonight" P1B UI's backend)
+    when: str | None = None                # L-40: "now" (default) | "tonight" -- the server computes tonight on its own clock
 
 
 @app.get("/api/projects/{project_id}/ai-backlog", dependencies=[Depends(require_auth)])
@@ -2144,12 +2145,103 @@ def api_rebuild_stale(project_id: str, body: RebuildIn) -> dict[str, Any]:
     from . import staleness
     if body.transport not in ("interactive", "batch"):
         raise HTTPException(400, "transport must be 'interactive' or 'batch'")
+    if body.when not in (None, "now", "tonight"):
+        raise HTTPException(400, "when must be 'now' or 'tonight'")
+    not_before = body.not_before
+    if body.when == "tonight":
+        not_before = staleness.next_tonight()
     source_ids = body.source_ids
     if body.tier:
         source_ids = [r["source_id"] for r in staleness.triage(project_id)["tiers"].get(body.tier, {}).get("sources", [])]
         if not source_ids:
             return {"queued": 0, "job_ids": [], "tier": body.tier}
-    return {**staleness.rebuild(project_id, body.what, source_ids, transport=body.transport, not_before=body.not_before), "tier": body.tier}
+    out = {**staleness.rebuild(project_id, body.what, source_ids, transport=body.transport, not_before=not_before), "tier": body.tier}
+    if not_before is not None:
+        out["schedule"] = _schedule_words(not_before)
+    return out
+
+
+def _schedule_words(not_before: float) -> dict[str, Any]:
+    """L-40: what the UI is allowed to say about a schedule. Host-honest by construction: 'eligible from', never
+    'runs at' -- nothing here promises a sleeping or closed-lid Mac will do anything (PRODUCT-INTELLIGENCE-MISSION.md
+    rulings section 4). The same words feed the CLI so the product has one story."""
+    import time as _t
+    lt = _t.localtime(not_before)
+    today = _t.localtime()
+    day = "tonight" if (lt.tm_year, lt.tm_yday) in ((today.tm_year, today.tm_yday), (today.tm_year, today.tm_yday + 1)) else _t.strftime("%a %d %b", lt)
+    return {"not_before": not_before, "eligible_from": _t.strftime("%H:%M", lt), "day": day,
+            "host_note": "This Mac must be awake with Neuro Search running for it to start; it runs at the next chance after that time, not at the exact minute."}
+
+
+@app.get("/api/projects/{project_id}/scheduled", dependencies=[Depends(require_auth)])
+def api_project_scheduled(project_id: str) -> dict[str, Any]:
+    """L-40: what is scheduled for this project and what happened to what was scheduled -- the few facts the
+    Tonight UI shows. Read-only. Pending = queued jobs the user scheduled (wait_reason='scheduled'); recent =
+    scheduled jobs that reached a terminal state in the last 36h, including missed windows, so the panel can say
+    what happened when the user comes back."""
+    import time as _t
+    from . import usage
+    ids = set(db.project_source_ids(project_id, ready_only=False))
+
+    def _mine(j: dict[str, Any]) -> bool:
+        pl = j.get("payload") or {}
+        return pl.get("project_id") == project_id or (j["kind"] == "ingest_source" and pl.get("source_id") in ids)
+
+    def _n_sources(j: dict[str, Any]) -> int:
+        pl = j.get("payload") or {}
+        return len(pl.get("source_ids") or []) or (1 if pl.get("source_id") else 0)
+
+    pending = [j for j in db.list_jobs(limit=5000, statuses=("queued", "running", "external_pending"))
+               if _mine(j) and (j.get("payload") or {}).get("_scheduled_for") is not None]
+    cutoff = _t.time() - 36 * 3600
+    recent = [j for j in db.list_jobs(limit=2000, statuses=db.JOB_TERMINAL)
+              if _mine(j) and (j.get("payload") or {}).get("_scheduled_for") is not None and (j.get("finished_at") or j.get("updated_at") or 0) >= cutoff]
+    waiting = [j for j in pending if j["status"] == "queued" and j.get("wait_reason") == "scheduled"]
+    started = [j for j in pending if j not in waiting]
+    est = 0.0
+    for j in waiting + started:
+        for sid in ((j.get("payload") or {}).get("source_ids") or ([(j.get("payload") or {}).get("source_id")] if (j.get("payload") or {}).get("source_id") else [])):
+            try:
+                est += usage.estimate_source_findings(sid)
+            except Exception:  # noqa: BLE001
+                pass
+    nb = min((j["not_before"] for j in waiting if j.get("not_before")), default=None)
+    done = [j for j in recent if j["status"] == "done"]
+    failed = [j for j in recent if j["status"] == "failed"]
+    missed = [j for j in recent if j["status"] == "cancelled" and "deadline" in (j.get("message") or "").lower()]
+    cancelled = [j for j in recent if j["status"] == "cancelled" and j not in missed]
+    return {
+        "pending": {"jobs": len(waiting) + len(started), "sources": sum(_n_sources(j) for j in waiting + started),
+                    "waiting": len(waiting), "started": len(started), "job_ids": [j["id"] for j in waiting],
+                    "transport": "batch" if any(j["kind"] == "suggest_findings_batch" for j in waiting + started) else "interactive",
+                    "estimate_usd": round(est, 4), "schedule": _schedule_words(nb) if nb else None},
+        "recent": {"done": len(done), "done_sources": sum(_n_sources(j) for j in done), "failed": len(failed),
+                   "missed_window": len(missed), "cancelled": len(cancelled),
+                   "spend_usd": round(float(db.connect().execute(
+                       "SELECT COALESCE(SUM(cost),0) c FROM usage WHERE project_id=? AND ts>=?", (project_id, cutoff)).fetchone()["c"]), 4)
+                   if recent else 0.0,
+                   "needs_attention": bool(failed or missed)},
+    }
+
+
+@app.post("/api/projects/{project_id}/scheduled/cancel", dependencies=[Depends(require_auth)])
+def api_project_scheduled_cancel(project_id: str) -> dict[str, Any]:
+    """L-40: cancel everything this project has scheduled and not yet started. Only wait_reason='scheduled' queued
+    jobs -- a job that already started is left to finish or be cancelled individually, so nothing half-done is lost."""
+    sched = api_project_scheduled(project_id)
+    n = db.cancel_queued_jobs(job_ids=sched["pending"]["job_ids"]) if sched["pending"]["job_ids"] else 0
+    return {"cancelled": n}
+
+
+@app.post("/api/jobs/{job_id}/run-now", dependencies=[Depends(require_auth)])
+def api_job_run_now(job_id: str) -> dict[str, Any]:
+    """L-40: pull one scheduled job forward to right now (clears only the user's own schedule, then bumps it)."""
+    st = db.run_scheduled_now(job_id)
+    if st == "missing":
+        raise HTTPException(404, "job not found")
+    if st == "not_scheduled":
+        raise HTTPException(409, "that job is not waiting on a schedule")
+    return {"status": st}
 
 
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])

@@ -2372,7 +2372,8 @@ def derived_status(j: dict[str, Any]) -> str:
             if rep["state"] == "waiting":
                 return "blocked"
         if j.get("not_before") and j["not_before"] > now():
-            return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait"}.get(j.get("wait_reason") or "", "retry_wait")
+            return {"budget": "budget_wait", "retry": "retry_wait", "rate_limit": "rate_limit_wait", "provider": "provider_wait",
+                    "scheduled": "scheduled"}.get(j.get("wait_reason") or "", "retry_wait")   # L-40: a caller's schedule is not a retry
         return "queued"
     if st == "running" and j.get("cancel_requested_at"):
         return "cancelling"
@@ -2465,6 +2466,23 @@ def request_cancel(job_id: str) -> str:
 def cancel_requested(job_id: str) -> bool:
     r = connect().execute("SELECT cancel_requested_at FROM jobs WHERE id=?", (job_id,)).fetchone()
     return bool(r and r["cancel_requested_at"])
+
+
+def run_scheduled_now(job_id: str) -> str:
+    """L-40: "run now instead" for a job the user scheduled (wait_reason='scheduled'). Clears ONLY that kind of
+    wait -- a budget/provider/retry park is not the user's schedule and stays -- then bumps it to the front, so it
+    behaves exactly like a fresh "Now". Returns the resulting derived state, or the reason it did nothing."""
+    with tx() as conn:
+        r = conn.execute("SELECT status, wait_reason FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not r:
+            return "missing"
+        if r["status"] != "queued":
+            return r["status"]
+        if r["wait_reason"] != "scheduled":
+            return "not_scheduled"
+        conn.execute("UPDATE jobs SET not_before=NULL, wait_reason=NULL, updated_at=? WHERE id=? AND status='queued'", (now(), job_id))
+        job_event(job_id, "scheduled_run_now", conn=conn)
+    return bump_job(job_id)
 
 
 def bump_job(job_id: str) -> str:

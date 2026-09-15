@@ -92,6 +92,8 @@
   .w-auto{width:auto}
   .mt-1{margin-top:var(--space-1)}
   .mt-2{margin-top:var(--space-2)}
+  .when-menu{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-basis:100%}
+  .sched{margin:2px 0 8px;padding:6px 8px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--chip)}
   .mt-3{margin-top:var(--space-3)}
   .mt-4{margin-top:var(--space-4)}
   .mt-6{margin-top:var(--space-6)}
