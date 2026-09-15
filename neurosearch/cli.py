@@ -593,6 +593,44 @@ def project_delete(project: str) -> None:
     typer.echo("deleted")
 
 
+@project_app.command("rebuild-stale")
+def project_rebuild_stale(project: str, tier: str = typer.Option("rebuild_matters", help="rebuild_matters | rebuild_transcript | retry_failed | accept"),
+                          at: Optional[str] = typer.Option(None, "--at", help="HH:MM local time — run no earlier than this (today, or tomorrow if that time already passed)"),
+                          transport: str = typer.Option("interactive", help="interactive (one job per source) | batch (one background job)")) -> None:
+    """L-20 (EXECUTION-LADDER.md P1A): queue a triage tier's stale sources for rebuild, optionally not before a
+    given local time. Schedule from the CLI and exit the shell — a worker picks this up later, exactly once,
+    whether the host was awake at --at or not. Host-honest by design: this NEVER prints "runs at HH:MM" as a
+    promise, because nothing guarantees the machine is awake or the worker is running then (see
+    PRODUCT-INTELLIGENCE-MISSION.md's idle-sleep/lid-closure sections) — only that the job will not be claimed
+    any EARLIER than that time, and will run at the worker's next eligible start after it."""
+    from . import staleness
+
+    _init()
+    pid = _project_id(project)
+    assert pid
+    source_ids = [r["source_id"] for r in staleness.triage(pid)["tiers"].get(tier, {}).get("sources", [])]
+    if not source_ids:
+        typer.echo(f"nothing to rebuild in tier '{tier}'")
+        return
+    not_before = None
+    if at:
+        try:
+            hh, mm = (int(x) for x in at.split(":", 1))
+        except ValueError:
+            typer.echo(f"--at must be HH:MM, got {at!r}"); raise typer.Exit(1)
+        now_t = time.localtime()
+        target = time.struct_time((now_t.tm_year, now_t.tm_mon, now_t.tm_mday, hh, mm, 0, 0, 0, -1))
+        not_before = time.mktime(target)
+        if not_before <= time.time():
+            not_before += 86400                                    # already passed today — tomorrow instead
+    r = staleness.rebuild(pid, ["findings"], source_ids, transport=transport, not_before=not_before)
+    if not_before is not None:
+        typer.echo(f"queued {r['queued']} job(s) for tier '{tier}' — runs when the worker is next available, "
+                  f"no earlier than {time.strftime('%Y-%m-%d %H:%M', time.localtime(not_before))} local time")
+    else:
+        typer.echo(f"queued {r['queued']} job(s) for tier '{tier}'")
+
+
 if __name__ == "__main__":
     app()
 

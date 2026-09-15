@@ -2034,13 +2034,28 @@ def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str
 
 
 def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
-               dedupe_key: str | None = None, execution_policy: str = "local_preferred", lane: str = "normal") -> dict[str, Any]:
+               dedupe_key: str | None = None, execution_policy: str = "local_preferred", lane: str = "normal",
+               not_before: float | None = None) -> dict[str, Any]:
     """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
     identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
-    active return the existing job instead of a duplicate."""
+    active return the existing job instead of a duplicate.
+
+    not_before (L-20, EXECUTION-LADDER.md P1A): a caller asking for the job to run no earlier than a future time
+    (e.g. "rebuild stale sources tonight"). `not_before` and `wait_reason` are pre-existing columns/machinery,
+    already correctly honored by claim_job()'s claiming query and cleared at claim time -- this is the first
+    caller-facing entry point for them; every prior setter was internal (retry/budget/rate-limit waits). A
+    caller-requested wait gets its own wait_reason ('scheduled') so the account-gate and budget-valve resume
+    sweeps (db.release_budget_waits, api.py's /api/usage settings sweep) can tell "waiting because I asked for
+    2am" apart from "waiting because the account is out of budget" and never wake a scheduled job early. The
+    original request is ALSO kept in the payload as `_scheduled_for` (not_before) since claim_job() nulls the
+    `not_before` column itself at claim time (by design, to clear the wait once satisfied) -- without a payload
+    copy the "scheduled vs actual start" provenance ruling (missed-window policy) would have nothing to compare
+    against once the job actually runs."""
     assert dependency_policy in DEP_POLICIES, dependency_policy
     key = dedupe_key or dedupe_key_for(kind, payload)
     blocked_by = list(dict.fromkeys(blocked_by)) if blocked_by else None      # de-duplicated, order kept
+    if not_before is not None:
+        payload = {**payload, "_scheduled_for": not_before}
     with tx() as conn:
         if blocked_by:
             _check_no_cycle(conn, None, blocked_by)
@@ -2053,12 +2068,16 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
         jid = new_id()
         assert execution_policy in EXECUTION_POLICIES, execution_policy
         conn.execute(
-            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane, not_before, wait_reason) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (jid, kind, json.dumps(payload), now(), json.dumps(blocked_by) if blocked_by else None,
-             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else None, dependency_policy, key, execution_policy,
-             lane if lane in ("normal", "slow", "priority", "low") else "normal"),
+             f"waiting for {len(blocked_by)} upstream job{'s' if len(blocked_by) != 1 else ''}" if blocked_by else
+             (f"scheduled — runs when the worker is next available, no earlier than the requested time" if not_before is not None else None),
+             dependency_policy, key, execution_policy,
+             lane if lane in ("normal", "slow", "priority", "low") else "normal",
+             not_before, "scheduled" if not_before is not None else None),
         )
-        job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key)
+        job_event(jid, "queued", conn=conn, kind=kind, blocked_by=blocked_by or None, dedupe_key=key, not_before=not_before)
     return get_job(jid)  # type: ignore[return-value]
 
 

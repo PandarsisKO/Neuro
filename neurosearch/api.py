@@ -640,9 +640,14 @@ def api_budget(body: BudgetIn) -> dict[str, Any]:
     if body.paused is not None:
         db.kv_set("queue_paused", "1" if body.paused else None)
     if body.paused is False or body.daily is not None or body.monthly is not None:
-        # wake anything waiting on the valve — a raised budget or a Resume should take effect now, not at midnight
+        # wake anything waiting on the valve — a raised budget or a Resume should take effect now, not at midnight.
+        # L-20 (EXECUTION-LADDER.md P1A): must NEVER wake a caller-requested schedule (wait_reason='scheduled',
+        # e.g. "rebuild stale sources tonight") early just because someone raised the budget or hit Resume --
+        # that is a different wait for a different reason, and waking it early breaks the "runs when the worker
+        # is next available, no earlier than the requested time" promise the CLI/API gave when it was scheduled.
         with db.tx() as conn:
-            conn.execute("UPDATE jobs SET not_before=NULL, message=NULL WHERE status='queued' AND (message LIKE 'paused:%' OR not_before IS NOT NULL)")
+            conn.execute("UPDATE jobs SET not_before=NULL, message=NULL WHERE status='queued' AND (wait_reason IS NULL OR wait_reason != 'scheduled') "
+                        "AND (message LIKE 'paused:%' OR not_before IS NOT NULL)")
     return usage.totals()
 
 
@@ -2077,6 +2082,7 @@ class RebuildIn(BaseModel):
     source_ids: list[str] | None = None
     transport: str = "interactive"         # findings rebuild: interactive (now) | batch (background); the plan is never batched
     tier: str | None = None                # S1: rebuild_matters | rebuild_transcript | retry_failed | accept — the triage tier's sources
+    not_before: float | None = None        # L-20: epoch seconds; run no earlier than this (the "Tonight" P1B UI's backend)
 
 
 @app.get("/api/projects/{project_id}/ai-backlog", dependencies=[Depends(require_auth)])
@@ -2143,7 +2149,7 @@ def api_rebuild_stale(project_id: str, body: RebuildIn) -> dict[str, Any]:
         source_ids = [r["source_id"] for r in staleness.triage(project_id)["tiers"].get(body.tier, {}).get("sources", [])]
         if not source_ids:
             return {"queued": 0, "job_ids": [], "tier": body.tier}
-    return {**staleness.rebuild(project_id, body.what, source_ids, transport=body.transport), "tier": body.tier}
+    return {**staleness.rebuild(project_id, body.what, source_ids, transport=body.transport, not_before=body.not_before), "tier": body.tier}
 
 
 @app.post("/api/projects/{project_id}/plan/build", dependencies=[Depends(require_auth)])

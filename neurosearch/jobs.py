@@ -264,8 +264,9 @@ def poll_external_once() -> int:
 
 # ------------------------------------------------------------------ running a job
 
-def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal", execution_policy: str = "local_preferred") -> dict[str, Any]:
-    return db.create_job(kind, payload, lane=lane, execution_policy=execution_policy)
+def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal", execution_policy: str = "local_preferred",
+           not_before: float | None = None) -> dict[str, Any]:
+    return db.create_job(kind, payload, lane=lane, execution_policy=execution_policy, not_before=not_before)
 
 
 def run_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -385,6 +386,29 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     with _running_lock:
         _running[jid] = run_id or ""
     t0 = time.time()
+
+    # L-20 (EXECUTION-LADDER.md P1A, missed-window policy, PRODUCT-INTELLIGENCE-MISSION.md §4): "record scheduled
+    # time, actual start time, reason for delay" for a job a caller asked to run no earlier than a future time
+    # (create_job's not_before -> here as payload["_scheduled_for"], since claim_job() already nulled the
+    # not_before column itself at claim time). A deadline (payload["_deadline"], not yet exposed by any caller --
+    # ready for the first one that needs "don't run this if it's now too late to matter") is honored here too:
+    # "executing late would violate the task's semantics" / "the deadline has passed" from the same ruling.
+    scheduled_for = (job.get("payload") or {}).get("_scheduled_for")
+    if scheduled_for is not None:
+        deadline = (job.get("payload") or {}).get("_deadline")
+        delay = t0 - scheduled_for
+        if deadline is not None and t0 > deadline:
+            db.job_event(jid, "missed_window", run_id=run_id, scheduled=scheduled_for, actual=t0, delay_seconds=delay,
+                        reason="deadline passed")
+            db.finish_job(jid, run_id, "cancelled",
+                          message=f"missed its deadline (scheduled for {time.strftime('%H:%M', time.localtime(scheduled_for))}, "
+                                  f"deadline {time.strftime('%H:%M', time.localtime(deadline))}, host unavailable until now)")
+            with _running_lock:
+                _running.pop(jid, None)
+            return "cancelled"
+        db.job_event(jid, "scheduled_run_started", run_id=run_id, scheduled=scheduled_for, actual=t0, delay_seconds=delay,
+                    reason="on time" if delay < 60 else "host unavailable at the scheduled time; ran at next eligible start")
+
     providers.set_policy(job.get("execution_policy") or "local_preferred")
     providers.reset_job_route()
     try:

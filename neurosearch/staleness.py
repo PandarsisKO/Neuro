@@ -200,21 +200,31 @@ def _plan_estimate(project_id: str) -> float:
     return (material_tokens * 2 * pin + 12000 * pout) / 1e6            # two passes over the material, ~12k tokens of plan out
 
 
-def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str] | None = None, transport: str = "interactive") -> dict[str, Any]:
+def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str] | None = None, transport: str = "interactive",
+           not_before: float | None = None) -> dict[str, Any]:
     """Queue the rebuild of stale artifacts as ordinary background jobs. Every job passes usage.guard on its own,
     so when the budget runs out the rest wait (nothing is lost) and the ones that finished are current already.
     transport is explicit per request: 'interactive' = one job per source now; 'batch' = ONE background batch job for
-    all the stale sources (each source becomes current as its results land). The plan waits for whichever was chosen."""
+    all the stale sources (each source becomes current as its results land). The plan waits for whichever was chosen.
+
+    not_before (L-20, EXECUTION-LADDER.md P1A): schedule every job this call creates to run no earlier than a
+    future time, rather than now. `assess()` still runs HERE, at call time (now), not deferred to the scheduled
+    time -- but that is not a "no longer current" gap: findings.suggest_for_source()'s own is_current/input_hash
+    check already makes a job for a source that became current again before it actually runs a $0 no-op (the
+    'skipped' path), and staleness itself is re-derived fresh on the NEXT ordinary assess()/triage() call, so
+    nothing is silently stuck on a stale verdict. A caller wanting the staleness set itself re-evaluated at
+    execution time (not just each job's own currency) would need a different, deferred-assess design -- not
+    needed by anything asking for this yet, so not built speculatively here."""
     what = what or ["findings", "plan"]
     a = assess(project_id)
     jobs: list[dict[str, Any]] = []
     if "findings" in what:
         targets = [x["source_id"] for x in a["sources"] if x["status"] in (STALE, LEGACY) and (not source_ids or x["source_id"] in source_ids)]
         if transport == "batch" and targets:
-            jobs.append(db.create_job("suggest_findings_batch", {"project_id": project_id, "source_ids": targets, "force": True, "reason": "stale"}))
+            jobs.append(db.create_job("suggest_findings_batch", {"project_id": project_id, "source_ids": targets, "force": True, "reason": "stale"}, not_before=not_before))
         else:
             for sid in targets:                                       # one job per source: independent, resumable, individually current
-                jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}))
+                jobs.append(db.create_job("suggest_findings", {"project_id": project_id, "source_ids": [sid], "force": True, "reason": "stale"}, not_before=not_before))
     if "plan" in what and a["plan"]["status"] == STALE:
         # Dependency barrier: the plan must not be built until the research it depends on has settled. It waits for
         # every upstream job to REACH A CONCLUSION, not for every one to succeed (0.61.0).
@@ -228,7 +238,7 @@ def rebuild(project_id: str, what: list[str] | None = None, source_ids: list[str
         # the snapshot it was built from, so what was missing stays visible.
         upstream = [j["id"] for j in jobs] + [j["id"] for j in live_findings_jobs(project_id)]
         jobs.append(db.create_job("build_plan", {"project_id": project_id, "reason": "stale"},
-                                  blocked_by=upstream or None, dependency_policy="ALL_TERMINAL"))
+                                  blocked_by=upstream or None, dependency_policy="ALL_TERMINAL", not_before=not_before))
     return {"queued": len(jobs), "job_ids": [j["id"] for j in jobs], "estimate": a["estimate"], "budget": a["budget"], "transport": transport}
 
 
