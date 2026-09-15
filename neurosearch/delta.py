@@ -152,6 +152,18 @@ def _adjudication_summary(a: dict[str, Any] | None) -> dict[str, Any] | None:
             "stopped_by_budget": a.get("stopped_by_budget"), "errors": a.get("errors") or []}
 
 
+def _research_refresh_summary(r: dict[str, Any] | None) -> dict[str, Any] | None:
+    """CR6: what the night's research-refresh pass STARTED, straight off the envelope record. Never claims a
+    Claim actually changed -- that is research_refresh.check()'s job, read any time after the async harvest runs."""
+    if not r:
+        return None
+    if not r.get("ran"):
+        return {"ran": False, "reason": r.get("reason") or r.get("error"), "budget": r.get("budget")}
+    return {"ran": True, "budget": r.get("budget"), "spent_estimate": r.get("spent_estimate"),
+           "count": len(r.get("requested") or []), "requested": r.get("requested") or [],
+           "stopped_by_budget": r.get("stopped_by_budget")}
+
+
 def for_envelope(envelope_id: str) -> dict[str, Any]:
     """Compute the Project Delta for one already-run autonomous execution envelope. Returns
     ``{"found": False, ...}`` for an unknown or not-yet-run envelope id -- never raises for that, since "nothing
@@ -188,6 +200,7 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
         "new_tensions_total": total_new_tensions,
         "needs_user": needs_user,
         "adjudication": _adjudication_summary(record.get("adjudication")),
+        "research_refresh": _research_refresh_summary(record.get("research_refresh")),
         "assumptions": None,   # filled below: t6.surface() needs the assembled dict
         "preflight_backup": record.get("preflight_backup"),
         "ts": time.time(),

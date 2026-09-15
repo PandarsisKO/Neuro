@@ -758,6 +758,7 @@ def nightly_status() -> None:
 @nightly_app.command("run")
 def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", help="Per-night dollar cap for THIS run (overrides NEUROSEARCH_T4_NIGHTLY_BUDGET_USD for this invocation only)"),
                     t5_budget: Optional[float] = typer.Option(None, "--t5-budget", help="SEPARATE per-night cap for T5 adjudication (Sonnet-tier calls; L-60). Default: NEUROSEARCH_T5_NIGHTLY_BUDGET_USD, 0 = off"),
+                    research_refresh_budget: Optional[float] = typer.Option(None, "--research-refresh-budget", help="SEPARATE per-night cap for CR6 research refreshes (Continuous Research). Default: NEUROSEARCH_RESEARCH_REFRESH_NIGHTLY_BUDGET_USD, 0 = off"),
                     force: bool = typer.Option(False, "--force", help="Run even if today's envelope already ran (a second envelope today; never bypasses the budget-off guard)"),
                     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt")) -> None:
     """Run tonight's envelope now, in the foreground, and print the record. This ENQUEUES REAL PAID WORK up to the
@@ -769,6 +770,8 @@ def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", hel
         settings.t4_nightly_budget = float(budget)
     if t5_budget is not None:
         settings.t5_nightly_budget = float(t5_budget)
+    if research_refresh_budget is not None:
+        settings.research_refresh_nightly_budget = float(research_refresh_budget)
     if settings.t4_nightly_budget <= 0:
         typer.echo("nightly envelope is OFF (budget 0). Pass --budget N or set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD.", err=True)
         raise typer.Exit(code=1)
@@ -783,6 +786,11 @@ def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", hel
                    "lands as a suggested finding, nothing is decided for you)")
     else:
         typer.echo("T5 adjudication: off (pass --t5-budget N to enable)")
+    if settings.research_refresh_nightly_budget > 0:
+        typer.echo(f"plus up to ${settings.research_refresh_nightly_budget:.2f} for CR6 research refreshes (separate cap; each one only "
+                   "STARTS a refresh through the normal ingest path -- nothing is decided for you)")
+    else:
+        typer.echo("CR6 research refresh: off (pass --research-refresh-budget N to enable)")
     if not yes and not typer.confirm("Run the nightly envelope now?"):
         raise typer.Exit(code=0)
     r = nightly.run(force=force)
@@ -998,3 +1006,25 @@ def project_refresh_check(project: str, claim: str = typer.Option(..., "--claim"
         typer.echo(f"changed: {r['before']} -> {r['after']}")
     else:
         typer.echo(f"unchanged: {r['after']}")
+
+
+@project_app.command("plan-state")
+def project_plan_state(project: str, as_json: bool = typer.Option(False, "--json")) -> None:
+    """LP4: each plan item's evidence-confidence state (known/assumed/chosen/uncertain/blocked/monitored),
+    derived on read from LP1 + Claim strength/freshness + the plan's own dependencies/basis fields. $0, reads
+    only, persists nothing -- a different axis from an item's own execution status."""
+    from . import plan_state
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    states = plan_state.derive(pid)
+    if as_json:
+        typer.echo(json.dumps(states, indent=2, default=str))
+        return
+    if not states:
+        typer.echo("no plan yet, or nothing resolvable")
+        return
+    for key, s in states.items():
+        typer.echo(f"- {key}: {s['state']} ({s['why']})")

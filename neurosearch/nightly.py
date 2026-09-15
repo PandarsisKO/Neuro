@@ -116,9 +116,45 @@ def run(force: bool = False) -> dict[str, Any]:
             log.warning("nightly envelope %s: T5 adjudication pass failed: %s", envelope_id, e)
             adjudication = {"ran": False, "error": str(e), "budget": settings.t5_nightly_budget}
 
+    # CR6: a THIRD bounded work source, after T5 -- Continuous Research requesting real refreshes via the SAME
+    # ingest job every other acquisition uses (research_refresh.request_refresh). Off by default
+    # (research_refresh_nightly_budget=0). Separate cap from findings/T5 for the same reason T5's is separate: a
+    # refresh call must never silently eat either of the other two budgets. This only STARTS refreshes -- it never
+    # waits for the async findings/claims harvest that might follow, and never claims a Claim actually changed
+    # tonight; `research_refresh.check()` is the honest read of that, any time after.
+    research_refresh_result: dict[str, Any] | None = None
+    if settings.research_refresh_nightly_budget > 0:
+        try:
+            from . import research_needs, research_refresh
+            rr_budget = settings.research_refresh_nightly_budget
+            rr_remaining = rr_budget
+            requested: list[dict[str, Any]] = []
+            for p in projects:
+                if rr_remaining <= 0:
+                    break
+                try:
+                    due = [n for n in research_needs.due_tonight(p["id"]) if n.get("claim_id") and n["estimated_cost_usd"] <= rr_remaining]
+                except Exception as e:  # noqa: BLE001 -- one project's failure must never abort the rest of the night
+                    log.warning("nightly envelope %s: research needs failed for project %s: %s", envelope_id, p["id"], e)
+                    continue
+                for n in due:
+                    if rr_remaining <= 0:
+                        break
+                    r = research_refresh.request_refresh(p["id"], need=n, cap_usd=rr_remaining)
+                    if r.get("started"):
+                        rr_remaining = max(0.0, rr_remaining - float(n["estimated_cost_usd"]))
+                        requested.append({"project_id": p["id"], "claim_id": r["claim_id"], "target_id": r["target_id"],
+                                          "estimated_cost_usd": n["estimated_cost_usd"]})
+            research_refresh_result = {"ran": True, "budget": rr_budget, "spent_estimate": round(rr_budget - rr_remaining, 4),
+                                       "requested": requested, "stopped_by_budget": rr_remaining <= 0 and bool(requested)}
+        except Exception as e:  # noqa: BLE001
+            log.warning("nightly envelope %s: research refresh pass failed: %s", envelope_id, e)
+            research_refresh_result = {"ran": False, "error": str(e), "budget": settings.research_refresh_nightly_budget}
+
     record = {"ok": True, "envelope_id": envelope_id, "ts": time.time(), "budget": budget,
               "spent_estimate": round(budget - remaining, 4), "projects": per_project,
               "adjudication": adjudication,
+              "research_refresh": research_refresh_result,
               "preflight_backup": preflight.get("backup_path")}
     db.kv_set(f"nightly:{key}", json.dumps(record))
     log.info("nightly envelope %s: %d project(s) touched, ~$%.4f of $%.2f estimated",

@@ -63,7 +63,8 @@ def for_envelope(envelope_id: str) -> dict[str, Any]:
             item["research_needs_count"] = None
         projects.append(item)
 
-    material_change = bool(d["new_tensions_total"]) or bool((d.get("adjudication") or {}).get("count")) or any(
+    material_change = bool(d["new_tensions_total"]) or bool((d.get("adjudication") or {}).get("count")) \
+        or bool((d.get("research_refresh") or {}).get("count")) or any(
         (pd.get("what_neuro_did") or {}).get("findings_suggested") for pd in d["projects"] if "error" not in pd)
 
     return {**d, "projects": projects, "material_change": material_change, "report_ts": time.time()}
@@ -173,6 +174,12 @@ def render_text(report: dict[str, Any]) -> str:
     if adj and adj.get("ran") and adj.get("count"):
         lines.append(f"Adjudicated {adj['count']} disagreement(s) (T5, {_fmt_usd(float(adj.get('spent') or 0))} of "
                      f"{_fmt_usd(float(adj.get('budget') or 0))}); each verdict is a suggested finding, nothing was decided for you.")
+        lines.append("")
+    rr = report.get("research_refresh")
+    if rr and rr.get("ran") and rr.get("count"):
+        lines.append(f"Requested {rr['count']} research refresh(es) (CR6, ~{_fmt_usd(float(rr.get('spent_estimate') or 0))} of "
+                     f"{_fmt_usd(float(rr.get('budget') or 0))} estimated) -- started, not yet confirmed; check "
+                     f"`neurosearch project refresh-check` once tonight's jobs have run.")
         lines.append("")
     lines.append(f"Total spend: {_fmt_usd(report['budget']['actual_usd'])} of {_fmt_usd(report['budget']['authorized_usd'])} authorized"
                  f" ({_fmt_usd(report['budget']['estimated_usd'])} estimated).")

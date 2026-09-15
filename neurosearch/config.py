@@ -117,6 +117,10 @@ class Settings:
     # section 7: the claim needs a defensible ranking; L-51 is that ranking, and its gate is the proof). Flip to 1
     # only after that; nothing else is needed to ship v2.
     morning_report_needs_me: bool = field(default_factory=lambda: _env("NEUROSEARCH_MORNING_REPORT_NEEDS_ME", "0") in ("1", "true", "yes"))
+    # CR6: a THIRD, separately-authorized per-night cap -- Continuous Research requesting real refreshes
+    # (research_refresh.request_refresh) via the same job queue as any other acquisition. Off by default, same
+    # discipline as t5_nightly_budget: folding this into the findings budget would let one silently eat the other.
+    research_refresh_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_RESEARCH_REFRESH_NIGHTLY_BUDGET_USD", "0") or 0))
 
     # Chunking (seconds)
     chunk_target_seconds: int = field(default_factory=lambda: int(_env("NEUROSEARCH_CHUNK_SECONDS", "60") or 60))

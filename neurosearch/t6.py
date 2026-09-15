@@ -37,7 +37,7 @@ MAX_LINES = 3   # collapsed operational detail, per the P3 hierarchy -- never th
 
 # mechanism key -> how the envelope record proves it fired tonight (delta.for_envelope()'s shape).
 MECHANISMS = ("substance_probe", "findings_clusters", "findings_extract", "nightly_budget_walk",
-              "staleness_triage", "power_assertion", "adjudication")
+              "staleness_triage", "power_assertion", "adjudication", "research_refresh")
 
 
 def mechanisms_fired(d: dict[str, Any]) -> set[str]:
@@ -57,6 +57,8 @@ def mechanisms_fired(d: dict[str, Any]) -> set[str]:
         fired.add("nightly_budget_walk")
     if (d.get("adjudication") or {}).get("count"):
         fired.add("adjudication")
+    if (d.get("research_refresh") or {}).get("count"):
+        fired.add("research_refresh")
     return fired
 
 

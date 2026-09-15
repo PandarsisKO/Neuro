@@ -677,3 +677,225 @@ def test_cli_refresh_need_and_check(rn_db):
     r2 = CliRunner().invoke(app, ["project", "refresh-check", pid, "--claim", "c1"])
     assert r2.exit_code == 0, r2.output
     assert "unchanged:" in r2.output
+
+
+# ------------------------------------------------------------- CR6: nightly integration
+
+
+def test_research_refresh_off_by_default_in_nightly(rn_db, monkeypatch):
+    from neurosearch import nightly, t4
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.setattr(settings, "t4_nightly_budget", 2.0)
+    monkeypatch.setattr(settings, "t4_nightly_hour", 0)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    assert settings.research_refresh_nightly_budget == 0
+    p = db.create_project("CR6 off", "brief")
+    sid = db.upsert_source(platform="manual", external_id="s1", url="manual://s1", title="s1", status="ready")["id"]
+    db.connect().execute("INSERT INTO project_sources (project_id,source_id,excluded) VALUES (?,?,0)", (p["id"], sid))
+    db.connect().commit()
+    r = nightly.run()
+    assert r["research_refresh"] is None
+
+
+def test_research_refresh_requests_due_needs_under_its_own_cap(rn_db, monkeypatch):
+    from neurosearch import nightly, t4
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.setattr(settings, "t4_nightly_budget", 2.0)
+    monkeypatch.setattr(settings, "t4_nightly_hour", 0)
+    monkeypatch.setattr(settings, "research_refresh_nightly_budget", 5.0)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    p = db.create_project("CR6 on", "brief")
+    pid = p["id"]
+    sid = db.upsert_source(platform="manual", external_id="s1", url="manual://s1", title="s1", status="ready")["id"]
+    db.connect().execute("INSERT INTO project_sources (project_id,source_id,excluded) VALUES (?,?,0)", (pid, sid))
+    _claim(pid, "c1", text="acme pricing changed recently")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand5", "acme channel", "acme pricing update video", project_id=pid)
+
+    r = nightly.run()
+    rr = r["research_refresh"]
+    assert rr["ran"] is True and len(rr["requested"]) == 1 and rr["requested"][0]["claim_id"] == "c1"
+    assert rr["spent_estimate"] > 0
+
+
+def test_research_refresh_one_projects_failure_does_not_abort_the_rest(rn_db, monkeypatch):
+    from neurosearch import nightly, research_needs, t4
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.setattr(settings, "t4_nightly_budget", 2.0)
+    monkeypatch.setattr(settings, "t4_nightly_hour", 0)
+    monkeypatch.setattr(settings, "research_refresh_nightly_budget", 5.0)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    p_bad = db.create_project("CR6 bad", "brief")
+    p_good = db.create_project("CR6 good", "brief")
+    for p in (p_bad, p_good):
+        sid = db.upsert_source(platform="manual", external_id=f"s-{p['id']}", url=f"manual://{p['id']}", title="s1", status="ready")["id"]
+        db.connect().execute("INSERT INTO project_sources (project_id,source_id,excluded) VALUES (?,?,0)", (p["id"], sid))
+    _claim(p_good["id"], "cg", text="acme pricing changed recently")
+    _tension(p_good["id"], "tg", "cg")
+    db.connect().commit()
+    _candidate_row("cand6", "acme channel", "acme pricing update video", project_id=p_good["id"])
+
+    orig = research_needs.due_tonight
+    def flaky(pid, *a, **k):
+        if pid == p_bad["id"]:
+            raise RuntimeError("boom")
+        return orig(pid, *a, **k)
+    monkeypatch.setattr(research_needs, "due_tonight", flaky)
+
+    r = nightly.run()
+    assert r["research_refresh"]["ran"] is True
+    assert any(x["project_id"] == p_good["id"] for x in r["research_refresh"]["requested"])
+
+
+def test_morning_report_shows_research_refresh_line_only_when_nonzero(rn_db, monkeypatch):
+    from neurosearch import nightly, report, t4
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "daily_budget", 1000)
+    monkeypatch.setattr(settings, "t4_nightly_budget", 2.0)
+    monkeypatch.setattr(settings, "t4_nightly_hour", 0)
+    monkeypatch.setattr(settings, "research_refresh_nightly_budget", 5.0)
+    monkeypatch.setattr(t4, "_source_estimate", lambda pid, sid, **k: 0.01)
+    p = db.create_project("CR6 report", "brief")
+    pid = p["id"]
+    sid = db.upsert_source(platform="manual", external_id="s1", url="manual://s1", title="s1", status="ready")["id"]
+    db.connect().execute("INSERT INTO project_sources (project_id,source_id,excluded) VALUES (?,?,0)", (pid, sid))
+    _claim(pid, "c1", text="acme pricing changed recently")
+    _tension(pid, "t1", "c1")
+    db.connect().commit()
+    _candidate_row("cand7", "acme channel", "acme pricing update video", project_id=pid)
+
+    r = nightly.run()
+    rep = report.for_envelope(r["envelope_id"])
+    assert rep["material_change"] is True
+    text = report.render_text(rep)
+    assert "Requested 1 research refresh(es) (CR6" in text
+
+
+def test_cli_nightly_run_discloses_research_refresh_budget(rn_db, monkeypatch):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    from neurosearch.config import settings
+    monkeypatch.setattr(settings, "fake_ai", True)
+    monkeypatch.setattr(settings, "t4_nightly_hour", 0)
+    p = db.create_project("cli cr6", "brief")
+    db.connect().commit()
+    r = CliRunner().invoke(app, ["nightly", "run", "--budget", "1", "--research-refresh-budget", "2", "--yes"])
+    assert r.exit_code == 0, r.output
+    assert "$2.00 for CR6 research refreshes" in r.output
+
+
+# ------------------------------------------------------------- LP4: plan_state.derive
+
+
+def test_plan_state_known_for_a_strong_current_cited_claim(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 known", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="strong", freshness_status="current")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "step one", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert states["first_steps.0"]["state"] == "known"
+
+
+def test_plan_state_uncertain_for_a_stale_cited_claim(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 uncertain", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="strong", freshness_status="stale", freshness_class="rates_pricing")
+    _fold("c1", n["id"])
+    plan = {"decisions": [{"decision": "d1", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert states["decisions.0"]["state"] == "uncertain"
+
+
+def test_plan_state_monitored_beats_uncertain_when_disagreement_is_open(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 monitored", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="weak", freshness_status="stale", freshness_class="rates_pricing")
+    _fold("c1", n["id"])
+    _tension(pid, "t1", "c1")
+    plan = {"tools": [{"need": "x", "tool": "y", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert states["tools.0"]["state"] == "monitored"
+
+
+def test_plan_state_blocked_takes_precedence_over_evidence_state(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 blocked", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="strong", freshness_status="current")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "obtain business license", "evidence": ["F1"]}],
+           "dependencies": [{"item": "business license", "blocking": True, "note": "needed first"}],
+           "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert states["first_steps.0"]["state"] == "blocked"
+
+
+def test_plan_state_chosen_and_assumed_from_basis_with_no_evidence_link(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 basis", "brief")
+    pid = p["id"]
+    plan = {"decisions": [{"decision": "d1", "basis": "user"}, {"decision": "d2", "basis": "estimate"}]}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert states["decisions.0"]["state"] == "chosen" and states["decisions.1"]["state"] == "assumed"
+
+
+def test_plan_state_leaves_an_unresolvable_item_unclassified(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 unclassified", "brief")
+    pid = p["id"]
+    plan = {"first_steps": [{"action": "just do it"}]}   # no evidence, no basis
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    states = plan_state.derive(pid)
+    assert "first_steps.0" not in states
+
+
+def test_plan_state_no_plan_returns_empty(rn_db):
+    from neurosearch import plan_state
+    p = db.create_project("LP4 noplan", "brief")
+    assert plan_state.derive(p["id"]) == {}
+
+
+def test_plan_state_never_writes_anything(rn_db):
+    import ast
+    import inspect
+    from neurosearch import plan_state
+    tree = ast.parse(inspect.getsource(plan_state))
+    code = ast.unparse(tree)
+    assert "tx(" not in code and ".commit(" not in code
+    assert not __import__("re").search(r"\b(INSERT|UPDATE|DELETE)\b", code)
+
+
+def test_cli_plan_state(rn_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cli plan-state", "brief")
+    pid = p["id"]
+    n = db.add_project_note(pid, "finding")
+    _claim(pid, "c1", strength="strong", freshness_status="current")
+    _fold("c1", n["id"])
+    plan = {"first_steps": [{"action": "step one", "evidence": ["F1"]}], "_evidence": {"F1": {"note_id": n["id"]}}}
+    db.save_plan(pid, plan, db.project_snapshot(pid))
+    r = CliRunner().invoke(app, ["project", "plan-state", pid])
+    assert r.exit_code == 0, r.output
+    assert "first_steps.0: known" in r.output
