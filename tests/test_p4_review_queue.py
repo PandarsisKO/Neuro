@@ -183,3 +183,19 @@ def test_api_route_serves_the_queue_read_only(rq_db, monkeypatch):
     assert [x["claim_id"] for x in body["queue"]] == ["c_weak"] and body["limit"] == 5
     assert db.connect().execute("SELECT status FROM project_claims WHERE id='c_weak'").fetchone()["status"] == "proposed"
     assert client.get("/api/projects/nope/claims/review-queue").status_code == 404
+
+
+def test_cli_lists_the_queue_with_reasons(rq_db):
+    from typer.testing import CliRunner
+    from neurosearch.cli import app
+    p = db.create_project("cliq", "brief")
+    _claim(p["id"], "c_d", strength="strong")
+    _tension(p["id"], "t", "c_d", impact="high")
+    _claim(p["id"], "c_w", strength="weak")
+    db.connect().commit()
+    r = CliRunner().invoke(app, ["project", "review-queue", p["id"]])
+    assert r.exit_code == 0, r.output
+    assert "2 to review out of 2 proposed" in r.output
+    assert "[disagreement] claim c_d" in r.output and "tension: CONTRADICTION (high)" in r.output
+    assert "[evidence_weak] claim c_w" in r.output
+    assert r.output.index("c_d") < r.output.index("c_w")

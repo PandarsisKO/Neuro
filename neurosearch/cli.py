@@ -797,3 +797,33 @@ def nightly_report_cmd(date: Optional[str] = typer.Option(None, "--date", help="
     typer.echo(report.render_text(rep), nl=False)
     if not rep.get("found"):
         raise typer.Exit(code=1)
+
+
+@project_app.command("review-queue")
+def project_review_queue(project: str, limit: int = typer.Option(25, "--limit", help="Cap for plan-impact / evidence-weak items; disagreement is never capped"),
+                         as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable list")) -> None:
+    """L-51 (P4 Review at Scale): the exception queue -- the few proposed Claims that actually need you, each
+    saying why. $0, reads only, approves nothing."""
+    from . import review_queue
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    q = review_queue.build(pid, limit=limit)
+    if as_json:
+        typer.echo(json.dumps(q, indent=2, default=str))
+        return
+    c = q["counts"]
+    typer.echo(f"{c['shown']} to review out of {c['proposed_total']} proposed "
+               f"(disagreement {c['by_reason']['disagreement']}, plan impact {c['by_reason']['plan_impact']}, "
+               f"weak evidence {c['by_reason']['evidence_weak']}; hidden by the cap: {c['hidden_total']}, of which "
+               f"weak evidence {c['not_shown']['evidence_weak']}, plan impact {c['not_shown']['plan_impact']})")
+    for x in q["queue"]:
+        m = x["members"]
+        typer.echo(f"- [{', '.join(x['reasons'])}] {x['text'][:140]}")
+        typer.echo(f"    {x['strength']} · {x['independent_sources']} source(s) · {len(m['note_ids'])} finding(s) folded in"
+                   + (f" · {len(m['merged_claim_ids'])} merged" if m["merged_claim_ids"] else "")
+                   + (f" · tension: {x['tensions'][0]['kind']} ({x['tensions'][0].get('impact')})" if x["tensions"] else ""))
+    if not q["queue"]:
+        typer.echo("nothing needs your judgment right now")
