@@ -3160,3 +3160,41 @@ later." So P1A is NOT "build a scheduler" — the scheduler already exists and i
 
 Net: P1A's actual build surface is small (a function signature, a CLI flag, a staleness-on-claim check) — the
 hard exactly-once/lease/retry infrastructure is already there and doesn't need re-architecting.
+
+## Continuous-execution checkpoint — 11 commits, applying the priority function honestly — 2026-09-15 (Claude)
+
+Kyle's directive: don't stop at a blocker, don't wait on Kyle for non-colliding work, pull a lower-priority rung
+forward if it's genuinely unblocked, don't manufacture speculative work either. Tonight's full run, in order:
+`01fa165` L-02/L-03, `aa53a9c` L-05, `15e489d` L-08 tooling, `ca6feba`/`cef0148` checkpoints, `477113c` L-02/L-03
+validated for REAL (isolated venv) + L-04 run + decided against the prefilter, `7d90c21` P1A's actual code-verified
+gap for Codex, `05b36e1` doc cleanup, `bc998d4` **L-50 Decision Impact v1 pulled forward** (two real signals,
+`neurosearch/decision_impact.py`, 7 tests), `b2538a3` **found and fixed a real observability bug** while reading
+around T4's job path: `suggest_for_project` discarded its own skip signal and `jobs.execute` hard-coded every
+job's message to "done" -- the exact reason E5's race was hard to diagnose. Full suite 1487/1487, repo-check PASS
+after every commit.
+
+**Why I stopped here instead of continuing to invent more rungs**: the next candidates I considered and
+deliberately did NOT build:
+- A "research delta" / Morning Report data primitive -- explicitly premature. L-41 (Morning Report v1) needs
+  L-31 (Codex's Project Delta v0) first, and rulings §7 already warns Morning Report v1 against faking a ranked
+  queue. Building delta-aggregation now, before Codex's schema exists, is exactly the "generic abstraction
+  without a measured consumer" the directive itself lists as bad prep work -- not caution for its own sake, a
+  real collision/rework risk with whatever Codex builds for Project Delta.
+- P1A's actual code (exposing `not_before` on `create_job`/`enqueue`) -- the gap is precisely scoped (see the
+  P1A pointer above) and small enough I could write it, but scheduler infrastructure is Codex's named lane
+  (rulings §9) and Codex hasn't started; writing it now risks exactly the collision the ownership split exists
+  to prevent, for a few hours of head start that isn't worth it.
+- P0's `db.integrity_check().ok` gap -- same reasoning, Codex's explicit lane, already documented precisely
+  above with line numbers so there's nothing left to discover, only to build.
+
+What's left genuinely needs either Kyle's own judgment (L-06's blind review, can't be faked) or his money (L-08's
+few cents) or Codex to start (P0, P1A). Nothing else in my lane was both real and unblocked without colliding.
+
+**New capability worth keeping**: `~/ns-verify` on Kyle's Mac (outside this repo folder, via the bridge) is a
+disposable, from-scratch Python 3.12 venv + full dependency install that lets a sandbox session actually run the
+test suite and `neurosearch` CLI end-to-end -- not just patch code and hope. Rebuild recipe: `uv venv --python
+3.12 .venv`, `uv pip install -e ".[dev]"` against an rsync'd copy of the repo (exclude `data/`, `.env`,
+`.worktrees/`, `*.db` except `tests/fixtures/db/*.db` which ARE needed and ARE git-tracked), symlink `.venv`
+into the copy so `ROOT/.venv/bin/neurosearch`-shaped test assumptions resolve. Never points at the live database
+-- only ever tmp_path fixtures, exactly like pytest already guarantees. Future sessions: reuse it instead of
+rebuilding, or extend it if dependencies drift from `pyproject.toml`.
