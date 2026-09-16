@@ -4683,4 +4683,4 @@ Still not done: the live-Chrome acceptance matrix remains entirely outstanding â
 about that. It is still the sole remaining step before this mission can close, and it requires Kyle's own
 hands.
 
-Commit: (this repair round 4 fix pass â€” see commit following this entry).
+Commit: c2b3375.
