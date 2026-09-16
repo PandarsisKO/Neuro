@@ -4,17 +4,25 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-**Updated 2026-09-16 15:20 (overnight mission — Phase A closed, executing Phase B/CR3/CR4).** Phase A is
-DONE: full suite 1766/0 clean across 11 consecutive `-n 4` runs (was flaky ~1-in-3..6 under a wrong diagnosis —
-the real cause was a pooled anyio worker thread outliving a test's `settings.data_dir` swap, fixed in
-`db.connect()`; see HANDOFF.md), repo-check PASS, release-check PASS at `3ab63eb` (0.63.91), fresh STATE
-snapshot at `717df6c`. CR3, CR4 and LP5 are READY and Kyle-free (LP3 is done, so LP5's gate is met). Active now,
-Claude lane: **Phase B** Monitor ≠ Acquire ≠ Retain written into PRODUCT-INTELLIGENCE-MISSION §13 → **CR3**
-YouTube channel/playlist rescan into the existing Candidate Index, project-scoped reconciliation (detection
-only) → **CR4** metadata-first change detection, gated on remote-unchanged AND project-already-reconciled →
-**CR8 seam documented, not admitted** → **LP5** if capacity remains, columns added only where verified missing.
-No paid call. Live/manual gates (send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B,
-FM1 live) are not touched tonight.
+**Updated 2026-09-16 15:35 (overnight mission — Phase A + Phase B + CR3/CR4 + CR8-docs all closed; assessing
+LP5).** Phase A: full suite 1766/0 clean across 11 consecutive `-n 4` runs (was flaky ~1-in-3..6 under a wrong
+diagnosis — the real cause was a pooled anyio worker thread outliving a test's `settings.data_dir` swap, fixed
+in `db.connect()`; see HANDOFF.md), repo-check PASS, release-check PASS at `3ab63eb` (0.63.91). Phase B
+(`8d60313`): Monitor ≠ Acquire ≠ Retain written into PRODUCT-INTELLIGENCE-MISSION §13, per-collection "primary
+for this project" classification storage left explicitly open. CR3+CR4 (`638dd22`, one module —
+`neurosearch/reservoir.py`): known-reservoir rescan + metadata-first change detection, project-scoped scan-state
+key (`reservoir:scan:<project_id>:<collection_id>`, not per-collection alone — required to avoid a real
+cross-project candidate-starvation bug, proven with a dedicated regression test), 13-test gate
+(`test_s55_reservoir_rescan.py`), zero provider/model calls verified directly against job/invocation counts,
+CLI-only surface (`project rescan`), never scheduled. Release-gate PASS at `ea73bee`. CR8 (`aed34b9`): seam
+documented in EXECUTION-LADDER.md — NOT built, NOT admitted — pending the same open classification-storage
+decision Phase B flagged. See HANDOFF.md's Phase B/CR3/CR4/CR8 entry for full detail.
+
+**Remaining in tonight's approved sequence: LP5** (plan-patch acceptance provenance), "if capacity remains" —
+columns to be added to `plan_updates` only after re-confirming which of `claim_id`/`tension_id`/`decided_at`/
+`decided_by`/`applied_plan_id` are genuinely missing (verified once already this session via inspection; LP3 is
+done, so LP5's gate is met). No paid call all night. Live/manual gates (send-screenshot Chrome matrix,
+course-scanner live extension, CR7, LP6, AD4B, FM1 live) not touched tonight.
 
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that

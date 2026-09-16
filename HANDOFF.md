@@ -4999,3 +4999,72 @@ attempt's `git add` only staged the renames, caught immediately and fixed in a f
 amend), `0fc7e3f` (release-gate artifact), `717df6c` (STATE snapshot).
 
 Proceeding to Phase B (Continuous Research product intent) and CR3/CR4 per the approved-with-corrections plan.
+
+## Execution — Phase B / CR3 / CR4 / CR8 closed (2026-09-16, executing model)
+
+**Phase B (`8d60313`).** Wrote the Continuous Research monitoring model into `PRODUCT-INTELLIGENCE-MISSION.md`
+§13 before touching CR3/CR4's code, per Kyle's own framing: MONITOR (cheap, metadata-only, watch a reservoir for
+new items) / ACQUIRE (spend to actually ingest one) / RETAIN (once acquired, keep, compact, or drop) are three
+separate, never-collapsed decisions. Primary-source monitoring defaults ON, secondary/tertiary defaults OFF,
+user-explicit watch always overrides the default. Retention order fixed as prevention-first, compaction-next,
+deletion-last, never a global Library deletion. Explicitly left the per-collection "primary for this project"
+monitoring-classification storage question open — a real future decision, not guessed at. §13 is the interpretive
+frame CR3/CR4 (below) and CR8's stub were both built against.
+
+**CR3 + CR4 (`638dd22`), one module.** Built as a single function, `reservoir.rescan()`, because CR4's
+change-detection is a precondition gate inside CR3's rescan flow, not a separate pass — there was never a clean
+seam to split them at. New module `neurosearch/reservoir.py` orchestrates three existing owners without
+duplicating any of them: `media.enumerate_entries` (collection listing), `db`'s `collections`/`project_collections`
+tables (collection identity, project attachment — extended with two new read-only accessors, `db.get_collection`
+and `db.project_collection_ids`, since no `collections.py` module exists and collection identity is already owned
+by `db.py`), and `candidates.remember` (the Candidate Index's one idempotent write path).
+
+Kyle's corrections, applied before writing any code:
+- **Correction 1 (cross-project starvation)** — confirmed real by inspecting the schema: `project_collections`
+  is genuinely many-to-many, so a bare per-collection scan-state key would let a first project's scan silently
+  starve a second project attaching later to the same, remotely-unchanged reservoir. Fixed by scoping the stored
+  fingerprint key to `reservoir:scan:<project_id>:<collection_id>`, not `<collection_id>` alone.
+- **Correction 2 (CR4's compound no-op gate)** — fell out of correction 1's design for free: the project-scoped
+  key means "unchanged" already means "same remote revision AND this project is already reconciled to it," with
+  no second reconciliation-proof mechanism needed.
+- **Correction 3 (module ownership)** — checked before creating `reservoir.py`: no existing module owns
+  rescan-orchestration-plus-change-detection; it is a genuinely new responsibility, not a duplicate.
+- **Correction 4 (fingerprint stability)** — `fingerprint()` hashes sorted `(external_id, title, duration)`
+  tuples: order-insensitive (a provider returning the same videos in a different order is not a change), changes
+  on a genuinely new/renamed item, and a disappeared item never causes removal or invalidation of anything
+  already remembered (`candidates.remember` only processes what is present in the current listing; it never
+  deletes) — all three properties covered by dedicated tests.
+
+Gate: `tests/test_s55_reservoir_rescan.py`, 13 tests, zero network/provider/model calls throughout (checked
+directly against the `jobs`/`invocations` table row counts, not inferred). Includes Kyle's required cross-project
+regression, `test_a_second_project_reconciles_into_its_own_candidate_index_without_re_seeing_a_dup`: two projects
+share one reservoir, the first scans and reconciles, the reservoir stays remotely unchanged, and the second
+project's first scan must still receive all the candidates the first project already found — proving a
+collection-only fingerprint would have wrongly reported "unchanged" and silently starved it. Also covers: new
+entries only counted once per project (a candidate another project already found still counts as new to a
+project seeing it for the first time), a dismissed candidate stays dismissed across rescans, an already-Library
+source's `source_id` resolves onto its candidate row, `origin` carries the collection id, `enumerate` called
+exactly once per rescan, and `rescan_project()` covers every attached collection (empty list when none attached).
+Two test-authoring bugs surfaced during verification (external ids reused across test functions colliding in the
+shared session database) — fixed with scenario-unique id prefixes, not a `reservoir.py` change.
+
+New CLI surface only: `neurosearch project rescan <project> [--collection ID] [--json]`. On-demand, explicit,
+never wired to any schedule or nightly hook — CR3/CR4 stay strictly inside MONITOR (§13); no `sources` row is
+ever created here, no ingestion, no provider/model call.
+
+Release-gate recorded at `ea73bee` (`638dd22`, PASS).
+
+**CR8 (`aed34b9`) — documentation only, not built.** `EXECUTION-LADDER.md` now names the seam between a new
+Candidate Index row and an existing acquisition path: a deterministic adapter (no new model/provider call) that
+would sit between CR3/CR4's `candidates.remember` output and `research_needs.for_project` /
+`candidates.where_to_look` / `_best_fit` / `candidates.link`, gated by CR2's due policy and CR6's nightly budget.
+Stays documented-but-not-admitted per Kyle's explicit instruction, because building it would force an answer to
+§13's open question (where per-collection "primary for this project" classification is stored) rather than let
+Kyle decide it — `candidates.link` recording a possible fit is closer to blurring MONITOR/ACQUIRE than CR3/CR4's
+plain `remember` was, so it needs its own go-ahead, not CR3/CR4's.
+
+Commits this segment: `8d60313` (Phase B), `638dd22` (CR3+CR4 code+tests), `ea73bee` (release-gate artifact),
+`aed34b9` (ladder status + CR8 stub).
+
+Proceeding to assess remaining capacity for LP5 (plan-patch acceptance provenance), the last item in the
+approved sequence, "if capacity remains."
