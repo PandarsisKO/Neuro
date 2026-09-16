@@ -71,7 +71,15 @@ def propose_updates(project_id: str, claim_id: str | None = None, tension_id: st
     if not r.get("known") or not r.get("items"):
         return []
     plan = db.latest_plan(project_id)
+    # LP5: resolve the same claim_id `explain()` already resolved internally (direct or via tension_id) so it is
+    # PERSISTED on the row, not re-derived later -- `explain()` discards it after building `why`, which is fine
+    # for the narrative text but would otherwise lose the provenance link `add_plan_updates` can now store.
+    resolved_claim_id = claim_id
+    if not resolved_claim_id and tension_id:
+        row = db.connect().execute("SELECT claim_id FROM research_tensions WHERE id=?", (tension_id,)).fetchone()
+        resolved_claim_id = row["claim_id"] if row else None
     updates = [{"section": it["path"], "previous": it.get("label"),
-               "proposed": _instruction(it["strength"], it["why"]), "reason": it["why"]} for it in r["items"]]
+               "proposed": _instruction(it["strength"], it["why"]), "reason": it["why"],
+               "claim_id": resolved_claim_id, "tension_id": tension_id} for it in r["items"]]
     db.add_plan_updates(plan["id"], updates, origin="lp3")
     return [u for u in db.get_plan(plan["id"])["updates"] if u.get("origin") == "lp3" and u.get("status") == "pending"]

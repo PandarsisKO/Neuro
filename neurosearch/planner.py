@@ -454,7 +454,12 @@ def _legacy_update_parse(raw: str) -> dict[str, Any]:
 
 
 def apply_accepted_updates(project_id: str) -> dict[str, Any]:
-    """Regenerate the plan folding in every accepted (and rejecting pending-but-rejected) update."""
+    """Regenerate the plan folding in every accepted (and rejecting pending-but-rejected) update.
+
+    LP5: every ACCEPTED row is stamped with the resulting plan's id once build_plan() returns it -- an accepted
+    row otherwise shows "accepted" with no way to point at which regenerated plan actually folded it in. Rejected
+    rows are left alone (decided_at/decided_by were already stamped at rejection time; they never gain an
+    applied_plan_id, since nothing of theirs was applied)."""
     plan = db.latest_plan(project_id)
     if not plan:
         raise RuntimeError("no plan yet")
@@ -466,7 +471,12 @@ def apply_accepted_updates(project_id: str) -> dict[str, Any]:
     if rejected:
         instr.append("The user chose to KEEP the current plan for these (do not change them):\n" + "\n".join(f"- {u['section']}: keep '{u.get('previous') or ''}'" for u in rejected))
     instr.append("Keep everything else the same unless the applied changes require adjustments.")
-    return build_plan(project_id, "\n\n".join(instr))
+    new_plan = build_plan(project_id, "\n\n".join(instr))
+    if accepted:
+        with db.tx() as conn:
+            conn.executemany("UPDATE plan_updates SET applied_plan_id=? WHERE id=?",
+                             [(new_plan["id"], u["id"]) for u in accepted])
+    return new_plan
 
 
 def research_changed(project_id: str) -> bool:

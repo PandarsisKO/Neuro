@@ -1017,6 +1017,20 @@ MIGRATIONS = [
     # Claim. Lets add_plan_updates scope its pending-row cleanup by origin so the two paths never clobber each
     # other's pending queue on the same plan.
     ("plan_updates", "origin", "ALTER TABLE plan_updates ADD COLUMN origin TEXT"),
+    # LP5 (EXECUTION-LADDER.md, Kyle's overnight-mission correction 6): provenance for an accepted/rejected
+    # plan-patch, verified genuinely missing (not assumed) against this table's live columns before adding them.
+    # claim_id/tension_id: which Claim or tension this row's proposal traces back to (explain()/propose_updates()
+    # already resolve this internally today but discard it before persisting -- LP0's stored-id lesson applies
+    # here too: re-deriving it later from `reason` text would be lossy the same way decision_impact's fallback is).
+    # decided_at/decided_by: when a pending row was accepted or rejected, and by whom (single-user app today, so
+    # always 'user' -- kept as a column, not a constant, so a future multi-user mode never needs a schema change).
+    # applied_plan_id: which regenerated plan (planner.apply_accepted_updates's build_plan() call) actually folded
+    # this accepted row in -- without it, a row shows "accepted" with no way to point at the plan that resulted.
+    ("plan_updates", "claim_id", "ALTER TABLE plan_updates ADD COLUMN claim_id TEXT"),
+    ("plan_updates", "tension_id", "ALTER TABLE plan_updates ADD COLUMN tension_id TEXT"),
+    ("plan_updates", "decided_at", "ALTER TABLE plan_updates ADD COLUMN decided_at REAL"),
+    ("plan_updates", "decided_by", "ALTER TABLE plan_updates ADD COLUMN decided_by TEXT"),
+    ("plan_updates", "applied_plan_id", "ALTER TABLE plan_updates ADD COLUMN applied_plan_id TEXT"),
 ]
 
 
@@ -4386,19 +4400,28 @@ def set_item_status(plan_id: str, key: str, status: str, note: str | None = None
 def add_plan_updates(plan_id: str, updates: list[dict[str, Any]], origin: str | None = None) -> None:
     """LP3: `origin` scopes both the clear and the insert, so the LLM-based suggest_updates() path (origin=None)
     and plan_narrative.propose_updates() (origin='lp3') each own their own pending queue on the same plan and
-    never clear the other's rows out from under it."""
+    never clear the other's rows out from under it.
+
+    LP5: each update dict may carry `claim_id`/`tension_id` -- the Claim or tension this proposal traces back to.
+    Optional and origin-independent (the LLM-based path has no claim to attach and simply omits them)."""
     with tx() as conn:
         if origin is None:
             conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending' AND origin IS NULL", (plan_id,))
         else:
             conn.execute("DELETE FROM plan_updates WHERE plan_id=? AND status='pending' AND origin=?", (plan_id, origin))
-        conn.executemany("INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, origin, created_at) VALUES (?,?,?,?,?,?,?)",
-                         [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), origin, now()) for u in updates])
+        conn.executemany(
+            "INSERT INTO plan_updates (plan_id, section, previous, proposed, reason, origin, claim_id, tension_id, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            [(plan_id, u.get("section", ""), u.get("previous"), u.get("proposed", ""), u.get("reason"), origin,
+              u.get("claim_id"), u.get("tension_id"), now()) for u in updates])
 
 
-def set_update_status(update_id: int, status: str) -> dict[str, Any] | None:
+def set_update_status(update_id: int, status: str, decided_by: str = "user") -> dict[str, Any] | None:
+    """LP5: stamps `decided_at`/`decided_by` the moment a pending row is accepted or rejected -- never on a
+    re-read, so a row's provenance reflects the actual decision moment, not whenever it was last fetched."""
     with tx() as conn:
-        conn.execute("UPDATE plan_updates SET status=? WHERE id=?", (status, update_id))
+        conn.execute("UPDATE plan_updates SET status=?, decided_at=?, decided_by=? WHERE id=?",
+                     (status, now(), decided_by, update_id))
         row = conn.execute("SELECT * FROM plan_updates WHERE id=?", (update_id,)).fetchone()
         return dict(row) if row else None
 
