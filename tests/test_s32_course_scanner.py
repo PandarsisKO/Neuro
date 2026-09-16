@@ -185,6 +185,58 @@ def test_a_player_that_arrives_late_is_still_found():
     assert outcomes(r) == [("Slow one", "video_found"), ("Slow two", "video_found")]
 
 
+def test_a_badge_glued_directly_onto_a_lesson_count_does_not_hide_the_module():
+    """CS5, live SMB Market: a module card's "N lessons" span sits directly next to a "New" badge span with no
+    whitespace text node between them -- plain textContent glues them into "6 lessonsxNew", which defeated
+    MODULE_TEXT's trailing \b (found live, fixed by matching row/card text through wordsOf() instead of
+    textContent -- the same fix BLOCKED_TEXT already needed). Not a selector fix: this is a general text-adjacency
+    behaviour, reproduced here with plain sibling <span>s, not SMB's markup."""
+    r = scan("courses/badge.html")
+    assert outcomes(r) == [("First", "video_found"), ("Second", "video_found"),
+                           ("Third", "video_found"), ("Fourth", "video_found")]
+
+
+def test_a_page_root_layout_wrapper_named_like_a_sidebar_does_not_hide_every_control():
+    """CS5, live SMB Market: shadcn/ui's own layout wrapper around the WHOLE app (nav and main content both) is
+    named `group/sidebar-wrapper` -- a class-substring "sidebar" check with an unbounded closest() walk matched
+    it on every button on the page and classified all 6 real modules as site-chrome (found live). Fixed by
+    trusting the class-name heuristic only within a short climb; a real <nav> landmark is still excluded at any
+    distance."""
+    r = scan("courses/wrapper.html")
+    assert outcomes(r) == [("Intro", "video_found"), ("Setup", "video_found"),
+                           ("Deep dive", "video_found"), ("Wrap up", "video_found")]
+    assert "Home" not in [c for c in r.get("clicks", [])], "the real nav's own buttons are still never clicked"
+
+
+def test_a_module_titled_with_ordinary_business_vocabulary_is_not_mistaken_for_a_purchase_button():
+    """CS5, live SMB Market: a real module titled "Your Buy Box and Buyer Profile" was rejected by the DANGER
+    denylist over the word "buy" -- found live. A row that already positively matches MODULE_TEXT is exempt from
+    the wording denylist, the same way a LESSON_TEXT match already was."""
+    r = scan("courses/vocab.html")
+    assert outcomes(r) == [("Define your buy box", "video_found"), ("Buyer profile worksheet", "video_found"),
+                           ("Welcome", "video_found"), ("Setup", "video_found")]
+
+
+def test_an_ordinal_split_across_separate_text_nodes_from_its_period_still_matches():
+    """CS5, live SMB Market: the ordinal digit and its "." render as separate text nodes ("1", then "."), and a
+    duration's number and unit letter do too ("5", then "m") -- found live. rowText()'s TreeWalker join inserts a
+    space at both seams; LESSON_TEXT must tolerate the ordinal one without weakening its anchor."""
+    r = scan("courses/splitord.html")
+    assert outcomes(r) == [("Intro", "video_found"), ("Setup", "video_found")]
+
+
+def test_a_lesson_titled_with_ordinary_business_vocabulary_is_not_mistaken_for_a_purchase_button():
+    """CS5, live SMB Market: real lesson titles ("How to Determine Your Purchase Price", "The Purchase Agreement
+    Explained", "How to Quantify the Purchase Price of a Business") were rejected by isDangerous's SECOND,
+    LESSON_TEXT-specific denylist re-check (quiz|certificate|purchase|checkout) even though the row already
+    positively matched LESSON_TEXT's numbered-row shape -- found live, missing 3 of 43 real lessons across the
+    course. The same exemption the module side already had (previous test) must apply uniformly to lessons."""
+    r = scan("courses/purchase.html")
+    assert outcomes(r) == [("How to Determine Your Purchase Price", "video_found"),
+                           ("The Purchase Agreement Explained", "video_found"),
+                           ("How to Quantify the Purchase Price of a Business", "video_found")]
+
+
 def test_a_lesson_without_a_video_and_a_locked_lesson_are_named_as_such():
     r = scan("courses/novideo.html")
     assert outcomes(r) == [("Video lesson", "video_found"), ("Reading", "no_video"), ("Locked bonus", "blocked")]

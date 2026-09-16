@@ -1,0 +1,15 @@
+<!doctype html><html><head><title>M&A vocabulary course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h1>M&A vocabulary course</h1><h2 id="h">Pick a lesson</h2><div id="player"></div><div id="rows"></div></main>
+<script>
+// mission CS5, live SMB Market: real lesson titles ("How to Quantify the Purchase Price of a Business", "The
+// Purchase Agreement Explained", "How to Determine Your Purchase Price") were rejected by isDangerous's SECOND,
+// LESSON_TEXT-specific denylist re-check (quiz|certificate|purchase|checkout) even though the row already
+// positively matched LESSON_TEXT's numbered-row shape -- the same class of false positive Bug 3 fixed for
+// MODULE_TEXT ("Your Buy Box and Buyer Profile"), just missed on the lesson side. A lesson row that already
+// matches the numbered shape must be exempt from the denylist uniformly, not selectively by word.
+const L=[["How to Determine Your Purchase Price","pppp1111pppp1111pppp1111pppp1111"],
+         ["The Purchase Agreement Explained","pppp2222pppp2222pppp2222pppp2222"],
+         ["How to Quantify the Purchase Price of a Business","pppp3333pppp3333pppp3333pppp3333"]];
+const rows=document.getElementById('rows');
+L.forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};rows.appendChild(b);});
+</script></body></html>

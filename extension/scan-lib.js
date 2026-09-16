@@ -86,13 +86,33 @@
     for (let t = w.nextNode(); t && n < (limit || 4000); t = w.nextNode()) { const s = t.textContent.trim(); if (s) { out.push(s); n += s.length; } }
     return out.join(' ');
   }
+  // CS5 (live SMB Market): a module/lesson row's own text can be glued across element boundaries by plain
+  // textContent (a "6 lessons" span directly followed by a "New" badge span, no whitespace between them, breaks
+  // LESSON_TEXT/MODULE_TEXT's trailing \b) -- the same class of problem wordsOf() already solves for BLOCKED_TEXT.
+  // Used wherever a row/card is matched against LESSON_TEXT/MODULE_TEXT/DANGER, general behaviour, not SMB-specific.
+  const rowText = el => wordsOf(el, 300);
 
   // ------------------------------------------------------------------ Strategy A: lesson LINKS on this page
   // 1.6.0's classifier, kept verbatim in behaviour (gate: tests/test_s32_course_scanner.py): a lesson word must be
   // a WORD; navigation landmarks are excluded structurally; a link under the course path is not a lesson by location.
   const BAD_LINK = /\/(login|logout|sign|account|settings|cart|checkout|privacy|terms|search|tag|category|author|calendar|partners|community|pricing|support|help|profile|billing)\b|#|mailto:|javascript:/i;
   const GOOD_LINK = /(?:^|[^a-z])(lessons?|lectures?|modules?|units?|posts?|watch|videos?|episodes?|chapters?|parts?|days?|weeks?|steps?)(?:[^a-z]|$)|courses\/[^/]+\//i;
-  const CHROME = 'nav,aside,header,footer,[role=navigation],[role=banner],[role=contentinfo],[class*=sidebar],[class*=navbar],[class*=breadcrumb]';
+  // landmark tags/roles are trustworthy at any distance; a class-name heuristic ("sidebar"/"navbar"/"breadcrumb")
+  // is not -- a component library's own layout wrapper (e.g. shadcn/ui's `group/sidebar-wrapper`, found live on
+  // SMB Market) can carry that substring on a div wrapping the WHOLE app, nav AND main content both, many levels
+  // up. Trust the class heuristic only within a short climb (same bound siblingGroups uses for containers),
+  // never all the way to <body> -- otherwise one page-root wrapper hides every real control on the page.
+  const CHROME_LANDMARK = 'nav,aside,header,footer,[role=navigation],[role=banner],[role=contentinfo]';
+  const CHROME_CLASS = '[class*=sidebar],[class*=navbar],[class*=breadcrumb]';
+  const CHROME = CHROME_LANDMARK + ',' + CHROME_CLASS;   // kept for callers/tests that want the combined selector
+  function inChrome(el, limit) {
+    if (el && el.closest && el.closest(CHROME_LANDMARK)) return true;
+    let e = el;
+    for (let i = 0; i < (limit || 6) && e && e.nodeType === 1; i++, e = e.parentElement) {
+      if (e.matches && e.matches(CHROME_CLASS)) return true;
+    }
+    return false;
+  }
   function nearestModule(el, doc) {
     let e = el;
     for (let i = 0; i < 6 && e; i++) {
@@ -108,7 +128,7 @@
     doc.querySelectorAll('a[href]').forEach(a => {
       let u; try { u = new URL(a.getAttribute('href'), here); } catch (e) { return; }
       if (u.host !== host || BAD_LINK.test(u.href) || u.href.split('#')[0] === ME) return;
-      if (a.closest(CHROME)) return;
+      if (inChrome(a)) return;
       const key = u.origin + u.pathname; if (seen.has(key)) return;
       const t = textOf(a); if (!t || t.length > 140) return;
       if (!GOOD_LINK.test(u.pathname) && !GOOD_LINK.test(t)) return;
@@ -123,22 +143,48 @@
   // that all read "<ordinal>. <title>[ <duration>]" — the repeated structure a course list has and a toolbar never
   // has. Module cards are the same idea one level up: siblings reading "<title> N lessons". The denylist below is a
   // SECOND barrier for the one case a container is mixed, never the first.
-  const LESSON_TEXT = /^(\d{1,3})[.)]\s+(.{2,140}?)(?:\s*(\d{1,3})\s*(?:m|min|mins|minutes)\b\s*)?$/i;
+  // CS5 (live SMB Market): the ordinal digit and its "." can render as separate text nodes ("1", then ".") --
+  // rowText()'s TreeWalker join inserts a space between them ("1 . Title"), which a rigid \d[.)] adjacency
+  // rejects. \s* between the ordinal and its punctuation tolerates that without weakening the anchor (still
+  // digits-then-punctuation at the very start of the row, never matching arbitrary numbers mid-title).
+  const LESSON_TEXT = /^(\d{1,3})\s*[.)]\s+(.{2,140}?)(?:\s*(\d{1,3})\s*(?:m|min|mins|minutes)\b\s*)?$/i;
   const MODULE_TEXT = /^(.{2,120}?)\s*(\d{1,3})\s*lessons?\b/i;
   const DANGER = /\b(buy|purchase|checkout|cart|pay|billing|subscribe|enrol|enroll|upgrade|unlock|log ?out|sign ?out|sign ?in|log ?in|delete|remove|submit|post|reply|comment|save|complete|mark|quiz|certificate|download|share|report|next|prev|previous|start course|resume|continue)\b/i;
   const CONTROL_SEL = 'button,[role=button],[role=tab],[role=option],[role=menuitem],[role=treeitem],li[tabindex],div[tabindex]';
 
   function isDangerous(el) {
-    const t = textOf(el);
+    const t = rowText(el);
     if (el.matches && el.matches('a[href]')) {
       const href = el.getAttribute('href') || '';
       if (/^(mailto:|tel:|javascript:)/i.test(href)) return 'link-scheme';
       try { const u = new URL(href, el.ownerDocument.location.href); if (u.host !== el.ownerDocument.location.host) return 'external-link'; } catch (e) { return 'bad-link'; }
     }
     if (el.matches && el.matches('[type=submit],form button:not([type=button]),form [role=button]')) return 'form-submit';
-    if (el.closest && el.closest(CHROME)) return 'site-chrome';
-    if (DANGER.test(t) && !LESSON_TEXT.test(t)) return 'danger-word';
-    if (LESSON_TEXT.test(t) && /\b(quiz|certificate|purchase|checkout)\b/i.test(t)) return 'danger-word';
+    if (inChrome(el)) return 'site-chrome';
+    // a real lesson/module TITLE is natural-language content and can legitimately contain a denylist word as
+    // ordinary business vocabulary (found live on SMB Market: a module titled "Your Buy Box and Buyer Profile"
+    // rejected over "buy") -- the denylist is a second barrier for a MIXED container, so anything that already
+    // positively matches the lesson or module shape is exempt from it; only a shape-less row (an actual
+    // toolbar/action control) is judged on wording alone.
+    if (DANGER.test(t) && !LESSON_TEXT.test(t) && !MODULE_TEXT.test(t)) return 'danger-word';
+    // A numbered row can still BE a disguised action slipped into the list ("2. Purchase the full course",
+    // "3. Take quiz") rather than a lesson that merely mentions one of these words. Found live on SMB Market:
+    // three genuine M&A lesson titles talk ABOUT a purchase price/agreement as course content -- "How to
+    // Determine Your Purchase Price", "The Purchase Agreement Explained", "How to Quantify the Purchase Price
+    // of a Business" -- and none of them OPEN with the word; a bare CTA does ("Purchase the full course"), or
+    // is itself just the verb + a one-word object ("Take quiz"). Leading position (or, for a two-word row, the
+    // word appearing at all) is what separates a title merely mentioning the topic from a row that IS the action,
+    // a general and non-SMB-specific signal; it only narrows this already-narrow word list, never the main
+    // denylist above.
+    const lm = t.match(LESSON_TEXT);
+    if (lm) {
+      const title = lm[2].trim();
+      const words = title.split(/\s+/).filter(Boolean);
+      const NARROW = /^(quiz|certificate|purchase|checkout)$/i;
+      const opensWithDanger = NARROW.test(words[0] || '');
+      const shortAndDangerous = words.length <= 2 && /\b(quiz|certificate|purchase|checkout)\b/i.test(title);
+      if (opensWithDanger || shortAndDangerous) return 'danger-word';
+    }
     return null;
   }
 
@@ -149,7 +195,7 @@
     doc.querySelectorAll(CONTROL_SEL).forEach(el => {
       if (el.closest('a[href]') && !el.matches('a[href]')) return;      // a control inside a link is the link's
       if (el.querySelector('a[href]')) return;                           // a wrapper around a link is not a control
-      const t = textOf(el); if (!t || t.length > 200 || !re.test(t)) return;
+      const t = rowText(el); if (!t || t.length > 200 || !re.test(t)) return;
       all.push(el);
     });
     // one control per visual row: if a wrapper and its inner button both matched, keep the innermost
@@ -165,7 +211,7 @@
       byContainer.get(found).push(el);
     }
     const groups = [];
-    for (const [container, els] of byContainer) if (els.length >= min && !container.closest(CHROME)) groups.push({ container, rows: els });
+    for (const [container, els] of byContainer) if (els.length >= min && !inChrome(container)) groups.push({ container, rows: els });
     return groups.sort((a, b) => b.rows.length - a.rows.length);
   }
 
@@ -173,7 +219,7 @@
   function allLessonRows(doc) {
     const out = [];
     for (const g of siblingGroups(doc, LESSON_TEXT, 2)) for (const el of g.rows) {
-      const m = textOf(el).match(LESSON_TEXT); const l = { el, ordinal: +m[1], title: m[2].trim(), duration_min: m[3] ? +m[3] : null, danger: isDangerous(el) };
+      const m = rowText(el).match(LESSON_TEXT); const l = { el, ordinal: +m[1], title: m[2].trim(), duration_min: m[3] ? +m[3] : null, danger: isDangerous(el) };
       if (!l.danger) out.push(l);
     }
     return out;
@@ -181,13 +227,13 @@
   function findLessonStructure(doc) {
     const lessonGroups = siblingGroups(doc, LESSON_TEXT, 2).map(g => ({
       container: g.container,
-      lessons: g.rows.map(el => { const m = textOf(el).match(LESSON_TEXT); return { el, ordinal: +m[1], title: m[2].trim(), duration_min: m[3] ? +m[3] : null, danger: isDangerous(el) }; })
+      lessons: g.rows.map(el => { const m = rowText(el).match(LESSON_TEXT); return { el, ordinal: +m[1], title: m[2].trim(), duration_min: m[3] ? +m[3] : null, danger: isDangerous(el) }; })
                      .filter(l => !l.danger)
                      .sort((a, b) => a.ordinal - b.ordinal),
     })).filter(g => g.lessons.length >= 2);
     const moduleGroups = siblingGroups(doc, MODULE_TEXT, 2).map(g => ({
       container: g.container,
-      modules: g.rows.map(el => { const m = textOf(el).match(MODULE_TEXT); return { el, title: m[1].trim().slice(0, 120), lesson_count: +m[2], danger: isDangerous(el) }; })
+      modules: g.rows.map(el => { const m = rowText(el).match(MODULE_TEXT); return { el, title: m[1].trim().slice(0, 120), lesson_count: +m[2], danger: isDangerous(el) }; })
                      .filter(x => !x.danger),
     })).filter(g => g.modules.length >= 2);
     // the module heading a lesson list sits under: nearest preceding h1-h3 inside main, else the page title
@@ -301,7 +347,7 @@
   function findRow(doc, lesson) {
     // controls are re-rendered by SPAs; find the row again by ordinal + title, never by a stale node
     const want = norm(lesson.title);
-    const rows = [...doc.querySelectorAll(CONTROL_SEL)].filter(el => { const m = textOf(el).match(LESSON_TEXT); return m && +m[1] === lesson.ordinal && norm(m[2]) === want; });
+    const rows = [...doc.querySelectorAll(CONTROL_SEL)].filter(el => { const m = rowText(el).match(LESSON_TEXT); return m && +m[1] === lesson.ordinal && norm(m[2]) === want; });
     return rows.find(el => !rows.some(o => o !== el && el.contains(o))) || (lesson.el && lesson.el.isConnected ? lesson.el : null);
   }
   function lessonRecord(lesson, moduleTitle, page_url, players, outcome, extra) {

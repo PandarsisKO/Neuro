@@ -1,0 +1,14 @@
+<!doctype html><html><head><title>Business vocabulary course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h1>Business vocabulary course</h1><h2 id="h">Pick a module</h2><div id="player"></div><div id="acc"></div></main>
+<script>
+// mission CS5, live SMB Market: a module genuinely titled "Your Buy Box and Buyer Profile" was rejected because
+// the DANGER denylist matches the word "buy" -- ordinary business vocabulary, not a purchase-flow button. A
+// title that already positively matches MODULE_TEXT (title + "N lessons") must be exempt from the denylist, the
+// same way a LESSON_TEXT match already is.
+const M={"Your Buy Box and Buyer Profile":[["Define your buy box","gggg1111gggg1111gggg1111gggg1111"],["Buyer profile worksheet","gggg2222gggg2222gggg2222gggg2222"]],
+        "Getting Started":[["Welcome","hhhh1111hhhh1111hhhh1111hhhh1111"],["Setup","hhhh2222hhhh2222hhhh2222hhhh2222"]]};
+const acc=document.getElementById('acc');
+for(const t of Object.keys(M)){const sec=document.createElement('section');sec.innerHTML='<button class="mod">'+t+' <span>'+M[t].length+' lessons</span></button><div class="rows"></div>';acc.appendChild(sec);
+  const rows=sec.querySelector('.rows');
+  sec.querySelector('.mod').onclick=()=>{ if(rows.children.length){rows.innerHTML='';return;} M[t].forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};rows.appendChild(b);}); };}
+</script></body></html>

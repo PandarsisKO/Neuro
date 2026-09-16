@@ -1,0 +1,20 @@
+<!doctype html><html><head><title>Split-ordinal course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main><h1>Split-ordinal course</h1><h2 id="h">Pick a lesson</h2><div id="player"></div><div id="list"></div></main>
+<script>
+// mission CS5, live SMB Market: the ordinal digit and its "." render as separate text nodes ("1", then "."),
+// and the duration's number and unit letter also render separately ("5", then "m") -- rowText()'s node-boundary
+// join inserts spaces at both seams ("1 . Title 5 m"), which LESSON_TEXT must still match.
+const L=[["Intro","iiii1111iiii1111iiii1111iiii1111",5],["Setup","iiii2222iiii2222iiii2222iiii2222",12]];
+const list=document.getElementById('list');
+L.forEach((l,k)=>{
+  const b=document.createElement('button');
+  const ordN=document.createElement('span'); ordN.textContent=String(k+1);
+  const ordP=document.createElement('span'); ordP.textContent='.';
+  const title=document.createElement('span'); title.textContent=' '+l[0]+' ';
+  const durN=document.createElement('span'); durN.textContent=String(l[2]);
+  const durU=document.createElement('span'); durU.textContent='m';
+  b.append(ordN, ordP, title, durN, durU);
+  b.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};
+  list.appendChild(b);
+});
+</script></body></html>

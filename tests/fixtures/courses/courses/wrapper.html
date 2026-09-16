@@ -1,0 +1,19 @@
+<!doctype html><html><head><title>Sidebar-wrapper course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<!-- mission CS5, live SMB Market: a component library's own page-root layout wrapper (shadcn/ui's real class is
+     "group/sidebar-wrapper") can carry the substring "sidebar" while wrapping the WHOLE app -- the real nav AND
+     the main content -- not just the nav panel. A class-substring CHROME check with an unbounded closest() walk
+     therefore matched every button on the page as "site-chrome" and hid all 6 real modules. Reproduces that
+     wrapper shape (not the real class name) many levels above the module grid. -->
+<div class="group/sidebar-wrapper flex min-h-svh w-full">
+  <nav class="real-nav"><button>Home</button><button>Settings</button></nav>
+  <div class="a"><div class="b"><div class="c"><div class="d"><div class="e">
+    <main><h1>Sidebar-wrapper course</h1><h2 id="h">Pick a lesson</h2><div id="player"></div><div id="acc"></div></main>
+  </div></div></div></div></div>
+</div>
+<script>
+const M={"Module A":[["Intro","eeee1111eeee1111eeee1111eeee1111"],["Setup","eeee2222eeee2222eeee2222eeee2222"]],"Module B":[["Deep dive","ffff1111ffff1111ffff1111ffff1111"],["Wrap up","ffff2222ffff2222ffff2222ffff2222"]]};
+const acc=document.getElementById('acc');
+for(const t of Object.keys(M)){const sec=document.createElement('section');sec.innerHTML='<button class="mod">'+t+' <span>'+M[t].length+' lessons</span></button><div class="rows"></div>';acc.appendChild(sec);
+  const rows=sec.querySelector('.rows');
+  sec.querySelector('.mod').onclick=()=>{ if(rows.children.length){rows.innerHTML='';return;} M[t].forEach((l,k)=>{const b=document.createElement('button');b.textContent=(k+1)+'. '+l[0];b.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};rows.appendChild(b);}); };}
+</script></body></html>

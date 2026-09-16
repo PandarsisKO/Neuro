@@ -1,0 +1,40 @@
+<!doctype html><html><head><title>Badge course</title></head><body><script>window.__clicks=[];document.addEventListener("click",e=>{const b=e.target.closest("button,a");if(b)window.__clicks.push((b.textContent||"").replace(/\s+/g," ").trim().slice(0,60));},true);</script>
+<main>
+<nav class="breadcrumb"><button data-slot="breadcrumb-link" id="home">Learning</button></nav>
+<h1>Badge course</h1><h2 id="h">Pick a module</h2><div id="player"></div><div id="grid"></div></main>
+<script>
+// mission CS5, live SMB Market: a module card's "N lessons" span sits directly next to a separate "New" badge
+// span with NO whitespace text node between them -- textContent glues them into "6 lessonsxNew", breaking a
+// plain MODULE_TEXT \b match. Reproduces that exact sibling-span adjacency, not the site's markup. Also matches
+// SMB's whole-view-replace shape (grid content is replaced, not expanded in place), so a breadcrumb back control
+// is provided, same as findBackControl() expects.
+const MODS=[{t:"Module One",n:2},{t:"Module Two",n:2}];
+const LESSONS={"Module One":[["First","cccc1111cccc1111cccc1111cccc1111"],["Second","cccc2222cccc2222cccc2222cccc2222"]],
+              "Module Two":[["Third","dddd1111dddd1111dddd1111dddd1111"],["Fourth","dddd2222dddd2222dddd2222dddd2222"]]};
+const grid=document.getElementById('grid');
+function renderHome(){
+  document.getElementById('h').textContent='Pick a module';
+  grid.innerHTML='';
+  for(const m of MODS){
+    const b=document.createElement('button');
+    const h3=document.createElement('h3'); h3.textContent=m.t;
+    const sp1=document.createElement('span'); sp1.textContent=m.n+' lessons';
+    const sp2=document.createElement('span'); sp2.textContent='x';           // separator glyph, glued to sp1
+    const sp3=document.createElement('span'); sp3.textContent='New';         // badge, glued to sp2
+    b.append(h3, sp1, sp2, sp3);
+    b.onclick=()=>{
+      document.getElementById('h').textContent='Module: '+m.t;
+      grid.innerHTML='';
+      LESSONS[m.t].forEach((l,k)=>{
+        const row=document.createElement('button');
+        row.textContent=(k+1)+'. '+l[0]+' 5m';
+        row.onclick=()=>{document.getElementById('h').textContent='Lesson: '+l[0];document.getElementById('player').innerHTML='<iframe src="https://www.loom.com/embed/'+l[1]+'"></iframe>';};
+        grid.appendChild(row);
+      });
+    };
+    grid.appendChild(b);
+  }
+}
+document.getElementById('home').onclick=renderHome;
+renderHome();
+</script></body></html>
