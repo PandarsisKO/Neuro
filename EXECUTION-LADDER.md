@@ -625,7 +625,7 @@ rows stay `applied_plan_id: null` even after a later apply, older NULL-column ro
 ### SC0b `[x] 29952b0` capability view completeness — DONE · lane: claude · needs: —
 Add to `creator_yield`: claim types/topics yielded, targets previously helped close (`candidate_links` state
 satisfied), cadence (published_at spread). Read-only; project-scoped; never a single score. Gate: tests.
-### SC3 — folded into CR1 (`where` per need). `[ ]` closes with CR1.
+### SC3 `[x] 2cbc82f` — folded into CR1 (`where` per need) — DONE. CR1's own entry says it explicitly: "`where` = `candidates.where_to_look` adapted from the Claim's topic + evidence classes (this IS SC3)". Stale `[ ]` marker corrected 2026-09-16 -- no code changed, CR1 already satisfied this when it shipped.
 
 ### Stage 13 — P9B Adaptive Discovery (Claude lane) — needs: SC view (exists)
 ### AD0 `[x] 866edc8` feedback inventory — DONE · lane: claude · $0 · needs: —
