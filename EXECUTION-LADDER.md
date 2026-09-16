@@ -688,19 +688,33 @@ too thin to support a conclusion (a missing/empty Crossref `reference` array is 
 absence). Read-only: writes nothing to candidates/sources/claims/targets/the Planner. `tests/test_s60_field_map.py`
 (25 tests, all fixture-fed, no network). Full suite 1863 passed (2 consecutive clean runs); repo-check PASS;
 release-check PASS at `87ba57b`.
+**Follow-up hardening (`f13ca97`).** (1) DOI-less canonical identity now folds normalized-title + first-author
++ YEAR WHEN PRESENT into the key (was title+author alone): a missing year never forces a merge with a dated entry
+(kept as a duplicate representation, not a false merge, per Kyle's "false merge is worse than duplicate
+representation" principle); two undated entries with the same title+author still merge (no information says
+otherwise). No fuzzy resolution, no model call. (2) The CLI's human-readable `project field-map` output now
+surfaces everything needed to judge a real run WITHOUT `--json`: per-seed fetch detail, all six completeness
+counters spelled out, an explicit `sufficient_for_underrepresented_conclusion` line, and each field area's full
+metrics plus `representative_references` (title, DOI when it has one, mention count). 25 -> 32 tests. Full suite
+1870 passed (2 consecutive clean runs); repo-check PASS; release-check PASS at `f13ca97`.
 ### FM1-gate `[k]` real-world validation — needs: a real project with a genuine review/scholarly seed AND live
 Crossref access, neither available from this sandbox (fresh `curl` check against `api.crossref.org` /
 `api.openalex.org` from the connected device's shell still returns 403 from the org's own egress proxy, matching
 FM0's original finding). **Kyle action**: on a machine with live Crossref access, run
-`neurosearch project field-map <a real project with 1+ scholarly/review sources>` and judge: (A) did seed discovery
-actually find the right seed(s) from what's already in the project, in the stated priority order; (B) did the
-Crossref reference fetch return real, useful bibliography data (or an honest `insufficient_reference_metadata`);
-(C) are the resulting field areas genuinely coherent, not noise from the v1 overlap-based clustering's known
-chaining limitation (see the clustering docstring in `field_map.py`); (D) is the coverage read against the
-project's own evidence accurate and not overclaimed; (E) is `seed_count` doing its inspectability job -- does a
-single-seed field area read more cautiously than a multi-seed one. Record the verdict here. Only after a genuine
-FM1-gate pass is FM2 (accepted proposal -> existing object) worth planning -- do not expand clustering
-sophistication or add a second data source (OpenAlex, headings) speculatively before that evidence exists.
+`neurosearch project field-map <a real project with 1+ scholarly/review sources>` (plain text output already has
+everything below; add `--json` only if you want the raw structure) and judge:
+(A) did it surface at least one field area that was not obvious from Neuro's existing project structure;
+(B) were the representative references inspectable enough to understand why that area appeared;
+(C) did the output distinguish repeated mentions (`reference_count`) from distinct works (`referenced_work_count`)
+and distinct seed bibliographies (`seed_count`);
+(D) were areas already well represented in the project's own evidence correctly recognized as covered (`coverage`);
+(E) did thin/incomplete bibliography metadata degrade to `insufficient_reference_metadata`/`unknown` rather than
+manufacture an `underrepresented` claim -- check the "sufficient reference metadata..." line before trusting any
+`underrepresented` result;
+(F) was at least one `underrepresented` result genuinely useful enough that Kyle would want Neuro to investigate it.
+Record the verdict here, especially (F): if F is NO, record why and FM2 stays stopped; if F is YES, FM2 may be
+considered for admission, but is never implemented automatically from that alone. Do not expand clustering
+sophistication or add a second data source (OpenAlex, headings) speculatively before this evidence exists.
 ### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — READY AFTER FM1-gate.
 ### FM3 `[ ]` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.
 

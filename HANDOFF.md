@@ -5609,3 +5609,29 @@ No paid provider call was made anywhere in this work. Verified only against the 
 
 Commits this segment: `87ba57b` (field_map.py + scholar.fetch_crossref_references + CLI command + test_s60, code),
 `97e9edb` (release-check artifact, PASS at 87ba57b), plus this EXECUTION-LADDER.md/PRODUCT-SCHEDULER.md update.
+
+## Execution — FM1 follow-up hardening + one-command real-validation readiness (2026-09-16)
+
+Per Kyle's "FM1 FOLLOW-UP HARDENING + REAL-VALIDATION READINESS" mission (FM1 accepted as shipped; explicitly no
+FM2): (1) hardened DOI-less canonical reference identity in `field_map._canonical_key` -- title+author alone is
+no longer enough; a stated year now participates in the identity key, and a missing year never forces a merge
+with a dated entry (conservative: duplicate representation over false merge). 7 new regression tests prove the
+six required invariants directly against `_canonical_key` plus one end-to-end `build()` check. (2) Enriched
+`field_map.build()`'s result (`sufficient_for_underrepresented_conclusion`, `representative_references` per area)
+and the CLI's human-readable output so a real FM1-gate run needs no `--json` flag to show Kyle everything: seeds
+used and their provenance, per-seed fetch detail, all six completeness counters, the explicit sufficiency line,
+and each field area's full metrics with representative references.
+
+Updated EXECUTION-LADDER.md's FM1-gate entry with the exact six questions (A-F) from Kyle's mission, including
+the explicit "if F is NO, stop; if YES, FM2 may be considered but is never auto-implemented" rule.
+
+25 -> 32 tests in `tests/test_s60_field_map.py`. Full suite: 1870 passed (2 consecutive clean parallel runs). One
+unrelated pre-existing flaky test (`test_n3_deep_findings.py::test_deep_reads_report_per_part_progress_and_ride_the_slow_lane`)
+was observed once in a full-suite run, not touched by this work, confirmed to pass in isolation and on an
+immediate full-suite rerun -- noted here, not investigated (out of scope; no file this session touched is anywhere
+near that test). repo-check PASS. `release-check --no-pytest` PASS at `f13ca97` (artifact committed).
+
+No FM2 code. No CR8c code. No paid provider calls anywhere in this work.
+
+Commits this segment: `f13ca97` (identity hardening + CLI output enrichment + 7 new tests, code), `9ced59c`
+(release-check artifact, PASS at f13ca97), plus this EXECUTION-LADDER.md update.
