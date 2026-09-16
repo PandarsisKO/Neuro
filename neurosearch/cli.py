@@ -1075,6 +1075,33 @@ def project_refresh_check(project: str, claim: str = typer.Option(..., "--claim"
         typer.echo(f"unchanged: {r['after']}")
 
 
+@project_app.command("acquire-evaluate")
+def project_acquire_evaluate(project: str, target: Optional[str] = typer.Option(None, "--target", help="Evaluate this Evidence Target directly, skipping the due-tonight pick"),
+                             as_json: bool = typer.Option(False, "--json", help="Print the full data instead of the readable line")) -> None:
+    """CR8b: starts one open Evidence Target's selective acquisition through the SAME shared mechanism CR5 uses
+    (knowledge.pursue + capture_best) -- for the case CR5 itself declines, an open target with no Claim yet.
+    Returns immediately; ingest/findings run on the normal job queue like any other acquisition. No paid spend
+    happens here beyond what capture_best()'s existing budget machinery already authorizes."""
+    from . import research_refresh
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    need = None
+    if target:
+        need = {"kind": "open_target", "target_id": target}
+    r = research_refresh.request_acquisition(pid, need=need)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    if not r.get("started"):
+        typer.echo(r.get("reason") or "nothing started")
+        raise typer.Exit(code=1)
+    typer.echo(f"acquisition started for target {r['target_id']}: {len(r.get('capture') or [])} item(s) started, "
+              f"{len(r.get('skipped') or [])} skipped -- check `project rescan`/sources once the job queue runs")
+
+
 @project_app.command("plan-state")
 def project_plan_state(project: str, as_json: bool = typer.Option(False, "--json")) -> None:
     """LP4: each plan item's evidence-confidence state (known/assumed/chosen/uncertain/blocked/monitored),

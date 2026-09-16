@@ -516,24 +516,63 @@ def known_evidence(project_id: str, target_id: str, limit: int = 3) -> dict[str,
 
 
 def capture_best(project_id: str, target_id: str, n: int = 3) -> dict[str, Any]:
-    """Acquire the best known sources for an open question through the NORMAL path (attach if owned → ingest job, which
-    parks on the browser when the server cannot read it). Never a parallel acquisition."""
-    from . import candidates, identity, jobs as _jobs
-    rows = candidates.links_for(project_id, "evidence_target", target_id, limit=max(1, min(n, 10)))
-    started = []
+    """Acquire the best known sources for an open question through the NORMAL path (attach if owned -> ingest job,
+    which parks on the browser when the server cannot read it). Never a parallel acquisition.
+
+    Shared boundary for CR5 (Claim-linked refresh, research_refresh.request_refresh) and CR8b (open-Evidence-Target
+    selective acquisition, 2026-09-16): both callers need the same eligibility/acquisition mechanics, so this is the
+    one place that lives -- not two independently drifting implementations (Kyle, CR8b corrections #2/#9.D).
+
+    Considers a bounded pool of the strongest-linked candidates (fixed at up to 10, independent of `n`) so a
+    candidate that turns out ineligible at execution time doesn't stall the target -- it's skipped and the next-best
+    candidate in the SAME pass is tried, until `n` acquisitions have started or the pool is exhausted. Still at most
+    `n` acquisitions per call -- never a cascade through the whole pool (CR8b correction #6).
+
+    Re-reads live `candidate_projects.state` immediately before acting on each candidate (CR8b correction #4/#5): a
+    candidate the user has since dismissed, or that another path already acquired/marked duplicate, is skipped here
+    rather than re-captured -- this closes a real gap CR8b's inspection found (this function previously never
+    looked at project-local state at all, which both CR5 and any future selective-acquisition caller inherited).
+    This boundary is deliberately NOT inside `candidates.capture()`, which stays the explicit single-candidate
+    "capture this anyway" path a user can still reach to reverse their own earlier dismissal (correction #4).
+
+    $0-vs-spend sequencing (correction #3): an already-ready Library source attaches unconditionally -- a depleted
+    budget must never block a genuinely free reuse. Only the enqueue-a-real-ingest branch is budget-gated, through
+    the existing `usage.guard`/`usage.check` machinery (no new budget concept here or in any caller). A
+    budget-refused candidate is left completely untouched -- no disposition change, no partial acquisition -- and
+    reported in the returned `skipped` list; the next candidate in the pool is tried."""
+    from . import candidates, identity, jobs as _jobs, usage
+    rows = candidates.links_for(project_id, "evidence_target", target_id, limit=10)
+    started: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    cap = max(1, n)
     for r in rows:
+        if len(started) >= cap:
+            break
         c = db.row_to_dict(db.connect().execute("SELECT * FROM candidates WHERE id=?", (r["candidate_id"],)).fetchone())
+        if not c:
+            continue
+        cp = db.row_to_dict(db.connect().execute(
+            "SELECT state FROM candidate_projects WHERE candidate_id=? AND project_id=?", (c["id"], project_id)).fetchone())
+        state = (cp or {}).get("state")
+        if state in ("user_dismissed", "acquired", "duplicate"):
+            skipped.append({"candidate_id": c["id"], "title": c.get("title"), "why": state})
+            continue
         if c.get("source_id") and (db.get_source(c["source_id"]) or {}).get("status") == "ready":
             identity.attach_existing(project_id, c["source_id"])
             candidates.mark(project_id, [c["id"]], "acquired", "attached for an open question")
             candidates.satisfy_links(c["id"])
             started.append({"candidate_id": c["id"], "title": c.get("title"), "how": "attached"})
             continue
+        try:
+            usage.guard(0.0)
+        except usage.BudgetPaused:
+            skipped.append({"candidate_id": c["id"], "title": c.get("title"), "why": "budget"})
+            continue
         job = _jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False, "candidate_id": c["id"],
                                           "reason": f"evidence for an open question", "title": c.get("title")})
         candidates.mark(project_id, [c["id"]], "acquired", "capturing for an open question")
         started.append({"candidate_id": c["id"], "title": c.get("title"), "how": "job", "job_id": job["id"], "acquisition_hint": r["acquisition_hint"]})
-    return {"target_id": target_id, "started": started}
+    return {"target_id": target_id, "started": started, "skipped": skipped}
 
 
 def state_map(project_id: str) -> dict[str, Any]:

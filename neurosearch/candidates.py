@@ -127,7 +127,8 @@ def capture(candidate_id: str, project_id: str, *, reason: str | None = None) ->
         mark(project_id, [candidate_id], "acquired", "attached from the library")
         return {"ok": True, "job_id": None, "source_id": c["source_id"], "identity": r.state, "url": c["url"]}
     from . import jobs
-    job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False})
+    job = jobs.enqueue("ingest_url", {"url": c["url"], "tags": [], "project_id": project_id, "force": False, "review": False,
+                                      "candidate_id": candidate_id, "reason": reason})
     mark(project_id, [candidate_id], "acquired", reason or "acquired from the Candidate Index")
     return {"ok": True, "job_id": job["id"], "url": c["url"]}
 

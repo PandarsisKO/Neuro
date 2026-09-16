@@ -151,10 +151,44 @@ def run(force: bool = False) -> dict[str, Any]:
             log.warning("nightly envelope %s: research refresh pass failed: %s", envelope_id, e)
             research_refresh_result = {"ran": False, "error": str(e), "budget": settings.research_refresh_nightly_budget}
 
+    # CR8b: a thin, structurally-parallel selective-acquisition pass for open Evidence Targets with no Claim
+    # yet -- the case CR6's research_refresh block above declines. Gated by a plain boolean feature flag
+    # (settings.cr8b_enabled), NOT a dollar budget: capture_best() -- the shared mechanism both this and CR6
+    # go through -- already reuses the existing daily/weekly/monthly spend machinery for its one spend-bearing
+    # branch, and an already-ready Library source attaches for $0 regardless (Kyle's CR8b correction #1). No
+    # new record field, no new scheduler/queue/retry loop -- just per-project due open_target needs, each
+    # started through research_refresh.request_acquisition(), same per-project try/except-log-and-continue
+    # shape CR6 uses so one project's failure never aborts the rest of the night.
+    cr8b_result: dict[str, Any] | None = None
+    if settings.cr8b_enabled:
+        try:
+            from . import research_needs, research_refresh
+            requested: list[dict[str, Any]] = []
+            for p in projects:
+                try:
+                    due = [n for n in research_needs.due_tonight(p["id"]) if n.get("kind") == "open_target"]
+                except Exception as e:  # noqa: BLE001 -- one project's failure must never abort the rest of the night
+                    log.warning("nightly envelope %s: CR8b research needs failed for project %s: %s", envelope_id, p["id"], e)
+                    continue
+                for n in due:
+                    try:
+                        r = research_refresh.request_acquisition(p["id"], need=n)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("nightly envelope %s: CR8b request_acquisition failed for project %s target %s: %s",
+                                    envelope_id, p["id"], n.get("target_id"), e)
+                        continue
+                    if r.get("started"):
+                        requested.append({"project_id": p["id"], "target_id": r.get("target_id")})
+            cr8b_result = {"ran": True, "requested": requested}
+        except Exception as e:  # noqa: BLE001
+            log.warning("nightly envelope %s: CR8b selective acquisition pass failed: %s", envelope_id, e)
+            cr8b_result = {"ran": False, "error": str(e)}
+
     record = {"ok": True, "envelope_id": envelope_id, "ts": time.time(), "budget": budget,
               "spent_estimate": round(budget - remaining, 4), "projects": per_project,
               "adjudication": adjudication,
               "research_refresh": research_refresh_result,
+              "cr8b_acquisition": cr8b_result,
               "preflight_backup": preflight.get("backup_path")}
     db.kv_set(f"nightly:{key}", json.dumps(record))
     log.info("nightly envelope %s: %d project(s) touched, ~$%.4f of $%.2f estimated",

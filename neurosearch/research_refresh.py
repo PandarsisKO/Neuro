@@ -12,7 +12,15 @@ call.
 
 check() is the other half: what actually happened, read any time after, by comparing the Claim's current state
 to the snapshot request_refresh() took before it started. "Unchanged" is a normal, honest outcome, never a
-failure. Neither function ever flips a Claim's status (mission §12: no auto-accept)."""
+failure. Neither function ever flips a Claim's status (mission §12: no auto-accept).
+
+request_acquisition() (CR8b, 2026-09-16) is the sibling for the case request_refresh() explicitly declines: an
+`open_target` Research Need with no `claim_id` -- an Evidence Target that exists on its own, not yet tied to a
+Claim. It goes through the exact SAME shared mechanism, `knowledge.capture_best()` (never a second selection/
+acquisition implementation -- Kyle's CR8b correction #2), with its own last-responsible-moment re-check of the
+target's own `status` immediately before calling it (`capture_best()` re-checks candidate-level state itself, but
+not target-level state -- correction #5). No budget parameter here: `capture_best()` is where spend is gated, via
+the existing `usage.guard`/`usage.check` machinery, not a new one (correction #1)."""
 from __future__ import annotations
 
 import json
@@ -63,6 +71,34 @@ def request_refresh(project_id: str, need: dict[str, Any] | None = None, cap_usd
           "estimated_cost_usd": need.get("estimated_cost_usd")}
     db.kv_set(f"research:refresh:{claim_id}", json.dumps(rec))
     return {**rec, "started": bool(captured["started"]), "capture": captured["started"]}
+
+
+def request_acquisition(project_id: str, need: dict[str, Any] | None = None) -> dict[str, Any]:
+    """CR8b: starts one open Evidence Target's selective acquisition through the SAME shared mechanism CR5 uses
+    (knowledge.capture_best), for the one case CR5 itself declines -- a Research Need with no claim_id. Never
+    enqueues more than one capture (n=1, matching request_refresh's own bound) and never builds a second
+    candidate-selection/acquisition pipeline (correction #2). No `cap_usd` here -- capture_best() is where spend
+    is gated (correction #1)."""
+    if need is None:
+        due = [n for n in research_needs.due_tonight(project_id) if n.get("kind") == "open_target"]
+        if not due:
+            return {"started": False, "reason": "nothing due"}
+        need = due[0]
+    if need.get("kind") != "open_target":
+        return {"started": False, "reason": "this need is not an open Evidence Target (use request_refresh for a Claim need)"}
+    target_id = need.get("target_id")
+    if not target_id:
+        return {"started": False, "reason": "this need has no target_id"}
+    # last-responsible-moment re-check (correction #5): capture_best() re-checks CANDIDATE-level state itself on
+    # every iteration, but never looks at the target's own status -- that race is this caller's to close.
+    t = knowledge.get_target(target_id)
+    if t is None or t.get("status") != "open":
+        return {"started": False, "reason": "target is no longer open", "target_id": target_id}
+    knowledge.pursue(target_id, external=False)
+    captured = knowledge.capture_best(project_id, target_id, n=1)
+    rec = {"target_id": target_id, "ts": time.time()}
+    db.kv_set(f"research:acquisition:{target_id}", json.dumps(rec))
+    return {**rec, "started": bool(captured["started"]), "capture": captured["started"], "skipped": captured.get("skipped") or []}
 
 
 def check(project_id: str, claim_id: str) -> dict[str, Any]:

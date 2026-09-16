@@ -117,6 +117,12 @@ class Settings:
     # section 7: the claim needs a defensible ranking; L-51 is that ranking, and its gate is the proof). Flip to 1
     # only after that; nothing else is needed to ship v2.
     morning_report_needs_me: bool = field(default_factory=lambda: _env("NEUROSEARCH_MORNING_REPORT_NEEDS_ME", "0") in ("1", "true", "yes"))
+    # CR8b: nightly selective acquisition from open Evidence Targets (research_refresh.request_acquisition via
+    # knowledge.capture_best). NOT a dollar budget -- capture_best() already reuses the existing daily/weekly/
+    # monthly spend machinery (usage.guard) for its one spend-bearing branch, and an already-ready Library source
+    # attaches for $0 regardless. This is a plain admit/don't-admit feature gate, same style as
+    # morning_report_needs_me above -- off until Kyle turns it on.
+    cr8b_enabled: bool = field(default_factory=lambda: _env("NEUROSEARCH_CR8B_ENABLED", "0") in ("1", "true", "yes"))
     # CR6: a THIRD, separately-authorized per-night cap -- Continuous Research requesting real refreshes
     # (research_refresh.request_refresh) via the same job queue as any other acquisition. Off by default, same
     # discipline as t5_nightly_budget: folding this into the findings budget would let one silently eat the other.
