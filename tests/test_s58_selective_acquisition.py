@@ -21,6 +21,15 @@ def s58_db(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "fake_ai", True)
     monkeypatch.setattr(settings, "daily_budget", 1000)
     monkeypatch.setattr(settings, "cr8b_enabled", True)
+    # Isolation against a real pre-existing landmine in cli.py's `nightly run` command: --research-refresh-budget
+    # (and --budget/--t5-budget) mutate the process-global `settings` singleton DIRECTLY, not via monkeypatch, so
+    # any earlier test in the same process that exercised that CLI command leaves research_refresh_nightly_budget
+    # permanently nonzero for every test that runs after it (found while chasing a full-suite-only flake in the
+    # two CR8b nightly tests below -- CR6's block at nightly.py's research_refresh_nightly_budget>0 check was
+    # firing unexpectedly, consuming the SAME due_tonight() TTL-dedup key CR8b's own due_tonight() call needs).
+    # Not a CR8b bug and out of this rung's scope to fix in cli.py -- pin it to 0 here so this file's own
+    # assertions are never at the mercy of test execution order elsewhere in the suite.
+    monkeypatch.setattr(settings, "research_refresh_nightly_budget", 0)
     from neurosearch import safe_fetch
     monkeypatch.setattr(safe_fetch, "safe_fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("network used")))
     db._local.conn = None
