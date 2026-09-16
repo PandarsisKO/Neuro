@@ -475,6 +475,15 @@ in §13. Gate: `tests/test_s57_monitor_policy.py` (15 tests) -- the full truth t
 per-collection) scoping with zero cross-project leakage, policy changes never ingesting anything, pre-existing
 rows migrating to conservative defaults. Release-gate PASS at `6144a11` (`4f14113`).
 
+**Follow-up (2026-09-16, `0df11d4`).** Kyle confirmed the design as shipped and asked for one explicit
+regression: the explicit single-collection rescan is a one-time "check this now", never a "start watching this
+forever" -- running it against a `secondary`/inactive collection must check it once, reconcile normally, and
+leave `source_role`/`monitor_policy` completely untouched, with a later `rescan_project()` still skipping it.
+Proven in `tests/test_s57_monitor_policy.py::test_explicit_single_collection_rescan_is_a_one_time_check_not_a_policy_change`
+(the exact 10-step scenario). `reservoir.rescan()` never wrote to `project_collections` to begin with, so this
+was already true by construction -- the test adds the missing direct proof. Release-gate PASS at `94b3699`
+(`0df11d4`).
+
 ### CR8b `[ ]` selective-acquisition adapter — still NOT built, now unblocked but not admitted · needs: Kyle go-ahead
 CR8a resolved the one blocking question; the adapter itself (candidate → `where_to_look`/`_best_fit` →
 `candidates.link`, gated by CR2's due policy + CR6's budget, described above) is still not built. Per Kyle's own
