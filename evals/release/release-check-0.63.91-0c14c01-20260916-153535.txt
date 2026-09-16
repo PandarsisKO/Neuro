@@ -1,0 +1,18 @@
+Release check · app 0.63.91 @ 0c14c01 · 2026-09-16T15:35:35 · 5.2s
+  PASS  experimental flags off by default
+  PASS  repository hygiene and architecture boundaries
+  PASS  Foundation: worker lifecycle, DB ownership, explicit paid fallback, stale-client refusal, frontend and storage integrity
+  PASS  schema registry provider-compatible
+  PASS  contracts valid
+  PASS  web JavaScript modules parse
+  PASS  Tier 1 gates PASS
+  PASS  Tier 1 frozen totals unchanged (router-equivalence)
+  PASS  Tier 1 zero structured-output events
+  PASS  retrieval regression baseline (fake tier) unchanged
+  PASS  cache layout: stable chat prefix read on every later turn
+  PASS  cache layout: input cost index below 1.0
+  PASS  H1 prefilter quality gates hold (recall 100%, nuggets reachable)
+  PASS  H1 prefilter economic gate still FAILS on the batch path (stays deferred)
+  PASS  backup verified and restore round trip equal
+  baselines: {"tier1": {"frozen_totals": {"answer": [34, 200052], "findings": [9, 30297], "plan": [2, 11026]}, "golden_fixture": "tests/fixtures/golden (manifest v1)"}, "retrieval": {"fake": {"recall_at_1": 0.8, "recall_at_3": 0.9333, "recall_at_10": 1.0, "mrr": 0.8736, "ndcg_at_10": 0.8155, "locator_exact_at_first_hit": 0.8205, "hard_negative_false_positives": 2}, "live_reference": "evals/retrieval/baseline-retrieval-0.22.0+i15-live.json (MRR 0.9093, R@1 86.7%, exact 87.2%)", "reranker_decision": "evals/retrieval/rerank-compare-20260907-115218-live.txt (KILL)"}, "cache_layout": {"input_cost_index": 0.7732
+RELEASE CHECK PASS
