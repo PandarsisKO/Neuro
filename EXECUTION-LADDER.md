@@ -397,15 +397,25 @@ When is a need DUE tonight: `freshness_status` (not raw age) × consequence (pla
 check (`usage.estimate_source_findings` on the reservoir's next unread). Categories, not a fake score. Records
 `kv research:checked:<need>` so nothing is rechecked because budget remains. Gate: tests for each freshness class.
 
-### CR3 `[ ]` known-reservoir rescan — PARALLEL PREP (Codex-shaped) · needs: — 
-For ONE collection kind first (YouTube channel/playlist via `media.enumerate_entries`): "has this reservoir produced
-new candidate material since the last scan?" New items flow into the existing Candidate Index via
-`candidates.remember` — no second ingestion pipeline, nothing auto-ingested. Gate: rescan of a fixture channel
-adds only new candidates; a second rescan adds none.
+### CR3 `[x] 638dd22` known-reservoir rescan — DONE · lane: claude
+YouTube channel/playlist via `media.enumerate_entries`: "has this reservoir produced new candidate material
+since the last scan?" New items flow into the existing Candidate Index via `candidates.remember` — no second
+ingestion pipeline, nothing auto-ingested, never a sources row (MONITOR only, PRODUCT-INTELLIGENCE-MISSION.md
+§13). `neurosearch/reservoir.py`. CLI-only: `neurosearch project rescan <project> [--collection <id>]`. Gate:
+`tests/test_s55_reservoir_rescan.py` (13 tests) — rescan of a fixture channel adds only new candidates; a second
+rescan adds none; a candidate already in the Library gets its source_id resolved; a dismissed candidate stays
+dismissed across rescans.
 
-### CR4 `[ ]` change detection before analysis — READY AFTER CR3 · lane: codex-shaped
-`candidates.metadata_revision`/`last_verified_at`, `sources.revision`, published_at: cheap comparison first;
-nothing is re-read unchanged. Gate: unchanged reservoir costs $0 and enqueues nothing.
+### CR4 `[x] 638dd22` change detection before analysis — DONE · lane: claude
+Merged into CR3's `rescan()` rather than a separate pass: a project-scoped fingerprint
+(`reservoir:scan:<project_id>:<collection_id>`, order-insensitive, built from external id/title/duration) is
+checked BEFORE any candidate diff work. Project-scoped, not merely per-collection, so the no-op gate means "same
+remote revision AND this project is already reconciled to it" — a global, collection-only key would let a
+second project attaching to an already-scanned, unchanged reservoir silently miss candidates the first project
+already found (the cross-project starvation bug this correction exists to prevent). Gate (same test file):
+unchanged reservoir costs $0 and enqueues nothing (zero `jobs`/`invocations` rows, `enumerate` called exactly
+once); a second project sharing an unchanged reservoir with a first still reconciles fully into its own index,
+no duplicates, no disposition leak.
 
 ### CR5 `[x] d72537b` one important Claim refreshed end-to-end — DONE · lane: claude
 Due Claim → `where` → bounded research through existing paths (`knowledge.pursue` steps 1–3 free; the captured
@@ -418,6 +428,39 @@ A third bounded work source in `nightly.run()` under its own explicit cap (like 
 successful outcome recorded on the envelope. Gate: envelope test; no need refreshed twice in a night.
 
 ### CR7 `[k]` real-project gate — needs: CR6. **Kyle action**: let the nightly worker run once, unattended, on a real project (same path L-00 already uses for the stale-source rebuild). Next morning, check the Morning Report / Findings panel for CR6's envelope line ("N Claim(s) refreshed" or an honest "nothing changed" — both count as a pass) and tell Claude what it showed. Never faked, never simulated with a fixture -- this gate is specifically "did it happen for real."
+
+### CR8 `[ ]` selective-acquisition seam — documented, NOT admitted (2026-09-16) · needs: a new product decision, not CR-numbered work
+The missing piece between NEW CANDIDATE (a Candidate Index row CR3/CR4 can now produce) -> JUSTIFIED RESEARCH
+NEED -> EXISTING ACQUISITION PATH. Not built tonight; not queued as ready work. This entry exists so the seam is
+named and its shape is known, per PRODUCT-INTELLIGENCE-MISSION.md §13: "the seam between 'a candidate exists' and
+'a candidate should be acquired' is CR8 -- documented, not built."
+
+**The seam, concretely, in terms of what already exists:** a deterministic adapter -- no new model call, no new
+provider call -- that would sit between a candidate CR3/CR4 just remembered and the acquisition paths
+`candidates.py` already owns: `research_needs.for_project` (what does this project still need to close a gap),
+`candidates.where_to_look` (per creator: does this creator have BOTH a yield history in this project AND
+something left unread -- $0, no network, answers from what the project has already measured), `_best_fit` (which
+of several possible sources best closes a specific need), and `candidates.link` (idempotent: record that a
+known-but-not-yet-acquired candidate may serve a need -- relevance/why refresh on repeat, a dismissed link stays
+dismissed, a link on an already-acquired candidate is born satisfied). The adapter's job would be narrow: when a
+rescan's new candidates land, ask whether any of them are `where_to_look`-eligible for an unmet need this project
+already has, and if so call `candidates.link` -- never `candidates.remember` (already done by CR3) and never
+anything that creates a `sources` row or spends money. Gating: CR2's due policy (a need must actually be due, not
+merely open) and CR6's nightly budget (this would be bounded work inside the same envelope CR6 already caps, not
+a new unbounded pass).
+
+**Why this stays documented-only tonight, not built:** the real blocking question is product, not technical --
+*where does a reservoir's "primary for this project" monitoring classification get stored* (PRODUCT-
+INTELLIGENCE-MISSION.md §13's open question). CR3/CR4 sidestepped it by making every `project_collections`-
+attached reservoir eligible for an explicit, on-demand rescan regardless of tier. CR8 cannot sidestep it the same
+way: linking a candidate to a research need on the strength of `where_to_look`'s creator-yield signal is exactly
+the kind of "should Neuro pay attention to this automatically" decision that the MONITOR/ACQUIRE tier split exists
+to gate, and building the adapter before that storage question is answered would quietly force an answer (every
+attached reservoir treated as if it were primary) rather than let Kyle make the call. Building this without that
+decision would also skip past ACQUIRE's own rule (PRODUCT-INTELLIGENCE-MISSION.md §13): acquisition stays a
+separate, explicit decision, never a consequence of monitoring alone -- `candidates.link` recording a possible fit
+is still short of acquiring anything, but it is one step closer to blurring that line than CR3/CR4's plain
+`remember` was, so it deserves its own explicit go-ahead rather than riding in on CR3/CR4's approval.
 
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
