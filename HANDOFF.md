@@ -4380,7 +4380,7 @@ that pass individually. repo-check: 1 pre-existing unrelated finding (a stray ro
 Not yet independently confirmed on Kyle's live worker (CPU trending back down, warnings stopping for old job
 IDs) — check `ps aux | grep neurosearch` and the worker terminal after this lands and the worker restarts.
 
-## Mission CS — "Scan this course" hardened, CS0–CS4 landed (`dccc3bd`, `0daae83`, `6e0e928`, `8da1a01`)
+## Mission CS — "Scan this course" hardened, CS0–CS5 landed (`dccc3bd`, `0daae83`, `6e0e928`, `8da1a01`, `3175f04`)
 
 Kyle's mission: harden the course scanner beyond 1.6.0's "app-rendered course cannot be listed" conclusion, using
 SMB Market's classroom as the first real acceptance test (not a patch target — no platform-specific selector
@@ -4410,12 +4410,31 @@ pre-existing by reproducing it identically with this mission's diff `git stash`-
 for embedding/link-check tests, and Kyle's local `.env` pins `NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT`, which a
 few model-policy tests weren't written to tolerate. Neither touches the scanner or courses.py.
 
-Not yet done:
-- **CS5** — live SMB Market acceptance gate: scan + enumerate only (explicitly not a bulk import/download test),
-  comparing the scanned count against the module cards' "N lessons" labels (43, from CS0), plus popup close/
-  reopen mid-scan, cancellation, partial-coverage reporting.
-- **CS5 generalization check** — confirm an older linked-course fixture still passes end to end in the real
-  extension (the jsdom fixture already does; this is the live-browser counterpart).
-- Reload the unpacked extension in Kyle's Chrome (still 1.6.1 there as of CS1) before CS5 can run at all.
+- **CS5** (`3175f04`): live acceptance-scanned Kyle's real, authenticated SMB Market classroom tab (scan +
+  enumerate only — `bridge.fetch` wired to throw, no import, no cookies, no download), by injecting the shipped
+  `extension/scan-lib.js` directly into the live page and calling `NSScan.run()`. Found and fixed five real,
+  previously-unmeasured bugs this way, none SMB-specific: module/lesson text glued across element boundaries by
+  plain `textContent` (fixed via the existing `wordsOf()` helper, `rowText()`); a component-library page-root
+  wrapper (`group/sidebar-wrapper`) shadowing every control as site-chrome (fixed by bounding the class-heuristic
+  climb, `inChrome()`); a module titled with ordinary business vocabulary ("Your Buy Box and Buyer Profile")
+  rejected over "buy" (fixed by exempting anything already matching MODULE_TEXT's shape); a split ordinal/period
+  text node breaking LESSON_TEXT's anchor (fixed with `\s*` tolerance); and three lesson titles mentioning
+  "purchase" as ordinary M&A vocabulary rejected by a second denylist re-check, fixed by distinguishing a title
+  that *mentions* the topic from a row that *is* the action (word position), verified against both the real
+  titles and the existing safety fixture (`safety.html`'s disguised "2. Purchase the full course" / "3. Take
+  quiz" rows still correctly refused). Final pass: **43/43 lessons, all `video_found`, zero `scan_failed`, zero
+  `count_mismatch`** — matches CS0's originally measured count exactly. Full narrative:
+  `docs/COURSE-SCANNER-2026-09-15.md`'s CS5 section.
 
-Next session: pick up at CS5. Read `docs/COURSE-SCANNER-2026-09-15.md`'s CS5 section first.
+Not yet done:
+- **CS2 live-browser verification** — `background.js`'s durable per-tab MV3 service-worker state (scan_id nonce,
+  popup close/reopen mid-scan, cancellation, partial-coverage reporting) has not been separately exercised live;
+  CS5's direct-injection approach (`NSScan.run()` called straight from the page) bypasses `background.js`/
+  `popup.js` entirely. Needs the unpacked extension reloaded in Kyle's Chrome (still 1.6.1 there as of CS1) —
+  Claude in Chrome cannot reach `chrome://extensions`, so this needs Kyle's own action or another verification
+  path.
+- **CS5 generalization check against the real extension UI** — the jsdom `linked/` fixture and
+  `test_no_platform_selectors_in_the_generic_scanner` both still pass (re-verified after CS5's fixes), but an
+  older linked-course site has not been re-driven through the real, reloaded extension end to end.
+
+Next session: pick up CS2's live-browser verification once the unpacked extension is reloaded.

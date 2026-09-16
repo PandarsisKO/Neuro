@@ -127,10 +127,44 @@ with npm, without a separate manual step to remember.
 
 ## CS5 — live SMB Market acceptance gate (scan + enumerate only)
 
-Not yet run. Scope, per the mission: press "Scan this course" against Kyle's real, logged-in SMB Market classroom
-tab and confirm the scanner finds the lessons and their videos honestly — comparing the scanned count against the
-module cards' "N lessons" labels (43, per CS0) — plus popup close/reopen mid-scan, cancellation, and partial-
-coverage reporting. Explicitly NOT a bulk import/download test.
+Run against Kyle's real, logged-in SMB Market classroom tab, scan+enumerate only (no import, no cookies, no
+download) — the scanner library injected directly into the live page and driven with a bridge whose `fetch` throws
+(so Strategy A can never reach the network) and whose `cancelled()` always returns false, exercising the exact
+shipped `extension/scan-lib.js` end to end against real, authenticated markup.
+
+The first live pass surfaced four bugs, none of them SMB-specific — a text-adjacency bug that hid a whole module
+behind a glued-together badge, a page-root layout wrapper that shadowed every control on the page as site-chrome,
+a module title rejected over ordinary business vocabulary ("Your Buy Box and Buyer Profile", over "buy"), and a
+split ordinal/period text node that broke LESSON_TEXT's anchor. Each was root-caused live, fixed generally, and
+locked down with a new jsdom fixture; three of the four modules were then found correctly, 43 lessons expected,
+matching CS0's measured total exactly, but 3 of 43 lessons were still missing.
+
+The missing 3 were a fifth bug of the same shape: `isDangerous` had a second, LESSON_TEXT-specific re-check for
+`quiz|certificate|purchase|checkout` that fired even on rows already positively matching the numbered-lesson
+shape, rejecting three genuine M&A lesson titles ("How to Determine Your Purchase Price", "The Purchase Agreement
+Explained", "How to Quantify the Purchase Price of a Business") over the word "purchase". This one needed more
+care than the others: the safety fixture (`tests/fixtures/courses/courses/safety.html`) deliberately includes two
+disguised numbered rows — "2. Purchase the full course" and "3. Take quiz" — that must stay refused, so a blanket
+exemption (mirroring the module-vocabulary fix) broke an existing safety test. The fix distinguishes a title that
+merely *mentions* the topic from a row that *is* the action: the danger word must either open the title, or be
+the entire content of a two-word row, to still count as dangerous. That resolves both real cases with a general,
+non-SMB-specific signal (word position, not wording), verified against jsdom (all 26 tests, including the safety
+fixture) and spot-checked live via `NSScan.isDangerous()` against synthetic elements built from the exact real and
+decoy titles before re-running the full scan.
+
+Final result, all five fixes applied, one full live pass: **43/43 lessons across all 6 modules, every one
+`video_found`, zero `scan_failed`, zero `count_mismatch`** — matching the module cards' own "N lessons" labels and
+CS0's originally measured count exactly. `diagnosis.expanded_modules === 6`, `diagnosis.activated === 43`,
+`diagnosis.unchanged === 0`, `diagnosis.back_control === true` (SMB replaces the whole list per module, so every
+transition after the first needed the breadcrumb "Learning" control, and it was found and used correctly each
+time).
+
+Not yet separately exercised on this pass: popup close/reopen mid-scan, cancellation via the real extension UI,
+and partial-coverage reporting through `background.js`'s durable per-tab state (this pass drove `NSScan.run`
+directly, bypassing the extension's popup/background wiring entirely, since Claude in Chrome cannot reach
+`chrome://extensions` to reload the unpacked build — CS2's live-browser verification remains open for the same
+reason). Explicitly NOT a bulk import/download test: `bridge.fetch` was wired to throw, so Strategy A (and any
+accidental use of it) could not have reached the network even if triggered.
 
 ## Known limitations
 
