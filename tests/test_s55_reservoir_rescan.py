@@ -190,10 +190,14 @@ def test_a_disappeared_entry_never_invalidates_what_was_already_remembered(proje
     assert rel_row is not None and rel_row["state"] == "available"
 
 
-def test_rescan_project_covers_every_attached_collection(project_with_collection):
+def test_rescan_project_covers_every_attached_and_monitored_collection(project_with_collection):
     pid, cid = project_with_collection
     col2 = db.upsert_collection("playlist", "PLxyz", "https://www.youtube.com/playlist?list=PLxyz", "A playlist")
     db.add_project_collections(pid, [col2["id"]])
+    # CR8: attachment alone is not enough post-policy -- both must be explicitly marked primary (or monitor=on)
+    # to be covered by the bulk "every collection this project is attached to" path.
+    db.set_collection_policy(pid, cid, source_role="primary")
+    db.set_collection_policy(pid, col2["id"], source_role="primary")
 
     calls = {"UCabc": _entries(2, prefix="chanvid"), "PLxyz": _entries(3, prefix="plvid")}
     def enumerate_by_url(url: str):
@@ -203,6 +207,31 @@ def test_rescan_project_covers_every_attached_collection(project_with_collection
     results = reservoir.rescan_project(pid, enumerate=enumerate_by_url)
     assert {r["collection_id"] for r in results} == {cid, col2["id"]}
     assert sum(r["new"] for r in results) == 5
+
+
+def test_rescan_project_skips_attached_but_unmonitored_collections_without_enumerating_them(project_with_collection):
+    """CR8 (2026-09-16 product decision): a collection this project is attached to but has not marked primary
+    (and never explicitly turned monitoring on) is skipped entirely by the bulk rescan path -- not scanned and
+    discarded, genuinely never enumerated. The single, explicit `reservoir.rescan(pid, cid, ...)` path (the
+    CLI's --collection flag) stays ungated by design -- an explicit ask for one named collection still works."""
+    pid, cid = project_with_collection   # default source_role='unspecified', monitor_policy='auto' -> inactive
+    col2 = db.upsert_collection("playlist", "PLxyz", "https://www.youtube.com/playlist?list=PLxyz", "A playlist")
+    db.add_project_collections(pid, [col2["id"]])
+    db.set_collection_policy(pid, col2["id"], source_role="primary")   # only col2 is monitored
+
+    calls = []
+    def counting_enumerate(url: str):
+        calls.append(url)
+        key = "UCabc" if "UCabc" in url else "PLxyz"
+        return {"id": key}, _entries(2, prefix=key)
+
+    results = reservoir.rescan_project(pid, enumerate=counting_enumerate)
+    assert {r["collection_id"] for r in results} == {col2["id"]}   # cid skipped entirely
+    assert len(calls) == 1 and "PLxyz" in calls[0]   # enumerate was never called for the unmonitored collection
+
+    # the explicit, single-collection path is unaffected by policy -- still works for cid directly
+    explicit = reservoir.rescan(pid, cid, enumerate=lambda url: ({"id": "UCabc"}, _entries(1, prefix="explicit")))
+    assert explicit["changed"] is True and explicit["new"] == 1
 
 
 def test_rescan_project_with_no_attached_collections_returns_empty():

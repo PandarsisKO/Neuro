@@ -648,7 +648,13 @@ def project_rescan(project: str, collection: Optional[str] = typer.Option(None, 
         typer.echo(json.dumps(results, indent=1))
         return
     if not results:
-        typer.echo("this project is not attached to any collection to rescan")
+        if collection:
+            typer.echo("no such collection attached to this project")
+        elif not db.project_collection_ids(pid):
+            typer.echo("this project is not attached to any collection to rescan")
+        else:
+            typer.echo("every attached collection is unmonitored (source_role/monitor_policy) -- nothing to "
+                      "rescan; see `neurosearch project collection-policy`")
         return
     for r in results:
         col = db.get_collection(r["collection_id"])
@@ -842,6 +848,39 @@ def nightly_report_cmd(date: Optional[str] = typer.Option(None, "--date", help="
     typer.echo(report.render_text(rep), nl=False)
     if not rep.get("found"):
         raise typer.Exit(code=1)
+
+
+@project_app.command("collection-policy")
+def project_collection_policy(project: str, collection: str,
+                              role: Optional[str] = typer.Option(None, "--role", help="primary | secondary | unspecified"),
+                              monitor: Optional[str] = typer.Option(None, "--monitor", help="auto | on | off"),
+                              as_json: bool = typer.Option(False, "--json", help="Emit stable machine-readable JSON")) -> None:
+    """CR8 (2026-09-16 product decision): set or show whether THIS project treats a reservoir it's attached to
+    as primary (worth watching by default) vs secondary (not, unless explicitly turned on). Pure bookkeeping on
+    the project<->collection relationship -- never ingests, never triggers a rescan itself. With neither --role
+    nor --monitor, just shows the current stored + effective state."""
+    from . import reservoir
+
+    _init()
+    pid = _project_id(project)
+    assert pid
+    if role is None and monitor is None:
+        policy = db.get_collection_policy(pid, collection)
+    else:
+        try:
+            policy = db.set_collection_policy(pid, collection, source_role=role, monitor_policy=monitor)
+        except ValueError as e:
+            typer.echo(str(e)); raise typer.Exit(1)
+    if not policy:
+        typer.echo("this project is not attached to that collection"); raise typer.Exit(1)
+    active = reservoir.effective_monitor_active(policy["source_role"], policy["monitor_policy"])
+    if as_json:
+        typer.echo(json.dumps({**policy, "effective_monitor_active": active}, indent=1))
+        return
+    col = db.get_collection(collection)
+    title = (col or {}).get("title") or collection
+    typer.echo(f"{title}: source_role={policy['source_role']} monitor_policy={policy['monitor_policy']} "
+              f"-> {'monitored' if active else 'not monitored'}")
 
 
 @project_app.command("review-queue")

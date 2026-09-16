@@ -1031,6 +1031,14 @@ MIGRATIONS = [
     ("plan_updates", "decided_at", "ALTER TABLE plan_updates ADD COLUMN decided_at REAL"),
     ("plan_updates", "decided_by", "ALTER TABLE plan_updates ADD COLUMN decided_by TEXT"),
     ("plan_updates", "applied_plan_id", "ALTER TABLE plan_updates ADD COLUMN applied_plan_id TEXT"),
+    # CR8 product decision (Kyle, 2026-09-16): "primary for this project" is a property of the project<->
+    # collection RELATIONSHIP, never the global collection -- the same reservoir can be primary for one
+    # project's research question and merely secondary/contextual for another. Lives on project_collections,
+    # not `collections`. Conservative defaults on every existing row: source_role='unspecified',
+    # monitor_policy='auto' -- see reservoir.effective_monitor_active for the derivation (unspecified+auto is
+    # OFF, so no pre-existing attachment silently starts being monitored the moment this migration runs).
+    ("project_collections", "source_role", "ALTER TABLE project_collections ADD COLUMN source_role TEXT NOT NULL DEFAULT 'unspecified'"),
+    ("project_collections", "monitor_policy", "ALTER TABLE project_collections ADD COLUMN monitor_policy TEXT NOT NULL DEFAULT 'auto'"),
 ]
 
 
@@ -3947,7 +3955,11 @@ def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
 
 def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
     with tx() as conn:
-        conn.executemany("INSERT OR IGNORE INTO project_collections VALUES (?,?)", [(project_id, c) for c in collection_ids])
+        # CR8: named columns, not bare VALUES(?,?) -- project_collections gained source_role/monitor_policy
+        # (both DEFAULT-backed), and a positional VALUES(?,?) breaks the moment the table has more than 2
+        # columns. INSERT OR IGNORE leaves an existing row's policy untouched on a re-attach.
+        conn.executemany("INSERT OR IGNORE INTO project_collections (project_id, collection_id) VALUES (?,?)",
+                         [(project_id, c) for c in collection_ids])
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
 
 
@@ -3955,6 +3967,37 @@ def remove_project_collections(project_id: str, collection_ids: list[str]) -> No
     with tx() as conn:
         conn.executemany("DELETE FROM project_collections WHERE project_id=? AND collection_id=?",
                          [(project_id, c) for c in collection_ids])
+
+
+def get_collection_policy(project_id: str, collection_id: str) -> dict[str, Any] | None:
+    """CR8 (2026-09-16): the raw, stored source_role/monitor_policy for one project<->collection relationship.
+    None when the relationship itself doesn't exist (never attached, or removed)."""
+    row = connect().execute(
+        "SELECT project_id, collection_id, source_role, monitor_policy FROM project_collections "
+        "WHERE project_id=? AND collection_id=?", (project_id, collection_id)).fetchone()
+    return dict(row) if row else None
+
+
+def set_collection_policy(project_id: str, collection_id: str, *, source_role: str | None = None,
+                          monitor_policy: str | None = None) -> dict[str, Any] | None:
+    """CR8 (2026-09-16): update source_role and/or monitor_policy on an EXISTING project<->collection
+    relationship. Only touches the field(s) given -- passing just one leaves the other as stored. Never creates
+    the relationship itself (add_project_collections does that); returns None if it doesn't exist. Pure
+    bookkeeping -- never touches candidates/sources/jobs, so changing policy never ingests anything."""
+    if source_role is not None and source_role not in ("primary", "secondary", "unspecified"):
+        raise ValueError(f"invalid source_role: {source_role!r}")
+    if monitor_policy is not None and monitor_policy not in ("auto", "on", "off"):
+        raise ValueError(f"invalid monitor_policy: {monitor_policy!r}")
+    if source_role is None and monitor_policy is None:
+        return get_collection_policy(project_id, collection_id)
+    with tx() as conn:
+        if source_role is not None:
+            conn.execute("UPDATE project_collections SET source_role=? WHERE project_id=? AND collection_id=?",
+                        (source_role, project_id, collection_id))
+        if monitor_policy is not None:
+            conn.execute("UPDATE project_collections SET monitor_policy=? WHERE project_id=? AND collection_id=?",
+                        (monitor_policy, project_id, collection_id))
+    return get_collection_policy(project_id, collection_id)
 
 
 def add_project_note(project_id: str, content: str, citations: list | None = None, status: str = "approved",

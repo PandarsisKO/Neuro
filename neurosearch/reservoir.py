@@ -20,6 +20,16 @@ candidates into the second project's own candidate_projects rows, and that proje
 the first project already discovered. Scoping the stored fingerprint per (project_id, collection_id) makes the
 cheap no-op gate mean "same remote revision AND this project is already reconciled to it" -- not "the remote
 happens to be unchanged" alone -- without needing a second, separate reconciliation-proof mechanism.
+
+CR8 product decision (Kyle, 2026-09-16): "primary for this project" (§13's previously-open question) is stored
+on the project<->collection relationship (`project_collections.source_role`/`monitor_policy`), never the global
+collection -- the same reservoir can be primary for one project and secondary for another. `effective_monitor_
+active` is the pure derivation; `rescan_project` (the "cover everything this project is attached to" bulk path)
+now filters to collections whose effective state is active, and skips the rest with ZERO enumerate() calls --
+not "rescan and discard", genuinely untouched. `rescan` itself (a single, explicitly-named collection -- the
+CLI's `--collection` flag) stays UNGATED by design: an explicit, one-collection ask is a deliberate action, the
+same override principle §13 already established for user-explicit watch overriding a tier default. Changing
+source_role/monitor_policy never ingests anything -- db.set_collection_policy touches only project_collections.
 """
 from __future__ import annotations
 
@@ -117,8 +127,33 @@ def rescan(project_id: str, collection_id: str, *, enumerate: Callable[[str], tu
     return {"changed": True, "new": new_count, "total": len(raw_entries), "candidate_ids": ids, "collection_id": collection_id}
 
 
+def effective_monitor_active(source_role: str, monitor_policy: str) -> bool:
+    """Pure derivation over the stored (source_role, monitor_policy) pair -- CR8 product decision (2026-09-16).
+    monitor_policy='on'/'off' always wins outright, regardless of role. 'auto' defers to source_role, and only
+    'primary' defaults active -- 'secondary' and 'unspecified' both default OFF, because merely being attached
+    to a project (`project_collections` existing at all) says nothing on its own about whether this project
+    treats that reservoir as a primary source worth watching."""
+    if monitor_policy == "on":
+        return True
+    if monitor_policy == "off":
+        return False
+    return source_role == "primary"   # monitor_policy == "auto"
+
+
+def is_monitored(project_id: str, collection_id: str) -> bool:
+    """False for a relationship that doesn't exist (never attached) as well as one that exists but is
+    effectively inactive -- both mean "don't rescan this automatically"."""
+    policy = db.get_collection_policy(project_id, collection_id)
+    if not policy:
+        return False
+    return effective_monitor_active(policy["source_role"], policy["monitor_policy"])
+
+
 def rescan_project(project_id: str, *, enumerate: Callable[[str], tuple[dict, list]] | None = None,
                     now: Callable[[], float] | None = None) -> list[dict[str, Any]]:
-    """Rescan every collection this project is attached to. On-demand only -- never called from a schedule or
-    nightly hook tonight; CLI-driven (`neurosearch project rescan`)."""
-    return [rescan(project_id, cid, enumerate=enumerate, now=now) for cid in db.project_collection_ids(project_id)]
+    """Rescan every collection this project is attached to AND whose effective monitoring state is active
+    (see module docstring's CR8 note) -- a collection that is attached but not monitored is skipped entirely,
+    not rescanned-and-discarded: `enumerate` is never called for it. On-demand only -- never called from a
+    schedule or nightly hook tonight; CLI-driven (`neurosearch project rescan`)."""
+    return [rescan(project_id, cid, enumerate=enumerate, now=now) for cid in db.project_collection_ids(project_id)
+            if is_monitored(project_id, cid)]
