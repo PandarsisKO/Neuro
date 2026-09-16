@@ -1189,6 +1189,46 @@ def project_discover_decide(project: str, candidate_id: str, decision: str,
         typer.echo(f"captured {candidate_id} -- ingest queued (job {r['job_id']})")
 
 
+@project_app.command("field-map")
+def project_field_map(project: str, fetch_seeds: Optional[str] = typer.Option(None, "--fetch-seeds", help="Explicit Crossref search query, used ONLY if local-first seed discovery (project Works, project sources, Candidate Index) does not find enough DOI-bearing seeds"),
+                      as_json: bool = typer.Option(False, "--json")) -> None:
+    """FM1: cluster the outbound reference lists of up to 3 review/scholarly seed works already connected to this
+    project, to surface field areas repeatedly referenced externally but underrepresented in the project's OWN
+    extracted evidence (Findings/Claims/Evidence Targets) -- never a claim about the whole Library. Crossref-only,
+    $0, read-only: writes nothing to candidates/sources/claims/targets/the Planner. See docs/FIELD-MAP-RUNG.md."""
+    from . import field_map
+    _init()
+    pid = _project_id(project)
+    if pid is None:
+        typer.echo(f"no project matches {project!r}", err=True)
+        raise typer.Exit(code=1)
+    r = field_map.build(pid, fetch_seeds_query=fetch_seeds)
+    if as_json:
+        typer.echo(json.dumps(r, indent=2, default=str))
+        return
+    typer.echo(f"Seeds ({len(r['seeds'])}):")
+    for s in r["seeds"]:
+        typer.echo(f"  {s['doi']} -- {s['title']} [{s['provenance']}]")
+    lim = r["limitations"]
+    typer.echo(f"\nExamined {lim['seeds_examined']} seed(s): {lim['seeds_with_reference_metadata']} carried reference metadata, "
+              f"{lim['seeds_without_reference_metadata']} did not. {lim['raw_reference_count']} raw references, "
+              f"{lim['parseable_reference_count']} parseable, {lim['canonical_work_count']} distinct canonical works.")
+    if r["status"] == "no_seeds":
+        typer.echo("\nNo DOI-bearing seed works found for this project (checked project Works, project sources, and the Candidate Index). "
+                  "Use --fetch-seeds \"<query>\" to search Crossref explicitly.")
+        return
+    if r["status"] == "insufficient_reference_metadata":
+        typer.echo("\nInsufficient reference metadata to support a Field Map conclusion for this project's seeds right now (unknown, not underrepresented).")
+        return
+    if not r["field_areas"]:
+        typer.echo("\nNo field area cleared the structural minimum (a repeated area needs >=2 distinct referenced works).")
+        return
+    typer.echo("\nField areas (most externally referenced first):")
+    for a in r["field_areas"]:
+        typer.echo(f"  {a['label']} -- {a['referenced_work_count']} works, {a['reference_count']} references, {a['seed_count']} seed(s) -- {a['coverage']}"
+                  + (f" ({a['coverage_ratio']})" if a['coverage_ratio'] is not None else ""))
+
+
 @project_app.command("discover-report")
 def project_discover_report(project: str, window: str = typer.Option("all", "--window"),
                             as_json: bool = typer.Option(False, "--json")) -> None:

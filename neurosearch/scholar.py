@@ -347,6 +347,36 @@ def resolve_doi(doi: str) -> dict[str, Any] | None:
     return rec
 
 
+# ------------------------------------------------------------------ FM1: one work's own bibliography ($0)
+
+def fetch_crossref_references(doi: str) -> dict[str, Any]:
+    """FM1 (Field Map) only -- not part of ordinary Scholar discovery. One paced, UNFILTERED singleton retrieval of
+    a Crossref work record through the same `_get`/ScholarUnavailable boundary `resolve_doi` uses, returning its raw
+    `reference` list (a paper's own outbound bibliography) alongside the doi/title asked for.
+
+    Deliberately does NOT pass a `select` parameter: Crossref's public docs describe `reference` as a selectable
+    field, but this environment has no network route to verify that against the live API, so this asks for the full
+    record instead of depending on an unverified `select=reference`. Deliberately does NOT touch `CROSSREF_FIELDS` --
+    that constant is the general Scholar discovery path (`search`, `resolve_doi`'s field list) and stays lean; every
+    ordinary discovery request is unaffected by this function's existence.
+
+    Raises ScholarUnavailable exactly like `_get` does (fetch blocked, rate limited, bad response, ...) -- callers
+    that want to keep going after a single seed fails should catch it themselves; this never returns an empty
+    result to paper over a fetch failure.
+    """
+    d = normalise_doi(doi)
+    if not d:
+        return {"doi": None, "title": "", "has_reference_field": False, "raw_references": []}
+    data = _get("crossref", f"{CROSSREF_API}/{urllib.parse.quote(d)}", {"mailto": contact_email()})
+    msg = (data or {}).get("message")
+    if not isinstance(msg, dict):
+        return {"doi": d, "title": "", "has_reference_field": False, "raw_references": []}
+    title = _clean(" ".join(msg.get("title") or []))
+    has_field = "reference" in msg
+    refs = msg.get("reference")
+    return {"doi": d, "title": title, "has_reference_field": has_field, "raw_references": refs if isinstance(refs, list) else []}
+
+
 # ------------------------------------------------------------------ where records go (never evidence)
 
 def why(rec: dict[str, Any]) -> str:
