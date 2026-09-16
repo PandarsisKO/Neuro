@@ -5635,3 +5635,45 @@ No FM2 code. No CR8c code. No paid provider calls anywhere in this work.
 
 Commits this segment: `f13ca97` (identity hardening + CLI output enrichment + 7 new tests, code), `9ced59c`
 (release-check artifact, PASS at f13ca97), plus this EXECUTION-LADDER.md update.
+
+## Investigation — full-suite flake in test_n3_deep_findings.py (2026-09-16)
+
+Per Kyle's "FLAKE TRIAGE" mission, investigated the single `test_n3_deep_findings.py::
+test_deep_reads_report_per_part_progress_and_ride_the_slow_lane` failure noted (but not captured in detail) during
+FM1 hardening's full-suite run.
+
+**Process gap acknowledged up front**: the original observation recorded only the test name and "failed in full
+suite, passed in isolation" -- no captured assertion text, no xdist worker id, no neighboring-module order. That
+gap is real; going forward, full-suite gate runs in this workflow pipe to a saved log file rather than only
+`tail`, so a recurrence preserves the evidence needed to investigate it properly the first time.
+
+**Reproduction attempts**: 9 total clean full/targeted runs produced zero repeats of the failure -- 6× full suite
+at `-n 4 --dist=loadscope` (1870 passed each time) and 3× a targeted subset (`test_n3_deep_findings.py` alongside
+the other job-queue/lane-claiming-heavy modules most likely to land on the same xdist worker: `test_p0_concurrent_
+completion.py`, `test_p0_repeated_execution.py`, `test_p0_restart_retry.py`, `test_p0_governing_input_change.py`,
+`test_s58_selective_acquisition.py`, `test_s59_cli_settings_lifecycle.py`, `test_s60_field_map.py`, at `-n 2` to
+increase the chance shared-worker adjacency matters) -- 81 passed each time, 0 failures.
+
+**Code inspection**: `test_n3_deep_findings.py` has an autouse `_fresh` fixture that resets `db._local.conn`,
+gives every test its own `tmp_path` data dir, and clears `jobs._running` -- the exact discipline that caught the
+three earlier real shared-state bugs (thread-local DB leak, CLI settings leak, `due_tonight` TTL collision). No
+missing reset was found for anything the failing test touches (`jobs.ANALYSIS_KINDS`/`LOCAL_POLICIES` are
+immutable module constants; `jobs._current` is thread-local and consumed per-job, not per-test state the failing
+assertions depend on).
+
+**Why no production fix is justified yet**: unlike the three prior bugs (all reproducible on demand once the
+right neighboring test was identified), this one has not reproduced once across 9 attempts spanning both a full
+run and a deliberately adjacency-biased targeted run. Nothing in the fixture/module inspection points at an unreset
+shared resource. Recorded here as an open, unreproduced single observation rather than closed as "definitely
+nothing" -- if it recurs, the exact test + this file's reproduction log are the starting point, not a restart.
+
+**A real, unrelated defect was found and fixed along the way**: attempting a higher-parallelism repro (`-n 8`)
+exhausted this session's own device scratch disk (`$HOME/tmp/pytest-of-...` had grown to 4.1G, plus ~70M of
+stray `ns_pytest_*` directories, from this session's own many prior pytest invocations never being cleaned
+between runs), producing `OSError: [Errno 28] No space left on device` and `could not create numbered dir` --
+genuine spurious failures, but an environment/scratch-hygiene issue in this session's own device workspace, not a
+Neuro Search code defect. Cleaned ~4.8G; disk usage is back to 50%. Not a repo change, not committed -- noted here
+for anyone continuing this session's device work.
+
+Conclusion: Part A is bounded and closed as unreproduced; proceeding to Part B (D2/F1 resume) per the mission's
+explicit "do not spend the entire mission chasing an unrepeatable ghost."
