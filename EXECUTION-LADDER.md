@@ -305,7 +305,11 @@ real night: `neurosearch nightly report` the morning after L-30's run (CLI added
 `impact.for_claim(claim_id) -> {disagreement: from research_tensions, plan_impact: claim cited by plan_items,
 value: high|some|unknown}`. Unknown when neither is provable. No LLM score. Gate: deterministic tests.
 
-### L-51 `[~] claude 2026-09-15 -- code+tests done at 3ea00da, gate needs Kyle's real project` exception queue — needs: L-50
+### L-51 `[~] claude 2026-09-15 -- code+tests done at 3ea00da, gate needs Kyle's real project` exception queue — needs: L-50 **2026-09-16 real run**: executed against the real "buying businesses" project (982 sources) via a same-day
+backup snapshot (never the live DB directly -- CLAUDE.md rule #1): `25 to review out of 15589 proposed
+(disagreement 6, plan impact 0, weak evidence 25; hidden by the cap: 14949)`. Real result, not a fixture --
+awaiting Kyle's answer to the gate's 3 questions (short enough? does each line say why? is the disagreement he
+already knows about represented?).
 `neurosearch/review_queue.py`: `build(project_id, limit=25)`. Review unit = the proposed Claim (harvest already
 folds twin findings into one Claim and merges duplicate Claims via `superseded_by`), so each item is one
 representative proposition with inspectable members (findings folded in, Claims merged in). Inclusion =
@@ -545,7 +549,14 @@ gone, and that existing CLI disclosure/confirmation/refusal behavior is unchange
 consecutive clean runs), `repo-check` PASS, `release-check --no-pytest` PASS at `0289f17` (0.63.91).
 
 ### CR8b-gate `[k]` real-world validation before widening — needs: CR8b (done), a real project with a real open
-Evidence Target. **Kyle action**: let CR8b run against a real project — either wait for its own nightly pass
+Evidence Target. **2026-09-16: precondition confirmed for real** (via a same-day backup snapshot, read-only
+inspection): the "buying businesses" project has 496 open Evidence Targets with no Claim yet (origin=model);
+the "web app design" project has 230. Genuine candidates exist -- e.g. "What fraction of small business
+acquisitions in the $500K-$1M range actually include seller financing" (topic: seller financing market data).
+Running `project acquire-evaluate` itself WRITES (queues a real ingest job for the live worker to pick up) and
+cannot safely run from this session's bridge-mounted access to the live DB (CLAUDE.md rule #1) -- this is the
+one remaining step and needs either Kyle running the one-line command himself, or this session getting
+permitted browser access to the running app's own UI/API. **Kyle action**: let CR8b run against a real project — either wait for its own nightly pass
 (`cr8b_enabled` must be on) or run `neurosearch project acquire-evaluate <project> [--target ID]` yourself — then
 report back what happened so Claude can answer, against the actual result (not a fixture):
 - **A.** Did an actual project have an open Evidence Target?
@@ -618,7 +629,9 @@ rows stay `applied_plan_id: null` even after a later apply, older NULL-column ro
 `POST /api/plan-updates/{id}` route round-trips full provenance. `planner.build_plan` faked directly (not via
 `monkeypatch.undo`) — $0, no provider/model call.
 
-### LP6 `[k]` real evidence-change demo — needs: LP3. **Kyle action**: the next time CR5/CR6's nightly refresh actually changes a Claim's status on a real project (strengthened / weakened / contradicted -- CR7 is where this is first observed), tell Claude the Claim id. Claude verifies the resulting `plan_updates` row alone reconstructs "your plan changed in one place" (previous state, resulting state, reason, claim linkage, system vs user provenance) with no other lookup needed.
+### LP6 `[k]` real evidence-change demo — needs: LP3. **2026-09-16 checked, no trigger yet**: `plan_updates` table is empty in the same-day backup snapshot across
+all 3 real projects -- no plan-impacting Claim change has happened yet. Correctly left waiting for its real
+trigger, per the mission's explicit instruction not to manufacture one. **Kyle action**: the next time CR5/CR6's nightly refresh actually changes a Claim's status on a real project (strengthened / weakened / contradicted -- CR7 is where this is first observed), tell Claude the Claim id. Claude verifies the resulting `plan_updates` row alone reconstructs "your plan changed in one place" (previous state, resulting state, reason, claim linkage, system vs user provenance) with no other lookup needed.
 
 ### Stage 12 — P9A Source Capability — mostly SHIPPED at 0.58.3 (`candidates.creator_yield` = SC0 view;
 `where_to_look` = SC1 routing; `_creator_term` in `_potential` = SC2, capped so yield never dominates).
@@ -665,7 +678,11 @@ only (candidate decisions with an honest denominator, downstream finding/Claim/t
 provenance, review burden, project-scoped novel creators), with an evidence-sufficiency guard (no_usage /
 thin_sample / usable_sample) that keeps the verdict descriptive and refuses confidence on a thin sample. No
 schema, no persisted batch telemetry, no reversal of AD3's "exploratory is not persisted" decision. Gate: tests.
-### AD4B `[k]` true static vs adaptive comparison — needs: real usage. **Kyle action**: keep using Adaptive Discovery normally (capture/reject through `project discover` or the UI) for a while, then run `neurosearch project discover-report <project>` yourself, or ask Claude to run it, once the report says `usable_sample` rather than `thin_sample`/`no_usage`. Only if THAT report's numbers leave the adaptive system's value genuinely ambiguous is AD4B worth building -- the smallest prospective design for the exact unresolved question (controlled interleaving, occasional static control batches, or similar), chosen then, never built speculatively now, never a general analytics/event platform.
+### AD4B `[k]` true static vs adaptive comparison — needs: real usage. **2026-09-16: usable_sample reached for real on both active projects** (via a same-day backup snapshot,
+read-only): "buying businesses" project — 10,100 genuine decisions, 8% capture rate, 92.5% rejection rate;
+"web app design" project — 3,650 genuine decisions, 10% capture rate, 89.9% rejection rate. Real estate project
+still `no_usage`. Awaiting Kyle's judgment on the two usable_sample verdicts: do these numbers leave genuine
+ambiguity about Adaptive Discovery's value, or is he satisfied without a static-comparison build? **Kyle action**: keep using Adaptive Discovery normally (capture/reject through `project discover` or the UI) for a while, then run `neurosearch project discover-report <project>` yourself, or ask Claude to run it, once the report says `usable_sample` rather than `thin_sample`/`no_usage`. Only if THAT report's numbers leave the adaptive system's value genuinely ambiguous is AD4B worth building -- the smallest prospective design for the exact unresolved question (controlled interleaving, occasional static control batches, or similar), chosen then, never built speculatively now, never a general analytics/event platform.
 
 ### Stage 14 — P9C Field Map — EXPERIMENT ONLY until FM0 decides
 ### FM0 `[x] 0da834b` $0 experiment — DONE · lane: claude · needs: existing `scholar`/`resources` tooling · gate `scholar_wanted`
@@ -697,7 +714,15 @@ surfaces everything needed to judge a real run WITHOUT `--json`: per-seed fetch 
 counters spelled out, an explicit `sufficient_for_underrepresented_conclusion` line, and each field area's full
 metrics plus `representative_references` (title, DOI when it has one, mention count). 25 -> 32 tests. Full suite
 1870 passed (2 consecutive clean runs); repo-check PASS; release-check PASS at `f13ca97`.
-### FM1-gate `[k]` real-world validation — needs: a real project with a genuine review/scholarly seed AND live
+### FM1-gate `[k]` real-world validation — needs: a real project with a genuine review/scholarly seed AND live **2026-09-16 real attempt**: ran against all 3 of Kyle's real projects (via a same-day backup snapshot, read-
+only). None has a naturally DOI-bearing seed work (expected -- his projects are video/podcast/practitioner
+content, not academic literature). Tried `--fetch-seeds` to search Crossref explicitly: blocked at the DNS
+level from this session's execution environment (`fetch blocked (dns) at hop 0 for api.crossref.org` --
+captured exactly, not worked around, per the mission's explicit instruction not to route around network
+policy). FM1-gate stays open on two independent grounds: no natural seed exists yet in real project data, and
+this session cannot reach Crossref to search for one. If Kyle runs `neurosearch project field-map <project>
+--fetch-seeds "<query>"` from his own Mac Terminal (outside any sandbox/bridge), Crossref may well resolve
+fine there -- worth trying once from that context before concluding this is a standing policy block.
 Crossref access, neither available from this sandbox (fresh `curl` check against `api.crossref.org` /
 `api.openalex.org` from the connected device's shell still returns 403 from the org's own egress proxy, matching
 FM0's original finding). **Kyle action**: on a machine with live Crossref access, run

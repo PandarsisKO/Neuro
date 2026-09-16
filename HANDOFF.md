@@ -5808,3 +5808,32 @@ diff applied on top of `53f7d27`).
 
 Committed as its own change, ahead of the rest of the real-gate work below.
 
+
+## Real gate-closing pass, part 2: L-51, FM1-gate, AD4B, CR8b-gate, LP6 evidence gathered for real (2026-09-16)
+
+Executed the real-project side of Kyle's "close the real-world gates" mission against a same-day backup
+snapshot (`neurosearch-20260916-1241.db`, copied to this session's own workspace outside the bridge mount --
+never the live DB directly, per CLAUDE.md rule #1). Real evidence, not fixtures, recorded directly in
+`EXECUTION-LADDER.md` under each gate:
+
+- **L-51**: ran `project review-queue` on the real "buying businesses" project (982 sources) -- 25 to review
+  out of 15,589 proposed. Awaiting Kyle's 3-question judgment.
+- **FM1-gate**: no project naturally has a DOI-bearing seed; `--fetch-seeds` against Crossref is blocked at
+  the DNS level from this session's execution environment (captured exactly, not routed around). Suggested
+  Kyle try it from his own Mac Terminal directly, outside any bridge, since that network path is untested.
+- **AD4B**: both active projects reached `usable_sample` for real -- 10,100 and 3,650 genuine decisions, with
+  real capture/rejection rates recorded. Awaiting Kyle's judgment on whether that leaves genuine ambiguity.
+- **CR8b-gate**: precondition confirmed -- 496 and 230 real open Evidence Targets with no Claim yet exist.
+  The evaluation step itself writes (queues a real job) and needs either Kyle's own hands or permitted browser
+  access to the running app; recorded as the one remaining step.
+- **LP6**: `plan_updates` is empty across all 3 real projects -- no natural trigger yet. Correctly left waiting,
+  not manufactured.
+
+No writes were made to Kyle's real data anywhere in this pass -- every command above is read-only by the
+feature's own design ($0, reads only, per each command's docstring), and it was run against a backup copy
+specifically so nothing could touch the live database even accidentally.
+
+**Note on this session's own investigation**: opening this same-day backup is also what surfaced the
+`source_captures` migration bug documented in the entry above -- found and fixed as a direct byproduct of
+actually running these gates for real, not a separate detour.
+
