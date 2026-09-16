@@ -223,7 +223,11 @@ async function pruneScans() {
 // memory, is what a reopened popup renders and what survives eviction). Unlike a scan, the capture loop is
 // driven entirely from THIS file (no content-script runner reporting back over messages): chrome.tabs.
 // captureVisibleTab is a background-only API, so the orchestration has to live here regardless.
-const CAPTURE_ACTIVE = new Set(['capturing', 'uploading']);
+// 'captured' (repair round 3, gap #C): a durable intermediate state between the raw capture finishing and
+// the upload actually starting -- see startCapture's async IIFE below for why it exists. It is an ACTIVE
+// state exactly like 'capturing'/'uploading': a second capture must not start while this tab's record is
+// passing through it, however briefly.
+const CAPTURE_ACTIVE = new Set(['capturing', 'captured', 'uploading']);
 const captureKey = tabId => `capture:${tabId}`;
 // Reuses the same per-tab promise-chain lock as scans (withScan): a capture also scrolls the page and would race
 // badly against a scan doing DOM work in the same tab, so serializing the two behind one lock is correct, not
@@ -266,7 +270,7 @@ async function execFn(tabId, func, args) {
 // carries the durable IndexedDB blob store (service-worker-only — never page-injected, unlike capture-lib.js).
 importScripts('capture-lib.js', 'capture-blob-store.js');
 const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
-        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision } = self.NSCaptureLib;
+        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity } = self.NSCaptureLib;
 const NSBlobStore = self.NSCaptureBlobStore;
 
 // ---- tagged errors gate whether the visible-area fallback is attempted (BLOCKER fix: fallback ONLY for a
@@ -278,17 +282,22 @@ class CaptureMechanismError extends Error { constructor(msg) { super(msg); this.
 
 // BLOCKER fix: captureVisibleTab captures the ACTIVE tab of a WINDOW, not an arbitrary tabId — so every single
 // call (every tile, plus the fallback) re-verifies that our target tab is still Chrome's active tab, still on an
-// http(s) URL, and (once an expectedOrigin is known) still on the same origin, and returns the tab's REAL
+// http(s) URL, and (once an expectedIdentity is known) still the same document (origin+pathname+search), and
+// returns the tab's REAL
 // windowId to pass explicitly (never undefined — undefined means "whichever window currently has focus", which
 // is not necessarily this tab's window).
-async function verifyTabIdentity(tabId, expectedOrigin) {
+// repair round 3 (gap #B): expectedIdentity pins origin+pathname+search (nsPageIdentity), not origin alone --
+// a same-origin navigation (example.com/calculator -> example.com/dashboard) used to pass this check unnoticed,
+// even though the uploaded provenance (rec.url) still names the URL recorded when the capture started. Evidence
+// identity must fail closed on ANY same-document-boundary change, not just a cross-origin one.
+async function verifyTabIdentity(tabId, expectedIdentity) {
   let tab;
   try { tab = await chrome.tabs.get(tabId); } catch (e) { throw new TabIdentityError('the tab is gone'); }
   if (!tab.active) throw new TabIdentityError('the tab is no longer the active tab in its window — switch back to it and try again');
   if (!tab.url || !/^https?:/.test(tab.url)) throw new TabIdentityError('the tab navigated away from a capturable page');
-  let origin;
-  try { origin = new URL(tab.url).origin; } catch (e) { throw new TabIdentityError('the tab has no readable origin'); }
-  if (expectedOrigin && origin !== expectedOrigin) throw new TabIdentityError('the tab navigated to a different site mid-capture');
+  let identity;
+  try { identity = nsPageIdentity(tab.url); } catch (e) { throw new TabIdentityError('the tab has no readable URL'); }
+  if (expectedIdentity && identity !== expectedIdentity) throw new TabIdentityError('the tab navigated to a different page mid-capture');
   return tab;
 }
 
@@ -341,6 +350,16 @@ async function stitchShots(shots, pageWidthCss, pageHeightCss) {
     scale = nsStitchScale(bitmaps[0].bmp.width, shots[0].viewportWidthCss || pageWidthCss);
     const w = Math.max(1, Math.round(pageWidthCss * scale));
     const h = Math.max(1, Math.round(pageHeightCss * scale));
+    // repair round 3 (gap #A): preflight the actual canvas allocation against the SAME 40M ceiling the capture
+    // loop enforces on tile count, so the ceiling is a hard limit on what gets allocated/assembled, not just an
+    // after-the-fact threshold checked against per-tile counting that the caller could still get wrong. This is
+    // a backstop, not the primary fix -- the caller (runCapture) is responsible for passing an already-bounded
+    // pageWidthCss/pageHeightCss (the captured tiles' own bounding box on a partial capture), but stitchShots
+    // itself must never attempt to allocate an unbounded canvas no matter what it's asked to stitch.
+    if (w * h > CAPTURE_MAX_TOTAL_PIXELS) {
+      throw new CaptureMechanismError(
+        `refusing to assemble a ${w}x${h} image (${w * h} pixels) — exceeds the ${CAPTURE_MAX_TOTAL_PIXELS}-pixel safety ceiling`);
+    }
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d');
     for (const { shot, bmp } of bitmaps) ctx.drawImage(bmp, Math.round(shot.x * scale), Math.round(shot.y * scale));
@@ -358,13 +377,13 @@ async function stitchShots(shots, pageWidthCss, pageHeightCss) {
 // anything else, then re-establish that the tab is still genuinely the one we mean to capture (a mechanism
 // failure earlier does not excuse skipping this — identity could have ALSO changed in the meantime), then obey
 // the same global throttle as every other call, then capture, then label the result honestly.
-async function fallbackVisibleCapture(tabId, expectedOrigin, origScrollX, origScrollY) {
+async function fallbackVisibleCapture(tabId, expectedIdentity, origScrollX, origScrollY) {
   // 1. restore styles + original scroll position
   try { await execFn(tabId, nsRestore); } catch (e) {}
   try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
   await new Promise(r => setTimeout(r, CAPTURE_HIDE_SETTLE_MS));
-  // 2. freshly re-verify tab/window/origin/active-state identity
-  const tab = await verifyTabIdentity(tabId, expectedOrigin);
+  // 2. freshly re-verify tab/window/document-identity/active-state
+  const tab = await verifyTabIdentity(tabId, expectedIdentity);
   // 3. obey the same global throttle (inside throttledCaptureVisibleTab)
   // 4. capture
   const dataUrl = await throttledCaptureVisibleTab(tab.windowId);
@@ -386,7 +405,7 @@ async function runCapture(tabId, rec) {
   let firstTileCaptured = false;
 
   const tab0 = await verifyTabIdentity(tabId, null);          // TabIdentityError here propagates as-is — no fallback
-  const expectedOrigin = new URL(tab0.url).origin;
+  const expectedIdentity = nsPageIdentity(tab0.url);   // gap #B: pins origin+pathname+search, not origin alone
 
   const restoreStylesAndScroll = async () => {
     if (restored) return; restored = true;
@@ -437,7 +456,7 @@ async function runCapture(tabId, rec) {
 
       let dataUrl;
       try {
-        const tab = await verifyTabIdentity(tabId, expectedOrigin);   // per-tile re-verification
+        const tab = await verifyTabIdentity(tabId, expectedIdentity);   // per-tile re-verification
         dataUrl = await throttledCaptureVisibleTab(tab.windowId);
       } catch (e) {
         if (firstTileCaptured) { try { await execFn(tabId, nsRestore); } catch (e2) {} }
@@ -508,10 +527,27 @@ async function runCapture(tabId, rec) {
       };
     }
 
-    const finalPageW = Math.max(pageW, ...shots.map(s => s.x + viewportWidth));
-    const finalPageH = Math.max(pageH, ...shots.map(s => s.y + viewportHeight));
+    // repair round 3 (gap #A): finalPageW/H used to fall back to pageW/pageH (the full MEASURED page, not what
+    // was actually captured) whenever that was larger than the shots' own bounding box. On a partial capture of
+    // an enormous or infinite-scroll page, that meant stitchShots could be asked to allocate an OffscreenCanvas
+    // hundreds of millions of pixels large -- the tile-capture loop's own 40M ceiling never protected the FINAL
+    // stitched image at all, only the per-tile capture count. A partial capture must stitch only the bounding
+    // rectangle actually covered by captured tiles; only a COMPLETE capture may trust the full measured page
+    // size (and even then shots should already cover it -- Math.max is just defensive rounding slop).
     const complete = idx >= grid.length && !partialReason;
-    const { blob } = await stitchShots(shots, finalPageW, finalPageH);
+    // Two DIFFERENT things, deliberately kept separate: (1) the STITCH canvas must only ever span what was
+    // actually captured (shotsMaxX/Y) -- that's the fix for gap #A; (2) the reported page_width/page_height
+    // provenance should stay the TRUE measured page size when known, because "the page was 50000px wide and we
+    // only captured the first 3000px" is honest information the partial_page label + partial_reason already
+    // frame correctly -- collapsing page_width down to the captured area would make an already-partial capture
+    // look like a smaller, complete one.
+    const shotsMaxX = Math.max(...shots.map(s => s.x + viewportWidth));
+    const shotsMaxY = Math.max(...shots.map(s => s.y + viewportHeight));
+    const stitchW = complete ? Math.max(pageW, shotsMaxX) : shotsMaxX;
+    const stitchH = complete ? Math.max(pageH, shotsMaxY) : shotsMaxY;
+    const finalPageW = Math.max(pageW, shotsMaxX);
+    const finalPageH = Math.max(pageH, shotsMaxY);
+    const { blob } = await stitchShots(shots, stitchW, stitchH);
     return {
       blob, mode: complete ? 'full_page' : 'partial_page', partial_reason: complete ? null : (partialReason || 'ceiling_folds'),
       dimensions: { page_width: finalPageW, page_height: finalPageH, viewport_width: viewportWidth, viewport_height: viewportHeight, dpr },
@@ -522,7 +558,7 @@ async function runCapture(tabId, rec) {
     if (e instanceof TabIdentityError) throw e;                 // never falls back — evidence identity uncertain
     // any other failure (including a CaptureMechanismError we threw ourselves, or stitching's own) gets exactly
     // one fallback attempt to a single honest visible-area shot
-    return fallbackVisibleCapture(tabId, expectedOrigin, origScrollX, origScrollY);
+    return fallbackVisibleCapture(tabId, expectedIdentity, origScrollX, origScrollY);
   }
 }
 
@@ -576,12 +612,21 @@ async function startCapture(tabId, projectId, note) {
     try {
       const out = await runCapture(tabId, rec);
 
-      // durability ordering: pixels are captured -> blob durable in IndexedDB -> THEN status becomes 'uploading'
-      // -> build FormData -> POST. Never mark 'uploading' before the blob is durable, or a worker eviction right
-      // after that write would strand a record that claims to be sending something that was never actually saved.
+      // repair round 3 (gap #C): a durability hole existed here. The OLD ordering saved the blob to IndexedDB
+      // FIRST, then flipped status to 'uploading' and persisted that. If the worker died in between those two
+      // steps, the persisted record still said 'capturing' -- and nsReconcileDecision treats every 'capturing'
+      // record as an unconditional hard failure, discarding a blob that was actually sitting safely in
+      // IndexedDB. Fix: persist metadata FIRST (status -> 'captured', pending_upload set) -- a crash right after
+      // this write, before the blob is saved, correctly has no blob and IS a hard failure -- THEN save the
+      // blob, THEN transition to 'uploading'. 'captured' is handled identically to 'uploading' everywhere blob
+      // existence matters (nsReconcileDecision, reconcileCapturesOnWorkerInit, and the catch block below): the
+      // record's own status alone is never enough to say retry is safe, only status + a confirmed blob is.
+      rec.status = 'captured'; rec.updated_at = now();
+      rec.pending_upload = { title: out.title, mode: out.mode, partial_reason: out.partial_reason, dimensions: out.dimensions };
+      await putCapture(rec);
+
       await NSBlobStore.put(capture_id, out.blob);
       rec.status = 'uploading'; rec.updated_at = now();
-      rec.pending_upload = { title: out.title, mode: out.mode, partial_reason: out.partial_reason, dimensions: out.dimensions };
       await putCapture(rec);
 
       const uploadRes = await uploadCapture(rec);
@@ -591,11 +636,18 @@ async function startCapture(tabId, projectId, note) {
       try { await NSBlobStore.delete(capture_id); } catch (e) {}   // upload confirmed: the durable copy's job is done
       try { await NSBlobStore.pruneExpired(); } catch (e) {}
     } catch (e) {
-      // an upload failure (network, server error) is RECOVERABLE: the blob is still durable and capture_id is
-      // stable, so 'upload_failed' (not 'failed') lets capture-retry resubmit the same bytes under the same
-      // idempotency key without recapturing. A failure before the blob ever became durable (capture itself
-      // failed) has nothing to retry with and is a hard 'failed'.
-      const recoverable = rec.status === 'uploading';
+      // an upload failure (network, server error) is RECOVERABLE: capture_id is stable and 'upload_failed' lets
+      // capture-retry resubmit the same bytes under the same idempotency key without recapturing -- but ONLY if
+      // the blob actually made it into IndexedDB. Status alone can't tell us that: 'uploading' guarantees it (the
+      // blob write already succeeded by the time status flips), but 'captured' does NOT -- NSBlobStore.put()
+      // itself could be what threw. Check IndexedDB directly rather than trusting the status string, exactly
+      // like reconcileCapturesOnWorkerInit does for a worker-restart failure of the same shape.
+      let recoverable = false;
+      if (rec.status === 'uploading') {
+        recoverable = true;
+      } else if (rec.status === 'captured') {
+        try { recoverable = !!(await NSBlobStore.get(capture_id)); } catch (e2) { recoverable = false; }
+      }
       rec.status = recoverable ? 'upload_failed' : 'failed';
       rec.error = String((e && e.message) || e).slice(0, 300); rec.finished_at = now(); rec.updated_at = now();
       await putCapture(rec);
@@ -657,9 +709,11 @@ async function reconcileCapturesOnWorkerInit() {
     if (!k.startsWith('capture:') || !v) continue;
     // repair round 2: nsReconcileDecision needs to know whether the blob actually survived before offering a
     // recoverable 'upload_failed' (and therefore a "Retry send" button) -- checking IndexedDB is why this stays
-    // here in background.js rather than inside the pure decision function itself.
+    // here in background.js rather than inside the pure decision function itself. 'captured' (repair round 3,
+    // gap #C) needs exactly the same check: it is the durable-metadata-persisted-before-the-blob-write state,
+    // so its own status string alone never tells us whether the blob actually made it into IndexedDB.
     let blobExists = false;
-    if (v.status === 'uploading') {
+    if (v.status === 'uploading' || v.status === 'captured') {
       try { blobExists = !!(await NSBlobStore.get(v.capture_id)); } catch (e) { blobExists = false; }
     }
     const decision = nsReconcileDecision(v, nowMs, blobExists);

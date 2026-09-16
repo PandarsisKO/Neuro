@@ -124,19 +124,26 @@ layout — and `scrollHeight` — does not shift) so they do not "stamp" themsel
 check the three ceilings; continue or stop. Folds are stitched into one tall PNG with `OffscreenCanvas`
 (available in MV3 service workers), DPR-aware (`Math.round(cssPixels * dpr)`).
 
-A single fold that was never cut short is labeled `visible_only` — the honest fallback tier the plan requires,
-not a failure. Two or more folds, or a run that was cut short by a ceiling, is labeled `full_page` (with
-`capture_partial_reason` set when a ceiling fired).
+A single tile that was never cut short is labeled `visible_only` — the honest fallback tier the plan requires,
+not a failure. A run that completes its full 2D tile grid (rows × columns, since the repair round's tiling
+rewrite — see below) with no ceiling firing is labeled `full_page`. A run cut short by any ceiling is labeled
+`partial_page` (with `capture_partial_reason` set to the ceiling that fired) — `full_page` is reserved
+exclusively for a genuinely complete capture; this doc previously described ceiling-limited captures as
+`full_page`, which stopped being true once `partial_page` was introduced (see "Repair round" below) and is
+corrected here rather than left for a future session to puzzle out.
 
-### Runtime ceilings (enforced per fold, not once up front)
+### Runtime ceilings (enforced per tile, against actual progress, not once up front)
 
-| Ceiling | Value | Why per-fold |
+| Ceiling | Value | Why per-tile |
 |---|---|---|
-| Total pixels (post-DPR, across every fold) | 40,000,000 | A lazy/infinite feed keeps rendering while being scrolled; the only honest place to catch that is after each fold, using the page's CURRENT height, not its height when the capture started. |
-| Folds | 30 | Same reasoning — a page can keep growing indefinitely. |
+| Total pixels (using the actual captured bitmap scale, across every tile) | 40,000,000 | A lazy/infinite feed keeps rendering while being scrolled; the only honest place to catch that is after each tile, using the page's CURRENT height, not its height when the capture started. The running total uses the real captured bitmap's scale (repair round 2, gap #4), not `devicePixelRatio` alone, so it agrees with what actually gets stitched. |
+| Tiles | 60 | Same reasoning — a page can keep growing indefinitely in either dimension since 2D tiling replaced the original 1D fold loop. |
 | Elapsed time | 60,000 ms | Bounds total wall-clock regardless of how fast the page grows. |
 
 Whichever fires first stops the loop; everything captured so far is still stitched and sent, labeled honestly.
+The final stitched canvas itself is also bounded — on a partial capture it spans only the bounding box of the
+tiles actually captured, not the full measured page (repair round 3, gap #A), and `stitchShots()` preflights
+its own canvas allocation against the same 40M-pixel ceiling as a hard backstop.
 
 ### Content-script watchdog
 
@@ -191,9 +198,10 @@ real browser's rendering pipeline. Not yet verified live, because Claude in Chro
 - **A real infinite-scroll page** hitting the pixel/fold/time ceilings in practice, not just in the spike's
   synthetic `IntersectionObserver` fixture.
 
-Kyle needs to load the unpacked extension (1.8.0) in his own Chrome and run the 12-item test list from the
-original spec against a few real pages — a tall marketing page, a calculator, a dashboard with a sticky nav —
-before this feature is trusted for daily use.
+(Superseded — this was the pre-repair-round acceptance list for the original 1.8.0 spike. The current,
+authoritative live-Chrome acceptance matrix is the one in "Repair round" below, expanded again in "Repair round
+3"; that matrix is what Kyle actually needs to run, against the current extension version, before this feature
+is trusted for daily use.)
 
 ## Product gate
 
@@ -286,7 +294,7 @@ a jsdom harness cannot otherwise exercise MV3 worker-respawn timing or a real `c
 full `chrome.*` mock.
 
 **Still needs Kyle's own hands** — nothing above replaces the live-browser acceptance gate that was itself one
-of the 4 original BLOCKERS: load the unpacked extension (1.9.0) in his own Chrome and run it against a few real
+of the 4 original BLOCKERS: load the unpacked extension in his own Chrome and run it against a few real
 pages, including at least one wider-than-viewport page (to exercise the new horizontal tiling) and one
 lazy/infinite-scroll page (to exercise the ceiling-on-actual-progress and grid-growth handling).
 
@@ -349,7 +357,7 @@ unavailable" network failures noted elsewhere in this doc — confirmed unrelate
 on a test that never touches this feature.
 
 **The live-Chrome acceptance gate is still the mandatory closing step**, and Kyle specified the matrix it must
-cover once the extension is reloaded unpacked (1.9.0+ with this repair round 2 applied):
+cover once the extension is reloaded unpacked (this matrix supersedes the original 1.8.0 spec's acceptance list above):
 
 - ordinary short page; tall page with a sticky/fixed header
 - a genuinely horizontally-scrolling page
@@ -368,6 +376,72 @@ cover once the extension is reloaded unpacked (1.9.0+ with this repair round 2 a
 - starting a course scan during a capture and vice versa, confirming mutual exclusion
 - inspecting the resulting screenshot in the actual Neuro app: OCR, Suggested Findings, project-relative
   provenance, URL, timestamp, partial status, and the user note all correct
+- close and reopen the extension popup DURING a capture — the operation must survive in the background
+  (`capture:<tabId>` in `chrome.storage.local`, not popup-local state) and the reopened popup must pick up
+  exactly where the running capture is
+- verify the exact original scroll position is restored afterward in every outcome: a successful capture, a
+  failed one, and one that fell back to the visible-area-only path — not just "restored to somewhere near the
+  top"
+- navigate to another path on the SAME origin mid-capture (e.g. `/calculator` → `/dashboard`) and confirm the
+  capture aborts rather than silently continuing — directly exercises repair round 3's gap #B fix
 
 Write the pass/fail results for each item into this doc (or a dated results file alongside it) and update
 HANDOFF once the pass is complete — only then does this mission close.
+
+## Repair round 3 (2026-09-16, Kyle's second independent re-review of shipped 1.9.1)
+
+Kyle re-checked the GitHub head again after repair round 2 landed, confirmed all 4 gaps and 3 hardening items
+from that round were genuinely fixed, and still would not close the mission. He found 3 more implementation
+gaps, plus the same still-outstanding release/acceptance work (now with 3 more matrix items, folded into the
+matrix above, and a fresh release-gate run against the final commit).
+
+Three gaps fixed:
+
+A. **The pixel ceiling never actually bounded the FINAL stitched image.** The 40M-pixel check (as fixed in
+   round 2) correctly counts captured tiles using the real captured scale — but on a PARTIAL capture,
+   `finalPageW`/`finalPageH` still fell back to the full MEASURED page dimensions (`pageW`/`pageH`) whenever
+   those were larger than what was actually captured. `stitchShots()` then allocated an `OffscreenCanvas` at
+   that full size — so a capture that correctly stopped early at ~40M captured pixels on an enormous or
+   infinite-scroll page could still attempt to allocate a canvas hundreds of millions of pixels large. Fixed in
+   two layers: (1) the stitch canvas size is now the bounding box of the tiles actually captured
+   (`shotsMaxX`/`shotsMaxY`) whenever the capture is partial — the full measured page size is only trusted when
+   the capture is `complete`; (2) `stitchShots()` itself now preflights `w * h` against
+   `CAPTURE_MAX_TOTAL_PIXELS` and throws before calling `new OffscreenCanvas(w, h)`, a hard backstop independent
+   of whatever its caller computed. The reported `page_width`/`page_height` provenance is kept separate and
+   still reports the TRUE measured page size — `partial_page` + `partial_reason` already label the result
+   honestly; shrinking the reported page size to match the captured area would make an incomplete capture look
+   like a smaller, complete one.
+B. **Same-origin navigation could silently corrupt provenance.** `verifyTabIdentity` compared tab ORIGIN only,
+   so a navigation from `example.com/calculator` to `example.com/dashboard` mid-capture passed unnoticed, while
+   the uploaded provenance (`rec.url`) kept naming the URL recorded when the capture started — an old-URL,
+   new-image mismatch. Same-origin is not a strong enough identity for evidence. Fixed: a new pure helper
+   `nsPageIdentity(urlStr)` (`extension/capture-lib.js`) pins `origin + pathname + search` (a hash-only change —
+   an in-page anchor jump — is still the same document and stays allowed); `verifyTabIdentity` now compares
+   this instead of origin alone, and fails closed (`TabIdentityError`) on any change.
+C. **A narrow MV3 durability hole between saving the Blob and persisting the upload state.** The code saved the
+   Blob to IndexedDB first, then flipped the record to `'uploading'` and persisted THAT. If the worker died in
+   between those two steps, the persisted record still said `'capturing'` — and reconciliation treats every
+   `'capturing'` record as an unconditional hard failure, discarding a Blob that may have safely reached
+   IndexedDB. Fixed: a new durable intermediate state, `'captured'`. Metadata (status → `'captured'`,
+   `pending_upload` set) now persists BEFORE the blob write; the blob write happens second; the transition to
+   `'uploading'` happens third. `'captured'` is treated identically to `'uploading'` everywhere blob existence
+   matters — `nsReconcileDecision`, `reconcileCapturesOnWorkerInit()`, AND the in-process catch block in
+   `startCapture` (which cannot simply trust the `'captured'` status string either, since `NSBlobStore.put()`
+   itself could be what threw — it re-checks IndexedDB the same way the worker-restart path does). On restart:
+   `captured` + blob present → recoverable `upload_failed`; `captured` + no blob → hard `failed`. `'captured'`
+   is also active for mutual exclusion (`CAPTURE_ACTIVE`, `CAPTURE_ACTIVE_UI`) exactly like `'capturing'`/
+   `'uploading'`.
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 43 to 53 — new coverage for the bounded partial-capture
+stitch, the `stitchShots` pixel-ceiling preflight, `nsPageIdentity` (same-document pinning, hash-only changes
+staying allowed), `verifyTabIdentity`'s updated comparison, the `'captured'`-before-blob-write ordering, and
+the durability catch block's blob-existence recheck (not just its status string) for the in-process failure
+path. All 53 pass.
+
+Extension bumped to 1.9.2. `page_width`/`page_height` remain the true measured page size on a partial capture
+(unchanged contract); only the internal stitch canvas allocation and `verifyTabIdentity`'s comparison changed.
+The live-Chrome acceptance matrix above now includes the 3 additional cases Kyle specified this round (popup
+close/reopen mid-capture, exact scroll-position restoration in every outcome, and same-origin navigation
+aborting a capture) and remains the mandatory closing step — still not run. A fresh full release-gate pass
+(pytest, Tier 1, release-check, version agreement) against the final commit is also still owed, per HANDOFF's
+rule that a prior pass does not count for edited code.

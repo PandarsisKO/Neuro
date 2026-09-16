@@ -191,7 +191,10 @@ $('#sendPage').onclick = async () => {
 // ---- Send screenshot: mirrors the scan pattern above — the popup only starts the capture and renders whatever
 // the background record (`capture:<tabId>`) says; the background owns the operation so it survives popup close.
 let CAPTURE = null;
-const CAPTURE_ACTIVE_UI = new Set(['capturing', 'uploading']);
+// 'captured' (repair round 3, gap #C): the brief durable-metadata-persisted-before-the-blob-write state --
+// active exactly like 'capturing'/'uploading', so the button stays disabled and no stray click can start a
+// second capture while this tab's record passes through it.
+const CAPTURE_ACTIVE_UI = new Set(['capturing', 'captured', 'uploading']);
 const CAPTURE_MODE_WORDS = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
 const CAPTURE_REASON_WORDS = { ceiling_pixels: 'the page was very tall — captured as far as the size limit allowed',
                                 ceiling_folds: 'the page was very tall — captured as far as the fold/tile limit allowed',
@@ -202,7 +205,7 @@ const CAPTURE_REASON_WORDS = { ceiling_pixels: 'the page was very tall — captu
 // substring since background.js's error messages ARE these sentences (see verifyTabIdentity in background.js).
 const CAPTURE_FAILURE_WORDS = [
   [/no longer the active tab/i, 'Switch back to that tab and press Send screenshot again — it needs to be the tab you\'re looking at.'],
-  [/navigated to a different site|different site mid-capture/i, 'The page changed to a different site while it was being captured, so nothing was sent.'],
+  [/navigated to a different (page|site)|different (page|site) mid-capture/i, 'The page navigated away while it was being captured, so nothing was sent.'],
   [/navigated away from a capturable page/i, 'The tab left the page before the capture could finish.'],
   [/browser or extension restarted/i, null],   // uses c.error verbatim — already in plain language
 ];
@@ -226,6 +229,7 @@ function renderCapture() {
   $('#retryScreenshot').style.display = c && sameTab && c.status === 'upload_failed' ? '' : 'none';
   if (!c || !sameTab) { return; }
   if (c.status === 'capturing') { $('#screenshotMsg').textContent = c.fold ? `capturing… (tile ${c.fold})` : 'capturing…'; return; }
+  if (c.status === 'captured') { $('#screenshotMsg').textContent = 'saving…'; return; }
   if (c.status === 'uploading') { $('#screenshotMsg').textContent = 'sending…'; return; }
   if (c.status === 'upload_failed') {
     $('#screenshotMsg').innerHTML = `<span class="bad">Could not send: ${esc(c.error || 'the app could not be reached')}.</span> <span class="muted">The captured image is kept — press Retry send.</span>`;

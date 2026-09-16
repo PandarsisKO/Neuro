@@ -1,4 +1,4 @@
-"""S54 — send screenshot: capture-lib primitives, as a contract (extension 1.8.0, mission "send screenshot").
+"""S54 — send screenshot: capture-lib primitives, as a contract (extension 1.9.2, mission "send screenshot").
 
 Full plan and revisions: see the Kyle-approved plan referenced from docs/SEND-SCREENSHOT-2026-09-16.md and from
 neurosearch/api.py's api_ingest_file docstring. This file gates the extraction Phase 2c made necessary: the
@@ -509,12 +509,18 @@ def test_captureinit_is_awaited_at_the_four_gated_call_sites() -> None:
     assert bg.index("chrome.runtime.onMessage.addListener") < bg.index("const captureInit = reconcileCapturesOnWorkerInit();")
 
 
-def test_durability_ordering_blob_put_before_uploading_status() -> None:
+def test_durability_ordering_captured_before_blob_before_uploading() -> None:
+    # repair round 3 (gap #C): metadata persists as 'captured' BEFORE the blob write, so a crash between them
+    # leaves an honest 'captured'-with-no-blob (hard failure) rather than the old 'capturing' (which
+    # nsReconcileDecision always failed outright, discarding a blob that might have actually made it to disk).
+    # The blob write must still land before status flips to 'uploading', before the POST.
     bg = (EXT / "background.js").read_text()
+    captured_idx = bg.index("rec.status = 'captured'; rec.updated_at = now();")
     put_idx = bg.index("await NSBlobStore.put(capture_id, out.blob);")
-    uploading_idx = bg.index("rec.status = 'uploading'; rec.updated_at = now();\n      rec.pending_upload")
+    uploading_idx = bg.index("rec.status = 'uploading'; rec.updated_at = now();\n      await putCapture(rec);\n\n      const uploadRes")
     upload_call_idx = bg.index("const uploadRes = await uploadCapture(rec);")
-    assert put_idx < uploading_idx < upload_call_idx, "blob must be durable before status flips to uploading, before the POST"
+    assert captured_idx < put_idx < uploading_idx < upload_call_idx, \
+        "metadata must persist as 'captured' before the blob write, which must land before status flips to 'uploading', before the POST"
 
 
 def test_capture_id_travels_on_every_upload_and_retry() -> None:
@@ -748,3 +754,121 @@ def test_ingest_file_cleans_up_temp_upload_if_atomic_call_throws(client, tmp_pat
     after = {f.name for f in settings.media_dir.glob("upload_*")} if settings.media_dir.exists() else set()
     leaked = after - before
     assert not leaked, f"temp upload file(s) leaked after an atomic-call exception: {leaked}"
+
+
+# ==================================================================================== repair round 3 (2026-09-16)
+# Kyle's second independent re-review of the shipped 1.9.1 code found 3 more gaps before the live-Chrome pass:
+#   A. the final stitched canvas used the full MEASURED page size even on a partial capture, so a partial capture
+#      of an enormous/infinite-scroll page could still attempt to allocate an OffscreenCanvas hundreds of
+#      millions of pixels large -- the 40M ceiling never actually bounded the FINAL image.
+#   B. verifyTabIdentity only compared tab ORIGIN, so a same-origin navigation (example.com/a -> example.com/b)
+#      passed unnoticed mid-capture while the uploaded provenance URL kept naming the page the capture started on.
+#   C. a durability hole between saving the Blob and persisting 'uploading': a worker death in between left the
+#      record at 'capturing', which reconciliation always fails outright -- discarding a blob that might have
+#      safely reached IndexedDB. Fixed with a durable 'captured' intermediate state, checked for blob existence
+#      exactly like 'uploading' already was (repair round 2, gap #2).
+
+# ------------------------------------------------------------------------------- gap A: bounded partial-capture stitch
+def test_partial_capture_stitches_only_the_captured_bounding_box_not_the_full_page() -> None:
+    bg = (EXT / "background.js").read_text()
+    block = bg[bg.index("const complete = idx >= grid.length && !partialReason;"):bg.index("const { blob } = await stitchShots(shots, stitchW, stitchH);") + 60]
+    assert "const stitchW = complete ? Math.max(pageW, shotsMaxX) : shotsMaxX;" in block
+    assert "const stitchH = complete ? Math.max(pageH, shotsMaxY) : shotsMaxY;" in block
+    assert "await stitchShots(shots, stitchW, stitchH)" in block, \
+        "a partial capture must stitch only the bounding box of what was actually captured, not the full measured page"
+    # the reported page_width/page_height provenance is a SEPARATE concern from the stitch canvas size -- an
+    # honest partial_page label should still report the page's true measured size, not shrink it down to match
+    # what got captured (that would make an incomplete capture look like a smaller, complete one)
+    assert "const finalPageW = Math.max(pageW, shotsMaxX);" in block
+    assert "const finalPageH = Math.max(pageH, shotsMaxY);" in block
+
+
+def test_stitch_shots_preflights_canvas_size_against_the_pixel_ceiling() -> None:
+    # stitchShots must refuse to allocate an OffscreenCanvas beyond the safety ceiling no matter what its caller
+    # asks it to stitch -- a backstop independent of whatever runCapture computed for stitchW/stitchH.
+    bg = (EXT / "background.js").read_text()
+    fn = bg[bg.index("async function stitchShots("):]
+    fn = fn[:fn.index("\nasync function ", 10)]
+    assert "if (w * h > CAPTURE_MAX_TOTAL_PIXELS)" in fn
+    assert "new OffscreenCanvas(w, h)" in fn
+    # the preflight check must appear BEFORE the actual allocation
+    assert fn.index("if (w * h > CAPTURE_MAX_TOTAL_PIXELS)") < fn.index("new OffscreenCanvas(w, h)")
+
+
+# ------------------------------------------------------------------------------- gap B: same-document identity pinning
+def test_page_identity_pins_path_and_query_not_just_origin() -> None:
+    same_page = _run("page-identity", ["https://example.com/calculator?x=1"])
+    other_path_same_origin = _run("page-identity", ["https://example.com/dashboard?x=1"])
+    same_page_different_hash = _run("page-identity", ["https://example.com/calculator?x=1#results"])
+    different_origin = _run("page-identity", ["https://other.example/calculator?x=1"])
+
+    assert same_page["identity"] == same_page_different_hash["identity"], \
+        "a hash-only change (in-page anchor jump) is still the same document and must not look like a navigation"
+    assert same_page["identity"] != other_path_same_origin["identity"], \
+        "a same-origin navigation to a different path must be detected — origin alone is not a strong enough identity for evidence"
+    assert same_page["identity"] != different_origin["identity"]
+
+
+def test_verify_tab_identity_pins_full_page_identity_not_origin_alone() -> None:
+    # structural gate: verifyTabIdentity must compare nsPageIdentity(tab.url), not new URL(tab.url).origin, so a
+    # same-origin path change is caught (gap #B) rather than silently passing as before.
+    bg = (EXT / "background.js").read_text()
+    fn = bg[bg.index("async function verifyTabIdentity("):]
+    fn = fn[:fn.index("\n}\n") + 3]
+    assert "nsPageIdentity(tab.url)" in fn
+    assert "new URL(tab.url).origin" not in fn, "verifyTabIdentity must no longer compare origin alone"
+    assert "expectedIdentity && identity !== expectedIdentity" in fn
+
+
+def test_capture_start_pins_identity_from_the_actual_starting_url() -> None:
+    bg = (EXT / "background.js").read_text()
+    assert "const expectedIdentity = nsPageIdentity(tab0.url);" in bg
+
+
+# ------------------------------------------------------------------------------- gap C: durable 'captured' state
+def test_captured_state_persists_before_the_blob_write_not_after() -> None:
+    bg = (EXT / "background.js").read_text()
+    captured_idx = bg.index("rec.status = 'captured'; rec.updated_at = now();")
+    put_idx = bg.index("await NSBlobStore.put(capture_id, out.blob);")
+    uploading_idx = bg.index("rec.status = 'uploading'; rec.updated_at = now();\n      await putCapture(rec);\n\n      const uploadRes")
+    assert captured_idx < put_idx < uploading_idx, \
+        "metadata must be durable as 'captured' BEFORE the blob write, so a crash in between is an honest no-blob failure, not the old always-failed 'capturing'"
+
+
+def test_captured_status_is_active_for_mutual_exclusion() -> None:
+    bg = (EXT / "background.js").read_text()
+    assert "const CAPTURE_ACTIVE = new Set(['capturing', 'captured', 'uploading']);" in bg
+    js = (EXT / "popup.js").read_text()
+    assert "const CAPTURE_ACTIVE_UI = new Set(['capturing', 'captured', 'uploading']);" in js
+
+
+def test_reconcile_decision_treats_captured_same_as_uploading() -> None:
+    nowMs = 1_700_000_000_000
+    for status in ("captured", "uploading"):
+        with_blob = _run("reconcile-decision", [{"status": status}, nowMs, True])
+        assert with_blob == {"status": "upload_failed", "error": with_blob["error"]}
+        assert "Retry send" in with_blob["error"]
+
+        without_blob = _run("reconcile-decision", [{"status": status}, nowMs, False])
+        assert without_blob["status"] == "failed"
+        assert "not saved" in without_blob["error"]
+
+
+def test_worker_init_checks_blob_existence_for_captured_too() -> None:
+    bg = (EXT / "background.js").read_text()
+    fn = bg[bg.index("async function reconcileCapturesOnWorkerInit()"):]
+    fn = fn[:fn.index("\n}\n") + 3]
+    assert "v.status === 'uploading' || v.status === 'captured'" in fn
+
+
+def test_in_process_upload_failure_checks_blob_existence_for_captured_not_just_status_string() -> None:
+    # if NSBlobStore.put() itself throws, the record is left at 'captured' with NO blob actually written --
+    # the in-process catch block must not naively treat 'captured' as automatically recoverable (that would
+    # reintroduce gap #2's bug via a different code path), it must check IndexedDB the same way the worker-init
+    # reconciliation path does.
+    bg = (EXT / "background.js").read_text()
+    catch_block = bg[bg.index("} catch (e) {\n      // an upload failure"):]
+    catch_block = catch_block[:catch_block.index("\n    }\n") + 6]
+    assert "rec.status === 'captured'" in catch_block
+    assert "NSBlobStore.get(capture_id)" in catch_block
+    assert "recoverable = true" in catch_block  # unconditional only for 'uploading'

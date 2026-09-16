@@ -4590,3 +4590,49 @@ mutual exclusion, and inspecting the resulting screenshot in the Neuro app itsel
 `docs/SEND-SCREENSHOT-2026-09-16.md` and has NOT been run. Results belong in that doc once it is.
 
 Commit: e2bf2ac.
+
+## 2026-09-16 — Send screenshot: repair round 3 (Kyle's second independent re-review of shipped 1.9.1)
+
+Kyle re-checked the GitHub head after repair round 2 landed, confirmed all 4 gaps + 3 hardening items from that
+round were genuinely fixed (extension 1.9.1, 43 tests), and still would not close the mission. He found 3 more
+implementation gaps this round, plus 3 acceptance-matrix additions and documentation drift to reconcile. Full
+detail: `docs/SEND-SCREENSHOT-2026-09-16.md`'s "Repair round 3" section.
+
+Three gaps fixed:
+- **Gap A** — the pixel ceiling never actually bounded the FINAL stitched image: on a partial capture,
+  `finalPageW`/`finalPageH` fell back to the full MEASURED page size, so `stitchShots()` could be asked to
+  allocate an `OffscreenCanvas` hundreds of millions of pixels large. Fixed: the stitch canvas now spans only
+  the bounding box of tiles actually captured on a partial run, and `stitchShots()` itself preflights `w * h`
+  against `CAPTURE_MAX_TOTAL_PIXELS` as a hard backstop before allocating. Reported `page_width`/`page_height`
+  provenance is unchanged — still the true measured page size (`extension/background.js`).
+- **Gap B** — same-origin navigation could silently corrupt provenance: `verifyTabIdentity` compared tab
+  ORIGIN only, so `example.com/calculator` → `example.com/dashboard` mid-capture passed unnoticed while
+  `rec.url` kept naming the start-of-capture page. Fixed: a new pure helper `nsPageIdentity(urlStr)` pins
+  `origin + pathname + search` (a hash-only change stays allowed); `verifyTabIdentity` now compares this and
+  fails closed on any change (`extension/capture-lib.js`, `extension/background.js`).
+- **Gap C** — a durability hole between saving the Blob and persisting `'uploading'`: a worker death in between
+  left the record at `'capturing'`, which reconciliation always fails outright, discarding a Blob that might
+  have safely reached IndexedDB. Fixed: a new durable `'captured'` intermediate state — metadata persists
+  before the blob write, the blob write happens second, `'uploading'` third. `'captured'` is treated exactly
+  like `'uploading'` everywhere blob existence matters, including the in-process catch block (which re-checks
+  IndexedDB rather than trusting the status string, since `NSBlobStore.put()` itself could be what threw)
+  (`extension/background.js`, `extension/capture-lib.js`, `extension/popup.js`).
+
+Documentation drift reconciled per Kyle's request: `docs/SEND-SCREENSHOT-2026-09-16.md` no longer says to load
+1.8.0 or describes a stale 30-fold ceiling, and no longer claims ceiling-limited captures are labeled
+`full_page` (current code uses a 60-tile 2D ceiling and correctly emits `partial_page`); `capture-lib.js`,
+`capture-blob-store.js`, and the test file header are all stamped 1.9.2, matching `manifest.json`. The
+acceptance matrix gained 3 items Kyle specified: popup close/reopen mid-capture, exact scroll-position
+restoration in every outcome, and same-origin navigation aborting a capture (ties to gap #B).
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 43 to 53 (bounded partial-capture stitch, the
+`stitchShots` pixel-ceiling preflight, `nsPageIdentity`, `verifyTabIdentity`'s updated comparison, the
+`'captured'`-before-blob-write ordering, and the durability catch block's blob-existence recheck). All 53 pass.
+Extension bumped to 1.9.2.
+
+Still not done: the live-Chrome acceptance matrix (now expanded, `docs/SEND-SCREENSHOT-2026-09-16.md`) remains
+entirely outstanding and requires Kyle's own hands. A fresh full release-gate pass (pytest, Tier 1,
+release-check, version agreement) against this round's final commit is also owed per HANDOFF's rule that a
+prior pass does not count for edited code — see the entry immediately below for that pass's results once run.
+
+Commit: (this repair round 3 fix pass — see commit following this entry).

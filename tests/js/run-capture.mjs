@@ -18,6 +18,7 @@
 //   rate-limit-wait <lastCallAtMs> <nowMs> <minIntervalMs>  -> nsRateLimitWaitMs(...)
 //   fallback-eligible <errorKind>            -> nsIsFallbackEligible(errorKind)
 //   reconcile-decision <rec> <nowMs> <blobExists>  -> nsReconcileDecision(rec, nowMs, blobExists)
+//   page-identity <urlStr>                    -> nsPageIdentity(urlStr) (repair round 3, gap #B)
 //   simulate-growth-traversal <dims> <vw> <vh> <growthSchedule>
 //       -> mirrors background.js's runCapture tile-walk + regrow-on-growth algorithm (including the idx=0 reset
 //          on any grid reshape, second review round's fix) using ONLY the real nsPlanTileGrid/nsIsDuplicateTile
@@ -45,7 +46,7 @@ const { window } = dom;
 const lib = readFileSync(path.join(here, '..', '..', 'extension', 'capture-lib.js'), 'utf8');
 window.eval(lib);
 const { nsMeasure, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
-        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision } = window.NSCaptureLib;
+        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity } = window.NSCaptureLib;
 
 function stillHidden() {
   let n = 0;
@@ -89,6 +90,8 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
       out = { eligible: nsIsFallbackEligible(args[0]) };
     } else if (command === 'reconcile-decision') {
       out = nsReconcileDecision(args[0], args[1], args[2]);
+    } else if (command === 'page-identity') {
+      out = { identity: nsPageIdentity(args[0]) };
     } else if (command === 'simulate-growth-traversal') {
       const [initialDims, vw, vh, growthSchedule] = args;
       let dims = initialDims;

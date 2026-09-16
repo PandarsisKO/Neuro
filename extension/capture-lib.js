@@ -1,4 +1,4 @@
-// Neuro Search — send-screenshot capture-engine primitives (extension 1.8.0, docs/SEND-SCREENSHOT-2026-09-16.md).
+// Neuro Search — send-screenshot capture-engine primitives (extension 1.9.2, docs/SEND-SCREENSHOT-2026-09-16.md).
 //
 // Plain functions, no imports: loaded two ways —
 //   1. background.js: `importScripts('capture-lib.js')` (classic, non-module MV3 service worker), then each
@@ -150,28 +150,44 @@
   // pure/sync, no IndexedDB access of its own), decide what the record must become. A record left 'capturing'
   // means the runCapture loop that owned it is simply gone (the worker that ran it was evicted/restarted) --
   // nothing will ever call back into it, so it is failed outright (it never reached the durable-blob step, so
-  // there is nothing to retry with regardless). A record left 'uploading' is different ONLY when its blob
-  // actually survived: THIS worker's request may have already reached the server (only the response was lost
-  // when the worker died), so the server-side capture_id idempotency makes it safe to treat as a recoverable
-  // 'upload_failed' -- capture-retry resubmits the SAME capture_id and either finds the server's already-
-  // materialized job or lands it for the first time, never double-charging a duplicate job. But if the blob is
-  // gone (repair round 2: the earlier version of this function always assumed it survived, which let the popup
-  // offer a "Retry send" that could never actually work), there is nothing capture-retry could resubmit, so this
-  // is a hard, honest 'failed' instead -- never a retry button with nothing behind it. Terminal states
-  // (done/failed/upload_failed) are left alone (returns null: nothing to do).
+  // there is nothing to retry with regardless). A record left 'captured' or 'uploading' is different ONLY when
+  // its blob actually survived: THIS worker's request may have already reached the server (only the response
+  // was lost when the worker died), so the server-side capture_id idempotency makes it safe to treat as a
+  // recoverable 'upload_failed' -- capture-retry resubmits the SAME capture_id and either finds the server's
+  // already-materialized job or lands it for the first time, never double-charging a duplicate job. But if the
+  // blob is gone (repair round 2: the earlier version of this function always assumed it survived, which let
+  // the popup offer a "Retry send" that could never actually work), there is nothing capture-retry could
+  // resubmit, so this is a hard, honest 'failed' instead -- never a retry button with nothing behind it.
+  // 'captured' itself (repair round 3, gap #C) is a durable intermediate state startCapture persists BEFORE
+  // saving the blob, precisely so a crash between persisting that status and the blob write never gets
+  // misread as the earlier, unconditionally-failed 'capturing' state -- it must be treated exactly like
+  // 'uploading' here: blob-existence is the only thing that decides recoverability, not which of the two
+  // status strings happens to be on disk. Terminal states (done/failed/upload_failed) are left alone (returns
+  // null: nothing to do).
   function nsReconcileDecision(rec, nowMs, blobExists) {
     if (!rec) return null;
     if (rec.status === 'capturing') return { status: 'failed', error: 'the browser or extension restarted mid-capture' };
-    if (rec.status === 'uploading') {
+    if (rec.status === 'captured' || rec.status === 'uploading') {
       if (blobExists) return { status: 'upload_failed', error: 'the browser or extension restarted while sending — press Retry send' };
       return { status: 'failed', error: 'the browser or extension restarted while sending, and the captured image was not saved — please capture again' };
     }
     return null;
   }
 
+  // repair round 3 (gap #B): same-document identity for provenance pinning. Comparing tab ORIGIN alone (the
+  // pre-existing check) lets a same-origin navigation -- example.com/calculator -> example.com/dashboard --
+  // pass unnoticed mid-capture, even though the uploaded provenance (rec.url) still names the URL recorded when
+  // the capture started. For screenshot evidence, same-origin is not a strong enough identity: this pins
+  // origin + pathname + search (a same-document hash-only change, e.g. an in-page anchor jump, is still the
+  // same document and stays allowed; a path or query change is not).
+  function nsPageIdentity(urlStr) {
+    const u = new URL(urlStr);
+    return u.origin + u.pathname + u.search;
+  }
+
   root.NSCaptureLib = {
     nsMeasure, nsScrollTo, nsHideAndArm, nsRestore,
     nsPlanTileGrid, nsTileKey, nsIsDuplicateTile, nsCheckCeilings, nsStitchScale, nsRateLimitWaitMs,
-    nsIsFallbackEligible, nsReconcileDecision,
+    nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity,
   };
 })(typeof self !== 'undefined' ? self : this);
