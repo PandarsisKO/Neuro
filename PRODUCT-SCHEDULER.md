@@ -4,16 +4,17 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW sec
 
 ## NOW — one active effort
 
-**Updated 2026-09-16 (overnight mission, plan-then-pause checkpoint in HANDOFF.md).** The 2026-09-15 line below
-("nothing is READY with no further Kyle input") is stale: CR3, CR4 and LP5 are all READY and Kyle-free (LP3 is
-done, so LP5's gate is met). Active now, Claude lane, one sequence: **Phase A** deterministic baseline clean
-(archive the superseded 09-14 state snapshot; fresh 09-16 snapshot; the `research.js` colour literal the
-send-screenshot round added; the thread-local DB binding leak behind the two `-n 4` failures) → **Phase B**
-Monitor ≠ Acquire ≠ Retain written into PRODUCT-INTELLIGENCE-MISSION §13 → **CR3** YouTube channel/playlist
-rescan into the existing Candidate Index (detection only) → **CR4** metadata-first change detection (unchanged
-reservoir = $0 no-op) → **CR8 seam documented, not admitted** → **LP5** if capacity remains. No paid call. Live/
-manual gates (send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B, FM1 live) are not
-touched tonight.
+**Updated 2026-09-16 15:20 (overnight mission — Phase A closed, executing Phase B/CR3/CR4).** Phase A is
+DONE: full suite 1766/0 clean across 11 consecutive `-n 4` runs (was flaky ~1-in-3..6 under a wrong diagnosis —
+the real cause was a pooled anyio worker thread outliving a test's `settings.data_dir` swap, fixed in
+`db.connect()`; see HANDOFF.md), repo-check PASS, release-check PASS at `3ab63eb` (0.63.91), fresh STATE
+snapshot at `717df6c`. CR3, CR4 and LP5 are READY and Kyle-free (LP3 is done, so LP5's gate is met). Active now,
+Claude lane: **Phase B** Monitor ≠ Acquire ≠ Retain written into PRODUCT-INTELLIGENCE-MISSION §13 → **CR3**
+YouTube channel/playlist rescan into the existing Candidate Index, project-scoped reconciliation (detection
+only) → **CR4** metadata-first change detection, gated on remote-unchanged AND project-already-reconciled →
+**CR8 seam documented, not admitted** → **LP5** if capacity remains, columns added only where verified missing.
+No paid call. Live/manual gates (send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B,
+FM1 live) are not touched tonight.
 
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that

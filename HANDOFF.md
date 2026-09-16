@@ -4911,3 +4911,91 @@ Candidate Index or ingestion path; a nightly rescan hook; a garbage collector / 
 new tests on already-heavily-gated surfaces without a measured defect.
 
 READY FOR EXECUTION MODEL
+
+## Execution — Phase A closed (2026-09-16, executing model)
+
+Resumed from the plan-then-pause checkpoint above (`85d905c`) after Kyle's approval-with-six-corrections
+message. Fast drift check confirmed HEAD, clean tree (modulo the allowlisted `INSPIRATION/`/`SCREENSHOT AUDIT/`
+and a large pile of pre-existing untracked `evals/release/*` artifacts from earlier missions — left alone,
+out of scope tonight, `repo-check` doesn't look inside `evals/`).
+
+**A1/A2 (repo hygiene).** Archived `STATE-OF-THE-APP-2026-09-14-1217.md` and `-09-15-1400.md` to `docs/archive/`.
+Wrote `STATE-OF-THE-APP-2026-09-16-1511.md` after the gate below passed, with the gate's real numbers.
+
+**A3 (S50 real drift).** `neurosearch/web/js/research.js:122`'s `background:#f7f8fa` → `background:var(--panel2)`.
+Confirmed this literal was introduced at `48dab98` (send-screenshot repair round 1), not pre-existing as earlier
+HANDOFF entries (written under this session's earlier identity) claimed. Fixes the S50 ceiling and a real
+dark-mode bug (the literal never adapted).
+
+**A4 (the DB-isolation fix — this is the mission's real finding).** Kyle's correction 5 required proving the
+exact causal chain before touching anything, and explicitly rejected a broad autouse cleanup "merely because it
+makes `-n 4` green." That rigor paid off: the original hypothesis (test_s51's breaker test leaking
+`db._local.conn` to the next test *on the same thread*) was real but insufficient — fixing it alone left the
+`-n 4` flake reproducing roughly 1-in-6 runs.
+
+Proof sequence:
+1. A standalone reproducer outside pytest (`repro_leak.py`, scratch-only, not committed) confirmed the
+   same-thread mechanism: a test that swaps `settings.data_dir` twice and never resets `db._local.conn` leaves
+   the next `connect()` call on that thread bound to the wrong path even after `monkeypatch` restores
+   `settings.data_dir`. Fixed `tests/test_s51_test_isolation.py`'s
+   `test_fresh_database_does_not_inherit_an_open_provider_breaker` with a `finally: db.close_thread_connection()`,
+   plus a same-thread regression test.
+2. The `-n 4` flake still reproduced (confirmed with a temporary `pytest_runtest_logstart` hook recording
+   `(worker, nodeid)` order, then discarded). Binary-search bisection over one xdist worker's ~480-test order
+   (running the exact same prefix through a single foreground process, no xdist, to keep thread identity
+   controllable) narrowed it to one test: `tests/test_r2_bootstrap.py::test_a_project_needs_only_a_name_and_a_goal`
+   run immediately before `tests/test_k_retrieval_fixes.py` reproduces the failure deterministically, alone,
+   every time.
+3. That test only uses the `client` fixture — no `data_dir` swap of its own. But `test_r2_bootstrap.py` has an
+   **`autouse=True`** fixture (`_fresh`) that swaps `settings.data_dir` for *every* test in the file, whether or
+   not the test itself asked for it, and resets `db._local.conn` on the main thread only, at teardown.
+   `POST /api/projects` is a **sync** FastAPI route (`def`, not `async def`), so Starlette runs it via
+   `anyio`'s pooled worker threadpool — a *different* OS thread from the one pytest's fixtures run on. That
+   worker thread opens its own `db._local.conn` bound to the swapped `tmp_path/data` directory, and `_fresh`'s
+   teardown has no way to reach it. The next test's `client.*()` call gets serviced by the *same* pooled worker
+   thread (anyio reuses idle threads across requests, including across tests), which is still bound to the
+   now-deleted `tmp_path` directory — 404s and FK failures follow. Confirmed directly with a diagnostic probe
+   (`db.get_project()` called on the main thread said `True`; the identical lookup through `client.get()` said
+   404) and a `PRAGMA database_list` print showing the two threads bound to two different files.
+4. Fixed at the root, in `db.connect()`: each thread now records the `db_path` its cached connection was opened
+   against (`_local.bound_db_path`); `connect()` compares that against the freshly resolved path on *every*
+   call (not only when `_local.conn is None`) and transparently closes+reopens on a mismatch.
+   `close_thread_connection()` clears the new field too. This self-heals on whichever thread happens to notice
+   next, not only the thread that performed the swap — which is exactly what a pooled worker thread needs.
+   In production `settings.data_dir` is fixed for the process lifetime, so `bound_db_path` and the resolved path
+   always agree there: **provably a no-op in production**, confirmed by inspection (the only writer of
+   `settings.data_dir` outside tests is app startup, once).
+5. This exposed two tests that were *already* fragile in a way the old, non-reactive `connect()` masked:
+   `test_p0_budget_exhaustion.py::test_budget_paused_mid_project_requeues_one_job_not_two` and
+   `test_p0_preflight.py::test_preflight_does_not_permanently_lock_out_a_repaired_database` each call a blanket
+   `monkeypatch.undo()` mid-test on the *same* `monkeypatch` fixture instance a data_dir-swapping fixture
+   (`p14_db`/`p0_db`) used — undoing the swap along with the one patch they actually meant to undo. Fixed both
+   with a scoped `pytest.MonkeyPatch.context()` for just that patch, matching the existing safe idiom
+   `test_p0_governing_input_change.py` already uses for the identical hazard. Grepped the whole suite for every
+   `monkeypatch.undo()` call (5 total) — the other two are unrelated env-var-only patches, no fix needed.
+6. New regression coverage in `test_s51_test_isolation.py`: the same-thread case (already above) and a new
+   `test_a_connection_opened_by_one_thread_self_heals_when_data_dir_moves_on_without_it`, which hands the *same*
+   OS thread two jobs in sequence via a `threading.Event` handoff (the same reuse pattern anyio's pool exhibits)
+   and asserts the second job's connection is not still bound to the first job's swapped-away directory.
+
+No retries added, nothing serialized, no broad autouse cleanup. The fix is two lines in `connect()` plus one in
+`close_thread_connection()`; everything else is test-file-local.
+
+**A5 (full gate).** All run in `ns-verify-git/src2` (a `git clone --local` of the real repo, no `.env`, so no
+real credential is ever reachable — the earlier attempt to run tests directly against the connected folder
+tripped the real `openai:embeddings` circuit breaker in seconds, since `.env`'s real key + this sandbox's
+network reached the provider and failed; that path was abandoned immediately, no spend occurred beyond a
+failed connection attempt the breaker itself absorbed).
+- `pytest -q -n 4 --dist=loadscope`: **1766 passed, 0 failed**, confirmed clean across **11 consecutive runs**
+  (previously flaky).
+- `repo-check`: **PASS (no findings)**.
+- `release-check --no-pytest`: **PASS** at `3ab63eb` (0.63.91), genuine git_sha, artifact copied into the real
+  repo and committed.
+- Version agreement: `pyproject.toml` and `neurosearch/__init__.py` both `0.63.91` (unchanged — Phase A is
+  cleanup, not a version bump).
+
+Commits: `23481d6` (state archival), `3ab63eb` (the actual code — S50 fix, `db.py`, three test files; the first
+attempt's `git add` only staged the renames, caught immediately and fixed in a follow-up commit rather than an
+amend), `0fc7e3f` (release-gate artifact), `717df6c` (STATE snapshot).
+
+Proceeding to Phase B (Continuous Research product intent) and CR3/CR4 per the approved-with-corrections plan.
