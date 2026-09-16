@@ -129,10 +129,33 @@ def _first_author(entry: dict[str, Any]) -> str:
     return _clean_title(a).split(",")[0].split(" ")[0] if a else ""
 
 
+_YEAR_RE = re.compile(r"(1[5-9]\d{2}|20\d{2})")
+
+
+def _ref_year(entry: dict[str, Any]) -> str:
+    """A 4-digit year if the entry states one unambiguously, else '' (never guessed). Crossref reference entries
+    carry a bare `year` string (not the top-level record's `issued` object)."""
+    m = _YEAR_RE.search(str(entry.get("year") or ""))
+    return m.group(1) if m else ""
+
+
 def _canonical_key(entry: dict[str, Any]) -> tuple[str, str] | None:
     """(scheme, key) identity for one raw Crossref reference entry, or None when it carries nothing usable.
-    DOI first (G6 identity order); normalized title + first author next; a bare 'unstructured' string or a
-    volume/page-only stub is NOT parseable -- it counts toward raw_reference_count, never parseable_reference_count."""
+    DOI first (G6 identity order, strongest identity) -- same DOI, whatever formatting, is one work.
+
+    For DOI-less entries: normalized title + first-author surname + year WHEN PRESENT. Conservative identity is
+    the point here (FM1 hardening, 2026-09-16): a FALSE MERGE is worse than a DUPLICATE REPRESENTATION for a Field
+    Map. Concatenating the year (or its absence) directly into the key gets the required invariants for free,
+    with no fuzzy matching and no model call:
+      - same title+author, both with no year at all -> identical key -> one DOI-less canonical work (no information
+        to distinguish them, so nothing is lost by treating them as one).
+      - same title+author, one entry with a year and the other with none -> DIFFERENT keys -> kept separate. A
+        missing year is never treated as "agrees with" a stated one; current identity rules cannot prove sameness,
+        so they aren't merged.
+      - same title+author, two different years -> DIFFERENT keys -> kept separate (an edition/reprint is not
+        assumed to be the same work without stronger evidence).
+      - same title, different authors -> DIFFERENT keys (the author component already separates them).
+    No fuzzy entity resolution, no title-similarity merging, no model call -- exact normalized-string equality only."""
     doi = scholar.normalise_doi(entry.get("DOI"))
     if doi:
         return ("doi", doi)
@@ -140,7 +163,7 @@ def _canonical_key(entry: dict[str, Any]) -> tuple[str, str] | None:
     if title:
         tn = works.normalize_title(title)
         if tn:
-            return ("title", f"{tn}|{_first_author(entry).lower()}")
+            return ("title", f"{tn}|{_first_author(entry).lower()}|{_ref_year(entry)}")
     return None
 
 
@@ -288,10 +311,14 @@ def build(project_id: str, fetch_seeds_query: str | None = None) -> dict[str, An
         "seed_fetch_notes": seed_fetch_notes,
         "limitations": limitations,
         "status": "insufficient_reference_metadata" if insufficient else "ok",
+        # Kyle-facing readiness signal (FM1 follow-up hardening, 2026-09-16): whether THIS run's reference metadata
+        # is thick enough to support an `underrepresented` conclusion at all -- never inferred from a missing value.
+        "sufficient_for_underrepresented_conclusion": not insufficient,
         "field_areas": [],
     }
     if not seeds:
         result["status"] = "no_seeds"
+        result["sufficient_for_underrepresented_conclusion"] = False
         return result
     if insufficient:
         return result
@@ -314,6 +341,7 @@ def build(project_id: str, fetch_seeds_query: str | None = None) -> dict[str, An
         label = _label_cluster(members)
         cluster_tokens = cl["_tokens"]
         coverage_state, coverage_ratio = _classify_coverage(cluster_tokens, project_tokens)
+        rep_refs = sorted(members, key=lambda m: (-m["mention_count"], m["title"]))[:5]
         areas.append({
             "label": label,
             "reference_count": reference_count,           # raw mentions -- may repeat one work from one seed's bibliography
@@ -322,6 +350,12 @@ def build(project_id: str, fetch_seeds_query: str | None = None) -> dict[str, An
             "coverage": coverage_state,
             "coverage_ratio": coverage_ratio,
             "representative_works": sorted([m["title"] for m in members], key=str)[:5],
+            # inspectable detail (FM1 follow-up hardening): so Kyle can see WHY this area appeared, not just that
+            # it did -- each entry's own identity (DOI when it has one) and how many times it was mentioned.
+            "representative_references": [
+                {"title": m["title"], "identity": (m["key"][1] if m["key"][0] == "doi" else None), "mention_count": m["mention_count"]}
+                for m in rep_refs
+            ],
         })
 
     # deterministic order: most externally referenced first, tie-broken by label

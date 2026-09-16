@@ -1206,13 +1206,34 @@ def project_field_map(project: str, fetch_seeds: Optional[str] = typer.Option(No
     if as_json:
         typer.echo(json.dumps(r, indent=2, default=str))
         return
-    typer.echo(f"Seeds ({len(r['seeds'])}):")
+
+    typer.echo(f"Seeds used ({len(r['seeds'])}):")
     for s in r["seeds"]:
-        typer.echo(f"  {s['doi']} -- {s['title']} [{s['provenance']}]")
+        typer.echo(f"  {s['doi']} -- {s['title']} [from: {s['provenance']}]")
+    if not r["seeds"]:
+        typer.echo("  (none)")
+
+    if r["seed_fetch_notes"]:
+        typer.echo("\nPer-seed fetch detail:")
+        for n in r["seed_fetch_notes"]:
+            if not n.get("ok"):
+                typer.echo(f"  {n['doi']} [{n['provenance']}] -- fetch failed: {n.get('reason')}")
+            elif not n.get("has_reference_field"):
+                typer.echo(f"  {n['doi']} [{n['provenance']}] -- no reference metadata in this Crossref record")
+            else:
+                typer.echo(f"  {n['doi']} [{n['provenance']}] -- {n.get('raw_references', 0)} raw reference(s), "
+                          f"{n.get('parseable_references', 0)} parseable")
+
     lim = r["limitations"]
-    typer.echo(f"\nExamined {lim['seeds_examined']} seed(s): {lim['seeds_with_reference_metadata']} carried reference metadata, "
-              f"{lim['seeds_without_reference_metadata']} did not. {lim['raw_reference_count']} raw references, "
-              f"{lim['parseable_reference_count']} parseable, {lim['canonical_work_count']} distinct canonical works.")
+    typer.echo(f"\nSeeds with reference metadata: {lim['seeds_with_reference_metadata']}")
+    typer.echo(f"Seeds without reference metadata: {lim['seeds_without_reference_metadata']}")
+    typer.echo(f"Raw reference count: {lim['raw_reference_count']}")
+    typer.echo(f"Parseable reference count: {lim['parseable_reference_count']}")
+    typer.echo(f"Canonical referenced-work count: {lim['canonical_work_count']}")
+    typer.echo(f"Limitations note: {lim['note']}")
+    typer.echo(f"\nSufficient reference metadata to support an 'underrepresented' conclusion: "
+              f"{'yes' if r['sufficient_for_underrepresented_conclusion'] else 'no'}")
+
     if r["status"] == "no_seeds":
         typer.echo("\nNo DOI-bearing seed works found for this project (checked project Works, project sources, and the Candidate Index). "
                   "Use --fetch-seeds \"<query>\" to search Crossref explicitly.")
@@ -1223,10 +1244,16 @@ def project_field_map(project: str, fetch_seeds: Optional[str] = typer.Option(No
     if not r["field_areas"]:
         typer.echo("\nNo field area cleared the structural minimum (a repeated area needs >=2 distinct referenced works).")
         return
-    typer.echo("\nField areas (most externally referenced first):")
+
+    typer.echo(f"\nField areas ({len(r['field_areas'])}, most externally referenced first):")
     for a in r["field_areas"]:
-        typer.echo(f"  {a['label']} -- {a['referenced_work_count']} works, {a['reference_count']} references, {a['seed_count']} seed(s) -- {a['coverage']}"
-                  + (f" ({a['coverage_ratio']})" if a['coverage_ratio'] is not None else ""))
+        typer.echo(f"\n  {a['label']}")
+        typer.echo(f"    referenced_work_count: {a['referenced_work_count']}   reference_count: {a['reference_count']}   seed_count: {a['seed_count']}")
+        typer.echo(f"    coverage: {a['coverage']}" + (f" (ratio {a['coverage_ratio']})" if a['coverage_ratio'] is not None else ""))
+        typer.echo("    representative references:")
+        for rr in a["representative_references"]:
+            ident = f" [{rr['identity']}]" if rr.get("identity") else ""
+            typer.echo(f"      - {rr['title']}{ident} (mentioned {rr['mention_count']}x)")
 
 
 @project_app.command("discover-report")

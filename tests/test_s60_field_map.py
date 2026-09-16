@@ -63,7 +63,7 @@ def _work_manifestation_of_source(sid, doi, title):
     return w
 
 
-def _crossref_ref(doi=None, title=None, author=None, unstructured=None):
+def _crossref_ref(doi=None, title=None, author=None, unstructured=None, year=None):
     e = {}
     if doi:
         e["DOI"] = doi
@@ -73,6 +73,8 @@ def _crossref_ref(doi=None, title=None, author=None, unstructured=None):
         e["author"] = author
     if unstructured:
         e["unstructured"] = unstructured
+    if year:
+        e["year"] = year
     return e
 
 
@@ -216,6 +218,65 @@ def test_ordinary_search_does_not_request_or_store_references(monkeypatch):
 
 
 # ---------------------------------------------------------------- collapsing + clustering + counters
+# ---------------------------------------------------------------- DOI-less canonical identity hardening (2026-09-16)
+# "FM1 FOLLOW-UP HARDENING": conservative identity for references without a DOI -- normalized title + first-author
+# surname + year WHEN PRESENT. Principle: a false merge is worse than a duplicate representation. These are unit
+# tests directly against `field_map._canonical_key`, the exact function the mission asked to inspect and harden.
+
+def test_identity_same_doi_different_formatting_is_one_work():
+    a = field_map._canonical_key(_crossref_ref(doi="10.1001/ABC"))
+    b = field_map._canonical_key(_crossref_ref(doi="  10.1001/abc  "))
+    assert a is not None and a == b
+
+
+def test_identity_same_title_author_year_is_one_doi_less_work():
+    a = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J", year="2019"))
+    b = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J", year="2019"))
+    assert a is not None and a == b
+
+
+def test_identity_same_title_author_different_years_are_separate_works():
+    a = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J", year="2019"))
+    b = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J", year="2021"))
+    assert a is not None and b is not None and a != b
+
+
+def test_identity_same_generic_title_different_authors_are_separate_works():
+    a = field_map._canonical_key(_crossref_ref(title="Annual Review", author="Smith J", year="2019"))
+    b = field_map._canonical_key(_crossref_ref(title="Annual Review", author="Jones K", year="2019"))
+    assert a is not None and b is not None and a != b
+
+
+def test_identity_missing_year_does_not_force_merge_with_dated_entry():
+    """Correction: a missing year is never treated as 'agrees with' a stated one -- current identity rules cannot
+    prove sameness, so they stay separate (a duplicate representation, not a false merge)."""
+    dated = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J", year="2019"))
+    undated = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J"))
+    assert dated is not None and undated is not None and dated != undated
+    # ... but two undated entries with the same title+author DO still merge (no information to distinguish them)
+    undated2 = field_map._canonical_key(_crossref_ref(title="Elder Law Handbook", author="Smith J"))
+    assert undated == undated2
+
+
+def test_identity_malformed_metadata_fails_safely():
+    assert field_map._canonical_key({"volume": "12", "page": "45"}) is None
+    assert field_map._canonical_key({"unstructured": "an uncited stray note"}) is None
+    assert field_map._canonical_key({}) is None
+
+
+def test_identity_hardening_reflected_in_build_canonical_work_count(s60_db, monkeypatch):
+    """End to end: two same-title/author references with different years collapse to TWO canonical works, not one --
+    proven through the public `build()` counters, not just the unit-level key function."""
+    pid = _project()["id"]
+    _project_work(pid, "10.1001/idh", "Identity Hardening Seed")
+    _stub_references(monkeypatch, {"10.1001/idh": {"raw_references": [
+        _crossref_ref(title="Elder Law Handbook", author="Smith J", year="2019"),
+        _crossref_ref(title="Elder Law Handbook", author="Smith J", year="2021"),
+    ]}})
+    r = field_map.build(pid)
+    assert r["limitations"]["canonical_work_count"] == 2
+
+
 
 def test_build_end_to_end_forms_one_cluster_from_two_overlapping_seeds(s60_db, monkeypatch):
     pid = _project()["id"]
@@ -428,7 +489,7 @@ def test_cli_field_map_human_and_json(s60_db, monkeypatch):
     })
     res = runner.invoke(app, ["project", "field-map", "fm1"])
     assert res.exit_code == 0, res.output
-    assert "Seeds (" in res.output
+    assert "Seeds used (" in res.output
 
     res_json = runner.invoke(app, ["project", "field-map", "fm1", "--json"])
     assert res_json.exit_code == 0, res_json.output
