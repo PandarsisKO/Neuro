@@ -109,8 +109,11 @@ function summarize(rec) {
 }
 
 async function startScan(tabId) {
+  await captureInit;   // MV3 worker-respawn race: never act on a capture record from before reconciliation ran
   const cur = await getScan(tabId);
   if (cur && ACTIVE.has(cur.status)) return { error: 'A scan is already running in this tab.', scan: cur };
+  const curCapture = await getCapture(tabId);
+  if (curCapture && CAPTURE_ACTIVE.has(curCapture.status)) return { error: 'A screenshot capture is already running in this tab — wait for it to finish before scanning.' };
   let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
   if (!tab.url || !/^https?:/.test(tab.url)) return { error: 'This page cannot be scanned (not a web page).' };
   // the page may still have a runner from an earlier popup even if our record says otherwise: ask before injecting
@@ -214,33 +217,40 @@ async function pruneScans() {
 
 
 // ================================================================== send screenshot: durable state + capture engine
-// docs/SEND-SCREENSHOT-2026-09-16.md. One record per TAB, keyed `capture:<tabId>`, mirroring the scan record above
-// (same reason: MV3 may evict this worker mid-capture, and the popup may close mid-capture — the record on disk,
-// not anything held only in memory, is what a reopened popup renders and what survives eviction). Unlike a scan,
-// the capture loop is driven entirely from THIS file (no content-script runner reporting back over messages):
-// chrome.tabs.captureVisibleTab is a background-only API, so the orchestration has to live here regardless.
+// docs/SEND-SCREENSHOT-2026-09-16.md, repair round (Kyle-approved plan, "Approved to execute. Behind now."). One
+// record per TAB, keyed `capture:<tabId>`, mirroring the scan record above (same reason: MV3 may evict this
+// worker mid-capture, and the popup may close mid-capture — the record on disk, not anything held only in
+// memory, is what a reopened popup renders and what survives eviction). Unlike a scan, the capture loop is
+// driven entirely from THIS file (no content-script runner reporting back over messages): chrome.tabs.
+// captureVisibleTab is a background-only API, so the orchestration has to live here regardless.
 const CAPTURE_ACTIVE = new Set(['capturing', 'uploading']);
 const captureKey = tabId => `capture:${tabId}`;
 // Reuses the same per-tab promise-chain lock as scans (withScan): a capture also scrolls the page and would race
 // badly against a scan doing DOM work in the same tab, so serializing the two behind one lock is correct, not
-// just convenient.
+// just convenient. It is also how startScan/startCapture's mutual-exclusion checks above stay race-free.
 const withCapture = withScan;
 
-async function getCapture(tabId) { return (await chrome.storage.local.get(captureKey(tabId)))[captureKey(tabId)] || null; }
+async function getCapture(tabId) {
+  await captureInit;   // gated call site: capture-get must never read a record from before reconciliation ran
+  return (await chrome.storage.local.get(captureKey(tabId)))[captureKey(tabId)] || null;
+}
 async function putCapture(rec) { await chrome.storage.local.set({ [captureKey(rec.tab_id)]: rec }); }
 
-// Three runtime ceilings, enforced PER FOLD (not once up front): a lazy/infinite-scroll page can keep growing
-// while it is being scrolled, so the loop re-measures scrollHeight after every fold and can only ever find out a
-// ceiling was crossed just after crossing it — never before. When one trips, whatever was already stitched is kept
-// and the result is labeled full_page with a capture_partial_reason, rather than thrown away for a single shot.
-const CAPTURE_MAX_TOTAL_PIXELS = 40_000_000;   // full-resolution (post-DPR) pixels across every fold, combined
-const CAPTURE_MAX_FOLDS = 30;
+// Three runtime ceilings, enforced against ACTUAL captured (post-dedup) tiles, never the planned grid size — a
+// lazy/infinite-scroll page can keep growing while it is being scrolled (2D: both taller AND wider). When one
+// trips, whatever was already stitched is kept and the result is labeled partial_page with a
+// capture_partial_reason, rather than thrown away for a single shot.
+const CAPTURE_MAX_TOTAL_PIXELS = 40_000_000;   // full-resolution (post-DPR) pixels across every tile, combined
+const CAPTURE_MAX_TILES = 60;                  // 2D grid raises the practical tile count over the old 1D fold cap
 const CAPTURE_MAX_ELAPSED_MS = 60_000;
 const CAPTURE_WATCHDOG_MS = 20_000;            // in-page self-heal window, armed on every sticky/fixed hide (below)
 const CAPTURE_SETTLE_MS = 140;                 // scroll landing: setTimeout-based wait, not rAF — Phase 1 spike
 const CAPTURE_HIDE_SETTLE_MS = 60;             // measured background-tab rAF throttling to ~1fps, so a bounded
                                                 // setTimeout poll (the scan-lib.js settle() pattern) is the only
                                                 // reliable way to wait for a repaint from this file.
+const CAPTURE_MIN_CALL_INTERVAL_MS = 600;      // BLOCKER fix: captureVisibleTab is capped at ~2 calls/sec across
+                                                // the WHOLE browser (every extension, every tab) — not just within
+                                                // one capture — so the throttle has to be global, not per-loop.
 
 async function execFn(tabId, func, args) {
   const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func, args: args || [] });
@@ -251,40 +261,129 @@ async function execFn(tabId, func, args) {
 // below via importScripts so the exact same, unmodified source can be exercised under jsdom
 // (tests/js/run-capture.mjs) — the same technique scan-lib.js uses for the course scanner. They are plain,
 // self-contained functions (no closures over background.js state) because executeScript serializes a function
-// reference by its source text, wherever that function happens to be defined.
-importScripts('capture-lib.js');
-const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore } = self.NSCaptureLib;
+// reference by its source text, wherever that function happens to be defined. capture-lib.js also carries the
+// PURE (non-DOM) tiling/ceiling/rate-limit/reconciliation helpers used directly below, and capture-blob-store.js
+// carries the durable IndexedDB blob store (service-worker-only — never page-injected, unlike capture-lib.js).
+importScripts('capture-lib.js', 'capture-blob-store.js');
+const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
+        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision } = self.NSCaptureLib;
+const NSBlobStore = self.NSCaptureBlobStore;
 
-// ---- background-side orchestration
+// ---- tagged errors gate whether the visible-area fallback is attempted (BLOCKER fix: fallback ONLY for a
+// genuine capture-MECHANISM failure — stitching/OffscreenCanvas/transient captureVisibleTab error — NEVER for a
+// TAB-IDENTITY failure, since falling back after the target tab stopped being the active tab, changed origin, or
+// disappeared would silently attribute someone else's page to this capture's evidence).
+class TabIdentityError extends Error { constructor(msg) { super(msg); this.name = 'TabIdentityError'; this.nsErrorKind = 'TabIdentityError'; } }
+class CaptureMechanismError extends Error { constructor(msg) { super(msg); this.name = 'CaptureMechanismError'; this.nsErrorKind = 'CaptureMechanismError'; } }
 
-// Stitches PNG data URLs (one per fold, already cropped to the viewport by the browser) into one tall PNG using
-// OffscreenCanvas, which is available in MV3 service workers. Later folds may overlap the previous fold's bottom
-// edge by less than a full viewport height on the final fold (the last scroll position is clamped to
-// pageHeight - viewportHeight); the caller passes the exact draw Y for each shot so there is no double-drawing.
-async function stitchShots(shots, pageWidthCss, pageHeightCss, dpr) {
-  const w = Math.round(pageWidthCss * dpr), h = Math.round(pageHeightCss * dpr);
-  const canvas = new OffscreenCanvas(w, h);
-  const ctx = canvas.getContext('2d');
-  for (const shot of shots) {
-    const resp = await fetch(shot.dataUrl);
-    const blob = await resp.blob();
-    const bmp = await createImageBitmap(blob);
-    ctx.drawImage(bmp, 0, Math.round(shot.y * dpr));
-    bmp.close();
+// BLOCKER fix: captureVisibleTab captures the ACTIVE tab of a WINDOW, not an arbitrary tabId — so every single
+// call (every tile, plus the fallback) re-verifies that our target tab is still Chrome's active tab, still on an
+// http(s) URL, and (once an expectedOrigin is known) still on the same origin, and returns the tab's REAL
+// windowId to pass explicitly (never undefined — undefined means "whichever window currently has focus", which
+// is not necessarily this tab's window).
+async function verifyTabIdentity(tabId, expectedOrigin) {
+  let tab;
+  try { tab = await chrome.tabs.get(tabId); } catch (e) { throw new TabIdentityError('the tab is gone'); }
+  if (!tab.active) throw new TabIdentityError('the tab is no longer the active tab in its window — switch back to it and try again');
+  if (!tab.url || !/^https?:/.test(tab.url)) throw new TabIdentityError('the tab navigated away from a capturable page');
+  let origin;
+  try { origin = new URL(tab.url).origin; } catch (e) { throw new TabIdentityError('the tab has no readable origin'); }
+  if (expectedOrigin && origin !== expectedOrigin) throw new TabIdentityError('the tab navigated to a different site mid-capture');
+  return tab;
+}
+
+// Global rate limiter: chrome.storage.session (not .local) survives worker eviction/respawn but correctly resets
+// on an actual browser restart (a fresh browser session has made zero captureVisibleTab calls yet). Guarded by
+// an in-process async lock — two concurrent captures in different tabs must serialize their read-wait-call-write
+// sequence, or both could read the same "last call" timestamp and both proceed immediately, busting the cap.
+let _rateLimitLock = Promise.resolve();
+function withRateLimit(fn) {
+  const run = _rateLimitLock.then(fn, fn);
+  _rateLimitLock = run.catch(() => {});
+  return run;
+}
+async function throttledCaptureVisibleTab(windowId) {
+  return withRateLimit(async () => {
+    const s = await chrome.storage.session.get('nsLastCaptureVisibleTabAt');
+    const wait = nsRateLimitWaitMs(s.nsLastCaptureVisibleTabAt ?? null, now(), CAPTURE_MIN_CALL_INTERVAL_MS);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+    await chrome.storage.session.set({ nsLastCaptureVisibleTabAt: now() });
+    return dataUrl;
+  });
+}
+
+// Stitches PNG data URLs into one page-shaped PNG using OffscreenCanvas (available in MV3 service workers).
+// scale comes from the FIRST tile's real bitmap width vs its CSS viewport width (not devicePixelRatio alone —
+// zoom/rounding/mid-capture display changes can make dpr wrong) and is applied to every placement, including the
+// canvas's own size, for internal consistency. Each shot is drawn at its ACTUAL LANDED (x, y) — not the
+// requested scroll target — since nsScrollTo can land short of a request (page too short to scroll further,
+// scroll-anchoring, etc), and the caller already deduped on landed coordinates too.
+async function stitchShots(shots, pageWidthCss, pageHeightCss) {
+  let scale = 1;
+  const bitmaps = [];
+  try {
+    for (const shot of shots) {
+      const resp = await fetch(shot.dataUrl);
+      const blob = await resp.blob();
+      bitmaps.push({ shot, bmp: await createImageBitmap(blob) });
+    }
+    scale = nsStitchScale(bitmaps[0].bmp.width, shots[0].viewportWidthCss || pageWidthCss);
+    const w = Math.max(1, Math.round(pageWidthCss * scale));
+    const h = Math.max(1, Math.round(pageHeightCss * scale));
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    for (const { shot, bmp } of bitmaps) ctx.drawImage(bmp, Math.round(shot.x * scale), Math.round(shot.y * scale));
+    return { blob: await canvas.convertToBlob({ type: 'image/png' }), scale };
+  } catch (e) {
+    throw new CaptureMechanismError('could not assemble the captured tiles: ' + String((e && e.message) || e));
+  } finally {
+    for (const { bmp } of bitmaps) { try { bmp.close(); } catch (e) {} }
   }
-  const outBlob = await canvas.convertToBlob({ type: 'image/png' });
-  return outBlob;
+}
+
+// The 5-step ordered visible-area fallback (repair round 2's design), reached ONLY on a CaptureMechanismError
+// from the tiled attempt — never on a TabIdentityError, which is rethrown as-is instead (see runCapture). Each
+// step matters in this order: undo whatever mid-flight state the failed tiled attempt left BEFORE trying
+// anything else, then re-establish that the tab is still genuinely the one we mean to capture (a mechanism
+// failure earlier does not excuse skipping this — identity could have ALSO changed in the meantime), then obey
+// the same global throttle as every other call, then capture, then label the result honestly.
+async function fallbackVisibleCapture(tabId, expectedOrigin, origScrollX, origScrollY) {
+  // 1. restore styles + original scroll position
+  try { await execFn(tabId, nsRestore); } catch (e) {}
+  try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
+  await new Promise(r => setTimeout(r, CAPTURE_HIDE_SETTLE_MS));
+  // 2. freshly re-verify tab/window/origin/active-state identity
+  const tab = await verifyTabIdentity(tabId, expectedOrigin);
+  // 3. obey the same global throttle (inside throttledCaptureVisibleTab)
+  // 4. capture
+  const dataUrl = await throttledCaptureVisibleTab(tab.windowId);
+  const m = await execFn(tabId, nsMeasure);
+  const resp = await fetch(dataUrl);
+  const blob = await resp.blob();
+  // 5. label
+  return {
+    blob, mode: 'visible_only', partial_reason: 'fallback_after_error',
+    dimensions: { page_width: m.scrollWidth, page_height: m.viewportHeight, viewport_width: m.viewportWidth, viewport_height: m.viewportHeight, dpr: m.dpr },
+    title: m.title,
+  };
 }
 
 async function runCapture(tabId, rec) {
   const startedAt = now();
   let origScrollX = 0, origScrollY = 0;
   let restored = false;
-  const restore = async () => {
+  let firstTileCaptured = false;
+
+  const tab0 = await verifyTabIdentity(tabId, null);          // TabIdentityError here propagates as-is — no fallback
+  const expectedOrigin = new URL(tab0.url).origin;
+
+  const restoreStylesAndScroll = async () => {
     if (restored) return; restored = true;
     try { await execFn(tabId, nsRestore); } catch (e) { /* watchdog will self-heal if this fails */ }
     try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
   };
+
   try {
     const m0 = await execFn(tabId, nsMeasure);
     origScrollX = m0.scrollX; origScrollY = m0.scrollY;
@@ -293,115 +392,200 @@ async function runCapture(tabId, rec) {
     rec.updated_at = now();
     await putCapture(rec);
 
-    const viewportH = m0.viewportHeight;
-    let pageH = m0.scrollHeight;
-    let fold = 0, y = 0;
-    const shots = [];
+    const viewportWidth = m0.viewportWidth, viewportHeight = m0.viewportHeight;
+    let dims = { scrollWidth: m0.scrollWidth, scrollHeight: m0.scrollHeight };
+    let grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;
+    const plannedTileCountInitial = grid.length;
+    const seenTileKeys = new Set();
+    const shots = [];   // { x, y, dataUrl, viewportWidthCss }
     let partialReason = null;
+    let idx = 0;
+    let pageW = dims.scrollWidth, pageH = dims.scrollHeight;
 
-    while (true) {
+    while (idx < grid.length) {
       if (now() - startedAt > CAPTURE_MAX_ELAPSED_MS) { partialReason = 'ceiling_time'; break; }
-      if (fold >= CAPTURE_MAX_FOLDS) { partialReason = 'ceiling_folds'; break; }
+      if (shots.length >= CAPTURE_MAX_TILES) { partialReason = 'ceiling_folds'; break; }
 
-      await execFn(tabId, nsScrollTo, [0, y, CAPTURE_SETTLE_MS]);
-      if (fold > 0) {
+      const target = grid[idx];
+      idx += 1;
+      const landed = await execFn(tabId, nsScrollTo, [target.x, target.y, CAPTURE_SETTLE_MS]);
+
+      // whole-capture tile identity (not just adjacent): skip a landed position already captured this run
+      if (nsIsDuplicateTile(seenTileKeys, landed.scrollX, landed.scrollY)) continue;
+
+      if (firstTileCaptured) {
         await execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]);
         await new Promise(r => setTimeout(r, CAPTURE_HIDE_SETTLE_MS));
       }
+
       let dataUrl;
       try {
-        dataUrl = await chrome.tabs.captureVisibleTab(undefined, { format: 'png' });
-      } finally {
-        if (fold > 0) { try { await execFn(tabId, nsRestore); } catch (e) {} }
+        const tab = await verifyTabIdentity(tabId, expectedOrigin);   // per-tile re-verification
+        dataUrl = await throttledCaptureVisibleTab(tab.windowId);
+      } catch (e) {
+        if (firstTileCaptured) { try { await execFn(tabId, nsRestore); } catch (e2) {} }
+        if (e instanceof TabIdentityError) throw e;
+        throw new CaptureMechanismError(String((e && e.message) || e));
       }
-      shots.push({ y, dataUrl });
-      fold += 1;
-      rec.fold = fold; rec.updated_at = now();
+      if (firstTileCaptured) { try { await execFn(tabId, nsRestore); } catch (e) {} }
+      firstTileCaptured = true;
+
+      shots.push({ x: landed.scrollX, y: landed.scrollY, dataUrl, viewportWidthCss: viewportWidth });
+      rec.fold = shots.length; rec.updated_at = now();
       await putCapture(rec);
 
-      // Re-measure AFTER this fold: the page may have grown while it was being scrolled (lazy/infinite content).
+      // re-measure AFTER this tile: the page may have grown while it was being scrolled (lazy/infinite content),
+      // in either dimension. Extend the grid (never shrink it, never re-derive x/y for already-planned tiles —
+      // whole-capture dedup on LANDED position makes re-walking a stale target harmless) when it has.
       const m = await execFn(tabId, nsMeasure);
-      pageH = Math.max(pageH, m.scrollHeight);
+      pageW = Math.max(pageW, m.scrollWidth); pageH = Math.max(pageH, m.scrollHeight);
+      if (m.scrollWidth > dims.scrollWidth || m.scrollHeight > dims.scrollHeight) {
+        dims = { scrollWidth: Math.max(dims.scrollWidth, m.scrollWidth), scrollHeight: Math.max(dims.scrollHeight, m.scrollHeight) };
+        grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;
+      }
 
-      const totalPixels = m0.viewportWidth * dpr * Math.min(pageH, fold * viewportH) * dpr;
-      if (totalPixels > CAPTURE_MAX_TOTAL_PIXELS) { partialReason = 'ceiling_pixels'; break; }
-
-      const nextY = fold * viewportH;
-      if (nextY >= pageH - 2) break;   // reached the true bottom
-      y = Math.min(nextY, pageH - viewportH > 0 ? pageH - viewportH : nextY);
+      const totalPixels = viewportWidth * dpr * viewportHeight * dpr * shots.length;
+      const ceilingHit = nsCheckCeilings(
+        { elapsedMs: now() - startedAt, tilesCaptured: shots.length, totalPixels },
+        { maxElapsedMs: CAPTURE_MAX_ELAPSED_MS, maxTiles: CAPTURE_MAX_TILES, maxTotalPixels: CAPTURE_MAX_TOTAL_PIXELS });
+      if (ceilingHit) { partialReason = ceilingHit; break; }
     }
 
-    await restore();
+    await restoreStylesAndScroll();
+    if (!shots.length) throw new CaptureMechanismError('capture produced no image');
 
-    if (!shots.length) throw new Error('capture produced no image');
-
-    // Single fold and nothing forced a stop: this is the honest "visible area only" tier, not a stitched page.
-    if (shots.length === 1 && !partialReason) {
+    // A single tile, the whole (never-regrown) grid, and nothing forced a stop: this is the honest "visible area
+    // only" tier — a page that never needed tiling, not a stitched page.
+    if (shots.length === 1 && plannedTileCountInitial === 1 && grid.length === 1 && !partialReason) {
       const resp = await fetch(shots[0].dataUrl);
       const blob = await resp.blob();
       return {
         blob, mode: 'visible_only', partial_reason: null,
-        dimensions: { page_width: m0.scrollWidth, page_height: viewportH, viewport_width: m0.viewportWidth, viewport_height: viewportH, dpr },
+        dimensions: { page_width: pageW, page_height: viewportHeight, viewport_width: viewportWidth, viewport_height: viewportHeight, dpr },
         title: rec.title,
       };
     }
 
-    const finalPageH = Math.min(pageH, shots[shots.length - 1].y + viewportH);
-    const blob = await stitchShots(shots, m0.scrollWidth, finalPageH, dpr);
+    const finalPageW = Math.max(pageW, ...shots.map(s => s.x + viewportWidth));
+    const finalPageH = Math.max(pageH, ...shots.map(s => s.y + viewportHeight));
+    const complete = idx >= grid.length && !partialReason;
+    const { blob } = await stitchShots(shots, finalPageW, finalPageH);
     return {
-      blob, mode: 'full_page', partial_reason: partialReason,
-      dimensions: { page_width: m0.scrollWidth, page_height: finalPageH, viewport_width: m0.viewportWidth, viewport_height: viewportH, dpr },
+      blob, mode: complete ? 'full_page' : 'partial_page', partial_reason: complete ? null : (partialReason || 'ceiling_folds'),
+      dimensions: { page_width: finalPageW, page_height: finalPageH, viewport_width: viewportWidth, viewport_height: viewportHeight, dpr },
       title: rec.title,
     };
   } catch (e) {
-    await restore();
-    throw e;
+    await restoreStylesAndScroll();
+    if (e instanceof TabIdentityError) throw e;                 // never falls back — evidence identity uncertain
+    // any other failure (including a CaptureMechanismError we threw ourselves, or stitching's own) gets exactly
+    // one fallback attempt to a single honest visible-area shot
+    return fallbackVisibleCapture(tabId, expectedOrigin, origScrollX, origScrollY);
   }
 }
 
+// Builds and sends the multipart upload for a capture whose blob is already durable in NSBlobStore. Shared by
+// the first attempt (inside startCapture's async body) and capture-retry, so both paths are byte-for-byte
+// identical in what they send — including capture_id, the end-to-end idempotency key.
+async function uploadCapture(rec) {
+  const blob = await NSBlobStore.get(rec.capture_id);
+  if (!blob) throw new Error('the captured image is no longer available on this device — please capture again');
+  const out = rec.pending_upload;   // { title, mode, partial_reason, dimensions } — set once, reused on every retry
+  const fd = new FormData();
+  const filename = 'screenshot-' + rec.capture_id.slice(0, 8) + '.png';
+  fd.append('file', blob, filename);
+  fd.append('capture_id', rec.capture_id);
+  if (out.title) fd.append('title', out.title);
+  if (rec.project_id) fd.append('project_id', rec.project_id);
+  fd.append('immediate', 'false');
+  fd.append('capture_url', rec.url);
+  if (out.title) fd.append('capture_page_title', out.title);
+  fd.append('captured_at', String(rec.started_at / 1000));
+  fd.append('capture_mode', out.mode);
+  if (out.partial_reason) fd.append('capture_partial_reason', out.partial_reason);
+  if (out.dimensions) {
+    fd.append('capture_page_width', String(Math.round(out.dimensions.page_width)));
+    fd.append('capture_page_height', String(Math.round(out.dimensions.page_height)));
+    fd.append('capture_viewport_width', String(Math.round(out.dimensions.viewport_width)));
+    fd.append('capture_viewport_height', String(Math.round(out.dimensions.viewport_height)));
+    fd.append('capture_dpr', String(out.dimensions.dpr));
+  }
+  if (rec.note) fd.append('capture_note', rec.note);
+  return apiForm('/api/ingest/file', fd);
+}
+
 async function startCapture(tabId, projectId, note) {
+  await captureInit;   // MV3 worker-respawn race: never act on a capture record from before reconciliation ran
   const cur = await getCapture(tabId);
   if (cur && CAPTURE_ACTIVE.has(cur.status)) return { error: 'A screenshot capture is already running in this tab.', capture: cur };
+  const curScan = await getScan(tabId);
+  if (curScan && ACTIVE.has(curScan.status)) return { error: 'A course scan is already running in this tab — wait for it to finish before capturing.' };
   let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
   if (!tab.url || !/^https?:/.test(tab.url)) return { error: 'This page cannot be captured (not a web page).' };
   const capture_id = (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random());
   const rec = {
     capture_id, tab_id: tabId, url: tab.url, title: tab.title || '', project_id: projectId || null, note: note || null,
     status: 'capturing', fold: 0, started_at: now(), updated_at: now(), finished_at: null, error: null, result: null,
+    pending_upload: null,
   };
   await putCapture(rec);
 
   (async () => {
     try {
       const out = await runCapture(tabId, rec);
-      rec.status = 'uploading'; rec.updated_at = now(); await putCapture(rec);
 
-      const fd = new FormData();
-      const filename = 'screenshot-' + capture_id.slice(0, 8) + '.png';
-      fd.append('file', out.blob, filename);
-      if (out.title) fd.append('title', out.title);
-      if (rec.project_id) fd.append('project_id', rec.project_id);
-      fd.append('immediate', 'false');
-      fd.append('capture_url', rec.url);
-      if (out.title) fd.append('capture_page_title', out.title);
-      fd.append('captured_at', String(rec.started_at / 1000));
-      fd.append('capture_mode', out.mode);
-      if (out.partial_reason) fd.append('capture_partial_reason', out.partial_reason);
-      if (out.dimensions) {
-        fd.append('capture_page_width', String(Math.round(out.dimensions.page_width)));
-        fd.append('capture_page_height', String(Math.round(out.dimensions.page_height)));
-        fd.append('capture_viewport_width', String(Math.round(out.dimensions.viewport_width)));
-        fd.append('capture_viewport_height', String(Math.round(out.dimensions.viewport_height)));
-        fd.append('capture_dpr', String(out.dimensions.dpr));
-      }
-      if (rec.note) fd.append('capture_note', rec.note);
-
-      const uploadRes = await apiForm('/api/ingest/file', fd);
-      rec.status = 'done'; rec.finished_at = now(); rec.updated_at = now();
-      rec.result = { mode: out.mode, partial_reason: out.partial_reason, job_id: uploadRes && uploadRes.job };
+      // durability ordering: pixels are captured -> blob durable in IndexedDB -> THEN status becomes 'uploading'
+      // -> build FormData -> POST. Never mark 'uploading' before the blob is durable, or a worker eviction right
+      // after that write would strand a record that claims to be sending something that was never actually saved.
+      await NSBlobStore.put(capture_id, out.blob);
+      rec.status = 'uploading'; rec.updated_at = now();
+      rec.pending_upload = { title: out.title, mode: out.mode, partial_reason: out.partial_reason, dimensions: out.dimensions };
       await putCapture(rec);
+
+      const uploadRes = await uploadCapture(rec);
+      rec.status = 'done'; rec.finished_at = now(); rec.updated_at = now();
+      rec.result = { mode: out.mode, partial_reason: out.partial_reason, job_id: uploadRes && uploadRes.job, job_status: uploadRes && uploadRes.status };
+      await putCapture(rec);
+      try { await NSBlobStore.delete(capture_id); } catch (e) {}   // upload confirmed: the durable copy's job is done
+      try { await NSBlobStore.pruneExpired(); } catch (e) {}
     } catch (e) {
-      rec.status = 'failed'; rec.error = String((e && e.message) || e).slice(0, 300); rec.finished_at = now(); rec.updated_at = now();
+      // an upload failure (network, server error) is RECOVERABLE: the blob is still durable and capture_id is
+      // stable, so 'upload_failed' (not 'failed') lets capture-retry resubmit the same bytes under the same
+      // idempotency key without recapturing. A failure before the blob ever became durable (capture itself
+      // failed) has nothing to retry with and is a hard 'failed'.
+      const recoverable = rec.status === 'uploading';
+      rec.status = recoverable ? 'upload_failed' : 'failed';
+      rec.error = String((e && e.message) || e).slice(0, 300); rec.finished_at = now(); rec.updated_at = now();
+      await putCapture(rec);
+    }
+  })();
+
+  return { ok: true, capture: rec };
+}
+
+// Resend the SAME capture_id's already-captured bytes — never recaptures pixels, never regenerates capture_id.
+// The server's create_or_get_capture_ingest_request is itself idempotent on capture_id, so this is safe to press
+// more than once, including while an earlier press is still in flight (withCapture serializes per-tab anyway).
+async function retryCapture(tabId) {
+  await captureInit;
+  const rec = await getCapture(tabId);
+  if (!rec) return { error: 'No screenshot capture found for this tab to retry.' };
+  if (CAPTURE_ACTIVE.has(rec.status)) return { error: 'This capture is already in progress.', capture: rec };
+  if (rec.status !== 'upload_failed') return { error: 'Only a failed send can be retried.', capture: rec };
+  if (!rec.pending_upload) return { error: 'Nothing to retry — the captured image was never durably saved.', capture: rec };
+
+  rec.status = 'uploading'; rec.updated_at = now(); rec.error = null;
+  await putCapture(rec);
+
+  (async () => {
+    try {
+      const uploadRes = await uploadCapture(rec);
+      rec.status = 'done'; rec.finished_at = now(); rec.updated_at = now();
+      rec.result = { mode: rec.pending_upload.mode, partial_reason: rec.pending_upload.partial_reason, job_id: uploadRes && uploadRes.job, job_status: uploadRes && uploadRes.status };
+      await putCapture(rec);
+      try { await NSBlobStore.delete(rec.capture_id); } catch (e) {}
+    } catch (e) {
+      rec.status = 'upload_failed'; rec.error = String((e && e.message) || e).slice(0, 300); rec.finished_at = now(); rec.updated_at = now();
       await putCapture(rec);
     }
   })();
@@ -413,6 +597,27 @@ async function pruneCaptures() {
   const all = await chrome.storage.local.get(null); const dead = [];
   for (const [k, v] of Object.entries(all)) if (k.startsWith('capture:') && v && (now() - (v.updated_at || 0) > 7 * 86400e3)) dead.push(k);
   if (dead.length) await chrome.storage.local.remove(dead);
+  try { await NSBlobStore.pruneExpired(); } catch (e) {}
+}
+
+// Worker-respawn reconciliation (MV3 may evict/respawn this worker at any point, not just at onInstalled/
+// onStartup — a message from the popup can wake a brand-new worker mid-capture). Runs UNCONDITIONALLY on every
+// worker initialization — the top-level call below is unawaited, since MV3 re-executes this whole script
+// top-to-bottom on every spin-up and this line runs every time, not just on install/browser-start. Every message
+// handler that touches capture:<tabId> state (capture-start, capture-retry, capture-get, and startScan's
+// capture-active check) `await captureInit` as its FIRST step so no message can act on a stale pre-reconciliation
+// record — while chrome.runtime.onMessage's own listener registration (bottom of this file) stays synchronous,
+// so no message is ever missed while reconciliation is still running.
+async function reconcileCapturesOnWorkerInit() {
+  const all = await chrome.storage.local.get(null);
+  const nowMs = now();
+  for (const [k, v] of Object.entries(all)) {
+    if (!k.startsWith('capture:') || !v) continue;
+    const decision = nsReconcileDecision(v, nowMs);
+    if (!decision) continue;
+    const rec = { ...v, ...decision, updated_at: nowMs, finished_at: v.finished_at || nowMs };
+    await putCapture(rec);
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create(ALARM, { periodInMinutes: 5 }); refreshPending(); pruneScans(); pruneCaptures(); });
@@ -445,4 +650,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'scan-get') { getScan(msg.tabId).then(s => reply({ scan: s, summary: s ? summarize(s) : null }), e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'capture-retry') { withCapture(msg.tabId, () => retryCapture(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
 });
+
+// Unawaited, and deliberately placed AFTER every chrome.*.addListener registration above: MV3 re-executes this
+// whole script top-to-bottom on every worker spin-up (not just onInstalled/onStartup), so this line runs on
+// EVERY initialization. Listener registration itself is synchronous regardless of where this call sits, so no
+// message can ever be missed while reconciliation is still running — but it is placed last anyway so the
+// script's own read order matches that guarantee: every listener is already registered before any async
+// capture-state work begins.
+const captureInit = reconcileCapturesOnWorkerInit();

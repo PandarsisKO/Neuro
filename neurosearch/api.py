@@ -935,7 +935,8 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
                           capture_page_width: int | None = Form(None), capture_page_height: int | None = Form(None),
                           capture_viewport_width: int | None = Form(None), capture_viewport_height: int | None = Form(None),
                           capture_dpr: float | None = Form(None), capture_note: str | None = Form(None),
-                          capture_partial_reason: str | None = Form(None)) -> dict[str, Any]:
+                          capture_partial_reason: str | None = Form(None),
+                          capture_id: str | None = Form(None)) -> dict[str, Any]:
     """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents), SRT/VTT, or a screenshot (the extension's
     "Send screenshot" feature — see docs/SEND-SCREENSHOT-2026-09-16.md). Runs as a background job by default.
     immediate=true (0.24.1, the chat's attach button): documents, spreadsheets, text and subtitle files are read,
@@ -950,7 +951,15 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
     source_captures row is written HERE, before the file is even queued for ingestion, so the capture-event id
     (not the raw fields) can travel in the job payload and survive the async boundary — see
     ingest.ingest_image's own docstring for how it gets materialized once a source_id exists. The response NEVER
-    implies a source exists yet on the non-immediate path: only a queued job id."""
+    implies a source exists yet on the non-immediate path: only a queued job id.
+
+    capture_id (present whenever capture_url is, from the extension's own crypto.randomUUID() generated once per
+    "Send screenshot" press and resent verbatim on every retry): the end-to-end idempotency key. The capture
+    event row and its ingest job are created atomically and exactly once per capture_id via
+    db.create_or_get_capture_ingest_request — see that function's docstring. A retry that loses the race deletes
+    its OWN just-uploaded temp file (the winner's job already references the winner's own file) and returns the
+    winner's job, reporting its CURRENT status honestly rather than always "queued" — a retry landing after the
+    winner's job already finished is allowed to say so."""
     name = Path(file.filename or "upload").name
     dest = settings.media_dir / f"upload_{secrets.token_hex(4)}_{name}"
     with open(dest, "wb") as fh:
@@ -962,8 +971,34 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
     if capture_url and not title and capture_page_title:
         title = capture_page_title
 
+    from .documents import is_media as _is_media_check
+    # capture_url/capture_id screenshots are never sent with immediate=true (that's the chat attach button's own
+    # path) — this guard just keeps the atomic job-creation path from ever running on a request that will take
+    # the immediate branch below and never look at capture_request's job, which would otherwise orphan a job.
+    takes_immediate_branch = immediate and not _is_media_check(Path(name))
+
     capture_event_id = None
-    if capture_url:
+    capture_request = None
+    if capture_url and capture_id and not takes_immediate_branch:
+        # atomic path: capture_id makes this request idempotent end to end. job_payload below is only ever used
+        # if THIS request turns out to be the winner (see create_or_get_capture_ingest_request's docstring).
+        job_payload_for_capture = {"path": str(dest), "name": name, "title": title or None, "tags": tag_list,
+                                   "project_id": project_id or None}
+        capture_request = db.create_or_get_capture_ingest_request(
+            client_capture_id=capture_id, capture_url=capture_url, capture_mode=capture_mode or "visible_only",
+            job_kind="ingest_file", job_payload=job_payload_for_capture, project_id=project_id or None,
+            capture_page_title=capture_page_title, captured_at=captured_at,
+            capture_partial_reason=capture_partial_reason,
+            capture_page_width=capture_page_width, capture_page_height=capture_page_height,
+            capture_viewport_width=capture_viewport_width, capture_viewport_height=capture_viewport_height,
+            capture_dpr=capture_dpr, capture_note=capture_note)
+        capture_event_id = capture_request["capture_event"]["id"]
+        if not capture_request["created"]:
+            # lost the race: the winner's job already references the winner's own uploaded file — ours is an orphan
+            dest.unlink(missing_ok=True)
+    elif capture_url:
+        # legacy/no-idempotency-key fallback, or the (never-expected) immediate+capture_url combination:
+        # pending-capture-event only, no job created here — matches the immediate branch's own direct-ingest path.
         capture_event_id = db.create_pending_capture_event(
             capture_url=capture_url, capture_mode=capture_mode or "visible_only", project_id=project_id or None,
             capture_page_title=capture_page_title, captured_at=captured_at,
@@ -985,6 +1020,14 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
         src = db.get_source(res["source_id"]) or {}
         return {"source_id": res["source_id"], "name": name, "title": src.get("title") or name, "ready": src.get("status") == "ready",
                 "chunks": res.get("chunks"), "embedded": res.get("embedded"), "immediate": True}
+    if capture_request is not None:
+        # atomic path already created (or found) the job — never enqueue a second one.
+        job = capture_request["job"]
+        # NEVER "source created" here — the source may not exist until this job runs. A retry landing after the
+        # job already finished is allowed to report that honestly (this isn't the same as claiming a source
+        # exists on first acceptance — see the docstring).
+        return {"job": job["id"], "name": name, "immediate": False, "status": job.get("status") or "queued",
+                "note": "audio/video is transcribed in the background; it joins the project when ready" if immediate else None}
     job_payload = {"path": str(dest), "name": name, "title": title or None, "tags": tag_list, "project_id": project_id or None}
     if capture_event_id:
         job_payload["capture_event_id"] = capture_event_id

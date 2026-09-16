@@ -113,11 +113,25 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
     ? `<button class="small primary" onclick="drawerRebuild('${sid}')">Re-read it${st.tier === 'rebuild_transcript' ? ' — its transcript changed' : ''}</button>` +
       (st.tier !== 'rebuild_transcript' ? `<button class="small ghost" title="Keep these findings and stop flagging it until the inputs change again" onclick="drawerAccept('${sid}')">Accept as still usable</button>` : '')
     : '';
+  // send-screenshot provenance (repair round, item 9): the newest capture THIS project made of this source, if
+  // any — project-scoped (sources_value.digest passes project_id through), so a capture from a different project
+  // sharing this (dedup) source never shows here. The note is labelled as the user's own context, never merged
+  // into "what it gave you" as if it were evidence itself.
+  const cap = d.capture;
+  const capModeWords = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
+  const capturedLine = cap ? `<div class="card mt-2" style="background:#f7f8fa">
+      <b>📸 Captured${cap.page_title ? ` from ${esc(cap.page_title)}` : ''}</b>
+      <span class="muted"> · ${esc(new Date(cap.captured_at * 1000).toLocaleString())}${cap.mode ? ` · ${esc(capModeWords[cap.mode] || cap.mode)}` : ''}</span>
+      ${cap.partial_reason ? `<span class="tag" title="the capture stopped before the whole page was assembled">partial</span>` : ''}
+      ${cap.url ? `<div><a class="muted" href="${esc(cap.url)}" target="_blank">${esc(cap.url)}</a></div>` : ''}
+      ${cap.note ? `<div class="why"><b>Your note (context, not evidence):</b> ${esc(cap.note)}</div>` : ''}
+    </div>` : '';
   $('#dlgBody').innerHTML = `
     <div class="row" style="align-items:baseline;gap:8px;flex-wrap:wrap"><b class="text-base">${esc(s.title)}</b>
       ${s.url && s.url.startsWith('http') ? `<a class="muted" href="${esc(s.url)}" target="_blank">open ↗</a>` : ''}
       ${v.priority ? '<span class="tag">★ priority</span>' : ''}${s.depth === 'deep' ? '<span class="tag">🔬 deep-read</span>' : ''}${s.long ? '<span class="tag">📚 long-form</span>' : ''}</div>
     <div class="muted">${esc(s.channel || s.platform)}${s.published_at ? ' · ' + esc(s.published_at) : ''}${s.duration ? ' · ' + fmt(s.duration) : ''} · ${staleLine}</div>
+    ${capturedLine}
     <div class="card mt-2"><b>What it gave you</b><div>${esc(v.label)}</div>
       ${v.why.length ? `<div class="why">Why it matters: ${v.why.map(esc).join(' · ')}</div>` : v.never_used ? `<div class="why">Nothing has used it yet — no plan step, chat answer or Claim rests on it.</div>` : ''}
       <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">

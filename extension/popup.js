@@ -192,10 +192,25 @@ $('#sendPage').onclick = async () => {
 // the background record (`capture:<tabId>`) says; the background owns the operation so it survives popup close.
 let CAPTURE = null;
 const CAPTURE_ACTIVE_UI = new Set(['capturing', 'uploading']);
-const CAPTURE_MODE_WORDS = { full_page: 'the full page', visible_only: 'the visible area' };
+const CAPTURE_MODE_WORDS = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
 const CAPTURE_REASON_WORDS = { ceiling_pixels: 'the page was very tall — captured as far as the size limit allowed',
-                                ceiling_folds: 'the page was very tall — captured as far as the fold limit allowed',
-                                ceiling_time: 'the page was very tall — captured as far as time allowed' };
+                                ceiling_folds: 'the page was very tall — captured as far as the fold/tile limit allowed',
+                                ceiling_time: 'the page was very tall — captured as far as time allowed',
+                                fallback_after_error: 'the full page could not be assembled, so only the visible area was captured' };
+// Failure-state copy (repair round): the tagged errors background.js can raise, in the user's own words — never
+// DOM/mechanism jargon. `error` on a failed/upload_failed record is a message string; these are matched by
+// substring since background.js's error messages ARE these sentences (see verifyTabIdentity in background.js).
+const CAPTURE_FAILURE_WORDS = [
+  [/no longer the active tab/i, 'Switch back to that tab and press Send screenshot again — it needs to be the tab you\'re looking at.'],
+  [/navigated to a different site|different site mid-capture/i, 'The page changed to a different site while it was being captured, so nothing was sent.'],
+  [/navigated away from a capturable page/i, 'The tab left the page before the capture could finish.'],
+  [/browser or extension restarted/i, null],   // uses c.error verbatim — already in plain language
+];
+
+function screenshotFailureMessage(c) {
+  for (const [re, words] of CAPTURE_FAILURE_WORDS) if (re.test(c.error || '')) return words || c.error;
+  return c.error || 'could not capture this page';
+}
 
 async function refreshCapture() {
   if (!TAB) TAB = await currentTab();
@@ -208,10 +223,15 @@ function renderCapture() {
   const c = CAPTURE;
   const sameTab = c && TAB && c.tab_id === TAB.id;
   $('#sendScreenshot').disabled = !!(c && sameTab && CAPTURE_ACTIVE_UI.has(c.status));
+  $('#retryScreenshot').style.display = c && sameTab && c.status === 'upload_failed' ? '' : 'none';
   if (!c || !sameTab) { return; }
-  if (c.status === 'capturing') { $('#screenshotMsg').textContent = c.fold ? `capturing… (fold ${c.fold})` : 'capturing…'; return; }
+  if (c.status === 'capturing') { $('#screenshotMsg').textContent = c.fold ? `capturing… (tile ${c.fold})` : 'capturing…'; return; }
   if (c.status === 'uploading') { $('#screenshotMsg').textContent = 'sending…'; return; }
-  if (c.status === 'failed') { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(c.error || 'could not capture this page')}</span>`; return; }
+  if (c.status === 'upload_failed') {
+    $('#screenshotMsg').innerHTML = `<span class="bad">Could not send: ${esc(c.error || 'the app could not be reached')}.</span> <span class="muted">The captured image is kept — press Retry send.</span>`;
+    return;
+  }
+  if (c.status === 'failed') { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(screenshotFailureMessage(c))}</span>`; return; }
   if (c.status === 'done') {
     const res = c.result || {};
     const modeWord = CAPTURE_MODE_WORDS[res.mode] || 'the page';
@@ -238,6 +258,17 @@ $('#sendScreenshot').onclick = async () => {
   if (r.error) { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; $('#sendScreenshot').disabled = false; return; }
   await chrome.storage.local.set({ lastProject: pid });
   $('#screenshotNote').value = '';
+  CAPTURE = r.capture; renderCapture();
+};
+
+// Retry send: resubmits the SAME already-captured bytes under the SAME capture_id (see background.js's
+// retryCapture) — never recaptures the page, so it stays safe to press even more than once.
+$('#retryScreenshot').onclick = async () => {
+  if (!TAB) return;
+  $('#retryScreenshot').disabled = true; $('#screenshotMsg').textContent = 'sending…';
+  const r = await bg({ type: 'capture-retry', tabId: TAB.id });
+  $('#retryScreenshot').disabled = false;
+  if (r.error) { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; return; }
   CAPTURE = r.capture; renderCapture();
 };
 

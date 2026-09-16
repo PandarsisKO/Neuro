@@ -4489,3 +4489,39 @@ Not yet done:
 
 Next session (if Kyle raises something new before the live pass): start from the "What jsdom does NOT prove"
 list above.
+
+## 2026-09-16 — Send screenshot: repair round (post-ship review, "Approved to execute. Behind now.")
+
+Kyle reviewed the shipped "Send screenshot" feature (previous entry above) and found 12 real gaps (4 BLOCKERS:
+no `captureVisibleTab` rate limiter, wrong-tab capture risk, missing horizontal-tiling, no live-browser
+acceptance gate; 8 more, see `docs/SEND-SCREENSHOT-2026-09-16.md`'s new "Repair round" section for the full
+list). Four PLAN_ONLY rounds of revision followed before explicit execute authorization. Extension bumped to
+1.9.0. Full detail, file-by-file: `docs/SEND-SCREENSHOT-2026-09-16.md`.
+
+Summary of what changed:
+- `neurosearch/db.py`/`api.py`: `capture_id`-keyed end-to-end idempotency (`create_or_get_capture_ingest_request`,
+  atomic capture-row + job creation via `db.batch()` + insert-first/catch-`IntegrityError`).
+- `extension/capture-lib.js`: pure 2D-tiling/ceiling/rate-limit/fallback-eligibility/reconciliation helpers.
+- `extension/capture-blob-store.js` (new): durable IndexedDB blob retention (2h TTL / 5 max / 200MB max,
+  oldest-evicted), keyed by `capture_id`.
+- `extension/background.js`: full capture-engine rewrite — global rate limiter, per-tile active-tab+windowId
+  re-verification, 2D tile grid with actual-landed-coordinate stitching and whole-capture dedup, tagged-error
+  (`TabIdentityError`/`CaptureMechanismError`) 5-step visible-area fallback, durability-ordered upload with
+  `capture-retry`, worker-respawn reconciliation gated behind `captureInit` at 4 call sites, scan/capture mutual
+  exclusion.
+- `extension/popup.js`/`popup.html`: "Retry send" button + new failure-state copy.
+- `sources_value.py`/`research.js`: project-scoped capture provenance surfaced in the source drawer.
+- Suspected cross-project Suggested-Findings gap (item 8): investigated, found NOT to exist in the code as
+  written — `identity.py` already handles it; a regression test proves the invariant instead of a code change.
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 11 to 31 (server-side atomicity/idempotency/retry gates
+with real threads, project-scoped provenance, an atomicity-under-injected-failure test, plus jsdom pure-function
+gates for the new tiling/ceiling/rate-limit/reconciliation math, plus source-shape structural gates for
+properties a jsdom harness can't otherwise exercise). All 31 pass; full regression suite clean except the same
+pre-existing sandbox-only "OpenAI Embeddings is temporarily unavailable" failures noted above (no network for
+embeddings in this sandbox — unrelated to this change).
+
+Not yet done: the live-browser acceptance gate is STILL open (it was BLOCKER #4 of the original review, and this
+repair round did not close it) — Kyle needs to load the unpacked extension (1.9.0) in his own Chrome and run it
+against real pages, now including at least one wider-than-viewport page (new horizontal tiling) and one
+lazy/infinite-scroll page (ceiling-on-actual-progress + mid-capture grid growth).

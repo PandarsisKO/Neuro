@@ -1,11 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Neuro Search",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Send the page you are reading, a screenshot of it, or the videos of a course you are logged into, to your Neuro Search project.",
-  "permissions": ["activeTab", "scripting", "cookies", "storage", "alarms", "tabs"],
-  "background": { "service_worker": "background.js" },
-  "host_permissions": ["<all_urls>"],
-  "action": { "default_popup": "popup.html", "default_title": "Neuro Search" },
-  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "cookies",
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Neuro Search"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
 }

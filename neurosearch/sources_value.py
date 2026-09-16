@@ -197,6 +197,11 @@ def digest(project_id: str, source_id: str) -> dict[str, Any]:
     if st.get("status") in ("stale", "legacy_unverified"):
         tiers = staleness.triage(project_id)["tiers"]
         tier = next((k for k, t in tiers.items() if any(r["source_id"] == source_id for r in t["sources"])), None)
+    # send-screenshot provenance (repair round, item 9: "stored but not surfaced"): PROJECT-scoped only, never a
+    # cross-project or global-most-recent fallback -- a capture taken while working in a different project must
+    # never surface as evidence on this project's copy of the same (dedup-shared) source. Newest-first, one shown.
+    captures = db.get_capture_events_for_source(source_id, project_id=project_id)
+    latest_capture = captures[0] if captures else None
     return {"source": {"id": source_id, "title": src.get("title") or src["url"], "url": src["url"], "platform": src["platform"], "channel": src.get("channel"),
                        "published_at": src.get("published_at"), "duration": src.get("duration"), "status": src["status"],
                        "long": findings_mod.is_long(src), "depth": (db.get_analysis(project_id, source_id, "summary") or {}).get("depth"),
@@ -206,4 +211,8 @@ def digest(project_id: str, source_id: str) -> dict[str, Any]:
             "findings": by_status, "findings_total": fq["total"], "claims": claims_rows,
             "used_in": used_in(project_id, source_id),
             "staleness": {"status": st.get("status"), "reasons": st.get("reasons") or [], "tier": tier, "estimate": st.get("estimate"),
-                          "analysed_at": st.get("analysed_at"), "model": st.get("model")}}
+                          "analysed_at": st.get("analysed_at"), "model": st.get("model")},
+            "capture": ({"url": latest_capture["capture_url"], "page_title": latest_capture["capture_page_title"],
+                        "captured_at": latest_capture["captured_at"], "mode": latest_capture["capture_mode"],
+                        "partial_reason": latest_capture["capture_partial_reason"], "note": latest_capture["capture_note"]}
+                       if latest_capture else None)}

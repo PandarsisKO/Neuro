@@ -84,19 +84,30 @@ CREATE TABLE IF NOT EXISTS source_captures (
     capture_url             TEXT NOT NULL,
     capture_page_title      TEXT,
     captured_at             REAL NOT NULL,
-    capture_mode            TEXT NOT NULL,      -- full_page | visible_only
-    capture_partial_reason  TEXT,                -- set only when full_page hit a runtime ceiling mid-stitch:
-                                                  -- ceiling_pixels | ceiling_folds | ceiling_time (NULL = complete)
+    capture_mode            TEXT NOT NULL,      -- full_page | visible_only | partial_page
+    capture_partial_reason  TEXT,                -- set only when the capture stopped before a complete full_page
+                                                  -- grid: ceiling_pixels | ceiling_folds | ceiling_time |
+                                                  -- fallback_after_error (NULL = complete)
     capture_page_width      INTEGER,
     capture_page_height     INTEGER,
     capture_viewport_width  INTEGER,
     capture_viewport_height INTEGER,
     capture_dpr             REAL,
     capture_note            TEXT,
+    -- client_capture_id: the extension's own stable capture_id (one per "Send screenshot" press, reused
+    -- verbatim on every retry). NULL-safe partial-unique so a retry with the SAME id can never create a
+    -- second row -- see create_or_get_capture_ingest_request(), the one place this column is ever written.
+    client_capture_id       TEXT,
+    -- ingest_job_id: the ingest_file job this capture event enqueued. Populated in the SAME insert statement
+    -- that creates this row (never a later UPDATE) so a committed row can never point at no job -- see
+    -- create_or_get_capture_ingest_request()'s docstring for why that atomicity matters.
+    ingest_job_id            TEXT,
     created_at              REAL NOT NULL,
     updated_at              REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_source_captures_source ON source_captures(source_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_source_captures_client_capture_id
+    ON source_captures(client_capture_id) WHERE client_capture_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS segments (
     id        INTEGER PRIMARY KEY,
@@ -1249,9 +1260,90 @@ def materialize_capture_event(capture_event_id: str, source_id: str) -> None:
         conn.execute("UPDATE source_captures SET source_id=?, updated_at=? WHERE id=?", (source_id, now(), capture_event_id))
 
 
-def get_capture_events_for_source(source_id: str) -> list[dict[str, Any]]:
+def get_capture_events_for_source(source_id: str, *, project_id: str | None = None) -> list[dict[str, Any]]:
+    """project_id: scope to captures made while working in that project (sources_value.digest() needs the
+    project-relative view -- a capture taken from Project A must never surface as evidence on Project B's copy
+    of the same source, so this is a strict filter, never a fallback to the global most-recent capture)."""
+    if project_id is not None:
+        return [row_to_dict(r) for r in connect().execute(
+            "SELECT * FROM source_captures WHERE source_id=? AND project_id=? ORDER BY captured_at DESC",
+            (source_id, project_id)).fetchall()]
     return [row_to_dict(r) for r in connect().execute(
         "SELECT * FROM source_captures WHERE source_id=? ORDER BY captured_at DESC", (source_id,)).fetchall()]
+
+
+def get_capture_event_by_client_id(client_capture_id: str) -> dict[str, Any] | None:
+    """Look up a capture event by the extension's own stable capture_id (idempotency key)."""
+    return row_to_dict(connect().execute(
+        "SELECT * FROM source_captures WHERE client_capture_id=?", (client_capture_id,)).fetchone())
+
+
+def create_or_get_capture_ingest_request(*, client_capture_id: str, capture_url: str, capture_mode: str,
+                                          job_kind: str, job_payload: dict,
+                                          project_id: str | None = None, capture_page_title: str | None = None,
+                                          captured_at: float | None = None, capture_partial_reason: str | None = None,
+                                          capture_page_width: int | None = None, capture_page_height: int | None = None,
+                                          capture_viewport_width: int | None = None, capture_viewport_height: int | None = None,
+                                          capture_dpr: float | None = None, capture_note: str | None = None,
+                                          job_dependency_policy: str = "ALL_SUCCESS",
+                                          job_execution_policy: str = "local_preferred",
+                                          job_lane: str = "normal") -> dict[str, Any]:
+    """Atomically create-or-fetch the (capture_event, ingest job) pair for one extension `client_capture_id`.
+
+    Send-screenshot's end-to-end idempotency key. The extension generates client_capture_id once per "Send
+    screenshot" press (crypto.randomUUID()) and resends the SAME id on every retry of that same press -- so two
+    concurrent or retried requests for one press must converge on exactly one capture_events row and exactly one
+    ingest job, never two, and a row must never end up committed without its job (or vice versa).
+
+    Both ids are pre-generated before either write so there is no ordering dependency between them. The
+    source_captures INSERT sets client_capture_id AND ingest_job_id in that SAME statement -- never a later
+    UPDATE -- so a row that lands can never be missing its job link. The insert is attempted directly (no
+    SELECT-then-INSERT: that has a TOCTOU race); on the partial-unique-index violation (see SCHEMA), this request
+    is the "loser" and re-reads the winner's already-committed row instead.
+
+    Whole thing runs inside one db.batch(): create_job()'s own internal tx() becomes a no-op-commit nested inside
+    it (see batch()'s docstring), so the capture row and its job commit together in one transaction on the winner
+    path, or nothing commits at all on the loser path -- SQLite's single-writer serialization means that by the
+    time a loser's INSERT can even be attempted, any winner's whole batch (row + job) is already fully committed,
+    so re-selecting after losing is guaranteed to find a complete row, every time.
+
+    Returns {"capture_event": {...}, "job": {...} | None, "created": bool}. `created` tells the caller (api.py)
+    whether IT is the one that just made the row -- needed so a losing request can delete its own just-written
+    temp upload file rather than leaving an orphan."""
+    capture_event_id = new_id()
+    job_id = new_id()
+    ts = now()
+    created = False
+    with batch():
+        try:
+            with tx() as conn:
+                conn.execute(
+                    """INSERT INTO source_captures (id, source_id, project_id, capture_url, capture_page_title,
+                       captured_at, capture_mode, capture_partial_reason, capture_page_width, capture_page_height,
+                       capture_viewport_width, capture_viewport_height, capture_dpr, capture_note,
+                       client_capture_id, ingest_job_id, created_at, updated_at)
+                       VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (capture_event_id, project_id, capture_url, capture_page_title,
+                     captured_at if captured_at is not None else ts, capture_mode, capture_partial_reason,
+                     capture_page_width, capture_page_height, capture_viewport_width, capture_viewport_height,
+                     capture_dpr, capture_note, client_capture_id, job_id, ts, ts),
+                )
+            created = True
+        except sqlite3.IntegrityError:
+            pass                                    # lost the race: another request with this client_capture_id already landed
+
+        if created:
+            job = create_job(job_kind, {**job_payload, "capture_event_id": capture_event_id}, job_id=job_id,
+                              dedupe_key=f"capture:{client_capture_id}", dependency_policy=job_dependency_policy,
+                              execution_policy=job_execution_policy, lane=job_lane)
+            capture_event = get_capture_event_by_client_id(client_capture_id)
+            return {"capture_event": capture_event, "job": job, "created": True}
+
+    capture_event = get_capture_event_by_client_id(client_capture_id)
+    if capture_event is None:                        # cannot happen unless the unique key differs from ours
+        raise RuntimeError(f"capture identity conflict for client_capture_id={client_capture_id}")
+    job = get_job(capture_event["ingest_job_id"]) if capture_event.get("ingest_job_id") else None
+    return {"capture_event": capture_event, "job": job, "created": False}
 
 
 def find_source(platform: str, external_id: str) -> dict[str, Any] | None:
@@ -2110,7 +2202,7 @@ def set_job_execution(job_id: str, executed_by: str | None, fallback_reason: str
 
 def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, dependency_policy: str = "ALL_SUCCESS",
                dedupe_key: str | None = None, execution_policy: str = "local_preferred", lane: str = "normal",
-               not_before: float | None = None) -> dict[str, Any]:
+               not_before: float | None = None, job_id: str | None = None) -> dict[str, Any]:
     """blocked_by: job ids that must finish before this one can be claimed (see dependency_policy). dedupe_key (natural
     identity of the work; default from dedupe_key_for) makes a second identical request while the first is still
     active return the existing job instead of a duplicate.
@@ -2126,6 +2218,9 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
     `not_before` column itself at claim time (by design, to clear the wait once satisfied) -- without a payload
     copy the "scheduled vs actual start" provenance ruling (missed-window policy) would have nothing to compare
     against once the job actually runs."""
+    # job_id: caller-supplied id (create_or_get_capture_ingest_request is the only caller that ever passes this) --
+    # lets that caller pre-generate the id so a capture_events row can embed ingest_job_id in the SAME insert that
+    # creates it, rather than a later UPDATE. Falls back to a fresh id exactly as before when omitted.
     assert dependency_policy in DEP_POLICIES, dependency_policy
     key = dedupe_key or dedupe_key_for(kind, payload)
     blocked_by = list(dict.fromkeys(blocked_by)) if blocked_by else None      # de-duplicated, order kept
@@ -2140,7 +2235,7 @@ def create_job(kind: str, payload: dict, blocked_by: list[str] | None = None, de
             if ex:
                 job_event(ex["id"], "deduplicated", conn=conn, kind=kind)
                 return get_job(ex["id"])  # type: ignore[return-value]
-        jid = new_id()
+        jid = job_id or new_id()
         assert execution_policy in EXECUTION_POLICIES, execution_policy
         conn.execute(
             "INSERT INTO jobs (id, kind, payload, created_at, blocked_by, message, dependency_policy, dedupe_key, execution_policy, lane, not_before, wait_reason) "

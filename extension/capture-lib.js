@@ -69,5 +69,96 @@
     window.__nsCaptureHidden = [];
   }
 
-  root.NSCaptureLib = { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore };
+  // ================================================================================== pure helpers (no DOM)
+  // Repair round (docs/SEND-SCREENSHOT-2026-09-16.md, repair plan). Plain math/decision functions with no
+  // closures, no chrome.* calls and no DOM access -- callable two ways, same as the functions above:
+  //   1. background.js, directly (NOT via chrome.scripting.executeScript -- these never touch a page): after
+  //      importScripts('capture-lib.js') they exist on `self` (the service worker's own global object) exactly
+  //      like the DOM helpers do, and background.js calls them as plain function calls.
+  //   2. tests/js/run-capture.mjs, via window.eval, exactly like the DOM helpers -- proving the math without any
+  //      real browser, real tab or real captureVisibleTab call.
+
+  // 2D tile grid covering the whole page. A page that fits in one viewport on both axes still gets exactly one
+  // tile at (0,0) -- the "1x1 grid" case IS the visible-area-only capture, not a special case of it.
+  function nsPlanTileGrid(measure, viewportWidth, viewportHeight) {
+    const cols = Math.max(1, Math.ceil(measure.scrollWidth / viewportWidth));
+    const rows = Math.max(1, Math.ceil(measure.scrollHeight / viewportHeight));
+    const maxX = Math.max(0, measure.scrollWidth - viewportWidth);
+    const maxY = Math.max(0, measure.scrollHeight - viewportHeight);
+    const tiles = [];
+    for (let row = 0; row < rows; row++) {
+      const y = rows === 1 ? 0 : Math.min(row * viewportHeight, maxY);
+      for (let col = 0; col < cols; col++) {
+        const x = cols === 1 ? 0 : Math.min(col * viewportWidth, maxX);
+        tiles.push({ row, col, x, y });
+      }
+    }
+    return { tiles, rows, cols };
+  }
+
+  // Whole-capture tile identity: a Set of every LANDED (scrollX, scrollY) pair seen so far across the entire
+  // capture, not just the immediately-previous tile -- catches an A->B->A repeat (e.g. a page that snapped back
+  // to an earlier scroll position because of its own scroll-anchoring) even though it is not adjacent to the
+  // duplicate. Mutates `seenKeys` (a Set the caller owns) and returns whether (x,y) was already present.
+  function nsTileKey(x, y) { return Math.round(x) + ',' + Math.round(y); }
+  function nsIsDuplicateTile(seenKeys, x, y) {
+    const k = nsTileKey(x, y);
+    if (seenKeys.has(k)) return true;
+    seenKeys.add(k);
+    return false;
+  }
+
+  // Three runtime ceilings, checked against ACTUAL captured (post-dedup) progress, never the planned grid size --
+  // a lazy/infinite-scroll page can make the planned grid balloon mid-capture. Returns the partial reason or null.
+  function nsCheckCeilings(progress, ceilings) {
+    if (progress.elapsedMs > ceilings.maxElapsedMs) return 'ceiling_time';
+    if (progress.tilesCaptured > ceilings.maxTiles) return 'ceiling_folds';
+    if (progress.totalPixels > ceilings.maxTotalPixels) return 'ceiling_pixels';
+    return null;
+  }
+
+  // Stitch placement scale from the ACTUAL createImageBitmap result, not devicePixelRatio alone (zoom/rounding/
+  // mid-capture display changes can make dpr wrong). dpr is still recorded separately as pure provenance.
+  function nsStitchScale(bitmapWidthPx, cssViewportWidth) {
+    if (!cssViewportWidth) return 1;
+    return bitmapWidthPx / cssViewportWidth;
+  }
+
+  // captureVisibleTab is rate-limited (~2/sec). Returns how many ms to wait before the next call is safe, given
+  // the timestamp of the last call (null = never called yet) and the minimum interval required between calls.
+  function nsRateLimitWaitMs(lastCallAtMs, nowMs, minIntervalMs) {
+    if (lastCallAtMs == null) return 0;
+    const elapsed = nowMs - lastCallAtMs;
+    return elapsed >= minIntervalMs ? 0 : minIntervalMs - elapsed;
+  }
+
+  // The visible-area fallback is safe ONLY for a genuine capture-MECHANISM failure (stitching/OffscreenCanvas/
+  // transient captureVisibleTab error) -- never when the target tab's IDENTITY became uncertain (not active,
+  // origin/navigation change, permission loss), since the evidence's attribution would then be unreliable.
+  // Callers tag their caught errors with a `.nsErrorKind` of one of these two strings; anything else is treated
+  // as identity-uncertain (fail closed -- no fallback) rather than assumed safe.
+  function nsIsFallbackEligible(errorKind) {
+    return errorKind === 'CaptureMechanismError';
+  }
+
+  // Worker-respawn reconciliation: given a capture:<tabId> record found at worker-init time and "now", decide
+  // what it must become. A record left 'capturing' means the runCapture loop that owned it is simply gone (the
+  // worker that ran it was evicted/restarted) -- nothing will ever call back into it, so it is failed outright.
+  // A record left 'uploading' is different: THIS worker's request may have already reached the server (only the
+  // response was lost when the worker died), so the server-side capture_id idempotency makes it safe to treat as
+  // a recoverable 'upload_failed' rather than a hard failure -- capture-retry resubmits the SAME capture_id and
+  // either finds the server's already-materialized job or lands it for the first time, never double-charging a
+  // duplicate job. Terminal states (done/failed/upload_failed) are left alone (returns null: nothing to do).
+  function nsReconcileDecision(rec, nowMs) {
+    if (!rec) return null;
+    if (rec.status === 'capturing') return { status: 'failed', error: 'the browser or extension restarted mid-capture' };
+    if (rec.status === 'uploading') return { status: 'upload_failed', error: 'the browser or extension restarted while sending — press Retry send' };
+    return null;
+  }
+
+  root.NSCaptureLib = {
+    nsMeasure, nsScrollTo, nsHideAndArm, nsRestore,
+    nsPlanTileGrid, nsTileKey, nsIsDuplicateTile, nsCheckCeilings, nsStitchScale, nsRateLimitWaitMs,
+    nsIsFallbackEligible, nsReconcileDecision,
+  };
 })(typeof self !== 'undefined' ? self : this);

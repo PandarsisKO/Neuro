@@ -201,3 +201,91 @@ Ships when: one click sends a screenshot with no intermediate chat; the result i
 (full_page vs visible_only, partial reason when relevant); the note stays separate from the evidence; Suggested
 Findings appear automatically after ingestion; nothing is captured or sent except by explicit button press; and
 Kyle's own manual pass against real pages (above) confirms the visual output is trustworthy.
+
+## Repair round (2026-09-16, post-ship review)
+
+The feature above shipped (`55a0291`, `013f906`) and Kyle then reviewed the SHIPPED code against this design,
+finding 12 real gaps — 4 of them BLOCKERS (no `captureVisibleTab` rate limiter; wrong-tab capture risk; missing
+horizontal-overflow handling; no real-browser acceptance gate) plus 8 more (mode mislabeling; missing visible-
+area fallback; missing upload retry; a suspected — and disproven — cross-project Suggested-Findings gap;
+provenance stored-but-not-surfaced; missing worker-restart reconciliation; scan/capture not actually mutually
+exclusive; and this doc's own approval-history record not naming the repair round itself, which this paragraph
+now fixes). Four further rounds of PLAN_ONLY revision followed (worker-init races, end-to-end upload
+idempotency, whole-capture tile identity, and finally server-side capture/job creation atomicity) before Kyle's
+explicit **"Approved to execute. Behind now."** authorized the repair implemented here.
+
+What changed, by file:
+
+- **`neurosearch/db.py`** — `source_captures` gained `client_capture_id` (partial-unique index, NULL-safe) and
+  `ingest_job_id`, both written in the SAME insert (never a later UPDATE). New
+  `create_or_get_capture_ingest_request()`: the extension's own `capture_id` (generated once per "Send
+  screenshot" press, resent verbatim on every retry) is now the end-to-end idempotency key — a capture-event row
+  and its ingest job are created atomically (`db.batch()`, insert-first/catch-`IntegrityError`/re-select, the
+  same idiom `identity.py` already uses for source creation), so no concurrent-duplicate-job race and no
+  crash-between-two-writes race can leave an orphan row or a duplicate job. `create_job()` gained an optional
+  `job_id` param (backward compatible) so both writes can share one transaction. `get_capture_events_for_source`
+  gained an optional `project_id` filter (see `sources_value.py` below).
+- **`neurosearch/api.py`** — `api_ingest_file` gained a `capture_id` form field; when present, the atomic DB
+  function above replaces the old create-then-enqueue sequence. A losing retry deletes its own just-uploaded temp
+  file (the winner's job already references the winner's own file) rather than leaking it. The response reports
+  the job's CURRENT status honestly, not a hardcoded `"queued"` — a retry landing after the job already finished
+  is allowed to say so.
+- **`extension/capture-lib.js`** — gained pure (non-DOM) helpers: 2D tile-grid planning (`nsPlanTileGrid`),
+  whole-capture tile-identity dedup (`nsIsDuplicateTile`, a `Set` of every landed coordinate seen this run, not
+  just the previous tile), ceiling checks against actual progress (`nsCheckCeilings`), stitch scale from the
+  real captured bitmap rather than DPR alone (`nsStitchScale`), the global rate-limit wait calculation
+  (`nsRateLimitWaitMs`), fallback eligibility by tagged error kind (`nsIsFallbackEligible`), and worker-restart
+  reconciliation decisions (`nsReconcileDecision`). All exercised directly under jsdom
+  (`tests/js/run-capture.mjs`), no real Chrome needed.
+- **`extension/capture-blob-store.js`** (new) — durable IndexedDB blob storage keyed by `capture_id`,
+  service-worker-only (never page-injected, unlike `capture-lib.js`). Retention is bounded and oldest-evicted:
+  2 hour TTL, max 5 blobs, max 200MB combined — the pure policy function `nsBlobRetentionPlan` is testable
+  without a real IndexedDB.
+- **`extension/background.js`** — full capture-engine rewrite. A global `captureVisibleTab` rate limiter
+  (`chrome.storage.session`, survives worker respawn, resets on browser restart, serialized by an in-process
+  async lock) fixes the missing-throttle BLOCKER. Every single `captureVisibleTab` call (each tile, plus the
+  fallback) re-verifies the target tab is still Chrome's ACTIVE tab and passes its real `windowId` explicitly,
+  fixing the wrong-tab-capture BLOCKER. 2D tiling (rows × columns) replaces the old 1D fold loop, fixing the
+  missing-horizontal-overflow BLOCKER; capture stitches at each tile's ACTUAL landed coordinate (not the
+  requested scroll target). A `firstTileCaptured` flag (not a fold-index check) generalizes the sticky/fixed
+  hide-for-all-but-the-first-tile rule to 2D. Two tagged error classes (`TabIdentityError`,
+  `CaptureMechanismError`) gate a 5-step ordered visible-area fallback that runs ONLY on a genuine capture-
+  mechanism failure, never when the target tab's identity became uncertain. Durability ordering: pixels →
+  durable blob (`NSCaptureBlobStore.put`) → THEN `status='uploading'` → POST — a worker eviction between any two
+  of those steps can never strand a record claiming to have sent something that was never saved. A new
+  `capture-retry` message resubmits the same durable bytes under the same `capture_id`, recoverable from
+  `upload_failed`. `reconcileCapturesOnWorkerInit()` runs unawaited on every worker initialization (MV3 may
+  evict/respawn this worker at any point, not just at `onInstalled`/`onStartup`); `capture-start`,
+  `capture-retry`, `capture-get` and `startScan`'s capture-active check all `await captureInit` first, so no
+  message ever acts on a stale pre-reconciliation record. `startScan` and `startCapture` now check each other's
+  active status — scan and capture are finally actually mutually exclusive per tab, not just each internally
+  serialized.
+- **`extension/popup.js` / `popup.html`** — a "Retry send" button appears exactly when a capture is
+  `upload_failed`; new copy for `partial_page` mode and the tagged failure reasons
+  (`tab_not_active`/`origin_changed`/`fallback_after_error`/`upload_failed`) in the user's own words, never DOM
+  or mechanism jargon.
+- **`neurosearch/sources_value.py` / `web/js/research.js`** — `digest()` now surfaces the newest capture THIS
+  PROJECT made of a source (project-scoped only — a capture from a different project sharing the same
+  dedup-merged source never appears here); the source drawer renders "Captured from *title* · date/time", the
+  captured URL as a link, a "partial" chip when applicable, and the user's own note explicitly labeled as
+  context, never merged into the evidence itself.
+- **Suspected item 8 (cross-project Suggested Findings gap)** — investigated, not fixed: `identity.py`'s
+  `resolve_or_create_source()` already calls `after_ready()` (which enqueues Suggested Findings) whenever a
+  source is `EXISTING_READY` and gets newly attached to a project, before `ingest_image()`'s early return is
+  even reached. The "fix" would have reintroduced the uncontrolled-duplicate-suggestion-jobs problem the
+  original design explicitly avoided. A regression test proves the existing invariant instead of changing code.
+
+Server-side gates for all of the above (concurrent-duplicate real-thread race, response-loss retry, atomicity
+under an injected mid-batch failure, orphan-temp-file cleanup, project-relative provenance isolation) and
+client-side pure-function gates (tile-grid planning, whole-capture dedup, ceilings-on-actual-progress, stitch
+scale, rate-limit math, fallback eligibility, worker-restart reconciliation) live in
+`tests/test_s54_send_screenshot.py` (31 tests) and `tests/js/run-capture.mjs`. The worker-init race, durability
+ordering, capture_id-on-every-upload and firstTileCaptured-not-fold-index properties are gated as source-shape
+assertions in the same file (the same technique the pre-existing "loaded by reference, not inlined" test uses) —
+a jsdom harness cannot otherwise exercise MV3 worker-respawn timing or a real `chrome.storage.session` without a
+full `chrome.*` mock.
+
+**Still needs Kyle's own hands** — nothing above replaces the live-browser acceptance gate that was itself one
+of the 4 original BLOCKERS: load the unpacked extension (1.9.0) in his own Chrome and run it against a few real
+pages, including at least one wider-than-viewport page (to exercise the new horizontal tiling) and one
+lazy/infinite-scroll page (to exercise the ceiling-on-actual-progress and grid-growth handling).

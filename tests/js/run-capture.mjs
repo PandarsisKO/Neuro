@@ -11,6 +11,13 @@
 //   hide <watchdogMs>                    -> nsHideAndArm(watchdogMs); returns { hidden, stillHiddenCount }
 //   hide-then-restore <watchdogMs>       -> nsHideAndArm then nsRestore(); returns { hidden, afterRestoreCount }
 //   watchdog-selfheal <watchdogMs> <waitMs>  -> nsHideAndArm, wait waitMs WITHOUT calling nsRestore, report count
+//   plan-tile-grid <measure> <vw> <vh>       -> nsPlanTileGrid(measure, vw, vh)
+//   dedupe-tiles <points>                    -> points: [[x,y],...]; returns which are duplicates, in order
+//   check-ceilings <progress> <ceilings>     -> nsCheckCeilings(progress, ceilings)
+//   stitch-scale <bitmapWidthPx> <cssViewportWidth>  -> nsStitchScale(...)
+//   rate-limit-wait <lastCallAtMs> <nowMs> <minIntervalMs>  -> nsRateLimitWaitMs(...)
+//   fallback-eligible <errorKind>            -> nsIsFallbackEligible(errorKind)
+//   reconcile-decision <rec> <nowMs>         -> nsReconcileDecision(rec, nowMs)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -31,7 +38,8 @@ const { window } = dom;
 
 const lib = readFileSync(path.join(here, '..', '..', 'extension', 'capture-lib.js'), 'utf8');
 window.eval(lib);
-const { nsMeasure, nsHideAndArm, nsRestore } = window.NSCaptureLib;
+const { nsMeasure, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
+        nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision } = window.NSCaptureLib;
 
 function stillHidden() {
   let n = 0;
@@ -60,6 +68,21 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
       const r = nsHideAndArm(watchdogMs);
       await new Promise(res => setTimeout(res, waitMs));
       out = { hidden: r.hiddenCount, afterWaitCount: stillHidden() };
+    } else if (command === 'plan-tile-grid') {
+      out = nsPlanTileGrid(args[0], args[1], args[2]);
+    } else if (command === 'dedupe-tiles') {
+      const seen = new Set();
+      out = args[0].map(([x, y]) => nsIsDuplicateTile(seen, x, y));
+    } else if (command === 'check-ceilings') {
+      out = { reason: nsCheckCeilings(args[0], args[1]) };
+    } else if (command === 'stitch-scale') {
+      out = { scale: nsStitchScale(args[0], args[1]) };
+    } else if (command === 'rate-limit-wait') {
+      out = { waitMs: nsRateLimitWaitMs(args[0], args[1], args[2]) };
+    } else if (command === 'fallback-eligible') {
+      out = { eligible: nsIsFallbackEligible(args[0]) };
+    } else if (command === 'reconcile-decision') {
+      out = nsReconcileDecision(args[0], args[1]);
     } else {
       throw new Error('unknown command: ' + command);
     }
