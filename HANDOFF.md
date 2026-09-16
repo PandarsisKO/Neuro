@@ -4589,4 +4589,4 @@ absent to exercise gap #2's fix, network loss + Retry send, partial-page ceiling
 mutual exclusion, and inspecting the resulting screenshot in the Neuro app itself) is documented in
 `docs/SEND-SCREENSHOT-2026-09-16.md` and has NOT been run. Results belong in that doc once it is.
 
-Commit: (this repair round 2 fix pass — see commit following this entry).
+Commit: e2bf2ac.
