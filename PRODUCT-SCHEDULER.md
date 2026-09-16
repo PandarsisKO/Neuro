@@ -18,11 +18,16 @@ CLI-only surface (`project rescan`), never scheduled. Release-gate PASS at `ea73
 documented in EXECUTION-LADDER.md — NOT built, NOT admitted — pending the same open classification-storage
 decision Phase B flagged. See HANDOFF.md's Phase B/CR3/CR4/CR8 entry for full detail.
 
-**Remaining in tonight's approved sequence: LP5** (plan-patch acceptance provenance), "if capacity remains" —
-columns to be added to `plan_updates` only after re-confirming which of `claim_id`/`tension_id`/`decided_at`/
-`decided_by`/`applied_plan_id` are genuinely missing (verified once already this session via inspection; LP3 is
-done, so LP5's gate is met). No paid call all night. Live/manual gates (send-screenshot Chrome matrix,
-course-scanner live extension, CR7, LP6, AD4B, FM1 live) not touched tonight.
+**LP5 (`0c14c01`) also closed** — re-verified by inspection that all five columns
+(`claim_id`/`tension_id`/`decided_at`/`decided_by`/`applied_plan_id`) were genuinely missing before adding them,
+wired `plan_narrative.propose_updates`/`db.set_update_status`/`planner.apply_accepted_updates`, 8-test gate
+(`test_s56_plan_patch_provenance.py`). Release-gate PASS at `7c356ad` (`0c14c01`, 0.63.91).
+
+**Overnight mission closed.** Everything in the approved-with-six-corrections sequence is done: A1-A5, Phase B,
+CR3+CR4, CR8-docs, LP5. Final: full suite 1787/0 failed across 4+ consecutive `-n 4` runs, repo-check PASS,
+release-check PASS at `0c14c01` (0.63.91, unchanged all night). No paid call all night. Live/manual gates
+(send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B, FM1 live) not touched — each still
+needs the specific Kyle action EXECUTION-LADDER.md names. Nothing pushed to GitHub; sandbox has no route there.
 
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that

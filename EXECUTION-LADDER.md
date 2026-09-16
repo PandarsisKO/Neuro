@@ -494,10 +494,18 @@ existing accept/reject route promotes it; nothing else does.
 Known/Assumed/Chosen/Uncertain/Blocked/Monitored as DERIVED state over plan_items + linked Claim strength/
 freshness + assumptions; persist nothing unless the derivation proves insufficient. Gate: derivation tests.
 
-### LP5 `[ ]` patch acceptance provenance — READY AFTER LP3 · lane: codex-shaped
-Ensure an accepted `plan_updates` row carries previous/resulting state, reason, claim linkage, and provenance
-(system proposal vs user). Additive columns only if a real field is missing. Gate: "your plan changed in one
-place" is reconstructible from rows.
+### LP5 `[x] 0c14c01` patch acceptance provenance — DONE · lane: codex-shaped
+Five columns added to `plan_updates` (`claim_id`, `tension_id`, `decided_at`, `decided_by`, `applied_plan_id`)
+via the existing additive MIGRATIONS mechanism, verified genuinely missing by inspection before adding any
+(Kyle's overnight-mission correction 6). `plan_narrative.propose_updates()` now persists the claim_id `explain()`
+already resolves (direct or via tension_id) instead of discarding it; `db.set_update_status()` stamps
+`decided_at`/`decided_by` at decision time; `planner.apply_accepted_updates()` stamps `applied_plan_id` on every
+accepted row once the regenerated plan exists (rejected rows never get one). Gate:
+`tests/test_s56_plan_patch_provenance.py` (8 tests) — "your plan changed in one place" reconstructs from a
+single row alone (previous/proposed/reason/claim linkage/origin/decided_by/decided_at/applied_plan_id), rejected
+rows stay `applied_plan_id: null` even after a later apply, older NULL-column rows still render, and the existing
+`POST /api/plan-updates/{id}` route round-trips full provenance. `planner.build_plan` faked directly (not via
+`monkeypatch.undo`) — $0, no provider/model call.
 
 ### LP6 `[k]` real evidence-change demo — needs: LP3. **Kyle action**: the next time CR5/CR6's nightly refresh actually changes a Claim's status on a real project (strengthened / weakened / contradicted -- CR7 is where this is first observed), tell Claude the Claim id. Claude verifies the resulting `plan_updates` row alone reconstructs "your plan changed in one place" (previous state, resulting state, reason, claim linkage, system vs user provenance) with no other lookup needed.
 

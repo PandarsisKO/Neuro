@@ -5068,3 +5068,60 @@ Commits this segment: `8d60313` (Phase B), `638dd22` (CR3+CR4 code+tests), `ea73
 
 Proceeding to assess remaining capacity for LP5 (plan-patch acceptance provenance), the last item in the
 approved sequence, "if capacity remains."
+
+## Execution — LP5 closed, overnight mission complete (2026-09-16, executing model)
+
+**LP5 (`0c14c01`).** Last item in the approved sequence, "if capacity remains" — capacity remained. Re-verified
+Kyle's correction 6 directly against the live schema (not assumed from an earlier read): `plan_updates` had
+`id, plan_id, section, previous, proposed, reason, status, created_at, origin` and genuinely nothing else — all
+five originally-proposed columns (`claim_id`, `tension_id`, `decided_at`, `decided_by`, `applied_plan_id`) were
+missing. Added all five via the existing additive `MIGRATIONS` list (no new mechanism).
+
+Wiring, in the order the provenance actually flows:
+- `plan_narrative.propose_updates()` already resolved a claim_id internally (directly, or via `tension_id` →
+  `research_tensions.claim_id`) to build `explain()`'s narrative text, then discarded it — the exact same
+  stored-vs-re-derived lesson LP0 fixed for evidence links now applies here too. It now persists both ids onto
+  each `plan_updates` row it writes.
+- `db.set_update_status()` stamps `decided_at`/`decided_by` (default `"user"`, kept as a column rather than a
+  hardcoded literal so a future multi-user mode never needs a schema change) at the moment `POST
+  /api/plan-updates/{id}` calls it — not on a later re-read, so the timestamp reflects the actual decision.
+- `planner.apply_accepted_updates()` stamps `applied_plan_id` on every currently-accepted row immediately after
+  `build_plan()` returns the regenerated plan's id. Rejected rows are never touched by this step — they already
+  got their `decided_at`/`decided_by` at rejection time, and nothing of theirs was folded into any plan.
+
+Gate: `tests/test_s56_plan_patch_provenance.py`, 8 tests, zero provider/model calls (`planner.build_plan` is
+replaced with a plain function directly — assign/restore in a `try/finally`, not `monkeypatch.setattr` +
+`monkeypatch.undo()`, sidestepping the exact shared-fixture-instance hazard Phase A found and fixed elsewhere in
+the suite). Covers: claim linkage persisted on the row; tension linkage additionally resolves and persists the
+claim behind it; accept stamps `decided_at`/`decided_by` immediately, before any apply; reject stamps the same
+two fields but can never later acquire an `applied_plan_id`, including after `apply_accepted_updates` runs;
+`apply_accepted_updates` stamps `applied_plan_id` on every accepted row; a single row reconstructs the full
+story (`previous`, `proposed`, `reason`, `claim_id`, `origin`, `decided_by`, `decided_at`, `applied_plan_id`) —
+the spec's own bar; a legacy/LLM-path row with every new column `NULL` still renders correctly; and the existing
+`POST /api/plan-updates/{id}` route round-trips full provenance end to end through `TestClient`.
+
+Verification: `tests/test_s56_plan_patch_provenance.py` alone (8/8), `test_cr1_lp0_lp1_research_needs.py` +
+`test_s55_reservoir_rescan.py` + `test_s51_test_isolation.py` together (72/72, confirming no LP5 regression on
+the modules it touches), then the full suite `pytest -n 4 --dist=loadscope`: **1787 passed, 0 failed**, 4
+consecutive clean runs. `repo-check`: PASS. `release-check --no-pytest`: PASS at `0c14c01` (0.63.91), genuine
+git_sha, artifact committed.
+
+Version unchanged at 0.63.91 throughout tonight's entire mission (Phase A through LP5), matching how CR3/CR4
+landed — this mission treats the whole overnight train as one unbumped release, not a per-rung bump.
+
+Commits this segment: `0c14c01` (LP5 code + test), `7c356ad` (release-gate artifact).
+
+## Overnight mission — closed
+
+Everything in Kyle's approved-with-six-corrections sequence is done: A1-A5 (repo hygiene, real S50 fix, the
+proven DB thread-isolation root-cause fix), Phase B (Monitor ≠ Acquire ≠ Retain), CR3+CR4 (known-reservoir
+rescan + change detection, project-scoped), CR8 (seam documented, not built), and LP5 (plan-patch provenance).
+All six of Kyle's corrections were applied before their relevant code was written, not retrofitted afterward.
+No paid provider call was made at any point. Nothing live/manual was touched (send-screenshot Chrome matrix,
+course-scanner live extension, CR7, LP6, AD4B, FM1 live all remain exactly where Kyle left them, each still
+needing a specific Kyle action named in EXECUTION-LADDER.md). The per-collection "primary for this project"
+monitoring-classification storage question remains genuinely open — flagged, not answered, per §13 and CR8's own
+entry — the correct amount of resolution for a question that is Kyle's product call, not an implementation
+detail. Final state: full suite 1787/0 failed (4+ consecutive clean `-n 4` runs), repo-check PASS, release-check
+PASS at `0c14c01` (0.63.91). Still unpushed — the sandbox cannot reach GitHub; Kyle pushes from the Mac terminal
+when he chooses to.
