@@ -4439,7 +4439,7 @@ Not yet done:
 
 Next session: pick up CS2's live-browser verification once the unpacked extension is reloaded.
 
-## Mission "send screenshot" — extension 1.8.0, landed (not yet committed as of this checkpoint)
+## Mission "send screenshot" — extension 1.8.0, landed (`55a0291`)
 
 Kyle's mission: capture the rendered page (a calculator's result, a configurator's state, a dashboard) as image
 evidence into the existing image pipeline, when a URL/HTML capture can't reconstruct dynamic state. Full design,
@@ -4486,7 +4486,6 @@ Not yet done:
   jsdom proves DOM mechanics only. Claude in Chrome cannot reach `chrome://extensions` to load an unpacked
   extension; this needs Kyle's own hands, running the original spec's 12-item test list against real pages.
   Full list: `docs/SEND-SCREENSHOT-2026-09-16.md`'s "What jsdom does NOT prove" section.
-- Not yet committed as of this checkpoint — see the next commit for the hash.
 
 Next session (if Kyle raises something new before the live pass): start from the "What jsdom does NOT prove"
 list above.
