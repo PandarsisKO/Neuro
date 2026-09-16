@@ -5722,3 +5722,51 @@ for Part B; no design-scoped commit is needed. If Kyle wants further design work
 (an actual usability complaint, a genuinely new UI surface, a fresh audit pass) or explicit re-scoping — not a
 resumption of F1, which finished three days before this mission was written.
 
+
+## Validation-readiness pass across all Kyle-gated rungs (2026-09-16)
+
+Audited every currently Kyle-gated item against current code (not trusting the 2026-09-15 gates doc as-is) and
+consolidated them into one document Kyle can open and copy-paste from: `docs/KYLE-GATES-2026-09-15.md`
+(updated in place — kept the existing filename/doc rather than creating a second one).
+
+**One real usability gap found and documented (no code change)**: `neurosearch nightly run` gained a third,
+separate `--research-refresh-budget` flag since the gates doc was written, needed to exercise CR6/CR7 at all.
+Running the doc's original `nightly run --budget 2` alone silently never touches CR7, and the plain-text
+Morning Report gives no indication either way — "ran with nothing due" and "the flag was never passed" render
+identically (quiet). `nightly report --json`'s `research_refresh` key already disambiguates this correctly
+(`null` vs a dict) — a pure documentation fix, not a code one, exactly per the mission's "do not manufacture
+implementation work when the gate is already easy and correct" rule. Corrected both `EXECUTION-LADDER.md`'s
+CR7 entry and the gates doc.
+
+**Verified, not changed**: `L-06/L-07/L-08/L-21/L-30/L-31/L-40/L-41/L-51/L-52/L-60/L-61/L-70`'s existing
+commands (`nightly run/report/status`, `project review-queue`, `tools/sample_findings.py`,
+`tools/decide_kept_rate.py`, `tools/relevance_backtest.py`, `tools/p7_estimate.py`) all still exist and match
+their documented `--help` text against current code (checked via a fresh `typer.testing.CliRunner`, not just
+grep). `project acquire-evaluate` (CR8b-gate), `project field-map` (FM1-gate), and `project discover-report`
+(AD4B) likewise verified present and unchanged from their existing one-command design — nothing needed there.
+
+**Newly added to the gates doc** (these postdate the 2026-09-15 doc and had no consolidated Kyle-facing
+writeup yet): CR7, CR8b-gate, LP6, AD4B, FM1-gate, plus the two live-extension acceptance gates.
+
+**LP6**: inspected rather than assumed — confirmed LP3 only ever writes a pending `plan_updates` row when a
+Claim change genuinely affects a plan step, and that row already names the Claim and reason via the existing
+Plan-tab / accept-reject surface (LP5's provenance). No new "which Claim changed" lookup is needed; documented
+that instead of building one, per the mission's explicit "do not add a new event store unless inspection
+proves the evidence genuinely does not exist" rule.
+
+**Send Screenshot**: the live-Chrome acceptance matrix was scattered prose across 4 repair rounds in a
+556-line doc (`docs/SEND-SCREENSHOT-2026-09-16.md`). Extracted the 7 concrete cases Kyle actually needs to run
+(ordinary page, wider-than-viewport, lazy/infinite-scroll, popup close/reopen mid-capture, scroll-position
+restoration, same-origin navigation abort, provenance display) into the gates doc. This remains the sole
+blocker on closing that mission, per every repair round's own final line — unchanged by this pass, just made
+easier to act on.
+
+**Course Scanner**: distinguished what's already proven from what isn't. CS5's live pass already validated
+the scan/enumerate algorithm for real (43/43 lessons, SMB Market, zero failures) — that stays closed, not
+reopened. What was never exercised live is the popup/background extension wiring around it (that pass drove
+the scan library directly, bypassing the extension chrome). Documented the 3 remaining cases (scan via the
+real popup button, cancel via the real control, popup close/reopen mid-scan) as the actual remaining gap,
+explicitly smaller than it looked from the mission framing.
+
+No production code changed. `repo-check: PASS`. No release-check needed (docs-only).
+
