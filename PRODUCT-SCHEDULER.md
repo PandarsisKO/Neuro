@@ -70,6 +70,13 @@ isolated against (not fixed at its source — out of scope), in HANDOFF.md's "Ex
 Kyle's 9 corrections" entry and EXECUTION-LADDER.md's CR8b entry. Full suite 1828/0 failed, repo-check PASS,
 release-check PASS at `477f9e5` (0.63.91). No paid provider call made.
 
+**Hardening + control-plane reconciliation (2026-09-16).** The `cli.py` global-settings-mutation landmine CR8b's
+own test fixture worked around is now fixed at its source: `config.override()` (scoped context manager) +
+`nightly_run_cmd` using it, 10 new tests, release-check PASS at `0289f17`. This NOW section and the NEXT section
+below were reconciled against current EXECUTION-LADDER.md state (see the note at the very top of NOW).
+`CR8b-gate` (Kyle-gated real-world validation, 8 questions) and `CR8c` (the admission RULE for widening CR8b,
+not an implementation) are recorded in EXECUTION-LADDER.md, right after CR8b's entry — no CR8c code exists.
+
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that
 authorized CR6/LP4 also covers continuing straight into the remaining PARALLEL PREP rungs in the same mission §12

@@ -533,6 +533,46 @@ consume the same `due_tonight()` TTL-dedup key CR8b's own block needed -- fixed 
 `-n4 --dist=loadscope` runs), `repo-check` PASS, `release-check --no-pytest` PASS at `477f9e5` (0.63.91). Full
 trail in HANDOFF.md's "Execution — CR8b shipped with Kyle's 9 corrections" entry.
 
+**Hardening (`0289f17`, `dcabfbc`).** The `cli.py` global-state landmine the CR8b test fixture worked around at
+`477f9e5` is now fixed at its source: `config.py` gained a scoped `override(**changes)` context manager (the
+smallest reusable mechanism, not a second configuration system), and `nightly_run_cmd` now wraps its
+budget-dependent body in it instead of assigning straight to the shared `settings` singleton. 10 new tests in
+`tests/test_s59_cli_settings_lifecycle.py` prove the mechanism (visible during the block, restored on normal
+exit/exception, multiple keys, rejects an unknown attribute), the CLI command actually using it (a spy proves
+`nightly.run()` sees the override while executing), two sequential invocations not leaking into each other, an
+exception mid-command still restoring settings, the exact original CR8b symptom reproduced end-to-end and proven
+gone, and that existing CLI disclosure/confirmation/refusal behavior is unchanged. Full suite 1838/0 failed (2+
+consecutive clean runs), `repo-check` PASS, `release-check --no-pytest` PASS at `0289f17` (0.63.91).
+
+### CR8b-gate `[k]` real-world validation before widening — needs: CR8b (done), a real project with a real open
+Evidence Target. **Kyle action**: let CR8b run against a real project — either wait for its own nightly pass
+(`cr8b_enabled` must be on) or run `neurosearch project acquire-evaluate <project> [--target ID]` yourself — then
+report back what happened so Claude can answer, against the actual result (not a fixture):
+- **A.** Did an actual project have an open Evidence Target?
+- **B.** Did CR8b identify a candidate you'd agree was genuinely justified for that target?
+- **C.** Did it acquire no more than the intended bound (one per target per pass)?
+- **D.** Was the provenance (why THIS source, for THIS target) understandable from what's shown?
+- **E.** Did it avoid pulling in anything unrelated?
+- **F.** Did the resulting source actually help the target / project?
+- **G.** Was cost behavior correct (free reuse attached regardless of budget state; spend, if any, matched what
+  was authorized; nothing acquired past budget)?
+- **H.** Did the Morning Report / Project Delta surface the result appropriately (not silently, not oversold)?
+
+This is deliberately an observation gate, not a build — do not manufacture a synthetic verdict from fixture data
+in place of it, and do not expand CR8b's scope while this remains open. If G surfaces a real gap (e.g. cost
+isn't disclosed anywhere the user would see it before it happens), record that as its own small, separately
+admitted follow-up rather than folding it into this gate or into CR8c.
+
+### CR8c `[ ]` admission rule (not implementation) — needs: CR8b-gate evidence. CR8b intentionally stays narrow:
+OPEN EVIDENCE TARGET → deterministic candidate match → at most one justified acquisition → existing pipeline. Do
+NOT widen automatic acquisition to stale Claims broadly, contradictions broadly, tensions broadly, plan
+dependencies broadly, Source Capability recommendations, arbitrary semantic relevance, or exploration candidates
+until CR8b-gate has real evidence. Once it does, the evidence — specifically where CR8b's narrow Evidence Target
+model felt insufficient in practice, not a preference stated in the abstract — decides which single next trigger
+earns expansion (candidates include: a stale consequential Claim, an unresolved high-impact tension, a
+plan-critical unknown, or another explicit Research Need type). Do not preselect the winner now; this entry
+records the admission RULE, not an implementation, and CR8c does not start until CR8b-gate closes.
+
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
 `plan_items` keys mirror those paths; `plan["_evidence"]` (emap) stores label/link/kind/source_id per id but NOT

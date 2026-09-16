@@ -5536,3 +5536,48 @@ network-poisoning `safe_fetch` monkeypatch throughout, same discipline as every 
 
 Commits this segment: `afa2acf` (CR8b code + tests), `477f9e5` (test-isolation fix for the cli.py landmine),
 `82d0615` (release-gate artifact).
+
+## Execution — CR8b hardening + control-plane reconciliation (2026-09-16, executing model)
+
+Kyle's follow-up mission after CR8b shipped: fix the `cli.py` global-settings-mutation defect at its source
+(not just in the test fixture), reconcile PRODUCT-SCHEDULER.md against current reality, and record — but do not
+build — the real-world validation gate CR8b needs before any widening, plus the admission rule for CR8c.
+
+**1. `config.py` gained `override(**changes)`** — a context manager that temporarily sets attributes on the
+shared `settings` singleton and restores their prior values on any exit path, including an exception or an early
+`typer.Exit`. `nightly_run_cmd` (`cli.py`) now builds an `invocation_overrides` dict from only the flags the
+caller actually passed and wraps its whole budget-dependent body in `config.override(**invocation_overrides)`,
+replacing the old direct, unrestored `settings.t4_nightly_budget = ...` assignments. Behavior from the user's
+perspective is byte-for-byte unchanged — same disclosure text, same confirmation flow, same exit codes; only the
+process-global leak is gone. `tests/test_s59_cli_settings_lifecycle.py` (10 tests) proves the mechanism itself,
+proves the CLI command visibly uses it during execution (a spy on `nightly.run()`), proves two sequential
+invocations don't leak into each other, proves an exception mid-command still restores settings, reproduces the
+exact original CR8b symptom end-to-end and proves it's gone, and re-proves existing CLI disclosure/confirmation/
+off-by-default behavior is unchanged. `tests/test_p2_nightly_cli.py`'s
+`test_run_discloses_the_separate_t5_cap` lost its now-unnecessary manual `settings.t5_nightly_budget = 0.0`
+workaround. Full suite 1838/0 failed, 2 consecutive clean `-n4 --dist=loadscope` runs, `repo-check` PASS,
+`release-check --no-pytest` PASS at `0289f17` (0.63.91).
+
+**2. PRODUCT-SCHEDULER.md reconciled**, not rewritten. Its NOW section carried a 2026-09-15 paragraph claiming
+"nothing is READY," CR3 was "Codex-shaped," and LP5 was "codex-shaped, READY AFTER LP3" — all contradicted by
+EXECUTION-LADDER.md (CR1-CR8b and LP0-LP5 are all `[x]` DONE). The NEXT section still named the 2026-09-14 P0/
+P1A/P5 admissions as current priorities. Added a dated reconciliation note at the top of NOW (read first),
+demoted the specific stale paragraphs in place with superseded markers (kept verbatim below them, per this
+file's own append-only convention — nothing deleted), and replaced NEXT's framing with an accurate current list:
+FM1 is the one genuinely agent-ready, not-yet-started Claude-lane rung; H1 is explicitly parked; everything else
+open is Kyle-gated with its exact required action already named in EXECUTION-LADDER.md. `repo-check` PASS.
+
+**3. CR8b-gate and CR8c recorded in EXECUTION-LADDER.md, not built.** Per Kyle's explicit "do not expand CR8b
+yet" and "do not start CR8c implementation": added `### CR8b-gate` (Kyle-gated, needs a real project with a real
+open Evidence Target — either its own nightly pass or a manual `project acquire-evaluate` run) with the 8
+questions (A-H) that answer whether CR8b is working as intended in practice, not from fixtures. Added `### CR8c`
+as the admission RULE only — CR8b stays narrow (open Evidence Target → deterministic match → one acquisition →
+existing pipeline) until CR8b-gate has real evidence; the evidence itself, not a preference stated now, decides
+which single next trigger (stale consequential Claim, high-impact tension, plan-critical unknown, or another
+Research Need type) earns expansion. No CR8c code exists and none was written this pass.
+
+No paid provider call was made anywhere in this work. `config.py`/`cli.py` changes verified only against the
+`.env`-free verify workspace; `PRODUCT-SCHEDULER.md`/`EXECUTION-LADDER.md` are docs-only changes.
+
+Commits this segment: `0289f17` (config.override + nightly_run_cmd fix + test_s59), `dcabfbc` (release-gate
+artifact), `5940242` (PRODUCT-SCHEDULER.md reconciliation), plus this EXECUTION-LADDER.md update.
