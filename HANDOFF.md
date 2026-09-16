@@ -4655,4 +4655,4 @@ Nothing in this release gate implicates the send-screenshot feature. The live-Ch
 the only work standing between here and closing this mission — it is entirely outstanding and requires Kyle's
 own hands (this session cannot drive a real Chrome browser end to end).
 
-Commit: (this entry + the release artifact — see commit following this entry).
+Commit: 3f7b32d.
