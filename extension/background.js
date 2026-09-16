@@ -441,6 +441,17 @@ async function runCapture(tabId, rec) {
     while (idx < grid.length) {
       if (now() - startedAt > CAPTURE_MAX_ELAPSED_MS) { partialReason = 'ceiling_time'; break; }
       if (shots.length >= CAPTURE_MAX_TILES) { partialReason = 'ceiling_folds'; break; }
+      // repair round 4 (Kyle's third re-review): preflight the pixel ceiling BEFORE capturing the next tile,
+      // not only after. The post-capture check further down still catches the very first tile (capturedScale
+      // isn't known until a real bitmap has been decoded, so there is nothing to project against yet) and
+      // stays as a defensive backstop, but for every tile after that this stops the loop cleanly with an
+      // honest partial_page BEFORE spending a captureVisibleTab call and a tile that would only get discarded
+      // anyway — rather than relying on stitchShots' own allocation backstop (round 3, gap #A) to catch an
+      // over-ceiling situation only once assembly is already underway.
+      if (capturedScale != null) {
+        const projectedPixels = viewportWidth * capturedScale * viewportHeight * capturedScale * (shots.length + 1);
+        if (projectedPixels > CAPTURE_MAX_TOTAL_PIXELS) { partialReason = 'ceiling_pixels'; break; }
+      }
 
       const target = grid[idx];
       idx += 1;

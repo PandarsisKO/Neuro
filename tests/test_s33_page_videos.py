@@ -180,9 +180,16 @@ def test_the_extension_asks_before_adding_and_sends_every_embed_hosts_cookies():
 
 
 def test_the_extension_version_moved_again():
+    # Kyle (repair round 4 re-review): this used to pin an exact version literal ("1.7.0", frozen at mission CS:
+    # Scan this course hardening), which broke every single time a LATER mission legitimately bumped the
+    # extension version again -- most recently at 1.9.2 (send-screenshot repair round 3). That made the failure
+    # look connected to whatever shipped last, when the test's only real job is proving the version moved past
+    # mission CS's floor and never regressed below it. A floor comparison (the same non-brittle pattern already
+    # used by tests/test_s32_course_scanner.py::test_the_extension_version_moved) proves that historical fact
+    # forever without needing a manual literal bump on every future mission that touches manifest.json.
     import json as _json
     mf = _json.loads((__import__("pathlib").Path(__file__).resolve().parent.parent / "extension" / "manifest.json").read_text())
-    assert mf["version"] == "1.7.0"  # mission CS: Scan this course hardening
+    assert tuple(int(x) for x in mf["version"].split(".")) >= (1, 7, 0)
 
 
 # ── 0.63.17 — and then it said "not added yet" about a video that was already transcribed ───────────────────────

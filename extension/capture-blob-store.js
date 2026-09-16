@@ -1,4 +1,4 @@
-// Neuro Search — send-screenshot durable blob retention (extension 1.9.2, repair round 3, docs/SEND-SCREENSHOT-2026-09-16.md).
+// Neuro Search — send-screenshot durable blob retention (extension 1.9.3, repair round 4, docs/SEND-SCREENSHOT-2026-09-16.md).
 //
 // Service-worker-only (never page-injected via chrome.scripting.executeScript, unlike capture-lib.js) — IndexedDB
 // in a service worker is a first-class API; there is no reason to route it through the page's isolated world.

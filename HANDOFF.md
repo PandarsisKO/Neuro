@@ -4656,3 +4656,31 @@ the only work standing between here and closing this mission — it is entirely 
 own hands (this session cannot drive a real Chrome browser end to end).
 
 Commit: 3f7b32d.
+
+## 2026-09-16 — Send screenshot: repair round 4 (Kyle's third independent re-review of shipped 1.9.2)
+
+Kyle confirmed all 3 gaps from repair round 3 landed correctly, and raised 4 more things. Full detail:
+`docs/SEND-SCREENSHOT-2026-09-16.md`'s "Repair round 4" section.
+
+- **Correction**: repair round 3's release-gate summary wrongly called
+  `test_s33_page_videos.py::test_the_extension_version_moved_again` unrelated — it hard-pins manifest version
+  `"1.7.0"`, which every version-bumping mission (including this one) breaks. Fixed to the non-brittle
+  floor-comparison pattern `test_s32_course_scanner.py` already established.
+- `nsPageIdentity` now folds in route-like URL hashes (`nsIsRouteLikeHash`: contains `/` or `?`) so a
+  hash-routed SPA switching screens via `#/route` trips the identity check, while a plain anchor jump
+  (`#results`) still doesn't.
+- The pixel ceiling is now preflighted before capturing the next tile (once `capturedScale` is known), stopping
+  cleanly as `partial_page` instead of relying on `stitchShots`' allocation backstop reactively. The post-capture
+  check remains for the one case that can't be preflighted — the first tile.
+- The round-3 release artifact's `git_sha` was `"nogit"` (ran against a plain rsync copy, not a git checkout) —
+  not actually commit-bound despite the filename/doc claiming a SHA. Fixed by cloning the repo locally so
+  release-check runs in a real git checkout; see the release-gate entry below for the regenerated artifact.
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 59; `test_s33`/`test_s32` both clean. All 105
+(combined) pass. Extension bumped to 1.9.3.
+
+Still not done: the live-Chrome acceptance matrix remains entirely outstanding — this round changes nothing
+about that. It is still the sole remaining step before this mission can close, and it requires Kyle's own
+hands.
+
+Commit: (this repair round 4 fix pass — see commit following this entry).

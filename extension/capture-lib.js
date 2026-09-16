@@ -1,4 +1,4 @@
-// Neuro Search — send-screenshot capture-engine primitives (extension 1.9.2, docs/SEND-SCREENSHOT-2026-09-16.md).
+// Neuro Search — send-screenshot capture-engine primitives (extension 1.9.3, docs/SEND-SCREENSHOT-2026-09-16.md).
 //
 // Plain functions, no imports: loaded two ways —
 //   1. background.js: `importScripts('capture-lib.js')` (classic, non-module MV3 service worker), then each
@@ -180,14 +180,29 @@
   // the capture started. For screenshot evidence, same-origin is not a strong enough identity: this pins
   // origin + pathname + search (a same-document hash-only change, e.g. an in-page anchor jump, is still the
   // same document and stays allowed; a path or query change is not).
+  //
+  // repair round 4 (Kyle's third re-review): a bare hash change is not always "the same document" in practice.
+  // Hash-ROUTED single-page apps switch between entirely different rendered screens through the hash alone
+  // (#/dashboard, #!/settings, #/users/42) while origin+pathname+search never changes -- so the round 3 version
+  // of this function let a hash-routed SPA navigate to a completely different screen mid-capture without ever
+  // tripping the identity check, the exact failure mode gap #B was meant to close. An ordinary in-page anchor
+  // jump (#results, #section-2) is still a single token with no path separator or query-like character and must
+  // stay allowed, or every page with a table of contents would fail closed on a routine same-page jump. The
+  // heuristic: a hash counts as ROUTE-LIKE (and joins the pinned identity) when it contains '/' or '?' --
+  // both are how every mainstream hash-router (react-router hash mode, Vue hash mode, Backbone/Angular's
+  // hashbang convention) spells a route, and neither ever appears in a plain anchor name.
+  function nsIsRouteLikeHash(hash) {
+    return !!hash && (hash.includes('/') || hash.includes('?'));
+  }
   function nsPageIdentity(urlStr) {
     const u = new URL(urlStr);
-    return u.origin + u.pathname + u.search;
+    const base = u.origin + u.pathname + u.search;
+    return nsIsRouteLikeHash(u.hash) ? base + u.hash : base;
   }
 
   root.NSCaptureLib = {
     nsMeasure, nsScrollTo, nsHideAndArm, nsRestore,
     nsPlanTileGrid, nsTileKey, nsIsDuplicateTile, nsCheckCeilings, nsStitchScale, nsRateLimitWaitMs,
-    nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity,
+    nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity, nsIsRouteLikeHash,
   };
 })(typeof self !== 'undefined' ? self : this);

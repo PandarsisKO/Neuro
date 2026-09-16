@@ -1,4 +1,4 @@
-"""S54 — send screenshot: capture-lib primitives, as a contract (extension 1.9.2, mission "send screenshot").
+"""S54 — send screenshot: capture-lib primitives, as a contract (extension 1.9.3, mission "send screenshot").
 
 Full plan and revisions: see the Kyle-approved plan referenced from docs/SEND-SCREENSHOT-2026-09-16.md and from
 neurosearch/api.py's api_ingest_file docstring. This file gates the extraction Phase 2c made necessary: the
@@ -872,3 +872,77 @@ def test_in_process_upload_failure_checks_blob_existence_for_captured_not_just_s
     assert "rec.status === 'captured'" in catch_block
     assert "NSBlobStore.get(capture_id)" in catch_block
     assert "recoverable = true" in catch_block  # unconditional only for 'uploading'
+
+
+# ==================================================================================== repair round 4 (2026-09-16)
+# Kyle's third independent re-review of the shipped 1.9.2 code confirmed all 3 gaps from repair round 3 (and its
+# hardening) landed correctly, but found 3 more things before he would close the mission:
+#   1. the live-Chrome acceptance pass is still completely outstanding (unchanged status — still needs Kyle).
+#   2. test_the_extension_version_moved_again's hard-pinned "1.7.0" literal was a false-unrelated dismissal — it
+#      breaks on EVERY version bump, including this mission's, so its failure IS connected to this mission.
+#   3. the prior release-check artifact's git_sha was "nogit" (ran in a plain rsync copy, not a git checkout),
+#      so it wasn't actually commit-bound despite the filename/doc claiming a specific SHA.
+#   4. two small evidence-integrity gaps: nsPageIdentity ignored the URL hash entirely (a hash-routed SPA could
+#      switch screens via #/route without tripping the identity check), and the pixel ceiling was checked only
+#      AFTER a tile was already captured and pushed to shots, relying on stitchShots' allocation backstop rather
+#      than stopping cleanly beforehand.
+
+# ------------------------------------------------------------------------------- route-like hash identity
+def test_route_like_hash_heuristic() -> None:
+    assert _run("is-route-like-hash", ["#/dashboard"])["routeLike"] is True
+    assert _run("is-route-like-hash", ["#!/settings"])["routeLike"] is True
+    assert _run("is-route-like-hash", ["#/users/42?tab=info"])["routeLike"] is True
+    assert _run("is-route-like-hash", ["#results"])["routeLike"] is False
+    assert _run("is-route-like-hash", ["#section-2"])["routeLike"] is False
+    assert _run("is-route-like-hash", [""])["routeLike"] is False
+
+
+def test_page_identity_pins_route_like_hashes_but_not_plain_anchors() -> None:
+    anchor_a = _run("page-identity", ["https://app.example/dashboard#results"])
+    anchor_b = _run("page-identity", ["https://app.example/dashboard#other-section"])
+    assert anchor_a["identity"] == anchor_b["identity"], \
+        "a plain anchor-name hash change (table of contents, in-page jump) must stay allowed"
+
+    route_a = _run("page-identity", ["https://app.example/#/dashboard"])
+    route_b = _run("page-identity", ["https://app.example/#/settings"])
+    assert route_a["identity"] != route_b["identity"], \
+        "a hash-routed SPA switching screens via the hash alone must be caught — same origin+pathname+search, different rendered screen"
+
+    hashbang_a = _run("page-identity", ["https://app.example/#!/users/1"])
+    hashbang_b = _run("page-identity", ["https://app.example/#!/users/2"])
+    assert hashbang_a["identity"] != hashbang_b["identity"]
+
+
+# ------------------------------------------------------------------------------- pixel-ceiling preflight
+def test_pixel_ceiling_is_preflighted_before_capturing_the_next_tile() -> None:
+    bg = (EXT / "background.js").read_text()
+    loop_start = bg.index("while (idx < grid.length) {")
+    # the SAME line also appears earlier, inside fallbackVisibleCapture -- search from loop_start onward so we
+    # find the tile loop's own capture call, not the fallback's.
+    first_capture_call = bg.index("dataUrl = await throttledCaptureVisibleTab(tab.windowId);", loop_start)
+    preflight_block = bg[loop_start:first_capture_call]
+    assert "if (capturedScale != null) {" in preflight_block
+    assert "const projectedPixels = viewportWidth * capturedScale * viewportHeight * capturedScale * (shots.length + 1);" in preflight_block
+    assert "partialReason = 'ceiling_pixels'; break;" in preflight_block
+    # the preflight must appear BEFORE the tile is actually captured, not after
+    assert preflight_block.index("projectedPixels") < len(preflight_block)
+
+
+def test_post_capture_pixel_check_remains_as_a_first_tile_backstop() -> None:
+    # the very first tile can't be preflighted (capturedScale isn't known until a real bitmap has been decoded),
+    # so the post-capture nsCheckCeilings call must still exist as a defensive backstop.
+    bg = (EXT / "background.js").read_text()
+    assert "const ceilingHit = nsCheckCeilings(" in bg
+    assert "maxTotalPixels: CAPTURE_MAX_TOTAL_PIXELS" in bg
+
+
+# ------------------------------------------------------------------------------- non-brittle version floor
+def test_manifest_version_floor_matches_the_established_pattern() -> None:
+    # structural gate: the fix for gap #2 must follow the SAME non-brittle floor-comparison pattern
+    # tests/test_s32_course_scanner.py::test_the_extension_version_moved already established, not reintroduce
+    # a new hard-pinned literal under a different name.
+    src = (ROOT / "tests" / "test_s33_page_videos.py").read_text()
+    fn = src[src.index("def test_the_extension_version_moved_again():"):]
+    fn = fn[:fn.index("\n\n")]
+    assert 'mf["version"] == "1.7.0"' not in fn, "must not still hard-pin an exact version literal"
+    assert ">= (1, 7, 0)" in fn

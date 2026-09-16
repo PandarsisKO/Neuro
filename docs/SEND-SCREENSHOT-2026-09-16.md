@@ -475,3 +475,54 @@ edited code:
 
 Net: nothing in this release gate implicates the send-screenshot feature or this repair round's changes. The
 live-Chrome acceptance matrix above remains the only work between here and closing this mission.
+
+## Repair round 4 (2026-09-16, Kyle's third independent re-review of shipped 1.9.2)
+
+Kyle confirmed all 3 gaps from repair round 3 landed correctly (extension 1.9.2, 53 tests), and would still not
+close the mission. He raised 4 things: the live-Chrome pass remains completely outstanding (unchanged — still
+the main blocker, still needs Kyle's own hands); a failing test round 3 dismissed as "unrelated" was in fact
+directly connected to this mission; the round-3 release artifact wasn't actually commit-bound; and 2 small
+evidence-integrity gaps in the capture engine.
+
+**Correction accepted**: `tests/test_s33_page_videos.py::test_the_extension_version_moved_again` hard-pins
+`mf["version"] == "1.7.0"`, a literal frozen at an earlier mission (CS: Scan this course hardening). Every
+later mission that legitimately bumps `manifest.json` — including this one, at 1.9.0/1.9.1/1.9.2 — breaks that
+literal. Calling that failure "unrelated" in repair round 3's release-gate summary was wrong: it fails *because*
+this mission changed the version, which is exactly what "connected to this mission" means. Fixed to match the
+non-brittle floor-comparison pattern `tests/test_s32_course_scanner.py::test_the_extension_version_moved` had
+already established (`tuple(...) >= (1, 7, 0)`), so it proves the same historical fact (the version moved past
+1.7.0 and never regressed) without needing a manual literal bump on every future mission.
+
+Two small evidence-integrity gaps fixed:
+
+- **`nsPageIdentity` ignored the URL hash entirely.** That's correct for an ordinary in-page anchor jump
+  (`#results`), but hash-ROUTED single-page apps switch between entirely different rendered screens through the
+  hash alone (`#/dashboard`, `#!/settings`) while `origin+pathname+search` never changes — letting a hash-routed
+  SPA navigate to a different screen mid-capture without tripping the round-3 identity check, the same failure
+  shape gap #B was meant to close. Fixed with a heuristic, `nsIsRouteLikeHash(hash)`: a hash counts as
+  route-like (and joins the pinned identity) when it contains `/` or `?` — how every mainstream hash-router
+  spells a route, and never how a plain anchor name looks. A bare anchor jump stays allowed exactly as before.
+- **The pixel ceiling was checked only AFTER a tile was captured and pushed to `shots`.** The stitch-canvas
+  allocation backstop (round 3, gap #A) still made this safe, but reactively — a capture could still spend a
+  `captureVisibleTab` call and a tile only to discard the work once assembly hit the backstop. Fixed: once
+  `capturedScale` is known (after the first tile), the loop now projects the total after one more tile and
+  stops cleanly as `partial_page` BEFORE capturing it if that would exceed `CAPTURE_MAX_TOTAL_PIXELS`. The
+  post-capture check remains as a defensive backstop for the one case that can't be preflighted — the very
+  first tile, before any real captured scale is known.
+
+**Release artifact commit-binding.** The round-3 artifact's filename and doc entry claimed SHA `7b77fdd`, but
+the artifact's own `git_sha` field read `"nogit"` — it ran against a plain `rsync` copy of the source tree, not
+an actual git checkout, so `release-check`'s own git-sha detection had nothing to find. HANDOFF is explicit that
+a `nogit`-marked artifact is historical evidence only, not proof against a specific candidate. Fixed by cloning
+the repository locally (`git clone --local`, excluding the gitignored `data/`/`data-audit/` directories that
+made a full copy of the working tree impractical) so `release-check` runs inside a real git checkout and its
+`git_sha` is the actual candidate commit — see the release-gate entry below for this round's regenerated,
+genuinely commit-bound artifact.
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 59 (route-like-hash heuristic, hash-routed identity
+pinning vs plain-anchor exemption, the pixel-ceiling preflight's position in the loop, and a structural gate on
+the version-floor fix). `tests/test_s33_page_videos.py` and `tests/test_s32_course_scanner.py` both clean. All
+105 (combined) pass. Extension bumped to 1.9.3.
+
+The live-Chrome acceptance matrix remains entirely outstanding — nothing in this round changes that. It is still
+the sole remaining step between here and closing this mission.
