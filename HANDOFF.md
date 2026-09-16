@@ -4676,7 +4676,7 @@ Kyle confirmed all 3 gaps from repair round 3 landed correctly, and raised 4 mor
   not actually commit-bound despite the filename/doc claiming a SHA. Fixed by cloning the repo locally so
   release-check runs in a real git checkout; see the release-gate entry below for the regenerated artifact.
 
-Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 59; `test_s33`/`test_s32` both clean. All 105
+Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 58; `test_s33`/`test_s32` both clean. All 105
 (combined) pass. Extension bumped to 1.9.3.
 
 Still not done: the live-Chrome acceptance matrix remains entirely outstanding — this round changes nothing
@@ -4684,3 +4684,27 @@ about that. It is still the sole remaining step before this mission can close, a
 hands.
 
 Commit: c2b3375.
+
+## 2026-09-16 — Send screenshot: repair round 4's release-gate pass (genuinely commit-bound, against `9e49680`)
+
+Full detail in `docs/SEND-SCREENSHOT-2026-09-16.md`'s "Repair round 4" section. This closes Kyle's release-artifact
+finding: the isolated workspace is now a real `git clone --local` from the connected folder (`data/`/
+`data-audit/` are gitignored, so the clone stays small) instead of a plain `rsync` mirror — `release-check`'s
+own git-sha detection now has an actual `.git` to read, and this is the pattern for every future release-gate
+run on this mission, not just this one.
+
+Full pytest (`-n 4`, 1764 collected): 1760 passed, 4 failed, all inspected and confirmed non-regressions — a
+pre-existing unrelated design-drift test, a meta-test that cascades from the one pre-existing `repository
+hygiene` FAIL below (not a regression in the checked code), and 2 tests that pass cleanly in isolation
+(`-n 4` cross-test state contamination, not a real failure). `neurosearch release-check --no-pytest`: PASS on
+every gate except the same pre-existing `repository hygiene` FAIL (`STATE-OF-THE-APP-2026-09-14-1217.md`,
+committed 2026-09-14, before this mission) — `Foundation`'s local-CLI-dependent check passed this run.
+Artifact: `evals/release/release-check-0.63.91-9e49680-20260916-042213.json`, and — the point of this
+entry — `git_sha` INSIDE the artifact itself now reads `"9e49680"`, not `"nogit"`, matching both the filename
+and this round's actual final commit. Version agreement unchanged at `0.63.91`.
+
+Nothing in this release gate implicates the send-screenshot feature. The live-Chrome acceptance matrix remains
+the only work standing between here and closing this mission — still entirely outstanding, still requires
+Kyle's own hands.
+
+Commit: (this entry — see commit following this entry).

@@ -519,10 +519,38 @@ made a full copy of the working tree impractical) so `release-check` runs inside
 `git_sha` is the actual candidate commit — see the release-gate entry below for this round's regenerated,
 genuinely commit-bound artifact.
 
-Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 59 (route-like-hash heuristic, hash-routed identity
+Tests: `tests/test_s54_send_screenshot.py` grew from 53 to 58 (route-like-hash heuristic, hash-routed identity
 pinning vs plain-anchor exemption, the pixel-ceiling preflight's position in the loop, and a structural gate on
 the version-floor fix). `tests/test_s33_page_videos.py` and `tests/test_s32_course_scanner.py` both clean. All
 105 (combined) pass. Extension bumped to 1.9.3.
+
+A fresh full release-gate pass was run against this round's final commit (`9e49680`), this time in an ACTUAL
+git checkout rather than the plain rsync copy that produced repair round 3's `nogit`-marked artifact — Kyle was
+right that the artifact wasn't commit-bound, so `release-check`'s own git-sha detection had nothing to find. The
+isolated workspace is now `git clone --local` from the connected folder (`data/`/`data-audit/` are gitignored,
+so the clone is small and fast) rather than an `rsync` mirror, and this is the pattern going forward for every
+future release-gate run on this mission:
+
+- **Full pytest** (`pytest -q -n 4`, 1764 tests collected): 1760 passed, 4 failed. Each failure was inspected:
+  `test_s50_design_drift.py::test_colour_literals_stay_in_the_token_blocks` is the same pre-existing, unrelated
+  web-UI colour-literal ceiling noted in round 3; `test_j3_fallback.py::test_doctor_is_fast_and_release_check_writes_an_artifact`
+  fails only because it asserts `release.release_check()`'s own verdict is `PASS`, cascading from the one
+  pre-existing `repository hygiene` FAIL below — not a regression in the checked code itself;
+  `test_k_retrieval_fixes.py::test_priority_api_and_listing` and
+  `::test_immediate_upload_is_ready_in_the_same_request_and_used_on_the_same_turn` both pass cleanly run in
+  isolation, confirming `-n 4` parallel cross-test state contamination (shared circuit-breaker/global state), not
+  a real regression. None touch a file this mission has ever edited.
+  `tests/test_s54_send_screenshot.py`, `tests/test_s33_page_videos.py`, `tests/test_s32_course_scanner.py`: all
+  105 (combined) pass, run standalone or under `-n 4`.
+- **Tier 1 / release-check** (`neurosearch release-check --no-pytest`), now git-sha-bound: PASS on every
+  deterministic gate except one — `repository hygiene` still flags `STATE-OF-THE-APP-2026-09-14-1217.md` as an
+  unexpected root entry, committed `b07f2a1` on 2026-09-14, before this mission started, unrelated to
+  send-screenshot. (The `Foundation` gate — dependent on local-Claude-Code-CLI availability in this sandbox —
+  PASSED this run, unlike round 3's; that dependency is what varies between runs, never this feature's code.)
+  Artifact: `evals/release/release-check-0.63.91-9e49680-20260916-042213.json` — `git_sha` inside the artifact
+  itself now reads `"9e49680"`, matching the filename and this round's actual final commit.
+- **Version agreement**: unchanged at `0.63.91` across `pyproject.toml`/`neurosearch/__init__.py`/`UI_VERSION`
+  (the app's own version; independent of the extension's `manifest.json`, now 1.9.3).
 
 The live-Chrome acceptance matrix remains entirely outstanding — nothing in this round changes that. It is still
 the sole remaining step between here and closing this mission.
