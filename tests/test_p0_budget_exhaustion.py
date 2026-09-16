@@ -63,12 +63,17 @@ def test_budget_paused_mid_project_requeues_one_job_not_two(p14_db, monkeypatch)
             raise usage.BudgetPaused("daily budget reached", 60)
         return real(project_id, source_id, **kw)
 
-    monkeypatch.setattr(findings, "suggest_for_source", fake)
-
-    claimed = db.claim_job(("suggest_findings",), worker_id="test-driver")
-    assert claimed and claimed["id"] == job["id"]
-    outcome = jobs.execute(claimed, "test-driver")
-    monkeypatch.undo()
+    # S51-c (2026-09-16): a SEPARATE MonkeyPatch context of our own, not the shared `p14_db`/test-parameter
+    # `monkeypatch` fixture instance -- p14_db patches settings.data_dir through that same shared instance, and
+    # db.connect() now (correctly) reopens against whatever settings.data_dir currently resolves to. A blanket
+    # `monkeypatch.undo()` on the shared instance would undo p14_db's data_dir swap too, silently reconnecting
+    # this test to the untouched session database instead of its own tmp_path one. Undoing only this one patch
+    # is exactly what the test always intended.
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(findings, "suggest_for_source", fake)
+        claimed = db.claim_job(("suggest_findings",), worker_id="test-driver")
+        assert claimed and claimed["id"] == job["id"]
+        outcome = jobs.execute(claimed, "test-driver")
 
     assert outcome == "queued"
     assert calls == [s1, s2], "s1 completes, s2 is where the budget wall is hit"

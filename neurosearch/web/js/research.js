@@ -119,7 +119,7 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
   // into "what it gave you" as if it were evidence itself.
   const cap = d.capture;
   const capModeWords = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
-  const capturedLine = cap ? `<div class="card mt-2" style="background:#f7f8fa">
+  const capturedLine = cap ? `<div class="card mt-2" style="background:var(--panel2)">
       <b>📸 Captured${cap.page_title ? ` from ${esc(cap.page_title)}` : ''}</b>
       <span class="muted"> · ${esc(new Date(cap.captured_at * 1000).toLocaleString())}${cap.mode ? ` · ${esc(capModeWords[cap.mode] || cap.mode)}` : ''}</span>
       ${cap.partial_reason ? `<span class="tag" title="the capture stopped before the whole page was assembled">partial</span>` : ''}

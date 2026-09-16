@@ -69,10 +69,16 @@ def test_preflight_refuses_when_the_live_database_is_not_clean(p0_db, monkeypatc
 
 def test_preflight_does_not_permanently_lock_out_a_repaired_database(p0_db, monkeypatch):
     real = db.connect()
-    monkeypatch.setattr(db, "connect", lambda: _CorruptIntegrityCheck(real))
-    with pytest.raises(RuntimeError):
-        db.preflight_autonomous("env-retry")
-    monkeypatch.undo()   # database is "repaired" -- back to the real connection
+    # S51-c (2026-09-16): a SEPARATE MonkeyPatch context, not the shared `p0_db`/test-parameter `monkeypatch`
+    # instance -- p0_db patches settings.data_dir through that same shared instance, and db.connect() now
+    # (correctly) reopens against whatever settings.data_dir currently resolves to. A blanket monkeypatch.undo()
+    # on the shared instance would undo p0_db's data_dir swap too, silently reconnecting this test to the
+    # untouched session database instead of its own tmp_path one.
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(db, "connect", lambda: _CorruptIntegrityCheck(real))
+        with pytest.raises(RuntimeError):
+            db.preflight_autonomous("env-retry")
+    # database is "repaired" -- back to the real connection
     info = db.preflight_autonomous("env-retry")
     assert info["ok"] is True and info["backup_path"]
 

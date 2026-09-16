@@ -825,10 +825,29 @@ def refuse_bridge_mount(path: str | os.PathLike[str]) -> None:
 
 
 def connect() -> sqlite3.Connection:
-    """Thread-local connection."""
+    """Thread-local connection, self-healing against a mid-process data_dir change.
+
+    S51-c (2026-09-16): a THREAD other than the one a test's own fixture teardown runs on can hold the stale
+    connection -- proven live: FastAPI sync route handlers run via Starlette's anyio threadpool, a pool of
+    worker threads reused across requests/tests. A test file's autouse fixture that swaps settings.data_dir for
+    the duration of one test (e.g. tests/test_r2_bootstrap.py's `_fresh`) resets db._local.conn on the MAIN
+    thread only -- it has no way to reach whichever anyio worker thread actually served that test's client.*()
+    calls and opened ITS OWN connection to the swapped dir. That worker thread is later reused by an unrelated
+    test's client.*() call and still returns the swapped-away database. Reproduced outside pytest and bisected
+    to this exact mechanism (see HANDOFF.md, 2026-09-16) before this fix landed.
+    In production settings.data_dir never changes after startup, so `bound_db_path` and the freshly resolved
+    `db_path` always agree there -- this is a no-op in production and only self-heals the test-only path swap,
+    on whichever thread happens to notice, not just the one that performed the swap."""
     conn = getattr(_local, "conn", None)
+    db_path = str(getattr(_local, "db_path", settings.db_path))
+    if conn is not None and getattr(_local, "bound_db_path", None) != db_path:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        conn = None
+        _local.conn = None
     if conn is None:
-        db_path = str(getattr(_local, "db_path", settings.db_path))
         refuse_bridge_mount(db_path)
         conn = sqlite3.connect(db_path, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
@@ -840,6 +859,7 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA temp_store=MEMORY")
         conn.execute(f"PRAGMA journal_size_limit={WAL_LIMIT_BYTES}")   # 0.61.2: give the log file back after a checkpoint
         _local.conn = conn
+        _local.bound_db_path = db_path
     return conn
 
 
@@ -851,6 +871,7 @@ def close_thread_connection() -> None:
             conn.close()
     finally:
         _local.conn = None
+        _local.__dict__.pop("bound_db_path", None)
 
 
 MIGRATIONS = [
