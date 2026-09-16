@@ -5581,3 +5581,31 @@ No paid provider call was made anywhere in this work. `config.py`/`cli.py` chang
 
 Commits this segment: `0289f17` (config.override + nightly_run_cmd fix + test_s59), `dcabfbc` (release-gate
 artifact), `5940242` (PRODUCT-SCHEDULER.md reconciliation), plus this EXECUTION-LADDER.md update.
+
+## Execution — FM1 Field Map reference-list clustering (2026-09-16, executing model)
+
+Implemented FM1 per the FM1 mission plus Kyle's 8 "FM1 EXECUTION CORRECTIONS": local-first seed discovery
+(project Works with a DOI identity → project sources via the Works layer's own manifestation relationship →
+Candidate Index → explicit `--fetch-seeds` only as a last resort), a new FM1-only Crossref singleton reference
+fetch (`scholar.fetch_crossref_references`) that deliberately does NOT touch `CROSSREF_FIELDS` or any `select`
+parameter, deterministic collapsing/clustering with `reference_count`/`referenced_work_count`/`seed_count` kept
+distinct, deterministic labels only, coverage language scoped to the project's own extracted evidence, and the
+six completeness counters plus an `insufficient_reference_metadata` state Kyle required. New module
+`neurosearch/field_map.py`, CLI `neurosearch project field-map`, `tests/test_s60_field_map.py` (25 tests covering
+the original 15 scenarios plus the corrections' 7 additions A–G).
+
+Full suite: 1863 passed (2 consecutive clean parallel runs, up from 1838 before FM1). Regression-targeted run
+(`scholar`/`works`/`claims`/`candidates`/`cli`) also clean, specifically proving `scholar.search()`/`CROSSREF_FIELDS`
+are byte-for-byte unaffected by FM1's existence (correction #7.A). `repo-check` PASS. `release-check --no-pytest`
+PASS at `87ba57b` (artifact committed). Clean tree confirmed.
+
+Recorded `FM1-gate` in EXECUTION-LADDER.md (Kyle-gated real-world validation, mirroring FM0/CR7/LP6/AD4B/CR8b-gate's
+pattern) since live Crossref/OpenAlex access is still unavailable from this sandbox (re-checked via `curl` from the
+connected device's own shell: 403 from the org's egress proxy for both `api.crossref.org` and `api.openalex.org`).
+FM2/FM3 stay unbuilt until FM1-gate has real evidence, per Kyle's explicit instruction not to preselect what comes
+next before that evidence exists.
+
+No paid provider call was made anywhere in this work. Verified only against the `.env`-free verify workspace.
+
+Commits this segment: `87ba57b` (field_map.py + scholar.fetch_crossref_references + CLI command + test_s60, code),
+`97e9edb` (release-check artifact, PASS at 87ba57b), plus this EXECUTION-LADDER.md/PRODUCT-SCHEDULER.md update.

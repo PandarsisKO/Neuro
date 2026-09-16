@@ -674,8 +674,34 @@ vocabulary. Written go/no-go. No paid pass unless the $0 method fails AND the pa
 See `docs/FM0-EXPERIMENT.md`: GO on reference-list clustering (additive to scholar.py, no new capability); NO-GO
 on heading clustering (needs a new extraction primitive, real acquisition cost). Live evidence on a real project
 is Kyle-gated (sandbox has no route to Crossref/OpenAlex) -- FM1 stays gated on this decision, not built here.
-### FM1 `[ ]` blind-spot PROPOSALS (never "you are missing X") — READY AFTER FM0 go.
-### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — with FM1.
+### FM1 `[x] 87ba57b` reference-list clustering prototype — DONE · lane: claude · needs: `scholar`/`works`/`claims` tooling
+`neurosearch project field-map <project> [--fetch-seeds Q] [--json]`: local-first seed discovery (project Works with
+a DOI identity -> project sources via the Works manifestation relationship -> Candidate Index -> explicit
+`--fetch-seeds` only as a last resort, deduplicated by DOI across all four with provenance recorded), up to 3
+Crossref singleton reference fetches (`scholar.fetch_crossref_references`, a new FM1-only fetch path that does NOT
+touch `CROSSREF_FIELDS` or ordinary Scholar discovery), deterministic greedy token-overlap clustering of the
+collapsed bibliography into field areas with `reference_count`/`referenced_work_count`/`seed_count` kept distinct,
+deterministic labels (never a model-generated category name), and coverage classified against the project's OWN
+extracted evidence (`claims.project_vocab` + Claim text + open Evidence Target questions) -- never a claim about
+the whole Library. Six completeness counters plus an `insufficient_reference_metadata` state when reference data is
+too thin to support a conclusion (a missing/empty Crossref `reference` array is a limitation, never evidence of
+absence). Read-only: writes nothing to candidates/sources/claims/targets/the Planner. `tests/test_s60_field_map.py`
+(25 tests, all fixture-fed, no network). Full suite 1863 passed (2 consecutive clean runs); repo-check PASS;
+release-check PASS at `87ba57b`.
+### FM1-gate `[k]` real-world validation — needs: a real project with a genuine review/scholarly seed AND live
+Crossref access, neither available from this sandbox (fresh `curl` check against `api.crossref.org` /
+`api.openalex.org` from the connected device's shell still returns 403 from the org's own egress proxy, matching
+FM0's original finding). **Kyle action**: on a machine with live Crossref access, run
+`neurosearch project field-map <a real project with 1+ scholarly/review sources>` and judge: (A) did seed discovery
+actually find the right seed(s) from what's already in the project, in the stated priority order; (B) did the
+Crossref reference fetch return real, useful bibliography data (or an honest `insufficient_reference_metadata`);
+(C) are the resulting field areas genuinely coherent, not noise from the v1 overlap-based clustering's known
+chaining limitation (see the clustering docstring in `field_map.py`); (D) is the coverage read against the
+project's own evidence accurate and not overclaimed; (E) is `seed_count` doing its inspectability job -- does a
+single-seed field area read more cautiously than a multi-seed one. Record the verdict here. Only after a genuine
+FM1-gate pass is FM2 (accepted proposal -> existing object) worth planning -- do not expand clustering
+sophistication or add a second data source (OpenAlex, headings) speculatively before that evidence exists.
+### FM2 `[ ]` accepted proposal → existing object (Evidence Target or MISSING_PERSPECTIVE tension) — READY AFTER FM1-gate.
 ### FM3 `[ ]` routing through `knowledge.pursue` / `where_to_look` — READY AFTER FM2.
 
 ### Stage 9 (unchanged) — P7 Structured Delta: EXPERIMENT ONLY (L-70), needs L-07 + Kyle's $ yes. Must not block

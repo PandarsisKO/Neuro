@@ -4,6 +4,15 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
+**FM1 RECONCILIATION — 2026-09-16 (later same day, read this first, supersedes the CONTROL-PLANE
+RECONCILIATION note directly below it).** FM1 (reference-list clustering) shipped at `87ba57b`: it is **DONE**,
+not "the one genuinely agent-ready, not-yet-started Claude-lane rung" as the note below still says. `neurosearch
+project field-map <project>` is real, tested (25 tests), full-suite-clean, repo-check/release-check PASS. Only
+**FM1-gate** remains -- Kyle-gated real-world validation on a machine with live Crossref access (this sandbox's
+egress proxy still returns 403 for `api.crossref.org`/`api.openalex.org`, same as FM0 found). FM2/FM3 stay
+unbuilt until FM1-gate has real evidence -- do not start them speculatively. See EXECUTION-LADDER.md's FM1/FM1-gate
+entries for the exact required Kyle action.
+
 **CONTROL-PLANE RECONCILIATION — 2026-09-16, current reality (read this first).** EXECUTION-LADDER.md is the
 live per-item source of truth; this note exists because the rest of this NOW section (and the whole NEXT
 section below) accumulated stale claims that could misdirect a fresh agent. As of this commit:
@@ -16,9 +25,9 @@ section below) accumulated stale claims that could misdirect a fresh agent. As o
   **LP6** remains, Kyle-gated (report a real Claim-status-change id).
 - **SC0b/AD0-AD4A are ALL DONE.** Only **AD4B** remains, Kyle-gated (real usage first, then a `discover-report`
   read).
-- **FM0 is DONE.** FM1 (blind-spot proposals) is the one genuinely agent-ready, not-yet-started Claude-lane rung
-  right now -- its code can be built without Kyle; only FM1's live Crossref/OpenAlex validation needs Kyle's
-  machine.
+- **FM0 is DONE. FM1 is now also DONE** (see the FM1 RECONCILIATION note above this one -- this line predates
+  FM1 shipping and is kept as history, not current guidance). Only **FM1-gate** remains, Kyle-gated (live
+  Crossref/OpenAlex access this sandbox does not have).
 - The "Next eligible in the Claude lane: nothing is READY..." paragraph and the "## NEXT — admitted priorities"
   section below are both **superseded** by the above -- they predate CR3/CR4/CR8a/CR8b/LP5 shipping and describe
   an earlier state. Left in place as history per this file's append-only convention, not deleted; do not act on
@@ -148,7 +157,8 @@ likewise DONE (see EXECUTION-LADDER.md Stage 10-11: CR1-CR8b and LP0-LP5 all `[x
 historical record; EXECUTION-LADDER.md is the live source of truth for current NEXT.
 
 **Current (2026-09-16), read from EXECUTION-LADDER.md directly:**
-- **Agent-ready, no Kyle gate, not yet started:** FM1 (Stage 14, blind-spot proposals) — FM0's $0 experiment
+- **[SUPERSEDED -- 2026-09-16, FM1 shipped at `87ba57b`.]** ~~Agent-ready, no Kyle gate, not yet started:~~ FM1
+  (Stage 14, reference-list clustering) — FM0's $0 experiment
   chose this direction; FM1's own code is Claude-lane and buildable now. (Its live Crossref/OpenAlex validation
   separately needs Kyle's machine, but that doesn't block starting the code.)
 - **Explicitly parked, not ready:** H1 (Stage 15, semantic finding dedupe). P11 Neuro Everywhere remains
