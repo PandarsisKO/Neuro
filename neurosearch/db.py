@@ -106,8 +106,6 @@ CREATE TABLE IF NOT EXISTS source_captures (
     updated_at              REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_source_captures_source ON source_captures(source_id);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_source_captures_client_capture_id
-    ON source_captures(client_capture_id) WHERE client_capture_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS segments (
     id        INTEGER PRIMARY KEY,
@@ -876,6 +874,9 @@ def close_thread_connection() -> None:
 
 MIGRATIONS = [
     ("projects", "context", "ALTER TABLE projects ADD COLUMN context TEXT"),
+    ("source_captures", "capture_partial_reason", "ALTER TABLE source_captures ADD COLUMN capture_partial_reason TEXT"),
+    ("source_captures", "client_capture_id", "ALTER TABLE source_captures ADD COLUMN client_capture_id TEXT"),
+    ("source_captures", "ingest_job_id", "ALTER TABLE source_captures ADD COLUMN ingest_job_id TEXT"),
     ("project_notes", "status", "ALTER TABLE project_notes ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'"),
     ("project_notes", "source_id", "ALTER TABLE project_notes ADD COLUMN source_id TEXT"),
     ("project_notes", "importance", "ALTER TABLE project_notes ADD COLUMN importance INTEGER"),
@@ -1078,6 +1079,8 @@ def init_db() -> None:
     # indexes on migrated columns (must follow the column adds)
     conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_fingerprint ON sources(platform, content_fingerprint)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_sources_canonical ON sources(platform, canonical_url)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_source_captures_client_capture_id "
+                 "ON source_captures(client_capture_id) WHERE client_capture_id IS NOT NULL")
     # R8: exact production predicates, measured on a copied verified backup before admission. The broad Findings
     # list still chooses a scan because one project owns 80% of the table; the source-specific path moved from a
     # table scan (7.87 ms median) to an indexed lookup (0.43 ms). The other indexes remove full scans or temp

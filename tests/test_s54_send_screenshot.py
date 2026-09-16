@@ -100,6 +100,61 @@ def test_background_js_loads_capture_lib_by_reference_not_duplication() -> None:
     assert "indexedDB" in blob_store
 
 
+def test_init_db_migrates_a_source_captures_table_that_predates_repair_round(tmp_path, monkeypatch) -> None:
+    """Regression for a real bug found 2026-09-16 opening a same-day backup snapshot for the Kyle-gate readiness
+    pass: `capture_partial_reason`, `client_capture_id` and `ingest_job_id` were added straight into
+    `source_captures`'s CREATE TABLE statement (the repair round added them to an ALREADY-EXISTING table) instead
+    of through db.MIGRATIONS. `CREATE TABLE IF NOT EXISTS` is a no-op against a pre-existing table, so any
+    `source_captures` table that predates the repair round -- any backup taken between the original ship and the
+    repair round, or a live process never restarted since -- made `init_db()` crash outright: the very next
+    `executescript(SCHEMA)` statement, the unique index on `client_capture_id`, referenced a column that did not
+    exist yet, and that happens before the MIGRATIONS loop even runs. Reproduces the exact pre-repair-round table
+    shape and proves init_db() now migrates it cleanly instead of crashing the app on the next restart."""
+    import sqlite3
+    from neurosearch import db
+    from neurosearch.config import settings
+
+    data = tmp_path / "data"
+    data.mkdir()
+    conn = sqlite3.connect(data / "neurosearch.db")
+    conn.executescript("""
+        CREATE TABLE source_captures (
+            id TEXT PRIMARY KEY, source_id TEXT, project_id TEXT, capture_url TEXT NOT NULL,
+            capture_page_title TEXT, captured_at REAL NOT NULL, capture_mode TEXT NOT NULL,
+            capture_page_width INTEGER, capture_page_height INTEGER, capture_viewport_width INTEGER,
+            capture_viewport_height INTEGER, capture_dpr REAL, capture_note TEXT,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL
+        );
+        CREATE INDEX ix_source_captures_source ON source_captures(source_id);
+    """)
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(settings, "data_dir", data)
+    monkeypatch.setattr(db._local, "conn", None, raising=False)
+    try:
+        db.init_db()  # must not raise
+        conn = db.connect()
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(source_captures)").fetchall()}
+        assert {"capture_partial_reason", "client_capture_id", "ingest_job_id"} <= cols
+        idx = {r[1] for r in conn.execute("PRAGMA index_list(source_captures)").fetchall()}
+        assert "ix_source_captures_client_capture_id" in idx
+        # the migrated table is actually usable through the real write path, not just structurally present
+        conn.execute(
+            "INSERT INTO source_captures (id, source_id, project_id, capture_url, captured_at, capture_mode, "
+            "client_capture_id, ingest_job_id, created_at, updated_at) VALUES "
+            "('c1', NULL, 'p1', 'https://example.com', 0, 'full_page', 'cap-1', 'job-1', 0, 0)")
+        conn.commit()
+        assert conn.execute("SELECT client_capture_id FROM source_captures WHERE id='c1'").fetchone()[0] == "cap-1"
+    finally:
+        try:
+            db.connect().close()
+        except Exception:
+            pass
+        db._local.conn = None
+
+
+
 # ---------------------------------------------------------------------------------------------------- server side
 # Everything below exercises the /api/ingest/file provenance contract end to end: pending capture_events row
 # written BEFORE the job is enqueued, materialized once the job resolves a source, and the queued response never

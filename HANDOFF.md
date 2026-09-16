@@ -5770,3 +5770,41 @@ explicitly smaller than it looked from the mission framing.
 
 No production code changed. `repo-check: PASS`. No release-check needed (docs-only).
 
+
+## Real gate-closing pass, part 1: a genuine crash-on-restart bug found and fixed (2026-09-16)
+
+While executing Kyle's "close the real-world gates" mission, opened a same-day live backup snapshot
+(`data/backups/neurosearch-20260916-1241.db`, copied to this session's own workspace outside the bridge mount,
+per CLAUDE.md rule #1 -- never opened the live DB directly) to run L-51/FM1/AD4B's read-only CLI commands for
+real against Kyle's real project data. `neurosearch project list` crashed `init_db()` on that snapshot:
+`sqlite3.OperationalError: no such column: client_capture_id`.
+
+Root cause: the send-screenshot repair round added `capture_partial_reason`, `client_capture_id`, and
+`ingest_job_id` straight into `source_captures`'s `CREATE TABLE` statement -- but that table already existed in
+production from the original ship. `CREATE TABLE IF NOT EXISTS` is a no-op against a pre-existing table, so
+those three columns never actually got added to any `source_captures` table that predates the repair round --
+and the very next statement in the static SCHEMA string, the unique index on `client_capture_id`, then fails on
+the missing column before `db.MIGRATIONS`'s ALTER-TABLE loop even gets a chance to run. Any backup taken between
+the original send-screenshot ship and the repair round, or a live server process that hasn't restarted since,
+hits this exact crash on its next `init_db()` call.
+
+Fixed at the established pattern this codebase already uses everywhere else for a post-hoc column: added all
+three columns to `db.MIGRATIONS`, and moved the unique index from the static `SCHEMA` string to the existing
+"indexes on migrated columns (must follow the column adds)" block that already runs after the migrations loop.
+Regression test added (`tests/test_s54_send_screenshot.py::test_init_db_migrates_a_source_captures_table_that_predates_repair_round`):
+builds the exact pre-repair-round table shape by hand, proves `init_db()` no longer crashes, the columns and
+index land, and the migrated table is actually writable through a real insert -- not just structurally present.
+
+Gates run: `tests/test_s54_send_screenshot.py` 59/59 (was 58; the new test is the +1), the existing legacy-DB
+migration tests in `test_core.py` all pass. Full suite run twice in the isolated `ns-verify-git/src2` workspace
+-- once with this change, once without (`git stash`) -- to isolate this change's effect from this sandbox's
+already-documented order-dependent xdist flakiness: 38 failures either way, same names, all pre-existing/
+environmental (local-Claude-Code-CLI unavailable here -- `test_r4_local_model`/`test_j3_fallback`/
+`test_s39_answering_model`/`test_s43_foundation`/`test_n2_local_ai`/`test_p1_perf`/`test_indestructible`/a few
+`test_core` findings-pipeline tests that share that dependency); zero new failures from this change. `repo-check:
+PASS`. `release-check --no-pytest`: PASS on every gate except the same pre-existing Foundation/local-CLI FAIL;
+artifact `evals/release/release-check-0.63.91-53f7d27-20260916-205613.json` (isolated workspace, uncommitted
+diff applied on top of `53f7d27`).
+
+Committed as its own change, ahead of the rest of the real-gate work below.
+
