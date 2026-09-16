@@ -4527,3 +4527,66 @@ against real pages, now including at least one wider-than-viewport page (new hor
 lazy/infinite-scroll page (ceiling-on-actual-progress + mid-capture grid growth).
 
 Commit: 48dab98.
+
+## 2026-09-16 — Send screenshot: repair round 2 (Kyle's independent re-review of the shipped 1.9.0 code)
+
+Kyle reviewed the actual GitHub-shipped 1.9.0 implementation himself (not the summary above) and confirmed the
+repair round landed real, substantial work, but found 4 more code gaps to fix before the still-outstanding live
+Chrome acceptance pass, plus 3 smaller hardening items to fold into the same pass. His verdict at the time:
+"Implementation: ~90-95% complete. Release acceptance: not complete." Full detail: `docs/SEND-SCREENSHOT-2026-09-16.md`.
+
+Four gaps fixed:
+1. **Grid-regrowth traversal could skip newly-inserted earlier tiles.** `nsPlanTileGrid` is row-major, so a page
+   growing WIDER mid-capture (a new column) shifts every later row's tile index in the rebuilt grid — continuing
+   the walk from the old `idx` could walk straight past a tile that now sits earlier than `idx` already is, and
+   the result would still be labeled `full_page` with pixels actually missing. Fixed: any grid regrowth now
+   resets `idx = 0` and relies on the existing `seenTileKeys` dedup Set to cheaply skip already-captured landed
+   positions (`extension/background.js`, `runCapture()`).
+2. **Worker-respawn reconciliation didn't verify the retryable Blob actually exists.** Every persisted
+   `uploading` record was unconditionally mapped to `upload_failed` (offering a "Retry send" button) even when
+   the IndexedDB blob was gone. `nsReconcileDecision` now takes a third `blobExists` argument; the async
+   IndexedDB check lives in `reconcileCapturesOnWorkerInit()` (keeping the decision function itself pure/sync),
+   and a missing blob now maps to a terminal `failed` with an honest message instead
+   (`extension/capture-lib.js`, `extension/background.js`).
+3. **Blob TTL (2h/5-max/200MB) was never enforced on a recurring timer** — only at `onInstalled`/`onStartup` and
+   after a successful upload's own cleanup, so a failed screenshot could outlive its promised TTL for the rest of
+   a long Chrome session. The existing 5-minute heartbeat alarm now also calls `pruneCaptures()`
+   (`extension/background.js`).
+4. **The 40M-pixel safety ceiling used `devicePixelRatio` instead of the actual captured bitmap scale**, while
+   `stitchShots` (correctly) derives its placement scale from the first tile's real bitmap width via
+   `nsStitchScale`, since Chrome's actual output can differ from `cssPixels × dpr` under zoom/rounding. The
+   ceiling and the stitched image could therefore disagree. Fixed: the running `totalPixels` total now derives
+   `capturedScale` once from the first captured tile's real bitmap (falling back to `dpr` only if decoding
+   fails), and uses it in place of `dpr` for pixel accounting. `dpr` itself is untouched everywhere else in the
+   file — it remains pure provenance metadata, per Kyle's explicit instruction (`extension/background.js`).
+
+Three smaller hardening items folded in:
+- `nsTileKey(x, y)` no longer rounds landed coordinates (`Math.round`) before keying on them — it keys on the
+  actual landed position, so two genuinely distinct fractional scroll positions can no longer collapse into the
+  same dedup key (`extension/capture-lib.js`).
+- `stitchShots()` now validates every captured bitmap has the same dimensions as the first and throws a clear
+  `CaptureMechanismError` on a mismatch, instead of silently assuming uniform dimensions and corrupting tile
+  placement (`extension/background.js`).
+- `api_ingest_file`'s capture_id branch now wraps `db.create_or_get_capture_ingest_request(...)` in a
+  try/except that deletes the already-written temp upload file and re-raises on any exception, closing a
+  temp-file leak that had no cleanup path before (`neurosearch/api.py`).
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 31 to 43 — new jsdom-harness coverage for grid-regrowth
+traversal (including a deliberately-reverted variant used to prove the harness actually catches the bug class),
+the 3-argument `nsReconcileDecision` signature, the heartbeat-alarm prune wiring, the pixel-ceiling
+scale-derivation source, unrounded tile-key dedup, the stitch dimension-mismatch guard, and the orphaned
+temp-file cleanup (an injected-failure test against a real `client.post`). All 43 pass; the touched-surface
+regression (`test_core.py`, `test_k_retrieval_fixes.py`, `test_m1_epub.py`) is clean except the same
+pre-existing sandbox-only "OpenAI Embeddings is temporarily unavailable" network failures noted in the entry
+above — confirmed unrelated (they reproduce in isolation on `test_core.py` alone, on a test that never touches
+this feature's code).
+
+Still not done — same as before, now more itemized: the live-browser acceptance gate remains open. Kyle's
+full acceptance matrix (ordinary/tall/sticky pages, horizontal scroll, mid-capture width/height growth
+specifically exercising gap #1, real DPR/zoom seam inspection, canvas/WebGL, cross-origin iframe, tab-switch
+abort, forced service-worker death mid-capture and mid-upload — including with the IndexedDB blob deliberately
+absent to exercise gap #2's fix, network loss + Retry send, partial-page ceiling/labeling, course-scan/capture
+mutual exclusion, and inspecting the resulting screenshot in the Neuro app itself) is documented in
+`docs/SEND-SCREENSHOT-2026-09-16.md` and has NOT been run. Results belong in that doc once it is.
+
+Commit: (this repair round 2 fix pass — see commit following this entry).

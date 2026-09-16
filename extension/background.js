@@ -328,6 +328,16 @@ async function stitchShots(shots, pageWidthCss, pageHeightCss) {
       const blob = await resp.blob();
       bitmaps.push({ shot, bmp: await createImageBitmap(blob) });
     }
+    // hardening item (repair round 2): scale is derived from the FIRST bitmap only, which silently assumed every
+    // later tile shares its dimensions. captureVisibleTab should produce uniform output for one tab/window across
+    // a single capture run, but a mismatch (a mid-capture DPR/zoom change, a window resize) would otherwise
+    // corrupt placement math for every tile after the first with no signal at all. Fail loudly instead.
+    const firstW = bitmaps[0].bmp.width, firstH = bitmaps[0].bmp.height;
+    const mismatch = bitmaps.find(b => b.bmp.width !== firstW || b.bmp.height !== firstH);
+    if (mismatch) {
+      throw new CaptureMechanismError(
+        `captured tiles have inconsistent bitmap dimensions (expected ${firstW}x${firstH}, got ${mismatch.bmp.width}x${mismatch.bmp.height}) — the browser window or zoom level may have changed mid-capture`);
+    }
     scale = nsStitchScale(bitmaps[0].bmp.width, shots[0].viewportWidthCss || pageWidthCss);
     const w = Math.max(1, Math.round(pageWidthCss * scale));
     const h = Math.max(1, Math.round(pageHeightCss * scale));
@@ -401,6 +411,13 @@ async function runCapture(tabId, rec) {
     let partialReason = null;
     let idx = 0;
     let pageW = dims.scrollWidth, pageH = dims.scrollHeight;
+    // repair round 2 (gap #4): the 40M-pixel safety ceiling must agree with what stitchShots will actually
+    // produce. stitchShots derives its placement scale from the FIRST captured tile's real bitmap width vs
+    // the CSS viewport width (nsStitchScale) rather than trusting devicePixelRatio, because Chrome's actual
+    // captureVisibleTab output can differ from cssPixels * dpr under zoom/rounding. The ceiling accounting
+    // below now uses that same real, captured scale once it is known -- dpr itself is left untouched
+    // everywhere else in this file as pure provenance metadata.
+    let capturedScale = null;
 
     while (idx < grid.length) {
       if (now() - startedAt > CAPTURE_MAX_ELAPSED_MS) { partialReason = 'ceiling_time'; break; }
@@ -434,17 +451,42 @@ async function runCapture(tabId, rec) {
       rec.fold = shots.length; rec.updated_at = now();
       await putCapture(rec);
 
+      if (capturedScale == null) {
+        // Derive the real captured scale once, from this (first) tile's actual bitmap -- same technique
+        // stitchShots uses -- so the running pixel total below reflects what will actually be stitched,
+        // not an dpr-based estimate that can disagree with it under zoom/scaling edge cases. Never let a
+        // decode failure here block or fail the capture itself: fall back to dpr for accounting only.
+        try {
+          const resp = await fetch(dataUrl);
+          const blob = await resp.blob();
+          const bmp = await createImageBitmap(blob);
+          capturedScale = nsStitchScale(bmp.width, viewportWidth);
+          bmp.close();
+        } catch (e) {
+          capturedScale = dpr;
+        }
+      }
+
       // re-measure AFTER this tile: the page may have grown while it was being scrolled (lazy/infinite content),
-      // in either dimension. Extend the grid (never shrink it, never re-derive x/y for already-planned tiles —
-      // whole-capture dedup on LANDED position makes re-walking a stale target harmless) when it has.
+      // in either dimension. Extend the grid when it has, and RESTART the walk from idx=0 over the reshaped
+      // grid rather than continuing from the current idx (fix, second review round): nsPlanTileGrid is
+      // row-major, so growing the COLUMN count (width growth) shifts every later row's tile indices — continuing
+      // from the old idx can walk straight past a newly-inserted tile that now sits EARLIER in the new grid than
+      // idx already is, and that tile would never be visited at all. seenTileKeys makes re-visiting an
+      // already-captured landed position a cheap skip (nsScrollTo + immediate continue, no recapture), so the
+      // restart costs a little time, never correctness — and CAPTURE_MAX_ELAPSED_MS still bounds the total.
       const m = await execFn(tabId, nsMeasure);
       pageW = Math.max(pageW, m.scrollWidth); pageH = Math.max(pageH, m.scrollHeight);
       if (m.scrollWidth > dims.scrollWidth || m.scrollHeight > dims.scrollHeight) {
         dims = { scrollWidth: Math.max(dims.scrollWidth, m.scrollWidth), scrollHeight: Math.max(dims.scrollHeight, m.scrollHeight) };
         grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;
+        idx = 0;
       }
 
-      const totalPixels = viewportWidth * dpr * viewportHeight * dpr * shots.length;
+      // gap #4 fix: use the real captured-bitmap scale for the running pixel total, not dpr, so the safety
+      // ceiling agrees with the image stitchShots will actually produce. dpr remains provenance-only.
+      const effScale = capturedScale != null ? capturedScale : dpr;
+      const totalPixels = viewportWidth * effScale * viewportHeight * effScale * shots.length;
       const ceilingHit = nsCheckCeilings(
         { elapsedMs: now() - startedAt, tilesCaptured: shots.length, totalPixels },
         { maxElapsedMs: CAPTURE_MAX_ELAPSED_MS, maxTiles: CAPTURE_MAX_TILES, maxTotalPixels: CAPTURE_MAX_TOTAL_PIXELS });
@@ -613,7 +655,14 @@ async function reconcileCapturesOnWorkerInit() {
   const nowMs = now();
   for (const [k, v] of Object.entries(all)) {
     if (!k.startsWith('capture:') || !v) continue;
-    const decision = nsReconcileDecision(v, nowMs);
+    // repair round 2: nsReconcileDecision needs to know whether the blob actually survived before offering a
+    // recoverable 'upload_failed' (and therefore a "Retry send" button) -- checking IndexedDB is why this stays
+    // here in background.js rather than inside the pure decision function itself.
+    let blobExists = false;
+    if (v.status === 'uploading') {
+      try { blobExists = !!(await NSBlobStore.get(v.capture_id)); } catch (e) { blobExists = false; }
+    }
+    const decision = nsReconcileDecision(v, nowMs, blobExists);
     if (!decision) continue;
     const rec = { ...v, ...decision, updated_at: nowMs, finished_at: v.finished_at || nowMs };
     await putCapture(rec);
@@ -627,7 +676,15 @@ chrome.runtime.onStartup.addListener(async () => {
   for (const rec of await anyActive()) await withScan(rec.tab_id, () => finishScan(rec, rec.lessons.length ? 'partial' : 'interrupted', 'browser_restarted'));
 });
 chrome.alarms.onAlarm.addListener(async a => {
-  if (a.name === ALARM) refreshPending();
+  if (a.name === ALARM) {
+    refreshPending();
+    // repair round 2 (gap #3): pruneExpired's 2h/5-blob/200MB retention bounds were only ever enforced at
+    // onInstalled/onStartup and after a successful upload's own cleanup — a failed screenshot sitting in
+    // IndexedDB during a long-running Chrome session could outlive its promised TTL by hours. The heartbeat
+    // alarm already fires every 5 minutes for refreshPending; piggybacking a lightweight prune on it is the
+    // recurring hook the design always needed.
+    pruneCaptures();
+  }
   if (a.name === WATCH) {
     const active = await anyActive();
     if (!active.length) { chrome.alarms.clear(WATCH); return; }

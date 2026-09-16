@@ -17,7 +17,13 @@
 //   stitch-scale <bitmapWidthPx> <cssViewportWidth>  -> nsStitchScale(...)
 //   rate-limit-wait <lastCallAtMs> <nowMs> <minIntervalMs>  -> nsRateLimitWaitMs(...)
 //   fallback-eligible <errorKind>            -> nsIsFallbackEligible(errorKind)
-//   reconcile-decision <rec> <nowMs>         -> nsReconcileDecision(rec, nowMs)
+//   reconcile-decision <rec> <nowMs> <blobExists>  -> nsReconcileDecision(rec, nowMs, blobExists)
+//   simulate-growth-traversal <dims> <vw> <vh> <growthSchedule>
+//       -> mirrors background.js's runCapture tile-walk + regrow-on-growth algorithm (including the idx=0 reset
+//          on any grid reshape, second review round's fix) using ONLY the real nsPlanTileGrid/nsIsDuplicateTile
+//          helpers, driven by a scripted growth schedule. Proves the traversal visits every tile of the FINAL
+//          grid shape even when growth inserts new tiles earlier in row-major order (e.g. width growth adding a
+//          column) than the walk has already reached.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -82,7 +88,32 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
     } else if (command === 'fallback-eligible') {
       out = { eligible: nsIsFallbackEligible(args[0]) };
     } else if (command === 'reconcile-decision') {
-      out = nsReconcileDecision(args[0], args[1]);
+      out = nsReconcileDecision(args[0], args[1], args[2]);
+    } else if (command === 'simulate-growth-traversal') {
+      const [initialDims, vw, vh, growthSchedule] = args;
+      let dims = initialDims;
+      let grid = nsPlanTileGrid(dims, vw, vh).tiles;
+      let idx = 0;
+      const seen = new Set();
+      const captured = [];
+      let growthPtr = 0;
+      let guard = 0;
+      while (idx < grid.length && guard < 2000) {
+        guard++;
+        const target = grid[idx]; idx += 1;
+        if (nsIsDuplicateTile(seen, target.x, target.y)) continue;
+        captured.push({ x: target.x, y: target.y });
+        if (growthPtr < growthSchedule.length && captured.length === growthSchedule[growthPtr].afterTiles) {
+          const g = growthSchedule[growthPtr].dims; growthPtr++;
+          if (g.scrollWidth > dims.scrollWidth || g.scrollHeight > dims.scrollHeight) {
+            dims = { scrollWidth: Math.max(dims.scrollWidth, g.scrollWidth), scrollHeight: Math.max(dims.scrollHeight, g.scrollHeight) };
+            grid = nsPlanTileGrid(dims, vw, vh).tiles;
+            idx = 0;
+          }
+        }
+      }
+      const coveredAll = grid.every(t => captured.some(c => c.x === t.x && c.y === t.y));
+      out = { captured, finalGridSize: grid.length, capturedCount: captured.length, coveredAll, guardTripped: guard >= 2000 };
     } else {
       throw new Error('unknown command: ' + command);
     }

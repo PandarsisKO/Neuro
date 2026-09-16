@@ -984,14 +984,22 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
         # if THIS request turns out to be the winner (see create_or_get_capture_ingest_request's docstring).
         job_payload_for_capture = {"path": str(dest), "name": name, "title": title or None, "tags": tag_list,
                                    "project_id": project_id or None}
-        capture_request = db.create_or_get_capture_ingest_request(
-            client_capture_id=capture_id, capture_url=capture_url, capture_mode=capture_mode or "visible_only",
-            job_kind="ingest_file", job_payload=job_payload_for_capture, project_id=project_id or None,
-            capture_page_title=capture_page_title, captured_at=captured_at,
-            capture_partial_reason=capture_partial_reason,
-            capture_page_width=capture_page_width, capture_page_height=capture_page_height,
-            capture_viewport_width=capture_viewport_width, capture_viewport_height=capture_viewport_height,
-            capture_dpr=capture_dpr, capture_note=capture_note)
+        # hardening item (repair round 2): dest was already written to disk above. If the atomic DB call itself
+        # raises (any exception, not just the expected "lost the race" outcome), the temp file would otherwise be
+        # leaked forever with no job or capture event ever referencing it. Clean it up on any failure path and
+        # re-raise unchanged — this is not swallowing the error, just not leaking the file alongside it.
+        try:
+            capture_request = db.create_or_get_capture_ingest_request(
+                client_capture_id=capture_id, capture_url=capture_url, capture_mode=capture_mode or "visible_only",
+                job_kind="ingest_file", job_payload=job_payload_for_capture, project_id=project_id or None,
+                capture_page_title=capture_page_title, captured_at=captured_at,
+                capture_partial_reason=capture_partial_reason,
+                capture_page_width=capture_page_width, capture_page_height=capture_page_height,
+                capture_viewport_width=capture_viewport_width, capture_viewport_height=capture_viewport_height,
+                capture_dpr=capture_dpr, capture_note=capture_note)
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise
         capture_event_id = capture_request["capture_event"]["id"]
         if not capture_request["created"]:
             # lost the race: the winner's job already references the winner's own uploaded file — ours is an orphan

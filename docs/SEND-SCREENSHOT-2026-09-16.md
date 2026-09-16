@@ -289,3 +289,85 @@ full `chrome.*` mock.
 of the 4 original BLOCKERS: load the unpacked extension (1.9.0) in his own Chrome and run it against a few real
 pages, including at least one wider-than-viewport page (to exercise the new horizontal tiling) and one
 lazy/infinite-scroll page (to exercise the ceiling-on-actual-progress and grid-growth handling).
+
+## Repair round 2 (2026-09-16, Kyle's independent re-review of shipped 1.9.0)
+
+Kyle checked the actual GitHub head himself rather than trusting the repair round's own summary, confirmed the
+work above is real and substantial, and would not call the mission complete: "Implementation: ~90-95% complete.
+Release acceptance: not complete." He found 4 code gaps to fix before the still-outstanding live-Chrome
+acceptance pass, plus 3 smaller hardening items folded into the same pass (not individually release-blocking).
+
+Four gaps fixed:
+
+1. **Grid-regrowth traversal could skip newly-inserted earlier tiles.** `nsPlanTileGrid` lays out tiles
+   row-major. When the page's WIDTH grows mid-capture (a new column), every later row's tile index shifts in the
+   rebuilt grid — continuing the walk from the old `idx` could walk straight past a tile that now sits *earlier*
+   in the new grid than `idx` already is, and `seenTileKeys` doesn't help because that position was never seen.
+   The result could then be labeled `full_page` while pixels were actually missing — the most important of the
+   4 gaps for that reason. Fixed: any grid regrowth resets `idx = 0`; `seenTileKeys` makes re-visiting an
+   already-captured landed position a cheap `nsScrollTo` + `continue`, and `CAPTURE_MAX_ELAPSED_MS` still bounds
+   the total regardless of how many times regrowth triggers a restart.
+2. **Worker-respawn reconciliation didn't verify the retryable blob actually exists.** The shipped
+   `nsReconcileDecision` unconditionally mapped every persisted `uploading` record to `upload_failed`, offering
+   a "Retry send" button even when IndexedDB had nothing left to retry — and the round-1 test explicitly encoded
+   that weaker behavior. `nsReconcileDecision` now takes a third `blobExists` argument (checked via
+   `NSBlobStore.get()` in `reconcileCapturesOnWorkerInit()`, keeping the decision function itself pure and
+   jsdom-testable without a real IndexedDB): blob present → `upload_failed` (recoverable); blob absent →
+   terminal `failed` with an honest "the captured image was not saved — please capture again" message.
+3. **Blob TTL (2h / 5-max / 200MB) was not continuously enforced.** `pruneExpired()`'s policy was correct but
+   only ever invoked at `onInstalled`/`onStartup` and after a successful upload's own cleanup — a screenshot
+   that failed to upload and was never retried could sit in IndexedDB well past its promised 2 hours during a
+   long-running Chrome session. The existing 5-minute heartbeat alarm now also calls `pruneCaptures()`.
+4. **The 40M-pixel safety ceiling used `devicePixelRatio` rather than the actual captured bitmap scale.**
+   `stitchShots()` was already correctly upgraded (round 1) to derive its placement scale from the first tile's
+   real bitmap width via `nsStitchScale`, because Chrome's actual `captureVisibleTab` output can differ from
+   `cssPixels × dpr` under zoom/rounding — but the ceiling's running pixel total still used `dpr` directly, so
+   the safety limit and the actual stitched image could disagree under zoom/scaling edge cases. Fixed: the loop
+   now derives `capturedScale` once, the same way, from the first captured tile's real bitmap (falling back to
+   `dpr` only if bitmap decoding fails, so ceiling accounting can never block or break a capture), and uses it
+   in place of `dpr` for the running total. `dpr` is untouched everywhere else — pure provenance metadata, per
+   Kyle's explicit instruction.
+
+Three smaller hardening items folded in (not individually release-blocking):
+
+- `nsTileKey(x, y)` no longer rounds landed coordinates before keying on them — the design already settled on
+  deduping by actual landed position, and rounding could theoretically collapse two genuinely distinct
+  fractional scroll positions into the same key.
+- `stitchShots()` now validates every captured bitmap shares the first one's dimensions and throws a clear
+  `CaptureMechanismError` on a mismatch, instead of silently assuming uniform dimensions.
+- `api_ingest_file`'s `capture_id` branch now wraps `db.create_or_get_capture_ingest_request(...)` in a
+  try/except that deletes the already-written temp upload file and re-raises on any exception — previously an
+  exception thrown after the temp file was written had no cleanup path at all.
+
+Tests: `tests/test_s54_send_screenshot.py` grew from 31 to 43 (grid-regrowth traversal — including a
+deliberately-reverted variant confirmed to fail, proving the harness catches the bug class — the 3-argument
+`nsReconcileDecision` signature, the heartbeat-prune wiring, the pixel-ceiling scale derivation, unrounded
+tile-key dedup, the stitch dimension-mismatch guard, and an injected-failure orphan-temp-file test against a
+real `client.post`). All 43 pass; the touched-surface regression (`test_core.py`, `test_k_retrieval_fixes.py`,
+`test_m1_epub.py`) is clean except the same pre-existing sandbox-only "OpenAI Embeddings is temporarily
+unavailable" network failures noted elsewhere in this doc — confirmed unrelated by reproducing one in isolation
+on a test that never touches this feature.
+
+**The live-Chrome acceptance gate is still the mandatory closing step**, and Kyle specified the matrix it must
+cover once the extension is reloaded unpacked (1.9.0+ with this repair round 2 applied):
+
+- ordinary short page; tall page with a sticky/fixed header
+- a genuinely horizontally-scrolling page
+- a page whose width/height grows DURING capture — specifically exercising gap #1's fix
+- real Mac DPR/zoom output, with seam inspection
+- canvas/WebGL content
+- a cross-origin iframe
+- switching tabs mid-capture must abort without capturing the wrong tab
+- forced service-worker death while capturing
+- forced service-worker death after blob persistence but before/during upload
+- the same test with the IndexedDB blob deliberately ABSENT, confirming no bogus retry is offered — directly
+  exercises gap #2's fix
+- network loss after server acceptance, then Retry send, proving one capture-event/job/source association
+  end to end
+- partial-page ceiling behavior and honest UI labeling
+- starting a course scan during a capture and vice versa, confirming mutual exclusion
+- inspecting the resulting screenshot in the actual Neuro app: OCR, Suggested Findings, project-relative
+  provenance, URL, timestamp, partial status, and the user note all correct
+
+Write the pass/fail results for each item into this doc (or a dated results file alongside it) and update
+HANDOFF once the pass is complete — only then does this mission close.

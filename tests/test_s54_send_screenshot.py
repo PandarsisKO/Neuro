@@ -476,15 +476,23 @@ def test_fallback_eligibility_is_mechanism_only_never_identity() -> None:
 
 
 def test_worker_restart_reconciliation_decisions() -> None:
-    # 'capturing' -> hard failed (nothing will ever resume the loop that owned it)
-    d1 = _run("reconcile-decision", [{"status": "capturing"}, 1000])
+    # 'capturing' -> hard failed (nothing will ever resume the loop that owned it; never reached the durable-blob
+    # step either, so blobExists is irrelevant here)
+    d1 = _run("reconcile-decision", [{"status": "capturing"}, 1000, False])
     assert d1["status"] == "failed"
-    # 'uploading' -> recoverable upload_failed (capture_id idempotency makes a retry safe)
-    d2 = _run("reconcile-decision", [{"status": "uploading"}, 1000])
+    # 'uploading' WITH its blob still present -> recoverable upload_failed (capture_id idempotency makes a retry
+    # safe, and there is something for capture-retry to actually resubmit)
+    d2 = _run("reconcile-decision", [{"status": "uploading"}, 1000, True])
     assert d2["status"] == "upload_failed"
-    # terminal states are left alone
+    # 'uploading' but the blob is GONE (repair round 2's fix) -> hard failed, never an upload_failed the popup
+    # would offer a "Retry send" for with nothing behind it
+    d3 = _run("reconcile-decision", [{"status": "uploading"}, 1000, False])
+    assert d3["status"] == "failed"
+    assert "not saved" in d3["error"] or "capture again" in d3["error"]
+    # terminal states are left alone regardless of blobExists
     for terminal in ("done", "failed", "upload_failed"):
-        assert _run("reconcile-decision", [{"status": terminal}, 1000]) is None
+        assert _run("reconcile-decision", [{"status": terminal}, 1000, True]) is None
+        assert _run("reconcile-decision", [{"status": terminal}, 1000, False]) is None
 
 
 # --------------------------------------------------------------------------------------------- structural gates
@@ -564,3 +572,179 @@ def test_create_or_get_capture_ingest_request_leaves_no_orphan_row_if_job_creati
         project_id=p["id"],
     )
     assert r2["created"] is True
+
+
+# ------------------------------------------------------------------------------- grid-regrowth traversal (gap 1)
+# Second review round: nsPlanTileGrid is row-major, so a page growing WIDER mid-capture (a new column) inserts
+# tiles EARLIER in the new grid than a walk that kept its old index would ever revisit — those tiles would be
+# silently skipped while the result is still labeled full_page. simulate-growth-traversal in run-capture.mjs
+# mirrors runCapture's exact walk (including the idx=0-reset-on-regrowth fix) using only the real pure helpers.
+
+def test_grid_growth_restarts_traversal_and_covers_every_new_tile() -> None:
+    # starts 1 column tall (2 rows); after the 2nd tile is captured the page becomes 2 columns wide too
+    r = _run("simulate-growth-traversal", [
+        {"scrollWidth": 1200, "scrollHeight": 1600}, 1280, 800,
+        [{"afterTiles": 2, "dims": {"scrollWidth": 2600, "scrollHeight": 1600}}],
+    ])
+    assert r["coveredAll"] is True, r
+    assert r["finalGridSize"] == 6   # 3 rows x 2 cols after growth
+    assert not r["guardTripped"]
+
+
+def test_grid_growth_in_height_alone_still_covers_every_tile() -> None:
+    # height-only growth never reshuffles column indices, but must still be covered end to end
+    r = _run("simulate-growth-traversal", [
+        {"scrollWidth": 1200, "scrollHeight": 800}, 1280, 800,
+        [{"afterTiles": 1, "dims": {"scrollWidth": 1200, "scrollHeight": 2400}}],
+    ])
+    assert r["coveredAll"] is True, r
+
+
+def test_repeated_growth_events_still_converge_and_cover_everything() -> None:
+    r = _run("simulate-growth-traversal", [
+        {"scrollWidth": 1280, "scrollHeight": 800}, 1280, 800,
+        [{"afterTiles": 1, "dims": {"scrollWidth": 2600, "scrollHeight": 800}},
+         {"afterTiles": 3, "dims": {"scrollWidth": 2600, "scrollHeight": 2000}}],
+    ])
+    assert r["coveredAll"] is True, r
+    assert not r["guardTripped"]
+
+
+def test_runcapture_resets_idx_on_any_grid_regrowth() -> None:
+    # structural gate: the ONE place background.js recomputes the grid after growth must also reset idx to 0 —
+    # this is what simulate-growth-traversal's algorithm mirrors and what the tests above depend on staying true.
+    bg = (EXT / "background.js").read_text()
+    start = bg.index("if (m.scrollWidth > dims.scrollWidth || m.scrollHeight > dims.scrollHeight) {")
+    # brace-balance to find the matching close of this if-block, not just the first '}' (which closes the
+    # nested `dims = {...}` object literal one line in)
+    depth = 0
+    end = start
+    for i in range(start, len(bg)):
+        if bg[i] == '{':
+            depth += 1
+        elif bg[i] == '}':
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    regrow_block = bg[start:end]
+    assert "idx = 0;" in regrow_block, "grid regrowth must restart the tile walk from 0, or newly-inserted earlier tiles can be silently skipped"
+
+
+def test_reconciliation_checks_blob_existence_before_offering_a_retry() -> None:
+    # structural gate: reconcileCapturesOnWorkerInit must consult NSBlobStore before calling nsReconcileDecision,
+    # not assume every 'uploading' record's blob survived (repair round 2's fix for gap #2).
+    bg = (EXT / "background.js").read_text()
+    fn = bg[bg.index("async function reconcileCapturesOnWorkerInit()"):]
+    fn = fn[:fn.index("\n}\n") + 3]
+    assert "NSBlobStore.get(v.capture_id)" in fn
+    assert "nsReconcileDecision(v, nowMs, blobExists)" in fn
+
+
+def test_heartbeat_alarm_prunes_blobs_so_the_ttl_is_actually_enforced() -> None:
+    # structural gate (repair round 2, gap #3): the periodic heartbeat alarm (every 5 min) must invoke
+    # pruneCaptures() (which calls NSBlobStore.pruneExpired()), not just onInstalled/onStartup and a successful
+    # upload's own cleanup — otherwise a failed screenshot's blob can outlive its promised 2h TTL for the rest of
+    # a long-running Chrome session.
+    bg = (EXT / "background.js").read_text()
+    handler = bg[bg.index("chrome.alarms.onAlarm.addListener"):]
+    handler = handler[:handler.index("\n});") + 4]
+    assert "pruneCaptures();" in handler
+    assert "a.name === ALARM" in handler
+
+
+def test_pixel_ceiling_uses_captured_scale_not_dpr() -> None:
+    # structural gate (repair round 2, gap #4): the running totalPixels total used for the 40M-pixel safety
+    # ceiling must be derived from the actual captured bitmap's scale (same technique stitchShots uses via
+    # nsStitchScale), not from devicePixelRatio alone -- Chrome's real captureVisibleTab output can differ from
+    # cssPixels * dpr under zoom/rounding, so a dpr-based ceiling can disagree with what actually gets stitched.
+    bg = (EXT / "background.js").read_text()
+    start = bg.index("const totalPixels = viewportWidth")
+    line_start = bg.rindex("\n", 0, start) + 1
+    line_end = bg.index("\n", start)
+    totals_line = bg[line_start:line_end]
+    assert "dpr" not in totals_line, "the totalPixels ceiling calculation must not read dpr directly any more"
+    assert "effScale" in totals_line or "capturedScale" in totals_line
+
+    # capturedScale must actually be derived from a real captured bitmap via nsStitchScale, with a dpr fallback
+    # only on decode failure (never letting ceiling accounting block or fail the capture itself).
+    derive_start = bg.index("if (capturedScale == null) {")
+    derive_end = bg.index("\n      }\n", derive_start)
+    derive_block = bg[derive_start:derive_end]
+    assert "createImageBitmap" in derive_block
+    assert "nsStitchScale(bmp.width, viewportWidth)" in derive_block
+    assert "capturedScale = dpr;" in derive_block, "a bitmap-decode failure must fall back to dpr for accounting only, never block capture"
+
+
+def test_dpr_still_used_as_provenance_only() -> None:
+    # gap #4 explicitly keeps dpr as pure provenance metadata everywhere else (e.g. the returned dimensions
+    # object) -- this just guards that the provenance usage wasn't accidentally deleted alongside the ceiling fix.
+    bg = (EXT / "background.js").read_text()
+    dims_literals = [line for line in bg.splitlines() if "dimensions: {" in line]
+    assert dims_literals, "expected at least one returned dimensions object"
+    assert all("dpr" in line for line in dims_literals), "dpr must remain in every returned dimensions object as provenance"
+
+
+# ------------------------------------------------------------------------------- tile-key precision (hardening a)
+def test_tile_key_uses_actual_landed_coordinates_not_rounded() -> None:
+    # nsTileKey/nsIsDuplicateTile must key on the exact landed (x, y) -- the design settled on deduping by real
+    # landed position, and rounding could collapse two genuinely distinct fractional scroll positions (subpixel
+    # offsets are real under some zoom/DPR combinations) into the same key.
+    lib = (EXT / "capture-lib.js").read_text()
+    assert "Math.round(x)" not in lib and "Math.round(y)" not in lib, \
+        "nsTileKey must not round landed coordinates before keying on them"
+    assert "function nsTileKey(x, y) { return x + ',' + y; }" in lib
+
+
+def test_duplicate_tile_detection_still_distinguishes_and_still_dedupes() -> None:
+    # dedupe-tiles feeds each (x, y) pair through the same seen-Set in sequence, exactly as the capture loop does
+    out = _run("dedupe-tiles", [[[100.3, 200.7], [100.3, 200.7], [100, 200]]])
+    assert out == [False, True, False], out
+    # first sighting of a fractional position is never a duplicate; the exact same fractional position repeated
+    # IS a duplicate; a distinct (unrounded) nearby position must NOT collide with it
+
+
+# ------------------------------------------------------------------------------- stitch dimension mismatch (hardening b)
+def test_stitch_shots_rejects_mismatched_bitmap_dimensions() -> None:
+    # hardening item: stitchShots derived scale from only the first bitmap and implicitly assumed every later
+    # tile shares its dimensions. It must now fail loudly (not silently misplace tiles) on a mismatch.
+    bg = (EXT / "background.js").read_text()
+    fn = bg[bg.index("async function stitchShots("):]
+    fn = fn[:fn.index("\nasync function ", 10)]
+    assert "b.bmp.width !== firstW || b.bmp.height !== firstH" in fn
+    assert "inconsistent bitmap dimensions" in fn
+
+
+# ------------------------------------------------------------------------------- orphan temp-file cleanup (hardening c)
+def test_ingest_file_cleans_up_temp_upload_if_atomic_call_throws(client, tmp_path) -> None:
+    """If db.create_or_get_capture_ingest_request raises AFTER api_ingest_file has already written the uploaded
+    file to settings.media_dir, that temp file must not be leaked -- it should be deleted and the exception
+    re-raised unchanged (repair round 2 hardening item)."""
+    from neurosearch import db
+    from neurosearch.config import settings
+
+    p = client.post("/api/projects", headers=H, json={"name": "OrphanCleanup", "brief": None}).json()
+
+    real = db.create_or_get_capture_ingest_request
+    def boom(*a, **kw):
+        raise RuntimeError("injected failure inside the atomic capture-ingest call")
+    db.create_or_get_capture_ingest_request = boom
+
+    before = {f.name for f in settings.media_dir.glob("upload_*")} if settings.media_dir.exists() else set()
+    try:
+        # the app's own global RuntimeError handler converts this to a 400 JSON response rather than letting
+        # TestClient re-raise it -- the point of this test is the temp-file cleanup, not the error transport.
+        r = client.post(
+            "/api/ingest/file", headers=H,
+            data={"project_id": p["id"], "immediate": "false", "capture_url": "https://orphan.example/x",
+                  "capture_mode": "full_page", "capture_id": "cap-orphan-1"},
+            files={"file": ("screenshot.png", _png_bytes((5, 5, 5)), "image/png")},
+        )
+        assert r.status_code == 400
+        assert "injected failure inside the atomic capture-ingest call" in r.json()["error"]
+    finally:
+        db.create_or_get_capture_ingest_request = real
+
+    after = {f.name for f in settings.media_dir.glob("upload_*")} if settings.media_dir.exists() else set()
+    leaked = after - before
+    assert not leaked, f"temp upload file(s) leaked after an atomic-call exception: {leaked}"

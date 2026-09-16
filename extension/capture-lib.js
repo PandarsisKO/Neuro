@@ -100,7 +100,11 @@
   // capture, not just the immediately-previous tile -- catches an A->B->A repeat (e.g. a page that snapped back
   // to an earlier scroll position because of its own scroll-anchoring) even though it is not adjacent to the
   // duplicate. Mutates `seenKeys` (a Set the caller owns) and returns whether (x,y) was already present.
-  function nsTileKey(x, y) { return Math.round(x) + ',' + Math.round(y); }
+  // repair round 2 (hardening item): key on the ACTUAL landed coordinates, not a rounded approximation --
+  // the design settled on deduping by real landed position, and rounding here could theoretically collapse
+  // two genuinely distinct fractional scroll positions (subpixel scroll offsets are real under some
+  // zoom/DPR combinations) into the same key, silently treating them as the same tile.
+  function nsTileKey(x, y) { return x + ',' + y; }
   function nsIsDuplicateTile(seenKeys, x, y) {
     const k = nsTileKey(x, y);
     if (seenKeys.has(k)) return true;
@@ -141,18 +145,27 @@
     return errorKind === 'CaptureMechanismError';
   }
 
-  // Worker-respawn reconciliation: given a capture:<tabId> record found at worker-init time and "now", decide
-  // what it must become. A record left 'capturing' means the runCapture loop that owned it is simply gone (the
-  // worker that ran it was evicted/restarted) -- nothing will ever call back into it, so it is failed outright.
-  // A record left 'uploading' is different: THIS worker's request may have already reached the server (only the
-  // response was lost when the worker died), so the server-side capture_id idempotency makes it safe to treat as
-  // a recoverable 'upload_failed' rather than a hard failure -- capture-retry resubmits the SAME capture_id and
-  // either finds the server's already-materialized job or lands it for the first time, never double-charging a
-  // duplicate job. Terminal states (done/failed/upload_failed) are left alone (returns null: nothing to do).
-  function nsReconcileDecision(rec, nowMs) {
+  // Worker-respawn reconciliation: given a capture:<tabId> record found at worker-init time, "now", and whether
+  // that record's blob is STILL present in NSCaptureBlobStore (the caller checks IndexedDB — this function stays
+  // pure/sync, no IndexedDB access of its own), decide what the record must become. A record left 'capturing'
+  // means the runCapture loop that owned it is simply gone (the worker that ran it was evicted/restarted) --
+  // nothing will ever call back into it, so it is failed outright (it never reached the durable-blob step, so
+  // there is nothing to retry with regardless). A record left 'uploading' is different ONLY when its blob
+  // actually survived: THIS worker's request may have already reached the server (only the response was lost
+  // when the worker died), so the server-side capture_id idempotency makes it safe to treat as a recoverable
+  // 'upload_failed' -- capture-retry resubmits the SAME capture_id and either finds the server's already-
+  // materialized job or lands it for the first time, never double-charging a duplicate job. But if the blob is
+  // gone (repair round 2: the earlier version of this function always assumed it survived, which let the popup
+  // offer a "Retry send" that could never actually work), there is nothing capture-retry could resubmit, so this
+  // is a hard, honest 'failed' instead -- never a retry button with nothing behind it. Terminal states
+  // (done/failed/upload_failed) are left alone (returns null: nothing to do).
+  function nsReconcileDecision(rec, nowMs, blobExists) {
     if (!rec) return null;
     if (rec.status === 'capturing') return { status: 'failed', error: 'the browser or extension restarted mid-capture' };
-    if (rec.status === 'uploading') return { status: 'upload_failed', error: 'the browser or extension restarted while sending — press Retry send' };
+    if (rec.status === 'uploading') {
+      if (blobExists) return { status: 'upload_failed', error: 'the browser or extension restarted while sending — press Retry send' };
+      return { status: 'failed', error: 'the browser or extension restarted while sending, and the captured image was not saved — please capture again' };
+    }
     return null;
   }
 
