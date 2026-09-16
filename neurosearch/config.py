@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -155,3 +156,32 @@ class Settings:
 settings = Settings()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.media_dir.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def override(**changes):
+    """Temporarily set attributes on the shared `settings` singleton, restoring the previous values on exit --
+    including when the wrapped code raises or returns early (e.g. a CLI command's own `typer.Exit`).
+
+    For a CLI command (or any other caller) that wants a THIS-INVOCATION-ONLY override without permanently
+    mutating global state for unrelated later work in the same process. Added 2026-09-16 (CR8b hardening) after a
+    real defect: `cli.py`'s `nightly run` command used to assign straight to `settings.t4_nightly_budget` /
+    `t5_nightly_budget` / `research_refresh_nightly_budget` with no restore, so any later work in the same
+    process -- another CLI invocation, or a test driving the CLI through `CliRunner` -- silently inherited
+    whatever the last invocation happened to set. `settings` is a single unfrozen dataclass instance for the
+    whole process (no per-request/per-command config object exists, and this does not introduce one) -- this is
+    the smallest general mechanism that closes that hole without inventing a second configuration system.
+
+    Every keyword must already be a real `settings` attribute (`AttributeError` otherwise -- a typo here should
+    fail loudly, not silently create a new attribute nothing reads)."""
+    for k in changes:
+        if not hasattr(settings, k):
+            raise AttributeError(f"config.override: 'Settings' object has no attribute {k!r}")
+    previous = {k: getattr(settings, k) for k in changes}
+    try:
+        for k, v in changes.items():
+            setattr(settings, k, v)
+        yield settings
+    finally:
+        for k, v in previous.items():
+            setattr(settings, k, v)

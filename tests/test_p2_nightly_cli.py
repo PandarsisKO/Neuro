@@ -119,7 +119,7 @@ def test_run_discloses_the_separate_t5_cap(cli_db):
     assert r.exit_code == 0, r.output
     assert "authorizing up to $2.00 TOTAL" in r.output and "plus up to $1.00 for T5 adjudication" in r.output
     assert nightly.last_run() is None
-    from neurosearch.config import settings
-    settings.t5_nightly_budget = 0.0            # --t5-budget sets process settings; a real CLI run is one process
+    # --t5-budget is scoped to THIS invocation only (config.override, CR8b hardening 2026-09-16) -- no manual
+    # reset needed here any more; a second invocation with no --t5-budget just sees the real default again.
     r = runner.invoke(app, ["nightly", "run", "--budget", "2"], input="n\n")
     assert "T5 adjudication: off" in r.output

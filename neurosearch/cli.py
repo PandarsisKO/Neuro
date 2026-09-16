@@ -799,38 +799,47 @@ def nightly_run_cmd(budget: Optional[float] = typer.Option(None, "--budget", hel
     budget (the worker then executes it) -- so it always states the authorized amount and asks first, unless --yes.
     Preflight (full integrity_check + verified backup, L-10) runs first and refuses on a dirty database."""
     from . import nightly
+    from .config import override as _override
     _init()
+    invocation_overrides = {}
     if budget is not None:
-        settings.t4_nightly_budget = float(budget)
+        invocation_overrides["t4_nightly_budget"] = float(budget)
     if t5_budget is not None:
-        settings.t5_nightly_budget = float(t5_budget)
+        invocation_overrides["t5_nightly_budget"] = float(t5_budget)
     if research_refresh_budget is not None:
-        settings.research_refresh_nightly_budget = float(research_refresh_budget)
-    if settings.t4_nightly_budget <= 0:
-        typer.echo("nightly envelope is OFF (budget 0). Pass --budget N or set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD.", err=True)
-        raise typer.Exit(code=1)
-    if not force and nightly.last_run() is not None:
-        typer.echo(f"today's envelope already ran ({nightly._today_key()}); pass --force to run a second one")
-        raise typer.Exit(code=0)
-    projects = [p for p in db.list_projects() if p.get("n_sources")]
-    typer.echo(f"authorizing up to ${settings.t4_nightly_budget:.2f} TOTAL across {len(projects)} active project(s) "
-               f"(shared cap, walked down project by project -- not ${settings.t4_nightly_budget:.2f} each)")
-    if settings.t5_nightly_budget > 0:
-        typer.echo(f"plus up to ${settings.t5_nightly_budget:.2f} for T5 adjudication of open disagreements (separate cap; each verdict "
-                   "lands as a suggested finding, nothing is decided for you)")
-    else:
-        typer.echo("T5 adjudication: off (pass --t5-budget N to enable)")
-    if settings.research_refresh_nightly_budget > 0:
-        typer.echo(f"plus up to ${settings.research_refresh_nightly_budget:.2f} for CR6 research refreshes (separate cap; each one only "
-                   "STARTS a refresh through the normal ingest path -- nothing is decided for you)")
-    else:
-        typer.echo("CR6 research refresh: off (pass --research-refresh-budget N to enable)")
-    if not yes and not typer.confirm("Run the nightly envelope now?"):
-        raise typer.Exit(code=0)
-    r = nightly.run(force=force)
-    typer.echo(json.dumps(r, indent=2, default=str))
-    if not r.get("ran"):
-        raise typer.Exit(code=1)
+        invocation_overrides["research_refresh_nightly_budget"] = float(research_refresh_budget)
+    # CR8b hardening (2026-09-16): these three used to assign straight onto the shared `settings` singleton with
+    # no restore, so a later invocation in the same process (another CLI call, or a test driving this command
+    # through CliRunner) silently inherited whatever budget a previous call happened to set -- that's exactly
+    # what let CR6's nightly block fire unexpectedly during CR8b's own test suite. `config.override` scopes these
+    # three flags to THIS invocation only, restoring the prior values on any exit path, including the early
+    # `typer.Exit`s below.
+    with _override(**invocation_overrides):
+        if settings.t4_nightly_budget <= 0:
+            typer.echo("nightly envelope is OFF (budget 0). Pass --budget N or set NEUROSEARCH_T4_NIGHTLY_BUDGET_USD.", err=True)
+            raise typer.Exit(code=1)
+        if not force and nightly.last_run() is not None:
+            typer.echo(f"today's envelope already ran ({nightly._today_key()}); pass --force to run a second one")
+            raise typer.Exit(code=0)
+        projects = [p for p in db.list_projects() if p.get("n_sources")]
+        typer.echo(f"authorizing up to ${settings.t4_nightly_budget:.2f} TOTAL across {len(projects)} active project(s) "
+                   f"(shared cap, walked down project by project -- not ${settings.t4_nightly_budget:.2f} each)")
+        if settings.t5_nightly_budget > 0:
+            typer.echo(f"plus up to ${settings.t5_nightly_budget:.2f} for T5 adjudication of open disagreements (separate cap; each verdict "
+                       "lands as a suggested finding, nothing is decided for you)")
+        else:
+            typer.echo("T5 adjudication: off (pass --t5-budget N to enable)")
+        if settings.research_refresh_nightly_budget > 0:
+            typer.echo(f"plus up to ${settings.research_refresh_nightly_budget:.2f} for CR6 research refreshes (separate cap; each one only "
+                       "STARTS a refresh through the normal ingest path -- nothing is decided for you)")
+        else:
+            typer.echo("CR6 research refresh: off (pass --research-refresh-budget N to enable)")
+        if not yes and not typer.confirm("Run the nightly envelope now?"):
+            raise typer.Exit(code=0)
+        r = nightly.run(force=force)
+        typer.echo(json.dumps(r, indent=2, default=str))
+        if not r.get("ran"):
+            raise typer.Exit(code=1)
 
 
 @nightly_app.command("report")
