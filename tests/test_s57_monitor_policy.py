@@ -155,6 +155,53 @@ def test_set_collection_policy_returns_none_for_a_relationship_that_does_not_exi
     assert db.set_collection_policy(pid, col["id"], source_role="primary") is None
 
 
+def _entries(n: int, *, start: int = 1, prefix: str = "vid") -> list[dict]:
+    return [{"id": f"{prefix}{i}", "url": f"https://www.youtube.com/watch?v={prefix}{i}", "title": f"Video {i}",
+             "duration": 100 + i, "view_count": 10 * i} for i in range(start, start + n)]
+
+
+def test_explicit_single_collection_rescan_is_a_one_time_check_not_a_policy_change(s57_db):
+    """Kyle's CR8a follow-up: the explicit single-collection rescan (`reservoir.rescan(pid, cid)`, the CLI's
+    --collection flag) is deliberately ungated -- it runs even when this project's effective monitoring state
+    for that collection is inactive, per CR8a's own design (a one-time "check this now", not "start watching
+    this forever"). This proves the "check this now" half doesn't quietly become the "forever" half: running it
+    must not touch source_role or monitor_policy at all, and a later bulk rescan_project() must still skip the
+    collection exactly as before -- the explicit check has zero durable side effect on monitoring intent."""
+    from neurosearch import candidates
+
+    pid = db.create_project("S57 one-time check", brief="one-time")["id"]
+    col = db.upsert_collection("channel", "UConetime", "https://www.youtube.com/channel/UConetime", "One-Time Check")
+    db.add_project_collections(pid, [col["id"]])
+    db.set_collection_policy(pid, col["id"], source_role="secondary", monitor_policy="auto")   # 2
+
+    policy_before = db.get_collection_policy(pid, col["id"])
+    assert reservoir.is_monitored(pid, col["id"]) is False   # 3/4: secondary + auto -> inactive
+
+    calls = []
+    def counting_enumerate(url: str):
+        calls.append(url)
+        return {"id": "UConetime", "title": "One-Time Check", "url": url}, _entries(3, prefix="onetime")
+
+    result = reservoir.rescan(pid, col["id"], enumerate=counting_enumerate)   # 5
+
+    assert len(calls) == 1   # 6: the collection was actually checked, exactly once
+    assert result["changed"] is True and result["new"] == 3 and len(result["candidate_ids"]) == 3   # 7
+    cand = db.connect().execute(
+        "SELECT id FROM candidates WHERE id=?", (result["candidate_ids"][0],)).fetchone()
+    assert cand is not None   # 7: reconciliation behaved normally -- a real Candidate Index row exists
+
+    policy_after = db.get_collection_policy(pid, col["id"])
+    assert policy_after["source_role"] == "secondary" == policy_before["source_role"]   # 8
+    assert policy_after["monitor_policy"] == "auto" == policy_before["monitor_policy"]   # 9
+
+    bulk_calls = []
+    def counting_enumerate_bulk(url: str):
+        bulk_calls.append(url)
+        return {"id": "UConetime"}, _entries(3, prefix="onetime")
+    later = reservoir.rescan_project(pid, enumerate=counting_enumerate_bulk)
+    assert later == [] and bulk_calls == []   # 10: still skipped, zero enumerate() calls
+
+
 def test_cli_collection_policy_show_and_set(s57_db):
     from typer.testing import CliRunner
     from neurosearch.cli import app
