@@ -4525,3 +4525,5 @@ Not yet done: the live-browser acceptance gate is STILL open (it was BLOCKER #4 
 repair round did not close it) — Kyle needs to load the unpacked extension (1.9.0) in his own Chrome and run it
 against real pages, now including at least one wider-than-viewport page (new horizontal tiling) and one
 lazy/infinite-scroll page (ceiling-on-actual-progress + mid-capture grid growth).
+
+Commit: 48dab98.
