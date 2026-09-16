@@ -5677,3 +5677,48 @@ for anyone continuing this session's device work.
 
 Conclusion: Part A is bounded and closed as unreproduced; proceeding to Part B (D2/F1 resume) per the mission's
 explicit "do not spend the entire mission chasing an unrepeatable ghost."
+
+## Part B — D2/F1 Resume Delta: the design ladder is already fully complete, nothing to resume (2026-09-16)
+
+Kyle's mission named the previously recorded next step as "F1 STEP 3 — EIGHT-CONTROL SVG SPRITE" and asked to
+confirm that's still correct against current code before changing anything. It is not correct, and the gap is
+larger than one stale step: the entire design ladder — both the original `ladder.md` sequence and a full
+follow-on audit — closed before this session's work began. No F1 (or later-rung) design work remains queued.
+
+**Evidence checked, in order:**
+
+1. `HANDOFF.md`'s own "Design ladder" entries, read in full from F1 step 1 through the final rung. The eight-
+   control SVG sprite Kyle referenced was landed 2026-09-13 at merge commit `a914cbf` ("F1 items 2-3 landed").
+   F1's last remaining item (`display:none` → `hidden`) landed the same day at `696a0c6`, explicitly closing
+   Rung F1. F2, W1 (4 steps), W2, W3, W4, W5, a cross-cutting RE-AUDIT, C1, and P1 all subsequently landed
+   2026-09-13/14, ending at "Design ladder — Rung P1 landed, ladder complete — 2026-09-14": *"The design ladder
+   is complete: F0 → F1 → F2 → W1 → W2 → W3 → W4 → W5 → [cross-cutting RE-AUDIT] → C1 → P1. Every High and
+   Medium finding in `audit.md` tied to a rung is RESOLVED or correctly closed... Nothing further is queued on
+   this ladder."
+2. That was not the end of design work, either — an authorized overnight run the same night produced a fresh
+   FULL AUDIT ("closes clean, no new ladder") and then a second audit
+   (`docs/design-audit/2026-09-14-bd95e65/declutter-audit.md`, 22 findings: RD-1..7, SM-1..6, CL-1..6, DOC-1..3),
+   executed as six more "declutter" rungs. HANDOFF's closing entry: "All 22 declutter-audit findings are now
+   landed... This closes the standing 'complete them all, most efficient manner' authorization. No further
+   declutter-audit work remains queued; the next design/audit pass (if any) starts fresh against current `main`."
+3. `PRODUCT-SCHEDULER.md`'s own reconciliation, written 2026-09-14 after that closure, states directly:
+   "Design/audit ownership remains available for fresh evidence-driven work but has no queued findings; do not
+   reopen closed F0/F1 findings without new evidence." Nothing since has reopened it — every `PRODUCT-SCHEDULER.md`
+   and `HANDOFF.md` entry from 2026-09-14 evening onward (T3 gold adjudication, T4/T5/T6, the Product Intelligence
+   Mission, CR1-CR8b, FM1, this session's own work) is backend/product-intelligence work, not frontend/design.
+4. Spot-checked current code rather than trusting the log: `neurosearch/web/index.html` still contains the
+   `<symbol id="ic-dismiss">` / `ic-approve` / `ic-flag` sprite definitions (no regression); `git status` shows
+   no uncommitted frontend changes; `UI_VERSION` is `0.63.91` (many versions past the `0.63.72` the ladder closed
+   at, all from later, unrelated backend/product work per the commit log). Ran the three deterministic design
+   gates fresh: `test_s50_design_drift.py` + `test_s44_frontend_integrity.py` + `test_s5_ui_syntax.py` — **27
+   passed**, 0 failed, current `main`.
+
+**Resume Delta:** there is no unfinished F1 unit, and no unfinished design-ladder rung at all, to resume. The
+design lane is closed through P1 and through the follow-on 22-finding declutter pass, live-verified in code, and
+explicitly reconciled as having no queued findings. Per this mission's own instruction not to invent new
+backend/product-intelligence work merely because that ladder is evidence-gated, the same discipline applies here:
+not inventing new design work merely because the design mission expected there to be some. No code was changed
+for Part B; no design-scoped commit is needed. If Kyle wants further design work, it requires either new evidence
+(an actual usability complaint, a genuinely new UI surface, a fresh audit pass) or explicit re-scoping — not a
+resumption of F1, which finished three days before this mission was written.
+
