@@ -4708,3 +4708,206 @@ the only work standing between here and closing this mission — still entirely 
 Kyle's own hands.
 
 Commit: 53e04d8.
+
+## Planning checkpoint — OVERNIGHT: release cleanup + CR3/CR4 (+ LP5 if capacity) (2026-09-16, plan-then-pause handoff)
+
+Pre-read done in Kyle's order (CLAUDE.md → STATE 09-15-1400 → HANDOFF tail → PRODUCT-SCHEDULER → EXECUTION-LADDER →
+PRODUCT-INTELLIGENCE-MISSION §12 → QUALITY-CONTRACT §3/§9 → HARDENING (S50 ceiling rule) → git log → release
+artifacts). **HEAD verified: `c0e4824`** (matches what Kyle saw). Tree clean apart from the two untracked
+non-authoritative folders (`INSPIRATION/`, `SCREENSHOT AUDIT/`) that repo-check already allowlists. No paid call is
+authorized tonight; every step below is $0 and deterministic.
+
+### Fresh truth — verified against the repo, NOT taken from earlier HANDOFF entries (three prior diagnoses were wrong)
+
+- **Full parallel pytest (git-clone workspace, `-n 4`, 1764 collected): 1760 passed, 4 failed.** Re-read from the
+  saved log, per failure:
+  1. `test_s50_design_drift::test_colour_literals_stay_in_the_token_blocks` — 4 JS colour literals vs ceiling 3.
+     The 4th is `#f7f8fa` in `web/js/research.js:122`, the "Captured from …" card the send-screenshot repair round
+     added at `48dab98`. **This is real drift introduced by this mission, not "pre-existing/unrelated" as the
+     round-3 and round-4 entries said.** Correction recorded here.
+  2. `test_j3_fallback::test_doctor_is_fast_and_release_check_writes_an_artifact` — asserts `release_check()`
+     verdict PASS; fails only because repo hygiene fails (item 5). Cascade, closes with A1.
+  3./4. `test_k_retrieval_fixes::test_priority_api_and_listing` (404 on the project `_golden()` just created) and
+     `::test_immediate_upload_is_ready…` (`FOREIGN KEY constraint failed` on the same project). **Not the circuit
+     breaker** (that was the diagnosis from the earlier rsync copy, which still had Kyle's `.env` and therefore
+     real embeddings + no network). In the git clone the mechanism is different and is a real isolation leak:
+     the test thread's `db._local.conn` is still bound to a *different* database than the API client's worker
+     threads. `db.connect()` caches the connection thread-locally and never re-checks `settings.db_path`; tests
+     that swap `settings.data_dir` + `db._local.conn = None` (e.g. `test_s51::test_fresh_database_does_not_inherit
+     _an_open_provider_breaker`, and any `isolated_db`-style fixture that dies before its teardown) leave the
+     thread pointing at `tmp_path/second` after monkeypatch restores `data_dir`. Under `--dist=loadscope` that
+     module lands on the same worker (gw2) before `test_k_retrieval_fixes`, so `_golden()` writes to DB X while
+     the app answers from DB Y. **Test-process-only**: production never mutates `settings.data_dir`, and worker
+     threads bind `_local.db_path` explicitly at startup (CLAUDE.md boundary). Fix through the existing reset
+     mechanism (`db.close_thread_connection()`), not retries, not serialisation.
+  5. `release-check --no-pytest`: one FAIL — repo hygiene, `STATE-OF-THE-APP-2026-09-14-1217.md`. `repo_check._root_
+     hygiene` allows exactly the *newest* `STATE-OF-THE-APP-*.md` at root; the 09-15-1400 snapshot supersedes
+     09-14-1217, and QUALITY-CONTRACT §3.1/§9 says old snapshots go to `docs/archive/` (where 9 earlier ones
+     already live). Move it; never widen the gate.
+- Versions: app `0.63.91` (pyproject / `__init__` / `UI_VERSION` agree); extension `1.9.3`. Nothing tonight
+  changes `index.html`/web JS behaviour except the one token substitution in `research.js` → no `UI_VERSION` bump
+  needed unless a runtime/frontend behaviour changes (it does not; a colour token swap is not a contract change —
+  re-check at A5 and bump only if `release-check` says the markers disagree).
+- Ladder state: CR1/CR2/CR5/CR6 `[x]`, CR7 `[k]` (Kyle), **CR3/CR4 `[ ]`** (admitted, PARALLEL PREP / READY AFTER
+  CR3), LP0–LP4 `[x]`, **LP5 `[ ]`** (READY AFTER LP3 — LP3 is done, so LP5 is READY), LP6 `[k]`. Scheduler NOW
+  still says "nothing READY with no Kyle input" — stale: CR3, CR4 and LP5 are all READY and Kyle-free. Scheduler
+  updated in this checkpoint.
+- CR3 substrate verified: `media.enumerate_entries(url) -> (info, entries[{id,url,title,duration,description,…}])`
+  (yt-dlp `extract_flat`, no download); `collections` (kind/external_id/url/title, `db.upsert_collection`,
+  `project_collections`); `candidates.remember(entries, platform, project_id, origin)` is already idempotent per
+  (platform, external_id) and never changes an existing `candidate_projects.state` (so `user_dismissed` survives a
+  rescan for free); `candidates.last_verified_at` / `metadata_revision` exist; `db.kv_get/kv_set` is the existing
+  per-key bookkeeping (`research:checked:<need>` already uses it). The current playlist/channel path in `ingest.py`
+  creates `sources` rows (proposed/pending) for every entry — that is the ACQUISITION path and CR3 must not go
+  through it.
+- LP5 substrate verified: `plan_updates(id, plan_id, section, previous, proposed, reason, status, created_at,
+  origin)`; `db.set_update_status` flips status only; `planner.apply_accepted_updates` folds accepted rows into a
+  regenerated plan via `build_plan` (a paid `planner.update` call in production — fakes in tests) and records
+  nothing back on the rows. Missing for "your plan changed in one place" from the row alone: structured Claim /
+  tension linkage (LP3 puts it only in prose `reason`), when it was decided, and which plan the acceptance was
+  applied into. `origin` already distinguishes system-deterministic (`lp3`) from system-LLM (NULL); there is no
+  user-originated proposal path today, so "user" provenance = the decision (`decided_by='user'` via the API).
+
+### Approved-plan checkpoint for the execution model
+
+**Fast drift check first (step 1 on resume):** `git rev-parse --short HEAD` must still be the commit that carries
+this checkpoint; `git status` clean; then proceed without further pauses except for the listed pause conditions.
+Workspace: the git clone `ns-verify-git/src2` in the session VM (`git pull` from the connected folder, fresh
+`.venv` shebangs already correct, `pytest-xdist` installed). Run everything with `NEUROSEARCH_DATA_DIR=$(mktemp -d)`.
+
+**Phase A — deterministic baseline clean (commit units A1, A2, A3, A4; A5 is the gate)**
+- A1 `git mv STATE-OF-THE-APP-2026-09-14-1217.md docs/archive/`; fix the two prose references in the 09-15 state
+  (`docs/archive/…` path); `neurosearch repo-check` → PASS. Files: 1 move + 1 doc line.
+- A2 Fresh `STATE-OF-THE-APP-2026-09-16-<HHMM>.md` in the 09-15 format (≤ 80 lines), then `git mv` the 09-15
+  file to `docs/archive/`. Sections: where main is (HEAD, versions, push state), deterministic test/release state
+  (post-A5 numbers + artifact path), what shipped since 09-15 (mission CS `dccc3bd..3175f04`, send-screenshot
+  `55a0291` + repair rounds 1–4 through `c2b3375`), what is code-complete but Kyle-gated (CR7, LP6, AD4B, FM1
+  live, L-xx list unchanged, **send-screenshot live-Chrome matrix, course-scanner live extension acceptance**),
+  Product-Intelligence ladder state (one line per stage), eligible unattended work (CR3→CR4→LP5), standing
+  constraints. Written at the END of Phase A so its numbers are true; not a history document.
+- A3 `research.js:122`: `style="background:#f7f8fa"` → `style="background:var(--panel2)"` (`--panel2` is the
+  existing light-surface token, `#F1F3F6` light / `#1D212B` dark — the literal was also a dark-mode defect). JS
+  literal count returns to 3 = ceiling; ceiling untouched. Gate: `test_s50` passes; no HARDENING entry needed
+  (no frozen number changed). Also drop the now-unneeded `mt-2`? — NO, behaviour-preserving only.
+- A4 (a) `db.connect()`: record `_local.bound_db_path = db_path` beside the cached connection (one line; zero
+  behaviour change in production). (b) `tests/conftest.py`: autouse function-scoped fixture `_thread_db_matches_
+  settings` whose teardown calls `db.close_thread_connection()` when `bound_db_path` exists and differs from
+  `str(settings.db_path)` — i.e. any test that swapped `data_dir` and did not fully undo leaves nothing behind;
+  it also asserts nothing and never opens a DB (respects the "never open a DB during cleanup" rule). (c)
+  `test_s51`'s breaker test restores explicitly too (belt and braces) and gains a sibling ratchet test: swap
+  `data_dir`, connect, restore via monkeypatch, run the fixture's teardown logic, assert `db.connect()` now
+  targets `settings.db_path`. (d) Reproduce first: `pytest -n 4 --dist=loadscope -v tests/test_s51_test_
+  isolation.py tests/test_k_retrieval_fixes.py -p no:cacheprovider` (with `-n 1` and forced same-worker order
+  if needed) must FAIL before and PASS after — the fix is not accepted on the full-suite green alone. Production
+  question answered above: test-only; fix stays test/infra-scoped (the `bound_db_path` attribute is inert in prod).
+- A5 gate (in order): focused files (`test_s50`, `test_s51`, `test_k_retrieval_fixes`, `test_j3_fallback`) →
+  `pytest -q -n 4 --dist=loadscope` full suite **0 failed** (no "known unrelated") → `repo-check` PASS →
+  `release-check --no-pytest` PASS on every deterministic gate, artifact `git_sha` = real HEAD (the git clone
+  guarantees this) → copy artifact pair into `evals/release/` → version agreement re-checked. Then A2's snapshot
+  is written with those numbers, committed, and HANDOFF gets one short "Phase A closed" entry.
+
+**Phase B — Continuous Research product intent (docs only; commit unit B)**
+- `PRODUCT-INTELLIGENCE-MISSION.md`: new §13 "Continuous Research monitoring model (2026-09-16)" — verbatim intent:
+  SELECTIVELY WATCH → SELECTIVELY ACQUIRE → SELECTIVELY RETAIN; three separate decisions MONITOR / ACQUIRE /
+  RETAIN, never collapsed; monitoring defaults (primary-source → eligible ON; secondary/tertiary → OFF;
+  user-explicitly-watched → ON regardless), primary-ness is project/question/evidence-class relative (examples
+  as given, no universal reputation flag); monitoring ≠ ingestion (20 uploads noticed ≠ 20 Library sources; an
+  acquisition needs an existing deterministic trigger: open Evidence Target, stale consequential Claim,
+  contradiction, active Research Need, plan dependency, known evidence gap — "new upload exists" is never
+  sufficient; CR3 stays detection-only); retention is selective (preserve carrying-weight evidence, Claim/
+  tension/plan/provenance dependencies, user-pinned; compaction of non-contributing heavyweight artifacts is a
+  LATER measured rung; cheap identity/provenance is always kept so nothing is rediscovered or reprocessed;
+  PREVENTION FIRST → COMPACTION LATER → DELETION LAST; Candidate-Index metadata growth is a bounded-retention
+  concern to be MEASURED, not a TTL to implement).
+- `EXECUTION-LADDER.md`: CR3/CR4 text sharpened to the gates below; new rung stub **CR8 selective acquisition
+  seam — NOT ADMITTED, documented in Phase E**; a "monitoring model" pointer to §13. `PRODUCT-SCHEDULER.md` NOW
+  = this overnight mission (done in this checkpoint).
+
+**Phase C — CR3 known-reservoir rescan (commit unit C)**
+- New `neurosearch/reservoir.py` (domain owner: reservoirs/collections; no `utils`). Public:
+  `rescan(collection_id, project_id, *, enumerate=None, now=None) -> {collection_id, kind, found, new, known,
+  resolved_acquired, dismissed_respected, changed, fingerprint, scanned_at}` and `rescan_project(project_id)`
+  over `project_collections` rows of kind `channel|playlist`. Algorithm: load collection → `enumerate =
+  enumerate or media.enumerate_entries` on `collection.url` → map entries to `candidates.remember` shape
+  (`external_id=id`, `url`, `title`, `description`, `duration`, `creator=info.title`, `published_at` when
+  present) → BEFORE remembering, compute `new` = external ids with no `candidates` row for (`youtube`, id) and
+  `known` = the rest (one `SELECT … WHERE platform=? AND external_id IN (…)`) → for entries that already have a
+  Library source (`sources` by platform+external_id, via `db.sources_for_urls` on the canonical urls or the
+  direct lookup `mark_by_source` already uses) pass `source_id` so the candidate RESOLVES to it (never a second
+  evidence object) → `candidates.remember(items, "youtube", project_id, origin={"kind": "reservoir_rescan",
+  "collection_id", "collection_kind", "url", "scanned_at"})` → write `kv reservoir:scan:<collection_id>` =
+  `{scanned_at, fingerprint, found, new}`. `user_dismissed` needs no code: `remember`'s ON CONFLICT never touches
+  `state`. Project isolation: only `candidate_projects(project_id)` rows for the calling project; a second
+  project rescanning the same channel gets its own relationship rows and the same global candidates (asserted).
+- Surfaces: CLI `neurosearch project rescan <project> [--collection <id>] [--json]` (prints found/new/known per
+  reservoir; network via yt-dlp only when Kyle runs it — no network in tests, ever). No API route, no job kind,
+  no nightly hook tonight (documented as part of the Phase E seam; `nightly.run` is a shared hot file and the
+  hook needs a budget decision Kyle has not made).
+- Gate `tests/test_s55_reservoir_rescan.py` (sorts after `test_s54`; fake `enumerate` injected, never
+  monkeypatching yt-dlp): fixture channel with 5 entries → first rescan `new == 5`, 5 candidates, 5
+  `candidate_projects(available)`; **second identical rescan → `new == 0`, candidate count unchanged, no
+  `candidate_projects` row changed state**; a 6th entry appears → exactly 1 new; an entry the user dismissed
+  stays `user_dismissed` after rescan; an entry already in the Library (create the source first) is remembered
+  with `source_id` set and no second `sources` row; project B rescanning the same collection adds only its own
+  relationship rows; `origin` carries the collection id; **no provider/model call** (assert `invocations` empty
+  and `usage` ledger unchanged) and no job enqueued (`jobs` table count unchanged).
+
+**Phase D — CR4 change detection before analysis (commit unit D; same module, no new table)**
+- `fingerprint(entries)` = sha256 over the sorted `(id, title, duration)` tuples (metadata-first; `published_at`
+  included when yt-dlp supplies it). `rescan` compares the stored `kv reservoir:scan:<id>.fingerprint` with the
+  fresh one BEFORE the candidate diff: **unchanged → return `{changed: False, new: 0, …}` and touch nothing**
+  (no `remember`, no `candidate_projects` update, no kv rewrite except `scanned_at`); changed → the CR3 path.
+  `metadata_revision`/`last_verified_at` are bumped only for entries whose (title, duration) actually differ
+  from the stored candidate row (via a small `candidates.touch_metadata(ids)` — or inline UPDATE if one call
+  suffices). `sources.revision` is NOT touched (acquisition path only).
+- Gate (same test file): unchanged reservoir → `changed False`, `$0` (usage ledger + invocations unchanged),
+  zero jobs, zero candidate writes (row `updated_at`s identical), `kv` fingerprint identical; a title change on
+  one entry → `changed True`, that candidate's `metadata_revision` +1 and `last_verified_at` set, still `new 0`,
+  still zero jobs; the enumeration function is called exactly once per rescan (it is the one unavoidable cheap
+  fetch — CR4 does not pretend to avoid it).
+
+**Phase E — selective acquisition seam (docs only, in the same commit as D)**
+Inspect and write into `EXECUTION-LADDER.md` as **CR8 (NOT ADMITTED)**: what is missing between NEW CANDIDATE →
+JUSTIFIED RESEARCH NEED → EXISTING ACQUISITION PATH. Expected finding (to be verified, not assumed): the pieces
+exist — `research_needs.for_project` (the need + `where`), `candidates.where_to_look` / `_best_fit` (candidate ↔
+gap fit), `candidates.link` (candidate ↔ target/claim), `candidates.capture` (the ONE acquisition path),
+`research_refresh.request_refresh` + `nightly.run`'s CR6 cap (budgeted execution). The missing rung is one
+deterministic adapter: for each `new` candidate from a rescan, `link()` it to the need it fits (kind/ref from
+CR1) when `_best_fit` clears the existing WORTH_A_LOOK floor, so it shows up in `where_to_look`/the review queue
+— and nothing acquires without CR2's due policy + CR6's budget. Record precisely which function, which threshold,
+which budget, and what product decision Kyle still owns (default-monitoring class per collection: where does
+"primary for this project" get stored — `project_collections` has no columns yet; that IS the new-schema decision
+that keeps CR8 un-admitted tonight).
+
+**Phase F — LP5 (only if A–E are committed and clean; commit unit F)**
+- Additive columns on `plan_updates` via the existing `MIGRATIONS` column-add list: `claim_id TEXT`,
+  `tension_id TEXT`, `decided_at REAL`, `decided_by TEXT` (`user` via the API route; nothing else sets it),
+  `applied_plan_id TEXT` (the plan `apply_accepted_updates` regenerated). `db.add_plan_updates` accepts optional
+  `claim_id`/`tension_id` per update (LP3's `propose_updates` passes them — it already knows both);
+  `db.set_update_status` stamps `decided_at`/`decided_by`; `apply_accepted_updates` stamps `applied_plan_id` on
+  every accepted row it folded (one UPDATE after `build_plan` returns). `db.get_plan()["updates"]` rows carry the
+  new fields automatically (`SELECT *`). No Planner redesign; `origin` remains the system-vs-LLM discriminator.
+- Gate `tests/test_s56_plan_patch_provenance.py`: an LP3 row accepted through `POST /api/plan-updates/{id}` and
+  applied under fakes reconstructs, from the single row: previous, proposed/resulting, reason, claim linkage,
+  `origin='lp3'`, `decided_by='user'`, `decided_at`, `applied_plan_id` → the target plan exists and is newer;
+  rejected rows have no `applied_plan_id`; older rows (NULLs) still render. LP6 stays `[k]` — no demo without a
+  real evidence event.
+
+**Full gates at the end (and after each committed unit where cheap):** focused tests → `pytest -q -n 4
+--dist=loadscope` (0 failed) → `repo-check` → `release-check --no-pytest` commit-bound (artifact copied in) →
+version agreement. Two commits per rung where the repo's convention applies (code, then the HANDOFF hash line).
+Control-plane updates: EXECUTION-LADDER (CR3/CR4/LP5 → `[x] <sha>`, CR8 stub), PRODUCT-SCHEDULER NOW/NEXT,
+HANDOFF (one entry per phase, short), CLAUDE.md (one line: reservoir rescan/change detection exist, detection-only),
+the new STATE snapshot. Leave a clean tree.
+
+**Pause conditions (the only ones):** a new product decision (e.g. per-collection monitoring class storage, any
+nightly hook/budget for rescans, auto-linking thresholds beyond the existing floor); any paid call; any
+destructive action (deleting rows/files — moves are fine); a credential/browser need; a schema change beyond the
+additive LP5 columns; evidence that A4's mechanism or CR3's substrate is not what this checkpoint says.
+
+**Deliberately NOT done tonight:** any live/manual acceptance (send-screenshot Chrome matrix, course-scanner live
+extension, CR7, LP6, AD4B, FM1 live); raising any S50 ceiling; forcing tests serial or adding retries; a second
+Candidate Index or ingestion path; a nightly rescan hook; a garbage collector / TTL; a recommendation engine;
+new tests on already-heavily-gated surfaces without a measured defect.
+
+READY FOR EXECUTION MODEL
