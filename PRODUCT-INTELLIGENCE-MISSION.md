@@ -1658,3 +1658,54 @@ attention avoided, cost per useful result — never raw counts.
 contradiction → delta → plan impact → one report item, nothing auto-accepted); B (Field Map proposal → accepted
 target → exploration → capture → target gains evidence); C (monitored Claim checked, nothing changed, report says
 nothing important changed).
+
+### 13. CONTINUOUS RESEARCH MONITORING MODEL (2026-09-16)
+
+Kyle's overnight-mission instruction fixes the product intent behind CR3/CR4 before either is built, because
+the words "watch", "scan", and "acquire" had started to blur together in earlier drafts of this mission. They
+are three separate, never-collapsed decisions, each with its own default and its own cost:
+
+**SELECTIVELY WATCH → SELECTIVELY ACQUIRE → SELECTIVELY RETAIN.**
+
+- **MONITOR** — is a source of new items (a channel, a playlist, a site) something Neuro keeps an eye on for a
+  given project at all? Cheap: metadata-only, no ingestion. Default depends on how the project encountered the
+  reservoir: **primary-source monitoring is ON by default** — a reservoir the project's own evidence trail
+  points at directly (a creator whose videos the project has already cited, a channel a project's collection
+  already tracks) is worth the near-zero cost of noticing new items. **Secondary/tertiary-source monitoring is
+  OFF by default** — a reservoir reached only by two or more hops of association (a channel that merely
+  resembles one already monitored, a platform-wide recommendation) does not earn continuous attention just
+  because it exists; it would need either an explicit user watch or a much stronger signal to flip on.
+  **User-explicit watch is ON regardless of tier** — if Kyle says "keep an eye on this channel," that overrides
+  the default for that one reservoir, no exceptions.
+- **ACQUIRE** — is a specific item worth actually bringing into the project as evidence (a real ingestion:
+  transcript, chunks, embeddings, cost)? This is, and remains, always a separate, explicit decision — never a
+  consequence of monitoring alone. Monitoring answers "does this exist and is it new"; acquisition answers "is
+  this worth spending on." CR3/CR4 tonight only ever reach the Candidate Index (seen, cheap, seen), never
+  `sources`/ingestion. The seam between "a candidate exists" and "a candidate should be acquired" is CR8 (below)
+  — documented, not built tonight.
+- **RETAIN** — once acquired, does the evidence stay, and in what form? Also selective, and ordered
+  deliberately: **prevention first** (do not acquire what will not be needed — the cheapest kind of retention
+  policy is never spending in the first place), **compaction next** (an acquired source that has served its
+  purpose can be summarized/profiled without losing its citation trail — see the Global Source Profile,
+  §Rung G4), **deletion last** (only after prevention and compaction have already reduced what there is to
+  delete, and only ever a project-relationship removal — `project_sources`/`candidate_projects` — never a
+  global Library source deletion, per `candidates.py`'s module docstring: PROJECT EVIDENCE → GLOBAL LIBRARY →
+  CANDIDATE INDEX → EXTERNAL WORLD, one direction). No retention garbage-collector exists yet and none is being
+  built tonight — this section fixes the ORDER a future one must respect, not its implementation.
+
+**Monitoring is not ingestion.** A reservoir being monitored produces, at most, Candidate Index rows: cheap
+metadata (title, external id, duration, first/last seen), never a `sources` row, never chunks, never
+embeddings, never a provider/model call. CR4's entire reason to exist is to make "nothing changed" a true $0
+no-op at the monitoring layer, so that watching a reservoir project after project never compounds into
+background spend just because more projects exist.
+
+**Where this leaves CR3/CR4 tonight, concretely:** both operate strictly within MONITOR. CR3 is "what does
+selective watching return the first time" (a rescan of a known reservoir, diffed against what this project has
+already seen). CR4 is "what does selective watching cost the second time" (change detection so an unchanged
+reservoir costs nothing on repeat). Neither touches ACQUIRE or RETAIN. The open product/schema question this
+mission explicitly leaves unresolved — **where a reservoir's "primary for this project" monitoring
+classification is actually stored** (a project_collections flag? a separate table? inferred each time from
+citation history?) — is a real future decision, not guessed here; CR3/CR4 tonight default every reservoir a
+project has attached to `project_collections` to being eligible for an explicit, on-demand rescan (never
+automatic, never scheduled) regardless of tier, which sidesteps the classification question without answering
+it, and is the smallest correct thing to ship without foreclosing the real decision later.
