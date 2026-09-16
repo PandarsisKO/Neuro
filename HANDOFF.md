@@ -5177,3 +5177,276 @@ together (67/67, confirming no regression on adjacent modules), then the full su
 `release-check --no-pytest`: PASS at `4f14113` (0.63.91), genuine git_sha, artifact committed at `6144a11`.
 
 Commits this segment: `4f14113` (CR8a code + tests + latent INSERT bug fix), `6144a11` (release-gate artifact).
+
+## Planning checkpoint — CR8b selective-acquisition seam (2026-09-16) — plan-then-pause
+
+Fresh pre-read done before writing this (never assumed from CR8a's own docs). Execution-ready plan below; no
+code written this pass, per Kyle's explicit "DO NOT IMPLEMENT until Kyle switches models."
+
+### What inspection actually found (this changes the shape of the work)
+
+CR8b is NOT starting from zero. Two existing pieces already implement almost this exact pattern for a narrower
+case, and CR8b's real job is closing the gap between them, not building new architecture:
+
+1. **`knowledge.pursue(target_id, external=False)`** already reranks the Candidate Index against one Evidence
+   Target ($0, `candidates.search` + token-overlap scoring in `rerank_candidates`) and calls `candidates.link(...,
+   "evidence_target", target_id, relevance=..., why=...)` for its top 8 matches — this IS "candidate is
+   already linked/matched to that target through existing deterministic discovery machinery" (rule 6), and it
+   already exists; CR8b does not need a new matcher, `_best_fit`/`_target_terms`/`rerank_candidates` are all it is.
+2. **`knowledge.capture_best(project_id, target_id, n)`** already picks the top-`n` `candidate_links` rows
+   (state='open', best `relevance` first) for one target and either attaches (if already owned) or enqueues the
+   normal `ingest_url` job — the same two-branch shape `candidates.capture()` uses, but NOT implemented by
+   calling `candidates.capture()`; it duplicates the two branches inline, and additionally calls
+   `candidates.satisfy_links(candidate_id)` on the attach branch (necessary: `identity.resolve_acquired`, which
+   normally flips a link to `satisfied`, only fires on a NEW ingest completion, not on a same-request attach of
+   an already-`ready` source — without this line the link would stay `open` forever after an attach).
+3. **`research_refresh.request_refresh(project_id, need, cap_usd)`** (CR5) is the nightly-budget-gated caller of
+   both: resolve a need → `pursue()` → `capture_best(n=1)`. It is wired into `nightly.py`'s envelope behind its
+   own off-by-default budget (`settings.research_refresh_nightly_budget`, `NEUROSEARCH_RESEARCH_REFRESH_
+   NIGHTLY_BUDGET_USD`, separate pool from T4/T5 so one can never silently eat another's budget).
+4. **The exact gap CR8b needs to fill is written into `request_refresh()`'s own code today**: it hard-refuses any
+   need without a `claim_id` — `tests/test_cr1_lp0_lp1_research_needs.py::test_request_refresh_refuses_an_open_
+   target_need_with_no_claim` proves it. An `open_target` Research Need (`research_needs.for_project`'s own
+   `kind == "open_target"` case) can have `claim_id=None` — an Evidence Target that exists on its own, not tied
+   to a specific Claim yet. That is Kyle's stated v1 case ("a candidate directly supports an already-open
+   Evidence Target") and it is the one case CR5 explicitly declines to handle, by design, because CR5 is framed
+   around *Claim* refresh, not bare target satisfaction.
+
+**Two real correctness gaps found, both must be closed by CR8b's own eligibility check — neither `capture_best`
+nor `pursue` closes them today:**
+
+- **Gap A — dismissed-candidate leak.** `candidates.links_for()` (which both `capture_best` and CR8b would read)
+  joins `candidate_links` to `candidates` only — it never checks `candidate_projects.state` for this project. A
+  candidate the user has `user_dismissed` at the project level can still carry an `open` `candidate_links` row
+  (dismissing a candidate and dismissing a *link* are two different actions — `candidates.dismiss_link()` is
+  separate from `candidates.mark(..., "user_dismissed", ...)`). If `capture_best` were called on such a target
+  today, it could re-surface and auto-capture something the user explicitly said no to. This is exactly rule 3;
+  CR8b's eligibility function must join `candidate_projects` and check `state` itself.
+- **Gap B — no budget gate before the call.** Neither `pursue()` nor `capture_best()` calls `usage.guard()` or
+  consults any nightly cap; only `ingest.ingest_url`'s own internal `usage.guard(estimate_transcription(...))`
+  protects real spend, and only when a caption-free video actually needs paid Whisper transcription. `request_
+  refresh()` supplies the missing layer for Claim needs (tracking `rr_remaining` against its own budget before
+  ever calling `capture_best`); CR8b needs the identical outer layer for target needs — this is not new
+  invention, it's applying CR5's already-proven pattern to the case CR5 declined.
+
+**Provenance: already 95% there.** `candidate.origin` (JSON, e.g. `{"kind": "reservoir_rescan", "collection_id":
+...}`) records where the candidate came from; `candidate_links.relevance`/`why`/`created_at` records why it was
+matched to the target and when; `project_evidence_targets` records the target's own question/gap/status;
+`candidates.capture()`'s `reason` parameter already exists and is stored via `mark(..., "acquired", reason, ...)`
+on `candidate_projects.reason`. The one genuinely missing link: **`candidates.capture()`'s own `ingest_url` job
+payload omits `candidate_id`/`reason`** — `capture_best()`'s hand-rolled enqueue branch already includes both
+(`{"url":..., ..., "candidate_id": c["id"], "reason": "...", "title": ...}`), proving the fields are useful and
+already flow safely through `jobs.payload` (a JSON blob; grepped `ingest.py`/`jobs.py` — nothing reads
+`payload["candidate_id"]`/`payload["reason"]` today, they are pure write-only provenance breadcrumbs, so adding
+them is non-functional and safe). **Proposed fix, proven necessary, not invented:** add `"candidate_id":
+candidate_id, "reason": reason` to `candidates.capture()`'s existing `jobs.enqueue("ingest_url", {...})` call —
+both values are already in scope as the function's own parameters, so this is a two-key addition to an existing
+dict literal, not a schema migration and not a new field on any table. With that one addition, the full chain
+(candidate → origin → link/why/relevance → target → job.payload.candidate_id/reason → resulting source) is
+reconstructable end to end from existing tables alone; **no new column, no new table.** Execution must grep
+`tests/` for any test asserting `candidates.capture()`'s job payload by exact dict equality before making this
+change (a spot check of `test_n7_pool.py::test_capture_attaches_when_already_owned_and_enqueues_when_not` and
+`test_capture_raises_lookup_error_for_an_unknown_candidate` found only `job["kind"]`/`job_id` assertions, never a
+payload-equality assertion — likely safe, but confirm exhaustively before touching it).
+
+### Design
+
+**Where the code lives.** Add to `neurosearch/research_refresh.py` (not a new module) — the mission's own
+CR8a-established discipline is to create a new module only after confirming no existing one owns the
+responsibility; this file already owns "one important research-need resolved end-to-end through the existing
+paths, nightly-budget-gated, off by default" for Claim needs, and CR8b is the identical shape for Target needs.
+Rename nothing (the module docstring's Claim framing stays true for `request_refresh`); add a sibling function
+and update the module docstring's opening paragraph to mention both.
+
+**New function `request_acquisition(project_id: str, need: dict | None = None, cap_usd: float = 0.0) -> dict`**
+(name distinct from `request_refresh` — this is CR8b's own public entry point, not a rename of CR5's):
+
+1. If `need is None`: pull `research_needs.due_tonight(project_id)`, filter to `n["kind"] == "open_target"` (v1
+   is scoped to exactly this kind — no `plan_impact_stale`/`disagreement`/`weak_plan_cited`, matching "Do not
+   expand beyond this vertical slice"), then to `n["estimated_cost_usd"] <= cap_usd`. Empty → `{"started": False,
+   "reason": "nothing due under $X"}` (mirrors `request_refresh`'s own message).
+2. Resolve `target_id = need["target_id"]` (an `open_target` need always carries one — `for_project` sets it
+   directly from `project_evidence_targets`, no `_resolve_target` guesswork needed here, unlike CR5's Claim case).
+3. **Selection pass** — a new private helper, e.g. `_eligible_candidate(project_id, target_id, cap_usd)`:
+   - Re-fetch `target = knowledge.get_target(target_id)`; if `target is None or target["status"] != "open"` →
+     no eligible candidate (rules 6/7 start here, and this is also test 5: closed target → no acquisition).
+   - Walk `candidates.links_for(project_id, "evidence_target", target_id, state="open", limit=10)` in the order
+     it already returns (best `relevance` first — reuses existing ranking, invents no new score).
+   - For each linked row, in order, apply the full eligibility test and return the FIRST that passes (bounded:
+     at most one candidate considered as "the pick" per target per call — satisfies "at most ONE automatic
+     acquisition per open Evidence Target per evaluation pass" directly, not via post-hoc dedup):
+     - **Gap A fix** — join `candidate_projects` for `(candidate_id, project_id)`; skip if missing, or if
+       `state` is `user_dismissed`, `acquired`, or `duplicate` (rules 2/3/4), or an operational skip state
+       (`skipped_low_relevance`/`skipped_limit`/`skipped_cost` — rule 5: these are NOT the same as dismissed and
+       must not disqualify a candidate whose SKIP was itself relevance-driven — actually re-reading rule 5
+       against rule 8, a `skipped_low_relevance` candidate already failed the SAME fit bar rule 8 re-imposes, so
+       excluding it here is consistent, not redundant; a `skipped_limit`/`skipped_cost` candidate was never
+       judged irrelevant, only deferred for capacity/cost reasons unrelated to this specific target — **decision
+       for the execution model to confirm with a test either way**: v1 plan treats all three skip states as
+       ineligible, on the theory that CR8b re-evaluating them is exactly the kind of "generalize to arbitrary
+       relevance/exploration" scope creep the mission explicitly excludes — if Kyle wants `skipped_limit`/
+       `skipped_cost` candidates reconsidered, that is a one-line change to this filter, called out explicitly
+       rather than silently decided).
+     - Require a stored fit/relevance floor (rule 8) — reuse `candidates.WORTH_A_LOOK` (40, the pool's existing
+       "worth a look" boundary, already reused once by AD3 for exactly this kind of threshold-reuse) against
+       `link["relevance"]` (the score `pursue()`'s `rerank_candidates` already wrote). No new scoring function.
+     - Rule 9 (no existing Library source already covers this) is handled by `candidates.capture()`'s own
+       attach-vs-enqueue branch, not a separate check here — return the candidate either way and let `capture()`
+       decide attach vs. enqueue; a candidate already covered attaches for $0 rather than being excluded.
+   - Return `None` if nothing passes (weak/unqualified/dismissed/already-acquired/closed-target all naturally
+     produce this — tests 2/3/4/5).
+4. If nothing eligible → `{"started": False, "reason": "..."}`.
+5. **Budget gate (rule 10 / Gap B fix)** — only relevant to the enqueue path (attach is free): if the picked
+   candidate would need `capture()`'s enqueue branch (no ready `source_id`) and `need["estimated_cost_usd"] >
+   cap_usd`, stop here — `{"started": False, "reason": "over budget", "estimated_cost_usd": ...}` (leaves the
+   candidate fully untouched — test 14: budget denial leaves candidate intact).
+6. **Re-check immediately before acquisition** (the mission's own explicit instruction, and tests 6/7): re-fetch
+   `target`, `candidate_projects.state`, and `candidate_links.state` ONE more time, right before calling
+   `capture()` — cheap (three point reads), and closes the exact race Kyle described (target closes, or the
+   candidate gets dismissed, between selection at step 3 and execution here). If anything changed → same
+   `{"started": False, ...}` shape, never a partial mutation.
+7. Call `candidates.capture(candidate_id, project_id, reason=f"CR8b: satisfies open evidence target — "
+   f"{target['question'][:100]}")` — THE canonical seam per Kyle's own instruction, used exactly as every other
+   caller uses it, no new acquisition state machine.
+8. If `result.get("job_id") is None` (the attach branch — the only place `resolve_acquired` will not fire again
+   to flip the link): call `candidates.satisfy_links(candidate_id)` directly, matching `capture_best`'s own
+   already-necessary pattern. If a job was enqueued instead, do nothing further — `identity.resolve_acquired`
+   already flips `candidate_links` to `satisfied` once that job's ingest completes, exactly as it does for every
+   other acquisition path today; no new completion hook.
+9. Return `{"started": True, "target_id": target_id, "candidate_id": candidate_id, **result}`.
+
+**No auto-Claim-promotion**: `request_acquisition` never touches `claims.set_status`, never calls `claims.
+assess`, never creates a Claim. It only ever calls `candidates.capture()`, exactly like `request_refresh`. The
+findings/claims harvest that follows an ingest completion is the existing async pipeline, completely unchanged
+— review/acceptance stays exactly as manual as it already is for a hand-captured source.
+
+**Idempotency (rule 13)**: falls out of the design without extra code. A second call against unchanged state
+finds either (a) the target no longer `open` (satisfied by the first call's eventual evidence, or by anything
+else), or (b) the `candidate_links` row no longer `open` (flipped to `satisfied` once the first call's job
+completes, or immediately for an attach), or (c) `research_needs.due_tonight`'s own `CHECK_TTL_S` (12h)
+re-surfacing guard skipping the need entirely. All three are existing mechanisms; nothing new to build for this.
+
+### Nightly integration (mirrors CR6 exactly)
+
+New `neurosearch/config.py` setting, same pattern/placement as `research_refresh_nightly_budget` (right after it):
+
+```python
+# CR8b: a FOURTH, separately-authorized per-night cap -- selective acquisition from an open Evidence Target with
+# no Claim yet (research_refresh.request_acquisition), via the same job queue as any other acquisition. Off by
+# default, same discipline as t5/research_refresh: never folded into another budget.
+cr8b_acquisition_nightly_budget: float = field(default_factory=lambda: float(_env("NEUROSEARCH_CR8B_NIGHTLY_BUDGET_USD", "0") or 0))
+```
+
+New block in `nightly.py`, placed right after the existing CR6 `research_refresh` block, same shape (per-project
+loop, remaining-budget bookkeeping, one `try/except` per project so one project's failure never aborts the
+night, a `record["cr8b_acquisition"]` entry mirroring `record["research_refresh"]`'s own shape exactly — reuse
+its field names: `ran`, `budget`, `spent_estimate`, `requested`, `stopped_by_budget`). Skipped entirely (`None`)
+when `settings.cr8b_acquisition_nightly_budget <= 0`, matching CR6's own `if settings.research_refresh_nightly_
+budget > 0:` gate. This is the automatic/scheduled half — off until Kyle sets a budget > 0.
+
+### On-demand path (satisfies "CHECK THIS SOURCE NOW" / test 10)
+
+New CLI command, matching CR3/CR4/CR8a's own CLI-only, never-auto-scheduled pattern:
+
+```
+neurosearch project acquire-evaluate <project> [--target TARGET_ID] [--cap USD] [--json]
+```
+
+- No `--target`: evaluates the single top due `open_target` need under `--cap` (defaults to `settings.
+  cr8b_acquisition_nightly_budget` — if that is 0/unset, `--cap` defaults to 0 too, so an on-demand run spends
+  nothing unless Kyle explicitly passes a cap; this is what keeps "no paid provider calls are authorized merely
+  by this mission" true by construction rather than by a policy note).
+- `--target TARGET_ID`: evaluates exactly that target (an explicit "check this now" for one target), still
+  through the SAME `request_acquisition` eligibility+budget+re-check logic — "acceptable for the normal
+  selective-acquisition policy to evaluate that candidate," per Kyle's own wording, not a separate bypass path.
+- Calls `research_refresh.request_acquisition(pid, need={"kind": "open_target", "target_id": target_id, ...} if
+  --target else None, cap_usd=cap)`.
+- Prints the same shape `project rescan` does (one line per outcome: started vs. why not), `--json` for the
+  machine-readable form.
+
+This also satisfies test 10 directly: `reservoir.rescan(pid, cid)` (CR8a's ungated explicit check) can discover
+a new candidate against a monitor-off collection without touching policy; a SEPARATE, explicit `project
+acquire-evaluate` call can then decide whether that candidate satisfies an open target — two deliberate, separate
+actions, neither one silently triggering the other, monitor policy untouched by either.
+
+### What CR8b explicitly does NOT touch
+
+No new table, no new job kind, no new queue, no new fetcher, no new acquisition state machine, no new scoring
+function, no retention/GC/TTL/archival of any kind, no change to `claims.set_status`, no widening beyond
+`open_target` needs (Claims/tensions/plan-impact/Source-Capability/novelty/exploration all stay CR8c+), no
+change to CR8a's monitor-policy gating (`reservoir.rescan_project` is untouched), no new LLM/classifier call.
+
+### Test matrix (mapped to Kyle's 15 + the 2 gaps this inspection found)
+
+New file `tests/test_s58_selective_acquisition.py` (module: `research_refresh.request_acquisition` +
+`nightly.py`'s new block + the new CLI command), reusing `test_cr1_lp0_lp1_research_needs.py`'s established
+`rn_db` fixture pattern and `_claim`/`_candidate_row`-style local helpers, plus `knowledge.add_target`:
+
+1. open target + one strong linked candidate (via a real `knowledge.pursue()` call, not a hand-inserted link —
+   proves the matching machinery, not just the acquisition half) → exactly one `candidates.capture()`-driven
+   acquisition (attach or job, either is fine), `started: True`.
+2. weak/unlinked candidate (below the `WORTH_A_LOOK` relevance floor, or with no link at all) → `started: False`,
+   nothing captured.
+3. dismissed candidate (`candidate_projects.state == "user_dismissed"`, link still `open` — the exact Gap A
+   scenario) → `started: False`; this is the regression that proves Gap A is actually closed, not just described.
+4. already-acquired candidate (`candidate_projects.state == "acquired"`) → no duplicate capture, no duplicate job.
+5. closed target (`status == "closed_by_user"` or `"satisfied"`) → `started: False`, `candidates.capture` never
+   called (assert via a monkeypatched `capture` that fails the test if invoked, matching this mission's existing
+   "prove zero calls" style from CR3/CR4's own gate file).
+6. target closes BETWEEN selection and execution — mutate `project_evidence_targets.status` inside a monkeypatch
+   of the eligibility helper's second (re-check) read, or more simply call `_eligible_candidate` then flip status
+   then call the rest of `request_acquisition` — proves the re-check step 6 actually re-reads, not the selection
+   read from step 3.
+7. candidate dismissed BETWEEN selection and execution — same shape as 6, mutating `candidate_projects.state`
+   after selection, before the re-check.
+8. two qualifying candidates for one target → exactly one acquisition, the other left `available`/still `open`
+   on its link (bounded, not both swallowed) — this is also where rule "at most one per target per pass" gets
+   its direct proof, distinct from test 1's single-candidate case.
+9. same candidate linked in two projects (both call `knowledge.pursue()` independently, as CR8a's own test
+   pattern for cross-project isolation already established) → each project's `request_acquisition` decides for
+   itself; project A's dismissal doesn't block project B's acquisition and vice versa.
+10. explicit one-time `reservoir.rescan(pid, cid)` against a monitor-off (`secondary`/`auto`) collection
+    discovers a candidate; a separate `project acquire-evaluate --target` call still evaluates and can act on it;
+    `db.get_collection_policy(pid, cid)` is asserted unchanged before AND after — proves CR8a's monitor-policy
+    gate and CR8b's acquisition gate are genuinely independent, not accidentally coupled.
+11. no automatic Claim acceptance — after a successful `started: True` run, assert no `project_claims` row
+    changed status and `claims.set_status` was never called (monkeypatch-and-fail-if-called, same style as 5).
+12. no new ingestion path/job system — assert the resulting job (when one exists) has `kind == "ingest_url"`,
+    identical to every other acquisition path's job kind; no new job kind constant introduced anywhere in the
+    diff (a grep-based meta-check is fine here, matching this mission's own repo-hygiene-style assertions).
+13. repeated execution on unchanged state is idempotent — call `request_acquisition` twice in a row with the
+    same due need; second call must report `started: False` (target/link already resolved by the first) and
+    must not enqueue a second job / attach twice.
+14. budget denial leaves candidate intact — `cap_usd` below the need's `estimated_cost_usd` for the enqueue
+    branch → `started: False`, `candidate_projects.state` still `available`, `candidate_links.state` still
+    `open`, no job created (test literally named "does not partially acquire" — assert every table involved is
+    byte-for-byte unchanged, not just "no job").
+15. provenance reconstructs — after a `started: True` run, walk candidate → `origin` → `candidate_links` (kind=
+    evidence_target, relevance, why) → `project_evidence_targets` (question) → `jobs.payload` (candidate_id,
+    reason — the one proposed addition) → resulting source, and assert every link in the chain is present and
+    consistent, matching the exact story the mission's SUCCESS CONDITION narrates.
+
+Plus the CLI test (`project acquire-evaluate`, matching CR3/CR4/CR8a's own CLI test style) and a nightly-envelope
+test proving `cr8b_acquisition_nightly_budget == 0` (default) means `record["cr8b_acquisition"] is None`, mirror-
+ing `test_research_refresh_off_by_default_in_nightly` exactly.
+
+### Full gates required at the end (per standing discipline)
+
+Focused new test file → `test_cr1_lp0_lp1_research_needs.py` + `test_s57_monitor_policy.py` +
+`test_s55_reservoir_rescan.py` together (regression on everything CR8b touches or sits beside) → full suite
+`pytest -n 4 --dist=loadscope` (0 failed, 3+ consecutive runs) → `repo-check` PASS → commit-bound `release-check
+--no-pytest` PASS → HANDOFF.md execution entry → EXECUTION-LADDER.md's CR8b entry flipped from "not admitted" to
+DONE with the commit hash → CLAUDE.md's Continuous Research row extended one more clause.
+
+### Open questions for the execution model (not blocking, but worth a decision each, stated rather than silently picked)
+
+1. Rule 5's exact scope (`skipped_limit`/`skipped_cost` treated as ineligible in this plan — see step 3's callout
+   above) — confirm or narrow with a test either way.
+2. Whether `request_acquisition`'s on-demand `--cap` default (falling back to the nightly setting, itself 0 by
+   default) is the right default, or whether Kyle would rather the CLI require an explicit `--cap` always (no
+   silent inheritance from a setting the user may not remember exists). Leaning toward the plan's current
+   behavior since it's the same "off unless explicitly turned on" discipline CR6/CR8a both already use, but this
+   is a one-line default and worth Kyle's explicit sign-off given it's a spend-adjacent default.
+3. Whether the morning report should grow a one-line CR8b disclosure (`test_morning_report_shows_research_
+   refresh_line_only_when_nonzero` is the existing precedent for this exact pattern) — nice-to-have, not required
+   for the vertical slice's success condition, proposed as a fast follow-up rather than blocking this slice.

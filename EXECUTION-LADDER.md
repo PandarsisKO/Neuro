@@ -484,13 +484,26 @@ Proven in `tests/test_s57_monitor_policy.py::test_explicit_single_collection_res
 was already true by construction -- the test adds the missing direct proof. Release-gate PASS at `94b3699`
 (`0df11d4`).
 
-### CR8b `[ ]` selective-acquisition adapter — still NOT built, now unblocked but not admitted · needs: Kyle go-ahead
-CR8a resolved the one blocking question; the adapter itself (candidate → `where_to_look`/`_best_fit` →
-`candidates.link`, gated by CR2's due policy + CR6's budget, described above) is still not built. Per Kyle's own
-instruction when resolving CR8a: "do not jump directly to automatic acquisition in the same change unless the
-now-resolved policy seam makes the next step trivially small and already admitted" -- it isn't admitted, so this
-stays a separate future step, not implied by CR8a landing. `candidates.link` recording a possible fit is closer
-to blurring MONITOR/ACQUIRE than CR3/CR4's plain `remember` was, so it still deserves its own explicit go-ahead.
+### CR8b `[ ]` selective-acquisition adapter — PLANNED (2026-09-16), awaiting execution model · needs: Kyle go-ahead
+CR8a resolved the one blocking question; Kyle then commissioned the CR8b mission itself (plan-once/pause-once).
+Execution-ready plan written into HANDOFF.md after a fresh pre-read of `candidates.py`, `knowledge.py`,
+`research_refresh.py` (CR5) and `nightly.py` (CR6) -- NOT built yet, no code changed this pass.
+
+**What the plan found, in short**: CR5's `research_refresh.request_refresh()` + `knowledge.pursue()`/
+`capture_best()` already implement almost this exact pattern for Claim-linked needs, and explicitly REFUSE an
+`open_target` need with no `claim_id` (`test_request_refresh_refuses_an_open_target_need_with_no_claim`) -- that
+refusal is precisely Kyle's v1 case. The plan adds a sibling `research_refresh.request_acquisition()` for
+`open_target` needs, reusing `pursue`/`candidates.links_for`/`candidates.capture()` (the canonical seam) with its
+own eligibility gate (closes two real gaps inspection found: `links_for` never checks `candidate_projects.state`,
+so a dismissed candidate's still-open link could otherwise be re-captured; neither `pursue` nor `capture_best`
+budget-gates before spending), a re-check immediately before acquisition, bounded to one acquisition per target
+per pass, gated by a new off-by-default nightly budget (`cr8b_acquisition_nightly_budget`, same pattern as
+T4/T5/CR6's separate pools) plus an on-demand `project acquire-evaluate` CLI command for the explicit "check this
+source now" case. One small, proven-necessary provenance addition: `candidates.capture()`'s job payload gains
+`candidate_id`/`reason` (both already in scope as the function's own parameters; `capture_best()` already proves
+the pattern safe) -- no new table, no schema migration. Full plan, exact function-by-function design, and the
+15-item test matrix (Kyle's 15 plus the 2 gaps this inspection found) are in HANDOFF.md's "Planning checkpoint —
+CR8b" entry. Per Kyle's own instruction: do not implement until he switches models.
 
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;

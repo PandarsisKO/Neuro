@@ -37,6 +37,16 @@ Live/manual gates (send-screenshot Chrome matrix, course-scanner live extension,
 touched — each still needs the specific Kyle action EXECUTION-LADDER.md names. Nothing pushed to GitHub; sandbox
 has no route there.
 
+**Updated (2026-09-16, plan-then-pause).** Kyle commissioned CR8b (selective acquisition from Continuous
+Research) as its own plan-once/pause-once mission. Execution-ready plan written into HANDOFF.md's "Planning
+checkpoint — CR8b" entry after a fresh pre-read of `candidates.py`/`knowledge.py`/`research_refresh.py` (CR5)/
+`nightly.py` (CR6) — no code changed. Key finding: CR5's existing `request_refresh()` already implements almost
+this exact pattern for Claim-linked needs and explicitly refuses the `open_target`-with-no-claim case, which is
+precisely CR8b's v1 target; the plan adds a sibling `request_acquisition()` closing two real gaps found
+(dismissed-candidate leak in `links_for`, no budget gate before `capture_best`), reusing `candidates.capture()`
+as the canonical seam throughout. **NOT implemented — awaiting Kyle's execution-model switch, per his explicit
+instruction.**
+
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that
 authorized CR6/LP4 also covers continuing straight into the remaining PARALLEL PREP rungs in the same mission §12
