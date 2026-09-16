@@ -631,6 +631,34 @@ def project_rebuild_stale(project: str, tier: str = typer.Option("rebuild_matter
         typer.echo(f"queued {r['queued']} job(s) for tier '{tier}'")
 
 
+@project_app.command("rescan")
+def project_rescan(project: str, collection: Optional[str] = typer.Option(None, "--collection", help="Rescan just this collection id; default rescans every collection the project is attached to"),
+                   as_json: bool = typer.Option(False, "--json", help="Emit stable machine-readable JSON")) -> None:
+    """CR3/CR4 (PRODUCT-INTELLIGENCE-MISSION.md §13): on-demand known-reservoir rescan. MONITOR only — reads the
+    reservoir's current listing and records any not-yet-seen items as cheap Candidate Index rows (never
+    ingestion, never a provider/model call). An unchanged reservoir this project has already reconciled costs
+    nothing beyond the one listing read. Never scheduled — the user (or the app, on the user's click) runs this."""
+    from . import reservoir
+
+    _init()
+    pid = _project_id(project)
+    assert pid
+    results = [reservoir.rescan(pid, collection)] if collection else reservoir.rescan_project(pid)
+    if as_json:
+        typer.echo(json.dumps(results, indent=1))
+        return
+    if not results:
+        typer.echo("this project is not attached to any collection to rescan")
+        return
+    for r in results:
+        col = db.get_collection(r["collection_id"])
+        title = (col or {}).get("title") or r["collection_id"]
+        if not r["changed"]:
+            typer.echo(f"{title}: unchanged since the last rescan — nothing to do")
+        else:
+            typer.echo(f"{title}: {r['new']} new of {r['total']} listed")
+
+
 if __name__ == "__main__":
     app()
 

@@ -1859,6 +1859,18 @@ def list_collections() -> list[dict[str, Any]]:
     ).fetchall()]
 
 
+def get_collection(collection_id: str) -> dict[str, Any] | None:
+    row = connect().execute("SELECT * FROM collections WHERE id=?", (collection_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def project_collection_ids(project_id: str) -> list[str]:
+    """Every collection this project is attached to, via project_collections. CR3/CR4 (reservoir.py) use this
+    to enumerate what a project's own on-demand rescan covers -- never automatic, never scheduled."""
+    return [r["collection_id"] for r in connect().execute(
+        "SELECT collection_id FROM project_collections WHERE project_id=?", (project_id,)).fetchall()]
+
+
 # ------------------------------------------------------------------ jobs
 
 JOB_ACTIVE = ("queued", "running", "external_pending")
