@@ -1,8 +1,29 @@
 # Neuro Search product scheduler
 
-Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-15 (NOW section; the rest reflects 2026-09-13/14 and EXECUTION-LADDER.md is the live per-item state). This is distinct from the parked runtime scheduler design in SCHEDULER.md.
+Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW section reconciled against EXECUTION-LADDER.md's live per-item state; the rest of this file is an append-only history and reflects the date each entry was written). This is distinct from the parked runtime scheduler design in SCHEDULER.md.
 
 ## NOW — one active effort
+
+**CONTROL-PLANE RECONCILIATION — 2026-09-16, current reality (read this first).** EXECUTION-LADDER.md is the
+live per-item source of truth; this note exists because the rest of this NOW section (and the whole NEXT
+section below) accumulated stale claims that could misdirect a fresh agent. As of this commit:
+
+- **CR1-CR8b are ALL DONE** (CR1/CR2/CR3/CR4/CR5/CR6/CR8a/CR8b all `[x]` in EXECUTION-LADDER.md). CR3 is NOT
+  "Codex-shaped" or open -- it shipped alongside CR4 on 2026-09-15/16. CR8b is NOT un-admitted -- it shipped with
+  Kyle's 9 corrections and was then hardened (config.override fix for cli.py's nightly-settings mutation). Only
+  **CR7** remains, and it is Kyle-gated (a real-project nightly run + report-back, not more code).
+- **LP0-LP5 are ALL DONE.** LP5 is NOT "codex-shaped, READY AFTER LP3" or open -- it shipped 2026-09-16. Only
+  **LP6** remains, Kyle-gated (report a real Claim-status-change id).
+- **SC0b/AD0-AD4A are ALL DONE.** Only **AD4B** remains, Kyle-gated (real usage first, then a `discover-report`
+  read).
+- **FM0 is DONE.** FM1 (blind-spot proposals) is the one genuinely agent-ready, not-yet-started Claude-lane rung
+  right now -- its code can be built without Kyle; only FM1's live Crossref/OpenAlex validation needs Kyle's
+  machine.
+- The "Next eligible in the Claude lane: nothing is READY..." paragraph and the "## NEXT — admitted priorities"
+  section below are both **superseded** by the above -- they predate CR3/CR4/CR8a/CR8b/LP5 shipping and describe
+  an earlier state. Left in place as history per this file's append-only convention, not deleted; do not act on
+  their "nothing ready" / "CR3 (Codex-shaped)" / "LP5 (codex-shaped)" claims. See EXECUTION-LADDER.md directly
+  for anything not covered here.
 
 **Updated 2026-09-16 15:35 (overnight mission — Phase A + Phase B + CR3/CR4 + CR8-docs all closed; assessing
 LP5).** Phase A: full suite 1766/0 clean across 11 consecutive `-n 4` runs (was flaky ~1-in-3..6 under a wrong
@@ -78,15 +99,20 @@ state, descriptive only) and AD4B (the actual static-vs-adaptive verdict, deferr
 target yield through valid provenance, review burden, and an evidence-sufficiency guard that refuses a confident
 read on a thin sample.
 
-Next eligible in the Claude lane: nothing is READY with no further Kyle input right now. Three small, concrete
-things are waiting on Kyle -- exact wording and gate in EXECUTION-LADDER.md:
+**[SUPERSEDED — 2026-09-16, see the reconciliation note at the top of NOW. CR3 and LP5 shipped; they were not
+left as "Codex-shaped" parallel prep. Kept verbatim below only as a historical record of what was open at the
+time this paragraph was written.]**
+
+Next eligible in the Claude lane (as of 2026-09-15, now historical): nothing is READY with no further Kyle input
+right now. Three small, concrete things are waiting on Kyle -- exact wording and gate in EXECUTION-LADDER.md:
 - **CR7**: let the nightly worker run once on a real project, then say what the next morning's report showed.
 - **LP6**: next time a real Claim's status actually changes overnight, hand Claude the Claim id.
 - **AD4B**: keep using Adaptive Discovery normally; revisit only once `project discover-report` says
   `usable_sample` and its numbers leave the adaptive system's value genuinely ambiguous.
 FM1's live validation against Crossref/OpenAlex is likewise Kyle-machine-gated (sandbox has no route there), but
 FM1's own code is Claude-lane and not yet started. Parallel prep still open for a second agent: LP5 (codex-shaped,
-READY AFTER LP3), CR3 (Codex-shaped).
+READY AFTER LP3), CR3 (Codex-shaped). **[Both LP5 and CR3 are DONE as of 2026-09-16 -- see the reconciliation
+note at the top of NOW for current status.]**
 
 ## SUSPENDED — RESUME FIRST
 
@@ -105,9 +131,28 @@ are tracked. Local `INSPIRATION/`, `Claude outputs/`, `SCREENSHOT AUDIT/`, and
 `.audit-compare-tmp/` material remains preserved as non-authoritative evidence;
 do not silently delete it.
 
-## NEXT — admitted priorities (maximum three)
+## NEXT — admitted priorities
 
-(2026-09-15) After CR1 + LP1: **CR2 → CR5** (one Claim refreshed end-to-end, the P8 vertical slice) and **LP2 → LP3**
+**[SUPERSEDED — 2026-09-16.]** This section named P0/P1A/P5 as the admitted priorities on 2026-09-14/15. All
+three are long since resolved: P0 (Stage 1, L-10..L-17) is entirely DONE; P1A (Stage 3, L-20/L-21) is DONE at
+L-20 with L-21 Kyle-gated (a real macOS power test); P5 (Stage 2, L-02..L-08) is DONE except L-07 (needs Kyle's
+L-06 sample review first) and L-08 (Claude-prepped, needs a Mac run). CR2→CR5 and LP2→LP3, also named below, are
+likewise DONE (see EXECUTION-LADDER.md Stage 10-11: CR1-CR8b and LP0-LP5 all `[x]`). Kept verbatim below as a
+historical record; EXECUTION-LADDER.md is the live source of truth for current NEXT.
+
+**Current (2026-09-16), read from EXECUTION-LADDER.md directly:**
+- **Agent-ready, no Kyle gate, not yet started:** FM1 (Stage 14, blind-spot proposals) — FM0's $0 experiment
+  chose this direction; FM1's own code is Claude-lane and buildable now. (Its live Crossref/OpenAlex validation
+  separately needs Kyle's machine, but that doesn't block starting the code.)
+- **Explicitly parked, not ready:** H1 (Stage 15, semantic finding dedupe). P11 Neuro Everywhere remains
+  FUTURE / NICE TO HAVE.
+- **Kyle-gated (code already done or the whole rung is a real-world observation, not implementation):** CR7,
+  LP6, AD4B, L-06/L-07/L-08, L-21, L-30/L-31, L-40, L-41, L-51/L-52, L-60/L-61 — each names its exact required
+  Kyle action directly in EXECUTION-LADDER.md. Do not build more code against these; they need Kyle's action,
+  not another implementation pass.
+- Do NOT restart CR1-CR8b, LP0-LP5, SC0b, AD0-AD4A, or FM0 — all DONE.
+
+(2026-09-15, historical) After CR1 + LP1: **CR2 → CR5** (one Claim refreshed end-to-end, the P8 vertical slice) and **LP2 → LP3**
 (explainable impact → proposed patch) — both READY AFTER their gate, both Claude lane. P11 Neuro Everywhere is
 FUTURE / NICE TO HAVE and not in this queue. The three items below are the 2026-09-14 admissions, all now
 code-complete and Kyle-gated; kept for history.
