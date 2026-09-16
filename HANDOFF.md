@@ -5450,3 +5450,89 @@ DONE with the commit hash → CLAUDE.md's Continuous Research row extended one m
 3. Whether the morning report should grow a one-line CR8b disclosure (`test_morning_report_shows_research_
    refresh_line_only_when_nonzero` is the existing precedent for this exact pattern) — nice-to-have, not required
    for the vertical slice's success condition, proposed as a fast follow-up rather than blocking this slice.
+
+## Execution — CR8b shipped with Kyle's 9 corrections (2026-09-16, executing model)
+
+Kyle authorized full implementation over the plan-then-pause checkpoint at `908018f` (HANDOFF.md's "Planning
+checkpoint — CR8b selective-acquisition seam" entry above), with 9 numbered corrections to apply before writing
+any code. All 9 were applied before their relevant code was written, not retrofitted afterward:
+
+1. **No new dollar budget.** Removed the planned `cr8b_acquisition_nightly_budget`. Added `cr8b_enabled: bool`
+   instead (`config.py`, `NEUROSEARCH_CR8B_ENABLED`, same style as `morning_report_needs_me`). CR8b reuses
+   `capture_best()`'s existing `usage.guard()`/`usage.check()` for its one spend-bearing branch — confirmed by
+   reading `usage.check()` that a 0/unset `daily_budget`/`weekly`/`monthly_budget` means unlimited, so this is
+   always safe to call without requiring Kyle to configure anything new.
+2. **No duplicated CR5 selection logic.** `knowledge.capture_best(project_id, target_id, n)` is now the one
+   shared mechanism both `research_refresh.request_refresh()` (CR5, Claim-linked) and the new
+   `research_refresh.request_acquisition()` (CR8b, open-target) go through — not a second `capture_best_v2` or a
+   copied ranking path.
+3. **Budget gating never blocks $0 reuse.** Inside `capture_best()`: an already-ready Library source attaches
+   unconditionally. Only the enqueue-a-real-`ingest_url`-job branch is wrapped in `usage.guard()`; a
+   `BudgetPaused` candidate is skipped (not started, no disposition change) and the next candidate in the pool is
+   tried.
+4. **Dismissed-candidate protection at the shared boundary, not inside `candidates.capture()`.** `capture_best()`
+   now re-reads live `candidate_projects.state` per candidate before acting (skips `user_dismissed`/`acquired`/
+   `duplicate`) — this is the fix for the gap the planning pass found (`links_for()`'s join never touched
+   `candidate_projects`, so a dismissed candidate's still-open link was invisible to any eligibility check).
+   `candidates.capture()` itself was deliberately left unmodified beyond its provenance addition (below): it's
+   the explicit single-candidate "capture this anyway" path reachable via `POST /api/candidates/{id}/acquire`,
+   and a user reversing their own earlier dismissal must still be able to reach it.
+5. **Last-responsible-moment re-checks.** `capture_best()`'s per-candidate loop already re-reads state fresh
+   from the DB every iteration (never cached ahead of the loop). `request_acquisition()` adds the one check
+   `capture_best()` itself can't make — the *target's* own `status == "open"`, immediately before calling
+   `knowledge.pursue()` + `capture_best()`.
+6. **One acquisition per target per pass, still.** `capture_best()` decouples its candidate CONSIDERATION pool
+   (`links_for(limit=10)`, fixed) from the ACQUISITION cap `n` — a best candidate that turns out ineligible at
+   execution time (dismissed, already acquired, budget-refused) is skipped in favor of the next-best one in the
+   *same* bounded pass, without exhausting the whole pool and without becoming a quota system. `n=1` from both
+   CR5 and CR8b callers.
+7. **Nightly integration stayed thin.** `nightly.py`'s CR8b block is gated by the plain boolean
+   `settings.cr8b_enabled` (not a budget pool), mirrors CR6's per-project try/except-log-and-continue shape, adds
+   no new scheduler/queue/retry/monitoring-loop machinery, and records a `cr8b_acquisition` dict in the envelope
+   with no dollar `record` field.
+8. **Original v1 boundaries preserved.** Still only: open Evidence Target → existing deterministic candidate
+   linkage/fit (`pursue()` + `capture_best()`) → one justified acquisition → the existing
+   `candidates.capture()`/attach path. No stale-Claims-broadly, tensions-broadly, plan-impact-broadly, Source
+   Capability auto-acquisition, exploration auto-acquisition, retention, or automatic Claim promotion.
+9. **Six additional test assertions (A–F)**, beyond the original 15-item matrix, all in
+   `tests/test_s58_selective_acquisition.py`: (A) an already-ready Library source reuse succeeds even with the
+   configured budget fully exhausted; (B) a spend-bearing candidate is refused when the budget doesn't authorize
+   it; (C) that refusal leaves the candidate's disposition completely untouched (no partial acquisition), visible
+   in `capture_best()`'s new `skipped` list; (D) CR5 and CR8b are proven to share the same `capture_best()` call
+   path; (E) autonomous `request_acquisition()` never captures a `user_dismissed` candidate, end to end; (F) the
+   explicit manual `candidates.capture()` override path still succeeds on a previously-dismissed candidate,
+   proving it was never gated.
+
+**Files changed** (`afa2acf`): `neurosearch/config.py` (`cr8b_enabled`), `neurosearch/knowledge.py`
+(`capture_best()` redesigned as above), `neurosearch/candidates.py` (`capture()`'s `ingest_url` payload gains
+`candidate_id`/`reason` — provenance only, confirmed safe: no test asserts exact payload equality on this call),
+`neurosearch/research_refresh.py` (new `request_acquisition(project_id, need=None)`), `neurosearch/nightly.py`
+(thin CR8b block), `neurosearch/cli.py` (`project acquire-evaluate <project> [--target ID] [--json]`),
+`tests/test_s58_selective_acquisition.py` (new, 23 tests).
+
+**A real but unrelated landmine, found and isolated against, not fixed at its source** (`477f9e5`): the two new
+CR8b nightly tests flaked — but only inside the full suite, never standalone, never under `-n4` on their own
+file. Traced with targeted stack-trace instrumentation (removed before committing) to `cli.py`'s `nightly run`
+CLI command: `--research-refresh-budget` (and `--budget`/`--t5-budget`) assign directly to the process-global
+`settings` singleton (`settings.research_refresh_nightly_budget = ...`), never through `monkeypatch`, so any
+earlier test in the same process that exercised that CLI command leaves the setting permanently nonzero for
+every test that runs after it. With it nonzero, `nightly.py`'s existing CR6 block fires unexpectedly and
+consumes the exact same `due_tonight()` 12-hour TTL dedup key CR8b's own block needs for the same target, so
+CR8b finds nothing left to acquire. Not a CR8b bug, and fixing the direct mutation in `cli.py` is out of this
+rung's scope — pinned `research_refresh_nightly_budget` to `0` in `s58_db`'s own fixture instead, so this file's
+assertions are never at the mercy of what ran before it elsewhere in the suite. Worth a future rung: any test
+that exercises `nightly run-cmd`'s budget flags should itself be on notice that it's mutating shared global
+state permanently.
+
+Verification: `tests/test_s58_selective_acquisition.py` alone (23/23), `test_m3_links.py` +
+`test_cr1_lp0_lp1_research_needs.py` + `test_s57_monitor_policy.py` + `test_s55_reservoir_rescan.py` together
+(88/88, confirming no regression on the modules `capture_best()`'s redesign touches), then the full suite
+`pytest -n 4 --dist=loadscope`: **1828 passed, 0 failed**, 2 consecutive clean runs (plus one clean sequential
+`-n0` run taken while chasing the landmine above). `repo-check`: PASS. `release-check --no-pytest`: PASS at
+`477f9e5` (0.63.91), genuine git_sha, artifact committed.
+
+No paid provider call was made at any point in this implementation or its verification — `fake_ai=True` and a
+network-poisoning `safe_fetch` monkeypatch throughout, same discipline as every other rung this mission.
+
+Commits this segment: `afa2acf` (CR8b code + tests), `477f9e5` (test-isolation fix for the cli.py landmine),
+`82d0615` (release-gate artifact).

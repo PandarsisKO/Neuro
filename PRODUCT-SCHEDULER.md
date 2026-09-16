@@ -37,15 +37,17 @@ Live/manual gates (send-screenshot Chrome matrix, course-scanner live extension,
 touched — each still needs the specific Kyle action EXECUTION-LADDER.md names. Nothing pushed to GitHub; sandbox
 has no route there.
 
-**Updated (2026-09-16, plan-then-pause).** Kyle commissioned CR8b (selective acquisition from Continuous
-Research) as its own plan-once/pause-once mission. Execution-ready plan written into HANDOFF.md's "Planning
-checkpoint — CR8b" entry after a fresh pre-read of `candidates.py`/`knowledge.py`/`research_refresh.py` (CR5)/
-`nightly.py` (CR6) — no code changed. Key finding: CR5's existing `request_refresh()` already implements almost
-this exact pattern for Claim-linked needs and explicitly refuses the `open_target`-with-no-claim case, which is
-precisely CR8b's v1 target; the plan adds a sibling `request_acquisition()` closing two real gaps found
-(dismissed-candidate leak in `links_for`, no budget gate before `capture_best`), reusing `candidates.capture()`
-as the canonical seam throughout. **NOT implemented — awaiting Kyle's execution-model switch, per his explicit
-instruction.**
+**CR8b shipped (2026-09-16, executing model), with Kyle's 9 corrections over the plan-then-pause checkpoint.**
+No new dollar budget — a plain `cr8b_enabled` feature flag, reusing `capture_best()`'s existing `usage.guard()`
+for its one spend-bearing branch. CR5's `request_refresh()` and the new `research_refresh.request_acquisition()`
+now both go through the SAME `knowledge.capture_best()` — the fixes (dismissed-candidate protection, $0-vs-spend
+sequencing, a bounded candidate pool decoupled from the acquisition cap) landed there, not in a second
+implementation. Thin `nightly.py` wiring gated by the boolean flag, plus an on-demand `project acquire-evaluate`
+CLI command. `tests/test_s58_selective_acquisition.py` (23 tests) covers the original matrix plus 6 additional
+assertions Kyle required. Full trail, including a real pre-existing `cli.py` global-state landmine found and
+isolated against (not fixed at its source — out of scope), in HANDOFF.md's "Execution — CR8b shipped with
+Kyle's 9 corrections" entry and EXECUTION-LADDER.md's CR8b entry. Full suite 1828/0 failed, repo-check PASS,
+release-check PASS at `477f9e5` (0.63.91). No paid provider call made.
 
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that

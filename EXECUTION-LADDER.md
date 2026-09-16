@@ -484,7 +484,7 @@ Proven in `tests/test_s57_monitor_policy.py::test_explicit_single_collection_res
 was already true by construction -- the test adds the missing direct proof. Release-gate PASS at `94b3699`
 (`0df11d4`).
 
-### CR8b `[ ]` selective-acquisition adapter — PLANNED (2026-09-16), awaiting execution model · needs: Kyle go-ahead
+### CR8b `[x]` selective-acquisition adapter — DONE (`afa2acf`, `477f9e5`)
 CR8a resolved the one blocking question; Kyle then commissioned the CR8b mission itself (plan-once/pause-once).
 Execution-ready plan written into HANDOFF.md after a fresh pre-read of `candidates.py`, `knowledge.py`,
 `research_refresh.py` (CR5) and `nightly.py` (CR6) -- NOT built yet, no code changed this pass.
@@ -502,8 +502,36 @@ T4/T5/CR6's separate pools) plus an on-demand `project acquire-evaluate` CLI com
 source now" case. One small, proven-necessary provenance addition: `candidates.capture()`'s job payload gains
 `candidate_id`/`reason` (both already in scope as the function's own parameters; `capture_best()` already proves
 the pattern safe) -- no new table, no schema migration. Full plan, exact function-by-function design, and the
-15-item test matrix (Kyle's 15 plus the 2 gaps this inspection found) are in HANDOFF.md's "Planning checkpoint —
-CR8b" entry. Per Kyle's own instruction: do not implement until he switches models.
+original 15-item test matrix are in HANDOFF.md's "Planning checkpoint — CR8b" entry.
+
+**Shipped, with Kyle's 9 corrections over that plan** (`afa2acf`): no new dollar budget -- a plain
+`cr8b_enabled` feature flag instead, reusing `capture_best()`'s existing `usage.guard()`/`usage.check()` for its
+one spend-bearing branch (correction #1). CR5's `request_refresh()` and the new
+`research_refresh.request_acquisition()` both go through the SAME `knowledge.capture_best()` -- no second
+selection/acquisition implementation (correction #2). `capture_best()` itself is where the fixes landed: it
+re-reads live `candidate_projects.state` per candidate before acting (skips `user_dismissed`/`acquired`/
+`duplicate` -- closes the dismissed-candidate leak both CR5 and CR8b would otherwise inherit), decouples its
+candidate consideration pool (fixed at 10) from the acquisition cap `n`, attaches an already-ready Library source
+UNCONDITIONALLY (a depleted budget must never block a $0 reuse -- correction #3), budget-gates only the
+enqueue-a-real-ingest branch via `usage.guard()`, and returns a new `skipped` list with reasons. The dismissed
+check lives at this shared boundary, deliberately NOT inside `candidates.capture()`, which stays the explicit
+single-candidate "capture this anyway" override a user can still reach to reverse their own dismissal (correction
+#4). `request_acquisition()` re-checks the target's own `status == "open"` immediately before acting --
+`capture_best()` only checks candidate-level state, not target-level (correction #5) -- and still caps at one
+acquisition per target per pass (correction #6). `nightly.py`'s CR8b block is thin: gated by
+`settings.cr8b_enabled` (boolean, not a budget pool), per-project due `open_target` needs, same
+try/except-log-and-continue shape CR6 uses (correction #7). `neurosearch project acquire-evaluate <project>
+[--target ID] [--json]` is the on-demand CLI equivalent. `tests/test_s58_selective_acquisition.py` (23 tests)
+covers the original matrix plus correction #9's six A-F assertions (library reuse ignores exhausted budget,
+spend-bearing acquisition refused under budget with no partial acquisition, CR5+CR8b share `capture_best`,
+autonomous CR8b never captures a dismissed candidate, the manual override path stays unaffected). A second commit
+(`477f9e5`) fixed a real but unrelated pre-existing landmine the new nightly tests exposed: `cli.py`'s `nightly
+run` command mutates `settings.research_refresh_nightly_budget` directly (not via monkeypatch), so an earlier
+test exercising that CLI command left it nonzero for the rest of the process, causing CR6's block to silently
+consume the same `due_tonight()` TTL-dedup key CR8b's own block needed -- fixed by pinning that setting to 0 in
+`s58_db`'s own fixture, not in `cli.py` (out of this rung's scope). Full suite 1828/0 failed (2+ consecutive clean
+`-n4 --dist=loadscope` runs), `repo-check` PASS, `release-check --no-pytest` PASS at `477f9e5` (0.63.91). Full
+trail in HANDOFF.md's "Execution — CR8b shipped with Kyle's 9 corrections" entry.
 
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
