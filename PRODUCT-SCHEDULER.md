@@ -23,11 +23,19 @@ decision Phase B flagged. See HANDOFF.md's Phase B/CR3/CR4/CR8 entry for full de
 wired `plan_narrative.propose_updates`/`db.set_update_status`/`planner.apply_accepted_updates`, 8-test gate
 (`test_s56_plan_patch_provenance.py`). Release-gate PASS at `7c356ad` (`0c14c01`, 0.63.91).
 
-**Overnight mission closed.** Everything in the approved-with-six-corrections sequence is done: A1-A5, Phase B,
-CR3+CR4, CR8-docs, LP5. Final: full suite 1787/0 failed across 4+ consecutive `-n 4` runs, repo-check PASS,
-release-check PASS at `0c14c01` (0.63.91, unchanged all night). No paid call all night. Live/manual gates
-(send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B, FM1 live) not touched — each still
-needs the specific Kyle action EXECUTION-LADDER.md names. Nothing pushed to GitHub; sandbox has no route there.
+**Overnight mission closed, then CR8a resolved on Kyle's own follow-up.** Kyle resolved CR8's open product
+question directly: "primary for this project" monitoring classification lives on `project_collections`
+(`source_role`/`monitor_policy`), per-relationship not per-collection. Built and gated (`4f14113`,
+`tests/test_s57_monitor_policy.py`, 15 tests) — `reservoir.rescan_project()` now respects it (skips
+attached-but-unmonitored collections, zero enumerate calls), new `project collection-policy` CLI command. The
+explicit single-collection rescan path stays ungated by design (see HANDOFF.md for that judgment call). CR8b
+(the acquisition adapter this was blocking) remains explicitly un-admitted per Kyle's own instruction not to
+jump straight to it. Release-gate PASS at `6144a11` (`4f14113`, 0.63.91, unchanged all night).
+
+Final: full suite 1804/0 failed across 3+ consecutive `-n 4` runs, repo-check PASS. No paid call all night.
+Live/manual gates (send-screenshot Chrome matrix, course-scanner live extension, CR7, LP6, AD4B, FM1 live) not
+touched — each still needs the specific Kyle action EXECUTION-LADDER.md names. Nothing pushed to GitHub; sandbox
+has no route there.
 
 Updated 2026-09-15 (CR6 + LP4 landed, `690d3f2`). Every rung in the CR/LP chain (CR1→CR6, LP0→LP4) is
 code-complete. Per the "ONE PLAN PAUSE, THEN CONTINUOUS EXECUTION" handoff rule, the plan/pause checkpoint that

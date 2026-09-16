@@ -5125,3 +5125,55 @@ entry — the correct amount of resolution for a question that is Kyle's product
 detail. Final state: full suite 1787/0 failed (4+ consecutive clean `-n 4` runs), repo-check PASS, release-check
 PASS at `0c14c01` (0.63.91). Still unpushed — the sandbox cannot reach GitHub; Kyle pushes from the Mac terminal
 when he chooses to.
+
+## Execution — CR8a resolved (2026-09-16, executing model)
+
+Kyle sent the product decision that CR8 had been left waiting on: "primary for this project" monitoring
+classification lives on the project<->collection RELATIONSHIP (`project_collections.source_role`/
+`monitor_policy`), never a universal flag on the global `collections` table, since the same reservoir can be
+primary for one project's research question and merely secondary/contextual for another's.
+
+Built per his minimal data model (two independent fields, never collapsed into one boolean, `monitor_policy`
+always overriding role):
+- `db.py`: two additive `project_collections` columns via the existing MIGRATIONS mechanism, conservative
+  defaults (`source_role='unspecified'`, `monitor_policy='auto'`) so no pre-existing attachment silently starts
+  being monitored the moment the migration runs. `get_collection_policy`/`set_collection_policy` — pure
+  bookkeeping, validated, never touches `candidates`/`sources`/`jobs`. Fixed a latent landmine this surfaced:
+  `add_project_collections`'s `INSERT ... VALUES (?,?)` only worked because the table happened to have exactly
+  two columns; switched to named columns so it doesn't break the moment a table gains a DEFAULT-backed one.
+- `reservoir.py`: `effective_monitor_active(source_role, monitor_policy)` is the pure derivation matching Kyle's
+  truth table exactly (on/off always win; auto defaults active only for primary). `rescan_project()` — the
+  "cover everything this project is attached to" bulk path CR8b's future adapter would iterate — now skips any
+  attached-but-unmonitored collection with zero `enumerate()` calls. Deliberate design choice, stated in the
+  module docstring: the single, explicitly-named-collection path (`rescan(pid, cid)`, the CLI's `--collection`
+  flag) stays UNGATED — an explicit, one-collection ask is a deliberate action, same override principle §13
+  already established for user-explicit watch beating a tier default. If Kyle wants the explicit path gated too,
+  that's a one-line change to `rescan()` and this note flags it as the place I made a judgment call.
+- `cli.py`: new `neurosearch project collection-policy <project> <collection> [--role] [--monitor] [--json]` to
+  show or set the policy — without it the feature would be schema-only and unreachable today. `project rescan`'s
+  empty-result message now distinguishes "nothing attached" from "attached but nothing monitored".
+
+Gate: `tests/test_s57_monitor_policy.py`, 15 tests, covering Kyle's exact required list: the 5-row truth table
+(primary+auto=on, secondary+auto=off, unspecified+auto=off, secondary+on=on, primary+off=off) plus on/off always
+winning regardless of role; the same global collection reading `primary` in project A and `secondary` in project
+B with zero cross-project leakage (neither policy nor its effective read bleeds across); changing either field
+never touches `candidates`/`sources`/`jobs` row counts; pre-existing `project_collections` rows (written the old
+way, before this migration) come back with the conservative defaults and read as not-monitored; invalid values
+rejected; a relationship that was never attached reads as not-monitored rather than erroring; and the new CLI
+command round-trips show/set. `tests/test_s55_reservoir_rescan.py` updated: the bulk-rescan test now explicitly
+marks both collections primary (matching the new default), plus a new test proving an attached-but-unmonitored
+collection is skipped by `rescan_project()` with zero enumerate calls while the explicit single-collection path
+still works unaffected.
+
+Per Kyle's own instruction not to jump straight to acquisition in the same change, CR8b (the deterministic
+adapter linking a candidate to a justified research need via `where_to_look`/`_best_fit`/`candidates.link`) was
+NOT built — it's genuinely unblocked now (the storage question that blocked it is answered) but not admitted as
+ready work; EXECUTION-LADDER.md's CR8b entry says so explicitly and awaits Kyle's go-ahead.
+
+Verification: `test_s57_monitor_policy.py` + `test_s55_reservoir_rescan.py` together (30/30), then
+`test_cr1_lp0_lp1_research_needs.py` + `test_s56_plan_patch_provenance.py` + `test_s51_test_isolation.py`
+together (67/67, confirming no regression on adjacent modules), then the full suite
+`pytest -n 4 --dist=loadscope`: **1804 passed, 0 failed**, 3 consecutive clean runs. `repo-check`: PASS.
+`release-check --no-pytest`: PASS at `4f14113` (0.63.91), genuine git_sha, artifact committed at `6144a11`.
+
+Commits this segment: `4f14113` (CR8a code + tests + latent INSERT bug fix), `6144a11` (release-gate artifact).

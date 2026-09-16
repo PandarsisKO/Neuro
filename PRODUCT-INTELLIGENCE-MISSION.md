@@ -1702,10 +1702,22 @@ background spend just because more projects exist.
 **Where this leaves CR3/CR4 tonight, concretely:** both operate strictly within MONITOR. CR3 is "what does
 selective watching return the first time" (a rescan of a known reservoir, diffed against what this project has
 already seen). CR4 is "what does selective watching cost the second time" (change detection so an unchanged
-reservoir costs nothing on repeat). Neither touches ACQUIRE or RETAIN. The open product/schema question this
-mission explicitly leaves unresolved — **where a reservoir's "primary for this project" monitoring
-classification is actually stored** (a project_collections flag? a separate table? inferred each time from
-citation history?) — is a real future decision, not guessed here; CR3/CR4 tonight default every reservoir a
-project has attached to `project_collections` to being eligible for an explicit, on-demand rescan (never
-automatic, never scheduled) regardless of tier, which sidesteps the classification question without answering
-it, and is the smallest correct thing to ship without foreclosing the real decision later.
+reservoir costs nothing on repeat). Neither touches ACQUIRE or RETAIN. CR3/CR4 originally defaulted every
+reservoir a project has attached to `project_collections` to being eligible for an explicit, on-demand rescan
+regardless of tier, sidestepping the classification question below without answering it.
+
+**Resolved (2026-09-16, Kyle's product decision).** Where a reservoir's "primary for this project" monitoring
+classification is stored: on the project↔collection RELATIONSHIP, not the global collection and not a separate
+table — `project_collections.source_role` (`primary`/`secondary`/`unspecified`) and `.monitor_policy`
+(`auto`/`on`/`off`), because the same reservoir can be primary for one project's research question and merely
+secondary/contextual for another's (an IRS feed primary for a tax-compliance project, contextual for another;
+a company's own channel primary for its product-announcement project, secondary for a reliability-research one).
+`monitor_policy` of `on`/`off` always wins outright; `auto` defaults active only when `source_role='primary'` —
+`secondary` and `unspecified` both default OFF, so a bare attachment never silently starts being watched.
+CR3/CR4's bulk "every collection this project is attached to" path (`reservoir.rescan_project`) now respects
+this — an unmonitored collection is skipped with zero `enumerate()` calls, not scanned and discarded. The
+single, explicit "rescan this one named collection" path stays ungated: an explicit ask is a deliberate action,
+the same override principle established above for user-explicit watch beating a tier default. See
+EXECUTION-LADDER.md's CR8a for the implementation and gate. CR8b (the acquisition adapter this classification
+was blocking) remains separately un-admitted — resolving where the classification lives does not by itself
+authorize building the thing that reads it to acquire something.

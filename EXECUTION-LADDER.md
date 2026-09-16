@@ -429,7 +429,7 @@ successful outcome recorded on the envelope. Gate: envelope test; no need refres
 
 ### CR7 `[k]` real-project gate — needs: CR6. **Kyle action**: let the nightly worker run once, unattended, on a real project (same path L-00 already uses for the stale-source rebuild). Next morning, check the Morning Report / Findings panel for CR6's envelope line ("N Claim(s) refreshed" or an honest "nothing changed" — both count as a pass) and tell Claude what it showed. Never faked, never simulated with a fixture -- this gate is specifically "did it happen for real."
 
-### CR8 `[ ]` selective-acquisition seam — documented, NOT admitted (2026-09-16) · needs: a new product decision, not CR-numbered work
+### CR8a `[x] 4f14113` monitoring-classification storage — DONE (Kyle's product decision, 2026-09-16)
 The missing piece between NEW CANDIDATE (a Candidate Index row CR3/CR4 can now produce) -> JUSTIFIED RESEARCH
 NEED -> EXISTING ACQUISITION PATH. Not built tonight; not queued as ready work. This entry exists so the seam is
 named and its shape is known, per PRODUCT-INTELLIGENCE-MISSION.md §13: "the seam between 'a candidate exists' and
@@ -461,6 +461,27 @@ decision would also skip past ACQUIRE's own rule (PRODUCT-INTELLIGENCE-MISSION.m
 separate, explicit decision, never a consequence of monitoring alone -- `candidates.link` recording a possible fit
 is still short of acquiring anything, but it is one step closer to blurring that line than CR3/CR4's plain
 `remember` was, so it deserves its own explicit go-ahead rather than riding in on CR3/CR4's approval.
+
+**Resolved (2026-09-16).** Kyle's call: "primary for this project" lives on the project<->collection
+RELATIONSHIP (`project_collections.source_role`/`monitor_policy`), never a universal flag on `collections` --
+the same reservoir is primary for one project's question and merely secondary for another's. Built:
+`db.get_collection_policy`/`set_collection_policy` (two additive columns, conservative unspecified/auto
+defaults, pure bookkeeping -- never touches candidates/sources/jobs), `reservoir.effective_monitor_active`
+(on/off always win; auto defaults active only for `primary`), `reservoir.rescan_project()` now skips any
+attached-but-unmonitored collection with zero `enumerate()` calls, and `neurosearch project collection-policy`
+(CLI) to show/set it. The single, explicit `reservoir.rescan(pid, cid)` path (`--collection`) stays ungated by
+design -- an explicit, one-collection ask is a deliberate action, same override principle as user-explicit watch
+in §13. Gate: `tests/test_s57_monitor_policy.py` (15 tests) -- the full truth table, per-project (not
+per-collection) scoping with zero cross-project leakage, policy changes never ingesting anything, pre-existing
+rows migrating to conservative defaults. Release-gate PASS at `6144a11` (`4f14113`).
+
+### CR8b `[ ]` selective-acquisition adapter — still NOT built, now unblocked but not admitted · needs: Kyle go-ahead
+CR8a resolved the one blocking question; the adapter itself (candidate → `where_to_look`/`_best_fit` →
+`candidates.link`, gated by CR2's due policy + CR6's budget, described above) is still not built. Per Kyle's own
+instruction when resolving CR8a: "do not jump directly to automatic acquisition in the same change unless the
+now-resolved policy seam makes the next step trivially small and already admitted" -- it isn't admitted, so this
+stays a separate future step, not implied by CR8a landing. `candidates.link` recording a possible fit is closer
+to blurring MONITOR/ACQUIRE than CR3/CR4's plain `remember` was, so it still deserves its own explicit go-ahead.
 
 ### Stage 11 — P10 Living Master Plan (Claude lane) — needs: L-50 only (NOT P8)
 Audit (LP0-audit, done 2026-09-15): plan JSON carries `evidence:[F<n>]` on first_steps/decisions/tools/costs;
