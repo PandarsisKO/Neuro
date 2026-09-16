@@ -35,6 +35,7 @@ async function load() {
       chrome.runtime.sendMessage({ type: 'refresh-pending' }, () => void chrome.runtime.lastError);
     } catch (e) { /* no capture context: the ordinary buttons still work */ }
     refreshScan();
+    refreshCapture();
   }
 }
 
@@ -187,6 +188,59 @@ $('#sendPage').onclick = async () => {
   } catch (e) { $('#pageMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`; }
   $('#sendPage').disabled = false;
 };
+// ---- Send screenshot: mirrors the scan pattern above — the popup only starts the capture and renders whatever
+// the background record (`capture:<tabId>`) says; the background owns the operation so it survives popup close.
+let CAPTURE = null;
+const CAPTURE_ACTIVE_UI = new Set(['capturing', 'uploading']);
+const CAPTURE_MODE_WORDS = { full_page: 'the full page', visible_only: 'the visible area' };
+const CAPTURE_REASON_WORDS = { ceiling_pixels: 'the page was very tall — captured as far as the size limit allowed',
+                                ceiling_folds: 'the page was very tall — captured as far as the fold limit allowed',
+                                ceiling_time: 'the page was very tall — captured as far as time allowed' };
+
+async function refreshCapture() {
+  if (!TAB) TAB = await currentTab();
+  const r = await bg({ type: 'capture-get', tabId: TAB.id });
+  CAPTURE = r.capture || null;
+  renderCapture();
+}
+
+function renderCapture() {
+  const c = CAPTURE;
+  const sameTab = c && TAB && c.tab_id === TAB.id;
+  $('#sendScreenshot').disabled = !!(c && sameTab && CAPTURE_ACTIVE_UI.has(c.status));
+  if (!c || !sameTab) { return; }
+  if (c.status === 'capturing') { $('#screenshotMsg').textContent = c.fold ? `capturing… (fold ${c.fold})` : 'capturing…'; return; }
+  if (c.status === 'uploading') { $('#screenshotMsg').textContent = 'sending…'; return; }
+  if (c.status === 'failed') { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(c.error || 'could not capture this page')}</span>`; return; }
+  if (c.status === 'done') {
+    const res = c.result || {};
+    const modeWord = CAPTURE_MODE_WORDS[res.mode] || 'the page';
+    let msg = `<span class="ok">Captured ${modeWord} — sent to Neuro Search.</span>`;
+    if (res.partial_reason) msg += ` <span class="warn">${esc(CAPTURE_REASON_WORDS[res.partial_reason] || 'stopped early')}.</span>`;
+    else if (res.mode === 'visible_only') msg += ' <span class="muted">Only the visible area could be captured reliably for this page.</span>';
+    msg += ' Findings will be suggested in the app.';
+    $('#screenshotMsg').innerHTML = msg;
+    return;
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !TAB) return;
+  if (changes[`capture:${TAB.id}`]) { CAPTURE = changes[`capture:${TAB.id}`].newValue || null; renderCapture(); }
+});
+
+$('#sendScreenshot').onclick = async () => {
+  const pid = $('#pageProject').value; if (!pid) return;
+  $('#sendScreenshot').disabled = true; $('#screenshotMsg').textContent = 'capturing…';
+  TAB = await currentTab();
+  const note = ($('#screenshotNote').value || '').trim() || null;
+  const r = await bg({ type: 'capture-start', tabId: TAB.id, projectId: pid, note });
+  if (r.error) { $('#screenshotMsg').innerHTML = `<span class="bad">${esc(r.error)}</span>`; $('#sendScreenshot').disabled = false; return; }
+  await chrome.storage.local.set({ lastProject: pid });
+  $('#screenshotNote').value = '';
+  CAPTURE = r.capture; renderCapture();
+};
+
 $('#saveSetup').onclick = async () => {
   const appUrl = $('#appUrl').value.trim().replace(/\/$/, ''), token = $('#token').value.trim();
   if (!appUrl || !token) return;

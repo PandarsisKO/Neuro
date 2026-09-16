@@ -4438,3 +4438,55 @@ Not yet done:
   older linked-course site has not been re-driven through the real, reloaded extension end to end.
 
 Next session: pick up CS2's live-browser verification once the unpacked extension is reloaded.
+
+## Mission "send screenshot" — extension 1.8.0, landed (not yet committed as of this checkpoint)
+
+Kyle's mission: capture the rendered page (a calculator's result, a configurator's state, a dashboard) as image
+evidence into the existing image pipeline, when a URL/HTML capture can't reconstruct dynamic state. Full design,
+the three rounds of Kyle's revision feedback and where each landed: `docs/SEND-SCREENSHOT-2026-09-16.md`.
+
+What landed:
+- `neurosearch/db.py`: `source_captures` table — a capture event is NOT a source (global image-byte dedupe means
+  identical screenshot bytes can resolve to one `sources` row while representing a genuinely new capture event);
+  `create_pending_capture_event` / `materialize_capture_event` / `get_capture_events_for_source`.
+- `neurosearch/api.py`: `/api/ingest/file` gained 11 optional capture-provenance `Form(...)` params. A pending
+  `source_captures` row is written BEFORE the job is enqueued (only the `capture_event_id`, never the raw fields,
+  travels in the job payload); the queued response never implies a source exists. A screenshot's title is the
+  captured page's title, never the uploaded filename.
+- `neurosearch/ingest.py` / `neurosearch/jobs.py`: `capture_event_id` threaded through `ingest_local_file` →
+  `ingest_image`, which materializes the capture event once a `source_id` exists — covers both the dedup
+  early-return and full-ingest paths.
+- `extension/capture-lib.js` (new): the in-page capture primitives (`nsMeasure`, `nsScrollTo`, `nsHideAndArm`,
+  `nsRestore`) as plain, closure-free functions — loaded by `background.js` via `importScripts()` AND by the new
+  jsdom test harness via `window.eval()`, the same technique `scan-lib.js` already uses.
+- `extension/background.js`: `apiForm()` (FormData-aware, unlike the existing JSON-only `api()`); the scroll +
+  stitch capture engine (`runCapture`), `setTimeout`-based settle (not `requestAnimationFrame` — Chrome throttles
+  rAF to ~1fps in a backgrounded tab, measured in the Phase 1 spike); three runtime ceilings enforced PER FOLD
+  (40M pixels / 30 folds / 60s), so a lazy/infinite page that grows while being scrolled is caught and labeled
+  `full_page` with a `capture_partial_reason` rather than either failing or running forever; `OffscreenCanvas`
+  stitching, DPR-aware; durable `capture:<tabId>` state mirroring the scanner's `scan:<tabId>` pattern (same
+  per-tab lock, reused as `withCapture`); always `immediate=false`.
+- `extension/popup.js`/`popup.html`: "Send screenshot" button next to "Send this page" (same project dropdown +
+  `lastProject`), a collapsed "Add a note" field, status copy that matches the async/queued contract honestly and
+  never implies a source exists before the job runs.
+- `debugger` permission: deliberately NOT added (Kyle's Round 1, point 1) — `manifest.json`'s permission list is
+  unchanged from before this mission.
+- Tests: `tests/test_s54_send_screenshot.py` (11 tests) — jsdom coverage of the hide/restore mechanics and the
+  in-page watchdog's self-heal (`tests/js/run-capture.mjs` + `tests/fixtures/capture/sticky-fixed.html`), and
+  server-side coverage of the async contract, title-from-page-not-filename, note/evidence separation, partial-
+  reason round-trip, and the two-captures-one-source dedup case. All 11 pass. Full regression: the schema/API-
+  touching test files (`test_core.py`, `test_k2_identity.py`, `test_k_retrieval_fixes.py`, `test_m1_epub.py`,
+  `test_s25_images.py`) pass except pre-existing "OpenAI Embeddings is temporarily unavailable" failures — this
+  sandbox has no network for embeddings (same documented limitation as mission CS's verification, above); none
+  touch `source_captures` or the screenshot path.
+
+Not yet done:
+- **Live verification of real `captureVisibleTab` pixel output, DPR crop correctness, canvas/WebGL survival
+  through capture, cross-origin iframe compositing, and a real infinite-scroll page hitting the ceilings** —
+  jsdom proves DOM mechanics only. Claude in Chrome cannot reach `chrome://extensions` to load an unpacked
+  extension; this needs Kyle's own hands, running the original spec's 12-item test list against real pages.
+  Full list: `docs/SEND-SCREENSHOT-2026-09-16.md`'s "What jsdom does NOT prove" section.
+- Not yet committed as of this checkpoint — see the next commit for the hash.
+
+Next session (if Kyle raises something new before the live pass): start from the "What jsdom does NOT prove"
+list above.

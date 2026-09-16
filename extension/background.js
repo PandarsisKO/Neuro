@@ -22,6 +22,18 @@ async function api(path, opts = {}) {
   return r.json();
 }
 
+// Same contract as api(), but for a FormData body (screenshot upload): deliberately does NOT set Content-Type —
+// the browser must generate its own `multipart/form-data; boundary=...` header, which a hardcoded JSON header
+// would break. Throws (never returns null-silently) on missing config, since a failed screenshot send needs to
+// surface to the caller rather than vanish the way a background heartbeat miss safely can.
+async function apiForm(path, formData) {
+  const c = await cfg();
+  if (!c.appUrl || !c.token) throw new Error('Neuro Search is not set up yet (open the popup and add your app URL + token).');
+  const r = await fetch(c.appUrl + path, { method: 'POST', headers: { Authorization: 'Bearer ' + c.token }, body: formData });
+  if (!r.ok) throw new Error('app answered ' + r.status);
+  return r.json();
+}
+
 function canon(u) {
   try { const x = new URL(u); x.hash = ''; x.search = ''; return (x.origin + x.pathname).replace(/^https?:\/\/(www\.|old\.|new\.)?/, 'https://').replace(/\/$/, ''); } catch (e) { return u; }
 }
@@ -200,9 +212,212 @@ async function pruneScans() {
   if (dead.length) await chrome.storage.local.remove(dead);
 }
 
-chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create(ALARM, { periodInMinutes: 5 }); refreshPending(); pruneScans(); });
+
+// ================================================================== send screenshot: durable state + capture engine
+// docs/SEND-SCREENSHOT-2026-09-16.md. One record per TAB, keyed `capture:<tabId>`, mirroring the scan record above
+// (same reason: MV3 may evict this worker mid-capture, and the popup may close mid-capture — the record on disk,
+// not anything held only in memory, is what a reopened popup renders and what survives eviction). Unlike a scan,
+// the capture loop is driven entirely from THIS file (no content-script runner reporting back over messages):
+// chrome.tabs.captureVisibleTab is a background-only API, so the orchestration has to live here regardless.
+const CAPTURE_ACTIVE = new Set(['capturing', 'uploading']);
+const captureKey = tabId => `capture:${tabId}`;
+// Reuses the same per-tab promise-chain lock as scans (withScan): a capture also scrolls the page and would race
+// badly against a scan doing DOM work in the same tab, so serializing the two behind one lock is correct, not
+// just convenient.
+const withCapture = withScan;
+
+async function getCapture(tabId) { return (await chrome.storage.local.get(captureKey(tabId)))[captureKey(tabId)] || null; }
+async function putCapture(rec) { await chrome.storage.local.set({ [captureKey(rec.tab_id)]: rec }); }
+
+// Three runtime ceilings, enforced PER FOLD (not once up front): a lazy/infinite-scroll page can keep growing
+// while it is being scrolled, so the loop re-measures scrollHeight after every fold and can only ever find out a
+// ceiling was crossed just after crossing it — never before. When one trips, whatever was already stitched is kept
+// and the result is labeled full_page with a capture_partial_reason, rather than thrown away for a single shot.
+const CAPTURE_MAX_TOTAL_PIXELS = 40_000_000;   // full-resolution (post-DPR) pixels across every fold, combined
+const CAPTURE_MAX_FOLDS = 30;
+const CAPTURE_MAX_ELAPSED_MS = 60_000;
+const CAPTURE_WATCHDOG_MS = 20_000;            // in-page self-heal window, armed on every sticky/fixed hide (below)
+const CAPTURE_SETTLE_MS = 140;                 // scroll landing: setTimeout-based wait, not rAF — Phase 1 spike
+const CAPTURE_HIDE_SETTLE_MS = 60;             // measured background-tab rAF throttling to ~1fps, so a bounded
+                                                // setTimeout poll (the scan-lib.js settle() pattern) is the only
+                                                // reliable way to wait for a repaint from this file.
+
+async function execFn(tabId, func, args) {
+  const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, func, args: args || [] });
+  return result;
+}
+
+// ---- functions injected into the page (chrome.scripting.executeScript func:) live in capture-lib.js, loaded
+// below via importScripts so the exact same, unmodified source can be exercised under jsdom
+// (tests/js/run-capture.mjs) — the same technique scan-lib.js uses for the course scanner. They are plain,
+// self-contained functions (no closures over background.js state) because executeScript serializes a function
+// reference by its source text, wherever that function happens to be defined.
+importScripts('capture-lib.js');
+const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore } = self.NSCaptureLib;
+
+// ---- background-side orchestration
+
+// Stitches PNG data URLs (one per fold, already cropped to the viewport by the browser) into one tall PNG using
+// OffscreenCanvas, which is available in MV3 service workers. Later folds may overlap the previous fold's bottom
+// edge by less than a full viewport height on the final fold (the last scroll position is clamped to
+// pageHeight - viewportHeight); the caller passes the exact draw Y for each shot so there is no double-drawing.
+async function stitchShots(shots, pageWidthCss, pageHeightCss, dpr) {
+  const w = Math.round(pageWidthCss * dpr), h = Math.round(pageHeightCss * dpr);
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  for (const shot of shots) {
+    const resp = await fetch(shot.dataUrl);
+    const blob = await resp.blob();
+    const bmp = await createImageBitmap(blob);
+    ctx.drawImage(bmp, 0, Math.round(shot.y * dpr));
+    bmp.close();
+  }
+  const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+  return outBlob;
+}
+
+async function runCapture(tabId, rec) {
+  const startedAt = now();
+  let origScrollX = 0, origScrollY = 0;
+  let restored = false;
+  const restore = async () => {
+    if (restored) return; restored = true;
+    try { await execFn(tabId, nsRestore); } catch (e) { /* watchdog will self-heal if this fails */ }
+    try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
+  };
+  try {
+    const m0 = await execFn(tabId, nsMeasure);
+    origScrollX = m0.scrollX; origScrollY = m0.scrollY;
+    const dpr = m0.dpr || 1;
+    rec.title = m0.title || rec.title;
+    rec.updated_at = now();
+    await putCapture(rec);
+
+    const viewportH = m0.viewportHeight;
+    let pageH = m0.scrollHeight;
+    let fold = 0, y = 0;
+    const shots = [];
+    let partialReason = null;
+
+    while (true) {
+      if (now() - startedAt > CAPTURE_MAX_ELAPSED_MS) { partialReason = 'ceiling_time'; break; }
+      if (fold >= CAPTURE_MAX_FOLDS) { partialReason = 'ceiling_folds'; break; }
+
+      await execFn(tabId, nsScrollTo, [0, y, CAPTURE_SETTLE_MS]);
+      if (fold > 0) {
+        await execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]);
+        await new Promise(r => setTimeout(r, CAPTURE_HIDE_SETTLE_MS));
+      }
+      let dataUrl;
+      try {
+        dataUrl = await chrome.tabs.captureVisibleTab(undefined, { format: 'png' });
+      } finally {
+        if (fold > 0) { try { await execFn(tabId, nsRestore); } catch (e) {} }
+      }
+      shots.push({ y, dataUrl });
+      fold += 1;
+      rec.fold = fold; rec.updated_at = now();
+      await putCapture(rec);
+
+      // Re-measure AFTER this fold: the page may have grown while it was being scrolled (lazy/infinite content).
+      const m = await execFn(tabId, nsMeasure);
+      pageH = Math.max(pageH, m.scrollHeight);
+
+      const totalPixels = m0.viewportWidth * dpr * Math.min(pageH, fold * viewportH) * dpr;
+      if (totalPixels > CAPTURE_MAX_TOTAL_PIXELS) { partialReason = 'ceiling_pixels'; break; }
+
+      const nextY = fold * viewportH;
+      if (nextY >= pageH - 2) break;   // reached the true bottom
+      y = Math.min(nextY, pageH - viewportH > 0 ? pageH - viewportH : nextY);
+    }
+
+    await restore();
+
+    if (!shots.length) throw new Error('capture produced no image');
+
+    // Single fold and nothing forced a stop: this is the honest "visible area only" tier, not a stitched page.
+    if (shots.length === 1 && !partialReason) {
+      const resp = await fetch(shots[0].dataUrl);
+      const blob = await resp.blob();
+      return {
+        blob, mode: 'visible_only', partial_reason: null,
+        dimensions: { page_width: m0.scrollWidth, page_height: viewportH, viewport_width: m0.viewportWidth, viewport_height: viewportH, dpr },
+        title: rec.title,
+      };
+    }
+
+    const finalPageH = Math.min(pageH, shots[shots.length - 1].y + viewportH);
+    const blob = await stitchShots(shots, m0.scrollWidth, finalPageH, dpr);
+    return {
+      blob, mode: 'full_page', partial_reason: partialReason,
+      dimensions: { page_width: m0.scrollWidth, page_height: finalPageH, viewport_width: m0.viewportWidth, viewport_height: viewportH, dpr },
+      title: rec.title,
+    };
+  } catch (e) {
+    await restore();
+    throw e;
+  }
+}
+
+async function startCapture(tabId, projectId, note) {
+  const cur = await getCapture(tabId);
+  if (cur && CAPTURE_ACTIVE.has(cur.status)) return { error: 'A screenshot capture is already running in this tab.', capture: cur };
+  let tab; try { tab = await chrome.tabs.get(tabId); } catch (e) { return { error: 'That tab is gone.' }; }
+  if (!tab.url || !/^https?:/.test(tab.url)) return { error: 'This page cannot be captured (not a web page).' };
+  const capture_id = (crypto.randomUUID ? crypto.randomUUID() : String(now()) + Math.random());
+  const rec = {
+    capture_id, tab_id: tabId, url: tab.url, title: tab.title || '', project_id: projectId || null, note: note || null,
+    status: 'capturing', fold: 0, started_at: now(), updated_at: now(), finished_at: null, error: null, result: null,
+  };
+  await putCapture(rec);
+
+  (async () => {
+    try {
+      const out = await runCapture(tabId, rec);
+      rec.status = 'uploading'; rec.updated_at = now(); await putCapture(rec);
+
+      const fd = new FormData();
+      const filename = 'screenshot-' + capture_id.slice(0, 8) + '.png';
+      fd.append('file', out.blob, filename);
+      if (out.title) fd.append('title', out.title);
+      if (rec.project_id) fd.append('project_id', rec.project_id);
+      fd.append('immediate', 'false');
+      fd.append('capture_url', rec.url);
+      if (out.title) fd.append('capture_page_title', out.title);
+      fd.append('captured_at', String(rec.started_at / 1000));
+      fd.append('capture_mode', out.mode);
+      if (out.partial_reason) fd.append('capture_partial_reason', out.partial_reason);
+      if (out.dimensions) {
+        fd.append('capture_page_width', String(Math.round(out.dimensions.page_width)));
+        fd.append('capture_page_height', String(Math.round(out.dimensions.page_height)));
+        fd.append('capture_viewport_width', String(Math.round(out.dimensions.viewport_width)));
+        fd.append('capture_viewport_height', String(Math.round(out.dimensions.viewport_height)));
+        fd.append('capture_dpr', String(out.dimensions.dpr));
+      }
+      if (rec.note) fd.append('capture_note', rec.note);
+
+      const uploadRes = await apiForm('/api/ingest/file', fd);
+      rec.status = 'done'; rec.finished_at = now(); rec.updated_at = now();
+      rec.result = { mode: out.mode, partial_reason: out.partial_reason, job_id: uploadRes && uploadRes.job };
+      await putCapture(rec);
+    } catch (e) {
+      rec.status = 'failed'; rec.error = String((e && e.message) || e).slice(0, 300); rec.finished_at = now(); rec.updated_at = now();
+      await putCapture(rec);
+    }
+  })();
+
+  return { ok: true, capture: rec };
+}
+
+async function pruneCaptures() {
+  const all = await chrome.storage.local.get(null); const dead = [];
+  for (const [k, v] of Object.entries(all)) if (k.startsWith('capture:') && v && (now() - (v.updated_at || 0) > 7 * 86400e3)) dead.push(k);
+  if (dead.length) await chrome.storage.local.remove(dead);
+}
+
+chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create(ALARM, { periodInMinutes: 5 }); refreshPending(); pruneScans(); pruneCaptures(); });
 chrome.runtime.onStartup.addListener(async () => {
-  chrome.alarms.create(ALARM, { periodInMinutes: 5 }); refreshPending(); pruneScans();
+  chrome.alarms.create(ALARM, { periodInMinutes: 5 }); refreshPending(); pruneScans(); pruneCaptures();
   // the browser restarted: every runner is gone, whatever the records say
   for (const rec of await anyActive()) await withScan(rec.tab_id, () => finishScan(rec, rec.lessons.length ? 'partial' : 'interrupted', 'browser_restarted'));
 });
@@ -228,4 +443,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === 'scan-start') { withScan(msg.tabId, () => startScan(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'scan-cancel') { withScan(msg.tabId, () => cancelScan(msg.tabId)).then(reply, e => reply({ error: String(e) })); return true; }
   if (msg.type === 'scan-get') { getScan(msg.tabId).then(s => reply({ scan: s, summary: s ? summarize(s) : null }), e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'capture-start') { withCapture(msg.tabId, () => startCapture(msg.tabId, msg.projectId, msg.note)).then(reply, e => reply({ error: String(e) })); return true; }
+  if (msg.type === 'capture-get') { getCapture(msg.tabId).then(c => reply({ capture: c }), e => reply({ error: String(e) })); return true; }
 });

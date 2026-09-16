@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Capture fixture — sticky header, fixed sidebar</title>
+<style>
+  body { margin: 0; }
+  header { position: sticky; top: 0; background: #222; color: #fff; padding: 16px; }
+  aside { position: fixed; right: 0; top: 100px; width: 120px; background: #eee; padding: 8px; }
+  section { padding: 40px; min-height: 500px; }
+  .plain { position: static; }
+  .zerosize { position: sticky; top: 0; width: 0; height: 0; }
+</style>
+</head>
+<body>
+<header id="stickyHeader">Sticky header</header>
+<aside id="fixedSidebar">Fixed sidebar</aside>
+<div id="zeroSizeSticky" class="zerosize"></div>
+<main>
+  <section class="plain" id="normalSection">Ordinary content — must never be hidden</section>
+</main>
+<script>
+  // jsdom does no layout, so every element's getBoundingClientRect() is zero by default; this fixture stubs the
+  // three elements the tests care about with plausible non-zero rects (real Chrome always has real ones — this
+  // stub exists only so jsdom can exercise capture-lib.js's "skip a zero-sized sticky/fixed element" branch and
+  // its normal branch both honestly, rather than the whole test being a false negative).
+  function fakeRect(el, w, h) { el.getBoundingClientRect = () => ({ width: w, height: h, top: 0, left: 0, right: w, bottom: h, x: 0, y: 0 }); }
+  fakeRect(document.getElementById('stickyHeader'), 800, 60);
+  fakeRect(document.getElementById('fixedSidebar'), 120, 200);
+  fakeRect(document.getElementById('normalSection'), 800, 500);
+  document.getElementById('zeroSizeSticky') && fakeRect(document.getElementById('zeroSizeSticky'), 0, 0);
+</script>
+</body>
+</html>

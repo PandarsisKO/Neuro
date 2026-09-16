@@ -543,9 +543,14 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
 
 def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | None = None,
                       project_id: str | None = None, progress: Progress = _noop,
-                      original_name: str | None = None, ocr_paid: bool = False) -> dict[str, Any]:
+                      original_name: str | None = None, ocr_paid: bool = False,
+                      capture_event_id: str | None = None) -> dict[str, Any]:
     """Ingest an uploaded file: audio/video is transcribed; PDF/DOCX/TXT are read as documents;
-    .srt/.vtt are parsed as ready-made transcripts."""
+    .srt/.vtt are parsed as ready-made transcripts.
+
+    capture_event_id (send-screenshot feature): a pending `source_captures` row's id, written by the API before
+    this ran (possibly async, via a queued job). Only `ingest_image` does anything with it — every other file kind
+    ignores the argument."""
     from .documents import is_document, is_media
 
     name = original_name or path.name
@@ -564,7 +569,8 @@ def ingest_local_file(path: Path, title: str | None = None, tags: list[str] | No
         return ingest_epub(path, title, tags, project_id, name, progress)
     from .images import is_image
     if is_image(kind_path):
-        return ingest_image(path, title or kind_path.stem, tags, project_id, name, progress, ocr_paid=ocr_paid)
+        return ingest_image(path, title or kind_path.stem, tags, project_id, name, progress, ocr_paid=ocr_paid,
+                            capture_event_id=capture_event_id)
     if is_document(kind_path):
         return ingest_document(path, title or name, tags, project_id, name)
     if not is_media(kind_path):
@@ -779,7 +785,7 @@ def kept_image(source_id: str) -> Path | None:
 
 
 def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str | None, name: str,
-                 progress: Progress = _noop, ocr_paid: bool = False) -> dict[str, Any]:
+                 progress: Progress = _noop, ocr_paid: bool = False, capture_event_id: str | None = None) -> dict[str, Any]:
     """A screenshot or photograph as an ordinary source: OCR text in, chunks out, and the image kept viewable.
 
     Kyle: *"we do not allow PNGs or other image types to be uploaded or used in chats. we need this with OCR for
@@ -789,12 +795,19 @@ def ingest_image(path: Path, title: str, tags: list[str] | None, project_id: str
     the ordinary `replace_transcript` → embed → `_after_ready` path, so search, findings, Claims and citations treat
     a screenshot exactly like a transcript. **An image with no readable text still becomes a source**: it is
     attached, viewable and named, and the description says there was nothing to read rather than the upload
-    failing."""
+    failing.
+
+    capture_event_id (send-screenshot feature): materialized onto its pending `source_captures` row as soon as
+    `src["id"]` is known — covering BOTH the early "already ingested" return (identical bytes dedupe to an
+    existing source, but this is still a new, distinct capture event worth recording) and the full ingest path.
+    Materializing is idempotent and never overwrites an already-linked row (see db.materialize_capture_event)."""
     from .chunking import build_doc_chunks
     from .images import ocr
 
     res = identity.resolve_or_create_source(identity.upload_candidate("image", path, name, title, tags, "img"), project_id, retry=True)
     src, ext_id = res.source, res.source["external_id"]
+    if capture_event_id:
+        db.materialize_capture_event(capture_event_id, src["id"])
     if res.state in (identity.EXISTING_READY, identity.ALREADY_IN_PROJECT) and src["status"] == "ready":
         return {"source_id": src["id"], "title": src["title"], "segments": 0, "chunks": 0, "transcript": "image",
                 "embedded": 0, "already_ingested": True, "identity": res.state}

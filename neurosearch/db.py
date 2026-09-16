@@ -68,6 +68,36 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE UNIQUE INDEX IF NOT EXISTS ix_sources_platform_ext ON sources(platform, external_id);
 CREATE INDEX IF NOT EXISTS ix_sources_status ON sources(status);
 
+-- Screenshot capture provenance (the "Send screenshot" extension feature). One row per CAPTURE EVENT, not per
+-- source: global image-content dedupe (content_fingerprint) means identical screenshot bytes resolve to ONE
+-- `sources` row even though two captures of the same calculator can represent different configurations,
+-- timestamps, notes or projects -- capture-specific columns on `sources` itself would overwrite the first
+-- capture's provenance or lose a later one. `source_id` starts NULL: the API writes this row BEFORE enqueueing
+-- the async ingest job (which only ever carries a capture_event id, never nine raw fields, in its payload) and
+-- fills `source_id` in once ingestion resolves one -- so provenance survives the job-queue boundary rather than
+-- being passed as function arguments that vanish with the job. `capture_note` is the user's own optional context,
+-- kept here and never merged into the source's title or OCR-derived evidence.
+CREATE TABLE IF NOT EXISTS source_captures (
+    id                      TEXT PRIMARY KEY,
+    source_id               TEXT REFERENCES sources(id) ON DELETE CASCADE,   -- NULL until the ingest job resolves one
+    project_id              TEXT,
+    capture_url             TEXT NOT NULL,
+    capture_page_title      TEXT,
+    captured_at             REAL NOT NULL,
+    capture_mode            TEXT NOT NULL,      -- full_page | visible_only
+    capture_partial_reason  TEXT,                -- set only when full_page hit a runtime ceiling mid-stitch:
+                                                  -- ceiling_pixels | ceiling_folds | ceiling_time (NULL = complete)
+    capture_page_width      INTEGER,
+    capture_page_height     INTEGER,
+    capture_viewport_width  INTEGER,
+    capture_viewport_height INTEGER,
+    capture_dpr             REAL,
+    capture_note            TEXT,
+    created_at              REAL NOT NULL,
+    updated_at              REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_source_captures_source ON source_captures(source_id);
+
 CREATE TABLE IF NOT EXISTS segments (
     id        INTEGER PRIMARY KEY,
     source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
@@ -1182,6 +1212,46 @@ def video_embeds_of(source_id: str) -> list[str]:
 
 def get_source(source_id: str) -> dict[str, Any] | None:
     return row_to_dict(connect().execute("SELECT * FROM sources WHERE id=?", (source_id,)).fetchone())
+
+
+def create_pending_capture_event(*, capture_url: str, capture_mode: str, project_id: str | None = None,
+                                 capture_page_title: str | None = None, captured_at: float | None = None,
+                                 capture_partial_reason: str | None = None,
+                                 capture_page_width: int | None = None, capture_page_height: int | None = None,
+                                 capture_viewport_width: int | None = None, capture_viewport_height: int | None = None,
+                                 capture_dpr: float | None = None, capture_note: str | None = None) -> str:
+    """Send-screenshot: written by the API BEFORE the ingest job is enqueued, source_id NULL. Returns the new
+    capture_event id, which travels in the job payload instead of the raw provenance fields (see source_captures'
+    own comment in SCHEMA for why)."""
+    cid = new_id()
+    ts = now()
+    with tx() as conn:
+        conn.execute(
+            """INSERT INTO source_captures (id, source_id, project_id, capture_url, capture_page_title, captured_at,
+               capture_mode, capture_partial_reason, capture_page_width, capture_page_height, capture_viewport_width,
+               capture_viewport_height, capture_dpr, capture_note, created_at, updated_at)
+               VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (cid, project_id, capture_url, capture_page_title, captured_at if captured_at is not None else ts,
+             capture_mode, capture_partial_reason, capture_page_width, capture_page_height, capture_viewport_width,
+             capture_viewport_height, capture_dpr, capture_note, ts, ts),
+        )
+    return cid
+
+
+def materialize_capture_event(capture_event_id: str, source_id: str) -> None:
+    """Fills in the source_id once ingestion resolves one, closing the gap across the job-queue boundary. A no-op
+    (not an error) if the capture_event_id is unknown or already materialized to a DIFFERENT source, so a retried
+    or duplicate-triggered ingest job can never clobber a capture event's real link — first write wins."""
+    with tx() as conn:
+        row = conn.execute("SELECT source_id FROM source_captures WHERE id=?", (capture_event_id,)).fetchone()
+        if row is None or row["source_id"] is not None:
+            return
+        conn.execute("UPDATE source_captures SET source_id=?, updated_at=? WHERE id=?", (source_id, now(), capture_event_id))
+
+
+def get_capture_events_for_source(source_id: str) -> list[dict[str, Any]]:
+    return [row_to_dict(r) for r in connect().execute(
+        "SELECT * FROM source_captures WHERE source_id=? ORDER BY captured_at DESC", (source_id,)).fetchall()]
 
 
 def find_source(platform: str, external_id: str) -> dict[str, Any] | None:

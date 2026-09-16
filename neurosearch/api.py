@@ -929,18 +929,49 @@ def api_defaults() -> dict[str, Any]:
 
 @app.post("/api/ingest/file", dependencies=[Depends(require_auth)])
 async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form(None),
-                          project_id: str | None = Form(None), tags: str = Form(""), immediate: bool = Form(False)) -> dict[str, Any]:
-    """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents) or SRT/VTT. Runs as a background job.
+                          project_id: str | None = Form(None), tags: str = Form(""), immediate: bool = Form(False),
+                          capture_url: str | None = Form(None), capture_page_title: str | None = Form(None),
+                          captured_at: float | None = Form(None), capture_mode: str | None = Form(None),
+                          capture_page_width: int | None = Form(None), capture_page_height: int | None = Form(None),
+                          capture_viewport_width: int | None = Form(None), capture_viewport_height: int | None = Form(None),
+                          capture_dpr: float | None = Form(None), capture_note: str | None = Form(None),
+                          capture_partial_reason: str | None = Form(None)) -> dict[str, Any]:
+    """Upload audio/video (transcribed), PDF/DOCX/TXT (read as documents), SRT/VTT, or a screenshot (the extension's
+    "Send screenshot" feature — see docs/SEND-SCREENSHOT-2026-09-16.md). Runs as a background job by default.
     immediate=true (0.24.1, the chat's attach button): documents, spreadsheets, text and subtitle files are read,
     chunked and embedded inside this request through the very same `ingest_local_file` path (same global source
     row, same dedupe, same provenance) and the response carries the ready source; media still needs transcription
-    and is queued exactly as before (the response says so)."""
+    and is queued exactly as before (the response says so).
+
+    capture_url/capture_mode/etc (all optional, present together only for a screenshot capture): identify THIS
+    capture event as distinct from the `sources` row it may resolve to — identical screenshot bytes dedupe to one
+    global source, but each press of "Send screenshot" is still its own event with its own URL/timestamp/note/
+    project, recorded in `source_captures` (see that table's comment in db.py). When present, a pending
+    source_captures row is written HERE, before the file is even queued for ingestion, so the capture-event id
+    (not the raw fields) can travel in the job payload and survive the async boundary — see
+    ingest.ingest_image's own docstring for how it gets materialized once a source_id exists. The response NEVER
+    implies a source exists yet on the non-immediate path: only a queued job id."""
     name = Path(file.filename or "upload").name
     dest = settings.media_dir / f"upload_{secrets.token_hex(4)}_{name}"
     with open(dest, "wb") as fh:
         while chunk := await file.read(1 << 20):
             fh.write(chunk)
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    # a screenshot's title is the captured PAGE's title, never the uploaded filename, unless the caller explicitly
+    # overrode it -- the note (below) stays a separate field and never becomes or touches the title either way.
+    if capture_url and not title and capture_page_title:
+        title = capture_page_title
+
+    capture_event_id = None
+    if capture_url:
+        capture_event_id = db.create_pending_capture_event(
+            capture_url=capture_url, capture_mode=capture_mode or "visible_only", project_id=project_id or None,
+            capture_page_title=capture_page_title, captured_at=captured_at,
+            capture_partial_reason=capture_partial_reason,
+            capture_page_width=capture_page_width, capture_page_height=capture_page_height,
+            capture_viewport_width=capture_viewport_width, capture_viewport_height=capture_viewport_height,
+            capture_dpr=capture_dpr, capture_note=capture_note)
+
     from .documents import is_media
     if immediate and not is_media(Path(name)):
         from . import ingest as _ingest
@@ -948,15 +979,19 @@ async def api_ingest_file(file: UploadFile = File(...), title: str | None = Form
             # ocr_paid=True on this path only: `immediate` is the chat's attach button, so the user is waiting on
             # an answer ABOUT this file. For an image that means reading it, with the model if no free engine is
             # available (0.63.1).
-            res = await anyio.to_thread.run_sync(lambda: _ingest.ingest_local_file(dest, title or None, tag_list, project_id or None, original_name=name, ocr_paid=True))
+            res = await anyio.to_thread.run_sync(lambda: _ingest.ingest_local_file(dest, title or None, tag_list, project_id or None, original_name=name, ocr_paid=True, capture_event_id=capture_event_id))
         except Exception as e:  # noqa: BLE001
             raise HTTPException(400, f"could not read {name}: {e}") from e
         src = db.get_source(res["source_id"]) or {}
         return {"source_id": res["source_id"], "name": name, "title": src.get("title") or name, "ready": src.get("status") == "ready",
                 "chunks": res.get("chunks"), "embedded": res.get("embedded"), "immediate": True}
-    job = jobs.enqueue("ingest_file", {"path": str(dest), "name": name, "title": title or None,
-                                       "tags": tag_list, "project_id": project_id or None})
-    return {"job": job["id"], "name": name, "immediate": False,
+    job_payload = {"path": str(dest), "name": name, "title": title or None, "tags": tag_list, "project_id": project_id or None}
+    if capture_event_id:
+        job_payload["capture_event_id"] = capture_event_id
+    job = jobs.enqueue("ingest_file", job_payload)
+    # NEVER "source created" here — the source may not exist until this job runs. Accepted and queued is the
+    # whole honest contract; a caller that needs the eventual source_id polls the job.
+    return {"job": job["id"], "name": name, "immediate": False, "status": "queued",
             "note": "audio/video is transcribed in the background; it joins the project when ready" if immediate else None}
 
 

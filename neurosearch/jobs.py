@@ -319,7 +319,8 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         try:
             return ingest.ingest_local_file(path, title=payload.get("title"), tags=payload.get("tags"),
                                             project_id=payload.get("project_id"), progress=progress,
-                                            original_name=payload.get("name"))
+                                            original_name=payload.get("name"),
+                                            capture_event_id=payload.get("capture_event_id"))
         finally:
             path.unlink(missing_ok=True)
     if kind == "suggest_findings":
