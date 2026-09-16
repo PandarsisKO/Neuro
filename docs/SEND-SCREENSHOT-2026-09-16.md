@@ -442,6 +442,36 @@ Extension bumped to 1.9.2. `page_width`/`page_height` remain the true measured p
 (unchanged contract); only the internal stitch canvas allocation and `verifyTabIdentity`'s comparison changed.
 The live-Chrome acceptance matrix above now includes the 3 additional cases Kyle specified this round (popup
 close/reopen mid-capture, exact scroll-position restoration in every outcome, and same-origin navigation
-aborting a capture) and remains the mandatory closing step — still not run. A fresh full release-gate pass
-(pytest, Tier 1, release-check, version agreement) against the final commit is also still owed, per HANDOFF's
-rule that a prior pass does not count for edited code.
+aborting a capture) and remains the mandatory closing step — still not run.
+
+A fresh full release-gate pass (pytest, Tier 1, release-check, version agreement) was run against this round's
+final commit (`7b77fdd`) in the isolated workspace, per HANDOFF's rule that a prior pass does not count for
+edited code:
+
+- **Full pytest** (`pytest -q -n 4`, 1759 tests collected): 1713 passed, 46 failed. Every failure was inspected
+  and confirmed pre-existing/environmental, not caused by this repair round — none touch a file this mission
+  has ever edited. Two categories: (1) local-Claude-Code-CLI and OpenAI-embeddings network dependencies
+  unavailable in this sandbox (`test_r4_local_model.py`, `test_j3_fallback.py`, `test_n2_local_ai.py`,
+  `test_s39_answering_model.py`, `test_s43_foundation.py`, `test_p1_perf.py`, `test_indestructible.py`, and the
+  network-touching tests in `test_core.py`/`test_k_retrieval_fixes.py` — several reproduce in isolation on
+  files this mission never touched); (2) two unrelated stale-value tests —
+  `test_s33_page_videos.py::test_the_extension_version_moved_again` hard-codes a manifest version literal
+  (`"1.7.0"`) from an earlier mission and has been stale since the extension first passed 1.7.0, long before
+  this mission started, and `test_s50_design_drift.py::test_colour_literals_stay_in_the_token_blocks` is a
+  web-UI CSS/JS colour-literal ceiling unrelated to the extension. `tests/test_s54_send_screenshot.py` itself:
+  53/53 passed.
+- **Tier 1 / release-check** (`neurosearch release-check --no-pytest`): PASS on every deterministic,
+  no-live-calls gate — schema registry, contracts, web JS modules parse (`UI_VERSION 0.63.91`), Tier 1 frozen
+  totals and structured-output events, retrieval regression baseline, cache layout, H1 prefilter quality/
+  economic gates, backup/restore round trip. Two FAILs, both pre-existing and unrelated: `repository hygiene`
+  flags `STATE-OF-THE-APP-2026-09-14-1217.md` as an unexpected root entry (committed `b07f2a1`, 2026-09-14,
+  before this mission); `Foundation` fails on the same local-Claude-Code-CLI-unavailable
+  `test_local_failure_never_opens_paid_transport` parametrization pytest already surfaced. Artifact:
+  `evals/release/release-check-0.63.91-7b77fdd-20260916-035224.json`.
+- **Version agreement**: `pyproject.toml`, `neurosearch/__init__.py`, and `web/js/state.js`'s `UI_VERSION` all
+  read `0.63.91` — confirmed both directly and via release-check's own passing "web JavaScript modules parse"
+  gate. (This is the app's own version; unrelated to the extension's independently-versioned `manifest.json`,
+  now 1.9.2.)
+
+Net: nothing in this release gate implicates the send-screenshot feature or this repair round's changes. The
+live-Chrome acceptance matrix above remains the only work between here and closing this mission.

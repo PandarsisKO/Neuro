@@ -4636,3 +4636,23 @@ release-check, version agreement) against this round's final commit is also owed
 prior pass does not count for edited code — see the entry immediately below for that pass's results once run.
 
 Commit: c918076.
+
+## 2026-09-16 — Send screenshot: repair round 3's release-gate pass (against `7b77fdd`)
+
+Full detail in `docs/SEND-SCREENSHOT-2026-09-16.md`'s "Repair round 3" section. Summary: full pytest
+(`-n 4`, xdist) — 1713 passed, 46 failed, every failure inspected and confirmed pre-existing/environmental
+(local-Claude-Code-CLI and OpenAI-embeddings network dependencies unavailable in this sandbox, plus 2 unrelated
+stale-value tests — a hard-coded manifest-version literal from an earlier mission, and a web-UI colour-literal
+ceiling) — none touch a file this mission has ever edited. `tests/test_s54_send_screenshot.py`: 53/53 passed.
+`neurosearch release-check --no-pytest`: PASS on every deterministic no-live-calls gate (schema, contracts, web
+JS/UI_VERSION, Tier 1 frozen totals, retrieval baseline, cache layout, H1 prefilter, backup/restore); 2 FAILs,
+both pre-existing (an unrelated stray root file committed 2026-09-14, and the same local-CLI-unavailable
+foundation test pytest already surfaced). Artifact:
+`evals/release/release-check-0.63.91-7b77fdd-20260916-035224.json`. Version agreement confirmed:
+`pyproject.toml`/`neurosearch/__init__.py`/`web/js/state.js` UI_VERSION all `0.63.91`.
+
+Nothing in this release gate implicates the send-screenshot feature. The live-Chrome acceptance matrix remains
+the only work standing between here and closing this mission — it is entirely outstanding and requires Kyle's
+own hands (this session cannot drive a real Chrome browser end to end).
+
+Commit: (this entry + the release artifact — see commit following this entry).
