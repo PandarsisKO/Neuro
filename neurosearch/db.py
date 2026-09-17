@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Iterable, Any, Iterator
 
 import numpy as np
 
@@ -998,6 +998,11 @@ MIGRATIONS = [
     # research policy. Keep the additive columns so existing databases and downgrade paths remain compatible.
     ("project_notes", "embedding", "ALTER TABLE project_notes ADD COLUMN embedding BLOB"),
     ("project_claims", "embedding", "ALTER TABLE project_claims ADD COLUMN embedding BLOB"),
+    # P0.3 (docs/SPEED-AUDIT-2026-09-17.md): how many characters the source's transcript holds — the SAME number
+    # `ingest.caption_recovery_candidates` used to recompute per source on every Sources poll by loading every
+    # segment of ~770 sources (601k rows / 22 MB, p50 186 s under load). Maintained by `replace_transcript`, the
+    # one place segments are written; backfilled once at startup for rows written before the column existed.
+    ("sources", "spoken_chars", "ALTER TABLE sources ADD COLUMN spoken_chars INTEGER"),
     # T1: versioned derived vectors. Legacy bare blobs remain unreadable for similarity until these fields are set.
     ("project_notes", "embedding_provider", "ALTER TABLE project_notes ADD COLUMN embedding_provider TEXT"),
     ("project_notes", "embedding_model", "ALTER TABLE project_notes ADD COLUMN embedding_model TEXT"),
@@ -1091,6 +1096,7 @@ def init_db() -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_status ON jobs(kind, status)")
     conn.commit()
     _migrate_source_analysis(conn)
+    _backfill_spoken_chars(conn)
     _backfill_job_lanes(conn)
     _resolve_orphan_invocations(conn)
     try:
@@ -1102,6 +1108,21 @@ def init_db() -> None:
         snapshot_pre_fix_mismatches()        # 0.63.29: separate the mis-read substitutions from any real ones
     except Exception as e:  # noqa: BLE001
         logging.getLogger(__name__).warning("orphan sweep skipped: %s", e)
+
+
+def _backfill_spoken_chars(conn: sqlite3.Connection) -> None:
+    """P0.3: one SQL statement, once, for every source written before `sources.spoken_chars` existed. Exact
+    same arithmetic as the old per-request walk (`sum(len(seg.text))`): SQLite's length() counts characters."""
+    try:
+        n = conn.execute(
+            "UPDATE sources SET spoken_chars=(SELECT COALESCE(SUM(length(text)), 0) FROM segments WHERE segments.source_id=sources.id) "
+            "WHERE spoken_chars IS NULL AND status='ready'").rowcount
+        conn.commit()
+        if n:
+            logging.getLogger(__name__).info("backfilled spoken_chars for %d ready source(s)", n)
+    except Exception as e:  # noqa: BLE001 — a derived number must never stop the app from starting
+        conn.rollback()
+        logging.getLogger(__name__).warning("spoken_chars backfill skipped: %s", e)
 
 
 def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
@@ -1145,14 +1166,39 @@ def _migrate_source_analysis(conn: sqlite3.Connection) -> None:
         logging.getLogger(__name__).info("migrated %d source analyses into project_source_analysis", n)
 
 
+# P0 instrumentation (docs/SPEED-AUDIT-2026-09-17.md): how long each write transaction held SQLite's single writer.
+# The audit could see the CONSEQUENCES of long holds (`database is locked`, heartbeats failing, "New chat" hanging)
+# but had no number for the hold itself; every rung that claims to shorten it needs one. Recorded on the R0 ledger
+# as `db:write_hold` (seconds) and logged, with the caller, when a hold exceeds WRITE_HOLD_WARN_S.
+WRITE_HOLD_WARN_S = 2.0
+
+
+def _note_write_hold(conn: sqlite3.Connection, t0: float, what: str) -> None:
+    if not conn.in_transaction:          # a read-only tx()/batch() never took the writer
+        return
+    dt = time.perf_counter() - t0
+    try:
+        from . import perf
+        perf.record("db:write_hold", dt)
+    except Exception:  # noqa: BLE001
+        pass
+    if dt >= WRITE_HOLD_WARN_S:
+        import traceback
+        frames = [f for f in traceback.extract_stack(limit=12) if not f.filename.endswith("db.py") and "contextlib" not in f.filename]
+        where = f"{Path(frames[-1].filename).name}:{frames[-1].lineno} {frames[-1].name}" if frames else "?"
+        logging.getLogger(__name__).warning("write lock held %.1fs by %s (%s)", dt, where, what)
+
+
 @contextmanager
 def tx() -> Iterator[sqlite3.Connection]:
     conn = connect()
     if getattr(_local, "batch", 0):      # inside batch(): the batch commits, not each tx
         yield conn
         return
+    t0 = time.perf_counter()
     try:
         yield conn
+        _note_write_hold(conn, t0, "tx")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1164,10 +1210,13 @@ def batch() -> Iterator[None]:
     """Group many small writes into one transaction (bulk listings). Keeps the write lock briefly held
     once instead of hundreds of times, so API requests and other workers aren't starved."""
     _local.batch = getattr(_local, "batch", 0) + 1
+    t0 = time.perf_counter()
     try:
         yield
         if _local.batch == 1:
-            connect().commit()
+            conn = connect()
+            _note_write_hold(conn, t0, "batch")
+            conn.commit()
     except Exception:
         if _local.batch == 1:
             connect().rollback()
@@ -1400,10 +1449,19 @@ def find_source(platform: str, external_id: str) -> dict[str, Any] | None:
 
 def list_sources(
     *, status: str | None = None, collection_id: str | None = None, query: str | None = None,
-    limit: int = 500, offset: int = 0,
+    limit: int = 500, offset: int = 0, ids: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
+    """`ids` (P0.4, docs/SPEED-AUDIT-2026-09-17.md): restrict to these source ids IN THE QUERY. `/api/sources` used to
+    list the whole global library (`limit=10000`) and keep the project's rows in Python; the project-scoped set is
+    now the query's own predicate. An empty `ids` returns nothing, as the Python filter did."""
     sql = "SELECT s.* FROM sources s"
     where, args = [], []
+    if ids is not None:
+        idl = list(dict.fromkeys(ids))
+        if not idl:
+            return []
+        sql += " JOIN (SELECT value AS id FROM json_each(?)) want ON want.id = s.id"
+        args.append(json.dumps(idl))
     if collection_id:
         sql += " JOIN source_collections sc ON sc.source_id = s.id"
         where.append("sc.collection_id=?"); args.append(collection_id)
@@ -1649,8 +1707,8 @@ def replace_transcript(source_id: str, segments: list[dict], chunks: list[dict])
                 for i, c in enumerate(chunks)
             ],
         )
-        conn.execute("UPDATE sources SET revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END WHERE id=?",
-                     (segments_revision(segments), bool(chunks), source_id))
+        conn.execute("UPDATE sources SET revision=?, stage=CASE WHEN ? THEN 'chunks' ELSE 'transcript' END, spoken_chars=? WHERE id=?",
+                     (segments_revision(segments), bool(chunks), sum(len(s_["text"]) for s_ in segments), source_id))
     # G5: a moved revision stales exactly the Claim evidence rows frozen on the old one (no-op for sources without Claims)
     try:
         if connect().execute("SELECT 1 FROM claim_evidence WHERE source_id=? LIMIT 1", (source_id,)).fetchone():

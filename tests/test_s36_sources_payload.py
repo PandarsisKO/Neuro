@@ -185,7 +185,9 @@ def test_the_derived_facts_a_screen_uses_are_still_columns(fresh):
     s = db.upsert_source(platform="youtube", external_id="p2", url="https://youtu.be/p2", title="t", status="ready")
     db.add_project_sources(p, [s["id"]])
     r = _row(p)
-    for k in ("summary", "substance", "depth", "legacy_analysis", "relevance", "relevance_why"):
+    # P0.4 (docs/SPEED-AUDIT-2026-09-17.md): `relevance`/`relevance_why` left this list -- the only reader of
+    # either is the review card, which gets them from /api/projects/{id}/reviews (tests/test_s68_sources_list_diet.py)
+    for k in ("summary", "substance", "depth", "legacy_analysis"):
         assert k in r, k
 
 

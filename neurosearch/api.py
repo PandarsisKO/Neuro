@@ -117,6 +117,14 @@ async def lifespan(app: FastAPI):
 
 LIST_DESCRIPTION_CHARS = 200      # R2: the Sources list shows one ellipsised line; the full text stays on /api/sources/{id}
 LIST_SUMMARY_CHARS = 200          # 0.63.21: same decision, same reason, for the project-relative summary
+# P0.4 (docs/SPEED-AUDIT-2026-09-17.md): columns the Sources LIST never reads (inventoried against every `s.<field>`
+# in srcRowHtml / sourceRowActions / renderSourcesView and their helpers). Measured on the 1,515-row list: these
+# fourteen keys were ~620 KB of a 2,539 KB response — key names included, since every row repeats them. All of them
+# remain on `/api/sources/{id}`, which the drawer, the reader and every action use. (`r6_wave` stays: the R6 gate
+# reads it on the list row as the visible provenance of a fast-wave result.)
+LIST_OMIT_FIELDS = ("channel_url", "relevance_why", "created_at", "updated_at", "external_id", "content_fingerprint",
+                    "revision", "canonical_url", "view_count", "audio_path", "language", "relevance",
+                    "stage", "spoken_chars")
 
 
 class PerfMiddleware:
@@ -1359,12 +1367,17 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
     # part costs that, so the fix lands on the measured bottleneck instead of the assumed one. They stay after
     # the fix: the same breakdown is how the improvement gets verified, and how a regression would be noticed.
     with perf.timed("sources:list"):
-        rows = db.list_sources(status=status, collection_id=collection_id, query=q,
-                               limit=limit if not (project_id or not_in_project) else 10000, offset=offset)
+        if project_id:
+            # P0.4 (docs/SPEED-AUDIT-2026-09-17.md): the project's membership is the query's own predicate — no more
+            # listing the whole library (2,412 rows) to keep this project's 1,515 in Python.
+            with perf.timed("sources:membership"):
+                ids = set(db.project_source_ids(project_id, ready_only=False))
+            rows = db.list_sources(status=status, collection_id=collection_id, query=q, limit=limit, offset=offset, ids=ids)
+            rows = [r for r in rows if r["status"] != "proposed"]
+        else:
+            rows = db.list_sources(status=status, collection_id=collection_id, query=q,
+                                   limit=limit if not not_in_project else 10000, offset=offset)
     if project_id:
-        with perf.timed("sources:membership"):
-            ids = set(db.project_source_ids(project_id, ready_only=False))
-            rows = [r for r in rows if r["id"] in ids and r["status"] != "proposed"][:limit]
         with perf.timed("sources:lookups"):
             counts = db.suggestion_counts(project_id)
             analysing = db.sources_being_analysed(project_id)
@@ -1507,10 +1520,15 @@ def api_sources(status: str | None = None, collection_id: str | None = None, q: 
         # R2 part 3: `description` measured 2,135 KB of this response's 4,026 KB — 53%, for a field the list renders
         # as one ellipsised muted line and only when a source has no duration. The drawer and the reader fetch the
         # source again through /api/sources/{id}, so they still get it whole; only the LIST copy is clipped.
+        # P0.4: and a row WITH a duration never renders it at all (`srcRowHtml`: duration wins), so it is omitted.
         for r in rows:
             d = r.get("description")
-            if d and len(d) > LIST_DESCRIPTION_CHARS:
+            if r.get("duration"):
+                r["description"] = None
+            elif d and len(d) > LIST_DESCRIPTION_CHARS:
                 r["description"] = d[:LIST_DESCRIPTION_CHARS] + "…"
+            for k in LIST_OMIT_FIELDS:
+                r.pop(k, None)
         perf.record("sources:rows", time.perf_counter() - _rows_t0)
     elif not_in_project:
         ids = set(db.project_source_ids(not_in_project, ready_only=False))
