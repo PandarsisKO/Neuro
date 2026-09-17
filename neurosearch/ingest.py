@@ -1013,21 +1013,33 @@ CAPTION_MARKER = "— from the video's caption (no spoken narration) —"
 
 
 def caption_recovery_candidates(project_id: str | None = None) -> list[dict[str, Any]]:
-    """Ready sources whose audio said nothing but whose caption carries real text. $0 — pure SQL, no model call."""
+    """Ready sources whose audio said nothing but whose caption carries real text. $0 — pure SQL, no model call.
+
+    P0.3 (docs/SPEED-AUDIT-2026-09-17.md): this used to load EVERY segment of every ready project source with a
+    caption to sum their lengths — 601,423 rows / 21.7 MB on Kyle's project, on every Sources poll, from every
+    open tab (p50 186 s under background load). The sum now lives on `sources.spoken_chars`, maintained by
+    `db.replace_transcript` and backfilled once at startup, so this is one narrow query over the columns it
+    needs. Eligibility is unchanged: ready, in the project, not already `+caption`, caption at least
+    CAPTION_MIN_CHARS, spoken text under SILENT_TRANSCRIPT_CHARS. A source whose count is still NULL (written by
+    an older build between backfill and now) is computed on the spot and stored, never skipped."""
     ids = set(db.project_source_ids(project_id, ready_only=False)) if project_id else None
     out = []
-    for s in db.list_sources(status="ready", limit=100000):
+    conn = db.connect()
+    rows = conn.execute(
+        "SELECT id, title, transcript_kind, spoken_chars, length(description) AS caption_chars FROM sources "
+        "WHERE status='ready' AND length(COALESCE(description, '')) >= ? AND (transcript_kind IS NULL OR substr(transcript_kind, -8) <> '+caption')",
+        (CAPTION_MIN_CHARS,)).fetchall()
+    for s in rows:
         if ids is not None and s["id"] not in ids:
             continue
-        if (s.get("transcript_kind") or "").endswith("+caption"):
-            continue                                                    # already recovered
-        if len(s.get("description") or "") < CAPTION_MIN_CHARS:
-            continue
-        spoken = sum(len(x["text"]) for x in db.get_segments(s["id"]))
+        spoken = s["spoken_chars"]
+        if spoken is None:
+            spoken = sum(len(x["text"]) for x in db.get_segments(s["id"]))
+            with db.tx() as c:
+                c.execute("UPDATE sources SET spoken_chars=? WHERE id=? AND spoken_chars IS NULL", (spoken, s["id"]))
         if spoken >= SILENT_TRANSCRIPT_CHARS:
             continue                                                    # it spoke for itself
-        out.append({"id": s["id"], "title": s.get("title"), "spoken_chars": spoken,
-                    "caption_chars": len(s.get("description") or "")})
+        out.append({"id": s["id"], "title": s["title"], "spoken_chars": int(spoken), "caption_chars": int(s["caption_chars"] or 0)})
     return out
 
 
