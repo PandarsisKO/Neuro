@@ -5980,3 +5980,20 @@ fix — zero regressions.
 Reddit's feed a third time, checked with the same rigor as every prior case (no scrollbar artifact, no
 duplicate/missing tiles, right content preserved, no seam corruption) before it closes out. Recorded in
 `docs/KYLE-GATES-2026-09-15.md`.
+
+## Real gate-closing pass, part 8: extension setup screen had no way back out (2026-09-17)
+
+Kyle got locked out of the extension entirely: clicked "Change app address / password," the app server happened
+to be unreachable (matches a known failure mode `restart.command`'s own comment describes — a crashed process
+can leave port 8000 stuck, so requests hang instead of failing fast), and there was no cancel button — the only
+way out of the setup screen was a successful Save, which could never happen against a server that never answers.
+
+Fixed both halves: `#reset` no longer wipes stored config up front (it pre-fills the form from the current
+values and reveals a new Cancel button instead, so the working config survives until a replacement actually
+saves successfully), and `saveSetup` now aborts after 8s with a distinct, honest message instead of hanging
+indefinitely with no feedback. New coverage in `tests/test_s54_send_screenshot.py` (66 -> 70 passing).
+`repo-check`: PASS. Committed `1e5aa34`.
+
+Root cause of the actual lockout was environmental (the server, not the extension) — pointed Kyle at
+`restart.command` to clear it. This fix means the same situation can't trap the extension itself again,
+regardless of why the app is unreachable.
