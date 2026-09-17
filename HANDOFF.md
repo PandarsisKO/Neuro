@@ -6137,3 +6137,49 @@ it instead of `loadSources`, the search box still does a real fetch, `loadSource
 cache, and Pool still gets its own fetch. Existing gates (`test_s5_ui_syntax`, `test_s41_click_feedback`,
 `test_s61_quiet_poll_fanout`, `test_s62_start_command_self_heals`) pass unchanged; full collection clean
 at 1898 tests. `git commit a145b38`.
+
+## Real gate-closing pass, part 14: active-tab TOCTOU gap closed before case 5 went live (2026-09-17)
+
+Before any live testing, Kyle amended the case 5 plan: case 5.3 as originally proposed ("switch to another
+tab as the forced-failure mechanism") was flagged unsafe to use casually. `chrome.tabs.captureVisibleTab
+(windowId)` captures whatever tab is CURRENTLY active in the given window -- it takes no tabId. The
+existing `verifyTabIdentity`'s `tab.active` check (a prior "BLOCKER fix") only proves the target tab is
+active at the instant it runs; every caller then awaits the rate-limit wait (~600ms) and the `preCapture`
+re-hide round trip BEFORE actually calling `captureVisibleTab` -- real async gaps a fast tab switch fits
+inside. Kyle's instruction: inspect the code and Chrome API semantics first; if there's no guarantee the
+active tab at capture time is still the intended tab, treat it as a real safety gap and fix it BEFORE
+resuming case 5 -- ranked above scroll restoration, because it could silently attribute the wrong tab's
+pixels to the original tab's evidence/provenance.
+
+Inspection confirmed the gap was real and had never been closed. Fixed: `throttledCaptureVisibleTab` now
+takes `tabId` and re-checks `chrome.tabs.get(tabId)`'s `.active`/`.windowId` immediately before the
+`captureVisibleTab` call itself, with no further await in between. A tab switch, a window move, or the tab
+closing in that gap now fails closed with `TabIdentityError` -- `captureVisibleTab` is never called.
+
+Verified empirically, not just by code shape: `tests/js/run-toctou-guard.mjs` extracts the SHIPPED function
+by string boundary out of `extension/background.js` and runs it in a real `vm` context against a mock
+`chrome.tabs`/`chrome.storage.session`. Confirmed the normal case still captures once, and all three
+switch/close scenarios fail closed with zero `captureVisibleTab` calls. Sanity-checked the test against the
+pre-fix source (git HEAD before this fix) and confirmed it fails loudly there -- a real regression
+detector. `tests/test_s64_active_tab_toctou.py` wires it into pytest (5 tests, all pass). Two existing
+`test_s54_send_screenshot.py` assertions that pinned the old two-argument call shape were updated to match
+(one of my own comments also accidentally tripped a `count()==1` text gate by containing the literal call
+string -- reworded it, not the gate). Full `test_s54` suite (70 tests) passes clean; collection at 1903
+tests. `git commit 082c06b`.
+
+**Case 5 sequence, per Kyle's amendment (cases 5.1/5.2 unchanged, 5.3 redefined, a new safety case
+inserted, then case 6):**
+1. 5.1 — success: scroll restored exactly after a clean multi-tile capture.
+2. 5.2 — partial: scroll restored exactly after a ceiling-hit (time/tiles/pixels) partial capture.
+3. 5.3 — **redefined**: upload/network failure during a *completed* capture, not a forced
+   `captureVisibleTab` throw. Start from a known nonzero scroll position, let capture/stitching complete,
+   fail the upload via the safest deterministic network/app-unavailability mechanism, confirm scroll
+   restored + styles restored + image retained + honest failure shown + Retry Send available, then restore
+   connectivity and retry: same capture identity reused, upload succeeds, no duplicate evidence, scroll
+   unchanged. No server `.env` token changes; no direct live-DB access.
+4. **Active-tab safety live test** (now closed in code, per above) — live-test a deliberate tab switch
+   mid-capture as its own dedicated safety case, separate from case 6.
+5. Case 6 — same-origin navigate-away.
+
+Not marking case 5 PASS on code reading alone for any of these — each still needs the live-Chrome run per
+the mission's standing verification bar.
