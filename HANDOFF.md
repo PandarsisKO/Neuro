@@ -64,6 +64,14 @@ source-of-truth and audit contract on `main` (merged from the `design/f0` branch
 for current D0/D1/D2 status. `Claude outputs/T1-DESIGN-AUDIT-2026-09-12.md` and `INSPIRATION/` remain untracked
 reference material; preserve them. The tracked copy of Claude's design audit is `docs/T1-DESIGN-AUDIT-2026-09-12.md`.
 
+Repo storage cleanup — 2026-09-17. `.worktrees/f0` was confirmed orphaned (absent from `git worktree list`, gitdir
+pointing at a dead session mount, no writes since 2026-09-14), archived outside the repo, and removed. `data-audit/`
+was removed as disposable and reconstructible via `tools/audit-instance.command`. Orphaned backup `-wal`/`-shm`
+sidecars whose `.db` no longer existed were removed without opening any database (standing rule #1 held throughout).
+Deliberately left untouched: the 48-snapshot R8 observation set, the `PRE-DEDUPE-20260914` milestone backup,
+`data/corrupt-20260914-*`, the live database, and Git history. Backup retention and sidecar prevention remain
+deferred to the existing R8 revisit after 2026-10-11 17:28 PT — do not reopen that work early.
+
 ## Operating model
 
 The repo is the control plane, not either agent's chat history or Kyle. Claude and Codex coordinate through Git
