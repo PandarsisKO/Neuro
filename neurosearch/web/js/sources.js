@@ -95,7 +95,7 @@ globalThis.rvDiscard = async function rvDiscard(id) { if (!confirm('Discard this
 // R2 part 3 (SPEED-MISSION.md): `html` is the last content rendered per group and `byKey` the current rows, so a
 // refresh can patch only the groups that actually changed instead of rebuilding all 22,470 nodes — which also stops
 // every poll from throwing away scroll position and open/closed state.
-globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {}, loaded: false };
+globalThis.SRCG = { collapsed: new Set(), rows: [], html: new Map(), keys: [], byKey: {}, loaded: false, all: [] };
 globalThis.srcGroupToggled = function srcGroupToggled(key, open) {
   if (open) SRCG.collapsed.delete(key); else SRCG.collapsed.add(key);
   if (!open) return;
@@ -261,6 +261,30 @@ globalThis.loadSources = async function loadSources(quiet) {
   if (!SRCG.loaded) $('#srcList').innerHTML = listState('loading', { label: 'Loading sources…' });
   let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); } catch (e) { $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return; }
   SRCG.loaded = true;
+  SRCG.all = all;
+  const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
+  loadCaptureQueue(all.filter(needsBrowser), quiet);
+  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`, quiet ? { ack: false } : {}).then(r => { POOL.total = r.total; renderPoolChipBadge(r.total); }).catch(() => {});
+  renderSourcesView();
+}
+// 0.63.92 -- Kyle: "the 'show only whats running' button on the sources page lags like crazy. shouldnt it be
+// able to hide things pretty quick?" It should, and the fix is that it never needed the network at all: every
+// status chip, every ★/⚠/📚 value-filter toggle and the length/sort selects are PURE client-side filters over
+// `SRCG.all` -- the server never sees srcFilter, F, lenBand or sortBy (only `q`, the search box, is answered
+// server-side). They used to all call loadSources() anyway, which refetches up to 2000 sources plus
+// reviews/caption-recovery/capture-queue/pool on every single click. filterSources() re-renders from the
+// already-fetched SRCG.all with zero network round trips; only a real data change (add/retry/delete/etc.) or
+// a search-box edit still goes through the real loadSources() fetch.
+globalThis.filterSources = function filterSources() { renderSourcesView(); }
+globalThis.renderPoolChipBadge = function renderPoolChipBadge(n) {
+  const el = $('#srcPoolChip'); if (!el) return;
+  el.hidden = !n;
+  el.classList.toggle('on', state.srcFilter === 'pool');
+  el.innerHTML = n ? `🔎 Known, not captured <b>${n}</b>` : '';
+  el.onclick = () => { state.srcFilter = 'pool'; filterSources(); };
+}
+globalThis.renderSourcesView = function renderSourcesView() {
+  const all = SRCG.all || [];
   const nReady = all.filter(r => r.status === 'ready').length;
   $('#nSources').textContent = nReady;
   // group: what is being worked on right now floats to the top, then failures, then the rest (newest first)
@@ -272,18 +296,9 @@ globalThis.loadSources = async function loadSources(quiet) {
   // CL-4: "Known, not captured" is a count, not a workflow status like the rest of this row, so it renders into
   // #srcPoolChip (inside Filters) instead of the always-visible #srcChips — still one click away, still
   // highlighted with the same 'on' state when it's the active view.
-  const chipHtml = list => list.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';loadSources()">${l} <b>${n}</b></span>`).join('');
-  const renderPoolChip = n => {
-    const el = $('#srcPoolChip'); if (!el) return;
-    el.hidden = !n;
-    el.classList.toggle('on', state.srcFilter === 'pool');
-    el.innerHTML = n ? `🔎 Known, not captured <b>${n}</b>` : '';
-    el.onclick = () => { state.srcFilter = 'pool'; loadSources(); };
-  };
-  renderPoolChip(POOL.total);
-  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); renderPoolChip(POOL.total); return loadPool(); }
-  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`, quiet ? { ack: false } : {}).then(r => { POOL.total = r.total; renderPoolChip(r.total); }).catch(() => {});
-  loadCaptureQueue(all.filter(needsBrowser), quiet);
+  const chipHtml = list => list.filter(([k, , n]) => k === 'all' || n).map(([k, l, n]) => `<span class="chipf ${state.srcFilter === k ? 'on' : ''}" onclick="state.srcFilter='${k}';filterSources()">${l} <b>${n}</b></span>`).join('');
+  renderPoolChipBadge(POOL.total);
+  if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); renderPoolChipBadge(POOL.total); return loadPool(); }
   $('#srcChips').innerHTML = chipHtml(chips);
   const f = state.srcFilter || 'all';
   // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
@@ -398,7 +413,7 @@ globalThis.captureManyPool = async function captureManyPool() {
   toast(r.captured ? `⏵ ${r.line}${r.available_above_threshold > r.considered ? ` · ${r.available_above_threshold - r.considered} more met the threshold — run it again for the rest` : ''}` : r.line);
   POOL.total = null; loadPool(); loadJobs();
 }
-globalThis.toggleSrcFilter = function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; loadSources(); }
+globalThis.toggleSrcFilter = function toggleSrcFilter(k) { state.srcFilters = state.srcFilters || {}; state.srcFilters[k] = !state.srcFilters[k]; filterSources(); }
 // L3: the local provider is slow on purpose — buying speed is an explicit choice, never implied by slowness
 // Kyle, live 2026-09-09: "I am not sure what the buttons on this progress bar do or what the risks/costs are."
 // Fair — they were labelled "next 10" beside a banner that says $0, with the price hidden in a hover title and a
