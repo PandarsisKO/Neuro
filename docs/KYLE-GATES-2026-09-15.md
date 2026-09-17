@@ -267,6 +267,22 @@ current version and, on a few real pages, walk this list:
 
 1. **Ordinary page** -- one click on "Send screenshot," no intermediate chat; a Suggested Finding appears
    automatically once ingestion completes.
+
+   **2026-09-16 live-Chrome result: PASS**, with one real blocker found and cleared first. Kyle's first two
+   clicks (on the SMB Market listing "Successful Ag Manufacturing Business for Sale") produced no visible
+   feedback and no queued job -- confirmed via live network/console monitoring on the tab (zero requests to
+   the app, popup's own DevTools console showed `401 Unauthorized` on `/api/projects` and
+   `/api/extension/heartbeat`). Root cause: the extension's stored app token did not match the live app's
+   `NEUROSEARCH_APP_TOKEN` (`.env`). This is a credential-state issue, not a code defect -- `popup.js`'s
+   `load()` already has a catch path for a failed `/api/projects` call; the failure mode was just an empty,
+   silently-inert UI (unpopulated project dropdown, `if (!pid) return` no-ops on every button) rather than a
+   loud one, which is why it read as "nothing happened." Kyle re-entered the correct token via Settings ->
+   Change app address / password. After that: one click on Send screenshot, no intermediate chat, and it
+   completed cleanly -- `ingest_file` job `06cb5d209b10462b9570a7fde1a7f899` done in real-time (source
+   `2af9a7d7368347c4809777da6f5f6e0a`, title "Successful Ag Manufacturing Business for Sale | SMBmarket"
+   matching the tab), OCR via the vision engine (1370 chars, not paid), `image_kept: true`, and a
+   `suggest_findings` job auto-queued immediately after against that source in the correct project
+   (`c752ed152ec942dd97b9a94c3f1b3b96`, "buying businesses"). Provenance and project routing both correct.
 2. **A page wider than your viewport** -- exercises the new horizontal tiling; check the stitched image for
    seams or a duplicated sticky header.
 3. **A lazy-load / infinite-scroll page** -- exercises the per-fold pixel/time ceilings and grid growth; a

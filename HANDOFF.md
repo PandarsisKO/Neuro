@@ -5837,3 +5837,26 @@ specifically so nothing could touch the live database even accidentally.
 `source_captures` migration bug documented in the entry above -- found and fixed as a direct byproduct of
 actually running these gates for real, not a separate detour.
 
+## Real gate-closing pass, part 3: Send Screenshot case 1 (ordinary page) — real credential defect found and cleared, PASS (2026-09-16)
+
+Live-Chrome acceptance for Send Screenshot (`docs/KYLE-GATES-2026-09-15.md`), case 1 ("ordinary page"),
+against Kyle's real installed extension, real Chrome, and a real SMB Market listing page.
+
+**First two attempts produced no visible feedback.** Diagnosed live rather than assumed: armed
+`read_network_requests`/`read_console_messages` on the tab, had Kyle repeat the click, confirmed zero
+requests reached the app at all. Kyle then opened the popup's own DevTools ("Inspect popup" — the one view
+browser automation categorically cannot reach) and read back two `401 Unauthorized` errors: `/api/projects`
+and `/api/extension/heartbeat`. Root cause: the extension's stored app token was stale and did not match the
+live app's `NEUROSEARCH_APP_TOKEN` (read from `.env`, not printed here). This is a credential-state issue, not
+a code defect — `popup.js`'s existing catch path just produces a silently-empty UI (unpopulated project
+dropdown, every button's `if (!pid) return` guard no-ops) rather than a loud error, which is why it read as
+"nothing happened." Kyle re-entered the correct token via the popup's own Settings; no code change needed.
+
+**With the credential fixed: PASS.** One click, no intermediate chat. `ingest_file` job completed in
+real-time — OCR via the vision engine (1370 chars, not a paid provider call), correct title/project routing,
+`suggest_findings` auto-queued immediately after against the new source. Full detail recorded directly in
+`docs/KYLE-GATES-2026-09-15.md` under Send Screenshot case 1.
+
+**Remaining Send Screenshot cases** (2–7: wide-viewport tiling, lazy-load ceiling, popup close/reopen
+mid-capture, scroll-position restoration, same-origin navigate-away abort, provenance in the source drawer)
+are still open — continuing down that list next with Kyle, one small action at a time.
