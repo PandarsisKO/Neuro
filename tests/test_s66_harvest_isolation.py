@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import pytest
 
+import time
+
 from neurosearch import claims, db, jobs
 
 
@@ -177,3 +179,33 @@ def test_harvest_kind_is_zero_dollar_maintenance_not_ai_or_background_work(isola
     claimed = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS)               # what a general worker asks for
     assert claimed and claimed["id"] == job["id"]
     assert jobs.execute(claimed) == "done"
+
+
+def test_dedupe_targets_decides_outside_the_write_transaction(isolated, monkeypatch):
+    """Found in the loaded validation: the pairwise Jaccard pass ran inside db.tx(), holding the writer 12 s while
+    New Chat waited 10 s behind it. The decision is CPU and must finish before the transaction opens."""
+    from neurosearch import knowledge
+    pid = _project_with_notes(1)
+    # add_target already folds near-duplicates on entry; the rows dedupe_targets exists for arrive by other paths
+    # (older data, concurrent passes), so they are inserted directly here
+    import json as _json
+    now = time.time()
+    with db.tx() as conn:
+        for i, origin in enumerate(["model"] * 6 + ["user"]):
+            conn.execute("INSERT INTO project_evidence_targets (id, project_id, question, topic, claim_id, sufficiency, preferred_classes, closure, "
+                         "closure_rule, status, origin, gap, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (db.new_id(), pid, f"Obtain the authoritative SBA guarantee fee table for this fiscal year {i}", "sba", None,
+                          "governing", _json.dumps(["authoritative"]), "the table is in the project", _json.dumps({}), "open", origin, None, now + i, now + i))
+    real_jaccard = claims.jaccard
+    inside: list[bool] = []
+
+    def spy(a, b):
+        inside.append(db.connect().in_transaction)
+        return real_jaccard(a, b)
+    monkeypatch.setattr(claims, "jaccard", spy)
+    dropped = knowledge.dedupe_targets(pid)
+    assert inside and not any(inside), "no Jaccard comparison may run while a write transaction is open"
+    assert dropped == 5                                             # the earliest model target and the user's survive
+    assert knowledge.dedupe_targets(pid) == 0                       # idempotent
+    open_ = [t for t in knowledge.list_targets(pid, status="open")]
+    assert len(open_) == 2 and {t["origin"] for t in open_} == {"model", "user"}

@@ -411,17 +411,23 @@ def dedupe_targets(project_id: str) -> int:
     """Open targets whose questions are near-duplicates (Jaccard ≥ TARGET_DUP_JACCARD) fold into the earliest one; the
     later ones are `dropped`. User-made targets are never dropped. Cheap: open targets only."""
     rows = [t for t in list_targets(project_id, status="open")]
-    dropped = 0
+    # P0 (docs/SPEED-AUDIT-2026-09-17.md §7): the pairwise Jaccard pass is CPU — quadratic in open targets — and it
+    # used to run INSIDE the write transaction, holding SQLite's single writer for 12 s on Kyle's project while
+    # "New chat" (one INSERT) waited 10 s behind it. Decide first, then write the decisions in one short transaction.
     keep: list[dict[str, Any]] = []
-    with db.tx() as conn:
-        for t in rows:                                             # list_targets is created_at ascending
-            dup = next((k for k in keep if claims.jaccard(t["question"], k["question"]) >= TARGET_DUP_JACCARD), None)
-            if dup and t.get("origin") != "user":
-                conn.execute("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE id=?", (time.time(), t["id"]))
-                dropped += 1
-            else:
-                keep.append(t)
-    return dropped
+    to_drop: list[str] = []
+    for t in rows:                                                 # list_targets is created_at ascending
+        dup = next((k for k in keep if claims.jaccard(t["question"], k["question"]) >= TARGET_DUP_JACCARD), None)
+        if dup and t.get("origin") != "user":
+            to_drop.append(t["id"])
+        else:
+            keep.append(t)
+    if to_drop:
+        with db.tx() as conn:
+            now = time.time()
+            conn.executemany("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE id=? AND status='open'",
+                             [(now, tid) for tid in to_drop])
+    return len(to_drop)
 
 
 def refresh(project_id: str) -> dict[str, Any]:
