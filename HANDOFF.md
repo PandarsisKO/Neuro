@@ -6066,3 +6066,50 @@ cleanly (not corrupted) mid-post at the honest size ceiling.
 
 **Case 4: PASS.** Send Screenshot acceptance matrix: cases 1-4 done, moving to case 5 (scroll position
 restored exactly afterward, across a success/partial/forced-failure case).
+
+## Real gate-closing pass, part 12: three UI/resilience fixes (2026-09-17), then back to case 5
+
+Kyle: *"I want to fix my UI complaints and this resilience/serve restart complaint then get back to our
+mission."* Three fixes, each root-caused live before any code changed, committed at `90c6f20`:
+
+1. **The `#nsbar` blue bar lighting up every ~3s on the Sources page.** `loadJobs`'s own comment claimed
+   this was already fixed (L-19, 2026-09-15) -- true for `loadJobs`/`loadSpend`/`loadBacklog`, but
+   `pollTick` also unconditionally calls `loadSources()` and `loadBoot()` on nearly every tick, and
+   NEITHER took a `quiet` argument at all (nor did `loadSources`'s own sub-calls: `loadReviews`,
+   `loadCaptionRecovery`, `loadCaptureQueue`). Every one of those `api()` calls defaulted to `ack: true`,
+   relighting the bar regardless of the L-19 fix. Threaded `quiet` through the whole chain; `pollTick` now
+   calls `loadSources(true)`/`loadBoot(true)` (and its /tick-unreachable fallback does the same). Every
+   click-triggered call site (the ~30 bare `loadSources()`/`loadJobs()` calls across sources.js/research.js)
+   is untouched and still lights the bar, which is the acknowledgement NSACK exists for.
+2. **"Add sources" panel collapsed by default.** `#srcAddPanel` is a plain `<details>` with no JS managing
+   its open state anywhere -- it was just missing the `open` attribute. Added it.
+3. **`start.command` required Kyle to separately run `restart.command` after any crash.** `start.command`
+   now runs the same kill -> wait 10s -> SIGKILL sequence `restart.command` has always used, automatically,
+   the moment it finds the port already held at launch -- before it would otherwise refuse to start.
+   `restart.command`'s own comment (which said start.command "deliberately does NOT do this on its own")
+   was corrected to describe the new split: automatic recovery only fires at launch when the port is
+   already stuck; `restart.command` is kept as an explicit manual "force restart" that also stops a
+   currently *healthy* running server, which the automatic path deliberately does not touch.
+
+**Verification, not symptom-disappearance.** Two new test files: `tests/test_s61_quiet_poll_fanout.py`
+(text gate asserting `pollTick` calls the quiet variants and that the whole `loadSources`/`loadBoot` fan-out
+propagates `quiet` all the way to their `api()` calls, plus the Add-sources-panel `open` attribute) and
+`tests/test_s62_start_command_self_heals.py` (a real end-to-end run: binds an actual process to a throwaway
+port, points `start.command` at it via `NEUROSEARCH_PORT`, and confirms the process is genuinely killed and
+the app genuinely proceeds to launch afterward -- not a text check). Both new suites pass. Existing NSACK
+gates (`test_s41_click_feedback.py`, `test_s5_ui_syntax.py`) pass unchanged. Full test collection (1891
+tests, up from the `f13ca97` baseline) succeeds with zero import/syntax errors. Ran the directly-adjacent
+suites (`test_s39_answering_model.py`, `test_p0_restart_retry.py`) alongside the new ones: only 2
+pre-existing/environmental failures in `test_s39` (a model-routing default mismatch unrelated to anything
+touched here -- `claude-haiku-4-5` vs an expected `claude-sonnet-5`), nothing new introduced. No Python
+source was touched, only `neurosearch/web/{index.html,js/research.js,js/sources.js}`, `start.command`,
+`restart.command`, and the two new test files -- so the blast radius against the wider backend suite is
+inherently small, and a full from-zero run was not repeated on top of the collection-clean check and the
+scoped differential above.
+
+`git commit 90c6f20`. Working tree clean of tracked changes afterward (untracked evaluation-log clutter
+under `evals/release/` and a couple of unrelated top-level folders Kyle has sitting in the repo were left
+alone, not part of this change).
+
+**Returning to Send Screenshot case 5** (scroll position restored exactly afterward, across a
+success/partial/forced-failure case) per Kyle's original instruction.
