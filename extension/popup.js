@@ -276,16 +276,42 @@ $('#retryScreenshot').onclick = async () => {
   CAPTURE = r.capture; renderCapture();
 };
 
+// how long Save waits for the app to answer before giving up and saying so, rather than sitting there looking
+// frozen forever. Chosen once, 2026-09-17: a hung server (the parent process surviving a crash and still
+// holding the port -- see restart.command's own comment) makes fetch() hang far longer than any reasonable
+// button-press patience, with no error, no timeout, and (before this fix) no way to back out of this screen at
+// all -- confirmed live as a real defect, not a hypothetical one.
+const SETUP_SAVE_TIMEOUT_MS = 8000;
+
 $('#saveSetup').onclick = async () => {
   const appUrl = $('#appUrl').value.trim().replace(/\/$/, ''), token = $('#token').value.trim();
   if (!appUrl || !token) return;
+  $('#saveSetup').disabled = true; $('#setupMsg').textContent = 'Checking…';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SETUP_SAVE_TIMEOUT_MS);
   try {
-    const r = await fetch(appUrl + '/api/stats', { headers: { Authorization: 'Bearer ' + token } });
+    const r = await fetch(appUrl + '/api/stats', { headers: { Authorization: 'Bearer ' + token }, signal: controller.signal });
     if (!r.ok) throw new Error(r.status === 401 ? 'wrong password' : 'app answered ' + r.status);
-  } catch (e) { $('#setupMsg').textContent = 'Could not reach the app: ' + e.message; return; }
+  } catch (e) {
+    $('#setupMsg').textContent = e.name === 'AbortError'
+      ? "The app didn't answer within a few seconds — it may be down or the port may be stuck (try restart.command), or the address may be wrong."
+      : 'Could not reach the app: ' + e.message;
+    return;
+  } finally {
+    clearTimeout(timer); $('#saveSetup').disabled = false;
+  }
   await chrome.storage.local.set({ appUrl, token }); load();
 };
-$('#reset').onclick = async () => { await chrome.storage.local.remove(['appUrl', 'token']); $('#setup').style.display = ''; $('#main').style.display = 'none'; };
+// Change app address / password: show the setup form pre-filled with the CURRENT values, without touching
+// storage yet -- the old config stays live and Cancel can always get back to it. Storage is only overwritten on
+// a successful Save (above). Before this, reset wiped storage immediately, so a Save that then failed (or hung
+// -- see SETUP_SAVE_TIMEOUT_MS above) left no way back into the app at all; confirmed live as a real defect.
+$('#reset').onclick = () => {
+  $('#appUrl').value = cfg.appUrl || ''; $('#token').value = cfg.token || ''; $('#setupMsg').textContent = '';
+  $('#cancelSetup').style.display = cfg.appUrl && cfg.token ? '' : 'none';
+  $('#setup').style.display = ''; $('#main').style.display = 'none';
+};
+$('#cancelSetup').onclick = () => { $('#setupMsg').textContent = ''; $('#setup').style.display = 'none'; $('#main').style.display = ''; };
 
 async function api(path, opts = {}) {
   const r = await fetch(cfg.appUrl + path, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.token, ...(opts.headers || {}) } });

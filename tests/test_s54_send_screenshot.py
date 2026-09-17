@@ -1090,3 +1090,50 @@ def test_manifest_version_floor_matches_the_established_pattern() -> None:
     fn = fn[:fn.index("\n\n")]
     assert 'mf["version"] == "1.7.0"' not in fn, "must not still hard-pin an exact version literal"
     assert ">= (1, 7, 0)" in fn
+
+
+# ------------------------------------------------------------------------------- setup-screen dead end (2026-09-17)
+def test_setup_screen_has_a_cancel_button() -> None:
+    # Live defect (2026-09-17): clicking "Change app address / password" replaced the main view with the setup
+    # form and NOTHING could get back to it except a successful Save -- if the app was unreachable (confirmed
+    # live: a crashed server can leave the port stuck, so requests hang instead of failing fast) the user was
+    # completely locked out of the extension with no way back.
+    html = (EXT / "popup.html").read_text()
+    assert 'id="cancelSetup"' in html
+    assert 'id="setup"' in html and html.index('id="cancelSetup"') > html.index('id="setup"'), \
+        "the cancel button must live inside the setup screen"
+
+
+def test_reset_prefills_and_does_not_wipe_storage_until_save_succeeds() -> None:
+    # The old #reset handler called chrome.storage.local.remove(['appUrl', 'token']) immediately -- the moment
+    # you clicked "Change app address / password", your working config was already gone, whether or not the new
+    # one ever saved successfully. It must now only stage the form; storage is untouched until Save succeeds.
+    js = (EXT / "popup.js").read_text()
+    reset_fn = js[js.index("$('#reset').onclick"):]
+    reset_fn = reset_fn[:reset_fn.index("};") + 2]
+    assert "chrome.storage.local.remove" not in reset_fn, \
+        "reset must not wipe storage up front -- that is exactly what left Kyle with no way back"
+    assert "cfg.appUrl" in reset_fn and "cfg.token" in reset_fn, "the form must be pre-filled from the CURRENT config"
+    assert "cancelSetup" in reset_fn, "reset must reveal the cancel button so there is a way back"
+
+
+def test_cancel_setup_returns_to_main_without_touching_storage() -> None:
+    js = (EXT / "popup.js").read_text()
+    cancel_fn = js[js.index("$('#cancelSetup').onclick"):]
+    cancel_fn = cancel_fn[:cancel_fn.index("};") + 2]
+    assert "chrome.storage.local" not in cancel_fn, "cancel must be purely a view change, never touch storage"
+    assert "'#setup'" in cancel_fn or '"#setup"' in cancel_fn
+    assert "'#main'" in cancel_fn or '"#main"' in cancel_fn
+
+
+def test_save_setup_has_a_bounded_timeout_instead_of_hanging_forever() -> None:
+    # Confirmed live: a hung/unreachable app makes fetch() hang indefinitely with no error and no feedback --
+    # the Save button just looks frozen. It must give up after a bounded wait and say so honestly, distinct from
+    # the existing "wrong password" / "app answered NNN" cases.
+    js = (EXT / "popup.js").read_text()
+    assert "const SETUP_SAVE_TIMEOUT_MS = 8000;" in js
+    save_fn = js[js.index("$('#saveSetup').onclick"):]
+    save_fn = save_fn[:save_fn.index("\n};") + 3]
+    assert "AbortController" in save_fn and "signal: controller.signal" in save_fn
+    assert "AbortError" in save_fn, "a timed-out request must be distinguished from an ordinary connection error"
+    assert "clearTimeout(timer)" in save_fn, "the timeout timer must always be cleared, success or failure"
