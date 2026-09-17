@@ -380,6 +380,18 @@ current version and, on a few real pages, walk this list:
    normal downstream routing intact. **Case 3: PASS.** Moving to case 4.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not
    vanish or duplicate.
+
+   **2026-09-17 live-Chrome result: PASS.** Kyle started a Send screenshot capture on Reddit's home feed and hit
+   Escape mid-capture -- the popup closed; nothing else happened, the capture kept running. He reopened the
+   popup while it was still in progress and it correctly showed "capturing... (tile N)", the live state -- not a
+   blank/reset view -- confirming `background.js`'s durable `capture:<tabId>` record survived the popup closing
+   and `popup.js`'s `refreshCapture`/`renderCapture` picked it back up correctly on reopen. The capture then
+   finished on its own: `server.log` shows exactly one `ingest_file` job (`dcc6d03a`) for that window, done in
+   1.8s with no errors, immediately followed by a `suggest_findings` job -- no duplicate capture jobs anywhere
+   nearby. Pulled the actual stitched PNG (2560x13230, `data/images/e7fa497ee6884e608e7a2d562ae16fa2.png`) and
+   checked it against the same standard as cases 2/3: clean right edge (no scrollbar), no duplicate tile bands
+   anywhere in the image, ends cleanly mid-post at the honest size ceiling (a night-vision-style photo thumbnail,
+   cut off but not corrupted -- same pattern as case 3's ceiling behavior). **Case 4: PASS.** Moving to case 5.
 5. **Check scroll position is restored exactly afterward** -- in a success, a partial, and a forced-failure
    case if you can trigger one (e.g. going offline mid-upload should show "Retry send").
 6. **Navigate away (same-origin) mid-capture** -- it should abort cleanly, never send a mismatched or

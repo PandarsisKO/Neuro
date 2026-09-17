@@ -6050,3 +6050,19 @@ the `-wal`/`-shm` sidecars a given backup's own restore procedure actually calls
 confirmed to postdate the evidence being checked, never paired by default.
 
 Continuing with Send Screenshot case 4.
+
+## Real gate-closing pass, part 11: Send Screenshot case 4 confirmed PASS (2026-09-17)
+
+Kyle started a capture on Reddit's home feed and hit Escape mid-capture; the popup closed but the capture kept
+running in the background. Reopening the popup while it was still in progress showed the live "capturing...
+(tile N)" state -- confirming `background.js`'s durable `capture:<tabId>` record survived the popup closing and
+`popup.js`'s `refreshCapture`/`renderCapture` correctly picked it back up on reopen, rather than showing a
+blank or reset view. Independently verified via `server.log` (no live-DB access, per part 10's new rule): exactly
+one `ingest_file` job (`dcc6d03a`) in that window, done in 1.8s with no errors, immediately followed by a
+`suggest_findings` job -- no duplicate capture jobs anywhere nearby. Pulled the actual stitched PNG
+(2560x13230, `data/images/e7fa497ee6884e608e7a2d562ae16fa2.png`, staged from the device and inspected
+pixel-for-pixel) and checked it against the case 2/3 standard: clean right edge, no duplicate tile bands, ends
+cleanly (not corrupted) mid-post at the honest size ceiling.
+
+**Case 4: PASS.** Send Screenshot acceptance matrix: cases 1-4 done, moving to case 5 (scroll position
+restored exactly afterward, across a success/partial/forced-failure case).
