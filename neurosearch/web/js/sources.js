@@ -13,8 +13,8 @@ globalThis.rvUnchecked = {};   // collection id -> Set of source ids the user un
 globalThis.rvFilterText = {};
 globalThis.rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
 globalThis.scClass = function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
-globalThis.loadReviews = async function loadReviews() {
-  const rvs = await api(`/api/projects/${state.project.id}/reviews`).catch(() => []);
+globalThis.loadReviews = async function loadReviews(quiet) {
+  const rvs = await api(`/api/projects/${state.project.id}/reviews`, quiet ? { ack: false } : {}).catch(() => []);
   // Only rebuild the card when the list (or its ranking) changed; the poller calls this every few seconds
   const sig = rvs.map(c => c.id + ':' + (c.meta && c.meta.ranked ? 'R' : 'r') + ':' + c.proposed.map(s => s.id + (s.relevance == null ? '' : '=' + s.relevance)).join(',')).join('|');
   if (sig === rvSig) return;
@@ -254,12 +254,12 @@ globalThis.renderSourceList = function renderSourceList() {
   SRCG.keys = keys;
   SRCG.html = new Map(built.map(b => [b.k, b.content]));
 }
-globalThis.loadSources = async function loadSources() {
-  loadReviews();
-  loadCaptionRecovery();
+globalThis.loadSources = async function loadSources(quiet) {
+  loadReviews(quiet);
+  loadCaptionRecovery(quiet);
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
   if (!SRCG.loaded) $('#srcList').innerHTML = listState('loading', { label: 'Loading sources…' });
-  let all; try { all = await api('/api/sources?' + p); } catch (e) { $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return; }
+  let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); } catch (e) { $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return; }
   SRCG.loaded = true;
   const nReady = all.filter(r => r.status === 'ready').length;
   $('#nSources').textContent = nReady;
@@ -282,8 +282,8 @@ globalThis.loadSources = async function loadSources() {
   };
   renderPoolChip(POOL.total);
   if (state.srcFilter === 'pool') { $('#srcChips').innerHTML = chipHtml(chips); renderPoolChip(POOL.total); return loadPool(); }
-  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`).then(r => { POOL.total = r.total; renderPoolChip(r.total); }).catch(() => {});
-  loadCaptureQueue(all.filter(needsBrowser));
+  if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`, quiet ? { ack: false } : {}).then(r => { POOL.total = r.total; renderPoolChip(r.total); }).catch(() => {});
+  loadCaptureQueue(all.filter(needsBrowser), quiet);
   $('#srcChips').innerHTML = chipHtml(chips);
   const f = state.srcFilter || 'all';
   // S2: composable value filters (AND), a length band and a sort — every one a column on the row, no model calls
@@ -510,8 +510,8 @@ globalThis.suggestSource = async function suggestSource(id) {
 }
 globalThis.ingestSkipped = async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 globalThis.capRecover = { n: 0 };
-globalThis.loadCaptionRecovery = async function loadCaptionRecovery() {
-  try { capRecover.n = (await api(`/api/projects/${state.project.id}/sources/caption-recovery`)).count || 0; }
+globalThis.loadCaptionRecovery = async function loadCaptionRecovery(quiet) {
+  try { capRecover.n = (await api(`/api/projects/${state.project.id}/sources/caption-recovery`, quiet ? { ack: false } : {})).count || 0; }
   catch (e) { capRecover.n = 0; }
 }
 globalThis.recoverCaptions = async function recoverCaptions() {
@@ -569,9 +569,9 @@ globalThis.extLine = function extLine() { return EXT.state === 'ready' ? '✓ ex
 globalThis.toggleCaptureHelp = function toggleCaptureHelp(btn) { const d = btn.parentElement.nextElementSibling; d.hidden = !d.hidden; }
 globalThis.openAndCapture = function openAndCapture(url) { window.open(url, '_blank'); }
 globalThis.cancelCapture = async function cancelCapture(jobId) { await del(`/api/capture/${jobId}`); loadSources(); loadJobs(); }
-globalThis.loadCaptureQueue = async function loadCaptureQueue(rows) {
+globalThis.loadCaptureQueue = async function loadCaptureQueue(rows, quiet) {
   try {
-    const q = await api(`/api/capture/pending?project_id=${state.project.id}`); globalThis.EXT = q.extension || EXT;
+    const q = await api(`/api/capture/pending?project_id=${state.project.id}`, quiet ? { ack: false } : {}); globalThis.EXT = q.extension || EXT;
     const items = q.items || [];
     const card = $('#captureCard');
     // B2: a request that vanished since the last poll = a capture landed → show its outcome (complete / partial) and move on
@@ -582,7 +582,7 @@ globalThis.loadCaptureQueue = async function loadCaptureQueue(rows) {
     for (const [, it] of landed) {
       if (!it.source_id) continue;
       try {
-        const src = await api(`/api/sources/${it.source_id}`);
+        const src = await api(`/api/sources/${it.source_id}`, quiet ? { ack: false } : {});
         const c = src.completeness ? JSON.parse(src.completeness) : null;
         if (src.status === 'ready') outcome += `<div class="banner" style="margin:4px 0">✓ Captured “${esc(src.title || it.title)}”${c ? ` — ${c.captured} comment${c.captured === 1 ? '' : 's'}` : ''}.${c && c.status === 'partial' ? ` <b>Partial:</b> the thread reports ~${c.expected}; ${c.missing || 0} may not be loaded. <button class="small" onclick="acceptPartial('${src.id}')">Accept partial</button> <button class="small" onclick="recapture('${src.id}')">Reopen and capture more</button>` : c && c.status === 'unknown' ? ' Completeness unknown (no comment count reported).' : ''}</div>`;
         else if (src.status === 'pending') outcome += `<div class="banner" style="margin:4px 0">⟳ Capture received for “${esc(src.title || it.title)}” — finishing…</div>`;

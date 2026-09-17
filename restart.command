@@ -1,13 +1,14 @@
 #!/bin/bash
-# Double-click `restart.command` when the app will not load, or looks stuck, or the window said
-# "Address already in use".
+# Double-click `restart.command` any time you want to force a fresh start of the app — for example, if it
+# will not load, looks stuck, or the window said "Address already in use".
 #
-# 0.63.32 — why this file exists. A crash inside the server leaves uvicorn's PARENT process alive and still
-# holding port 8000, so the port is bound and nothing answers: requests time out instead of being refused, the app
-# looks "stuck loading" for ever, and the next `start.command` dies immediately on [Errno 48]. That happened to
-# Kyle twice on 2026-09-11 and the second launch failed one minute after he was told to relaunch. `start.command`
-# deliberately does NOT do this on its own — taking over a port nobody asked about is the kind of thing that
-# silently kills the wrong program — so freeing it is its own deliberate, clearly named action.
+# 0.63.32, revised 0.63.92 — why this file still exists. A crash inside the server leaves uvicorn's PARENT
+# process alive and still holding port 8000, so the port is bound and nothing answers: requests time out instead
+# of being refused, and the app looks "stuck loading" for ever. That happened to Kyle twice on 2026-09-11.
+# `start.command` now detects and frees exactly this situation on its own at launch (0.63.92) — a crash no longer
+# requires this script to recover from. This file is kept as an explicit, always-available "just restart it" — it
+# also stops a server that is currently running and healthy, which start.command's own automatic recovery
+# deliberately does not do (it only acts when a launch finds the port already stuck, never on a running server).
 cd "$(dirname "$0")"
 mkdir -p data
 LOG=data/server.log

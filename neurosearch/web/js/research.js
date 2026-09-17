@@ -492,9 +492,9 @@ globalThis.bootRow = function bootRow(h) {
   </div>`;
 }
 globalThis.BOOTSTATE = null;
-globalThis.loadBoot = async function loadBoot() {
+globalThis.loadBoot = async function loadBoot(quiet) {
   if (!state.project) return;
-  try { globalThis.BOOTSTATE = await api(`/api/projects/${state.project.id}/bootstrap`); } catch (e) { globalThis.BOOTSTATE = null; }
+  try { globalThis.BOOTSTATE = await api(`/api/projects/${state.project.id}/bootstrap`, quiet ? { ack: false } : {}); } catch (e) { globalThis.BOOTSTATE = null; }
   renderBoot();
 }
 globalThis.renderBoot = function renderBoot() {
@@ -658,7 +658,7 @@ globalThis.pollTick = async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
   let t;
   try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); }
-  catch (e) { loadJobs(true); loadSources().catch(() => {}); return; }   // tick unavailable → behave exactly as before
+  catch (e) { loadJobs(true); loadSources(true).catch(() => {}); return; }   // tick unavailable → behave exactly as before
   const rev = t.rev, prev = globalThis.lastRev;
   const changed = k => !prev || prev[k] !== rev[k];
   const full = ++globalThis.ticksSinceFull >= RECONCILE_EVERY;
@@ -666,8 +666,8 @@ globalThis.pollTick = async function pollTick() {
   globalThis.lastRev = rev;
   const srcChanged = full || changed('sources') || changed('jobs') || changed('notes') || changed('research');
   if (full || changed('jobs')) loadJobs(true); else globalThis.jobsTimer = setTimeout(pollTick, t.active ? 3000 : 15000);
-  if (srcChanged) loadSources().catch(() => {});
-  if (full || changed('jobs') || changed('sources')) loadBoot();
+  if (srcChanged) loadSources(true).catch(() => {});
+  if (full || changed('jobs') || changed('sources')) loadBoot(true);
 }
 
 globalThis.jobHistory = async function jobHistory(id, btn) {
