@@ -6113,3 +6113,27 @@ alone, not part of this change).
 
 **Returning to Send Screenshot case 5** (scroll position restored exactly afterward, across a
 success/partial/forced-failure case) per Kyle's original instruction.
+
+## Real gate-closing pass, part 13: instant Sources-page filtering (2026-09-17)
+
+Kyle: *"the 'show only whats running' button on the sources page lags like crazy. shouldnt it be able to
+hide things pretty quick?"* Root cause: the server never uses `srcFilter`/the value-filter toggles/the
+length band/the sort order at all -- `/api/sources` always returns up to 2000 rows and every one of those
+controls is a pure client-side filter over the already-fetched list. But every status chip (including
+"Working on"), every ★/⚠ value-filter toggle, and the length/sort selects all called `loadSources()`,
+which refetches all 2000 sources plus reviews/caption-recovery/browser-capture-queue/pool on every single
+click -- exactly the kind of unnecessary round trip this session's part 12 fix removed from the background
+poller, just triggered by clicks instead of the poll loop this time.
+
+Split `loadSources`'s body into the real fetch (now caching into `SRCG.all`) and a new synchronous,
+no-network `renderSourcesView()`; every filter/sort control now calls a new `filterSources()` (just
+`renderSourcesView()`) instead. The search box (`q` is genuinely server-side) and every real data mutation
+are untouched. Selecting the Pool view still does its own real fetch via `loadPool()` -- a different
+dataset, not part of `SRCG.all`.
+
+`tests/test_s63_instant_source_filters.py` (7 tests, all pass): confirms `renderSourcesView` is
+synchronous and network-free, `filterSources` does nothing but re-render, every filter/sort control calls
+it instead of `loadSources`, the search box still does a real fetch, `loadSources` still populates the
+cache, and Pool still gets its own fetch. Existing gates (`test_s5_ui_syntax`, `test_s41_click_feedback`,
+`test_s61_quiet_poll_fanout`, `test_s62_start_command_self_heals`) pass unchanged; full collection clean
+at 1898 tests. `git commit a145b38`.
