@@ -5889,3 +5889,19 @@ identical 42 pre-existing/environmental failures both times, zero new failures. 
 **Not yet marked PASS** — the fix is verified against the jsdom capture-lib primitives and the full test suite,
 but not yet re-run against the real capture pipeline in Kyle's actual Chrome. Next: ask Kyle to reload the
 extension and repeat this exact case live.
+
+## Real gate-closing pass, part 5: Send Screenshot case 2 re-verified live after fix — confirmed PASS (2026-09-17)
+
+Kyle reloaded the extension; re-ran the exact same wide+tall Finviz page (1013x1447 in a 900x557 window).
+Pulled the new stitched PNG and checked it against Kyle's explicit standard for this — "not merely that the
+missing row comes back," but no scrollbar artifact anywhere, no duplicate tiles, no right-edge loss, no seam
+corruption:
+
+- Row "AA" (the originally-missing row) is present and correct.
+- The second defect location found during diagnosis (the page's true bottom) is clean too.
+- Rows 1-20 run with no gaps and no repeats at either seam.
+- Right edge (rightmost Volume digits, pagination control) fully present, nothing lost to horizontal tiling.
+- Both former seam bands inspected directly at 2x zoom — clean.
+
+Case 2 is now a confirmed PASS. Recorded in `docs/KYLE-GATES-2026-09-15.md`. Moving to case 3 (lazy-load /
+infinite-scroll ceiling behavior).

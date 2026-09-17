@@ -305,6 +305,19 @@ current version and, on a few real pages, walk this list:
    failures. `repo-check`: PASS. **Awaiting**: Kyle reloading the extension and re-running this exact case live
    to confirm the fix holds against the real capture pipeline, not just the jsdom primitives -- not yet marked
    PASS.
+   **2026-09-17 re-run after the fix: PASS.** Same page, Kyle reloaded the extension and re-clicked Send
+   screenshot. Pulled the new stitched PNG (1013x1447, matching the live page's scrollWidth/scrollHeight
+   exactly -- full width and height captured, no ceiling truncation) and checked, pixel-for-pixel, everything
+   the mission asked for before calling this PASS, not just "the missing row came back":
+   - Row "AA" present and correct (was the missing row) -- confirmed at 2x zoom, no scrollbar graphic.
+   - The SECOND defect location found during diagnosis (the page's true bottom, past the footer) -- clean,
+     "Copyright (c) 2007-2026 Finviz.com" fully visible, no scrollbar bar.
+   - Rows 1-20 run sequentially with no gaps and no repeats (no duplicate-tile stamping at either seam).
+   - Right edge (Volume column, rightmost digits, "Page 1/583" pagination) fully present and unclipped -- no
+     content lost off the right edge from the horizontal tiling.
+   - Both former seam bands (top-of-row1 boundary, row1/row2 overlap boundary) inspected directly -- clean in
+     both.
+   OCR/title/project routing unaffected (still correct, as in the pre-fix run). This closes case 2.
 3. **A lazy-load / infinite-scroll page** -- exercises the per-fold pixel/time ceilings and grid growth; a
    capture that hits a ceiling should land as `partial_page` with an honest reason, not silently truncate.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not
