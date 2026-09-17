@@ -285,6 +285,26 @@ current version and, on a few real pages, walk this list:
    (`c752ed152ec942dd97b9a94c3f1b3b96`, "buying businesses"). Provenance and project routing both correct.
 2. **A page wider than your viewport** -- exercises the new horizontal tiling; check the stitched image for
    seams or a duplicated sticky header.
+
+   **2026-09-16 live-Chrome result: real defect found and fixed.** Set up a genuine wide+tall page myself
+   (Finviz Stock Screener, resized Chrome window to 900x557 against a 1020x1447 page -- both axes overflow the
+   viewport). Kyle captured it; the `ingest_file` job completed and looked clean by job metadata alone, but
+   pulling the actual stitched PNG (via `/api/sources/{id}/image`, staged and inspected pixel-for-pixel) showed
+   a whole table row ("AA") missing, replaced by a horizontal-scrollbar-shaped graphic -- confirmed as a real
+   defect, not a live-page artifact, by comparing against the unmodified live page at the same scroll position
+   (row present there, no scrollbar). Root cause: Chrome renders the page's own scrollbar as a viewport overlay,
+   and `captureVisibleTab` bakes it into every tile screenshot; `nsPlanTileGrid`'s tile rows land back-to-back
+   with no vertical overlap except where it clamps the final row, so nothing is ever drawn over a tile's
+   baked-in scrollbar band. A second instance was confirmed at the very bottom of the page (the last tile row,
+   which nothing draws after either) -- two independent occurrences of the same mechanism, not a fluke.
+   **Fixed** (`extension/capture-lib.js`: `nsHideScrollbars`/`nsRestoreScrollbars`, same self-healing watchdog
+   pattern as the existing sticky/fixed hide, armed once before the tile loop -- covering the first tile too,
+   unlike sticky-hiding) with regression coverage in both the jsdom harness and
+   `tests/test_s54_send_screenshot.py` (63/63 passing, was 59). Full differential suite run (before/after the
+   fix, same commit pair) shows the identical 42 pre-existing/environmental failures on both sides -- zero new
+   failures. `repo-check`: PASS. **Awaiting**: Kyle reloading the extension and re-running this exact case live
+   to confirm the fix holds against the real capture pipeline, not just the jsdom primitives -- not yet marked
+   PASS.
 3. **A lazy-load / infinite-scroll page** -- exercises the per-fold pixel/time ceilings and grid growth; a
    capture that hits a ceiling should land as `partial_page` with an honest reason, not silently truncate.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not

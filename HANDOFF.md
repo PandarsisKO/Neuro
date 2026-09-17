@@ -5860,3 +5860,32 @@ real-time — OCR via the vision engine (1370 chars, not a paid provider call), 
 **Remaining Send Screenshot cases** (2–7: wide-viewport tiling, lazy-load ceiling, popup close/reopen
 mid-capture, scroll-position restoration, same-origin navigate-away abort, provenance in the source drawer)
 are still open — continuing down that list next with Kyle, one small action at a time.
+
+## Real gate-closing pass, part 4: Send Screenshot case 2 (wide page) — real stitching defect found and fixed (2026-09-16)
+
+Live-Chrome acceptance case 2 (page wider than viewport, horizontal-tiling). Set up a genuinely wide+tall page
+myself (Finviz Stock Screener resized to a 900x557 Chrome window against a 1020x1447 page) and had Kyle click
+Send screenshot. The `ingest_file` job completed and looked clean by job metadata — this is exactly why the
+mission said "validate the actual stitched result, not merely that a source row/job exists": pulling the real
+PNG (`/api/sources/{id}/image`, staged via the device bridge and inspected pixel-for-pixel) showed a whole
+table row missing, replaced by a scrollbar-shaped graphic. Confirmed as a real defect (not a live-page quirk)
+by comparing against the unmodified live page at the same scroll position — row fully present there.
+
+**Root cause**: Chrome draws the page's own scrollbar as a viewport overlay; `captureVisibleTab` bakes it into
+every tile screenshot. `nsPlanTileGrid`'s tile rows are contiguous (no vertical overlap) except where clamping
+kicks in near the end, so nothing overwrites a tile's baked-in scrollbar band. Found a second instance at the
+very bottom of the page (same mechanism, the last tile row) confirming it's systemic, not a one-off.
+
+**Fix**: `extension/capture-lib.js` gets `nsHideScrollbars`/`nsRestoreScrollbars`, mirroring the existing
+sticky/fixed hide's self-healing watchdog, but armed once before the tile loop (covers the first tile too,
+where sticky-hiding is deliberately skipped since it's the one tile where sticky elements SHOULD show
+naturally). CSS-only — scrolling itself is unaffected. `background.js` wires it into `runCapture`,
+`fallbackVisibleCapture`, and `restoreStylesAndScroll`.
+
+**Verification**: regression tests added to `tests/js/run-capture.mjs` and `tests/test_s54_send_screenshot.py`
+(59 -> 63 passing). Full differential suite run on the isolated clone, same commit pair before/after the fix:
+identical 42 pre-existing/environmental failures both times, zero new failures. `repo-check`: PASS.
+
+**Not yet marked PASS** — the fix is verified against the jsdom capture-lib primitives and the full test suite,
+but not yet re-run against the real capture pipeline in Kyle's actual Chrome. Next: ask Kyle to reload the
+extension and repeat this exact case live.
