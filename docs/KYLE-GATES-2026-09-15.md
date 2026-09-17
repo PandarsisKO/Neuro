@@ -366,10 +366,15 @@ current version and, on a few real pages, walk this list:
    to 3 to match the fixture's new third hideable element). `repo-check`: PASS. Full differential suite: identical
    40-failure set, same names, before and after this commit (`c59a6bd` vs `06578cc`) -- zero regressions.
 
-   **Not yet marked PASS** -- awaiting Kyle reloading the extension once more and re-running this case live
-   against Reddit's feed a third time, to confirm the avatar stops stamping too, with the same rigor (no
-   scrollbar artifact, no duplicate/missing tiles, right content preserved, no seam corruption) before case 3
-   closes out.
+   **2026-09-17, third live re-verification: confirmed PASS.** Kyle re-ran the case a third time against
+   Reddit's home feed (2560x13628 stitched, `partial_page`/`ceiling_pixels`, same honest ceiling behavior as
+   before). Pulled the new image and checked it against the full standard: the avatar now appears exactly once,
+   in tile 0's natural position, and is fully absent (checked pixel-for-pixel) from all 10 tiles after it; the
+   reCAPTCHA badge region is blank in every tile; no scrollbar artifact anywhere along the right edge; every
+   tile boundary carries real, non-identical, non-blank content on both sides (no duplicate or skipped tiles);
+   a seam crop at one boundary shows continuous post content with no visual corruption; the source itself
+   reached `status: ready` with `transcript_kind: image` (OCR ran), and its `suggest_findings` job completed --
+   normal downstream routing intact. **Case 3: PASS.** Moving to case 4.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not
    vanish or duplicate.
 5. **Check scroll position is restored exactly afterward** -- in a success, a partial, and a forced-failure

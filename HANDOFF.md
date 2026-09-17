@@ -5997,3 +5997,16 @@ indefinitely with no feedback. New coverage in `tests/test_s54_send_screenshot.p
 Root cause of the actual lockout was environmental (the server, not the extension) — pointed Kyle at
 `restart.command` to clear it. This fix means the same situation can't trap the extension itself again,
 regardless of why the app is unreachable.
+
+## Real gate-closing pass, part 9: Send Screenshot case 3 confirmed PASS (2026-09-17)
+
+Third live re-run against Reddit's home feed (2560x13628 stitched, honest `partial_page`/`ceiling_pixels`).
+Checked pixel-for-pixel against the full standard this case has been held to across all three attempts: the
+avatar now appears exactly once, in tile 0's natural position, and is confirmed absent from every tile after
+it; the reCAPTCHA badge region is blank throughout; no scrollbar artifact anywhere on the right edge; every
+tile boundary carries real, distinct, non-blank content on both sides (no duplicate or skipped tiles); a seam
+crop shows continuous, uncorrupted content at a boundary. Source reached `status: ready` with OCR
+(`transcript_kind: image`) and its `suggest_findings` job completed — normal downstream routing intact.
+
+**Case 3: PASS.** Send Screenshot acceptance matrix: cases 1-3 done, moving to case 4 (close and reopen the
+popup mid-capture).
