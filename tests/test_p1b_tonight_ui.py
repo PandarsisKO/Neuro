@@ -148,4 +148,4 @@ def test_the_ui_offers_now_tonight_and_overnight_and_hides_scheduler_internals(p
         assert internal not in re.sub(r"/\*.*?\*/|//[^\n]*", "", l40), internal
     # a scheduled job is labelled as such in the console, with its own action
     assert "scheduled: 'scheduled'" in js and "runNowJob(" in js
-    assert 'name="neurosearch-ui-version" content="0.63.91"' in html
+    assert 'name="neurosearch-ui-version" content="0.63.92"' in html
