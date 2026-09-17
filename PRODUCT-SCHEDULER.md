@@ -4,6 +4,20 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
+**CURRENT-STATE RECONCILIATION — 2026-09-17 (read this first, supersedes the FM1 RECONCILIATION note directly
+below it for orientation purposes — FM1's own DONE status is unchanged, just no longer the freshest note here).**
+See `STATE-OF-THE-APP-2026-09-17-1130.md` for the full current snapshot. In short: `main` is `d1b6a67` and
+matches `origin/main` on GitHub (pushed and current — the "Nothing pushed to GitHub" line further down this
+file is dated history from 09-16, not current). The one active effort right now is the Send Screenshot
+live-Chrome acceptance matrix: cases 1-3 are PASS (see `docs/KYLE-GATES-2026-09-15.md`), cases 4-7 are open,
+and a deferred silent-401/403 UX fix is scoped and waiting behind them. After that: the Course Scanner
+popup/background live-wiring gate (algorithm itself already closed at CS5), then presenting Kyle the judgments
+that are already evidence-ready (L-51, AD4B, CR8b-gate, CR7) with no further engineering needed.
+
+The `## SUSPENDED — RESUME FIRST` section below (D2/F1) is **stale and superseded** — `386891b` ("D2/F1 Resume
+Delta — design ladder already fully closed, nothing to resume") already closed it on 2026-09-16; the section's
+own text was just never updated to say so. Do not resume it; do not treat it as live.
+
 **FM1 RECONCILIATION — 2026-09-16 (later same day, read this first, supersedes the CONTROL-PLANE
 RECONCILIATION note directly below it).** FM1 (reference-list clustering) shipped at `87ba57b`: it is **DONE**,
 not "the one genuinely agent-ready, not-yet-started Claude-lane rung" as the note below still says. `neurosearch

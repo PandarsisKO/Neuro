@@ -6018,3 +6018,35 @@ crop shows continuous, uncorrupted content at a boundary. Source reached `status
 
 **Case 3: PASS.** Send Screenshot acceptance matrix: cases 1-3 done, moving to case 4 (close and reopen the
 popup mid-capture).
+
+## Real gate-closing pass, part 10: current-state reconciliation + a likely root cause for today's live incidents (2026-09-17)
+
+Kyle asked for the control-plane documents to be reconciled against current reality before continuing the Send
+Screenshot matrix. `STATE-OF-THE-APP-2026-09-16-1540.md` (stale: said main was still unpushed, named nothing
+queued) archived to `docs/archive/`; a fresh `STATE-OF-THE-APP-2026-09-17-1130.md` written. `PRODUCT-SCHEDULER.md`
+got a new top-of-NOW reconciliation note (GitHub is current at `d1b6a67`; the D2/F1 "SUSPENDED" section is stale
+-- `386891b` already closed it on 09-16 and the section text was just never updated). `docs/KYLE-GATES-2026-09-15.md`'s
+"## Push" section marked superseded (nothing to push, GitHub matches `main`). The stale `1828/0` full-suite figure
+was corrected to the actual last fully-green baseline: **1,870 passed at `f13ca97`**, with everything shipped
+since validated by focused tests plus before/after differential suites (matching failure-name sets), not a fresh
+from-zero full run.
+
+**A likely root cause for today's two live server incidents.** Two SQLite failures hit Kyle's real server today:
+the 09:43-09:44 "database disk image is malformed" burst (already diagnosed and self-resolved), and a harder
+SIGBUS/`EXC_BAD_ACCESS` crash (`FS pagein error`, inside SQLite's WAL commit path) that needed `restart.command`.
+`CLAUDE.md`'s standing rule #1 names this exact signature: a bridge-mounted session opening `data/neurosearch.db`
+-- even read-only -- can truncate the WAL `-shm` file out from under a running server's own memory-mapped view of
+it, killing the server with a SIGBUS matching what Kyle's crash report showed. This session queried the live
+database directly, read-only, several times today, bracketing both incidents in time. That timing makes this
+session's own live-DB opens the **leading causal explanation** -- the signature closely matches rule #1's
+documented mechanism -- but it was not directly proven (no reproducer run, no server log entry names the specific
+offending connection). Recorded as likely, not certain, per Kyle's correction to an earlier draft of this note
+that overstated it as "almost certainly" and "traced to this session."
+
+**Going forward:** this session will not open `data/neurosearch.db` or its `-wal`/`-shm` directly again. Evidence
+needed from the live app now goes through the app's own API (via Kyle's browser), the `neurosearch` CLI (Kyle's
+Mac), or a verified backup snapshot copied into this session's own scratch space and queried there -- copying only
+the `-wal`/`-shm` sidecars a given backup's own restore procedure actually calls for, and only when the backup is
+confirmed to postdate the evidence being checked, never paired by default.
+
+Continuing with Send Screenshot case 4.

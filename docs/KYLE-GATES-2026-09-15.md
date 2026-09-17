@@ -150,6 +150,9 @@ If the queue was short, defensible and showed the disagreement you know about, s
 
 ## Push
 
+**Superseded 2026-09-17: GitHub `main` is current at `d1b6a67` — nothing to push.** The section below is kept as
+dated history of when this was still true, not as a current instruction.
+
 Everything above is committed locally and not on GitHub (the sandbox can't push):
 
 ```
