@@ -323,12 +323,26 @@ function withRateLimit(fn) {
 // (it clears and re-establishes `window.__nsCaptureHidden` at the start of every call), so re-arming here on
 // top of the caller's existing pre-scroll-settle hide is a re-verification, not a behavior change for pages
 // that do not fight back.
-async function throttledCaptureVisibleTab(windowId, preCapture) {
+// TOCTOU fix (2026-09-17, caught before it was ever reproduced live): verifyTabIdentity's `tab.active` check
+// proves the target tab is active at THAT instant, but captureVisibleTab itself takes only a windowId, no tabId
+// at all -- it captures whatever tab is active in that window at the moment IT is called, not whichever tab a
+// caller "meant". Every caller here awaits the rate-limit wait (up to CAPTURE_MIN_CALL_INTERVAL_MS, ~600ms) and
+// then `preCapture` (a round trip to the content script) BETWEEN verifyTabIdentity resolving and this function's
+// own captureVisibleTab call -- both are real async gaps a fast tab switch fits inside. A switch in that window
+// used to fail silently: no error, no thrown TabIdentityError, just the wrong tab's pixels captured and
+// attributed to the original tab's evidence/provenance. Re-checking here, immediately before the capture call
+// with no further await in between, closes that gap to the tightest margin JS allows.
+async function throttledCaptureVisibleTab(tabId, windowId, preCapture) {
   return withRateLimit(async () => {
     const s = await chrome.storage.session.get('nsLastCaptureVisibleTabAt');
     const wait = nsRateLimitWaitMs(s.nsLastCaptureVisibleTabAt ?? null, now(), CAPTURE_MIN_CALL_INTERVAL_MS);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     if (preCapture) { try { await preCapture(); } catch (e) { /* never let a re-hide failure block the capture itself */ } }
+    let liveTab;
+    try { liveTab = await chrome.tabs.get(tabId); } catch (e) { throw new TabIdentityError('the tab is gone'); }
+    if (!liveTab.active || liveTab.windowId !== windowId) {
+      throw new TabIdentityError('the tab is no longer the active tab in its window — switch back to it and try again');
+    }
     const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
     await chrome.storage.session.set({ nsLastCaptureVisibleTabAt: now() });
     return dataUrl;
@@ -400,7 +414,7 @@ async function fallbackVisibleCapture(tabId, expectedIdentity, origScrollX, orig
   const tab = await verifyTabIdentity(tabId, expectedIdentity);
   // 3. obey the same global throttle (inside throttledCaptureVisibleTab)
   // 4. capture
-  const dataUrl = await throttledCaptureVisibleTab(tab.windowId);
+  const dataUrl = await throttledCaptureVisibleTab(tab.id, tab.windowId);
   const m = await execFn(tabId, nsMeasure);
   const resp = await fetch(dataUrl);
   const blob = await resp.blob();
@@ -488,7 +502,7 @@ async function runCapture(tabId, rec) {
       try {
         const tab = await verifyTabIdentity(tabId, expectedIdentity);   // per-tile re-verification
         const reHide = firstTileCaptured ? () => execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]) : null;
-        dataUrl = await throttledCaptureVisibleTab(tab.windowId, reHide);
+        dataUrl = await throttledCaptureVisibleTab(tab.id, tab.windowId, reHide);
       } catch (e) {
         if (firstTileCaptured) { try { await execFn(tabId, nsRestore); } catch (e2) {} }
         if (e instanceof TabIdentityError) throw e;

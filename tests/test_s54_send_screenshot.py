@@ -171,17 +171,23 @@ def test_throttled_capture_re_hides_after_the_rate_limit_wait_not_before_it() ->
     # (inside throttledCaptureVisibleTab's preCapture hook), not just once before it via the pre-existing
     # nsHideAndArm/settle call -- that earlier hide is exactly what case 3 proved insufficient on its own.
     bg = (EXT / "background.js").read_text()
-    assert "async function throttledCaptureVisibleTab(windowId, preCapture)" in bg
-    body = bg.split("async function throttledCaptureVisibleTab(windowId, preCapture)")[1].split("\n}")[0]
+    # 2026-09-17: gained a `tabId` parameter (S64, the active-tab TOCTOU fix) -- signature widened, same wiring.
+    assert "async function throttledCaptureVisibleTab(tabId, windowId, preCapture)" in bg
+    body = bg.split("async function throttledCaptureVisibleTab(tabId, windowId, preCapture)")[1].split("\n}")[0]
     # the preCapture hook must run strictly after the rate-limit wait, and before the actual snapshot call
     wait_idx = body.index("setTimeout(r, wait)")
     precapture_idx = body.index("preCapture()")
     snapshot_idx = body.index("chrome.tabs.captureVisibleTab")
     assert wait_idx < precapture_idx < snapshot_idx, (
         "preCapture must run strictly between the rate-limit wait and the actual captureVisibleTab call")
+    # S64: the active-tab recheck must sit between preCapture and the actual snapshot call too -- it exists
+    # precisely to catch a switch that happened during the rate-limit wait or preCapture's own round trip.
+    recheck_idx = body.index("chrome.tabs.get(tabId)")
+    assert precapture_idx < recheck_idx < snapshot_idx, (
+        "the active-tab recheck must run strictly between preCapture and the actual captureVisibleTab call")
     # and the caller must actually wire nsHideAndArm into it, gated by firstTileCaptured like the existing hide
     assert "const reHide = firstTileCaptured ? () => execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]) : null;" in bg
-    assert "throttledCaptureVisibleTab(tab.windowId, reHide)" in bg
+    assert "throttledCaptureVisibleTab(tab.id, tab.windowId, reHide)" in bg
     assert "function nsPlanTileGrid(" not in bg, "nsPlanTileGrid must live only in capture-lib.js, not be duplicated inline"
     assert (EXT / "capture-blob-store.js").exists(), "extension/capture-blob-store.js must exist — background.js importScripts() it"
     blob_store = (EXT / "capture-blob-store.js").read_text()
@@ -1063,7 +1069,7 @@ def test_pixel_ceiling_is_preflighted_before_capturing_the_next_tile() -> None:
     loop_start = bg.index("while (idx < grid.length) {")
     # the SAME line also appears earlier, inside fallbackVisibleCapture -- search from loop_start onward so we
     # find the tile loop's own capture call, not the fallback's.
-    first_capture_call = bg.index("dataUrl = await throttledCaptureVisibleTab(tab.windowId, reHide);", loop_start)
+    first_capture_call = bg.index("dataUrl = await throttledCaptureVisibleTab(tab.id, tab.windowId, reHide);", loop_start)
     preflight_block = bg[loop_start:first_capture_call]
     assert "if (capturedScale != null) {" in preflight_block
     assert "const projectedPixels = viewportWidth * capturedScale * viewportHeight * capturedScale * (shots.length + 1);" in preflight_block
