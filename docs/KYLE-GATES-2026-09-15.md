@@ -320,6 +320,31 @@ current version and, on a few real pages, walk this list:
    OCR/title/project routing unaffected (still correct, as in the pre-fix run). This closes case 2.
 3. **A lazy-load / infinite-scroll page** -- exercises the per-fold pixel/time ceilings and grid growth; a
    capture that hits a ceiling should land as `partial_page` with an honest reason, not silently truncate.
+
+   **2026-09-16/17 live-Chrome result: two findings, one by-design (not a defect), one real defect fixed.**
+   First attempt used infinite-scroll.com's own "full page" demo and failed with "the page navigated away
+   while it was being captured" -- traced this to the demo's OWN deliberate URL-rewriting behavior
+   (`/demo/full-page/` -> `/page2` -> `/page3`... via the History API, "Infinite Scroll upholds URLs by
+   changing them automatically as the user scrolls," per the plugin's own docs) tripping the EXISTING,
+   intentional same-document-identity abort (repair round 3, gap #B) -- correct behavior colliding with a
+   confounding test page, not a bug. Not touched.
+   Swapped to Reddit's home feed (genuine infinite scroll, confirmed 13k->36k px tall while scrolling, no URL
+   rewriting) and re-ran. The job completed and landed as an honest `partial_page` (stitched image: 2560x14553,
+   ~37.3M of the 40M-pixel ceiling -- the preflight check stopped cleanly one tile before exceeding it, exactly
+   as designed). But pulling the actual PNG pixel-for-pixel (again, not just the job status) showed Google's
+   reCAPTCHA badge (a fixed-position widget, correctly found and hidden by `nsHideAndArm`'s own traversal when
+   checked directly on the live page) stamped into every tile after the first, at a regular one-stamp-per-tile
+   interval -- a real defect, and a DIFFERENT mechanism than case 2's scrollbar bug. Root cause:
+   `throttledCaptureVisibleTab`'s rate-limit wait (up to ~600ms) runs AFTER the existing hide-and-settle window
+   (60ms), giving the badge's own script time to re-show itself before the snapshot.
+   **Fixed** (`extension/background.js`: `throttledCaptureVisibleTab` takes a `preCapture` hook that re-arms
+   `nsHideAndArm` after the rate-limit wait resolves, immediately before the snapshot) with regression coverage
+   in both the jsdom harness and `tests/test_s54_send_screenshot.py` (63/63 -> 65/65 passing). Full differential
+   suite: 43 failures post-fix vs 42 pre-fix -- the one extra (`test_n3_deep_findings.py::
+   test_deep_reads_report_per_part_progress_and_ride_the_slow_lane`) confirmed flaky under `-n 4` (passes clean
+   in isolation), not caused by this change (JS-only edit, cannot touch Python test behavior). `repo-check`:
+   PASS. **Awaiting**: Kyle reloading the extension and re-running this case live against Reddit's feed again to
+   confirm the badge stops stamping -- not yet marked PASS.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not
    vanish or duplicate.
 5. **Check scroll position is restored exactly afterward** -- in a success, a partial, and a forced-failure

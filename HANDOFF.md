@@ -5905,3 +5905,40 @@ corruption:
 
 Case 2 is now a confirmed PASS. Recorded in `docs/KYLE-GATES-2026-09-15.md`. Moving to case 3 (lazy-load /
 infinite-scroll ceiling behavior).
+
+## Real gate-closing pass, part 6: Send Screenshot case 3 (lazy-load/infinite-scroll) — one false alarm correctly identified, one real defect found and fixed (2026-09-17)
+
+First attempt used infinite-scroll.com's own "full page" demo. It failed with "the page navigated away while
+it was being captured, so nothing was sent." Investigated before touching any code, per Kyle's "do not reopen
+the screenshot implementation unless a live case proves a defect" instruction — traced this to the demo page's
+OWN deliberate behavior: it rewrites its URL via the History API as the user scrolls (`/demo/full-page/` ->
+`/page2` -> `/page3`..., confirmed both by a live scroll test and by the plugin's own docs text). This
+correctly tripped the EXISTING, intentional same-document-identity abort check (`nsPageIdentity`, repair round
+3 gap #B). Not a defect — not touched.
+
+Swapped to a cleaner test candidate: Reddit's home feed (genuine infinite scroll, no URL rewriting, confirmed
+13k->36k px tall while scrolling). Re-ran. Job completed, landed honestly as `partial_page` at the 40M-pixel
+ceiling (stitched image 2560x14553, ~37.3M px — preflight stopped cleanly one tile early, exactly as designed).
+But pulling the actual PNG pixel-for-pixel (not just job status) found a real defect: Google's reCAPTCHA badge
+stamped into every tile after the first, at a regular one-per-tile interval. Confirmed via Y-position cluster
+analysis (11 occurrences at exactly 1323px intervals) plus a zoomed crop. Ruled out a detection gap first —
+running `nsHideAndArm`'s own traversal logic directly on the live page correctly finds and would hide the
+badge, including checking shadow DOM (a decoy: shadow roots exist but hold only a near-invisible SLOT, not the
+culprit). Root cause instead: `throttledCaptureVisibleTab`'s rate-limit wait (up to ~600ms) runs AFTER the
+caller's hide-and-settle window, leaving a timing gap in which the badge's own reactive script re-shows itself
+before the snapshot — a different mechanism from case 2's scrollbar bug.
+
+**Fix**: `extension/background.js` — `throttledCaptureVisibleTab` now takes a `preCapture` hook, run after the
+rate-limit wait resolves and immediately before the snapshot; `runCapture` wires it to re-call `nsHideAndArm`
+(confirmed idempotent) for every tile after the first.
+
+**Verification**: regression coverage added to `tests/js/run-capture.mjs` and `tests/test_s54_send_screenshot.py`
+(63 -> 65 passing). Full differential suite: 43 failures post-fix vs 42 pre-fix baseline — the one extra
+(`test_n3_deep_findings.py::test_deep_reads_report_per_part_progress_and_ride_the_slow_lane`) confirmed flaky
+under `-n 4` (passes clean in isolation, and this is a JS-only change that cannot affect Python test behavior).
+`repo-check`: PASS.
+
+**Not yet marked PASS** — awaiting Kyle reloading the extension and re-running this case live against Reddit's
+feed again, to confirm the badge stops stamping, checked with the same rigor as case 2 (no new scrollbar
+artifact, no duplicate/missing tiles, right content preserved, no seam corruption). Recorded in
+`docs/KYLE-GATES-2026-09-15.md`.
