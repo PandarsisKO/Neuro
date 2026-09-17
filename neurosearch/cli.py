@@ -37,8 +37,12 @@ def serve(host: str = "0.0.0.0", port: int = 8000,
     from . import __version__
     typer.echo(f"Neuro Search v{__version__} → http://localhost:{port}  (Ctrl+C to stop)")
     if reload:
+        # P0.5 (docs/SPEED-AUDIT-2026-09-17.md): only Python restarts the process. `index.html`, `styles.css` and
+        # `/js/*` are read from disk on every request (no-store / no-cache), so a UI edit is one browser refresh —
+        # and a stale tab is told so by the version guard. Watching "*.html" restarted the whole server on every
+        # UI save: a 10 s drain, in-flight local model calls killed and re-run, every in-process cache cold.
         uvicorn.run("neurosearch.api:app", host=host, port=port, reload=True,
-                    reload_dirs=[str(Path(__file__).parent)], reload_includes=["*.py", "*.html"])
+                    reload_dirs=[str(Path(__file__).parent)], reload_includes=["*.py"])
     else:
         uvicorn.run("neurosearch.api:app", host=host, port=port)
 
