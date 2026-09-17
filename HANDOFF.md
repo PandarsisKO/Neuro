@@ -6194,7 +6194,7 @@ Commits `3d69fd4` `9835bfa` `f3ade92` `7f3de01` `c42930e` `aa43fb4` on `main`, u
 15:49 and 15:56 while the first rungs were being edited in place — background was paused, nothing was
 interrupted; work moved to an isolated copy after that).
 
-Still owed before "released": a from-zero full suite on the Mac (the Linux VM run was 2,506 passed / 2
+Still owed before "released": a from-zero full suite on the Mac (the Linux VM run was 2,507 passed / 2
 pre-existing environmental failures, in six chunks), and the loaded half of the gate — New Chat, `/api/sources`,
 `caption-recovery`, `db:write_hold`, `database is locked`, `lost the lease` with the queue actually running.
 Unpausing background is Kyle's call (a paid `extract_claims` fast pass may follow). Then `release-check`, push,

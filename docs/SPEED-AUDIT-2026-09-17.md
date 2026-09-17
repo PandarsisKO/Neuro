@@ -263,7 +263,7 @@ P0.3 · `7f3de01` P0.4 (+ `db:write_hold` ledger, `spoken_chars` column) · `c42
 New gates: `test_s65_poll_containment` (node vm over the shipped `api.js`), `test_s66_harvest_isolation`,
 `test_s67_caption_recovery_incremental`, `test_s68_sources_list_diet`, `test_s69_html_edits_do_not_restart`,
 `test_s70_write_hold_ledger`. Suite (Linux VM, Python 3.12, fake AI, private data dir; 150 modules in six
-`-n 4` chunks): 2,506 passed, 2 failed — both pre-existing on the base checkout in this environment
+`-n 4` chunks): 2,507 passed, 2 failed — both pre-existing on the base checkout in this environment
 (`test_j3_fallback::test_doctor_is_fast_and_release_check_writes_an_artifact`,
 `test_s43_foundation::test_native_worker_restart_recovers_inflight_fake_provider_job`); `test_core::
 test_ask_tool_loop` flaked once on the base checkout and passed on every run of the changed tree. A from-zero
