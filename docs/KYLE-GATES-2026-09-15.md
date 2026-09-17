@@ -300,6 +300,14 @@ current version and, on a few real pages, walk this list:
 which case and what happened -- that becomes a new, scoped repair round, not a rewrite. **Unlocks**: closes the
 "send screenshot" mission outright; nothing else is queued behind it.
 
+**Bounded follow-up (2026-09-16, from case 1): a silent-401 UX defect, deferred, not blocking.** A stale/
+mismatched extension token currently looks exactly like "nothing happened" -- no code broke, but the failure
+is invisible. Fix once the rest of this matrix is done (do not interrupt it for this): when `api()` in
+`popup.js` gets a 401/403, show an explicit human-readable message in the popup ("Neuro Search connection
+needs to be refreshed -- check your app address/password in Settings"), never implying capture itself failed,
+and never touching the successful-path code. No new auth system. If any later case in this matrix turns out
+to be blocked by this same silent-failure pattern, fix it immediately rather than waiting.
+
 ## Course Scanner — the one piece never exercised live
 
 The scan/enumerate ALGORITHM itself is already live-validated for real: CS5's live pass against your actual,
