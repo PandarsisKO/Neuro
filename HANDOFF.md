@@ -6183,3 +6183,24 @@ inserted, then case 6):**
 
 Not marking case 5 PASS on code reading alone for any of these — each still needs the live-Chrome run per
 the mission's standing verification bar.
+
+## P0 responsiveness — 0.63.92 (Claude, 2026-09-17 15:45–16:20 PT)
+
+Kyle: *"Neuro search is feeling really sluggish even just clicking around. Trying to start a new chat took so
+long I gave up."* Audited live (`docs/SPEED-AUDIT-2026-09-17.md` §1–6), then Kyle narrowed the SPEED mission to
+one P0 gate and ordered the work; §7 of the same document is the execution record and BEFORE→AFTER table.
+Commits `3d69fd4` `9835bfa` `f3ade92` `7f3de01` `c42930e` `aa43fb4` on `main`, unpushed. Six new gates
+(S65–S70). Live server restarted once for the release at 16:09 PT (and, regrettably, five times between
+15:49 and 15:56 while the first rungs were being edited in place — background was paused, nothing was
+interrupted; work moved to an isolated copy after that).
+
+Still owed before "released": a from-zero full suite on the Mac (the Linux VM run was 2,506 passed / 2
+pre-existing environmental failures, in six chunks), and the loaded half of the gate — New Chat, `/api/sources`,
+`caption-recovery`, `db:write_hold`, `database is locked`, `lost the lease` with the queue actually running.
+Unpausing background is Kyle's call (a paid `extract_claims` fast pass may follow). Then `release-check`, push,
+and the `SPEED-MISSION.md` reconciliation the top note there promises.
+
+Git hygiene: `.git/index.lock` and `.git/HEAD.lock` were stale zero-byte files from 21:53:08 UTC (one second
+after `22b6b5b`), removed with Kyle's approval. Seven older zero-byte locks remain (`refs/tags/v0.60.0…
+v0.61.3.lock`, `objects/maintenance.lock`, 09-10/11) — harmless for commits, will block tagging; clear them
+before the next tag.

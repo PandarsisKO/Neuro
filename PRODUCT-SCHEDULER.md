@@ -4,6 +4,14 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
+**P0 RESPONSIVENESS (2026-09-17, Kyle's narrowing of the SPEED mission) — shipped as 0.63.92, gate half-read.**
+`docs/SPEED-AUDIT-2026-09-17.md` §7 has the BEFORE→AFTER table. Idle-queue AFTER numbers are in; the
+"while background work is active" numbers are not, because the queue was paused and drained when it went live.
+Next safe action for any agent: after Kyle unpauses background, read `/api/perf?days=1` and `server.log` after
+~an hour and fill in the loaded column; then run the full suite from zero on the Mac; then reconcile
+`SPEED-MISSION.md` (its top note records the supersession) and resume the ladder from fresh measurements.
+The Send Screenshot matrix below stays the other open effort; it was not touched.
+
 **CURRENT-STATE RECONCILIATION — 2026-09-17 (read this first, supersedes the FM1 RECONCILIATION note directly
 below it for orientation purposes — FM1's own DONE status is unchanged, just no longer the freshest note here).**
 See `STATE-OF-THE-APP-2026-09-17-1130.md` for the full current snapshot. In short: `main` is `d1b6a67` and

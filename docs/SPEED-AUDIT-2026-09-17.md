@@ -251,3 +251,69 @@ decide before the window closes; noting it so P1.3's index is designed with the 
   polls).
 - Codex: avoid editing `web/index.html` while Kyle is using the app until P0.5 lands; `.js`/`.css` edits do not
   reload.
+
+---
+
+## 7. P0 execution record — 0.63.92 (2026-09-17, 15:45–16:20 PT)
+
+Kyle narrowed the SPEED mission to this P0 ("foreground user actions must remain responsive regardless of
+background research, maintenance, polling, queue size, or number of open Neuro tabs"). Five commits on `main`,
+each with the regression gate for the failure class it removes: `3d69fd4` P0.1 · `9835bfa` P0.2 · `f3ade92`
+P0.3 · `7f3de01` P0.4 (+ `db:write_hold` ledger, `spoken_chars` column) · `c42930e` P0.5 · `aa43fb4` 0.63.92.
+New gates: `test_s65_poll_containment` (node vm over the shipped `api.js`), `test_s66_harvest_isolation`,
+`test_s67_caption_recovery_incremental`, `test_s68_sources_list_diet`, `test_s69_html_edits_do_not_restart`,
+`test_s70_write_hold_ledger`. Suite (Linux VM, Python 3.12, fake AI, private data dir; 150 modules in six
+`-n 4` chunks): 2,506 passed, 2 failed — both pre-existing on the base checkout in this environment
+(`test_j3_fallback::test_doctor_is_fast_and_release_check_writes_an_artifact`,
+`test_s43_foundation::test_native_worker_restart_recovers_inflight_fake_provider_job`); `test_core::
+test_ask_tool_loop` flaked once on the base checkout and passed on every run of the changed tree. A from-zero
+run on Kyle's Mac (`pytest -n 4 --dist=loadscope`) is still owed before this is called released.
+
+### BEFORE → AFTER (Neuro's own API, measured from Kyle's browser; live database never opened)
+
+| gate | BEFORE (§1, 0.63.91) | AFTER (0.63.92, idle queue, 5 samples) | target |
+|---|---|---|---|
+| New Chat (POST + list + open, end-to-end) | "took so long I gave up" (writer held for minutes; tab's connections full) | **8 · 11 · 11 ms** | < 300 ms p90 under load |
+| trivial interactive (`/api/version`, `/api/conversations`) | 5–10 ms / 2–6 ms idle; queued behind polls under load | 5–9 ms / 3–5 ms | sub-second p50, no minute tails |
+| `/api/sources` (1,515 rows) | 2,511 KB · 1.3–16 s idle · **p50 92 s** loaded | **1,688 KB** · 266–272 ms warm (1.8 / 2.7 s on the two cold requests after restart) | < 300 KB or 0 bytes unchanged (P1), p50 < 300 ms loaded |
+| `caption-recovery` | 620–1,900 ms idle · **p50 186 s** loaded · 601k segment rows per call | **12–16 ms**, zero segment reads | p50 < 20 ms ✓ |
+| `/api/projects/{id}/jobs` | 233–586 ms | 209–226 ms (unchanged — P1.3) | < 20 ms (P1) |
+| overlapping `/api/sources` from one tab | unbounded (fire-and-forget every 3 s) | **1** in flight max; hidden tab: 0 polls in 50 s | ≤ 1 ✓ |
+| quiet requests on the wire at once | up to the browser's 6 | ≤ 2 (4 connections always free for clicks) | ✓ |
+| longest SQLite write-lock hold | unmeasured (> 30 s inferred from `database is locked`) | `db:write_hold` on `/api/perf`; harvest chunks of 25 notes | < 2 s (warning threshold) — to be read off after one active hour |
+| `database is locked` incidence | 3 lines in one afternoon (14:40) | 0 since 16:09 restart (queue idle) | 0 in an active hour |
+| false "lost the lease" for finished jobs | 157 lines, 13:25–14:44 | structurally impossible (hook runs after `_running.pop`) — 0 since restart | 0 in an active hour |
+| findings job reaches truthful terminal state | "done" then 5–6 min still `running` to the lease keeper | `done` row + `_running` cleared before any post-processing (gate S66) | ✓ |
+| server restarts from HTML-only edits | 2 today (13:59, 14:22), each killing in-flight model calls | watch is `*.py` only (gate S69) | 0 ✓ |
+
+**Not yet measured — needs the queue running.** Every "loaded" cell above still carries the BEFORE number.
+Background was paused by Kyle at ~15:00 and the queue drained before 0.63.92 went live, so the "while
+background findings/Claims work is active" half of the gate has no AFTER yet. To close it: unpause background
+(a paid `extract_claims` fast pass may follow — Kyle's call), open one Sources tab, and after ~an hour read
+`/api/perf?days=1` (`GET /api/sources`, `caption-recovery`, `db:write_hold` p50/p90/max, cache hit rates) and
+`server.log` (`database is locked`, `lost the lease`, `write lock held`), and time New Chat from the browser.
+The exit condition is met on those numbers, not on the idle ones.
+
+### What was NOT done (deliberately, per the P0 scope)
+
+- No SQLite timeout change, no new infrastructure, no model or cache-key work (P1.2 cache churn, P1.3 jobs
+  index, P1.4 `SELECT *` on embedding tables, P2 worker process / SSE are unchanged — see §3).
+- One poller across tabs: not built. Hidden tabs no longer poll at all, which covers the measured case (one
+  visible tab per window). Revisit only if two visible Sources tabs are common.
+- `/api/sources` is still 1.7 MB: the remaining bytes are fields the row template genuinely renders (`value`
+  336 KB, `summary` 207 KB, thumbnails/titles/urls). Going lower means pagination or ETag/delta (P1.1), which
+  the instruction sequences after the basic endpoint is bounded — it now is.
+- The initial project open still fires ~8 loud requests at once (2 over the browser's limit for a moment);
+  that is `openProject`'s fan-out, not the poll, and was out of scope.
+- The live server's `claude-haiku-4-5` substitution under `model=claude-sonnet-4-6` on every `suggest_findings`
+  today (§1c) is untouched and unrelated to speed.
+
+### Process note
+
+The dev server watches `neurosearch/*.py`, so the first four rungs' edits — made directly in the repo before
+this was caught — restarted the live server five times between 15:49 and 15:56 PT (background was paused;
+no job was interrupted; the `spoken_chars` backfill ran once, 1,462 rows). From P0.4 on, work happened in an
+isolated copy and was copied in once per rung: one restart at 16:09 for 0.63.92. `.git/index.lock` and
+`.git/HEAD.lock` were zero-byte leftovers stamped 21:53:08 UTC — one second after commit `22b6b5b` — with no
+git process behind them; removed with Kyle's delete approval. Older zero-byte `refs/tags/v0.6x.lock` files
+and `objects/maintenance.lock` (2026-09-10/11) remain; they block only tag updates and `git maintenance`.
