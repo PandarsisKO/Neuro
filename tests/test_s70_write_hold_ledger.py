@@ -36,3 +36,12 @@ def test_a_long_hold_names_its_caller(monkeypatch, caplog):
         db.kv_set("s70:probe", "4")
     msgs = [r.getMessage() for r in caplog.records if "write lock held" in r.getMessage()]
     assert msgs and "test_s70" in msgs[-1], msgs                  # the nearest frame outside db.py: this test
+
+
+def test_the_worst_hold_survives_the_sample_window(monkeypatch):
+    perf._samples["s70:peak"].clear(); perf._peak.pop("s70:peak", None)
+    perf.record("s70:peak", 12.1)
+    for _ in range(perf.SAMPLES + 5):
+        perf.record("s70:peak", 0.001)
+    st = perf.stats("s70:peak")
+    assert st["max"] < 1 and st["peak"] == 12.1 and st["peak_at"] > 0

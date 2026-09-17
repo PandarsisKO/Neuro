@@ -26,10 +26,17 @@ _samples: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=SAMPLES))
 _counters: dict[str, dict[str, int]] = defaultdict(lambda: {"hit": 0, "miss": 0})
 
 
+_peak: dict[str, tuple[float, float]] = {}     # key -> (seconds, time.time()) — the worst sample since start, never rolled out
+
+
 def record(key: str, seconds: float) -> None:
     """One timing sample. Cheap enough to call on every request (a lock and a deque append)."""
     with _lock:
         _samples[key].append(float(seconds))
+        # P0 validation (2026-09-17): the 200-sample window rolled a 12.1 s `db:write_hold` out within a minute of
+        # commits, so a rare worst case was gone before anyone read it. The peak is kept separately.
+        if seconds > _peak.get(key, (0.0, 0.0))[0]:
+            _peak[key] = (float(seconds), time.time())
 
 
 @contextmanager
@@ -54,9 +61,13 @@ def _pct(vals: list[float], p: float) -> float:
 def stats(key: str) -> dict[str, Any] | None:
     with _lock:
         vals = sorted(_samples.get(key) or ())
+        peak = _peak.get(key)
     if not vals:
         return None
-    return {"n": len(vals), "p50": round(_pct(vals, 0.5), 4), "p90": round(_pct(vals, 0.9), 4), "max": round(vals[-1], 4)}
+    out = {"n": len(vals), "p50": round(_pct(vals, 0.5), 4), "p90": round(_pct(vals, 0.9), 4), "max": round(vals[-1], 4)}
+    if peak:
+        out["peak"], out["peak_at"] = round(peak[0], 4), round(peak[1])
+    return out
 
 
 def snapshot() -> dict[str, Any]:

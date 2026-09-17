@@ -104,7 +104,7 @@ def test_findings_completion_queues_one_harvest_job_and_harvests_nothing_inline(
     jobs._after_done({"kind": "suggest_findings", "payload": {"project_id": pid}})
     jobs._after_done({"kind": "suggest_findings_batch", "payload": {"project_id": pid}})
     rows = db.connect().execute("SELECT id, lane, status FROM jobs WHERE kind='harvest_claims'").fetchall()
-    assert len(rows) == 1 and rows[0]["lane"] == "low" and rows[0]["status"] == "queued"
+    assert len(rows) == 1 and rows[0]["lane"] == "normal" and rows[0]["status"] == "queued"
     assert claims.list_for_project(pid) == []                      # the hook itself moved no Claims
     hj = db.claim_job((jobs.claims_harvest_kind(),))
     assert hj["id"] == rows[0]["id"] and jobs.execute(hj) == "done"
@@ -162,8 +162,18 @@ def test_harvest_job_picks_up_notes_that_land_mid_job(isolated, monkeypatch):
     assert not claims.unharvested_note_ids(pid)
 
 
-def test_harvest_kind_is_zero_dollar_maintenance_not_ai_or_background_work():
+def test_harvest_kind_is_zero_dollar_maintenance_not_ai_or_background_work(isolated):
     k = jobs.claims_harvest_kind()
     assert k not in jobs.ANALYSIS_KINDS, "harvest must not occupy an AI worker slot"
     assert k not in db.BACKGROUND_KINDS, "Pause background holds paid speculative work; a $0 harvest keeps Claims current"
     assert k in jobs.RETRYABLE
+    # and neither "Pause background" (holds the slow/low lanes) nor the queue pause (holds paid kinds via
+    # usage.guard) may hold it -- before P0.2 the harvest ran inline whatever the pause state (found live: the first
+    # cut queued it on the `low` lane, which Pause background silently held)
+    pid = _project_with_notes(1)
+    job = claims.request_harvest(pid, "paused")
+    db.set_background_paused(True)
+    db.kv_set("queue_paused", "1")
+    claimed = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS)               # what a general worker asks for
+    assert claimed and claimed["id"] == job["id"]
+    assert jobs.execute(claimed) == "done"

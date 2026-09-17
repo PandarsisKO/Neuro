@@ -1147,7 +1147,7 @@ def unharvested_note_ids(project_id: str) -> set[int]:
 
 def request_harvest(project_id: str, reason: str) -> dict[str, Any] | None:
     """P0.2 (docs/SPEED-AUDIT-2026-09-17.md): findings completion no longer harvests inline — it queues ONE $0
-    `harvest_claims` job for the project (low lane, coalesced) and returns at once.
+    `harvest_claims` job for the project (normal lane, coalesced) and returns at once.
 
     Why a job: `_after_done()` ran `harvest()` synchronously inside `jobs.execute()`, after `finish_job` and before
     the `finally` that removes the job from `_running`. On the 19k-note project a harvest took 5–6 minutes, so a
@@ -1166,7 +1166,11 @@ def request_harvest(project_id: str, reason: str) -> dict[str, Any] | None:
         (HARVEST_JOB_KIND, project_id)).fetchone()
     if row:
         return db.get_job(row["id"])
-    return db.create_job(HARVEST_JOB_KIND, {"project_id": project_id, "reason": reason}, lane="low")
+    # `normal` lane, deliberately: "Pause background" holds the `slow`/`low` lanes (db.BACKGROUND_LANES) and the
+    # paid kinds, and a $0 harvest is neither — before P0.2 it ran inline after every findings job whatever the
+    # pause state, and "Claims stay current for $0" is the semantics being preserved. It never occupies an AI
+    # worker (not in jobs.ANALYSIS_KINDS) and never calls usage.guard(), so a paused queue does not hold it either.
+    return db.create_job(HARVEST_JOB_KIND, {"project_id": project_id, "reason": reason}, lane="normal")
 
 
 def run_harvest_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
