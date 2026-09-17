@@ -41,7 +41,7 @@ _running_lock = threading.Lock()
 # Errors worth retrying on their own: rate limits, login walls that come and go, network hiccups, 5xx.
 TRANSIENT = re.compile(r"rate.?limit|too many requests|429|5\d\d|timed? ?out|temporar|connection|reset by peer|unavailable|"
                        r"try again|slow down|login for this|please wait|overloaded|not a bot|sign in to confirm|bot-check", re.I)
-RETRYABLE = ("ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research", "settle_batches")
+RETRYABLE = ("harvest_claims", "ingest_url", "ingest_source", "suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "build_plan", "external_demo", "refresh_skipped_metadata", "extract_claims", "recover_captions", "bootstrap_scan", "refresh_research", "settle_batches")
 MAX_ATTEMPTS = 4
 RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
@@ -264,6 +264,10 @@ def poll_external_once() -> int:
 
 # ------------------------------------------------------------------ running a job
 
+def claims_harvest_kind() -> str:
+    return "harvest_claims"
+
+
 def enqueue(kind: str, payload: dict[str, Any], lane: str = "normal", execution_policy: str = "local_preferred",
            not_before: float | None = None) -> dict[str, Any]:
     return db.create_job(kind, payload, lane=lane, execution_policy=execution_policy, not_before=not_before)
@@ -303,6 +307,9 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "extract_claims":
         from . import claims
         return claims.run_job(payload, progress)
+    if kind == claims_harvest_kind():
+        from . import claims
+        return claims.run_harvest_job(payload, progress)
     if kind == "settle_batches":
         from . import batches
         return batches.run_settle_job(payload, progress)
@@ -412,6 +419,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
 
     providers.set_policy(job.get("execution_policy") or "local_preferred")
     providers.reset_job_route()
+    after_done = False
     try:
         result = run_job(job)
         _record_execution(jid)
@@ -432,7 +440,7 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
                 done_message = f"skipped: all {reason} source(s) already current or in flight"
         db.finish_job(jid, run_id, "done", message=done_message, result=result)
         log.info("job done in %.1fs", time.time() - t0)
-        _after_done(job)
+        after_done = True
         return "done"
     except ExternalPending as e:
         db.park_external(jid, run_id, e.provider, e.kind, e.handle, e.deadline)
@@ -540,6 +548,13 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         with _running_lock:
             _running.pop(jid, None)
         _current.job_id = _current.run_id = None
+        # P0.2 (docs/SPEED-AUDIT-2026-09-17.md): the post-completion hook runs ONLY after the job has left
+        # `_running`. It used to run before this `finally`, so a job whose row was already `done` stayed on the
+        # lease keeper's list for as long as the hook took — 5–6 minutes of harvest on the live project — and
+        # every 30 s heartbeat on it logged a takeover that never happened. Whatever the hook costs now, the
+        # job's truthful terminal state and its lease bookkeeping are settled first.
+        if after_done:
+            _after_done(job)
 
 
 # ------------------------------------------------------------------ workers, lease keeper, recovery, external poller
@@ -826,9 +841,10 @@ def _after_done(job: dict[str, Any]) -> None:
         if job["kind"] in ("suggest_findings", "suggest_findings_batch"):
             pid = (job.get("payload") or {}).get("project_id")
             if pid:
+                # P0.2: queue the $0 harvest instead of running it here (see claims.request_harvest). This hook now
+                # costs one small INSERT, and execute() runs it only after the job has left `_running`.
                 from . import claims
-                claims.harvest(pid)
-                claims.maybe_extract(pid, f"after {job['kind']}")
+                claims.request_harvest(pid, f"after {job['kind']}")
     except Exception as e:  # noqa: BLE001
         log.warning("post-job claims hook skipped: %s", e)
 

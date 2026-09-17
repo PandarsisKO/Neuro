@@ -197,6 +197,14 @@ def test_harvest_after_findings_job_is_event_driven_not_per_finding(monkeypatch)
     pid, ids = _acceptance_fixture(monkeypatch)
     db.connect().execute("DELETE FROM project_claims"); db.connect().commit()
     jobs._after_done({"kind": "suggest_findings", "payload": {"project_id": pid}})
+    # P0.2: the hook no longer harvests inline -- it queues ONE $0 harvest job (coalesced per project); a second
+    # completion while that job is still queued adds nothing. Run it the way a worker would.
+    jobs._after_done({"kind": "suggest_findings", "payload": {"project_id": pid}})
+    queued = db.connect().execute("SELECT COUNT(*) FROM jobs WHERE kind='harvest_claims' AND status='queued'").fetchone()[0]
+    assert queued == 1, "two findings completions must coalesce into one queued harvest"
+    assert len(claims.list_for_project(pid)) == 0                            # nothing is harvested inside the hook itself
+    hj = db.claim_job((jobs.claims_harvest_kind(),))
+    assert hj and jobs.execute(hj) == "done"
     assert len(claims.list_for_project(pid)) >= 3                            # harvested for $0
     assert _calls("claims.extract") == 0                                     # and no paid call was made for it
     active = db.connect().execute("SELECT COUNT(*) FROM jobs WHERE kind='extract_claims' AND status IN ('queued','running')").fetchone()[0]

@@ -83,6 +83,8 @@ FRESHNESS_STATUS = ("current", "needs_refresh", "stale", "uncertain", "age_insen
 CORROBORATION = {"strong": 3, "developing": 2, "weak": 1}
 STRENGTHS = ("strong", "developing", "weak", "unsupported")
 
+HARVEST_TX_NOTES = 25         # P0.2: notes harvested per write transaction (lock held for one chunk, never the whole pass)
+HARVEST_TX_UPDATES = 200      # P0.2: topic/freshness rewrites per write transaction
 CLAIMS_BATCH_MIN = 6          # unnormalized candidates that justify an extraction call on their own
 CLAIMS_DEBOUNCE_S = 1800      # otherwise wait this long since the last extraction before spending again
 EXTRACT_GROUP = 8             # candidates per model call (20 truncated a 4k output on the real library, 0.30.1)
@@ -565,11 +567,18 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
     index = TwinIndex(existing)
     touched: set[str] = set()
     vocab = project_vocab(project_id)
-    with db.batch():                                   # one write transaction for the whole harvest
-      for status in ("approved", "suggested"):
-        for n in db.list_project_notes(project_id, status=status):
-            if n["id"] in have:
-                continue
+    # P0.2 (docs/SPEED-AUDIT-2026-09-17.md): this used to be ONE write transaction around the whole pass. On the
+    # 19k-note / 17k-Claim project that held SQLite's single write lock for minutes: every other writer — API
+    # POSTs ("New chat" is one INSERT), finish_job, worker heartbeats, ingest stages — waited out the 30 s
+    # connection timeout and failed with `database is locked` (server.log 14:40:07/14:40:14). The pass is now
+    # committed every HARVEST_TX_NOTES notes: identical results (each note is independent and idempotent —
+    # origin_note_id is UNIQUE, so a crash between chunks resumes at the first unharvested note), but the lock
+    # is held for one chunk at a time and every other writer interleaves.
+    pending = [(status, n) for status in ("approved", "suggested") for n in db.list_project_notes(project_id, status=status)
+               if n["id"] not in have]
+    for start in range(0, len(pending), HARVEST_TX_NOTES):
+      with db.batch():                                 # one SHORT write transaction per chunk
+        for status, n in pending[start:start + HARVEST_TX_NOTES]:
             body = _strip_cites(n.get("content") or "")
             title = (n.get("title") or "").strip()
             text = f"{title} — {body}" if title and title.lower() not in body.lower() else body
@@ -622,14 +631,20 @@ def _harvest_locked(project_id: str) -> dict[str, Any]:
     # $0 topics and freshness follow the project's vocabulary / the Claim's own semantics (normalized Claims keep what the contract named)
     _first_class = {r["claim_id"]: r["evidence_class"] for r in db.connect().execute(
         "SELECT claim_id, evidence_class FROM claim_evidence WHERE claim_id IN (SELECT id FROM project_claims WHERE project_id=? AND normalized=0) GROUP BY claim_id", (project_id,))}
-    with db.batch():
-        for c in existing:
-            if not c.get("normalized"):
-                t = _topic_of(c["text"], vocab)
-                f = guess_freshness(c["text"].split(" — ", 1)[-1], c["claim_type"], _first_class.get(c["id"]))
-                if t != c.get("topic") or f != c.get("freshness_class"):
-                    db.connect().execute("UPDATE project_claims SET topic=?, freshness_class=? WHERE id=? AND normalized=0", (t, f, c["id"]))
-                    touched.add(c["id"])
+    # the vocabulary sweep is computed OUTSIDE any transaction (it is CPU: _topic_of over every un-normalized
+    # Claim) and only the rows that actually change are written, in short chunks — same semantics as before
+    updates: list[tuple[str, str, str]] = []
+    for c in existing:
+        if not c.get("normalized"):
+            t = _topic_of(c["text"], vocab)
+            f = guess_freshness(c["text"].split(" — ", 1)[-1], c["claim_type"], _first_class.get(c["id"]))
+            if t != c.get("topic") or f != c.get("freshness_class"):
+                updates.append((t, f, c["id"]))
+                touched.add(c["id"])
+    for start in range(0, len(updates), HARVEST_TX_UPDATES):
+        with db.batch():
+            for t, f, cid in updates[start:start + HARVEST_TX_UPDATES]:
+                db.connect().execute("UPDATE project_claims SET topic=?, freshness_class=? WHERE id=? AND normalized=0", (t, f, cid))
     for cid in touched:                                    # assess once per touched Claim, not once per finding
         assess(cid)
     return {"created": created, "merged": merged}
@@ -1114,6 +1129,71 @@ def triage(project_id: str) -> dict[str, Any]:
     share = round(len(scored) / max(1, len(cands)), 3)
     return {"fast": fast, "bulk": [c for c in cands if c["id"] not in fast_ids], "why": why,
             "considered": len(cands), "qualified": len(scored), "share": share}
+
+
+HARVEST_JOB_KIND = "harvest_claims"
+HARVEST_JOB_MAX_PASSES = 3        # passes one job runs before it hands the worker back (Yield) for notes that landed meanwhile
+
+
+def unharvested_note_ids(project_id: str) -> set[int]:
+    """The cheap question harvest asks first: which approved/suggested notes have no Claim and no evidence link yet.
+    IDs only — never note bodies — so it answers "is there anything to do" for a few KB (L-18)."""
+    conn = db.connect()
+    have = {r["origin_note_id"] for r in conn.execute("SELECT origin_note_id FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL", (project_id,))}
+    have |= {r["note_id"] for r in conn.execute("SELECT note_id FROM claim_evidence_notes")}
+    ids = {r["id"] for r in conn.execute("SELECT id FROM project_notes WHERE project_id=? AND status IN ('approved','suggested')", (project_id,))}
+    return ids - have
+
+
+def request_harvest(project_id: str, reason: str) -> dict[str, Any] | None:
+    """P0.2 (docs/SPEED-AUDIT-2026-09-17.md): findings completion no longer harvests inline — it queues ONE $0
+    `harvest_claims` job for the project (low lane, coalesced) and returns at once.
+
+    Why a job: `_after_done()` ran `harvest()` synchronously inside `jobs.execute()`, after `finish_job` and before
+    the `finally` that removes the job from `_running`. On the 19k-note project a harvest took 5–6 minutes, so a
+    findings job that had already logged "done" kept a stale `_running` entry for that long, `db.heartbeat` found
+    no `running` row, and the lease keeper logged a takeover that never happened — 157 false "lost the lease"
+    lines on 2026-09-17 — while the pass itself held the write lock (see `_harvest_locked`).
+
+    Why coalesce against QUEUED only, never RUNNING (the L-16 lost-note rule): a job already running took its
+    note snapshot when it started; a note landing after that snapshot would be invisible to it, and a request
+    that silently merged into it would be a lost harvest. So a running job never absorbs a request: if the only
+    harvest job for the project is running, a NEW one is queued behind it. Two queued jobs are harmless (the
+    second finds nothing new via the ID short-circuit) — a lost note is not. `run_harvest_job` also re-checks for
+    new notes after every pass, which closes the window for notes that land mid-job."""
+    row = db.connect().execute(
+        "SELECT id FROM jobs WHERE kind=? AND status='queued' AND json_extract(payload, '$.project_id')=? LIMIT 1",
+        (HARVEST_JOB_KIND, project_id)).fetchone()
+    if row:
+        return db.get_job(row["id"])
+    return db.create_job(HARVEST_JOB_KIND, {"project_id": project_id, "reason": reason}, lane="low")
+
+
+def run_harvest_job(payload: dict[str, Any], progress: Any = None) -> dict[str, Any]:
+    """The body of a `harvest_claims` job: harvest ($0), then the debounced extraction decision, then look again.
+    Notes that landed while this ran are picked up by another pass, up to HARVEST_JOB_MAX_PASSES, after which the
+    job yields so the worker is not held by a project whose findings keep landing."""
+    from .jobs import Yield
+    pid = payload["project_id"]
+    reason = payload.get("reason") or "findings landed"
+    totals = {"created": 0, "merged": 0, "passes": 0}
+    for _ in range(HARVEST_JOB_MAX_PASSES):
+        if progress:
+            progress(0.1 + 0.8 * totals["passes"] / HARVEST_JOB_MAX_PASSES, "collecting Claims from new findings ($0)")
+        r = harvest(pid)
+        totals["created"] += r.get("created", 0)
+        totals["merged"] += r.get("merged", 0)
+        totals["passes"] += 1
+        if not unharvested_note_ids(pid):
+            break
+    else:
+        if unharvested_note_ids(pid):
+            raise Yield(f"harvested {totals['created']} new Claims — more findings landed meanwhile, continuing")
+    try:
+        maybe_extract(pid, reason)
+    except Exception as e:  # noqa: BLE001 — the extraction decision must never fail the harvest
+        log.warning("post-harvest extraction decision skipped: %s", e)
+    return totals
 
 
 def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str, Any] | None:

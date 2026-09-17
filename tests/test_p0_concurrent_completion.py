@@ -91,6 +91,24 @@ def test_eight_suggest_findings_completions_across_four_threads_do_not_race_harv
 
     assert not errors, f"a worker thread raised while completing a suggest_findings job: {errors}"
     assert completed.count("done") == 8, completed
+    # P0.2: completion queues harvest_claims jobs instead of harvesting inline; the workers above claimed only
+    # suggest_findings, so drain those now -- across the same four threads, so the harvest itself is still raced.
+    def harvester():
+        while True:
+            job = db.claim_job((jobs.claims_harvest_kind(),), worker_id=threading.current_thread().name)
+            if not job:
+                return
+            try:
+                jobs.execute(job, threading.current_thread().name)
+            except BaseException as e:  # noqa: BLE001
+                with lock:
+                    errors.append(e)
+    hthreads = [threading.Thread(name=f"h{i}", target=harvester) for i in range(4)]
+    for t in hthreads:
+        t.start()
+    for t in hthreads:
+        t.join(timeout=60)
+    assert not errors, f"a harvest job raised: {errors}"
 
     dup = db.connect().execute(
         "SELECT origin_note_id, COUNT(*) c FROM project_claims WHERE project_id=? AND origin_note_id IS NOT NULL "
