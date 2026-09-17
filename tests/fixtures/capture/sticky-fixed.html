@@ -8,11 +8,17 @@
   section { padding: 40px; min-height: 500px; }
   .plain { position: static; }
   .zerosize { position: sticky; top: 0; width: 0; height: 0; }
+  /* Case 3 second finding (2026-09-17, live on Reddit): a descendant that forces its own visibility back to
+     visible, overriding an ancestor's inherited "hidden" state -- a real pattern from an avatar image inside a
+     hidden sticky header that kept rendering on its own. */
+  #descendant-override-target { visibility: visible; }
 </style>
 </head>
 <body>
 <header id="stickyHeader">Sticky header</header>
-<aside id="fixedSidebar">Fixed sidebar</aside>
+<aside id="fixedSidebar">Fixed sidebar
+  <img id="descendant-override-target" alt="avatar" src="about:blank">
+</aside>
 <div id="zeroSizeSticky" class="zerosize"></div>
 <main>
   <section class="plain" id="normalSection">Ordinary content — must never be hidden</section>

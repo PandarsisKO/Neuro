@@ -60,18 +60,33 @@ def test_measure_reports_viewport_and_dpr() -> None:
 
 
 def test_hide_hides_only_nonzero_sticky_and_fixed_elements() -> None:
-    # the fixture has a sticky header, a fixed sidebar, a zero-size sticky element, and ordinary static content:
-    # exactly the two non-zero sticky/fixed elements should be hidden, never the zero-size one and never the
-    # ordinary section.
+    # the fixture has a sticky header, a fixed sidebar (which itself contains a descendant that forces its own
+    # visibility back to visible -- see test_hide_also_hides_a_descendant_that_overrides_its_own_visibility), a
+    # zero-size sticky element, and ordinary static content: the two non-zero sticky/fixed elements plus that one
+    # descendant should be hidden -- three total -- never the zero-size one and never the ordinary section.
     r = _run("hide", [20000])
-    assert r["hidden"] == 2, r
+    assert r["hidden"] == 3, r
     assert r["stillHiddenCount"] == 2, r
 
 
 def test_restore_undoes_the_hide_completely() -> None:
     r = _run("hide-then-restore", [20000])
-    assert r["hidden"] == 2, r
+    assert r["hidden"] == 3, r
     assert r["afterRestoreCount"] == 0, "nsRestore must leave no element still hidden"
+
+
+def test_hide_also_hides_a_descendant_that_overrides_its_own_visibility() -> None:
+    # Case 3 repair, second finding (2026-09-17 live-Chrome acceptance, Reddit's home feed): the fixed header
+    # WAS being hidden correctly (visibility:hidden on the header itself), but a small avatar image nested
+    # inside it had its own explicit `visibility: visible` -- an override that CSS inheritance does not stop --
+    # and kept rendering on its own, stamping into the same corner of every fold after the first. Confirmed via
+    # a live nsHideAndArm run against the real page: the header read "hidden" while the avatar <img> inside it
+    # still read "visible". nsHideAndArm must now walk each hidden element's subtree and force any descendant
+    # whose own computed visibility still reads "visible" back to hidden too, and nsRestore must put it back.
+    r = _run("hide-descendant-visibility-override", [20000])
+    assert r["before"] == "visible", r
+    assert r["afterHide"] == "hidden", r
+    assert r["afterRestore"] == "visible", "nsRestore must put the descendant's own visibility back"
 
 
 def test_watchdog_self_heals_if_nothing_calls_restore() -> None:
@@ -79,7 +94,7 @@ def test_watchdog_self_heals_if_nothing_calls_restore() -> None:
     # message channel severed, try/finally on the OTHER side never running) must not leave the page visually
     # altered forever. Arm with a short watchdog and wait past it WITHOUT calling nsRestore.
     r = _run("watchdog-selfheal", [150, 600])
-    assert r["hidden"] == 2, r
+    assert r["hidden"] == 3, r
     assert r["afterWaitCount"] == 0, "the in-page watchdog must self-restore once its timer fires, unassisted"
 
 
@@ -145,8 +160,8 @@ def test_hide_and_arm_is_idempotent_and_still_fully_restorable_when_called_twice
     # nsHideAndArm twice in a row hides the same elements both times (no double-counting, no state corruption)
     # and nsRestore still fully undoes it afterward.
     r = _run("hide-twice-then-restore", [20000])
-    assert r["firstHidden"] == 2, r
-    assert r["secondHidden"] == 2, r
+    assert r["firstHidden"] == 3, r
+    assert r["secondHidden"] == 3, r
     assert r["stillHiddenAfterBoth"] == 2, r
     assert r["afterRestoreCount"] == 0, "nsRestore must leave no element hidden even after two hide calls"
 

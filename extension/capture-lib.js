@@ -43,6 +43,7 @@
     hidden = window.__nsCaptureHidden = [];
     let all;
     try { all = document.querySelectorAll('body *'); } catch (e) { all = []; }
+    const hiddenEls = [];
     for (const el of all) {
       let cs;
       try { cs = getComputedStyle(el); } catch (e) { continue; }
@@ -52,6 +53,26 @@
       if (rect.width === 0 && rect.height === 0) continue;
       hidden.push({ el, prevStyle: el.getAttribute('style') || '' });
       try { el.style.setProperty('visibility', 'hidden', 'important'); } catch (e) {}
+      hiddenEls.push(el);
+    }
+    // Case 3 repair (second finding, 2026-09-17): visibility is INHERITED, not enforced top-down -- a descendant
+    // that sets its own explicit visibility (a common defensive pattern for icon/avatar components, so ambient
+    // CSS can't accidentally hide them) can override an already-hidden ancestor and keep rendering on its own,
+    // stamping just that one piece into every fold after the first even though the ancestor itself is correctly
+    // hidden. A live Reddit capture found exactly this: the sticky header was hidden correctly, but a small
+    // avatar image inside it had its own `visibility: visible` and kept showing in the same corner of every
+    // tile. Walk each hidden element's subtree once more and force any descendant whose OWN computed visibility
+    // still reads 'visible' back to hidden too, tracked the same way so nsRestore/the watchdog put it back.
+    for (const el of hiddenEls) {
+      let descendants;
+      try { descendants = el.querySelectorAll('*'); } catch (e) { continue; }
+      for (const d of descendants) {
+        let dcs;
+        try { dcs = getComputedStyle(d); } catch (e) { continue; }
+        if (dcs.visibility !== 'visible') continue;
+        hidden.push({ el: d, prevStyle: d.getAttribute('style') || '' });
+        try { d.style.setProperty('visibility', 'hidden', 'important'); } catch (e) {}
+      }
     }
     window.__nsCaptureWatchdog = setTimeout(() => {
       const list = window.__nsCaptureHidden || [];

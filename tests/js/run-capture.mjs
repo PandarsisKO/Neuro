@@ -88,6 +88,18 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
       const stillHiddenAfterBoth = stillHidden();
       nsRestore();
       out = { firstHidden: r1.hiddenCount, secondHidden: r2.hiddenCount, stillHiddenAfterBoth, afterRestoreCount: stillHidden() };
+    } else if (command === 'hide-descendant-visibility-override') {
+      // Case 3 regression (second finding, 2026-09-17): a fixed/sticky element that CONTAINS a descendant with
+      // its own explicit `visibility: visible` (a real pattern found live on Reddit -- a small avatar image
+      // inside the hidden header kept rendering on its own, stamping into every fold after the first) must have
+      // that descendant forced hidden too, and restored correctly afterward.
+      const el = window.document.getElementById('descendant-override-target');
+      const before = el ? window.getComputedStyle(el).visibility : 'missing';
+      const r = nsHideAndArm(args[0] ?? 20000);
+      const afterHide = el ? window.getComputedStyle(el).visibility : 'missing';
+      nsRestore();
+      const afterRestore = el ? window.getComputedStyle(el).visibility : 'missing';
+      out = { before, afterHide, afterRestore, hiddenCount: r.hiddenCount };
     } else if (command === 'hide-scrollbars') {
       nsHideScrollbars(args[0] ?? 20000);
       out = { styleElPresent: !!scrollbarStyleEl() };
