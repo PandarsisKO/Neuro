@@ -46,7 +46,7 @@ const { window } = dom;
 
 const lib = readFileSync(path.join(here, '..', '..', 'extension', 'capture-lib.js'), 'utf8');
 window.eval(lib);
-const { nsMeasure, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
+const { nsMeasure, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
         nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity, nsIsRouteLikeHash } = window.NSCaptureLib;
 
 function stillHidden() {
@@ -57,6 +57,8 @@ function stillHidden() {
   }
   return n;
 }
+
+function scrollbarStyleEl() { return window.document.getElementById('ns-capture-hide-scrollbars'); }
 
 const timeout = setTimeout(() => { console.error('harness timeout'); process.exit(2); }, 15000);
 (async () => {
@@ -76,6 +78,20 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
       const r = nsHideAndArm(watchdogMs);
       await new Promise(res => setTimeout(res, waitMs));
       out = { hidden: r.hiddenCount, afterWaitCount: stillHidden() };
+    } else if (command === 'hide-scrollbars') {
+      nsHideScrollbars(args[0] ?? 20000);
+      out = { styleElPresent: !!scrollbarStyleEl() };
+    } else if (command === 'hide-scrollbars-then-restore') {
+      nsHideScrollbars(args[0] ?? 20000);
+      const before = !!scrollbarStyleEl();
+      nsRestoreScrollbars();
+      out = { before, after: !!scrollbarStyleEl() };
+    } else if (command === 'scrollbars-watchdog-selfheal') {
+      const watchdogMs = args[0] ?? 200, waitMs = args[1] ?? 500;
+      nsHideScrollbars(watchdogMs);
+      const before = !!scrollbarStyleEl();
+      await new Promise(res => setTimeout(res, waitMs));
+      out = { before, afterWait: !!scrollbarStyleEl() };
     } else if (command === 'plan-tile-grid') {
       out = nsPlanTileGrid(args[0], args[1], args[2]);
     } else if (command === 'dedupe-tiles') {

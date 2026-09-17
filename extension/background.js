@@ -269,7 +269,7 @@ async function execFn(tabId, func, args) {
 // PURE (non-DOM) tiling/ceiling/rate-limit/reconciliation helpers used directly below, and capture-blob-store.js
 // carries the durable IndexedDB blob store (service-worker-only — never page-injected, unlike capture-lib.js).
 importScripts('capture-lib.js', 'capture-blob-store.js');
-const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
+const { nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars, nsPlanTileGrid, nsIsDuplicateTile, nsCheckCeilings,
         nsStitchScale, nsRateLimitWaitMs, nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity } = self.NSCaptureLib;
 const NSBlobStore = self.NSCaptureBlobStore;
 
@@ -380,6 +380,7 @@ async function stitchShots(shots, pageWidthCss, pageHeightCss) {
 async function fallbackVisibleCapture(tabId, expectedIdentity, origScrollX, origScrollY) {
   // 1. restore styles + original scroll position
   try { await execFn(tabId, nsRestore); } catch (e) {}
+  try { await execFn(tabId, nsRestoreScrollbars); } catch (e) {}
   try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
   await new Promise(r => setTimeout(r, CAPTURE_HIDE_SETTLE_MS));
   // 2. freshly re-verify tab/window/document-identity/active-state
@@ -410,6 +411,7 @@ async function runCapture(tabId, rec) {
   const restoreStylesAndScroll = async () => {
     if (restored) return; restored = true;
     try { await execFn(tabId, nsRestore); } catch (e) { /* watchdog will self-heal if this fails */ }
+    try { await execFn(tabId, nsRestoreScrollbars); } catch (e) { /* watchdog will self-heal if this fails */ }
     try { await execFn(tabId, (x, y) => { window.scrollTo({ left: x, top: y, behavior: 'instant' }); }, [origScrollX, origScrollY]); } catch (e) {}
   };
 
@@ -422,6 +424,10 @@ async function runCapture(tabId, rec) {
     await putCapture(rec);
 
     const viewportWidth = m0.viewportWidth, viewportHeight = m0.viewportHeight;
+    // Case 2 fix (2026-09-16): hidden once, up front, for the WHOLE capture -- including the first tile, where
+    // sticky-element hiding below is deliberately skipped. A baked-in browser scrollbar is never "correct" in
+    // any tile, unlike a sticky header which legitimately belongs in its natural (first-tile) position.
+    try { await execFn(tabId, nsHideScrollbars, [CAPTURE_WATCHDOG_MS]); } catch (e) {}
     let dims = { scrollWidth: m0.scrollWidth, scrollHeight: m0.scrollHeight };
     let grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;
     const plannedTileCountInitial = grid.length;

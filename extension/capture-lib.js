@@ -69,6 +69,38 @@
     window.__nsCaptureHidden = [];
   }
 
+  // Case 2 repair (2026-09-16 live-Chrome acceptance): a page that overflows BOTH axes shows Chrome's own
+  // page-level scrollbar (rendered as a viewport overlay, not page content) INSIDE every captureVisibleTab
+  // screenshot. When tile rows land back-to-back with no vertical overlap between them (the common case --
+  // overlap only happens where nsPlanTileGrid clamps the last row), nothing is ever drawn over that baked-in
+  // scrollbar band, and a real strip of content (a whole table row, in the case that found this) is
+  // permanently replaced by a scrollbar graphic in the stitched image. Unlike sticky/fixed elements, this
+  // needs to be hidden for the FIRST tile too -- there is no "natural" tile where a baked-in scrollbar is
+  // correct -- so it is armed once before the capture loop starts, not per-tile like nsHideAndArm/nsRestore.
+  // CSS-only (scrollbar-width / ::-webkit-scrollbar), so scrolling itself is unaffected -- only the visible
+  // scrollbar chrome is suppressed. Same self-healing watchdog pattern as nsHideAndArm for the same reason:
+  // this must never depend on the background service worker still being alive to undo it.
+  function nsHideScrollbars(watchdogMs) {
+    if (window.__nsScrollbarWatchdog) { clearTimeout(window.__nsScrollbarWatchdog); window.__nsScrollbarWatchdog = null; }
+    if (!window.__nsScrollbarStyleEl) {
+      const style = document.createElement('style');
+      style.id = 'ns-capture-hide-scrollbars';
+      style.textContent = 'html, body { scrollbar-width: none !important; } '
+        + 'html::-webkit-scrollbar, body::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';
+      (document.head || document.documentElement).appendChild(style);
+      window.__nsScrollbarStyleEl = style;
+    }
+    window.__nsScrollbarWatchdog = setTimeout(() => {
+      if (window.__nsScrollbarStyleEl) { try { window.__nsScrollbarStyleEl.remove(); } catch (e) {} window.__nsScrollbarStyleEl = null; }
+      window.__nsScrollbarWatchdog = null;
+    }, watchdogMs);
+  }
+
+  function nsRestoreScrollbars() {
+    if (window.__nsScrollbarWatchdog) { clearTimeout(window.__nsScrollbarWatchdog); window.__nsScrollbarWatchdog = null; }
+    if (window.__nsScrollbarStyleEl) { try { window.__nsScrollbarStyleEl.remove(); } catch (e) {} window.__nsScrollbarStyleEl = null; }
+  }
+
   // ================================================================================== pure helpers (no DOM)
   // Repair round (docs/SEND-SCREENSHOT-2026-09-16.md, repair plan). Plain math/decision functions with no
   // closures, no chrome.* calls and no DOM access -- callable two ways, same as the functions above:
@@ -201,7 +233,7 @@
   }
 
   root.NSCaptureLib = {
-    nsMeasure, nsScrollTo, nsHideAndArm, nsRestore,
+    nsMeasure, nsScrollTo, nsHideAndArm, nsRestore, nsHideScrollbars, nsRestoreScrollbars,
     nsPlanTileGrid, nsTileKey, nsIsDuplicateTile, nsCheckCeilings, nsStitchScale, nsRateLimitWaitMs,
     nsIsFallbackEligible, nsReconcileDecision, nsPageIdentity, nsIsRouteLikeHash,
   };

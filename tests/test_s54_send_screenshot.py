@@ -83,6 +83,33 @@ def test_watchdog_self_heals_if_nothing_calls_restore() -> None:
     assert r["afterWaitCount"] == 0, "the in-page watchdog must self-restore once its timer fires, unassisted"
 
 
+def test_hide_scrollbars_injects_a_style_element() -> None:
+    # Case 2 regression (2026-09-16 live-Chrome acceptance, Finviz Stock Screener at 900x557 against a
+    # 1020x1447 page): the browser's own page-level scrollbar is rendered as a viewport overlay and gets baked
+    # into every captureVisibleTab screenshot. When tile rows land back-to-back with no vertical overlap
+    # (nsPlanTileGrid only overlaps where it clamps the last row), nothing is ever drawn over that band, and a
+    # real content row was permanently replaced by a scrollbar graphic in the stitched image -- confirmed by
+    # comparing the stitched PNG against the live, unmodified page at the same scroll position. Unlike sticky
+    # elements, there is no "natural" tile where a baked-in scrollbar is correct, so this must be hidden even
+    # for the first tile.
+    r = _run("hide-scrollbars", [20000])
+    assert r["styleElPresent"] is True, r
+
+
+def test_restore_scrollbars_undoes_the_hide_completely() -> None:
+    r = _run("hide-scrollbars-then-restore", [20000])
+    assert r["before"] is True, r
+    assert r["after"] is False, "nsRestoreScrollbars must remove the injected style element"
+
+
+def test_scrollbars_watchdog_self_heals_if_nothing_calls_restore() -> None:
+    # Same resilience contract as the sticky/fixed watchdog: if the background operation is interrupted, the
+    # live page must not end up with its scrollbar permanently, invisibly hidden.
+    r = _run("scrollbars-watchdog-selfheal", [150, 600])
+    assert r["before"] is True, r
+    assert r["afterWait"] is False, "the scrollbar watchdog must self-restore once its timer fires, unassisted"
+
+
 def test_background_js_loads_capture_lib_by_reference_not_duplication() -> None:
     # Phase 2c originally defined these functions inline in background.js; they were extracted to capture-lib.js
     # specifically so this test file could exercise the SHIPPED source. Guard against the extraction silently
@@ -93,6 +120,18 @@ def test_background_js_loads_capture_lib_by_reference_not_duplication() -> None:
     assert "importScripts('capture-lib.js', 'capture-blob-store.js')" in bg
     assert "function nsHideAndArm(" not in bg, "nsHideAndArm must live only in capture-lib.js, not be duplicated inline"
     assert "function nsMeasure(" not in bg, "nsMeasure must live only in capture-lib.js, not be duplicated inline"
+
+
+def test_run_capture_hides_scrollbars_before_the_first_tile_not_just_later_ones() -> None:
+    # background.js must arm nsHideScrollbars ONCE before the tile loop begins -- covering the very first tile,
+    # where sticky-element hiding (nsHideAndArm, gated by `firstTileCaptured`) is deliberately skipped. Guards
+    # against the fix being wired in only for tile 2+ (which would leave the exact case this regression covers
+    # -- the first tile row's un-overlapped bottom band -- still corrupted).
+    bg = (EXT / "background.js").read_text()
+    assert "nsHideScrollbars" in bg and "nsRestoreScrollbars" in bg
+    before_loop = bg.split("let grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;")[0]
+    assert "nsHideScrollbars" in before_loop.split("const viewportWidth = m0.viewportWidth")[-1], (
+        "nsHideScrollbars must be armed before the tile loop starts, not gated behind firstTileCaptured")
     assert "function nsPlanTileGrid(" not in bg, "nsPlanTileGrid must live only in capture-lib.js, not be duplicated inline"
     assert (EXT / "capture-blob-store.js").exists(), "extension/capture-blob-store.js must exist — background.js importScripts() it"
     blob_store = (EXT / "capture-blob-store.js").read_text()
