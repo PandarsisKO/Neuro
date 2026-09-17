@@ -14,7 +14,10 @@ globalThis.rvFilterText = {};
 globalThis.rvAutoApplied = {}; // collection id -> true once the relevance pre-selection has been applied
 globalThis.scClass = function scClass(v) { return v >= 60 ? 'hi' : v >= 30 ? 'mid' : ''; }
 globalThis.loadReviews = async function loadReviews(quiet) {
-  const rvs = await api(`/api/projects/${state.project.id}/reviews`, quiet ? { ack: false } : {}).catch(() => []);
+  if (!POLL.enter('reviews', quiet)) return;
+  const rvs = await api(`/api/projects/${state.project.id}/reviews`, quiet ? { ack: false } : {}).catch(() => null);
+  POLL.leave('reviews', loadReviews);
+  if (rvs === null) return;                       // failed or abandoned: keep what is on screen
   // Only rebuild the card when the list (or its ranking) changed; the poller calls this every few seconds
   const sig = rvs.map(c => c.id + ':' + (c.meta && c.meta.ranked ? 'R' : 'r') + ':' + c.proposed.map(s => s.id + (s.relevance == null ? '' : '=' + s.relevance)).join(',')).join('|');
   if (sig === rvSig) return;
@@ -255,16 +258,27 @@ globalThis.renderSourceList = function renderSourceList() {
   SRCG.html = new Map(built.map(b => [b.k, b.content]));
 }
 globalThis.loadSources = async function loadSources(quiet) {
+  // P0.1: one list refresh in flight at a time (POLL.enter/leave in api.js). A call that arrives while one is
+  // running is remembered and runs once afterwards — so a click mid-poll still refreshes, and a poll can no
+  // longer stack copies of a 2.5 MB request behind a slow server.
+  if (!POLL.enter('sources', quiet)) return;
   loadReviews(quiet);
   loadCaptionRecovery(quiet);
   const p = new URLSearchParams({ project_id: state.project.id, limit: 2000 }); if ($('#srcQ').value) p.set('q', $('#srcQ').value);
   if (!SRCG.loaded) $('#srcList').innerHTML = listState('loading', { label: 'Loading sources…' });
-  let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); } catch (e) { $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return; }
+  let all; try { all = await api('/api/sources?' + p, quiet ? { ack: false } : {}); }
+  catch (e) {
+    POLL.leave('sources', loadSources);
+    // an abandoned or failed BACKGROUND refresh keeps the list that is already on screen; the next tick tries again
+    if (quiet && SRCG.loaded) return;
+    $('#srcList').innerHTML = listState('failed', { message: "Couldn't load sources.", retry: 'loadSources()' }); return;
+  }
   SRCG.loaded = true;
   SRCG.all = all;
   const needsBrowser = s => !!(s.acquisition && s.acquisition.state === 'requires_browser');
   loadCaptureQueue(all.filter(needsBrowser), quiet);
   if (POOL.total == null) api(`/api/projects/${state.project.id}/pool?limit=1`, quiet ? { ack: false } : {}).then(r => { POOL.total = r.total; renderPoolChipBadge(r.total); }).catch(() => {});
+  POLL.leave('sources', loadSources);
   renderSourcesView();
 }
 // 0.63.92 -- Kyle: "the 'show only whats running' button on the sources page lags like crazy. shouldnt it be
@@ -430,7 +444,9 @@ globalThis.accelEstimate = function accelEstimate(b, n, order) {
 globalThis.accelMins = function accelMins(m) { return m == null ? '' : m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; }
 globalThis.loadBacklog = async function loadBacklog(quiet) {
   const el = $('#backlog'); if (!el || !state.project) return;
-  let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`, quiet ? { ack: false } : {}); } catch (e) { el.innerHTML = ''; return; }
+  if (!POLL.enter('backlog', quiet)) return;
+  let b; try { b = await api(`/api/projects/${state.project.id}/ai-backlog`, quiet ? { ack: false } : {}); } catch (e) { POLL.leave('backlog', loadBacklog); if (!quiet) el.innerHTML = ''; return; }
+  POLL.leave('backlog', loadBacklog);
   if (!b.local_queued || !b.local_ready) { el.innerHTML = ''; return; }
   state.backlog = b;
   const btn = (n, order, label) => {
@@ -526,8 +542,10 @@ globalThis.suggestSource = async function suggestSource(id) {
 globalThis.ingestSkipped = async function ingestSkipped() { if (!confirm('Queue every skipped video regardless of the date cutoff?')) return; const r = await post('/api/sources/retry-skipped', { project_id: state.project.id }); toast(`⏵ ${r.queued} queued`); state.srcFilter = 'working'; loadSources(); loadJobs(); }
 globalThis.capRecover = { n: 0 };
 globalThis.loadCaptionRecovery = async function loadCaptionRecovery(quiet) {
+  if (!POLL.enter('caption-recovery', quiet)) return;
   try { capRecover.n = (await api(`/api/projects/${state.project.id}/sources/caption-recovery`, quiet ? { ack: false } : {})).count || 0; }
-  catch (e) { capRecover.n = 0; }
+  catch (e) { /* failed or abandoned: keep the last count */ }
+  POLL.leave('caption-recovery', loadCaptionRecovery);
 }
 globalThis.recoverCaptions = async function recoverCaptions() {
   const r = await post(`/api/projects/${state.project.id}/sources/caption-recovery`, {});
@@ -612,7 +630,7 @@ globalThis.loadCaptureQueue = async function loadCaptureQueue(rows, quiet) {
         <div class="row" style="margin-top:6px;gap:6px"><button class="small primary" onclick="openAndCapture('${esc(first.canonical_url || first.url)}')">Open & Capture</button><button class="small ghost" onclick="cancelCapture('${first.job_id}')">Skip (cancel)</button>${EXT.state !== 'ready' ? `<span class="muted text-xs">${extLine() || ''}</span>` : ''}</div></div>
       ${items.length > 1 ? `<details><summary class="muted">All ${items.length} waiting</summary>${items.map((it, i) => `<div class="row" style="padding:4px 0;border-top:1px solid var(--line);align-items:center"><span class="muted fixed" style="width:44px">${i + 1}</span><span class="grow min-w-0">${esc(it.title || it.canonical_url)} <span class="muted">· ${esc(it.adapter === 'reddit_thread' ? 'Reddit thread' : 'web page')}${it.status === 'expired' ? ' · expired — open and capture again' : ''}</span></span><button class="small" onclick="openAndCapture('${esc(it.canonical_url || it.url)}')">Open</button><button class="small ghost" onclick="cancelCapture('${it.job_id}')">Cancel</button></div>`).join('')}</details>` : ''}`;
     clearTimeout(CAPTURE_TIMER);
-    globalThis.CAPTURE_TIMER = setTimeout(() => { if (state.view === 'sources') loadSources(); }, 5000);
+    globalThis.CAPTURE_TIMER = setTimeout(() => { if (state.view === 'sources' && !document.hidden) loadSources(true); }, 5000);   // P0.1: quiet, and not while hidden
   } catch (e) { /* the sources list still renders */ }
 }
 globalThis.removeFromProject = async function removeFromProject(id) { await del(`/api/projects/${state.project.id}/members`, { source_ids: [id] }); loadSources(); }

@@ -95,19 +95,71 @@ document.addEventListener('change', e => {
   if (el && el.matches('select[onchange], input[onchange]') && !el.disabled) NSACK.press(el);
 }, true);
 
+// ================= P0.1 (docs/SPEED-AUDIT-2026-09-17.md): background polls are contained =================
+// Measured on Kyle's live server, 2026-09-17: `/api/sources` p50 92 s and `caption-recovery` p50 186 s while
+// findings/Claims work ran. `pollTick` fired `loadSources()` without awaiting it, `api()` had no timeout, and
+// nothing de-duplicated a refresh already in flight — so every 3 s another copy of a request the server was
+// taking minutes to answer joined the pile until Chrome's six-connections-per-host limit was full. From then
+// on EVERY request the tab made, "New chat" included (three round trips of a few ms each), sat in the
+// browser's own queue behind refreshes nobody was waiting for. Three rules, all browser-native:
+//   1. COALESCE — one refresh of a kind in flight at a time. A second request while one is running is
+//      remembered (once) and runs after it, so a click that lands mid-poll still gets fresh data.
+//   2. TIMEOUT — a quiet (ack:false) request is abandoned after TIMEOUT_MS via AbortController. It can never
+//      hold a socket for minutes; the next tick tries again. Explicit user actions keep no timeout.
+//   3. LIMIT — at most MAX_INFLIGHT quiet requests on the wire at once, so at least four of Chrome's six
+//      connections are always free for something a person actually clicked.
+// One poller across tabs was considered and NOT built: pollTick already stops while the document is hidden,
+// and a person sees one tab per window, so a leader election (BroadcastChannel/Web Locks) would add a
+// mechanism to solve a case measurement has not shown. Revisit if two VISIBLE Sources tabs are common.
+globalThis.POLL = {
+  TIMEOUT_MS: 20000,
+  MAX_INFLIGHT: 2,
+  inflight: 0, waiting: [], keys: {},
+  // coalescing gate: true = run now; false = an instance is already running and will run once more when done
+  enter(key, quiet) {
+    const k = this.keys[key];
+    if (k && performance.now() - k.at < this.TIMEOUT_MS * 2) {           // the 2× is a watchdog: a body that threw past its own catch cannot wedge the key forever
+      k.again = true; k.quiet = k.quiet && !!quiet;                    // the rerun is quiet only if EVERY coalesced caller was
+      return false;
+    }
+    this.keys[key] = { at: performance.now(), again: false, quiet: true };
+    return true;
+  },
+  leave(key, fn) {
+    const k = this.keys[key]; delete this.keys[key];
+    if (k && k.again && fn) setTimeout(() => fn(k.quiet ? true : undefined), 0);
+  },
+  busy(key) { return !!this.keys[key]; },
+  acquire() {
+    if (this.inflight < this.MAX_INFLIGHT) { this.inflight++; return Promise.resolve(); }
+    return new Promise(res => this.waiting.push(res));
+  },
+  release() {
+    const next = this.waiting.shift();
+    if (next) next(); else this.inflight = Math.max(0, this.inflight - 1);
+  },
+};
+
 globalThis.api = async function api(path, opts = {}) {
   // opts.ack === false: a background poll must never light the window up. Everything a person started
   // is acknowledged; the 3-second /tick loop is not something a person started.
   const owner = opts.ack === false ? null : NSACK.claim();
   const quiet = opts.ack === false;
   if (!quiet) NSACK.rise();
+  // opts.timeout (ms) overrides; quiet requests default to POLL.TIMEOUT_MS, explicit actions to none
+  const budget = opts.timeout != null ? opts.timeout : (quiet ? POLL.TIMEOUT_MS : 0);
+  const ctl = budget > 0 ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), budget) : null;
+  if (quiet) await POLL.acquire();
   try {
-    const r = await uiFetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    const r = await uiFetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts, ...(ctl ? { signal: ctl.signal } : {}) });
     if (r.status === 401) { location.reload(); return; }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || j.detail || r.statusText);
     return j;
   } finally {
+    if (timer) clearTimeout(timer);
+    if (quiet) POLL.release();
     if (!quiet) NSACK.fall();
     NSACK.release(owner);
   }

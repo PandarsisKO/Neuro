@@ -494,7 +494,9 @@ globalThis.bootRow = function bootRow(h) {
 globalThis.BOOTSTATE = null;
 globalThis.loadBoot = async function loadBoot(quiet) {
   if (!state.project) return;
-  try { globalThis.BOOTSTATE = await api(`/api/projects/${state.project.id}/bootstrap`, quiet ? { ack: false } : {}); } catch (e) { globalThis.BOOTSTATE = null; }
+  if (!POLL.enter('bootstrap', quiet)) return;
+  try { globalThis.BOOTSTATE = await api(`/api/projects/${state.project.id}/bootstrap`, quiet ? { ack: false } : {}); } catch (e) { if (!quiet) globalThis.BOOTSTATE = null; }
+  POLL.leave('bootstrap', loadBoot);
   renderBoot();
 }
 globalThis.renderBoot = function renderBoot() {
@@ -549,6 +551,7 @@ globalThis.jobLabel = function jobLabel(j) {
   if (j.kind === 'refresh_skipped_metadata') return 'refreshing skipped info · ' + what;
   if (j.kind === 'bootstrap_scan') return 'searching research you already have';
   if (j.kind === 'extract_claims') return j.payload?.evaluation ? 'checking claim quality' : 'finding claims to track';
+  if (j.kind === 'harvest_claims') return 'collecting claims from new findings ($0)';
   if (j.kind === 'refresh_research') return 'bringing the research state up to date';
   if (j.kind === 'settle_batches') return 'collecting finished batches (already paid for)';
   return what || j.kind;
@@ -592,12 +595,15 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // seconds, never stops" on the Sources page.
   const q = quiet ? { ack: false } : {};
   clearTimeout(jobsTimer);
+  if (!POLL.enter('jobs', quiet)) return;                       // P0.1: one jobs refresh in flight; a second runs once after it
   let js;
   try { js = await api(`/api/projects/${state.project.id}/jobs?limit=30`, q); globalThis.pollFails = 0; $('#offline')?.remove(); }
   catch (e) {
-    // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet
+    POLL.leave('jobs', loadJobs);
+    // server restarting (auto-reload after an update) or briefly unreachable: keep polling instead of going quiet.
+    // An abandoned (timed-out) poll is not an outage — the server is slow, not gone — so no banner for that.
     globalThis.pollFails++;
-    if (!$('#offline')) { const d = document.createElement('div'); d.id = 'offline'; d.className = 'banner'; d.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99'; d.textContent = '⟳ reconnecting to the server…'; document.body.appendChild(d); }
+    if (e && e.name !== 'AbortError' && !$('#offline')) { const d = document.createElement('div'); d.id = 'offline'; d.className = 'banner'; d.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99'; d.textContent = '⟳ reconnecting to the server…'; document.body.appendChild(d); }
     globalThis.jobsTimer = setTimeout(pollTick, Math.min(3000 * pollFails, 15000));
     return;
   }
@@ -645,6 +651,7 @@ globalThis.loadJobs = async function loadJobs(quiet) {
   // keep a slow heartbeat even when idle so work started elsewhere (extension, CLI, retries) shows up
   const every = (active.length || analysing) ? 3000 : 15000;
   globalThis.jobsTimer = setTimeout(pollTick, every);
+  POLL.leave('jobs', loadJobs);
   if (active.some(j => j.kind === 'ingest_url' || j.kind === 'rank_proposed')) setTimeout(() => loadReviews().catch(() => {}), 3500);
 }
 
@@ -656,6 +663,9 @@ globalThis.ticksSinceFull = 0;
 globalThis.RECONCILE_EVERY = 20;
 globalThis.pollTick = async function pollTick() {
   if (state.view !== 'sources' || !state.project) return;
+  // P0.1: a hidden tab does not poll. It resumes the moment it is shown again (visibilitychange below), so
+  // nothing is missed — and a second Sources tab left open in the background costs the server nothing.
+  if (document.hidden) { clearTimeout(jobsTimer); globalThis.jobsTimer = setTimeout(pollTick, 15000); return; }
   let t;
   try { t = await api(`/api/projects/${state.project.id}/tick`, { ack: false }); }
   catch (e) { loadJobs(true); loadSources(true).catch(() => {}); return; }   // tick unavailable → behave exactly as before
@@ -669,6 +679,8 @@ globalThis.pollTick = async function pollTick() {
   if (srcChanged) loadSources(true).catch(() => {});
   if (full || changed('jobs') || changed('sources')) loadBoot(true);
 }
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.view === 'sources' && state.project) { clearTimeout(jobsTimer); pollTick(); } });
 
 globalThis.jobHistory = async function jobHistory(id, btn) {
   const ev = await api(`/api/jobs/${id}/events`);
