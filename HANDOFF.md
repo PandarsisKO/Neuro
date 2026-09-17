@@ -5942,3 +5942,41 @@ under `-n 4` (passes clean in isolation, and this is a JS-only change that canno
 feed again, to confirm the badge stops stamping, checked with the same rigor as case 2 (no new scrollbar
 artifact, no duplicate/missing tiles, right content preserved, no seam corruption). Recorded in
 `docs/KYLE-GATES-2026-09-15.md`.
+
+## Real gate-closing pass, part 7: Send Screenshot case 3 re-verified live — a second, distinct defect found and fixed (2026-09-17)
+
+Kyle reloaded the extension and re-ran case 3 (Reddit home feed) after part 6's fix. The reCAPTCHA badge was
+confirmed clean — no badge-shaped box anywhere in the stitched PNG. But pulling the new image pixel-for-pixel
+(not just "is the badge gone") found a small teal avatar circle stamped into the top-right corner of every tile
+after the first, at the same regular interval as the original finding — meaning this, not the badge, may well
+have been what the original color-based detection actually caught (the avatar's teal matches google's badge-era
+color scheme closely enough to have been misread; the true reCAPTCHA badge turned out to already be correctly
+suppressed once actually isolated).
+
+Investigated live on the real Reddit tab via Claude in Chrome: the sticky header (`reddit-header-large`) WAS
+being hidden correctly by `nsHideAndArm` — confirmed directly (`getComputedStyle(header).visibility ===
+'hidden'`, stable across repeated scroll+wait cycles, no DOM node replacement). But a small avatar `<img>`
+nested inside it carries its own explicit `visibility: visible`, and CSS inheritance does not stop a descendant
+from overriding an ancestor's inherited visibility — so the avatar kept rendering on its own regardless of the
+header's hidden state. Confirmed by walking `header.querySelectorAll('img')` and finding the visible 32x32
+avatar whose own computed visibility read "visible" even while its hidden ancestor read "hidden". This is a
+different failure mode from both case 2 (a baked-in browser scrollbar) and case 3's first finding (a timing
+gap letting a reactive script re-show itself): a coverage gap in the hide mechanism itself, not a timing race.
+
+**Fix**: `extension/capture-lib.js` — `nsHideAndArm` now walks each hidden element's subtree after hiding it
+and forces any descendant whose own computed visibility still reads "visible" back to hidden too, tracked the
+same way so `nsRestore` and the watchdog restore it correctly. Verified live before committing: with the fix
+applied inline, the avatar's own computed visibility read "hidden" and a zoomed screenshot of that corner came
+back blank; restoring put it back to "visible".
+
+**Verification**: new jsdom harness command (`hide-descendant-visibility-override`) plus a fixture descendant
+that forces its own visibility; new pytest test
+`test_hide_also_hides_a_descendant_that_overrides_its_own_visibility`; existing hidden-count assertions updated
+from 2 to 3 to match the fixture's new third hideable element (65/65 -> 66/66 passing). `repo-check`: PASS.
+Full differential suite: identical 40-failure set, same names, before (`c59a6bd`) and after (`06578cc`) this
+fix — zero regressions.
+
+**Not yet marked PASS** — awaiting Kyle reloading the extension once more and re-running case 3 live against
+Reddit's feed a third time, checked with the same rigor as every prior case (no scrollbar artifact, no
+duplicate/missing tiles, right content preserved, no seam corruption) before it closes out. Recorded in
+`docs/KYLE-GATES-2026-09-15.md`.

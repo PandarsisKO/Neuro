@@ -343,8 +343,33 @@ current version and, on a few real pages, walk this list:
    suite: 43 failures post-fix vs 42 pre-fix -- the one extra (`test_n3_deep_findings.py::
    test_deep_reads_report_per_part_progress_and_ride_the_slow_lane`) confirmed flaky under `-n 4` (passes clean
    in isolation), not caused by this change (JS-only edit, cannot touch Python test behavior). `repo-check`:
-   PASS. **Awaiting**: Kyle reloading the extension and re-running this case live against Reddit's feed again to
-   confirm the badge stops stamping -- not yet marked PASS.
+   PASS.
+
+   **2026-09-17, live re-verification: a SECOND, distinct finding.** Kyle reloaded the extension and re-ran this
+   case live against Reddit's home feed again. The reCAPTCHA badge itself was confirmed clean this time (no
+   uniform badge-shaped box anywhere in the stitched PNG at its known live position) -- but pulling the new image
+   pixel-for-pixel (not just "is the badge gone") found a small teal avatar circle stamped into the top-right
+   corner of every tile after the first, at the same regular interval. Investigated live on the actual Reddit tab:
+   the sticky header (`reddit-header-large`) WAS being hidden correctly by `nsHideAndArm` (confirmed:
+   `getComputedStyle(header).visibility === 'hidden'`) -- but a small avatar `<img>` nested inside it had its own
+   explicit `visibility: visible`, which CSS inheritance does not stop, so it kept rendering on its own regardless
+   of the ancestor's hidden state. A different mechanism from both case 2 (baked-in scrollbar) and this case's
+   first finding (a timing gap) -- this is a hide-*coverage* gap, not a hide-*timing* gap. In all tested captures
+   this only ever overlapped blank corner space, never real post content, but it is still incorrect pixels making
+   it into the stitched result.
+
+   **Fixed** (`extension/capture-lib.js`: `nsHideAndArm` now also walks each hidden element's subtree after hiding
+   it, and forces any descendant whose own computed visibility still reads "visible" back to hidden -- tracked the
+   same way so `nsRestore`/the watchdog puts it back correctly) with regression coverage in both the jsdom harness
+   (a new `hide-descendant-visibility-override` command plus a fixture descendant that forces its own visibility)
+   and `tests/test_s54_send_screenshot.py` (65/65 -> 66/66 passing; existing hidden-count assertions updated from 2
+   to 3 to match the fixture's new third hideable element). `repo-check`: PASS. Full differential suite: identical
+   40-failure set, same names, before and after this commit (`c59a6bd` vs `06578cc`) -- zero regressions.
+
+   **Not yet marked PASS** -- awaiting Kyle reloading the extension once more and re-running this case live
+   against Reddit's feed a third time, to confirm the avatar stops stamping too, with the same rigor (no
+   scrollbar artifact, no duplicate/missing tiles, right content preserved, no seam corruption) before case 3
+   closes out.
 4. **Close and reopen the popup mid-capture** -- the capture should still complete or recover cleanly, not
    vanish or duplicate.
 5. **Check scroll position is restored exactly afterward** -- in a success, a partial, and a forced-failure
