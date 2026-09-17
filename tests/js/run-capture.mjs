@@ -78,6 +78,16 @@ const timeout = setTimeout(() => { console.error('harness timeout'); process.exi
       const r = nsHideAndArm(watchdogMs);
       await new Promise(res => setTimeout(res, waitMs));
       out = { hidden: r.hiddenCount, afterWaitCount: stillHidden() };
+    } else if (command === 'hide-twice-then-restore') {
+      // Case 3 regression: throttledCaptureVisibleTab's preCapture hook calls nsHideAndArm a SECOND time,
+      // after the rate-limit wait, right before the snapshot -- re-verifying/re-hiding anything a reactive
+      // third-party widget (a Google reCAPTCHA badge, confirmed live on Reddit's home feed) re-showed itself
+      // in the gap since the first hide. Must stay idempotent and still fully restorable.
+      const r1 = nsHideAndArm(args[0] ?? 20000);
+      const r2 = nsHideAndArm(args[0] ?? 20000);
+      const stillHiddenAfterBoth = stillHidden();
+      nsRestore();
+      out = { firstHidden: r1.hiddenCount, secondHidden: r2.hiddenCount, stillHiddenAfterBoth, afterRestoreCount: stillHidden() };
     } else if (command === 'hide-scrollbars') {
       nsHideScrollbars(args[0] ?? 20000);
       out = { styleElPresent: !!scrollbarStyleEl() };

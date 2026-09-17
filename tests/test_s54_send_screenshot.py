@@ -132,6 +132,41 @@ def test_run_capture_hides_scrollbars_before_the_first_tile_not_just_later_ones(
     before_loop = bg.split("let grid = nsPlanTileGrid(dims, viewportWidth, viewportHeight).tiles;")[0]
     assert "nsHideScrollbars" in before_loop.split("const viewportWidth = m0.viewportWidth")[-1], (
         "nsHideScrollbars must be armed before the tile loop starts, not gated behind firstTileCaptured")
+
+
+def test_hide_and_arm_is_idempotent_and_still_fully_restorable_when_called_twice() -> None:
+    # Case 3 regression (2026-09-17 live-Chrome acceptance, Reddit's home feed): the fix re-calls nsHideAndArm
+    # a SECOND time, after throttledCaptureVisibleTab's rate-limit wait, immediately before the snapshot --
+    # confirmed live that Google's reCAPTCHA badge (bottom-right, position:fixed, found and correctly hidden
+    # by this exact traversal when checked directly on the live page) was still getting stamped into every
+    # tile after the first, at a fixed one-stamp-per-tile interval. Root cause: the ~600ms captureVisibleTab
+    # rate-limit wait happens AFTER the existing hide-and-settle window, giving a reactive widget's own script
+    # time to re-show itself before the shot. This proves the fix's core safety assumption: calling
+    # nsHideAndArm twice in a row hides the same elements both times (no double-counting, no state corruption)
+    # and nsRestore still fully undoes it afterward.
+    r = _run("hide-twice-then-restore", [20000])
+    assert r["firstHidden"] == 2, r
+    assert r["secondHidden"] == 2, r
+    assert r["stillHiddenAfterBoth"] == 2, r
+    assert r["afterRestoreCount"] == 0, "nsRestore must leave no element hidden even after two hide calls"
+
+
+def test_throttled_capture_re_hides_after_the_rate_limit_wait_not_before_it() -> None:
+    # Guards the actual wiring in background.js: the re-hide must run AFTER the rate-limit wait resolves
+    # (inside throttledCaptureVisibleTab's preCapture hook), not just once before it via the pre-existing
+    # nsHideAndArm/settle call -- that earlier hide is exactly what case 3 proved insufficient on its own.
+    bg = (EXT / "background.js").read_text()
+    assert "async function throttledCaptureVisibleTab(windowId, preCapture)" in bg
+    body = bg.split("async function throttledCaptureVisibleTab(windowId, preCapture)")[1].split("\n}")[0]
+    # the preCapture hook must run strictly after the rate-limit wait, and before the actual snapshot call
+    wait_idx = body.index("setTimeout(r, wait)")
+    precapture_idx = body.index("preCapture()")
+    snapshot_idx = body.index("chrome.tabs.captureVisibleTab")
+    assert wait_idx < precapture_idx < snapshot_idx, (
+        "preCapture must run strictly between the rate-limit wait and the actual captureVisibleTab call")
+    # and the caller must actually wire nsHideAndArm into it, gated by firstTileCaptured like the existing hide
+    assert "const reHide = firstTileCaptured ? () => execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]) : null;" in bg
+    assert "throttledCaptureVisibleTab(tab.windowId, reHide)" in bg
     assert "function nsPlanTileGrid(" not in bg, "nsPlanTileGrid must live only in capture-lib.js, not be duplicated inline"
     assert (EXT / "capture-blob-store.js").exists(), "extension/capture-blob-store.js must exist — background.js importScripts() it"
     blob_store = (EXT / "capture-blob-store.js").read_text()
@@ -1013,7 +1048,7 @@ def test_pixel_ceiling_is_preflighted_before_capturing_the_next_tile() -> None:
     loop_start = bg.index("while (idx < grid.length) {")
     # the SAME line also appears earlier, inside fallbackVisibleCapture -- search from loop_start onward so we
     # find the tile loop's own capture call, not the fallback's.
-    first_capture_call = bg.index("dataUrl = await throttledCaptureVisibleTab(tab.windowId);", loop_start)
+    first_capture_call = bg.index("dataUrl = await throttledCaptureVisibleTab(tab.windowId, reHide);", loop_start)
     preflight_block = bg[loop_start:first_capture_call]
     assert "if (capturedScale != null) {" in preflight_block
     assert "const projectedPixels = viewportWidth * capturedScale * viewportHeight * capturedScale * (shots.length + 1);" in preflight_block

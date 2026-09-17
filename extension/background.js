@@ -311,11 +311,24 @@ function withRateLimit(fn) {
   _rateLimitLock = run.catch(() => {});
   return run;
 }
-async function throttledCaptureVisibleTab(windowId) {
+// Case 3 repair (2026-09-17 live-Chrome acceptance, Reddit's home feed -- a real, script-heavy page): the
+// rate-limit wait below (up to CAPTURE_MIN_CALL_INTERVAL_MS, ~600ms) happens AFTER the caller's nsHideAndArm
+// hide-and-settle window (a mere CAPTURE_HIDE_SETTLE_MS, 60ms) has already elapsed. On a page with actively
+// reactive fixed-position widgets (Google's reCAPTCHA badge, in this case -- confirmed via a live capture:
+// its bottom-right badge, correctly hidden by nsHideAndArm's own logic when checked directly, was still
+// stamped into every tile after the first, at a fixed interval matching one stamp per tile), that ~600ms gap
+// is enough time for the widget's own script to re-show itself via inline style before the snapshot is taken
+// -- our hide happened, then quietly lost the race. `preCapture` runs AFTER the rate-limit wait resolves,
+// immediately before the actual snapshot, closing that window. nsHideAndArm is safe to call twice in a row
+// (it clears and re-establishes `window.__nsCaptureHidden` at the start of every call), so re-arming here on
+// top of the caller's existing pre-scroll-settle hide is a re-verification, not a behavior change for pages
+// that do not fight back.
+async function throttledCaptureVisibleTab(windowId, preCapture) {
   return withRateLimit(async () => {
     const s = await chrome.storage.session.get('nsLastCaptureVisibleTabAt');
     const wait = nsRateLimitWaitMs(s.nsLastCaptureVisibleTabAt ?? null, now(), CAPTURE_MIN_CALL_INTERVAL_MS);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    if (preCapture) { try { await preCapture(); } catch (e) { /* never let a re-hide failure block the capture itself */ } }
     const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
     await chrome.storage.session.set({ nsLastCaptureVisibleTabAt: now() });
     return dataUrl;
@@ -474,7 +487,8 @@ async function runCapture(tabId, rec) {
       let dataUrl;
       try {
         const tab = await verifyTabIdentity(tabId, expectedIdentity);   // per-tile re-verification
-        dataUrl = await throttledCaptureVisibleTab(tab.windowId);
+        const reHide = firstTileCaptured ? () => execFn(tabId, nsHideAndArm, [CAPTURE_WATCHDOG_MS]) : null;
+        dataUrl = await throttledCaptureVisibleTab(tab.windowId, reHide);
       } catch (e) {
         if (firstTileCaptured) { try { await execFn(tabId, nsRestore); } catch (e2) {} }
         if (e instanceof TabIdentityError) throw e;
