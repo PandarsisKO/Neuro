@@ -378,3 +378,67 @@ is never held past 0.2 s, and the browser cannot stack refreshes. Poll timeout 2
    That ceiling only moves when background work leaves the API process (audit P2.1) — a later, larger decision.
 3. **Research refresh itself is 300–520 s of single-threaded CPU per pass**, dominated by `assess_project`
    over 17k Claims, `assess_target`, and the node rebuild. It runs on the `low` lane today; it is the load.
+
+---
+
+## 9. After P0: release hygiene, R8 (narrow), and the `/api/sources` cache-churn rung (2026-09-17, 17:40–19:20 PT)
+
+Kyle's sequence: release hygiene → R8 → find out why `/api/sources` was 5–27 s when research state changed with
+the writer idle → R4 → R5 → R9. Constraint for the Sources work: no caching by time; identify the dependency
+that actually changed; cache each derived component against the narrowest durable revision that can change its
+answer.
+
+**Release hygiene.** `release-check` PASS on `0bfd6ce` (artifact `evals/release/release-check-0.63.92-0bfd6ce-
+20260918-004814`); the whole suite on the same tree 2,512 passed, 0 failed, in six chunks (the VM cannot keep one
+process alive for the full run). Push is pending from a Mac-side session (no GitHub credential here).
+
+**R8, narrow (`0080d1f`).** `jobs.project_id` / `jobs.source_id` as VIRTUAL generated columns over the payload
+(cannot drift; legal to add to the live database; no backfill) + two indexes; `api_project_jobs` runs two
+index-ordered queries merged in Python — one `OR` query measured 205 ms on a copy of the 79k-row table because
+SQLite unions both scans and re-sorts; split, 26 ms. Live: **209–226 ms → 30–33 ms.** The rest of R8 verified on
+the 14:22 backup copy and left alone: `sqlite_stat1` present (79 rows), weekly `ANALYZE` recorded, no `in_flight`
+invocations, 0 freelist pages, WAL checkpointing at ~100 MB; retention stays under its observation until
+2026-10-11. Not a performance investigation.
+
+**Why `/api/sources` was 5–27 s: the research fingerprint moved when nothing changed.** Every research-derived
+cache the endpoint reads (`staleness`, `potential`, `gap_terms_core`, `rel_analysis`) keys on
+`db.project_research_revision` — COUNT‖MAX(updated_at) over Claims, nodes, tensions, analyses, targets, project.
+Watching `/tick`'s revision every 4 s during a live pass, and reading the code for each writer, found FIVE places
+the fingerprint moved with no change in the answer, fixed in order of discovery, each proven live before the next:
+
+| # | writer | what it did every pass | fix (commit) |
+|---|---|---|---|
+| 1 | `claims.assess()` | wrote all six verdict columns + `updated_at` on every Claim (17k) | write only when the verdict differs (`3199711`) |
+| 2 | `knowledge.refresh()` | DELETE + re-INSERT every node with a fresh timestamp | rewrite only when the node set differs (`3199711`) |
+| 3 | `knowledge.upsert_tension()` | UPDATE with a fresh timestamp for identical text | no-op when identical (`3199711`) |
+| 4 | `knowledge.assess_target()` | stamped every target (6,774) | write only on change (`c3374fd`) |
+| 5 | `detect()` ↔ `dedupe_targets()` | three tension targets re-opened by reconcile, folded back as near-duplicates, then their "duplicate of" reason overwritten by `assess_target` — one write per pass at a fixed point | dedupe records the reason in `gap`; detect honours it; assess_target leaves a dropped target alone (`fbdd4d5`, `42268c6`) |
+| 6 | `cache.MAX_ENTRIES=512`, FIFO trim | not invalidation — eviction: one `/api/sources` stores 506 per-row `potential:` entries, so the singletons every request reads were evicted on schedule (10 of 43 misses with the revision stable) | 16,384, least-recently-used (`9980697`) |
+
+No cache key was widened, nothing is cached by time, and every fix is "do not write what did not change" — the
+same answers, minus the no-op writes (fewer writer holds too). Gate `tests/test_s72_research_revision_stability.py`:
+each writer leaves unchanged rows alone; the full refresh sequence run twice leaves the revision byte-identical;
+a real change (accepting a Claim) still moves it and then settles; the cache keeps a regularly read key.
+
+**Measured, same load as §8 (continuous `research/refresh`, ~10 s foreground probe), five runs:**
+
+| run | state | `/api/sources` p50 / p90 / max | revision changes | cache hits | New Chat p50 |
+|---|---|---|---|---|---|
+| A | after R8, before any churn fix | 5.2 s / 13.0 s / 23.3 s | every pass | 0 % | 20 ms |
+| B | writers 1–3 fixed | 0.78 s / 7.2 s / 34.5 s | ~1–2 per pass (targets) | 58–76 % | 12 ms |
+| C | + writer 4 | 0.75 s / 15.2 s / 21.4 s | 7 in 650 s (targets: the reopen/fold loop) | 49–64 % | 13 ms |
+| D | + writer 5 | 0.80 s / 11.0 s / 19.1 s | **1 in 662 s** (first pass settling) | 59–77 % — eviction | 12 ms |
+| **E** | + LRU cache | **0.70 s / 0.86 s / 8.1 s** | **0 in 667 s** (two full passes) | **95–98 %** | 12 ms |
+
+Idle, the same request is 266 ms. What remains in run E: two spikes (5.1 s, 8.1 s) with the revision unchanged and
+98 % hits — the first request of a new pass while `assess_project` re-reads 17k Claims: GIL sharing, not
+recomputation, and caption-recovery's p50 of 24 ms under load versus 15 ms idle is the same effect. That is the
+"remainder after fixing invalidation" Kyle asked to isolate before any process-separation decision; it is small.
+
+**Side effects worth knowing.** A research pass is now ~283 s instead of ~340–470 s (fewer writes). The evidence
+targets whose `gap` reads "duplicate of target <id>" are the ones dedupe folded; the survivor carries the
+question. A dropped target is no longer re-assessed until something re-opens it.
+
+**Next, per Kyle's ladder:** R4 (durable partial work), then R5 — with the P0 invariant as the gate concurrency
+must pass. Owed, unchanged: push from the Mac; two visible windows; first live `harvest_claims` with the queue
+running.

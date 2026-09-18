@@ -4,14 +4,13 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
-**P0 RESPONSIVENESS — CLOSED 2026-09-17 (Kyle).** `docs/SPEED-AUDIT-2026-09-17.md` §8 has the loaded validation
-(three runs under a continuous $0 research pass; two writer holds found and fixed on the way). Two live
-observations are still owed and need Kyle, not engineering: (a) the first `harvest_claims` job completing with the
-queue running (gate S66 covers it deterministically) and (b) two *visible* Neuro windows for six minutes. Next in
-the speed ladder, per Kyle's re-ordering (top note of `SPEED-MISSION.md`): **R8** correctness/hygiene, then the
-request-path diet with `/api/sources` cache-key churn first, then R4, then R5. Do not tune the P0 boundaries
-(20 s poll abort, 2 quiet requests, 25-note harvest chunks, hidden-tab pause) without a new measurement. Still
-owed before "released": a from-zero full suite on the Mac and `release-check` on the current tip.
+**SPEED — P0 closed, R8 closed, `/api/sources` cache-churn closed (2026-09-17, Kyle's ordering).** Record:
+`docs/SPEED-AUDIT-2026-09-17.md` §8–9. Under a continuous $0 research pass `/api/sources` is now p50 0.70 s /
+p90 0.86 s (was 5.2 / 13–34 s) with 98 % cache hits and zero revision movement across two full passes; New Chat
+p50 12 ms; writer peak 15 ms. Next in the ladder: **R4** durable partial work, then **R5** in-job concurrency
+gated on the P0 invariant (CLAUDE.md), then R9. Do not tune the P0 boundaries without a new measurement. Owed,
+needing Kyle or the Mac: push (16 commits ahead of origin — Codex or a Mac-side agent), two visible windows,
+first live `harvest_claims` completion with the queue running.
 The Send Screenshot matrix below stays the other open effort; it was not touched.
 
 **CURRENT-STATE RECONCILIATION — 2026-09-17 (read this first, supersedes the FM1 RECONCILIATION note directly

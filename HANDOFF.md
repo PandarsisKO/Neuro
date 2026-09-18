@@ -6238,3 +6238,18 @@ copy must be what the venv installs.
 
 **Push is pending from a Mac-side session**: 12 commits ahead of `origin/main`, and this VM has no GitHub
 credential (macOS keychain). Codex, or the next agent with the Mac's git, runs the compact sync.
+
+## R8 (narrow) and the `/api/sources` cache-churn rung (Claude, 2026-09-17 17:40–19:20 PT)
+
+Kyle: release hygiene → R8, brutally narrow → find out why `/api/sources` becomes 5–27 s when research state
+changes with the writer idle; no time-based caching; narrowest durable revision per derived component.
+`docs/SPEED-AUDIT-2026-09-17.md` §9 is the record. Commits `3350bea` (hygiene), `0080d1f` (R8: generated
+`jobs.project_id`/`source_id` + indexes, project job list 210 → 31 ms live), then five commits for the churn:
+`assess`, `refresh`, `upsert_tension`, `assess_target` write only on change; a target folded as a duplicate stays
+folded (`gap` = "duplicate of target …", honoured by `detect`, untouched by `assess_target`); derived cache
+16,384 LRU (one `/api/sources` stores 506 `potential:` entries; 512 FIFO evicted the singletons every request).
+Result under a continuous research pass: `/api/sources` p50 0.70 s / p90 0.86 s, 0 revision changes in 667 s
+across two passes, 98 % hits; idle 266 ms. Residual spikes (5–8 s, ~2 per 10 min) are GIL sharing with
+`assess_project`, measured and filed, not acted on. Gate `tests/test_s72_research_revision_stability.py`.
+Every change was validated live through the app's own API before the next; the live database was never opened.
+16 commits ahead of `origin/main`; push from the Mac still pending. Next: R4.
