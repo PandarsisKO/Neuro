@@ -6512,3 +6512,12 @@ background ingestion (the findings `user_pick_lane` rule applied to transcripts)
 server reloaded on the change at 07:58:37 PT and transcripts started completing 10 s later. This is the P0
 invariant catching its own implementation; recorded so the pattern (a $0 kind quietly claiming a foreground pool)
 is checked for any new job kind.
+
+## Members-only videos never outrank downloadable ones (Claude, 2026-09-18, `ae47cdb`)
+
+Kyle: "youtube members only videos are not ranked above other videos." Additive `sources.access_gate` from the
+listing's `availability` (members_only / premium / needs_auth); gated videos sort last in a review whatever their
+relevance, are never sent to the ranker, start unticked with a 🔒 label, and a "Join this channel" download
+refusal back-fills the gate and is now a permanent failure class (`members_only`, split from the retryable
+`login_wall`). Applies to listings made from now on; already-listed proposals gain the gate only if their download
+is refused. Gate `test_s73`. Server reloaded on delivery.
