@@ -417,6 +417,13 @@ def ask(
     project = db.get_project(project_id) if project_id else None
     actions: list[dict[str, Any]] = []
 
+    # 2026-09-18 (Kyle) — history must be captured BEFORE the current question is saved below, or
+    # _retrieval_query()'s "previous user message" lookup finds the question we're currently answering
+    # instead of the actual prior turn (producing a self-duplicated retrieval_query like "What about
+    # taxes?\nWhat about taxes?"), and the current question ends up duplicated in the provider messages
+    # too — once via `history`, once via the explicit question turn appended further down.
+    history: list[dict[str, Any]] = db.get_messages(conversation_id, limit=12) if conversation_id else []
+
     # 0.63.0 — A QUESTION IS THE USER'S, NOT THE ANSWER'S. Kyle: *"chats are failing to save, I was chatting, it did
     # not complete its response, and I lost the chat because I looked at sources."* Both messages used to be written
     # at the very END of this function — after the model call, after citations, after findings — so a turn that was
@@ -483,7 +490,6 @@ def ask(
     if project and not source_ids:
         source_ids = project["source_ids"] or ["__none__"]
 
-    history = db.get_messages(conversation_id, limit=12) if conversation_id else []
     priority_ids = db.priority_source_ids(project["id"]) if project else set()
     rq = _retrieval_query(question, history)
     phase("retrieving", "searching this project's sources…")

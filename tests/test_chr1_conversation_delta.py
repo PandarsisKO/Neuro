@@ -70,7 +70,12 @@ def test_early_question_source_surfaces_through_a_later_unrelated_answer():
     sid = _new_source(pid, "New seller financing terms video",
                       "Seller financing terms typically include a five year standby note with no payments in year one.")
     time.sleep(0.01)
-    qa.ask("What accounting software should I use day to day?", project_id=pid, conversation_id=conv)   # unrelated, postdates the new source
+    # Long and non-referential (>12 words, no "that/this/it/..." backreference) on purpose: qa.ask's own
+    # short-follow-up grounding (Kyle's 2026-09-18 qa.py fix) would otherwise legitimately pull Q1's seller-
+    # financing context into Q2's retrieval and mark the new source's chunk as already shown — which is correct
+    # behavior, just not what this fixture is testing. This wording keeps Q2 genuinely unrelated and ungrounded.
+    qa.ask("For a totally different topic, what accounting software packages are recommended for day to day "
+          "small business bookkeeping and expense tracking?", project_id=pid, conversation_id=conv)   # unrelated, postdates the new source
     delta = cd.for_conversation(conv, pid)
     assert delta["mode"] == "exact"
     hit = next((u for u in delta["supporting_changes"] + delta["material_changes"] if u.get("source_id") == sid), None)
@@ -237,6 +242,341 @@ def test_mixed_old_and_new_conversation_reports_mixed_mode():
     qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
     delta = cd.for_conversation(conv, pid)
     assert delta["mode"] == "mixed"
+
+
+def test_cache_invalidates_when_the_conversation_gains_a_new_turn_not_just_project_state():
+    """Kyle's fix #1: conversation_delta_revision() tracks the PROJECT, not this conversation. A new successful
+    question/answer with no project-level change must still invalidate the cached delta."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    d1 = cd.get_delta(conv, pid)
+    d2 = cd.get_delta(conv, pid)
+    assert d1 == d2 and d1["questions_checked"] == 1                # identical second read: cache hit, same answer
+    qa.ask("What multiple is fair for a service business?", project_id=pid, conversation_id=conv)   # no project-state change
+    d3 = cd.get_delta(conv, pid)
+    assert d3["questions_checked"] == 2                              # must reflect the new turn, not the stale cached value
+    d4 = cd.get_delta(conv, pid)
+    assert d4 == d3                                                  # settles back into a cache hit
+
+
+def test_exact_mode_routes_on_the_stored_retrieval_query_not_the_raw_followup():
+    """Kyle's fix #2: a bare follow-up like 'What about taxes?' retrieves badly on its own words. CHR0 already
+    grounds it via qa._retrieval_query (prepending the prior question); CHR1 must use that stored string, not
+    q['question'], or a contextual follow-up silently loses its topic."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("How does SBA seller financing work for a service business acquisition?", project_id=pid, conversation_id=conv)
+    q2 = "What about taxes?"     # unanswerable on its own words against seller-financing-tax content
+    qa.ask(q2, project_id=pid, conversation_id=conv)
+    stored_rq = cd._questions(conv)[1]["retrieval_query"]
+    assert stored_rq != q2 and "seller financing" in stored_rq.lower()   # grounded by the prior question, as qa.ask built it
+    # Deliberately avoids the literal word "tax"/"taxes" so the raw follow-up ("What about taxes?") cannot FTS-match
+    # it at all — only the grounded query (carrying "seller financing" / "service business acquisition") can.
+    sid = _new_source(pid, "Structuring seller financing payouts",
+                      "Structuring seller financing for a service business acquisition changes how the deferred "
+                      "payments are treated: installment sale rules let the seller defer capital gains recognition, "
+                      "and the buyer can deduct interest on the seller note against acquisition income.")
+    from neurosearch.search import search_fts
+    raw_hits = search_fts(q2, source_ids=[sid])
+    grounded_hits = search_fts(stored_rq, source_ids=[sid])
+    assert not raw_hits and grounded_hits, "the raw follow-up must miss this source while the grounded query finds it"
+    delta = cd.for_conversation(conv, pid)
+    hit = next((u for u in delta["supporting_changes"] + delta["material_changes"] if u.get("source_id") == sid), None)
+    assert hit is not None, "CHR1 must have used the stored retrieval_query, not the raw 'What about taxes?'"
+
+
+def test_legacy_question_reconstructs_the_retrieval_query_from_history():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "How does SBA seller financing work for a service business acquisition?", project_id=pid)
+    db.save_message(conv, "assistant", "an old legacy answer with no evidence snapshot", citations=[], project_id=pid, meta={"generation": {}})
+    db.save_message(conv, "user", "What about taxes?", project_id=pid)
+    db.save_message(conv, "assistant", "another legacy answer", citations=[], project_id=pid, meta={"generation": {}})
+    qs = cd._questions(conv)
+    assert qs[1]["mode"] == "approximate"
+    assert qs[1]["retrieval_query"] != "What about taxes?" and "seller financing" in qs[1]["retrieval_query"].lower()
+
+
+def test_metadata_only_update_does_not_surface_as_a_revised_source():
+    """Kyle's fix #3: exact-mode 'revised source' detection must compare sources.revision, not updated_at — a
+    title fix or status back-fill moves updated_at without touching the transcript."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    baseline = cd._questions(conv)[0]
+    assert sid in baseline["scope_source_revisions"]                 # v3 snapshot recorded a real baseline revision
+    time.sleep(0.01)
+    db.upsert_source(platform="youtube", external_id=db.get_source(sid)["external_id"], title="A renamed title, metadata only")
+    delta = cd.for_conversation(conv, pid)
+    assert not any(u.get("source_id") == sid for u in delta["material_changes"] + delta["supporting_changes"]),         "a metadata-only write must not be mistaken for a re-transcription"
+
+
+def test_real_retranscription_does_surface():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    ingest.store_transcript({
+        "platform": "youtube", "external_id": db.get_source(sid)["external_id"], "url": db.get_source(sid)["url"],
+        "title": db.get_source(sid)["title"], "replace": True,
+        "segments": [{"start": 0.0, "end": 30.0, "text": "Newly re-transcribed: seller financing terms extend to seven years now."}],
+    }, project_id=pid)
+    delta = cd.for_conversation(conv, pid)
+    assert any(u.get("source_id") == sid for u in delta["material_changes"] + delta["supporting_changes"]),         "a real re-transcription (a new sources.revision) must surface"
+
+
+def test_pending_to_ready_source_surfaces():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    sid = _new_source(pid, "Just-ingested seller financing video",
+                      "Seller financing standby terms: five years, no payments in year one, subordinated to the bank loan.")
+    db.upsert_source(platform="youtube", external_id=db.get_source(sid)["external_id"], status="pending")   # simulate mid-ingest
+    delta_while_pending = cd.for_conversation(conv, pid)
+    assert not any(u.get("source_id") == sid for u in delta_while_pending["material_changes"] + delta_while_pending["supporting_changes"])
+    db.upsert_source(platform="youtube", external_id=db.get_source(sid)["external_id"], status="ready")
+    delta = cd.for_conversation(conv, pid)
+    assert any(u.get("source_id") == sid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_old_globally_existing_source_attached_later_surfaces():
+    """A source that existed in the user's library (another project, or unattached) BEFORE the baseline, with an
+    old created_at, attached to THIS project only afterward — the case project_source_ids' set difference exists
+    to catch, since the source's own timestamps predate the baseline and would never trip an updated_at check."""
+    pid = _golden()
+    other_pid = db.create_project("Another project", "unrelated")["id"]
+    sid = _new_source(other_pid, "Pre-existing seller financing video",
+                      "Seller financing standby structure: interest-only for eighteen months, then fully amortizing.")
+    time.sleep(0.01)
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # source not yet attached here
+    time.sleep(0.01)
+    db.add_project_sources(pid, [sid])   # attached to THIS project after the baseline; the source's own created_at is old
+    delta = cd.for_conversation(conv, pid)
+    assert any(u.get("source_id") == sid for u in delta["material_changes"] + delta["supporting_changes"]),         "an old, globally-existing source attached to this project after the baseline must surface"
+
+
+def test_approximate_mode_rolls_up_unproven_claim_churn_instead_of_flooding_material_changes():
+    """Kyle's fix (2026-09-18): prev=None in Approximate mode means UNKNOWN, not "this is a transition." A legacy
+    chat's ordinary post-baseline Claim activity — no tension, no plan citation — must not turn into an explicit
+    claim_transition unit per Claim; it belongs in `rollups`, counted, never individually enumerated."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    ordinary_ids = []
+    for i in range(12):
+        c = claims.add_claim(pid, f"Ordinary post-baseline claim {i} about seller financing.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"ordinary evidence {i}")
+        ordinary_ids.append(c["id"])
+    tense = claims.add_claim(pid, "Seller notes are never subordinated.", claim_type="market")
+    claims.add_evidence(tense["id"], sid, locator="9:00", excerpt="never subordinated")
+    with db.tx() as conn:
+        conn.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, description, status, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?)", (db.new_id(), pid, "CONTRADICTION", tense["id"], "subordination disagreement", "open", db.now(), db.now()))
+    delta = cd.for_conversation(conv, pid)
+    assert delta["mode"] == "approximate"
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    surfaced_claim_ids = {u.get("claim_id") for u in all_units if u.get("claim_id")}
+    assert tense["id"] in surfaced_claim_ids                          # the provable signal (contradiction) still surfaces
+    assert not (set(ordinary_ids) & surfaced_claim_ids)                # the unproven churn does NOT flood material/supporting
+    assert delta["rollups"] is not None
+    assert delta["rollups"]["claims_added_or_updated"] >= len(ordinary_ids)
+    assert delta["nothing_new"] is False
+    assert delta["approximate_limitations"]
+
+
+def test_approximate_mode_plan_impacting_claim_still_surfaces_explicitly():
+    """A legacy chat's Claim that decision_impact() can PROVE affects the current plan is not rolled up — it's the
+    one Claim-level signal Approximate mode can make explicitly without a historical claim_state snapshot."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    from neurosearch import decision_impact as _di
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "Post-baseline claim that the plan cites.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="4:00", excerpt="plan-relevant evidence")
+    real_di = _di.decision_impact
+    import neurosearch.conversation_delta as cd_mod
+    def fake_di(project_id, claim_ids=None):
+        out = real_di(project_id, claim_ids)
+        for cid in out:
+            if cid == c["id"]:
+                out[cid]["plan_impact"] = True
+        return out
+    import unittest.mock
+    with unittest.mock.patch("neurosearch.decision_impact.decision_impact", side_effect=fake_di):
+        delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] for u in all_units)
+
+
+def _insert_target(pid, question, *, claim_id=None, status="satisfied", updated_at=None):
+    import time as _t
+    t = updated_at if updated_at is not None else db.now()
+    tid = db.new_id()
+    with db.tx() as conn:
+        conn.execute(
+            "INSERT INTO project_evidence_targets (id, project_id, question, topic, claim_id, sufficiency, "
+            "preferred_classes, closure, closure_rule, status, origin, gap, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (tid, pid, question, "topic", claim_id, "corroborative", "[]", "closure", "{}", status, "system",
+             None, t - 100, t))
+    return tid
+
+
+def _insert_tension(pid, claim_id, created_at=None):
+    t = created_at if created_at is not None else db.now()
+    tid = db.new_id()
+    with db.tx() as conn:
+        conn.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, description, status, created_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?)", (tid, pid, "CONTRADICTION", claim_id, "disagreement", "open", t, t))
+    return tid
+
+
+# --- Kyle's second correction (2026-09-18): topical relevance gate for contradicts/resolves_gap in Approximate mode ---
+# "important to the project is not automatically important to this conversation." Approximate mode must connect a
+# contradiction or resolved gap to THIS chat via a demonstrable signal (cited source, or topical overlap on the
+# grounded retrieval_query) before it becomes an explicit material_changes unit; otherwise it is real project
+# activity but not something this legacy conversation can honestly be told changed its understanding.
+
+def test_gate1_unrelated_contradiction_is_not_material_in_approximate_mode():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    other_sid = _new_source(pid, "Unrelated cooking video", "Today we are making a lasagna with fresh basil and ricotta.")
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "The recipe calls for fresh basil and ricotta cheese.", claim_type="market")
+    claims.add_evidence(c["id"], other_sid, locator="0:05", excerpt="basil and ricotta")
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert not any(u.get("claim_id") == c["id"] for u in all_units)
+
+
+def test_gate2_contradiction_on_claim_matching_retrieval_query_is_material():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    other_sid = _new_source(pid, "Unrelated cooking video", "Today we are making a lasagna with fresh basil and ricotta.")
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "What are typical seller financing standby note terms?", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "Seller financing notes typically carry a five year standby term.", claim_type="market")
+    claims.add_evidence(c["id"], other_sid, locator="0:05", excerpt="unrelated evidence source")   # NOT the cited source
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    assert delta["mode"] == "approximate"
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
+
+
+def test_gate3_contradiction_on_cited_source_is_material_despite_weak_text_overlap():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "The video creator prefers oat milk in their morning coffee.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="0:05", excerpt="oat milk aside")   # evidence on the CITED source
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    assert delta["mode"] == "approximate"
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
+
+
+def test_gate4_unrelated_resolved_target_is_not_material_in_approximate_mode():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    tid = _insert_target(pid, "What is the best pasta shape for lasagna?")
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert not any(u.get("target_id") == tid for u in all_units)
+
+
+def test_gate5_resolved_target_matching_retrieval_query_is_material():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "What are typical seller financing standby note terms?", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?")
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("target_id") == tid for u in all_units)
+
+
+def test_gate6_resolved_target_linked_to_relevant_claim_is_material_despite_weak_target_text_overlap():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "Seller financing notes typically carry a five year standby term.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="0:05", excerpt="five year standby")
+    tid = _insert_target(pid, "unrelated wording that shares nothing with the question", claim_id=c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("target_id") == tid for u in all_units)
+
+
+def test_gate7_plan_impacting_claim_unrelated_to_chat_is_not_material():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    other_sid = _new_source(pid, "Unrelated cooking video", "Today we are making a lasagna with fresh basil and ricotta.")
+    from neurosearch import decision_impact as _di
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "an old question with no evidence snapshot", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[{"source_id": sid}], project_id=pid, meta={"generation": {}})
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "The recipe calls for fresh basil and ricotta cheese.", claim_type="market")
+    claims.add_evidence(c["id"], other_sid, locator="0:05", excerpt="basil and ricotta")
+    real_di = _di.decision_impact
+    def fake_di(project_id, claim_ids=None):
+        out = real_di(project_id, claim_ids)
+        for cid in out:
+            if cid == c["id"]:
+                out[cid]["plan_impact"] = True
+        return out
+    import unittest.mock
+    with unittest.mock.patch("neurosearch.decision_impact.decision_impact", side_effect=fake_di):
+        delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert not any(u.get("claim_id") == c["id"] for u in all_units)
+
+
+def test_gate8_exact_mode_contradiction_and_resolved_gap_behavior_stays_unfiltered():
+    """Do not weaken Exact mode: it has a real historical claim_state/scope snapshot, so `touched` there is already
+    only what the answer could know — the new Approximate-only relevance gate must not narrow it further."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "The video creator prefers oat milk in their morning coffee.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="0:05", excerpt="oat milk aside")
+    _insert_tension(pid, c["id"])
+    tid = _insert_target(pid, "unrelated wording that shares nothing with the question", claim_id=c["id"])
+    delta = cd.for_conversation(conv, pid)
+    assert delta["mode"] == "exact"
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
+    assert any(u.get("target_id") == tid for u in all_units)
 
 
 def test_delta_endpoint_smoke():

@@ -74,6 +74,21 @@ def test_the_conversation_itself_exists_after_a_failed_turn(fresh, monkeypatch):
     assert any(c["id"] == cid for c in db.list_conversations(p["id"]))
 
 
+def test_the_second_question_of_a_conversation_still_saves_when_history_fetch_and_provider_both_run(fresh, monkeypatch):
+    """2026-09-18 (Kyle) — the history fetch was moved to before the save so _retrieval_query() sees the real prior
+    turn instead of the question being answered. This is a durability gate on THAT reordering specifically: history
+    must still be readable and the new question must still be saved, even when the turn then fails downstream."""
+    p = db.create_project("chat", brief="b")
+    cid = db.new_id()
+    db.save_message(cid, "user", "how does seller financing work?", project_id=p["id"], title="q1")
+    db.save_message(cid, "assistant", "It works like this [1].", project_id=p["id"])
+    monkeypatch.setattr(qa, "chat_system_blocks", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with pytest.raises(RuntimeError):
+        qa.ask("what about taxes?", project_id=p["id"], conversation_id=cid)
+    rows = _msgs(cid)
+    assert rows[-1] == ("user", "what about taxes?")        # the new question survived the downstream failure
+
+
 def test_a_failed_turn_can_record_the_assistant_side_too(fresh):
     p = db.create_project("chat", brief="b")
     cid = db.new_id()

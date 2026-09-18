@@ -161,6 +161,15 @@ via `claims.overlap()` is the candidate mechanism; the threshold is **measured o
 session snapshot, `immutable=1`) against a hand-labelled sample of real chats before it is fixed, and the doc
 records the value and the sample. 0.25 is not carried over from the first draft.
 
+**Relevance is a separate test from "did this change" (2026-09-18, Kyle's second correction, Approximate mode
+only).** "Important to the project" is not automatically "important to this conversation." A Claim, contradiction,
+or resolved evidence target can be judged **changed** (its own `updated_at`, an open tension, a closed target — all
+provable, project-wide facts) without being judged **relevant to this chat** (connectable to what this conversation
+actually discussed). Categories 1 and 4 above (`contradicts`, `resolves_gap`) and the rollup's own Claim-transition
+promotion path (category 3, in Approximate mode) all gate on relevance before becoming an explicit unit — see §12
+and §16's "Relevance gating" entry for the exact rule and why plan impact (category 2) does not by itself satisfy
+it.
+
 ## 7. Master Plan connection — existing seams only
 
 Hierarchy, unchanged:
@@ -255,17 +264,30 @@ conversation_delta_revision)`, stored in `cache.py`.
 
 ## 12. Old chats — Approximate mode
 
-A chat with no `meta.evidence` on any assistant row:
+A chat with no `meta.evidence` on any assistant row (or one where CHR0's gather partially failed, `complete: False`):
 
 - baseline = newest assistant row that is not `meta.incomplete`;
 - the only known "seen evidence" is that row's (and earlier rows') `citations` source ids;
 - post-baseline source / Findings / Claim / tension changes are inspected the same way;
 - the panel **never** says "the model had not seen this" — it cannot be known.
 
-Copy: *"Approximate refresh. This chat predates evidence snapshots, so Neuro can identify material added since the
-answer but cannot know every excerpt the earlier model saw."* An approximate delta can still offer the paid refresh
-when concrete post-date relevant evidence exists. If real use shows unacceptable noise, this one branch becomes
-"establish a new baseline first"; the feature is not redesigned.
+Copy: *"Approximate refresh. This chat predates evidence snapshots, so Neuro can identify research that changed
+after the answer, but cannot reconstruct every source or Claim state the original conversation had available."*
+An approximate delta can still offer the paid refresh when concrete post-date relevant evidence exists. If real use
+shows unacceptable noise, this one branch becomes "establish a new baseline first"; the feature is not redesigned.
+
+**The Exact vs. Approximate honesty boundary, in one sentence (2026-09-18):** Exact mode has a real historical
+`claim_state`/scope snapshot, so a fact like "this Claim's state was X when the answer was given, and is Y now" is
+provable and used directly (§3's revision-diff, §6 category 3's `prev != cur` transition test), and its relevance
+test may rest on that same historical record (a Claim touched by a source the snapshot proves was in scope).
+Approximate mode has no such record — a legacy answer's `prev` state is **unknown**, not **absent** — so it never
+manufactures a transition from `prev=None`, never infers "newly available" from mere absence in `shown_source_ids`
+(a source not cited by an old answer may simply be one it had no reason to cite, not one that did not exist yet —
+§3's `newly_available` computation uses `status='ready' AND updated_at>since` on the *current* scope instead), and
+never treats broad same-project fan-out (any Claim whose evidence touches a scope-adjacent source) as proof that
+*this conversation* cares about it. This is not a feature deficiency to be engineered away — it is the honest limit
+of what a legacy chat's own message history can prove, and CHR2's copy should say so plainly rather than imply a
+transition or a project-wide research total is something this specific chat learned.
 
 ## 13. UX (CHR2)
 
@@ -324,7 +346,7 @@ raw-answer-to-Claim path; no automatic plan mutation.
 
 ## 16. Execution record
 
-### CHR0 — shipped, pushed (`11dcaf0`, `76eab50`)
+### CHR0 — shipped, pushed (`11dcaf0`, `76eab50`, folded into `da0b2d7` with CHR1's first cut)
 
 `db.save_message` returns the new `messages.id`; `db.get_messages` exposes `id`; `db.conversation_baseline()` =
 newest assistant row with `meta.evidence` and no `meta.incomplete`. `conversation_delta.evidence_snapshot()` builds
@@ -345,7 +367,7 @@ recorded and still used — only the claims that depend on the fields that faile
 "never seen"/"transitioned" statements) are withheld. Gate:
 `test_incomplete_bookkeeping_marks_the_snapshot_not_complete`.
 
-### CHR1 — implemented, NOT yet pushed (working tree only as of this record)
+### CHR1 — first cut shipped/pushed at `da0b2d7`; a hardening pass (below) is implemented in the working tree, NOT yet committed/pushed
 
 `search.search_fts()` — the FTS5-only leg of `search()`, factored out of a shared `_hits_from_ranked()` tail
 (book-weighting, priority reservation, per-source cap, final sort) so the two entry points cannot drift; never
@@ -402,7 +424,143 @@ and all `tchunk*` groups) apart from three pre-existing failures belonging to a 
 0.63.94 work in the tree (`test_p1b_tonight_ui`'s ui-version meta, `test_s68` ×2 reading `created_at` for
 "added N ago") — unrelated to CHR0/CHR1.
 
-**Not yet done:** `git commit` + push of CHR1. This document was corrected and re-verified on the device before
-that commit, specifically so the pushed commit and this document agree from the start (the prior push, `11dcaf0`,
-silently reverted to the first draft's content despite the commit message — see git history for the actual diff;
-never trust a commit message here without re-reading the file after push).
+`git show da0b2d7` is CHR0+CHR1's first cut as pushed. Everything below happened after that push, in review of the
+first cut, and is implemented in the working tree only as of this record.
+
+### CHR1 hardening pass (2026-09-18, post-`da0b2d7`, NOT yet committed/pushed)
+
+**1. `qa.py` history-ordering fix.** `qa.ask()` fetched `history = db.get_messages(conversation_id, limit=12)`
+*after* the current question was already saved, so `_retrieval_query()`'s "previous user message" lookup found the
+question being answered instead of the true prior turn — a self-duplicated `retrieval_query` (`"What about
+taxes?\nWhat about taxes?"`) and the current question appearing twice in the provider's messages (once via
+`history`, once via the explicit question turn appended further down). Fixed by moving the `history` fetch to
+before the save block; the later duplicate fetch was removed. This is a production correctness bug independent of
+Conversation Delta — it affected every follow-up question's grounding and every provider call's message list — and
+CHR1's own retrieval-query routing (§3, §6) depends on `retrieval_query` being correct, so it had to be fixed before
+CHR1's own hardening could be trusted. Gates: `tests/test_k_retrieval_fixes.py` (first-question `retrieval_query`
+not duplicated; a contextual follow-up grounded by the true prior turn, not itself; the provider sees the current
+question exactly once; a link-only early return still records the real question and a zero-hit snapshot),
+`tests/test_s24_lost_chat_and_fk.py` (an exception between history-fetch and provider call still leaves the
+question saved).
+
+**2. Two measured performance fixes** (`for_conversation`/`delta_for_question`, real-corpus cold-path measurement —
+see below): (a) `_max_claim_evidence_id_at()` was being recomputed once per touched Claim (a loop-invariant SQL
+query re-run ~16k times for one early question on Kyle's real corpus, >170s alone) — hoisted out of the loop, with
+the per-claim "has new evidence" check batched into chunked `IN()` queries (`_CE_CHUNK=500`). (b)
+`_attach_plan_impact()`'s `plan_narrative.explain()` was called once per candidate unit (~335ms/call, because
+`decision_impact()`'s `_plan_cited_note_ids()` reloads and JSON-parses every one of the project's Findings on every
+call, uncached) — restructured so `decision_impact()` runs **once per conversation** (not once per question) on the
+union of every question's candidate Claim ids, `explain()` is called only for the `plan_impact=True` subset, and an
+"unknown" plan-impact reason is resolved once for the whole batch via a single `plan_impact.affected_items()` probe.
+Together these took one real legacy chat from 90+ minutes cold to single-digit seconds.
+
+**3. Approximate mode's `newly_available` formula corrected.** The original `current_scope - shown_source_ids` is
+not a valid inference — "not shown by the old answer" is not "added after the old answer"; a legacy chat may have
+cited 5 of 1,072 already-existing sources. Fixed to the only honest legacy signal: which of the *current* scope's
+sources can be proven to have moved (`status='ready' AND updated_at>since`) after this question's `answered_at` —
+the same fallback exact mode already uses for an in-scope source with no recorded revision (§3). A source added to
+the project after the answer but never modified afterwards remains a real, acknowledged miss for Approximate mode
+(§12's honesty boundary); Exact mode does not have this gap, because `scope_source_ids` proves project membership
+at answer time directly.
+
+**4. `prev=None` semantic fix + the rollup unit (Approximate mode).** The original code read `prev != cur` as a
+Claim transition in *both* modes. In Exact mode this is correct — the baseline's `claim_state` snapshot is real, so
+`prev=None` means "the conversation's baseline predates this Claim's own creation," a genuine transition. In
+Approximate mode a legacy answer carries no `claim_state` snapshot at all, so `prev=None` means **unknown**, not
+"absent" — treating it as a transition turned ordinary post-baseline project activity (on Kyle's real corpus,
+often ~90% of a mature project's whole Claim table) into thousands of individual `claim_transition` units per
+question. Approximate mode no longer compares `prev`/`cur` at all. Instead: every Claim touched-or-overlapping a
+question (`touched`) that changed since the baseline (`candidate_ids`, i.e. `changed_claim_ids` for that question)
+goes into a `rollup` unit — a `kind="rollup"` object carrying id *sets* (`rollup_source_ids`, `rollup_claim_ids`,
+`rollup_claim_evidence_ids`, plus the full candidate row dicts and, since the relevance-gating fix below,
+`relevant_claim_ids`) instead of a per-claim narrative. Rollup units are filtered out of `all_units` before
+`_merge`/`_attach_plan_impact`/sort and aggregated separately in `for_conversation()`, via **set union across every
+question** (so a Claim touched by three questions counts once), into the response's `rollups` block:
+`{sources_changed, findings_added, claims_added_or_updated, claim_evidence_added}` (`findings_added` computed by a
+single bulk query over `project_notes` for the earliest Approximate `answered_at`, minus ids already explicit). The
+counts are **never silently discarded**: `nothing_new` is `False` whenever any rollup count is non-zero even if
+`material_changes`/`supporting_changes` are both empty. Only one Claim-level signal is strong enough to survive
+Approximate mode's honesty limit and get promoted out of the rollup into an explicit `claim_transition` unit
+directly: `decision_impact()`-proven Master Plan citation — called once per conversation on the union of every
+rollup's candidates (not once per question, for the same reason as fix 2). As of the relevance-gating fix below,
+that promotion additionally requires the Claim to be independently relevant to that specific question (plan impact
+alone is not conversation relevance — see next entry). Gates:
+`test_approximate_mode_rolls_up_unproven_claim_churn_instead_of_flooding_material_changes`,
+`test_approximate_mode_plan_impacting_claim_still_surfaces_explicitly` (`tests/test_chr1_conversation_delta.py`).
+
+**5. Relevance gating for `contradicts` and `resolves_gap` (Approximate mode) (2026-09-18, Kyle's second
+correction).** Fix 4 stopped ordinary Claim churn from flooding `material_changes`, but `contradicts` and
+`resolves_gap` still used the full `touched` set (built from `touch_sources = shown_source_ids | newly_available`,
+i.e. source-touch fan-out, unioned with topical-overlap matches) as their relevance proxy — "never aggregate a
+contradiction or resolved gap" had been read as "never filter one by relevance either," which let a real but
+project-wide contradiction or resolved research question (reached only via a brand-new, never-cited source) get
+reported as if this specific legacy conversation had learned it. Kyle's correction: *"important to the project is
+not automatically important to this conversation... A contradiction can be extremely important to the project and
+still have nothing to do with the conversation I opened."* `touched` (source-touch-or-overlap union, used for
+*what changed*) is now split from a narrower `relevant_claim_ids` (used for *what's connectable to this question*,
+Approximate mode only) built from exactly two deterministic signals: (1) the Claim's evidence touches a source
+`shown_source_ids` — i.e. a source **this old answer demonstrably cited/saw** (not the wider `touch_sources`, which
+also includes brand-new sources the old answer could never have seen); (2) the Claim's own text passes
+`claims.overlap(retrieval_query, claim.text) >= OVERLAP_THRESHOLD` against the same grounded `retrieval_query`
+`§3`/`§6` already use elsewhere (never the raw follow-up text — a short "What about taxes?" is grounded through the
+prior turn before this test runs). Plan impact is deliberately **not** a third signal into `relevant_claim_ids` —
+*"Plan impact increases the importance of a relevant change. It does not establish conversation relevance by
+itself"* — so fix 4's promotion path now intersects `plan_true_ids` with the *same question's* `relevant_claim_ids`
+before promoting a rollup candidate to an explicit `claim_transition`. `resolves_gap`'s existing gate
+(`tgt["claim_id"] not in <relevant set> and overlap(retrieval_query, tgt["question"]) < THRESHOLD → skip`) needed
+one further correction while implementing this: a target with **no** `claim_id` at all was previously included
+unconditionally (the `and`-chain short-circuited on the falsy `claim_id`), which is the identical bug in miniature
+— fixed so a claim-less target must independently pass the topical test on its own question text. Exact mode is
+untouched by any of this — its `touched_for_tensions` stays the full `touched` set, because a real historical
+scope/claim_state snapshot is already a stronger relevance signal than either of Approximate mode's two proxies,
+and narrowing it further would weaken a mode that does not have Approximate mode's honesty gap. Gates (all in
+`tests/test_chr1_conversation_delta.py`, prefixed `test_gate<N>_...`): (1) an unrelated contradiction is not
+material; (2) a contradiction on a Claim whose text matches the retrieval query is material even from an
+uncited source; (3) a contradiction on the cited source is material despite weak text overlap; (4) an unrelated
+resolved target (no claim, no text overlap) is not material; (5) a resolved target whose question matches the
+retrieval query is material; (6) a resolved target linked to an independently-relevant Claim is material despite
+weak target-text overlap; (7) a plan-impacting-but-unrelated Claim does not become explicit solely because it
+affects the Plan; (8) Exact mode's contradiction/resolved-gap behaviour is unchanged (still ungated by relevance).
+
+**Real-corpus measurements, after all of the above** (Kyle's project `c752ed152ec942dd97b9a94c3f1b3b96` — 1,072
+sources, ~17.6k Claims, ~19.5k Findings; snapshot via the immutable copy discipline, never the live db):
+
+| conversation (real, Approximate mode) | cold `for_conversation` | material_changes | supporting_changes | `contradicts` | `resolves_gap` | `new_finding` | explicit unique Claims | `decision_impact`/`affected_items`/`explain` calls | response JSON |
+|---|---|---|---|---|---|---|---|---|---|
+| 3 questions  | 3.74 s  | 32  | 29  | 2  | 27  | 3 | 26  | 2 / 1 / 0 | 49.8 KB |
+| 10 questions | 5.33 s  | 328 | 99  | 48 | 255 | 25 | 267 | 2 / 1 / 0 | 1.30 MB |
+| 14 questions (largest real) | 12.78 s | 401 | 128 | 25 | 370 | 6 | 328 | 2 / 1 / 0 | 495 KB |
+
+Before fix 5 (relevance gating), the same three conversations reported `material_changes` of 1,585 / 612 / 1,744 —
+this pass's relevance gate is what drives the material_changes columns above down to 32 / 328 / 401 (`resolves_gap`
+is the majority of what remains and is now genuinely gated by relevance, not source-fan-out membership; a
+follow-up count without the doc's manual spot-check of that specific bucket has not been done and is a candidate
+for the next review, not assumed clean). `rollups` (not shown in the table — aggregate, not enumerated) stayed in
+the thousands-to-tens-of-thousands range across all three (e.g. 14q: `sources_changed=830, findings_added=16992,
+claims_added_or_updated=14265, claim_evidence_added=14264`) — an honest reflection of a project that has grown
+roughly 300x in scope since these chats' answers, reported as a count, never enumerated as individual units.
+
+**Cold time did not improve materially from fix 5** (12.78s for 14q vs. ~13.0s before it — expected, since fix 5 is
+a correctness/relevance change, not a performance one, per Kyle's "do not add another semantic shortcut simply to
+hit a latency number"). Profiling the 14q cold path (`cProfile`, `tests`/measurement script against the immutable
+snapshot) shows the dominant cost has moved: `_touched_claims_for_sources()` — now called **twice** per question
+(once for the broad `touch_sources` set, once for the narrower `shown_source_ids` set that fix 5's
+`relevant_claim_ids` needs) — accounts for ~7.1s of the 13.1s total (~54%), almost entirely `fetchall()` time on
+large `IN (...)` joins against `claim_evidence`/`project_claims` when `touch_sources` is large. `decision_impact()`
+(already batched to 2 calls/conversation) and `search_fts` (14 calls, one per question) are both well under 1s each
+and are not the next hotspot. **Not yet acted on** — this is a measurement to hand back for a decision, not an
+optimization made unilaterally: the second `_touched_claims_for_sources()` call (for `shown_source_ids`) could
+likely be satisfied by filtering the *existing* `touched` dict in memory for claims whose evidence touches
+`shown_source_ids` (avoiding a second DB round-trip) since `shown_source_ids ⊆ touch_sources` always holds, but
+that changes the meaning of the check subtly enough (a claim can be *in* `touched` via `newly_available`-sourced
+evidence for one row and via `shown_source_ids` evidence for another — an in-memory filter over `_touched_claims_for_sources`'s
+returned rows does not distinguish which source id matched) that it needs sign-off rather than a silent swap.
+
+Full suite (`tests/test_chr0_conversation_baseline.py` 8/8, `tests/test_chr1_conversation_delta.py` 32/32 including
+the 8 new relevance gates, `tests/test_k_retrieval_fixes.py` + `tests/test_s24_lost_chat_and_fk.py`, `test_core.py`
++ all `tchunk*` groups): green, apart from the same three pre-existing failures already on record above as
+belonging to a concurrent lane's uncommitted 0.63.94 UI work (`test_p1b_tonight_ui`'s hardcoded `ui-version` meta
+value, `test_s68` ×2) — confirmed unrelated: none of those three tests touch `conversation_delta.py`, `qa.py`, or
+any file this pass changed.
+
+**Not yet done:** `git commit` + push of this hardening pass. Stopping here for review before CHR2, as instructed.

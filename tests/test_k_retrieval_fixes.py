@@ -179,6 +179,70 @@ def test_follow_up_query_is_grounded_in_the_previous_question():
     assert qa._retrieval_query("what about it?", []) == "what about it?"                      # nothing to ground on
 
 
+# ---------------------------------------------------------------- history/retrieval_query ordering bug (Kyle, 2026-09-18)
+#
+# qa.ask() used to fetch `history = db.get_messages(conversation_id, limit=12)` AFTER the current question had
+# already been saved via db.save_message(). _retrieval_query()'s "previous substantive user message" lookup then
+# found the CURRENT question instead of the true previous one, producing a self-duplicated retrieval_query (e.g.
+# "What about taxes?\nWhat about taxes?") for every follow-up, and duplicating the current question in the provider
+# messages too (once via `history`, once via the explicit question turn appended further down). Fixed by moving the
+# history fetch to before the save. These tests are the regression gates for that fix — independent of CHR1, which
+# now trusts this stored value as its routing query (fix #2).
+
+def test_first_question_has_no_history_and_its_retrieval_query_is_itself_not_duplicated():
+    pid, _ = _golden()
+    conv = db.new_id()
+    res = qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    msgs = db.get_messages(conv, limit=10)
+    assistant_row = next(m for m in reversed(msgs) if m["role"] == "assistant")
+    rq = ((assistant_row.get("meta") or {}).get("evidence") or {}).get("retrieval_query")
+    assert rq == "What are the seller financing terms typically offered?"                       # no history to ground on, no self-duplication
+
+
+def test_contextual_followup_is_grounded_by_the_true_prior_turn_not_itself():
+    pid, _ = _golden()
+    conv = db.new_id()
+    qa.ask("How does SBA seller financing work for a service business acquisition?", project_id=pid, conversation_id=conv)
+    q2 = "What about taxes?"
+    qa.ask(q2, project_id=pid, conversation_id=conv)
+    msgs = db.get_messages(conv, limit=10)
+    assistant_row = msgs[-1]
+    rq = ((assistant_row.get("meta") or {}).get("evidence") or {}).get("retrieval_query")
+    assert rq != f"{q2}\n{q2}"                                                                 # not self-duplicated (the bug)
+    assert rq != q2 and "seller financing" in rq.lower()                                        # grounded by Q1, not bare
+
+
+def test_provider_sees_the_current_question_exactly_once_not_duplicated_via_history(monkeypatch):
+    pid, _ = _golden()
+    conv = db.new_id()
+    qa.ask("How does SBA seller financing work for a service business acquisition?", project_id=pid, conversation_id=conv)
+    calls = []
+    from neurosearch import providers
+    real_invoke = providers.invoke
+    def spy(task, **kw):
+        calls.append(kw)
+        return real_invoke(task, **kw)
+    monkeypatch.setattr(providers, "invoke", spy)
+    q2 = "What about taxes?"
+    qa.ask(q2, project_id=pid, conversation_id=conv)
+    assert calls, "providers.invoke was not called"
+    sent = calls[0]["messages"]
+    occurrences = sum(1 for m in sent if m["role"] == "user" and q2 in (m["content"] if isinstance(m["content"], str) else ""))
+    assert occurrences == 1, f"the current question must appear exactly once in the provider messages, saw {occurrences}"
+
+
+def test_link_only_early_return_still_records_the_real_question_and_a_zero_hit_snapshot():
+    pid, _ = _golden()
+    conv = db.new_id()
+    res = qa.ask("https://youtu.be/abc123xyz00", project_id=pid, conversation_id=conv)
+    msgs = db.get_messages(conv, limit=10)
+    user_row = next(m for m in msgs if m["role"] == "user")
+    assistant_row = next(m for m in msgs if m["role"] == "assistant")
+    ev = (assistant_row.get("meta") or {}).get("evidence") or {}
+    assert ev.get("question_message_id") == user_row["id"]
+    assert ev.get("shown_chunk_ids") == []
+
+
 # ---------------------------------------------------------------- PDF reflow
 
 def test_word_per_line_pdf_pages_are_reflowed_and_prose_is_untouched():
