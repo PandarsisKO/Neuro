@@ -114,6 +114,11 @@ def test_a_target_folded_as_a_duplicate_is_not_reopened_by_the_next_pass(fresh):
     open_ids = [t["id"] for t in knowledge.list_targets(pid, status="open") if t["claim_id"] == c["id"]]
     assert folded[0]["id"] not in open_ids and open_ids, "the folded duplicate stays folded; its survivor stays open"
     assert knowledge.dedupe_targets(pid) == 0
+    for tg in knowledge.list_targets(pid):                              # the refresh() step that erased the reason
+        knowledge.assess_target(tg["id"])
+    assert knowledge.get_target(folded[0]["id"])["gap"].startswith(knowledge.DUPLICATE_GAP_PREFIX)
     rev = db.project_research_revision(pid)
     knowledge.detect(pid); knowledge.dedupe_targets(pid)                 # a second pass is a no-op end to end
+    for tg in knowledge.list_targets(pid):
+        knowledge.assess_target(tg["id"])
     assert db.project_research_revision(pid) == rev

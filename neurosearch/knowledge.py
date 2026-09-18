@@ -119,6 +119,10 @@ def _claim_for_target(tg: dict[str, Any]) -> dict[str, Any] | None:
 def assess_target(target_id: str) -> dict[str, Any] | None:
     """Closure is evaluated against the linked/matching Claim's evidence, with the target's own rule."""
     tg = get_target(target_id)
+    if tg and tg["status"] == "dropped":
+        # a dropped target is not being pursued: nothing shows its gap, and re-deriving it here overwrote the
+        # "duplicate of target …" reason dedupe_targets records, so detect() re-opened it on the next pass (S72)
+        return tg
     if not tg:
         return None
     rule = tg.get("closure_rule") or {}
