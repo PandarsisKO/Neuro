@@ -97,12 +97,15 @@ def test_conversation_seen_chunks_are_never_flagged_as_new_excerpt():
     assert not (proposed_chunks & shown)
 
 
-def test_new_claim_evidence_on_old_source_reports_transition_from_last_known_state():
+def test_new_claim_created_after_baseline_reports_new_claim_not_a_fabricated_transition():
+    """Kyle's correction (2026-09-18, part B): a Claim with no entry in THIS question's own claim_state has no
+    known prior state to compare against — it is new to this answer, never a fabricated "changed from None"
+    claim_transition. This Claim's evidence touches the OLD/shown source, so it is still relevant and still
+    surfaces — just under the honest category."""
     pid = _golden()
     sid = evals.load_golden()["sources"]["yt01"]
     conv = db.create_conversation(pid)["id"]
     qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
-    baseline_ts = cd._questions(conv)[0]["answered_at"]
     c = claims.add_claim(pid, "Standby seller notes typically run five years with no payments in year one.", claim_type="market")
     time.sleep(0.01)
     claims.add_evidence(c["id"], sid, locator="1:00", excerpt="five year standby note")   # OLD source, new evidence, after baseline
@@ -111,8 +114,9 @@ def test_new_claim_evidence_on_old_source_reports_transition_from_last_known_sta
     delta = cd.for_conversation(conv, pid)
     unit = next((u for u in delta["material_changes"] + delta["supporting_changes"] if u.get("claim_id") == c["id"]), None)
     assert unit is not None
-    assert unit["category"] in ("claim_transition", "plan_impact")
+    assert unit["category"] in ("new_claim", "plan_impact")
     assert unit["current_state"][0] == "developing"
+    assert unit["previous_state"] is None
 
 
 def test_contradiction_ranks_above_corroboration():
@@ -418,9 +422,9 @@ def test_approximate_mode_plan_impacting_claim_still_surfaces_explicitly():
     assert any(u.get("claim_id") == c["id"] for u in all_units)
 
 
-def _insert_target(pid, question, *, claim_id=None, status="satisfied", updated_at=None):
-    import time as _t
+def _insert_target(pid, question, *, claim_id=None, status="satisfied", created_at=None, updated_at=None):
     t = updated_at if updated_at is not None else db.now()
+    c = created_at if created_at is not None else t   # default: created now too (created-after-baseline pattern)
     tid = db.new_id()
     with db.tx() as conn:
         conn.execute(
@@ -428,7 +432,7 @@ def _insert_target(pid, question, *, claim_id=None, status="satisfied", updated_
             "preferred_classes, closure, closure_rule, status, origin, gap, created_at, updated_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (tid, pid, question, "topic", claim_id, "corroborative", "[]", "closure", "{}", status, "system",
-             None, t - 100, t))
+             None, c, t))
     return tid
 
 
@@ -577,6 +581,193 @@ def test_gate8_exact_mode_contradiction_and_resolved_gap_behavior_stays_unfilter
     all_units = delta["material_changes"] + delta["supporting_changes"]
     assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
     assert any(u.get("target_id") == tid for u in all_units)
+
+
+# --- Kyle's THIRD correction (2026-09-18): resolves_gap target-status honesty, per-question Claim baselines,
+# Exact-mode relevance narrowing, and "seen elsewhere" annotation instead of silent drop. ---
+
+def test_gateA1_dropped_target_after_baseline_is_not_resolves_gap():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are typical seller financing standby note terms?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="dropped")
+    delta = cd.for_conversation(conv, pid)
+    assert not any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateA2_closed_by_user_target_is_not_resolves_gap():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are typical seller financing standby note terms?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="closed_by_user")
+    delta = cd.for_conversation(conv, pid)
+    assert not any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateA3_target_open_in_v4_baseline_and_satisfied_afterward_surfaces():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="open")
+    qa.ask("What are typical seller financing standby note terms?", project_id=pid, conversation_id=conv)
+    ev = cd._questions(conv)[0]
+    assert ev["open_evidence_target_ids"] is not None and tid in ev["open_evidence_target_ids"]
+    time.sleep(0.01)
+    with db.tx() as conn:
+        conn.execute("UPDATE project_evidence_targets SET status='satisfied', updated_at=? WHERE id=?", (db.now(), tid))
+    delta = cd.for_conversation(conv, pid)
+    assert any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateA4_already_satisfied_before_baseline_does_not_surface_as_newly_resolved():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are typical seller financing standby note terms?", project_id=pid, conversation_id=conv)
+    since = cd._questions(conv)[0]["answered_at"]
+    # inserted AFTER the baseline read but BACKDATED to before it, and only after qa.ask() has already run its own
+    # target assessment for this question -- avoids qa.ask's own evidence-target reassessment machinery touching
+    # a target that already existed at ask time (an unrelated side effect, not part of what this gate tests).
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="satisfied",
+                         created_at=since - 1000, updated_at=since - 1000)
+    ev = cd._questions(conv)[0]
+    assert tid not in (ev["open_evidence_target_ids"] or set())   # was already satisfied, never "open" at baseline
+    time.sleep(0.01)
+    with db.tx() as conn:   # touched later (e.g. gap notes re-assessed) without ever re-opening
+        conn.execute("UPDATE project_evidence_targets SET updated_at=? WHERE id=?", (db.now(), tid))
+    delta = cd.for_conversation(conv, pid)
+    assert not any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateA5_target_created_and_satisfied_after_exact_baseline_surfaces():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are typical seller financing standby note terms?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="satisfied")
+    delta = cd.for_conversation(conv, pid)
+    assert any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateA6_approximate_baseline_never_fabricates_resolution_from_updated_at_alone():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    db.save_message(conv, "user", "What are typical seller financing standby note terms?", project_id=pid)
+    db.save_message(conv, "assistant", "an old answer", citations=[], project_id=pid, meta={"generation": {}})
+    before = db.now()
+    tid = _insert_target(pid, "What are typical seller financing standby note terms?", status="satisfied",
+                         created_at=before - 1000, updated_at=before - 1000)   # already satisfied BEFORE the baseline
+    time.sleep(0.01)
+    with db.tx() as conn:   # touched again after the baseline, but never re-opened -- updated_at alone must not fabricate a resolution
+        conn.execute("UPDATE project_evidence_targets SET updated_at=? WHERE id=?", (db.now(), tid))
+    delta = cd.for_conversation(conv, pid)
+    assert not any(u.get("target_id") == tid for u in delta["material_changes"] + delta["supporting_changes"])
+
+
+def test_gateB_earlier_questions_claim_transition_is_not_erased_by_a_later_questions_snapshot():
+    """Kyle's correction (2026-09-18, part B): prev must come from THIS question's own claim_state, never from
+    conversation_last_known_claim_state() (the latest state seen anywhere), or an earlier question's real A->B
+    transition disappears once a later question's snapshot happens to record the post-change state B."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    c = claims.add_claim(pid, "Seller notes typically run five years.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="1:00", excerpt="five years")
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # Q1
+    q1 = cd._questions(conv)[0]
+    q1_id, state_a = q1["question_message_id"], q1["claim_state"][c["id"]]
+    time.sleep(0.01)
+    db.connect().execute("UPDATE project_claims SET strength='strong', updated_at=? WHERE id=?", (db.now(), c["id"]))
+    db.connect().commit()
+    time.sleep(0.01)
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # Q2, same topic -> re-cites sid, its own snapshot now records state B
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    unit = next((u for u in all_units if u.get("claim_id") == c["id"]), None)
+    assert unit is not None, "Q1's A->B transition must not disappear"
+    assert unit["category"] in ("claim_transition", "plan_impact")
+    assert unit["previous_state"] == state_a          # compared against Q1's OWN baseline, not Q2's later state
+    assert unit["current_state"][0] == "strong"
+    assert any(t["question_message_id"] == q1_id for t in unit["touches_questions"])
+
+
+def test_gateC1_exact_mode_contradiction_on_unrelated_newly_attached_source_does_not_surface():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    other_sid = _new_source(pid, "Unrelated cooking video", "Today we are making a lasagna with fresh basil and ricotta.")
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "The recipe calls for fresh basil and ricotta cheese.", claim_type="market")
+    claims.add_evidence(c["id"], other_sid, locator="0:05", excerpt="basil and ricotta")
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    assert delta["mode"] == "exact"
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert not any(u.get("claim_id") == c["id"] for u in all_units)
+
+
+def test_gateC2_exact_mode_contradiction_via_fts_hit_on_new_source_surfaces():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    fts_sid = _new_source(pid, "Another seller financing video",
+                          "This video covers seller financing standby note terms and typical structures in detail.")
+    time.sleep(0.01)
+    from neurosearch.search import search_fts
+    assert search_fts("What are the seller financing terms typically offered?", source_ids=[fts_sid]), \
+        "fixture sanity: the new source must be FTS-findable for this test to mean anything"
+    c = claims.add_claim(pid, "The presenter recommends a specific microphone brand for recording.", claim_type="market")
+    claims.add_evidence(c["id"], fts_sid, locator="0:05", excerpt="microphone brand mention")
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
+
+
+def test_gateC3_exact_mode_contradiction_on_claim_matching_retrieval_query_surfaces():
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    other_sid = _new_source(pid, "Unrelated cooking video", "Today we are making a lasagna with fresh basil and ricotta.")
+    time.sleep(0.01)
+    c = claims.add_claim(pid, "Seller financing notes typically carry a five year standby term.", claim_type="market")
+    claims.add_evidence(c["id"], other_sid, locator="0:05", excerpt="unrelated evidence source")
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert any(u.get("claim_id") == c["id"] and u["category"] == "contradicts" for u in all_units)
+
+
+def test_gateD_new_excerpt_seen_later_in_chat_still_associates_with_earlier_question():
+    """Kyle's correction (2026-09-18, part D): dropping a chunk from new_excerpt just because a LATER question in
+    the same chat also happened to show it repeats the whole-chat-baseline mistake -- it is still a genuine
+    post-baseline change relevant to the EARLIER question. Annotate, never discard."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # Q1
+    q1_id = cd._questions(conv)[0]["question_message_id"]
+    new_sid = _new_source(pid, "New seller financing standby video",
+                          "This new source discusses seller financing standby note structures extensively.")
+    time.sleep(0.01)
+    from neurosearch.search import search_fts
+    hits = search_fts("What are the seller financing terms typically offered?", source_ids=[new_sid])
+    assert hits, "fixture sanity: the new source must be FTS-findable for this test to mean anything"
+    chunk_id = hits[0]["chunk_id"]
+    # fabricate a later turn in the SAME conversation whose snapshot already shows this chunk (Q2)
+    q2_id = db.save_message(conv, "user", "A second, later question in this same chat.", project_id=pid)
+    db.save_message(conv, "assistant", "a later answer", citations=[{"source_id": new_sid}], project_id=pid, meta={
+        "generation": {}, "evidence": {
+            "v": cd.SNAPSHOT_VERSION, "complete": True, "answered_at": db.now(), "retrieval_query": "irrelevant to this test",
+            "scope_source_ids": [], "scope_source_revisions": {}, "shown_chunk_ids": [chunk_id], "shown_source_ids": [new_sid],
+            "full_context": False, "question_message_id": q2_id, "research_revision": None, "max_claim_evidence_id": None,
+            "claim_state": {}, "open_evidence_target_ids": [],
+        }})
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    hits_for_q1 = [u for u in all_units if u["kind"] == "new_excerpt" and u.get("source_id") == new_sid
+                  and any(t["question_message_id"] == q1_id for t in u["touches_questions"])]
+    assert hits_for_q1, "the excerpt from the new source must still be associated with Q1, not silently dropped"
+    assert any(u.get("already_seen_elsewhere_in_chat") for u in hits_for_q1)
 
 
 def test_delta_endpoint_smoke():

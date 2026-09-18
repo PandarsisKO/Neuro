@@ -75,7 +75,8 @@ def test_successful_turn_records_shown_scope_query_and_question_id():
     assert set(ev["shown_source_ids"]) == {h["source_id"] for h in res["hits"]}
     assert ev["research_revision"] == db.project_research_revision(pid)
     assert isinstance(ev["max_claim_evidence_id"], int)
-    assert ev["full_context"] in (True, False) and ev["v"] == 2 and ev["complete"] is True
+    assert ev["full_context"] in (True, False) and ev["v"] == 4 and ev["complete"] is True
+    assert set(ev["scope_source_revisions"]) <= set(ev["scope_source_ids"])
     assert db.conversation_baseline(conv)["message_id"] == row["id"]
 
 

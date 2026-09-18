@@ -19,11 +19,18 @@ from . import db
 
 log = logging.getLogger(__name__)
 
-SNAPSHOT_VERSION = 3   # v3 (2026-09-18): adds "scope_source_revisions" — see below, on top of v2's "complete".
-                       # A v1 snapshot (neither key) is treated as complete for backward compatibility; CHR1 only
-                       # downgrades a snapshot that EXPLICITLY says complete=False. A v1/v2 snapshot (no revision
-                       # map) falls back to the old updated_at>answered_at heuristic for "did this source get
-                       # re-transcribed" specifically — everything else about that question can still be exact.
+SNAPSHOT_VERSION = 4   # v4 (2026-09-18): adds "open_evidence_target_ids" — the id set of every
+                       # project_evidence_target that was OPEN at answer time, on top of v3's "scope_source_revisions"
+                       # and v2's "complete". Without this, CHR1 could not tell "this research target was open when
+                       # the answer was given and is satisfied now" (a real resolution) from "this target was
+                       # already satisfied and something else about it was touched later" (not a resolution at
+                       # all) — see conversation_delta.delta_for_question's resolves_gap section. A v1-v3 snapshot
+                       # (no key) falls back to a more conservative rule there (created-after-baseline only).
+                       # A v1 snapshot (neither "complete" nor revision/target keys) is treated as complete for
+                       # backward compatibility; CHR1 only downgrades a snapshot that EXPLICITLY says
+                       # complete=False. A v1/v2 snapshot (no revision map) falls back to the old
+                       # updated_at>answered_at heuristic for "did this source get re-transcribed" specifically —
+                       # everything else about that question can still be exact.
 
 
 def evidence_snapshot(*, project_id: str | None, scope_source_ids: list[str] | None, retrieval_query: str,
@@ -51,6 +58,7 @@ def evidence_snapshot(*, project_id: str | None, scope_source_ids: list[str] | N
         "research_revision": None,
         "max_claim_evidence_id": None,
         "claim_state": {},
+        "open_evidence_target_ids": [],
     }
     if not project_id:
         return snap   # no project: nothing further to gather, and nothing failed — still complete
@@ -88,6 +96,16 @@ def evidence_snapshot(*, project_id: str | None, scope_source_ids: list[str] | N
             snap["claim_state"] = {r["id"]: [r["strength"], r["freshness_status"], r["status"], r["application"]] for r in rows}
     except Exception as e:  # noqa: BLE001
         log.warning("evidence snapshot: claim state unavailable: %s", e)
+        snap["complete"] = False
+    try:
+        # v4 (Kyle, 2026-09-18): which research targets were OPEN right now, at answer time — the historical
+        # baseline that lets a later Exact-mode delta PROVE a target transitioned open→satisfied after this
+        # answer, instead of guessing from updated_at (which a satisfied target's unrelated field edits also move).
+        rows = db.connect().execute(
+            "SELECT id FROM project_evidence_targets WHERE project_id=? AND status='open'", (project_id,)).fetchall()
+        snap["open_evidence_target_ids"] = [r["id"] for r in rows]
+    except Exception as e:  # noqa: BLE001
+        log.warning("evidence snapshot: open evidence targets unavailable: %s", e)
         snap["complete"] = False
     return snap
 
@@ -149,6 +167,9 @@ CATEGORY_ORDER = {                # plan §6 — lower sorts first; recency brea
     "new_finding": 4,
     "new_excerpt": 5,
     "corroborates": 6,
+    "new_claim": 7,   # Exact mode, Kyle's 2026-09-18 correction: a Claim newly relevant to THIS answer with no
+                       # provable prior state in its own snapshot — never a fabricated "changed from None"
+                       # transition, so it sorts as supporting evidence rather than a proven material change.
 }
 
 
@@ -227,6 +248,12 @@ def _questions(conversation_id: str) -> list[dict[str, Any]]:
             "shown_chunk_ids": set(ev["shown_chunk_ids"]) if exact and ev else None,
             "shown_source_ids": set(ev["shown_source_ids"]) if ev else {c.get("source_id") for c in answer["citations"] if c.get("source_id")},
             "claim_state": ev.get("claim_state", {}) if exact and ev else {},
+            # v4+ only (Kyle, 2026-09-18): None means "no historical open-target baseline available" (v1-v3 exact
+            # snapshot, or Approximate mode) -- delta_for_question's resolves_gap section falls back to a more
+            # conservative rule in that case. Deliberately keyed on the field's PRESENCE, not just "exact", since
+            # an exact v1-v3 snapshot has no such record either.
+            "open_evidence_target_ids": (set(ev["open_evidence_target_ids"])
+                                         if exact and ev and "open_evidence_target_ids" in ev else None),
         })
     return out
 
@@ -325,17 +352,26 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
                     (*no_baseline_rev, since)).fetchall()}
                 newly_available |= revised
 
-    # category: new relevant excerpt (6) — FTS-only, $0, from newly-available sources, minus what this
-    # conversation has already been shown anywhere (epistemic newness)
+    # category: new relevant excerpt (6) — FTS-only, $0, from newly-available sources. `fts_hit_source_ids` doubles
+    # as a relevance signal below (Kyle, 2026-09-18, part C): a newly-available source that actually produced a
+    # topical hit for THIS question is a stronger relevance proof than mere membership in `newly_available`.
+    fts_hit_source_ids: set[str] = set()
     if newly_available and q["retrieval_query"].strip():
         from .search import search_fts
         for h in search_fts(q["retrieval_query"], limit=FTS_PER_QUESTION_LIMIT, source_ids=sorted(newly_available)):
-            if h["chunk_id"] in conversation_seen:
-                continue
+            fts_hit_source_ids.add(h["source_id"])
+            # Kyle's correction, 2026-09-18 (part D): this used to `continue` (drop the unit) whenever the chunk
+            # was already in `conversation_seen` — the whole-chat union of every successful snapshot's shown
+            # chunks. That repeats the whole-chat-baseline mistake CHR1 was built to avoid: a chunk absent from
+            # THIS question's own snapshot is still a genuine post-baseline change relevant to THIS question, even
+            # if a LATER question in the same chat happened to also surface it (e.g. new evidence that would have
+            # changed Q1's answer, which Q2 — asked afterward — separately picked up). Annotate, never discard.
+            already_seen_elsewhere = h["chunk_id"] in conversation_seen
             units.append({"kind": "new_excerpt", "category": "new_excerpt", "question_message_id": q["question_message_id"],
                          "question": q["question"], "source_id": h["source_id"], "chunk_ids": [h["chunk_id"]],
                          "why_relevant": "matches this question against newly available material", "locator": h.get("timestamp"),
-                         "title": h.get("title"), "text": h["text"][:300]})
+                         "title": h.get("title"), "text": h["text"][:300],
+                         "already_seen_elsewhere_in_chat": already_seen_elsewhere})
 
     # category: new Finding (5), overlap-routed — old OR new sources, both allowed (plan §3)
     findings = conn.execute(
@@ -352,7 +388,11 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
                      "question": q["question"], "finding_id": f["id"], "source_id": f["source_id"],
                      "why_relevant": f"overlap={round(ov, 2)} with this question", "text": f["content"][:400]})
 
-    # candidate Claim set: touched by shown/newly-available sources OR overlaps the question text
+    # `touched` = changed_claim_ids' row data: everything touched by shown/newly-available sources OR overlapping
+    # the question text. This is the CHANGED set (Kyle's §5 separation) — deliberately broad, feeding the
+    # Approximate rollup's aggregate counts and the Exact claim-transition scan below. It is NOT itself a relevance
+    # signal (see relevant_claim_ids, next) — a Claim reached only via a brand-new, never-cited, topically-unrelated
+    # source is "changed" but not necessarily "relevant to this conversation."
     touch_sources = (q.get("shown_source_ids") or set()) | newly_available
     touched = dict(_touched_claims_for_sources(project_id, touch_sources))
     for r in conn.execute("SELECT * FROM project_claims WHERE project_id=? AND updated_at>?", (project_id, since)).fetchall():
@@ -379,28 +419,78 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
                 (*chunk, max_ce_id)).fetchall():
             claims_with_new_evidence.add(r["claim_id"])
 
+    # relevant_claim_ids (Kyle, 2026-09-18, second AND third correction): "important to the project is not
+    # automatically important to this conversation" — and this now applies to BOTH modes, not just Approximate.
+    # `touched` (above) answers "what changed"; this answers "what's connectable to THIS question." Built from:
+    #   1. the Claim's evidence touches a source THIS question's answer actually cited/saw (shown_source_ids —
+    #      not the wider touch_sources, which also includes brand-new sources the answer could never have seen);
+    #   2. (Exact mode only) the Claim was part of THIS answer's own recorded claim_state — a real historical fact,
+    #      strictly stronger than mere source-touch, and the reason Exact mode does not need weak lexical overlap
+    #      to trust a historically-known Claim (Kyle: "remains relevant even with weak lexical overlap");
+    #   3. the Claim's evidence touches a newly-available source that produced an ACTUAL FTS hit for this
+    #      question's retrieval_query — mere membership in `newly_available` does not count (that was the bug: a
+    #      Claim on an unrelated brand-new source is not "relevant" just because the source happens to be new);
+    #   4. the Claim's own text passes the same topical-overlap test used for retrieval-query routing elsewhere.
+    # Plan impact is deliberately NOT a signal here — "Plan impact increases the importance of a relevant change.
+    # It does not establish conversation relevance by itself" — so it is applied downstream, in for_conversation(),
+    # as an intersection with this set, never as an alternate way into it.
+    shown_touched = dict(_touched_claims_for_sources(project_id, q.get("shown_source_ids") or set()))
+    relevant_claim_ids = set(shown_touched.keys())
+    if q["mode"] == "exact":
+        relevant_claim_ids |= set(q["claim_state"].keys())
+    if fts_hit_source_ids:
+        relevant_claim_ids |= set(_touched_claims_for_sources(project_id, fts_hit_source_ids).keys())
+    for cid, c in touched.items():
+        if cid in relevant_claim_ids:
+            continue
+        if _claims.overlap(q["retrieval_query"], c["text"]) >= OVERLAP_THRESHOLD:
+            relevant_claim_ids.add(cid)
+
     if q["mode"] == "exact":
         # Exact mode: the baseline's claim_state snapshot is real (CHR0 recorded it at answer time), so a
-        # prev/cur comparison is a genuine epistemic signal — unchanged.
-        for cid, c in touched.items():
+        # prev/cur comparison against THIS answer's own snapshot is a genuine epistemic signal.
+        for cid in touched.keys() & relevant_claim_ids:
+            c = touched[cid]
             if c["updated_at"] <= since:
                 continue
-            prev = last_known_claim_state.get(cid) or q["claim_state"].get(cid)
+            # Kyle's correction, 2026-09-18 (part B): previous state must come from THIS QUESTION's own
+            # claim_state, never from last_known_claim_state (the latest state seen ANYWHERE in the conversation,
+            # folded chronologically). The old code did `last_known_claim_state.get(cid) or q["claim_state"].get(cid)`
+            # — if a LATER question (e.g. Q2) already recorded the Claim's current state, that later state would
+            # silently stand in as "previous" for an EARLIER question's (Q1's) own comparison, making Q1's own
+            # A→B transition compare B against B and disappear. `last_known_claim_state` is now used only as an
+            # annotation (did some other turn in this chat already see this outcome?), never as a substitute for
+            # what this specific answer actually knew.
+            previous_for_this_answer = q["claim_state"].get(cid)
+            latest_seen_elsewhere = last_known_claim_state.get(cid)
             cur = [c["strength"], c["freshness_status"], c["status"], c["application"]]
             has_new_evidence = cid in claims_with_new_evidence   # new evidence attached since the baseline?
-            # Epistemic newness for a Claim: prev is None when the conversation's baseline predates the Claim's
-            # own creation, which is exactly "the conversation has never seen this Claim" — treated as a
-            # transition (from nothing known to something known), not mere corroboration of an already-known state.
-            transitioned = prev != cur
+            if previous_for_this_answer is None:
+                # Kyle's correction, 2026-09-18: prev=None does NOT necessarily mean "the conversation's baseline
+                # predates the Claim's own creation" — it may simply mean THIS answer's own snapshot never
+                # captured this Claim (e.g. it becomes relevant only now, via a newly-available source's FTS hit or
+                # topical overlap). That is real, but it is "new to this answer," not a proven A→B transition — a
+                # transition needs two known states to compare, and fabricating "changed from None" overstates what
+                # is actually known. A separate category keeps the API semantics honest.
+                units.append({"kind": "claim", "category": "new_claim", "question_message_id": q["question_message_id"],
+                             "question": q["question"], "claim_id": cid, "previous_state": None, "current_state": cur,
+                             "relation": "new", "already_seen_elsewhere_in_chat": latest_seen_elsewhere is not None,
+                             "why_relevant": f'Claim "{c["text"][:100]}" is newly relevant to this answer'})
+                continue
+            transitioned = previous_for_this_answer != cur
             if not transitioned and not has_new_evidence:
                 continue
             relation = "changes" if transitioned else "corroborates"
             category = "claim_transition" if transitioned else "corroborates"
+            # annotation only (Kyle, part B): the SAME resulting state may already have been recorded by a later
+            # question in this chat — worth telling the reader, but it must never suppress THIS question's own
+            # transition unit.
+            already_seen_elsewhere = latest_seen_elsewhere is not None and latest_seen_elsewhere == cur
             units.append({"kind": "claim", "category": category, "question_message_id": q["question_message_id"],
-                         "question": q["question"], "claim_id": cid, "previous_state": prev, "current_state": cur,
-                         "relation": relation, "why_relevant": f'Claim "{c["text"][:100]}" ' + (
-                             f"changed: {prev} → {cur}" if transitioned else "gained new evidence")})
-        touched_for_tensions = set(touched.keys())
+                         "question": q["question"], "claim_id": cid, "previous_state": previous_for_this_answer,
+                         "current_state": cur, "relation": relation, "already_seen_elsewhere_in_chat": already_seen_elsewhere,
+                         "why_relevant": f'Claim "{c["text"][:100]}" ' + (
+                             f"changed: {previous_for_this_answer} → {cur}" if transitioned else "gained new evidence")})
     else:
         # Approximate mode, CORRECTED (Kyle, 2026-09-18): prev=None here does NOT mean "the conversation never
         # knew this Claim" — a legacy/pre-CHR0 answer carries no claim_state snapshot at all, so prev is simply
@@ -409,11 +499,8 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
         # "claim_transition" unit: 16,000+ of them for a single real legacy chat, each then feeding an expensive
         # plan-impact lookup (measured: 90+ minutes cold for one chat open).
         # Only deterministic, provable signals earn an explicit unit here: an open contradiction/tension (handled
-        # separately, below — unaffected by this change, since it never used prev/cur) and a batch-verified
-        # Master Plan citation, via the same decision_impact() bulk seam _attach_plan_impact uses downstream —
-        # called here, on the already source-narrowed `touched` set, so a Claim that genuinely matters to the
-        # current plan still surfaces explicitly even from a legacy chat. Everything else — ordinary post-baseline
-        # Claim activity with no provable relevance to THIS conversation — is real, but not something approximate
+        # separately, below) and a batch-verified Master Plan citation on a Claim that is ALSO independently
+        # relevant (relevant_claim_ids, computed above) — everything else is real, but not something Approximate
         # mode can honestly attribute to "this changed what you were told." It is counted, not enumerated (one
         # cheap rollup unit below carries the id sets), so CHR2 never receives thousands of near-identical objects
         # to collapse, and this function never allocates a per-claim dict for the ones that get rolled up.
@@ -426,74 +513,63 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
         # makes exactly one decision_impact() call for the whole delta.
         candidate_ids = {cid for cid, c in touched.items() if c["updated_at"] > since}   # changed_claim_ids
         rollup_ce_ids = claims_with_new_evidence
-
-        # relevant_claim_ids (Kyle, 2026-09-18, second correction): "important to the project is not automatically
-        # important to this conversation." `touched` conflates two different things -- claims reached via
-        # touch_sources (shown_source_ids UNION newly_available sources) and claims reached via topical overlap --
-        # and `newly_available` in particular is sources that showed up or changed AFTER this answer, so a Claim
-        # touched only through `newly_available` was never something "this old answer demonstrably cited/saw." Using
-        # that broad `touched` membership as a stand-in for conversation-relevance is what let a genuinely important
-        # but conversation-unrelated contradiction or resolved research question get surfaced as a chat-specific
-        # delta. relevant_claim_ids is deliberately narrower and built only from Kyle's two deterministic signals:
-        #   1. the Claim's evidence touches a source THIS OLD ANSWER actually cited/saw (shown_source_ids, not the
-        #      wider touch_sources -- a Claim reached only via a brand-new source has no historical connection to
-        #      what this conversation discussed);
-        #   2. the Claim's own text passes the same topical-overlap test already used for retrieval-query routing
-        #      elsewhere in this function.
-        # Plan impact is NOT a third signal here on purpose -- "Plan impact increases the importance of a relevant
-        # change. It does not establish conversation relevance by itself" -- so it is applied downstream, in
-        # for_conversation(), as an intersection with this set, never as an alternate way into it.
-        shown_touched = dict(_touched_claims_for_sources(project_id, q.get("shown_source_ids") or set()))
-        relevant_claim_ids = set(shown_touched.keys())
-        for cid, c in touched.items():
-            if cid in relevant_claim_ids:
-                continue
-            if _claims.overlap(q["retrieval_query"], c["text"]) >= OVERLAP_THRESHOLD:
-                relevant_claim_ids.add(cid)
-
         if candidate_ids or rollup_ce_ids or newly_available:
             units.append({"kind": "rollup", "category": "rollup", "question_message_id": q["question_message_id"],
                          "question": q["question"], "rollup_source_ids": set(newly_available),
                          "rollup_claim_ids": candidate_ids, "rollup_claim_evidence_ids": rollup_ce_ids,
                          "candidate_claims": {cid: touched[cid] for cid in candidate_ids},
                          "relevant_claim_ids": relevant_claim_ids})
-        # NOTE (Kyle, 2026-09-18, SUPERSEDES the prior note here): contradictions and resolved evidence targets/
-        # gaps are on Kyle's "never aggregate" list -- meaning a genuinely relevant one is never rolled up into a
-        # count -- but "never aggregate" is not the same claim as "never filter by relevance," and conflating the
-        # two was the actual bug: it let project-wide research activity (a contradiction or resolved gap on a Claim
-        # this conversation never touched, reached only through a same-project source-fan-out) masquerade as a
-        # chat-specific change. Approximate mode now gates both categories on relevant_claim_ids (built above from
-        # demonstrable citation + topical overlap only, never from raw touch_sources/newly_available membership or
-        # from plan impact) instead of the full `touched` set. Exact mode is untouched below -- it has a real
-        # historical claim_state/scope snapshot, so `touched` there already only reflects what that answer could
-        # actually know, and narrowing it further would weaken a mode that already has stronger evidence.
-        touched_for_tensions = relevant_claim_ids
 
-    # category: contradiction / reversal — open tensions on a touched Claim, created after the baseline
-    if touched_for_tensions:
-        marks = ",".join("?" * len(touched_for_tensions))
+    # category: contradiction / reversal — open tensions on a RELEVANT Claim, created after the baseline.
+    # relevant_claim_ids is now the gate for BOTH modes (Kyle, 2026-09-18, part C: "important to the project is
+    # not automatically important to this conversation" applies to Exact mode too — a Claim reached only via an
+    # unrelated newly-available source is not conversation-relevant merely because the source is new). Exact mode
+    # is not weakened by this: its relevant_claim_ids includes every Claim this answer's own claim_state actually
+    # recorded, unconditionally, which is a strictly stronger signal than Approximate mode has access to.
+    if relevant_claim_ids:
+        marks = ",".join("?" * len(relevant_claim_ids))
         for t in conn.execute(
             f"SELECT * FROM research_tensions WHERE project_id=? AND claim_id IN ({marks}) AND status='open' AND created_at>?",
-            (project_id, *touched_for_tensions, since)).fetchall():
+            (project_id, *relevant_claim_ids, since)).fetchall():
             units.append({"kind": "tension", "category": "contradicts", "question_message_id": q["question_message_id"],
                          "question": q["question"], "claim_id": t["claim_id"], "tension_id": t["id"], "relation": "contradicts",
                          "why_relevant": f"a new open {t['kind'].lower()} tension appeared on a Claim this answer relied on"})
 
-    # category: resolved evidence target / gap. Same relevance gate as the tensions loop above: `touched_for_tensions`
-    # is the full touched set in Exact mode (already narrow) and the topically-filtered subset in Approximate mode
-    # (bare source-touch membership is not itself a relevance signal there — measured problem, see above).
+    # category: resolved evidence target / gap.
+    # Kyle's correction, 2026-09-18 (part A): `status<>'open'` is NOT "resolved." project_evidence_targets has
+    # four statuses -- open, satisfied, closed_by_user, dropped. `dropped` is used for dedup/tension cleanup, not
+    # evidence Neuro produced; `closed_by_user` is a user action, not Neuro resolving a research question. Only
+    # `status='satisfied'` represents the evidence machinery actually closing a gap, so resolves_gap must never be
+    # emitted for the other two regardless of relevance.
+    # A second issue: even `status='satisfied' AND updated_at>since` does not PROVE the target transitioned from
+    # open to satisfied after this answer -- a previously-satisfied target's other fields (gap notes,
+    # current_evidence) can be touched later without re-opening it. A v4 snapshot records `open_evidence_target_ids`
+    # at answer time, so Exact mode with a v4+ baseline can prove the transition directly: the target was open at
+    # answer time AND is satisfied now. A target created after the answer and satisfied since is provable without
+    # any baseline at all (the whole gap-and-resolution event happened after the baseline). Without a v4 baseline
+    # (v1-v3 Exact snapshots, or Approximate mode, which never had target-state bookkeeping) the only
+    # non-fabricated signal remains "created after this answer, satisfied now" -- `updated_at` alone is never
+    # trusted as proof of a transition there.
+    has_target_baseline = q.get("open_evidence_target_ids") is not None
+    open_baseline = q.get("open_evidence_target_ids") or set()
     for tgt in conn.execute(
-        "SELECT * FROM project_evidence_targets WHERE project_id=? AND status<>'open' AND updated_at>?",
+        "SELECT * FROM project_evidence_targets WHERE project_id=? AND status='satisfied' AND updated_at>?",
         (project_id, since)).fetchall():
+        if has_target_baseline:
+            provably_resolved = tgt["id"] in open_baseline or tgt["created_at"] > since
+        else:
+            provably_resolved = tgt["created_at"] > since
+        if not provably_resolved:
+            continue
         if tgt["claim_id"]:
             # linked to a Claim: include even with weak target-text overlap IF that Claim is itself relevant
-            # (touched_for_tensions); otherwise fall back to requiring the target's own question to overlap.
-            if tgt["claim_id"] not in touched_for_tensions and _claims.overlap(q["retrieval_query"], tgt["question"] or "") < OVERLAP_THRESHOLD:
+            # (relevant_claim_ids); otherwise fall back to requiring the target's own question to overlap.
+            if tgt["claim_id"] not in relevant_claim_ids and _claims.overlap(q["retrieval_query"], tgt["question"] or "") < OVERLAP_THRESHOLD:
                 continue
         else:
-            # no linked Claim at all (Kyle, 2026-09-18): the target text itself must pass the topical test — a
-            # claim-less target was previously included unconditionally here, which is exactly the same
-            # project-wide-activity-as-chat-relevance bug this gate exists to close for the linked-Claim case.
+            # no linked Claim at all: the target text itself must pass the topical test — a claim-less target was
+            # previously included unconditionally here, the same project-wide-activity-as-relevance bug fixed for
+            # the linked-Claim case.
             if _claims.overlap(q["retrieval_query"], tgt["question"] or "") < OVERLAP_THRESHOLD:
                 continue
         units.append({"kind": "evidence_target", "category": "resolves_gap", "question_message_id": q["question_message_id"],
@@ -647,7 +723,7 @@ def for_conversation(conversation_id: str, project_id: str | None = None) -> dic
     modes = {q["mode"] for q in questions}
     mode = "exact" if modes == {"exact"} else "approximate" if modes == {"approximate"} else "mixed"
     material = [u for u in merged if u["category"] in ("contradicts", "plan_impact", "claim_transition", "resolves_gap", "new_finding")]
-    supporting = [u for u in merged if u["category"] in ("new_excerpt", "corroborates")]
+    supporting = [u for u in merged if u["category"] in ("new_excerpt", "corroborates", "new_claim")]
 
     # count new sources that never surfaced any unit — the "15 sources added, none matched" message
     surfaced_sources = {u.get("source_id") for u in merged if u.get("source_id")}

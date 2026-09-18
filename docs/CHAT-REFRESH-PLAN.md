@@ -427,7 +427,7 @@ and all `tchunk*` groups) apart from three pre-existing failures belonging to a 
 `git show da0b2d7` is CHR0+CHR1's first cut as pushed. Everything below happened after that push, in review of the
 first cut, and is implemented in the working tree only as of this record.
 
-### CHR1 hardening pass (2026-09-18, post-`da0b2d7`, NOT yet committed/pushed)
+### CHR1 hardening pass, first round — shipped, pushed (`7016f14`)
 
 **1. `qa.py` history-ordering fix.** `qa.ask()` fetched `history = db.get_messages(conversation_id, limit=12)`
 *after* the current question was already saved, so `_retrieval_query()`'s "previous user message" lookup found the
@@ -563,4 +563,141 @@ belonging to a concurrent lane's uncommitted 0.63.94 UI work (`test_p1b_tonight_
 value, `test_s68` ×2) — confirmed unrelated: none of those three tests touch `conversation_delta.py`, `qa.py`, or
 any file this pass changed.
 
-**Not yet done:** `git commit` + push of this hardening pass. Stopping here for review before CHR2, as instructed.
+### CHR1 hardening pass, second round (2026-09-18, review of `7016f14`) — implemented in the working tree, NOT yet committed/pushed
+
+Kyle's review of `7016f14` found three further correctness problems, all in `conversation_delta.py`'s Exact-mode
+and target-resolution logic, none of which the first round's relevance gate had touched.
+
+**A. `resolves_gap`'s target-status query was factually wrong.** `status<>'open'` treated `dropped` (used for
+dedup/tension cleanup — not evidence Neuro produced) and `closed_by_user` (a user action) as "resolved," alongside
+the one status that actually means it: `satisfied`. `resolves_gap` now queries `status='satisfied'` only. A second,
+subtler issue: even `status='satisfied' AND updated_at>since` does not PROVE a target transitioned open→satisfied
+after the answer — a target satisfied long ago can have unrelated fields (gap notes, `current_evidence`) touched
+later without ever re-opening, which would keep bumping `updated_at`. Bumped the evidence snapshot to **v4**: it
+now records `open_evidence_target_ids` (every target that was `status='open'` at answer time, one batched query) so
+Exact mode can PROVE a resolution — target open in this question's own baseline AND satisfied now — instead of
+inferring one from a timestamp. A target created after the answer and satisfied since is provable without any
+baseline at all (the whole gap-and-resolution event happened after the baseline), so that path works even for a
+v1-v3 Exact snapshot or Approximate mode, which have no target-state bookkeeping at all; anything else in those
+older/Approximate cases is conservatively omitted rather than guessed from `updated_at`. On the real corpus this
+was a material contributor: `resolves_gap` for the 14-question legacy chat dropped from 370 to 69 (3q: 27→14, 10q:
+255→26) — a meaningful share of what remained after the first relevance-gate round was `dropped`/`closed_by_user`
+targets being reported as "resolved research questions." Gates (`tests/test_chr1_conversation_delta.py`,
+`test_gateA1`-`test_gateA6`): a `dropped` target after baseline is not `resolves_gap`; `closed_by_user` is not
+`resolves_gap`; a target open in a v4 baseline and satisfied afterward IS `resolves_gap`; a target already
+satisfied before the baseline but touched afterward is NOT newly resolved; a target created and satisfied after an
+Exact baseline IS `resolves_gap`; an Approximate/pre-v4 baseline never fabricates a resolution from `updated_at`
+alone.
+
+**B. Exact-mode Claim transitions could be silently erased by a later question's own snapshot.** The comparison was
+`prev = last_known_claim_state.get(cid) or q["claim_state"].get(cid)` — `last_known_claim_state` is the LATEST
+state seen anywhere in the whole conversation, folded chronologically across every question's snapshot. If Q1 knew
+state A, the Claim changed to B, and a LATER question Q2 happened to also see (and snapshot) state B, then Q1's own
+delta computation would compare B against B and the real A→B transition Q1 should report would silently vanish —
+exactly the whole-chat-baseline mistake CHR1's per-question design exists to prevent, reintroduced one level down.
+Fixed: the comparison now uses ONLY `q["claim_state"].get(cid)` — THIS question's own recorded prior state — never
+`last_known_claim_state`, which is now used solely as an annotation (`already_seen_elsewhere_in_chat`: did some
+other turn in this chat already record this same resulting state?) that can never suppress the unit itself. A
+related correction: `prev=None` does not necessarily mean "the conversation's baseline predates the Claim's own
+creation" — it may simply mean THIS answer's own snapshot never captured the Claim (e.g. it becomes relevant only
+now, via a newly-available source's FTS hit or topical overlap). A transition needs two known states to compare;
+fabricating "changed from None" overstated what's actually known. `prev=None` now produces a `new_claim` unit
+("newly relevant to this answer," `previous_state: null`) instead of a fabricated `claim_transition`. `new_claim`
+sorts as supporting evidence (`CATEGORY_ORDER` position 7, alongside `corroborates`), never material — it is not a
+proven change, just a real new connection. Gate: `test_gateB_earlier_questions_claim_transition_is_not_erased_by_a_later_questions_snapshot`
+(A recorded for Q1, Claim changes to B, Q2 later re-snapshots B, whole-chat delta still reports Q1's A→B
+transition with `previous_state==A`); `test_new_claim_created_after_baseline_reports_new_claim_not_a_fabricated_transition`
+(existing test renamed and re-asserted for the new category).
+
+**C. Exact mode had the identical over-broad relevance problem Approximate mode had, one round earlier.** The first
+relevance-gating round (Kyle's second correction) deliberately left Exact mode's `touched_for_tensions` as the
+full, unfiltered `touched` set — reasoned at the time as "a real historical snapshot is already a stronger
+signal." Kyle's review corrected this: `touched` in Exact mode was still built from
+`touch_sources = shown_source_ids | newly_available`, so *every* Claim attached to *every* newly-available source
+became eligible for contradictions/transitions/resolved gaps, whether or not that source (or Claim) had anything
+to do with the question — "important to the project is not automatically important to this conversation" applies
+to Exact mode too. `relevant_claim_ids` is now computed uniformly for BOTH modes (the mode-specific duplication
+from round one is gone) from: (1) evidence touching `shown_source_ids` (both modes); (2) **Exact mode only** —
+membership in this answer's own recorded `claim_state`, a real historical fact and the reason a historically-known
+Claim remains relevant even with weak lexical overlap; (3) evidence touching a newly-available source that
+produced an ACTUAL FTS hit for this question's `retrieval_query` (both modes — mere membership in `newly_available`
+does not count, only a source that is provably topically relevant to this exact question); (4) the Claim's own
+text passing the topical-overlap test (both modes). `touched` (the broader, "changed" set) is now used only where
+Kyle's §5 separation intends it — the Approximate rollup's aggregate counts and the Exact claim-transition scan's
+candidate pool — never as the relevance test itself, in either mode. Exact mode is not weakened by this: signal
+(2) is unconditional (no overlap test needed) and strictly stronger than anything Approximate mode has. Gates:
+`test_gateC1` (an unrelated newly-attached source's unrelated Claim's contradiction does NOT surface),
+`test_gateC2` (the same shape, but the new source produces an actual FTS hit for this question — the contradiction
+DOES surface), `test_gateC3` (a Claim whose text matches the retrieval query surfaces even via an unrelated new
+source), plus the existing `test_gate3`/`test_gate8`-family tests (a historically-cited-source Claim surfaces
+despite weak text overlap) confirming the historical signal still holds.
+
+**D. `new_excerpt` silently discarded evidence that a LATER question in the same chat had also shown.** The
+`if h["chunk_id"] in conversation_seen: continue` line used `conversation_seen_chunk_ids()` — the whole-chat union
+of every successful snapshot's shown chunks — as an exclusion filter. That is the same whole-chat-baseline mistake
+again: a chunk absent from THIS question's own snapshot is a genuine post-baseline change relevant to THIS
+question, even if a later question in the same chat happened to also surface it (e.g. evidence that would have
+changed Q1's answer, which Q2 — asked afterward — separately picked up). Fixed to annotate
+(`already_seen_elsewhere_in_chat: bool`) instead of dropping. Gate:
+`test_gateD_new_excerpt_seen_later_in_chat_still_associates_with_earlier_question` (a chunk absent from Q1,
+introduced after Q1, shown again in a fabricated Q2 snapshot — the whole-chat delta still reports it against Q1,
+annotated as seen elsewhere, never silently removed).
+
+**Real-corpus re-measurement, after A-D** (same three real legacy conversations, immutable snapshot):
+
+| conversation (real, Approximate mode) | cold `for_conversation` | material_changes | supporting_changes | `contradicts` | `resolves_gap` | `new_finding` | explicit unique Claims | response JSON |
+|---|---|---|---|---|---|---|---|---|
+| 3 questions  | 3.77 s  | 33  | 29  | 16 | 14 | 3  | 19 | 55.1 KB |
+| 10 questions | 5.33 s  | 110 | 99  | 59 | 26 | 25 | 66 | 589 KB |
+| 14 questions (largest real) | 12.75 s | 160 | 128 | 85 | 69 | 6  | 94 | 318 KB |
+
+`resolves_gap` fell sharply as predicted (14q: 370→69, 10q: 255→26, 3q: 27→14) — fix A's status filter was indeed
+the dominant contributor Kyle suspected. `contradicts` rose somewhat (14q: 25→85) for a legitimate reason, not a
+regression: `relevant_claim_ids` gained a real new signal in this round (the FTS-hit-source route, C.3 above) that
+applies to Approximate mode too, surfacing genuinely relevant contradictions the previous round's narrower signal
+set missed. Cold time is essentially unchanged (12.75s vs 12.78s for 14q) — expected, this round was correctness,
+not performance; the profiled hotspot is unchanged too, `_touched_claims_for_sources()` still ~55% of cold time
+(now called up to 3x per question instead of 2x, since C added a third call for `fts_hit_source_ids` when
+newly-available sources produced hits — a small, News-driven addition, not the dominant driver).
+
+**Synthetic Exact-mode benchmark, re-run after A-D** (throwaway `tempfile.mkdtemp()` data dir, 300 sources + 3,000
+Claims seeded, then another 300+3,000 after each conversation to simulate growth — never the live db or the
+snapshot):
+
+| conversation | cold `for_conversation` | material_changes | supporting_changes |
+|---|---|---|---|
+| 3 questions  | 118 ms | 0 | 3,012 |
+| 10 questions | 316 ms | 0 | 3,012 |
+| 14 questions (largest real shape) | 539 ms | 0 | 3,046 |
+
+**A new finding from this benchmark, reported rather than acted on:** all ~3,000 `supporting_changes` in each row
+are individual `new_claim` units, not an aggregate. This is a synthetic worst case by construction (every seeded
+Claim's text is built to topically match the seeded question, so all ~3,000 post-growth Claims pass the topical-
+overlap signal and are legitimately "new to this answer" per fix B), and there are currently zero real Exact-mode
+conversations in Kyle's corpus to check this against (all 47 real conversations predate CHR0). But the underlying
+gap is real: Exact mode's `new_claim` category has no rollup/aggregation analog to Approximate mode's — every
+`new_claim` becomes its own explicit unit, unbounded, unlike `claim_transition`/`contradicts`/`resolves_gap`, which
+stay individually enumerated by design because they are each a proven, specific signal. Whether a mature Exact-mode
+project could produce thousands of legitimately-topical `new_claim` units the same way a legacy Approximate chat
+produced thousands of ordinary Claim churn is untested against real data and not fixed here — flagged for CHR2
+review rather than addressed now, per "do not add another semantic shortcut simply to hit a latency number" (this
+is a volume/response-size question, not a latency one, and Exact mode has no real-corpus traffic yet to measure it
+against).
+
+**CHR2 latency recommendation (Kyle's part E — a product decision, not implemented here):** cold time for the
+largest real (Approximate) legacy chat remains ~12.75s after two full correctness passes; the dominant cost
+(`_touched_claims_for_sources()`, ~55%) is a measured, reported, NOT-yet-acted-on finding (see the first hardening
+round's profiling entry above) that needs sign-off, not a latency target to chase blindly. Recommendation: Exact
+chats (small, cache-friendly, no historical reconstruction needed) can run Conversation Delta automatically on
+chat open; legacy Approximate chats — cold, multi-second, and reconstructing history that was never recorded —
+should probably get a lazy "Check what's new" action instead of an automatic foreground computation on open. This
+is offered as input to a CHR2 design decision, not implemented in CHR1: CHR2 owns the question of when the delta
+computation actually runs.
+
+Full suite re-run after A-D: `tests/test_chr0_conversation_baseline.py` 8/8, `tests/test_chr1_conversation_delta.py`
+43/43 (32 from the first round + 11 new gates: A1-A6, B, C1-C3, D), `tests/test_k_retrieval_fixes.py` +
+`tests/test_s24_lost_chat_and_fk.py`, `test_core.py` + all `tchunk*` groups — green, apart from the same three
+pre-existing, unrelated failures on record above.
+
+**Not yet done:** `git commit` + push of this second hardening round. Stopping here for review before CHR2, as
+instructed.
