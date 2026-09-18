@@ -6378,3 +6378,29 @@ error is re-thrown.
 **Active-tab safety live test: PASS.** The TOCTOU fix holds under real browser timing, not just the mock
 harness. Send Screenshot acceptance matrix: cases 1-5 (all sub-cases) + the inserted active-tab safety check are
 done. Continuing to case 6 (same-origin navigate-away mid-capture).
+
+## Real gate-closing pass, part 19: Send Screenshot case 6 (same-origin navigate-away mid-capture) — PASS, one minor cosmetic issue deferred (2026-09-18)
+
+Live test: Kyle started a capture on a tall Wikipedia page, then clicked an internal link to a different
+article while capture was in progress. Confirmed in `background.js` beforehand that every tile re-verifies tab
+identity (`verifyTabIdentity(tabId, expectedIdentity)` at line 503, inside the tile loop, not just once at
+start) via `nsPageIdentity` (origin+pathname+search) — a same-origin navigation changes the pathname and trips
+the same `TabIdentityError` path as the active-tab case (part 18), just with a different message.
+
+Result: popup showed "The page navigated away while it was being captured, so nothing was sent." — exactly the
+expected message. `server.log`/`data/media/` confirmed zero new uploads, same clean fail-closed result as the
+active-tab test.
+
+One minor, non-blocking cosmetic issue found and confirmed live, Kyle's explicit call to defer rather than fix
+now: `restoreStylesAndScroll()` (called unconditionally in `runCapture`'s outer catch, part of the TOCTOU-fix
+discussion in parts 14/18) does not check whether the tab's current page still matches the one that was being
+captured before doing its final `scrollTo(origScrollX, origScrollY)`. After navigating away, this applies the
+OLD page's scroll offset to the NEW, unrelated page — Kyle confirmed the new page visibly "scrolled down before
+stopping" after landing. No safety/correctness impact (nothing was captured or uploaded either way, matching
+case 6's actual pass criteria) — purely a stray scroll jump on whatever page the user navigates to next. Left
+unfixed at Kyle's explicit instruction ("lets keep moving"); a real fix would gate the final `scrollTo` (and
+arguably the style/scrollbar restores too) on `nsPageIdentity(tab.url) === expectedIdentity` still holding at
+restore time.
+
+**Case 6: PASS** (fail-closed behavior; no evidence created). Deferred: stray scroll-jump-on-navigate-away
+cosmetic issue, not gating. Continuing to case 7 (drawer provenance — the last case in the matrix).
