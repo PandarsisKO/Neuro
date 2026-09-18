@@ -442,3 +442,70 @@ question. A dropped target is no longer re-assessed until something re-opens it.
 **Next, per Kyle's ladder:** R4 (durable partial work), then R5 — with the P0 invariant as the gate concurrency
 must pass. Owed, unchanged: push from the Mac; two visible windows; first live `harvest_claims` with the queue
 running.
+
+---
+
+## 10. Corrections (2026-09-17, 19:40 PT): R8 reconciled against its full contract; R4/R5 were already shipped
+
+### R8 — every written requirement, with evidence
+
+I wrote "R8, narrow" and "three rungs done" while only the job indexes had changed. Kyle asked for the whole
+written contract (SPEED-MISSION.md R8, HARDENING.md "R8 measured storage hygiene" and "R8 reversal") reconciled
+item by item. Evidence is the 14:22 PT verified backup copied into the session workspace (never the live file),
+the code, and today's `server.log`:
+
+| requirement | state | evidence |
+|---|---|---|
+| `cache_size` pragma | **satisfied (0.63.36)** | `db.SQLITE_CACHE_KIB = 64*1024`, set on every connection |
+| `mmap_size` pragma | **deliberately reverted to 0 (0.63.37)** | HARDENING "R8 reversal": three `fts5: corruption` reads after a sleep/wake with mmap on; observational test still open — "if corruption recurs across a sleep with mmap at 0, this hypothesis is wrong" |
+| `temp_store=MEMORY` | **satisfied** | set on every connection |
+| scheduled `ANALYZE` | **satisfied** | `db.ANALYZE_INTERVAL_S` = 7 days, housekeeping-owned; `kv storage:last_analyze` = 2026-09-11 18:54 UTC, 6.2 days old at the snapshot — due today; `sqlite_stat1` present, 79 rows |
+| WAL checkpoint policy | **satisfied** | `_housekeeping_loop` every 120 s, `checkpoint_wal` TRUNCATE past `WAL_CHECKPOINT_AT`, `journal_size_limit` 64 MB; seven checkpoints today (33–104 MB → 0) |
+| the four measured indexes | **present** | `ix_project_notes_project_status_source`, `ix_messages_conversation`, `ix_usage_kind_source`, `ix_jobs_kind_status`; `EXPLAIN QUERY PLAN` on the copy shows each production predicate SEARCHing its index |
+| query plans unchanged or better | **verified** | the four above, plus the new `ix_jobs_project_created` / `ix_jobs_kind_source_created` (§9); no plan regressed |
+| stuck `in_flight` invocation reaper | **satisfied (existing, not duplicated)** | `_resolve_job_inflight` at job finish + `_resolve_orphan_invocations` at startup; the copy has **0** `in_flight` rows and 148 `outcome_unknown` (the reaper's own marks); the 432 from 09-09 are gone |
+| expired-lease recovery | **satisfied** | `recover_expired_leases` at startup and every 60 s; the copy's 5 stale `running` rows are the five jobs interrupted by the 14:22 reload, re-queued at 14:22:12 ("re-queued 4 interrupted jobs"); live Health at 16:09: `stale_running 0, expired_leases 0` |
+| retention (`job_events`, `usage`, `invocations`) | **deliberately deferred, by the standing R8 decision** | `usage`/`invocations` are billing and execution evidence and are not deleted; `job_events` (344,696 rows, 10.1 days, 60 MB + 17 MB index) stays under non-destructive observation until 2026-10-11 17:28 PT, then a consumer inventory before any rollup |
+| connection memory / plan observation | non-blocking monitoring, as the contract says | unchanged |
+
+Nothing in R8 is silently outstanding. Two items are open by decision, each with its trigger written down: mmap
+(sleep/wake observation) and retention (2026-10-11).
+
+### R4 and R5 — already shipped; the ladder I wrote carried them as future work
+
+CLAUDE.md and HARDENING.md record R4 (durable work units, 0.63.40, 57 focused + 66-case recovery gate) and R5
+(bounded in-job concurrency, 0.63.41, 54 focused). §3's plan and §9's "next: R4 then R5" — and the re-ordered
+ladder I put at the top of SPEED-MISSION.md — repeated the 09-09 mission text without checking the 0.63.40/41
+entries two screens below it. Corrected here and in that note.
+
+**Kyle's second lock, audited against the shipped R4.** The mission's sketch `(window text, prompt version, task)`
+was never what shipped. `findings.work_unit_key` hashes the exact request: the system blocks (project name, brief,
+steering facts, source framing), the user message (window, part index/count, depth instruction), the full model
+contract (provider, model, local model, thinking, effort, max tokens, schema), execution policy/profile, source
+revision, brief revision, facts revision and depth. `claims.extraction_unit_key` hashes the system prompt, the
+group's user message (which embeds the project's brief/goal/questions), the contract, execution and the brief and
+facts revisions. The existing gate `tests/test_s46_r4_durable_units.py` already proved: crash after 1 and after 9
+of 10 → retry pays only the missing units; a changed brief cannot reuse or materialize old units; a source
+revision or model contract change invalidates; provider failure retries only the missing unit; concurrent exact
+duplicates compute once.
+
+Four gates added today to state the rule in Kyle's words (`test_s46`, 16 → 20 tests):
+- *same window, different project brief → different unit* (10 + 10 calls, disjoint keys);
+- *every steering input changes the key* — window, index, depth, brief (and restoring it restores the key), source
+  revision;
+- *9-of-10 retry produces the same artifact as an uninterrupted run* — summary, substance, status, input hash,
+  prompt version, model, depth and the notes compared field for field against a never-interrupted control;
+- *identity is the request, not the project row* — recorded as a **design fact for Kyle to confirm**: two projects
+  whose framing is identical word for word (same name, brief, facts) send the identical request and share units;
+  a one-character difference in the brief does not. That is literally "same hash ⇒ the same artifact would be
+  produced again", and it is not "same passage ⇒ already analyzed". If Kyle wants project identity itself in the
+  key (no sharing even between verbatim twins), it is one line in `work_unit_key` and a version bump of
+  `"work-unit-v1"`; I did not make that call.
+
+R5 is likewise shipped and gated (`test_s47_r5_concurrency.py`, 14 tests: attribution, cancellation, policy
+preservation, spend reservations, 7/12 crash with five-unit retry, ordering). The P0 invariant now stands beside
+it in CLAUDE.md; nothing about R5's bounds (2 local / 3 API / cap 4) was touched.
+
+**So the ladder after this rung is R9 (local-model benchmarking, R9(c) still open with its numeric revisit
+trigger) — and, per Kyle, below everything above it.** The higher-value open item from today's measurements
+remains the GIL floor (§9), which is a process-separation decision, not a rung on this ladder.

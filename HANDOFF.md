@@ -6253,3 +6253,17 @@ across two passes, 98 % hits; idle 266 ms. Residual spikes (5–8 s, ~2 per 10 m
 `assess_project`, measured and filed, not acted on. Gate `tests/test_s72_research_revision_stability.py`.
 Every change was validated live through the app's own API before the next; the live database was never opened.
 20 commits ahead of `origin/main`; push from the Mac still pending. Next: R4.
+
+## Corrections: R8 reconciled in full; R4/R5 were already shipped (Claude, 2026-09-17 19:40 PT)
+
+Kyle caught two things. (1) I had called R8 done after only the job indexes: audit §10 now reconciles every item
+of the written contract with evidence from the backup copy, the code and today's log — all satisfied except mmap
+(reverted by decision, observation open) and retention (deferred to 2026-10-11 by decision). (2) I planned "R4
+next" although R4/R5 shipped in 0.63.40/41 — my ladder text repeated the 09-09 mission without checking
+HARDENING. Audited the shipped R4 key against Kyle's identity rule ("same hash ⇒ the same artifact would be
+produced again"): it hashes the full request incl. project name/brief/steering/facts, contract, execution, source
+revision, depth — never the passage alone. Added four gates in `tests/test_s46_r4_durable_units.py` stating that
+rule (cross-project brief → different unit; every steering input moves the key; 9-of-10 retry == uninterrupted
+artifact; identity is the request). One design fact for Kyle: verbatim-twin projects (same name, brief, facts)
+share units — correct under the rule, one line to change if he wants project identity in the key. No runtime
+code changed in this pass.

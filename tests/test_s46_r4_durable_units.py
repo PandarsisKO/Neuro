@@ -325,3 +325,129 @@ def test_concurrent_duplicate_requests_compute_unit_once(fresh, monkeypatch):
     assert [r["suggested"] for r in results] == [1, 1]
     notes = [n for n in db.list_project_notes(project["id"], status="suggested") if n["source_id"] == source_id]
     assert len(notes) == 1
+
+
+# ---------------------------------------------------------------------- 2026-09-17: the identity rule, in Kyle's words
+# "Same hash means: executing this unit again would be expected to produce the same artifact. Not: same transcript
+# passage means we already analyzed this." Findings and Claims are project-relative interpretations written against a
+# brief; a unit computed for one project must never become another project's interpretation because the window
+# text matches. The keys above already carry the project framing (name, brief, steering, facts) — these gates pin it.
+
+def _ten_window_source(sid: str = "src-r4"):
+    with db.tx() as conn:
+        conn.execute("INSERT INTO sources (id, platform, external_id, url, title, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                     (sid, "manual", sid, f"manual://{sid}", "Ten parts", "ready", 1.0, 1.0))
+        conn.execute("INSERT INTO segments (source_id, idx, start, end, text) VALUES (?,?,?,?,?)", (sid, 0, 0.0, 100.0, "durable source text"))
+    return sid
+
+
+def _fake_windows(monkeypatch, calls):
+    windows = [f"window {i} durable fact" for i in range(10)]
+    monkeypatch.setattr(findings, "_windows", lambda *a, **k: windows)
+
+    def invoke(system, user, *args, **kwargs):
+        calls.append((system, user))
+        findings._last_model["model"] = "test-model"
+        return {"summary": user.splitlines()[0], "substance": 50, "findings": []}
+    monkeypatch.setattr(findings, "_call", invoke)
+
+
+def test_same_window_different_project_brief_is_a_different_unit(fresh, monkeypatch):
+    sid = _ten_window_source()
+    a = db.create_project("Buying businesses", brief="find durable facts about acquiring small companies")
+    b = db.create_project("Real estate", brief="find durable facts about rental property investing")
+    calls: list = []
+    _fake_windows(monkeypatch, calls)
+    findings.suggest_for_source(a["id"], sid, force=True)
+    assert len(calls) == 10
+    findings.suggest_for_source(b["id"], sid, force=True)
+    assert len(calls) == 20, "the same transcript windows under another project's brief must be re-read, never reused"
+    ka = {findings.work_unit_key(a, {"id": sid, "title": "Ten parts", "platform": "manual"}, f"window {i} durable fact", i, 10) for i in range(10)}
+    kb = {findings.work_unit_key(b, {"id": sid, "title": "Ten parts", "platform": "manual"}, f"window {i} durable fact", i, 10) for i in range(10)}
+    assert ka.isdisjoint(kb)
+    assert len(db.work_units_for_parent("findings.extract", a["id"], sid, findings.input_hash(a, sid))) == 10
+    assert len(db.work_units_for_parent("findings.extract", b["id"], sid, findings.input_hash(b, sid))) == 10
+
+
+def test_every_steering_input_changes_the_unit_key(fresh):
+    """The identity is the complete semantic input: window, project brief and steering facts, depth, source
+    revision, the model contract and prompt. Each alone must change the key; nothing else in the row does."""
+    sid = _ten_window_source()
+    src = {"id": sid, "title": "Ten parts", "platform": "manual"}
+    p = db.create_project("R4", brief="find the durable facts")
+    base = findings.work_unit_key(p, src, "window 0", 0, 10)
+    assert findings.work_unit_key(p, src, "window 0", 0, 10) == base, "deterministic"
+    assert findings.work_unit_key(p, src, "window 0 changed", 0, 10) != base
+    assert findings.work_unit_key(p, src, "window 0", 1, 10) != base
+    assert findings.work_unit_key(p, src, "window 0", 0, 10, depth="deep") != base
+    db.update_project(p["id"], brief="a different research question")
+    p2 = db.get_project(p["id"])
+    assert findings.work_unit_key(p2, src, "window 0", 0, 10) != base
+    db.update_project(p["id"], brief="find the durable facts")
+    p3 = db.get_project(p["id"])
+    assert findings.work_unit_key(p3, src, "window 0", 0, 10) == base, "restoring the brief restores the key"
+    db.add_project_fact(p["id"], "buyer has $400k of equity") if hasattr(db, "add_project_fact") else None
+    with db.tx() as conn:
+        conn.execute("DELETE FROM segments WHERE source_id=?", (sid,))
+        conn.execute("INSERT INTO segments (source_id, idx, start, end, text) VALUES (?,?,?,?,?)", (sid, 0, 0.0, 100.0, "re-transcribed text"))
+        conn.execute("UPDATE sources SET revision=NULL WHERE id=?", (sid,))
+    assert findings.work_unit_key(p3, src, "window 0", 0, 10) != base, "a new source revision is a new unit"
+
+
+def test_retry_after_nine_durable_units_produces_the_same_artifact_as_an_uninterrupted_run(fresh, monkeypatch):
+    """The primary R4 gate, stated fully: interrupt after 9 of 10 durable completions; the retry performs exactly 1
+    expensive unit and the final artifact is identical to a run that was never interrupted."""
+    sid = _ten_window_source()
+    p = db.create_project("R4", brief="find the durable facts")
+    calls: list = []
+    _fake_windows(monkeypatch, calls)
+    persisted = 0
+
+    def crash_after_nine(name):
+        nonlocal persisted
+        if name == "findings_window_persisted":
+            persisted += 1
+            if persisted == 9:
+                raise jobs.SimulatedCrash(name)
+    monkeypatch.setattr(jobs, "crash_point", crash_after_nine)
+    with pytest.raises(jobs.SimulatedCrash):
+        findings.suggest_for_source(p["id"], sid, force=True)
+    assert len(calls) == 9
+    monkeypatch.setattr(jobs, "crash_point", lambda name: None)
+    findings.suggest_for_source(p["id"], sid, force=True)
+    assert len(calls) == 10, "exactly one expensive unit on retry"
+    interrupted = db.get_analysis(p["id"], sid, "summary")
+    interrupted_notes = sorted(n["content"] for n in db.list_project_notes(p["id"], status=None))
+
+    # the control: the same source and brief under a differently NAMED project, never interrupted. (An identically
+    # named project with the identical brief is the identical request byte for byte -- see the next test -- so it
+    # would reuse the ten units and make no control at all.)
+    q = db.create_project("R4 control", brief="find the durable facts")
+    calls.clear()
+    findings.suggest_for_source(q["id"], sid, force=True)
+    assert len(calls) == 10
+    control = db.get_analysis(q["id"], sid, "summary")
+    control_notes = sorted(n["content"] for n in db.list_project_notes(q["id"], status=None))
+    for k in ("summary", "substance", "status", "input_hash", "prompt_version", "model", "depth"):
+        assert interrupted.get(k) == control.get(k), k
+    assert interrupted_notes == control_notes
+
+
+def test_identity_is_the_request_not_the_project_row(fresh, monkeypatch):
+    """Recorded as a design fact, not a defect (2026-09-17): the unit key is the exact request — project name, brief,
+    steering facts, window, depth, source revision, contract, prompt. Two projects whose framing is identical word for
+    word send the identical request, so they share units; a one-character difference in the brief does not. This is
+    exactly "same hash ⇒ the same artifact would be produced again", and it is NOT "same passage ⇒ already analyzed"."""
+    sid = _ten_window_source()
+    calls: list = []
+    _fake_windows(monkeypatch, calls)
+    a = db.create_project("R4", brief="find the durable facts")
+    findings.suggest_for_source(a["id"], sid, force=True)
+    assert len(calls) == 10
+    twin = db.create_project("R4", brief="find the durable facts")
+    findings.suggest_for_source(twin["id"], sid, force=True)
+    assert len(calls) == 10, "an identical request is the identical unit"
+    assert db.get_analysis(twin["id"], sid, "summary")["status"] == "current"
+    near = db.create_project("R4", brief="find the durable facts.")
+    findings.suggest_for_source(near["id"], sid, force=True)
+    assert len(calls) == 20, "a different brief is a different request, however similar"

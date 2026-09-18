@@ -7,8 +7,9 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 **SPEED — P0 closed, R8 closed, `/api/sources` cache-churn closed (2026-09-17, Kyle's ordering).** Record:
 `docs/SPEED-AUDIT-2026-09-17.md` §8–9. Under a continuous $0 research pass `/api/sources` is now p50 0.70 s /
 p90 0.86 s (was 5.2 / 13–34 s) with 98 % cache hits and zero revision movement across two full passes; New Chat
-p50 12 ms; writer peak 15 ms. Next in the ladder: **R4** durable partial work, then **R5** in-job concurrency
-gated on the P0 invariant (CLAUDE.md), then R9. Do not tune the P0 boundaries without a new measurement. Owed,
+p50 12 ms; writer peak 15 ms. R4 and R5 turned out to be already shipped (0.63.40/41) — audit §10 reconciles R8 in full and gates the shipped R4
+key against the project-relative identity rule; one design fact awaits Kyle's confirmation there (verbatim-twin
+projects share units). Remaining on the speed ladder: R9(c); the GIL floor is a separate process-separation decision. Do not tune the P0 boundaries without a new measurement. Owed,
 needing Kyle or the Mac: push (20 commits ahead of origin — Codex or a Mac-side agent), two visible windows,
 first live `harvest_claims` completion with the queue running.
 The Send Screenshot matrix below stays the other open effort; it was not touched.
