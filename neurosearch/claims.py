@@ -1175,6 +1175,10 @@ def request_harvest(project_id: str, reason: str) -> dict[str, Any] | None:
         "SELECT id FROM jobs WHERE kind=? AND status='queued' AND json_extract(payload, '$.project_id')=? LIMIT 1",
         (HARVEST_JOB_KIND, project_id)).fetchone()
     if row:
+        # touch it: `updated_at` is what tells a finishing harvest that this request arrived AFTER its last check,
+        # so the queued job must run rather than be absorbed (see run_harvest_job)
+        with db.tx() as conn:
+            conn.execute("UPDATE jobs SET updated_at=? WHERE id=? AND status='queued'", (db.now(), row["id"]))
         return db.get_job(row["id"])
     # `normal` lane, deliberately: "Pause background" holds the `slow`/`low` lanes (db.BACKGROUND_LANES) and the
     # paid kinds, and a $0 harvest is neither — before P0.2 it ran inline after every findings job whatever the
@@ -1198,16 +1202,42 @@ def run_harvest_job(payload: dict[str, Any], progress: Any = None) -> dict[str, 
         totals["created"] += r.get("created", 0)
         totals["merged"] += r.get("merged", 0)
         totals["passes"] += 1
+        checked_at = time.time()
         if not unharvested_note_ids(pid):
             break
     else:
         if unharvested_note_ids(pid):
             raise Yield(f"harvested {totals['created']} new Claims — more findings landed meanwhile, continuing")
+    # Kyle, 2026-09-18: "why does our progress window show 3× collecting claims from new findings? feels
+    # confusing/redundant." Every findings completion while a harvest is RUNNING queues another (a running job's
+    # snapshot cannot be trusted to see later notes — L-16), and each of those would then run to find nothing. This
+    # job just proved there is nothing left as of `checked_at`, so a queued sibling whose last request predates
+    # that check is absorbed here — marked done, with the reason — instead of running as a duplicate. A request
+    # that arrived after the check touched the sibling's `updated_at`, so it is NOT absorbed and runs: no note is
+    # ever lost, and the panel shows one harvest, not three.
+    totals["absorbed"] = _absorb_queued_harvests(pid, checked_at)
     try:
         maybe_extract(pid, reason)
     except Exception as e:  # noqa: BLE001 — the extraction decision must never fail the harvest
         log.warning("post-harvest extraction decision skipped: %s", e)
     return totals
+
+
+def _absorb_queued_harvests(project_id: str, checked_at: float) -> int:
+    """Finish queued harvest siblings that a completed harvest has just made redundant (see run_harvest_job)."""
+    from .jobs import _current
+    n = 0
+    with db.tx() as conn:
+        rows = conn.execute(
+            "SELECT id FROM jobs WHERE kind=? AND status='queued' AND json_extract(payload, '$.project_id')=? AND COALESCE(updated_at, created_at)<? AND id<>?",
+            (HARVEST_JOB_KIND, project_id, checked_at, _current.job_id or "")).fetchall()
+        for r in rows:
+            conn.execute("UPDATE jobs SET status='done', finished_at=?, updated_at=?, message=?, result=? WHERE id=? AND status='queued'",
+                         (db.now(), db.now(), "absorbed — the harvest that just finished found nothing left for this project",
+                          json.dumps({"absorbed_by": _current.job_id, "created": 0, "merged": 0}), r["id"]))
+            db.job_event(r["id"], "absorbed", conn=conn, by=_current.job_id)
+            n += 1
+    return n
 
 
 def maybe_extract(project_id: str, reason: str, force: bool = False) -> dict[str, Any] | None:

@@ -214,3 +214,43 @@ def test_a_review_the_person_approved_ingests_ahead_of_background_work(isolated)
     first = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-0")
     assert first and first["payload"]["source_id"] == mine and first["lane"] == "priority"
     assert db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-1")["id"] == earlier["id"]
+
+
+def test_a_finished_harvest_absorbs_queued_siblings_but_never_a_later_request(isolated):
+    """Kyle: 'why does our progress window show 3x collecting claims from new findings?' Duplicates queued while a
+    harvest ran are absorbed once it proves nothing is left — unless a request arrived after that proof."""
+    pid = _project_with_notes(2)
+    first = claims.request_harvest(pid, "a")
+    running = db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance")
+    assert running["id"] == first["id"]
+    stale_sibling = claims.request_harvest(pid, "b")                    # queued while the first runs
+    assert stale_sibling["id"] != first["id"]
+    # a THIRD request arriving after the running job's final check touches the queued sibling -> it must survive
+    late_sibling_id = stale_sibling["id"]
+    real_ids = claims.unharvested_note_ids
+    touched = {"done": False}
+
+    def check_then_late_request(p):
+        ids = real_ids(p)
+        if not ids and not touched["done"]:
+            touched["done"] = True
+            import time as _t; _t.sleep(0.01)
+            claims.request_harvest(p, "late")                          # lands AFTER checked_at: touches updated_at
+        return ids
+    import pytest as _pt
+    mp = _pt.MonkeyPatch()
+    mp.setattr(claims, "unharvested_note_ids", check_then_late_request)
+    try:
+        assert jobs.execute(running) == "done"
+    finally:
+        mp.undo()
+    assert db.get_job(late_sibling_id)["status"] == "queued", "a request after the final check must still run"
+    # now the plain case: a sibling queued before the check is absorbed
+    running2 = db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance")
+    assert running2["id"] == late_sibling_id
+    dup = claims.request_harvest(pid, "c")
+    assert jobs.execute(running2) == "done"
+    j = db.get_job(dup["id"])
+    assert j["status"] == "done" and j["message"].startswith("absorbed") and j["result"]["absorbed_by"] == late_sibling_id
+    assert db.get_job(late_sibling_id)["result"]["absorbed"] == 1
+    assert db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance") is None, "nothing redundant is left to run"
