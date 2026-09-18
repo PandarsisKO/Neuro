@@ -802,10 +802,20 @@ def assess(claim_id: str) -> dict[str, Any] | None:
         readiness, rwhy = "not_ready", f"evidence is {strength}"
     if fstatus == "stale" and readiness == "ready":
         readiness, rwhy = "not_ready", "evidence is strong but stale for this Claim's freshness class — re-verify first"
-    with db.tx() as conn:
-        conn.execute("UPDATE project_claims SET strength=?, strength_why=?, readiness=?, readiness_why=?, freshness_status=?, freshness_why=?, updated_at=? WHERE id=?",
-                     (strength, "; ".join(why), readiness, rwhy, fstatus, fwhy, now, claim_id))
-    return get(claim_id)
+    # Sources cache-churn (docs/SPEED-AUDIT-2026-09-17.md §8, 2026-09-17): this wrote every Claim on every pass,
+    # verdict changed or not, so `project_claims.MAX(updated_at)` — and with it `db.project_research_revision`,
+    # the key under every research-derived cache — moved on every `assess_project`, and `/api/sources` recomputed
+    # staleness, gap terms and 452 potential scores from cold each time (0 of 11,132 cache hits measured under a
+    # running research pass). A revision must move when the ANSWER changes, not when it was re-derived. Same
+    # values; only the no-op write is gone (17k fewer writes per pass on Kyle's project).
+    verdict = (strength, "; ".join(why), readiness, rwhy, fstatus, fwhy)
+    current = (c.get("strength"), c.get("strength_why"), c.get("readiness"), c.get("readiness_why"), c.get("freshness_status"), c.get("freshness_why"))
+    if verdict != current:
+        with db.tx() as conn:
+            conn.execute("UPDATE project_claims SET strength=?, strength_why=?, readiness=?, readiness_why=?, freshness_status=?, freshness_why=?, updated_at=? WHERE id=?",
+                         (*verdict, now, claim_id))
+        return get(claim_id)
+    return c
 
 
 def assess_project(project_id: str) -> int:

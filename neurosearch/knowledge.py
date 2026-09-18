@@ -265,11 +265,14 @@ def _upsert_tension(project_id: str, kind: str, claim_id: str | None, descriptio
                     related_claim_id: str | None = None) -> str:
     t = time.time()
     conn = db.connect()
-    row = conn.execute("SELECT id, status FROM research_tensions WHERE project_id=? AND kind=? AND claim_id IS ? AND COALESCE(related_claim_id,'')=?",
+    row = conn.execute("SELECT id, status, description, evidence, impact FROM research_tensions WHERE project_id=? AND kind=? AND claim_id IS ? AND COALESCE(related_claim_id,'')=?",
                        (project_id, kind, claim_id, related_claim_id or "")).fetchone()
+    ev_json = json.dumps(evidence)
+    if row and (row["description"], row["evidence"], row["impact"]) == (description, ev_json, impact):
+        return row["id"]                                   # same tension, same words: no write, no revision movement (S72)
     with db.tx() as c:
         if row:
-            c.execute("UPDATE research_tensions SET description=?, evidence=?, impact=?, updated_at=? WHERE id=?", (description, json.dumps(evidence), impact, t, row["id"]))
+            c.execute("UPDATE research_tensions SET description=?, evidence=?, impact=?, updated_at=? WHERE id=?", (description, ev_json, impact, t, row["id"]))
             return row["id"]
         tid = db.new_id()
         c.execute("INSERT INTO research_tensions (id, project_id, kind, claim_id, related_claim_id, description, evidence, impact, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -472,8 +475,8 @@ def refresh(project_id: str) -> dict[str, Any]:
         topics.setdefault(claim_topic.get((c or {}).get("id") or "") or (tsn.get("evidence") or {}).get("topic") or "general", {"claims": [], "targets": [], "tensions": []})["tensions"].append(tsn)
     t = time.time()
     nodes = []
-    with db.tx() as conn:
-        conn.execute("DELETE FROM project_knowledge_nodes WHERE project_id=?", (project_id,))
+    rows: list[tuple] = []
+    if True:                                                          # (indentation kept so the diff stays reviewable)
         for topic, g in topics.items():
             cs, tgs, tsns = g["claims"], [x for x in g["targets"] if x["status"] == "open"], g["tensions"]
             strong = [c for c in cs if c["strength"] == "strong"]
@@ -495,10 +498,25 @@ def refresh(project_id: str) -> dict[str, Any]:
                 state, why = "weak", lead["strength_why"] or "single or no support"
             if missing:
                 why += f"; missing {', '.join(missing)} perspective(s)"
-            conn.execute("INSERT INTO project_knowledge_nodes (project_id, topic, state, why, claims_total, claims_strong, targets_open, tensions_open, evidence_classes, missing_perspectives, updated_at) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (project_id, topic, state, why, len(cs), len(strong), len(tgs), len(tsns), json.dumps(classes), json.dumps(missing), t))
+            rows.append((project_id, topic, state, why, len(cs), len(strong), len(tgs), len(tsns), json.dumps(classes), json.dumps(missing)))
             nodes.append({"topic": topic, "state": state, "why": why, "claims_total": len(cs), "claims_strong": len(strong), "targets_open": len(tgs),
                           "tensions_open": len(tsns), "evidence_classes": classes, "missing_perspectives": missing})
+    # Sources cache-churn (docs/SPEED-AUDIT-2026-09-17.md §8): the nodes used to be deleted and re-inserted with a
+    # fresh `updated_at` on every refresh, so `project_knowledge_nodes.MAX(updated_at)` — part of
+    # `db.project_research_revision` — moved on every pass even when every node came out identical, retiring every
+    # research-derived cache for nothing. The table is rewritten only when the node set actually differs; an
+    # identical rebuild leaves the rows, their timestamps and the revision alone. (Decided outside the transaction,
+    # written in one short one — the P0 rule.)
+    existing = {r["topic"]: (r["state"], r["why"], r["claims_total"], r["claims_strong"], r["targets_open"], r["tensions_open"],
+                             r["evidence_classes"], r["missing_perspectives"])
+                for r in db.connect().execute("SELECT topic, state, why, claims_total, claims_strong, targets_open, tensions_open, evidence_classes, "
+                                              "missing_perspectives FROM project_knowledge_nodes WHERE project_id=?", (project_id,))}
+    wanted = {r[1]: r[2:] for r in rows}
+    if wanted != existing:
+        with db.tx() as conn:
+            conn.execute("DELETE FROM project_knowledge_nodes WHERE project_id=?", (project_id,))
+            conn.executemany("INSERT INTO project_knowledge_nodes (project_id, topic, state, why, claims_total, claims_strong, targets_open, tensions_open, "
+                             "evidence_classes, missing_perspectives, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", [(*r, t) for r in rows])
     order = {"strong": 0, "developing": 1, "weak": 2, "missing": 3}
     nodes.sort(key=lambda n: (order[n["state"]], n["topic"]))
     return {"nodes": nodes, "counts": {s: sum(1 for n in nodes if n["state"] == s) for s in NODE_STATES},
