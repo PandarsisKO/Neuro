@@ -44,6 +44,12 @@ def _project() -> str:
     for f in FACTS:
         db.add_project_note(pid, f, citations=[{"source_id": sid, "timestamp": "0:00", "snippet": "x"}], status="approved")
     claims.ensure(pid)                                                  # harvest + assess + map: the steady state
+    # every fingerprint component must be populated, or a churning writer hides behind an empty table
+    knowledge.add_target(pid, "Obtain the current SBA guarantee fee schedule from the SBA itself", origin="user", sufficiency="governing")
+    db.upsert_analysis(pid, sid, "summary", summary="one source, four durable facts", prompt_version="findings-test", input_hash="h1")
+    claims.ensure(pid)
+    parts = db.project_research_revision(pid).split("|")
+    assert all(not p_.startswith("0:") for p_ in parts[:5]), f"fixture leaves a fingerprint component empty: {parts}"
     return pid
 
 

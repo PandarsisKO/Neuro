@@ -152,6 +152,17 @@ def assess_target(target_id: str) -> dict[str, Any] | None:
     status = tg["status"]
     if status not in ("closed_by_user", "dropped"):
         status = "satisfied" if satisfied else "open"
+    # S72: write only when the assessment actually changed — this ran for every target on every research pass
+    # (6,774 on Kyle's project) and stamped `updated_at` each time, moving the research revision for nothing.
+    new_claim = tg.get("claim_id") or (c["id"] if c else None)
+    cur_ev = tg.get("current_evidence")
+    if isinstance(cur_ev, str):
+        try:
+            cur_ev = json.loads(cur_ev)
+        except ValueError:
+            cur_ev = None
+    if (tg.get("claim_id"), cur_ev, tg.get("gap"), tg["status"]) == (new_claim, summary, gap, status):
+        return tg
     with db.tx() as conn:
         conn.execute("UPDATE project_evidence_targets SET claim_id=COALESCE(claim_id, ?), current_evidence=?, gap=?, status=?, updated_at=? WHERE id=?",
                      (c["id"] if c else None, json.dumps(summary), gap, status, time.time(), target_id))
