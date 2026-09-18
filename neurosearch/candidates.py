@@ -25,7 +25,14 @@ from typing import Any
 from . import db
 from .config import int_env
 
-STATES = ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "user_dismissed", "duplicate", "acquired")
+# 2026-09-18 (Kyle): "if something ranks high 90+ and is members only, the app should remember it for the future.
+# Maybe the user would want to become a member for that content. But we obviously cannot ingest it." A gated video
+# is remembered as `needs_membership` with its relevance — never ingested, never resurfaced as available, never a
+# preference signal (it says nothing about what the person WANTS, only what YouTube allows), shown in the pool
+# with what it would take to get it. Any relevance is kept; the 90+ ones are the point.
+STATES = ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "user_dismissed", "duplicate", "acquired", "needs_membership")
+GATE_LABEL = {"members_only": "members-only — join the channel to make it ingestible", "premium": "YouTube Premium only",
+              "needs_auth": "needs a signed-in account"}
 LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
 CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document", "book": "book"}
 
@@ -596,7 +603,7 @@ def untapped_by_creator(project_id: str) -> dict[str, dict[str, Any]]:
         if srow["id"] in ids:
             bump(srow.get("channel"), "skipped")
     for c in list_for_project(project_id, limit=100000):
-        if c.get("state") in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
+        if c.get("state") in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "needs_membership"):
             bump(c.get("creator"), "candidates")
     for row in out.values():
         row["untapped"] = row["skipped"] + row["candidates"]
@@ -800,7 +807,7 @@ def _pool_items(project_id: str) -> list[dict[str, Any]]:
                                  WHERE l.project_id=? AND l.state='open' AND l.kind='evidence_target'""", (project_id,)).fetchall():
             links.setdefault(r["candidate_id"], []).append(r["question"] or "an open question")
         for c in list_for_project(project_id, limit=100000):
-            if c.get("state") not in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost"):
+            if c.get("state") not in ("available", "skipped_low_relevance", "skipped_limit", "skipped_cost", "needs_membership"):
                 continue
             score, fit, why = _potential(c.get("title") or "", c.get("description") or "", qs, vocab, c.get("relevance"), links.get(c["id"], []),
                                          creator=c.get("creator"), creator_stats=cy, want_classes=want_classes, qindex=qidx)
@@ -808,11 +815,14 @@ def _pool_items(project_id: str) -> list[dict[str, Any]]:
             known = ("found for an open question" if links.get(c["id"]) else f"seen in {origin.get('kind', 'exploration')}{(' of ' + str(origin.get('title'))) if origin.get('title') else ''}")
             if c.get("reason"):
                 known += f" · {c['reason']}"
+            gated = c.get("state") == "needs_membership"
+            actions = {"dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss", "body": {"project_id": project_id}, "label": "Not for this project"}}
+            if not gated:
+                actions["capture"] = {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire", "body": {"project_id": project_id}, "label": "Capture"}
             items.append({"kind": "candidate", "id": c["id"], "title": c.get("title") or c["url"], "url": c["url"], "creator": c.get("creator"), "published_at": c.get("published_at"),
                           "duration": c.get("duration"), "platform": c["platform"], "why_known": known, "relevance": c.get("relevance"), "relevance_why": c.get("relevance_why"),
                           "potential": score, "fits": fit, "why": why, "same_creator_as_priority": (c.get("creator") in prio_creators), "state": c.get("state"),
-                          "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire", "body": {"project_id": project_id}, "label": "Capture"},
-                                      "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss", "body": {"project_id": project_id}, "label": "Not for this project"}}})
+                          "actions": actions})
     return items
 
 

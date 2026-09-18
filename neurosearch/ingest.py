@@ -227,19 +227,24 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
         meta = _json.loads(db.kv_get(f"review:{collection_id}") or "{}")
     except ValueError:
         pass
-    rows = db.proposed_sources(collection_id)
+    pid = meta.get("project_id") or db.collection_project(collection_id)
+    # relevance is project-relative: fetched WITH the project so the Candidate Index remembers each unchosen row's
+    # score (before 2026-09-18 this was fetched first, without it, and every skipped candidate was filed scoreless)
+    rows = db.proposed_sources(collection_id, pid)
     chosen = set(source_ids) if source_ids is not None else {r["id"] for r in rows}
     started, dropped = 0, 0
-    pid = meta.get("project_id") or db.collection_project(collection_id)
     if pid:
         # G3: skipped ≠ forgotten. The Candidate Index keeps every proposal with WHY it was not selected; chosen ones resolve to their source.
         from . import candidates as _cand
         rel = {r["id"]: (r.get("relevance"), r.get("relevance_why")) for r in rows}
         _cand.mark_by_source(pid, [r["id"] for r in rows if r["id"] in chosen], "acquired", "selected in review", rel)
-        low = [r["id"] for r in rows if r["id"] not in chosen and r.get("relevance") is not None and r["relevance"] < _cand.LOW_RELEVANCE]
-        rest = [r["id"] for r in rows if r["id"] not in chosen and r["id"] not in low]
+        gated = [r for r in rows if r["id"] not in chosen and r.get("access_gate")]
+        low = [r["id"] for r in rows if r["id"] not in chosen and r.get("relevance") is not None and r["relevance"] < _cand.LOW_RELEVANCE and not r.get("access_gate")]
+        rest = [r["id"] for r in rows if r["id"] not in chosen and r["id"] not in low and not r.get("access_gate")]
         _cand.mark_by_source(pid, low, "skipped_low_relevance", "ranked below the relevance cutoff in review", rel)
         _cand.mark_by_source(pid, rest, "skipped_limit", "outside the number selected in review", rel)
+        for g in gated:                                            # remembered with its relevance; never ingestible as things stand
+            _cand.mark_by_source(pid, [g["id"]], "needs_membership", _cand.GATE_LABEL.get(g["access_gate"], g["access_gate"]), rel)
     for r in rows:
         if r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
@@ -544,6 +549,14 @@ def ingest_source(source_id: str, progress: Progress = _noop, cookies_file: str 
             raise
         log.exception("ingest failed for %s", source_id)
         db.set_source_status(source_id, "failed", str(e)[:1000])
+        try:
+            gate = (db.get_source(source_id) or {}).get("access_gate")
+            if gate:
+                from . import candidates as _cand
+                for pid_ in db.projects_for_source(source_id):
+                    _cand.mark_by_source(pid_, [source_id], "needs_membership", _cand.GATE_LABEL.get(gate, gate))
+        except Exception as e2:  # noqa: BLE001
+            log.warning("gate memory skipped: %s", e2)
         raise
 
 

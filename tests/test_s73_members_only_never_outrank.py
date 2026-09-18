@@ -39,6 +39,7 @@ def test_listing_availability_becomes_the_gate():
 def _collection_with(fresh_rows):
     coll = db.upsert_collection("channel", "chan", "https://www.youtube.com/@chan", "chan")
     pid = db.create_project("s73", brief="how to buy a small business")["id"]
+    db.kv_set(f"review:{coll['id']}", '{"project_id": "%s"}' % pid)             # what list_url records for the review
     ids = []
     for ext, title, gate, rel in fresh_rows:
         s = db.upsert_source(platform="youtube", external_id=ext, url=f"https://youtu.be/{ext}", title=title, status="proposed", access_gate=gate)
@@ -62,12 +63,47 @@ def test_gated_videos_sort_last_whatever_their_relevance(fresh):
         "every watchable video precedes every gated one; within each group relevance still orders"
 
 
-def test_gated_videos_are_never_sent_to_the_ranker(fresh):
+def test_gated_videos_are_ranked_so_their_relevance_can_be_remembered(fresh):
+    """Kyle: 'if something ranks high 90+ and is members only, the app should remember it.' It is ranked like any
+    other row (its score is the memory) — the ordering and the review card, not the ranker, keep it last."""
     coll, pid, ids = _collection_with([("a", "public", None, None), ("b", "members", "members_only", None), ("c", "public 2", None, None)])
     rows = db.proposed_sources(coll, pid)
     pool, rest = relevance._pool(rows)
-    assert {r["external_id"] for r in pool} == {"a", "c"}
-    assert [r["external_id"] for r in rest] == ["b"]
+    assert {r["external_id"] for r in pool} == {"a", "b", "c"} and rest == []
+
+
+def test_an_unchosen_gated_video_is_remembered_as_needs_membership_with_its_relevance(fresh):
+    from neurosearch import candidates, ingest
+    coll, pid, (pub, gated) = _collection_with([("a", "public", None, 70), ("b", "members-only gem", "members_only", 95)])
+    # the listing's Candidate Index rows, as ingest.list_url would have left them
+    candidates.remember([{"external_id": "a", "url": "https://youtu.be/a", "title": "public"},
+                         {"external_id": "b", "url": "https://youtu.be/b", "title": "members-only gem"}], "youtube", pid, {"kind": "channel", "title": "chan"})
+    ingest.approve_proposed(coll, [pub])                         # the person took the public one; the gem was unticked
+    rows = candidates.list_for_project(pid, state="needs_membership")
+    assert [r["external_id"] for r in rows] == ["b"]
+    assert rows[0]["relevance"] == 95 and "join the channel" in (rows[0]["reason"] or "")
+    assert db.get_source(gated) is None, "the proposed source row is dropped like any unchosen proposal; the memory is the candidate"
+    # the pool shows it with its score and no capture action; it is never a preference signal
+    pool = candidates.pool(pid)
+    item = next(i for i in pool["items"] if i.get("id") == rows[0]["id"])
+    assert item["state"] == "needs_membership" and "capture" not in item["actions"] and "dismiss" in item["actions"]
+    assert "needs_membership" not in candidates.DISPOSITION_STATES
+
+
+def test_a_chosen_gated_video_whose_download_is_refused_is_remembered_too(fresh, monkeypatch):
+    from neurosearch import candidates, ingest
+    pid = db.create_project("s73b", brief="b")["id"]
+    s = db.upsert_source(platform="youtube", external_id="m", url="https://youtu.be/m", title="gem", status="pending")
+    db.add_project_sources(pid, [s["id"]])
+    candidates.remember([{"external_id": "m", "url": "https://youtu.be/m", "title": "gem"}], "youtube", pid, {"kind": "channel"})
+    def refuse(*a, **k):
+        raise RuntimeError("[youtube] m: Join this channel to get access to members-only content like this video, and other exclusive perks.")
+    monkeypatch.setattr(ingest.media, "fetch_info", refuse)
+    with pytest.raises(Exception):
+        ingest.ingest_source(s["id"])
+    row = db.get_source(s["id"])
+    assert row["status"] == "failed" and row["access_gate"] == "members_only" and row["error_class"] == "members_only"
+    assert [r["external_id"] for r in candidates.list_for_project(pid, state="needs_membership")] == ["m"]
 
 
 def test_a_download_refusal_backfills_the_gate_and_is_permanent(fresh):

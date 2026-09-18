@@ -124,12 +124,11 @@ def _prov(project: dict[str, Any]) -> dict[str, Any]:
 
 
 def _pool(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    # 2026-09-18 (Kyle): a members-only / premium / sign-in video cannot be downloaded without the person's own
-    # membership, so it is never ranked — it stays unscored, sorts last in the review, and never takes a slot.
-    gated = [r for r in rows if r.get("access_gate")]
-    rows = [r for r in rows if not r.get("access_gate")]
+    # 2026-09-18 (Kyle): a gated (members-only / premium / sign-in) video IS ranked — its relevance is what the
+    # Candidate Index remembers, so a 90+ can be worth a membership — but it sorts last in the review and is never
+    # auto-ticked (db.proposed_sources, the review card). Ranking is what makes the memory worth keeping.
     rows.sort(key=lambda r: r.get("created_at") or 0)      # listing order (newest first for channels)
-    pool, rest = rows[:POOL], rows[POOL:] + gated
+    pool, rest = rows[:POOL], rows[POOL:]
     # re-rank only what is still unscored when a previous pass partially failed
     unscored = [r for r in pool if r.get("relevance") is None]
     if unscored and len(unscored) < len(pool):
