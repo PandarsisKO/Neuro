@@ -1003,6 +1003,12 @@ MIGRATIONS = [
     # segment of ~770 sources (601k rows / 22 MB, p50 186 s under load). Maintained by `replace_transcript`, the
     # one place segments are written; backfilled once at startup for rows written before the column existed.
     ("sources", "spoken_chars", "ALTER TABLE sources ADD COLUMN spoken_chars INTEGER"),
+    # 2026-09-18 (Kyle): "youtube members-only videos are not ranked above other videos." Who may watch: NULL for a
+    # public video; members_only / premium / needs_auth from the listing's own `availability`, or from the ingest
+    # error when the listing did not say. A gated video sorts LAST in a review, is never auto-ticked and is never
+    # sent to the ranker — it cannot be downloaded without the person's own membership, so it must never take a
+    # slot from a video that can.
+    ("sources", "access_gate", "ALTER TABLE sources ADD COLUMN access_gate TEXT"),
     # T1: versioned derived vectors. Legacy bare blobs remain unreadable for similarity until these fields are set.
     ("project_notes", "embedding_provider", "ALTER TABLE project_notes ADD COLUMN embedding_provider TEXT"),
     ("project_notes", "embedding_model", "ALTER TABLE project_notes ADD COLUMN embedding_model TEXT"),
@@ -1564,6 +1570,9 @@ def set_source_status(source_id: str, status: str, error: str | None = None) -> 
     `browser_solvable:*` — set deliberately by `acquire` — is never overwritten."""
     cls = failure_class(error) if status == "failed" else None
     with tx() as conn:
+        # a listing that did not carry `availability` learns the gate from the download's own refusal
+        if status == "failed" and error and re.search(r"members[- ]only|join this channel", str(error), re.I):
+            conn.execute("UPDATE sources SET access_gate=COALESCE(access_gate, 'members_only') WHERE id=?", (source_id,))
         if cls:
             conn.execute("UPDATE sources SET status=?, error=?, error_class=CASE WHEN error_class LIKE 'browser_solvable:%' "
                          "THEN error_class ELSE ? END, updated_at=? WHERE id=?", (status, error, cls, now(), source_id))
@@ -1578,7 +1587,10 @@ FAILURE_CLASSES: tuple[tuple[str, str, bool], ...] = (
     ("unavailable", r"not available|video unavailable|has been removed|private video|deleted", True),
     # 404 before 403/401: "HTTP 404 — nothing at that address" is gone for good, where a 403 may not be.
     ("not_found", r"http (error )?404|404: not found|no longer exists|nothing at that address", True),
-    ("login_wall", r"sign in to confirm|login required|members[- ]only|requires authentication", False),
+    # 2026-09-18: a members-only refusal is permanent for this app — it never holds the person's membership cookie
+    # for bulk YouTube downloads (CLAUDE.md), so a retry cannot succeed. Ordered before the retryable sign-in walls.
+    ("members_only", r"members[- ]only|join this channel", True),
+    ("login_wall", r"sign in to confirm|login required|requires authentication", False),
     ("blocked", r"http (error )?40[13]|refused the listing|forbidden|blocked", False),
     ("empty_transcript", r"transcript came back empty|no transcript|captions? (are )?disabled", False),
     ("timed_out", r"timed out|timeout|connection stalled", False),
@@ -3035,7 +3047,7 @@ def proposed_sources(collection_id: str, project_id: str | None = None) -> list[
                FROM sources s JOIN source_collections sc ON sc.source_id=s.id
                LEFT JOIN project_source_analysis a ON a.source_id=s.id AND a.project_id=? AND a.analysis_kind='relevance'
                WHERE sc.collection_id=? AND s.status='proposed'
-               ORDER BY (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
+               ORDER BY (s.access_gate IS NOT NULL), (a.relevance IS NULL), a.relevance DESC, s.created_at""", (project_id, collection_id)).fetchall():
         d = row_to_dict(r)
         d["relevance"], d["relevance_why"] = d.pop("a_relevance"), d.pop("a_relevance_why")     # the legacy global columns are ignored
         out.append(d)

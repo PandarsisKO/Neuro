@@ -101,7 +101,7 @@ def ingest_url(
             # project keeps its status); only NEW rows start as proposed/pending.
             cand = identity.Candidate(platform="youtube", external_id=e["id"], url=e["url"], title=e.get("title"), tags=tags,
                                       fields={"duration": e.get("duration"), "description": e.get("description") or None,
-                                              "view_count": e.get("view_count") or None})
+                                              "view_count": e.get("view_count") or None, "access_gate": e.get("access_gate")})
             res = identity.resolve_or_create_source(cand, None, initial_status="proposed" if review else "pending", resume_skipped=False)
             src = res.source
             db.link_source_collection(src["id"], coll["id"])

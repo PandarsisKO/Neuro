@@ -29,7 +29,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
     const off = rvUnchecked[c.id] || (rvUnchecked[c.id] = new Set());
     if (scored && !rvAutoApplied[c.id]) {   // first time we see scores: tick the best `want`, untick the rest
       rvAutoApplied[c.id] = true; off.clear();
-      c.proposed.forEach((s, i) => { if ((want && i >= want) || !s.relevance) off.add(s.id); });
+      c.proposed.forEach((s, i) => { if ((want && i >= want) || !s.relevance || s.access_gate) off.add(s.id); });
     }
     const n = c.proposed.length, mins = c.proposed.reduce((a, s) => a + (s.duration || 0), 0) / 60;
     const nSel = c.proposed.filter(s => !off.has(s.id)).length;
@@ -51,7 +51,7 @@ globalThis.loadReviews = async function loadReviews(quiet) {
       <div class="muted" style="margin-top:2px">Nothing has been downloaded yet. Videos older than your cutoff are skipped automatically once dates are known.${c.kind === 'instagram' ? ' <b>Instagram:</b> these download one at a time with long pauses, using your session — keep it to a handful per day.' : ''}</div>
       <div class="row mt-1">${rankLine}</div>
       <div class="row" style="margin-top:6px"><button class="small ghost" onclick="rvAll('${c.id}', true)">select all</button><button class="small ghost" onclick="rvAll('${c.id}', false)">none</button><input placeholder="filter titles…" style="max-width:240px" value="${esc(rvFilterText[c.id] || '')}" oninput="rvFilter('${c.id}', this.value)"></div>
-      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
+      <div class="list">${c.proposed.map(s => `<label class="li"${rvFilterText[c.id] && !(s.title || s.url).toLowerCase().includes(rvFilterText[c.id].toLowerCase()) ? ' hidden' : ''}><input type="checkbox" ${off.has(s.id) ? '' : 'checked'} data-id="${s.id}" onchange="rvRemember('${c.id}', this)">${s.relevance != null ? `<span class="sc ${scClass(s.relevance)}" title="relevance">${s.relevance}</span>` : ''}<span class="t" title="${esc(s.title || s.url)}">${esc(s.title || s.url)}</span>${s.access_gate ? `<span class="tag status-warn" title="${s.access_gate === 'members_only' ? 'Members-only: YouTube will not let this download without your own channel membership, so it is listed last and not selected' : s.access_gate === 'premium' ? 'YouTube Premium only' : 'Needs sign-in'}">${s.access_gate === 'members_only' ? '🔒 members only' : s.access_gate === 'premium' ? '🔒 premium' : '🔒 sign-in'}</span>` : ''}${s.relevance_why ? `<span class="why" title="${esc(s.relevance_why)}">${esc(s.relevance_why)}</span>` : ''}<span class="muted">${s.duration ? fmt(s.duration) : ''}</span></label>`).join('')}</div>
       <div class="row rvfoot" style="margin-top:10px"><button class="primary" onclick="rvStart('${c.id}', this)">▶ Start ingesting selected</button><button class="ghost" onclick="rvDiscard('${c.id}')">Discard all</button></div>
     </div>`; }).join('');
 }

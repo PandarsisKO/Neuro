@@ -268,6 +268,21 @@ def enumerate_search(query: str, limit: int = 30) -> tuple[dict[str, Any], list[
     return info, entries
 
 
+ACCESS_GATES = {"subscriber_only": "members_only", "premium_only": "premium", "needs_auth": "needs_auth"}
+
+
+def access_gate_of(entry: dict[str, Any]) -> str | None:
+    """Who may watch, from yt-dlp's own `availability` on a flat listing entry (public / unlisted → None). A channel
+    tab marks members-only videos `subscriber_only`; the badge text is a fallback for listings without the field."""
+    av = (entry.get("availability") or "").strip().lower()
+    if av in ACCESS_GATES:
+        return ACCESS_GATES[av]
+    title = (entry.get("title") or "").lower()
+    if "members only" in title or "members-only" in title:
+        return "members_only"
+    return None
+
+
 def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """List videos in a playlist or channel without downloading anything.
 
@@ -310,6 +325,7 @@ def enumerate_entries(url: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                     "duration": e.get("duration"),
                     "description": (e.get("description") or None),
                     "view_count": e.get("view_count"),
+                    "access_gate": access_gate_of(e),
                 })
     return info, entries
 
