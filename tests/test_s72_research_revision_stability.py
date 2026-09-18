@@ -11,6 +11,8 @@ was re-derived. This proves both writers, then the fingerprint end to end, and t
 """
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from neurosearch import claims, db, knowledge
@@ -86,3 +88,32 @@ def test_research_revision_is_stable_across_a_full_pass_and_moves_on_a_real_chan
     rev2 = db.project_research_revision(pid)
     claims.ensure(pid)
     assert db.project_research_revision(pid) == rev2
+
+
+def test_a_target_folded_as_a_duplicate_is_not_reopened_by_the_next_pass(fresh):
+    """Measured live: detect() re-opened three tension targets every pass and dedupe_targets folded them again —
+    one write per pass, the last churning writer. A duplicate stays folded into its open survivor."""
+    import json as _json
+    pid = _project()
+    c = claims.list_for_project(pid)[0]
+    now = time.time()
+    with db.tx() as conn:
+        for i, q in enumerate(["Corroborate or refute: the seller note stands on full standby for the loan's life",
+                               "Independently corroborate: the seller note stands on full standby for the loan's life"]):
+            conn.execute("INSERT INTO project_evidence_targets (id, project_id, question, topic, claim_id, sufficiency, preferred_classes, closure, "
+                         "closure_rule, status, origin, gap, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (db.new_id(), pid, q, "seller", c["id"], "corroborative", _json.dumps(["practice"]), "x", _json.dumps({}), "open", "tension", None, now + i, now + i))
+    # make the WEAK_CONSENSUS condition real for this Claim (2 supporting rows, 1 independent source) so detect()
+    # selects its tension and would, before the fix, re-open the folded target
+    sid = db.connect().execute("SELECT source_id FROM project_sources WHERE project_id=?", (pid,)).fetchone()["source_id"]
+    claims.add_evidence(c["id"], sid, locator="0:30", relation="SUPPORTS", excerpt="a second passage from the same source")
+    assert knowledge.dedupe_targets(pid) == 1
+    folded = [t for t in knowledge.list_targets(pid, status="dropped") if t["claim_id"] == c["id"]]
+    assert len(folded) == 1 and folded[0]["gap"].startswith(knowledge.DUPLICATE_GAP_PREFIX)
+    knowledge.detect(pid)                                               # the reconcile that used to re-open it
+    open_ids = [t["id"] for t in knowledge.list_targets(pid, status="open") if t["claim_id"] == c["id"]]
+    assert folded[0]["id"] not in open_ids and open_ids, "the folded duplicate stays folded; its survivor stays open"
+    assert knowledge.dedupe_targets(pid) == 0
+    rev = db.project_research_revision(pid)
+    knowledge.detect(pid); knowledge.dedupe_targets(pid)                 # a second pass is a no-op end to end
+    assert db.project_research_revision(pid) == rev

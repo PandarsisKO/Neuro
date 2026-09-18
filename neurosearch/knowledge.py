@@ -401,11 +401,13 @@ def detect(project_id: str) -> dict[str, int]:
                 if tsn.get("claim_id"):
                     conn.execute("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='open'",
                                  (time.time(), project_id, tsn["claim_id"]))
-        # a target re-opened by a re-selected tension
+        # a target re-opened by a re-selected tension — unless dedupe_targets folded it into a surviving duplicate,
+        # which stays folded (the survivor is open and carries the question)
         for tsn in list_tensions(project_id, status="open"):
             if tsn["kind"] in ("NOVEL", "WEAK_CONSENSUS") and tsn.get("claim_id"):
-                conn.execute("UPDATE project_evidence_targets SET status='open', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='dropped'",
-                             (time.time(), project_id, tsn["claim_id"]))
+                conn.execute("UPDATE project_evidence_targets SET status='open', updated_at=? WHERE project_id=? AND claim_id=? AND origin='tension' AND status='dropped' "
+                             "AND (gap IS NULL OR gap NOT LIKE ?)",
+                             (time.time(), project_id, tsn["claim_id"], f"{DUPLICATE_GAP_PREFIX}%"))
     # auto-resolve tensions whose condition no longer holds
     for tsn in list_tensions(project_id, status="open"):
         c = claims.get(tsn["claim_id"]) if tsn.get("claim_id") else None
@@ -421,6 +423,9 @@ def detect(project_id: str) -> dict[str, int]:
 
 # ---------------------------------------------------------------- the map
 
+DUPLICATE_GAP_PREFIX = "duplicate of target "     # the drop reason dedupe_targets records; detect() honours it
+
+
 def dedupe_targets(project_id: str) -> int:
     """Open targets whose questions are near-duplicates (Jaccard ≥ TARGET_DUP_JACCARD) fold into the earliest one; the
     later ones are `dropped`. User-made targets are never dropped. Cheap: open targets only."""
@@ -429,18 +434,23 @@ def dedupe_targets(project_id: str) -> int:
     # used to run INSIDE the write transaction, holding SQLite's single writer for 12 s on Kyle's project while
     # "New chat" (one INSERT) waited 10 s behind it. Decide first, then write the decisions in one short transaction.
     keep: list[dict[str, Any]] = []
-    to_drop: list[str] = []
+    to_drop: list[tuple[str, str]] = []
     for t in rows:                                                 # list_targets is created_at ascending
         dup = next((k for k in keep if claims.jaccard(t["question"], k["question"]) >= TARGET_DUP_JACCARD), None)
         if dup and t.get("origin") != "user":
-            to_drop.append(t["id"])
+            to_drop.append((t["id"], dup["id"]))
         else:
             keep.append(t)
     if to_drop:
+        # Sources cache-churn (docs/SPEED-AUDIT-2026-09-17.md §8): a target dropped HERE as a near-duplicate is
+        # folded into its survivor, and the drop says so in `gap` — `detect()`'s reconcile re-opens dropped
+        # tension targets whose tension is still selected, and without the reason it re-opened these every pass
+        # for this function to fold them again: one write per pass, moving the research revision and retiring
+        # every research-derived cache for nothing (three targets on Kyle's project, measured live).
         with db.tx() as conn:
             now = time.time()
-            conn.executemany("UPDATE project_evidence_targets SET status='dropped', updated_at=? WHERE id=? AND status='open'",
-                             [(now, tid) for tid in to_drop])
+            conn.executemany("UPDATE project_evidence_targets SET status='dropped', gap=?, updated_at=? WHERE id=? AND status='open'",
+                             [(f"{DUPLICATE_GAP_PREFIX}{into}", now, tid) for tid, into in to_drop])
     return len(to_drop)
 
 
