@@ -6267,3 +6267,12 @@ rule (cross-project brief → different unit; every steering input moves the key
 artifact; identity is the request). One design fact for Kyle: verbatim-twin projects (same name, brief, facts)
 share units — correct under the rule, one line to change if he wants project identity in the key. No runtime
 code changed in this pass.
+
+## Speed mission → observation mode (Kyle's decisions, recorded by Claude, 2026-09-17 evening)
+
+Twin-project unit reuse stays as shipped (same effective request ⇒ same unit; compute reuse, never project-state
+reuse — gate added to `test_s46`). R9(c) stays deferred. Process separation has a written revisit trigger (audit
+§11, CLAUDE.md). Status: P0 closed · R4 shipped · R5 shipped · R8 satisfied with two documented triggers · R9(c)
+deferred · speed mission in observation mode. Back to product work: Send Screenshot matrix cases 5–7, Course
+Scanner live wiring, then the Kyle-gated judgments. `origin/main` was pushed from the Mac during this session;
+only this session's last commits need the next sync.

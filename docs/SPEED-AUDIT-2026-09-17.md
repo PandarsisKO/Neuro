@@ -509,3 +509,30 @@ it in CLAUDE.md; nothing about R5's bounds (2 local / 3 API / cap 4) was touched
 **So the ladder after this rung is R9 (local-model benchmarking, R9(c) still open with its numeric revisit
 trigger) — and, per Kyle, below everything above it.** The higher-value open item from today's measurements
 remains the GIL floor (§9), which is a process-separation decision, not a rung on this ladder.
+
+---
+
+## 11. Closing decisions (Kyle, 2026-09-17 evening) — the speed mission enters observation mode
+
+1. **Twin-project reuse stays exactly as shipped.** Two projects that generate the same effective request share
+   the completed work unit; adding `project_id` to force recomputation would violate the stronger rule now in
+   force: *same key ⇒ the same artifact would be produced again*. If a future defect shows an input that changes
+   the output but is not in the key, add that input — never an arbitrary project id. **Guardrail:** this is
+   compute reuse, not project-state reuse. The shared unit materializes into each project's own analysis rows,
+   findings, Claims and state with that project's provenance and lifecycle; no verdict, applicability, approval,
+   readiness or other project-owned state is shared because the computation was. Gated in `test_s46`
+   (`test_identity_is_the_request_not_the_project_row`: separate analysis rows per project; an acceptance recorded
+   in one project does not appear in its twin).
+2. **R9(c) stays deferred.** Its question — can a 70B Q4 or MoE local model beat the 10.9 s API baseline for
+   findings/Claims — is not the question today's measurements left open, and the mission expects it to fail at
+   45–90 s. Its numeric revisit trigger stands as written in R9.
+3. **Process separation has a revisit trigger, so it cannot become a vague temptation.** Reopen background-process
+   isolation only if normal real-world use — not synthetic stress alone — repeatedly produces foreground p90 > 1 s
+   while write holds remain < 250 ms, the relevant caches are > 95 % hit, and perf traces attribute the delay to
+   concurrent CPU-bound background work. Read those off `/api/perf` (`db:write_hold` peak, cache rates, the
+   endpoint timings) and `server.log`; the §8/§9 loads are the reference for what "synthetic" looked like.
+
+**Status locked:** P0 closed · R4 shipped (0.63.40) · R5 shipped (0.63.41) · R8 satisfied with two documented
+exceptions and their triggers (mmap after sleep/wake; retention 2026-10-11) · R9(c) deferred · `/api/sources`
+cache churn closed · speed mission in observation mode. Product work resumes (Send Screenshot matrix, then the
+Course Scanner live wiring, then the Kyle-gated judgments in the State of the App).

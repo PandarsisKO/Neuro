@@ -448,6 +448,15 @@ def test_identity_is_the_request_not_the_project_row(fresh, monkeypatch):
     findings.suggest_for_source(twin["id"], sid, force=True)
     assert len(calls) == 10, "an identical request is the identical unit"
     assert db.get_analysis(twin["id"], sid, "summary")["status"] == "current"
+    # Kyle's guardrail (2026-09-17): this is COMPUTE reuse, never project-STATE reuse. The shared unit materializes
+    # into each project's own analysis row and notes, with that project's provenance and lifecycle; a verdict
+    # taken in one project never appears in the other.
+    a_an, t_an = db.get_analysis(a["id"], sid, "summary"), db.get_analysis(twin["id"], sid, "summary")
+    assert a_an["project_id"] == a["id"] and t_an["project_id"] == twin["id"]
+    with db.tx() as conn:                                        # a project-owned verdict on the shared computation
+        conn.execute("UPDATE project_source_analysis SET accepted_hash=input_hash, accepted_at=1.0 WHERE project_id=? AND source_id=? AND analysis_kind='summary'", (a["id"], sid))
+    assert db.get_analysis(a["id"], sid, "summary")["accepted_hash"]
+    assert not db.get_analysis(twin["id"], sid, "summary")["accepted_hash"], "a verdict in one project must not leak into the other"
     near = db.create_project("R4", brief="find the durable facts.")
     findings.suggest_for_source(near["id"], sid, force=True)
     assert len(calls) == 20, "a different brief is a different request, however similar"
