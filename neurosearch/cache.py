@@ -31,10 +31,16 @@ from typing import Any, Callable
 
 from . import perf
 
-MAX_ENTRIES = 512                  # per-project derived state; far more than a local install will ever hold
+# Sources cache-churn (docs/SPEED-AUDIT-2026-09-17.md §8, 2026-09-17): 512 was "far more than a local install will
+# ever hold" — and one `/api/sources` on Kyle's project stores 506 per-row `potential:` entries, so the FIFO trim
+# below evicted the singletons every request pays for most (`staleness`, `gap_terms_core`, `rel_analysis`): 10 of 43
+# misses in a run where the revision moved once, each a 3 s cold recompute idle and 9–19 s beside a research pass.
+# A cache sized under its working set is a cache that misses on schedule. Bound raised to the working set with room,
+# and the trim is least-recently-USED, so a key every request reads is never the one that goes.
+MAX_ENTRIES = 16384
 
 _lock = threading.Lock()
-_store: dict[str, tuple[str, Any]] = {}          # key -> (revision, value)
+_store: dict[str, tuple[str, Any]] = {}          # key -> (revision, value); insertion order = recency (moved on hit)
 _flight: dict[str, threading.Lock] = {}          # key -> the lock whoever is computing it holds
 _running: set[str] = set()                       # keys with a background recompute in flight
 
@@ -42,7 +48,8 @@ _running: set[str] = set()                       # keys with a background recomp
 def _put(key: str, revision: str, value: Any) -> None:
     with _lock:
         if len(_store) >= MAX_ENTRIES and key not in _store:
-            _store.pop(next(iter(_store)), None)          # crude FIFO trim; entries are cheap and self-retiring
+            _store.pop(next(iter(_store)), None)          # least recently used; entries are cheap and self-retiring
+        _store.pop(key, None)
         _store[key] = (revision, value)
 
 
@@ -57,7 +64,11 @@ def _flight_lock(key: str) -> threading.Lock:
 def peek(key: str) -> tuple[str, Any] | None:
     """(revision, value) as stored, whatever revision that is. For callers that can use a slightly old answer."""
     with _lock:
-        return _store.get(key)
+        hit = _store.get(key)
+        if hit is not None:
+            _store.pop(key, None)                 # a read refreshes recency (see _put's trim)
+            _store[key] = hit
+        return hit
 
 
 def get_or_compute(key: str, revision: str, compute: Callable[[], Any], *, label: str | None = None) -> Any:

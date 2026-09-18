@@ -122,3 +122,25 @@ def test_a_target_folded_as_a_duplicate_is_not_reopened_by_the_next_pass(fresh):
     for tg in knowledge.list_targets(pid):
         knowledge.assess_target(tg["id"])
     assert db.project_research_revision(pid) == rev
+
+
+def test_the_derived_cache_holds_its_working_set_and_evicts_least_recently_used():
+    """Measured: one /api/sources stores 506 per-row `potential:` entries; at MAX_ENTRIES=512 with FIFO trim the
+    singletons every request reads were evicted on schedule. The bound covers the working set and a key that is
+    READ stays."""
+    from neurosearch import cache
+    assert cache.MAX_ENTRIES >= 4096
+    with cache._lock:
+        saved = dict(cache._store); cache._store.clear()
+    try:
+        cache._put("hot", "r", 1)
+        for i in range(cache.MAX_ENTRIES - 1):
+            cache._put(f"row:{i}", "r", i)
+            if i % 100 == 0:
+                cache.peek("hot")                                       # the singleton is read regularly
+        cache._put("one-more", "r", 0)                                  # forces one eviction
+        assert cache.peek("hot") is not None, "a regularly read key must not be evicted"
+        assert cache.peek("row:0") is None, "the least recently used row is what goes"
+    finally:
+        with cache._lock:
+            cache._store.clear(); cache._store.update(saved)
