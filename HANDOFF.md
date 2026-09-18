@@ -6404,3 +6404,30 @@ restore time.
 
 **Case 6: PASS** (fail-closed behavior; no evidence created). Deferred: stray scroll-jump-on-navigate-away
 cosmetic issue, not gating. Continuing to case 7 (drawer provenance — the last case in the matrix).
+
+## Real gate-closing pass, part 20: duplicate_claim_evidence cleanup — fixed, needs a server restart to take effect (2026-09-18)
+
+Kyle asked to fix the `duplicate_claim_evidence: 1` note (spotted while chasing case 7 evidence) before
+continuing. Root cause per `integrity_check()`'s own docstring: a 2026-09-14 fix closed a duplicate-citation
+guard gap in `claims.add_evidence`, stopping any NEW duplicate (claim_id, source_id, source_revision, locator,
+relation) row, but nothing ever went back and cleaned up whatever duplicate row(s) already existed before that
+fix landed — `integrity_check` has been reporting exactly `1` (one group with duplicates) on every hourly check
+for as long as the log goes back today, stable rather than growing, consistent with one leftover pre-fix row
+rather than an active ongoing bug.
+
+Added `db._dedupe_claim_evidence(conn)`, wired into `init_db()` right after the other startup backfills (same
+pattern as `_backfill_job_lanes`/`_backfill_spoken_chars`: idempotent, try/except-wrapped so a cleanup failure
+can never block the app from starting, safe no-op once the table is clean). Keeps the oldest (lowest id) row per
+duplicate group, deletes the rest. Confirmed nothing else references `claim_evidence.id` as a foreign key, so no
+orphaned rows result anywhere else. Four new regression tests (`tests/test_s70_dedupe_claim_evidence.py`),
+sanity-checked to fail against the pre-fix `db.py` before confirming they pass against the fix. Ran the wider
+`test_core.py` suite too; the 10 failures there are all pre-existing (confirmed identical on the pre-fix `db.py`
+too) and unrelated -- this sandbox's `device_bash` has no route to external model/embedding APIs
+(`breaker openai:embeddings: OPEN`, `fetch blocked (dns)`), plus a couple of frozen-value assertions drifted from
+unrelated config already in the tree (e.g. a pinned model name, a pinned cache_read count) -- none touch
+`claim_evidence`/`db.py`.
+
+**Not yet in effect on Kyle's live server** -- `init_db()` only runs at startup, and per the standing rule this
+session never opens `data/neurosearch.db` directly, so the fix can't be applied to the live database from here.
+Needs an ordinary server restart (`start.command`, whenever convenient -- not urgent, the count is stable, not
+growing) to actually clear the live row. Back to case 7 (drawer provenance).
