@@ -1099,6 +1099,7 @@ def init_db() -> None:
     _migrate_source_analysis(conn)
     _backfill_spoken_chars(conn)
     _backfill_job_lanes(conn)
+    _dedupe_claim_evidence(conn)
     _resolve_orphan_invocations(conn)
     try:
         backfill_failure_classes()           # 0.61.0: the failures already on the books become distinguishable too
@@ -1153,6 +1154,34 @@ def _backfill_job_lanes(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE jobs SET lane='priority', updated_at=? WHERE status='queued' AND kind='rank_proposed' AND lane!='priority'", (now(),))
     conn.execute("UPDATE jobs SET lane='low', updated_at=? WHERE status='queued' AND kind='refresh_skipped_metadata' AND lane!='low'", (now(),))
     conn.commit()
+
+
+def _dedupe_claim_evidence(conn: sqlite3.Connection) -> None:
+    """Cleanup for the duplicate-citation guard gap fixed in claims.add_evidence on 2026-09-14 (see
+    integrity_check's docstring): the guard now stops any NEW duplicate (claim_id, source_id, source_revision,
+    locator, relation) row from being created, but whatever duplicate rows existed before that fix landed were
+    never actually removed -- integrity_check has been reporting duplicate_claim_evidence > 0 ever since, with
+    nothing in the codebase actually clearing it. Runs once per app start, keeps the OLDEST row (lowest id) in
+    each duplicate group -- preserving whichever evidence was cited/used first -- and deletes the rest. Nothing
+    else references claim_evidence.id as a foreign key, so this is safe: no orphaned rows anywhere else. A no-op
+    once the table is clean, safe to run on every startup, same pattern as _backfill_job_lanes/_backfill_spoken_chars."""
+    try:
+        cur = conn.execute("""
+            DELETE FROM claim_evidence WHERE id IN (
+              SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                  PARTITION BY claim_id, source_id, source_revision, locator, relation
+                  ORDER BY id ASC
+                ) AS rn
+                FROM claim_evidence
+              ) WHERE rn > 1
+            )""")
+        conn.commit()
+        if cur.rowcount:
+            logging.getLogger(__name__).info("removed %d duplicate claim_evidence row(s) (pre-2026-09-14 guard gap)", cur.rowcount)
+    except Exception as e:  # noqa: BLE001 — a cleanup pass must never stop the app from starting
+        conn.rollback()
+        logging.getLogger(__name__).warning("claim_evidence dedupe skipped: %s", e)
 
 
 def _migrate_source_analysis(conn: sqlite3.Connection) -> None:
