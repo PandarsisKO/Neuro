@@ -6357,3 +6357,24 @@ the code path (`restoreStylesAndScroll` always runs before `uploadCapture` is ev
 **Case 5.3: PASS.** Failure UX correct, retry reuses the same capture identity, no duplicate evidence created.
 Continuing to the dedicated active-tab-switch live test (inserted by Kyle ahead of case 6, to confirm the
 TOCTOU fix from part 14 holds under a real browser tab switch, not just the harness mock).
+
+## Real gate-closing pass, part 18: active-tab-switch live test (TOCTOU fix from part 14) — PASS (2026-09-18)
+
+Dedicated live test Kyle inserted ahead of case 6, to prove the active-tab TOCTOU fix (part 14 — the recheck
+immediately before `chrome.tabs.captureVisibleTab`, closing the gap the rate-limit wait and preCapture round
+trip leave between `verifyTabIdentity` and the actual capture call) holds under a real browser tab switch, not
+just the `node:vm` harness mock (`tests/test_s64_active_tab_toctou.py`).
+
+Kyle started a capture on a tall (multi-tile) page, switched to a different tab immediately while it was mid-
+capture, then switched back. Popup showed the expected fail-closed message ("Switch back to that tab and press
+Send screenshot again — it needs to be the tab you're looking at" — `TabIdentityError`, no Retry button, since
+this is a hard fail-closed, not a recoverable `upload_failed`). Confirmed via `server.log`: zero new
+`POST /api/ingest/file` and zero new files in `data/media/` since the case 5.3 retry — no wrong-tab (or any)
+evidence uploaded for the attempt, exactly as `runCapture`'s outer catch guarantees (`TabIdentityError` never
+gets the visible-area fallback, unlike every other failure kind). Kyle confirmed the original tab looked
+undisturbed afterward, consistent with `restoreStylesAndScroll()` still running in that catch block before the
+error is re-thrown.
+
+**Active-tab safety live test: PASS.** The TOCTOU fix holds under real browser timing, not just the mock
+harness. Send Screenshot acceptance matrix: cases 1-5 (all sub-cases) + the inserted active-tab safety check are
+done. Continuing to case 6 (same-origin navigate-away mid-capture).
