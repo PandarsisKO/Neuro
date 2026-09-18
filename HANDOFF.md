@@ -6276,3 +6276,29 @@ reuse — gate added to `test_s46`). R9(c) stays deferred. Process separation ha
 deferred · speed mission in observation mode. Back to product work: Send Screenshot matrix cases 5–7, Course
 Scanner live wiring, then the Kyle-gated judgments. `origin/main` was pushed from the Mac during this session;
 only this session's last commits need the next sync.
+
+## Real gate-closing pass, part 15: Send Screenshot case 5.1 (success-path scroll restoration) — Kyle-called PASS (2026-09-18)
+
+Kyle live-tested on Wikipedia's "Mergers and acquisitions" article: scrolled to the "Financing" section
+(`[window.scrollX, window.scrollY]` = `[0, 8331]`), pressed Send Screenshot. `server.log` confirmed
+`POST /api/ingest/file` returned 200 OK and a new upload landed (`data/media/upload_e85bf71d_screenshot-
+39647c2f.png`, 6.6MB). Confirmed in `background.js` that `runCapture()` (tiling, stitching, `restoreStylesAndScroll`)
+always completes fully before `uploadCapture()` is ever called (strictly sequential, not concurrent) — so the
+successful upload response is itself proof the capture/restore phase finished, independent of the async
+OCR/embed job that follows it.
+
+Kyle then pressed Send Screenshot a second time by mistake (confirmed by him: "I was confused on what you
+needed"), producing a second, unrelated capture (`upload_3f3b5993_screenshot-c9f5c581.png`). The post-capture
+scroll readings he reported afterward were taken across both captures plus a manual scroll test in between, not
+as a clean isolated before/after pair: two console reads of `[0, 6140]` then `[0, 8298]`, the latter 33px off his
+original 8331 baseline. Console also showed several ad-related requests blocked (`ERR_BLOCKED_BY_CLIENT`), a
+plausible unrelated source of a few dozen pixels of page-layout drift on a live page like Wikipedia. Asked Kyle
+to redo a single isolated capture cycle (scroll, note position, one press, wait for "done," re-read immediately)
+to get an unambiguous reading before calling it. Kyle instead called it a pass directly and said to move on,
+without redoing the isolated cycle — noted here for the record rather than silently treated as the clean
+isolated evidence originally asked for.
+
+**Case 5.1: PASS (Kyle's call).** Page interactivity/scrolling confirmed normal by Kyle, no visible scrollbar or
+style artifacts. The pixel-quality check (right edge / duplicate tiles / seam corruption) on the resulting image
+is still pending — will be done as part of closing case 5 rather than gating 5.1 alone, since Kyle has already
+moved on. Continuing to case 5.2 (partial/ceiling-break scroll restoration).
