@@ -102,51 +102,14 @@ class RetrievalUnavailable(RuntimeError):
 PRIORITY_RESERVE = 5     # of the excerpt slots, at most this many are reserved for priority sources' best matches (0.24.1)
 
 
-def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
-           per_source_cap: int | None = 4, strict: bool = False, rerank: bool | None = None,
-           priority_ids: set[str] | None = None, reserve: int = PRIORITY_RESERVE) -> list[dict[str, Any]]:
-    """Return ranked chunk hits with source metadata and deep links. strict=True: a vector-search failure is an error,
-    never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint).
-    rerank: the I2 candidate-only reranker stage (None = settings.retrieval_rerank, off by default); it reorders the first
-    rerank.RERANK_DEPTH hits and fails closed to this function's own ordering.
-    priority_ids: the project's priority sources (0.24.1). Up to `reserve` of the `limit` slots go to their best-matching
-    chunks first (only chunks that matched the query at all — a priority source with nothing relevant contributes
-    nothing); the remaining slots are filled in plain score order and the final list is re-sorted by score, so the
-    numbering stays meaningful. Hits from priority sources carry priority=True."""
-    query = query.strip()
-    if not query:
-        return []
-    k = max(limit * 4, 40)
-    ranked: dict[int, float] = {}
-
-    fts = db.fts_search(query, limit=k, source_ids=source_ids)
-    for rank, (cid, _score) in enumerate(fts):
-        ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank)
-
-    if settings.embeddings_enabled:
-        try:
-            from .embeddings import embed_query
-            qv = embed_query(query)
-            mat, ids = db.load_embedding_matrix(source_ids)
-            if len(ids):
-                sims = mat @ qv
-                top = np.argsort(-sims)[:k]
-                for rank, i in enumerate(top):
-                    if sims[i] < 0.15:
-                        break
-                    cid = ids[int(i)]
-                    ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank) * 1.1
-        except Exception as e:  # noqa: BLE001
-            if strict:
-                raise RetrievalUnavailable(f"vector search unavailable: {e}") from e
-            log.warning("vector search unavailable: %s", e)
-            try:
-                db.kv_bump("evidence:retrieval_degraded")           # visible: Health counts FTS-only fallbacks
-            except Exception:  # noqa: BLE001
-                pass
-
+def _hits_from_ranked(ranked: dict[int, float], limit: int, source_ids: list[str] | None, per_source_cap: int | None,
+                      priority_ids: set[str] | None, reserve: int) -> list[dict[str, Any]]:
+    """Shared tail of both search() and search_fts() (CHR1, docs/CHAT-REFRESH-PLAN.md §4): book structural weighting,
+    priority-source reservation, per-source capping, final score sort. Takes a {chunk_id: score} map so the two entry
+    points differ only in how `ranked` was built (FTS+vectors vs. FTS alone) and never duplicate this logic."""
     if not ranked:
         return []
+    k = max(limit * 4, 40)
     order = sorted(ranked.items(), key=lambda kv: -kv[1])
     chunks = db.get_chunks_by_ids([cid for cid, _ in order[: k * 2]])
     # G6P2: a book passage is weighed by its structural role (an index entry never outranks the chapter it points to)
@@ -187,6 +150,56 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
         if len(hits) >= limit:
             break
     hits.sort(key=lambda h: -h["score"])
+    return hits
+
+
+def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
+           per_source_cap: int | None = 4, strict: bool = False, rerank: bool | None = None,
+           priority_ids: set[str] | None = None, reserve: int = PRIORITY_RESERVE) -> list[dict[str, Any]]:
+    """Return ranked chunk hits with source metadata and deep links. strict=True: a vector-search failure is an error,
+    never a silent FTS-only result (frozen research for evals must not depend on a flaky endpoint).
+    rerank: the I2 candidate-only reranker stage (None = settings.retrieval_rerank, off by default); it reorders the first
+    rerank.RERANK_DEPTH hits and fails closed to this function's own ordering.
+    priority_ids: the project's priority sources (0.24.1). Up to `reserve` of the `limit` slots go to their best-matching
+    chunks first (only chunks that matched the query at all — a priority source with nothing relevant contributes
+    nothing); the remaining slots are filled in plain score order and the final list is re-sorted by score, so the
+    numbering stays meaningful. Hits from priority sources carry priority=True.
+
+    NOT a $0 operation: embeds the query whenever settings.embeddings_enabled. For a guaranteed-$0 FTS-only retrieval
+    (Conversation Delta's Tier 1, CHR1), use search_fts() instead of toggling that setting."""
+    query = query.strip()
+    if not query:
+        return []
+    k = max(limit * 4, 40)
+    ranked: dict[int, float] = {}
+
+    fts = db.fts_search(query, limit=k, source_ids=source_ids)
+    for rank, (cid, _score) in enumerate(fts):
+        ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank)
+
+    if settings.embeddings_enabled:
+        try:
+            from .embeddings import embed_query
+            qv = embed_query(query)
+            mat, ids = db.load_embedding_matrix(source_ids)
+            if len(ids):
+                sims = mat @ qv
+                top = np.argsort(-sims)[:k]
+                for rank, i in enumerate(top):
+                    if sims[i] < 0.15:
+                        break
+                    cid = ids[int(i)]
+                    ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank) * 1.1
+        except Exception as e:  # noqa: BLE001
+            if strict:
+                raise RetrievalUnavailable(f"vector search unavailable: {e}") from e
+            log.warning("vector search unavailable: %s", e)
+            try:
+                db.kv_bump("evidence:retrieval_degraded")           # visible: Health counts FTS-only fallbacks
+            except Exception:  # noqa: BLE001
+                pass
+
+    hits = _hits_from_ranked(ranked, limit, source_ids, per_source_cap, priority_ids, reserve)
     use_rerank = settings.retrieval_rerank if rerank is None else rerank
     from . import rerank as R
     if use_rerank and hits:
@@ -194,6 +207,24 @@ def search(query: str, limit: int = 12, source_ids: list[str] | None = None,
     else:
         R.clear_last()
     return hits
+
+
+def search_fts(query: str, limit: int = 12, source_ids: list[str] | None = None,
+              per_source_cap: int | None = 4, priority_ids: set[str] | None = None,
+              reserve: int = PRIORITY_RESERVE) -> list[dict[str, Any]]:
+    """FTS5 keyword retrieval ONLY — no vector leg, no embed_query call, no rerank, regardless of
+    settings.embeddings_enabled or settings.retrieval_rerank. Deterministic and genuinely $0: CHR1's Conversation
+    Delta gate asserts zero calls to embeddings.embed_query, providers.invoke and usage.record_* when this is used
+    (docs/CHAT-REFRESH-PLAN.md §4). Same hit shape as search() (hit_from_chunk: locator, deep link, score) so
+    downstream code (build_context, citation resolution) does not need to know which path produced a hit."""
+    query = query.strip()
+    if not query:
+        return []
+    k = max(limit * 4, 40)
+    ranked: dict[int, float] = {}
+    for rank, (cid, _score) in enumerate(db.fts_search(query, limit=k, source_ids=source_ids)):
+        ranked[cid] = ranked.get(cid, 0.0) + 1.0 / (60 + rank)
+    return _hits_from_ranked(ranked, limit, source_ids, per_source_cap, priority_ids, reserve)
 
 
 def source_transcript(source_id: str, with_timestamps: bool = True) -> str:

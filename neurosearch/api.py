@@ -1184,6 +1184,9 @@ def api_retry_failed_in_project(body: RetryProjectIn) -> dict[str, Any]:
 
 class ProjectRefIn(BaseModel):
     project_id: str
+    # 0.63.94 — narrow the clear to failures of these classes ("members_only": a video that can never download
+    # without a channel membership). None = every failed source, the original behaviour.
+    error_classes: list[str] | None = None
 
 
 @app.post("/api/sources/clear-failed-in-project", dependencies=[Depends(require_auth)])
@@ -1198,6 +1201,9 @@ def api_clear_failed_in_project(body: ProjectRefIn) -> dict[str, Any]:
     ids = set(db.project_source_ids(pid, ready_only=False))
     failed = [s for s in db.list_sources(status="failed", limit=10000) if s["id"] in ids]
     failed += [s for s in db.list_sources(status="pending", limit=10000) if s["id"] in ids and (s.get("error_class") or "").startswith("browser_solvable:")]
+    if body.error_classes:
+        want = set(body.error_classes)
+        failed = [s for s in failed if (s.get("error_class") or "") in want or (s.get("access_gate") in want)]
     conn = db.connect()
     urls = {s["url"] for s in failed}
     sids = {s["id"] for s in failed}
@@ -3451,6 +3457,18 @@ def api_retitle_conversations(project_id: str | None = None, apply: bool = False
 @app.get("/api/conversations", dependencies=[Depends(require_auth)])
 def api_conversations(project_id: str | None = None) -> list[dict[str, Any]]:
     return db.list_conversations(project_id)
+
+
+@app.get("/api/conversations/{conversation_id}/delta", dependencies=[Depends(require_auth)])
+def api_conversation_delta(conversation_id: str) -> dict[str, Any]:
+    """CHR1 (docs/CHAT-REFRESH-PLAN.md §14): the Conversation Delta backend, $0, cached on
+    conversation_delta_revision. Read-only — never writes plan_updates (that is an explicit 'Review plan impact'
+    action, not implemented by this endpoint)."""
+    from . import conversation_delta
+    pid = db.conversation_project(conversation_id)
+    if pid is None:
+        raise HTTPException(404, "no such conversation")
+    return conversation_delta.get_delta(conversation_id, pid)
 
 
 @app.get("/api/conversations/{conversation_id}", dependencies=[Depends(require_auth)])

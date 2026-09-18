@@ -8,9 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 
-os.environ.setdefault("NEUROSEARCH_DATA_DIR", tempfile.mkdtemp(prefix="ns_chr0_"))
 os.environ["NEUROSEARCH_APP_TOKEN"] = "t0k"
 os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
@@ -77,7 +75,7 @@ def test_successful_turn_records_shown_scope_query_and_question_id():
     assert set(ev["shown_source_ids"]) == {h["source_id"] for h in res["hits"]}
     assert ev["research_revision"] == db.project_research_revision(pid)
     assert isinstance(ev["max_claim_evidence_id"], int)
-    assert ev["full_context"] in (True, False) and ev["v"] == 1
+    assert ev["full_context"] in (True, False) and ev["v"] == 2 and ev["complete"] is True
     assert db.conversation_baseline(conv)["message_id"] == row["id"]
 
 
@@ -147,6 +145,20 @@ def test_link_only_turn_records_a_zero_hit_baseline_on_purpose(monkeypatch):
     assert ev["shown_chunk_ids"] == [] and ev["retrieval_query"] == ""
     assert set(ev["scope_source_ids"]) == set(db.get_project(pid)["source_ids"])   # the scope as of NOW: the link is not in it yet
     assert db.conversation_baseline(conv)["evidence"]["shown_chunk_ids"] == []
+
+
+def test_incomplete_bookkeeping_marks_the_snapshot_not_complete(monkeypatch):
+    """CHR0 hardening (Kyle, 2026-09-18): a snapshot that failed partway (research_revision or claim_state could
+    not be read) must say so, not silently pass as an exact baseline — CHR1 downgrades on this flag."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    monkeypatch.setattr(db, "project_research_revision", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    _, meta, _ = _last_assistant(conv)
+    ev = meta["evidence"]
+    assert ev["complete"] is False
+    assert ev["shown_chunk_ids"]            # what WAS gathered is still recorded — never discarded wholesale
+    assert ev["research_revision"] is None
 
 
 def test_legacy_chat_without_snapshots_has_no_baseline():

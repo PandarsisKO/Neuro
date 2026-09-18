@@ -2257,6 +2257,43 @@ def project_pool_revision(project_id: str) -> str:
     return "|".join(str(x) for x in r) + "|" + project_research_revision(project_id)
 
 
+def conversation_delta_revision(project_id: str) -> str:
+    """CHR1 (docs/CHAT-REFRESH-PLAN.md §11): the narrow fingerprint of ONLY what Conversation Delta reads. Deliberately
+    NOT project_view_revision — SPEED-AUDIT-2026-09-17.md §9 measured that key invalidating on every job heartbeat
+    anywhere in the project, which would retire a delta computation before it could ever be reused (the same failure
+    project_pool_revision and project_usage_revision were built to avoid). Nothing here is global and nothing here is
+    a job or a heartbeat.
+
+    Source membership is fingerprinted by resolving the REAL membership set (project_source_ids, ready_only=False —
+    direct + collections + tags, minus exclusions) rather than approximating it from project_sources/collections
+    counts: a source attached from the global library keeps its own old created_at, so only a hash of the actual id
+    set (not a count or a max-timestamp) is guaranteed to move when membership changes. This is the same call
+    ask() already makes every turn, so its cost is not new to the app — only new to this cache key.
+
+    Moves for: membership/exclusion changes, a scoped source's status or revision changing (pending→ready, a
+    re-transcription), Findings additions/status changes, Claim additions/updates, new claim_evidence, tensions,
+    evidence targets, and the current plan's identity (plan-impact annotations depend on it). Does NOT move for:
+    unrelated jobs, other projects, or usage/UI state — none of those are read here."""
+    import hashlib
+    conn = connect()
+    ids = project_source_ids(project_id, ready_only=False)
+    id_hash = hashlib.sha1(",".join(ids).encode()).hexdigest()[:12] if ids else "0"
+    src = "0:0"
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        r = conn.execute(f"SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM sources WHERE id IN ({placeholders})", ids).fetchone()
+        src = str(r[0])
+    r = conn.execute(
+        "SELECT (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_claims WHERE project_id=?),"
+        "       (SELECT COALESCE(MAX(ce.id),0) FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id WHERE c.project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM research_tensions WHERE project_id=?),"
+        "       (SELECT COUNT(*)||':'||COALESCE(MAX(updated_at),0) FROM project_evidence_targets WHERE project_id=?),"
+        "       (SELECT id||':'||COALESCE(updated_at,0) FROM plans WHERE project_id=? ORDER BY version DESC LIMIT 1)",
+        (project_id,) * 5).fetchone()
+    return "|".join([f"src={id_hash}:{src}", project_notes_revision(project_id), f"claims={r[0]}", f"ce={r[1]}",
+                     f"tensions={r[2]}", f"targets={r[3]}", f"plan={r[4] or 'none'}"])
+
+
 def project_view_revision(project_id: str) -> dict[str, str]:
     """R2: the cheap fingerprint of everything the Sources view renders — measured at ~6 ms against the 440 ms the
     view itself costs, which is what lets a 3 s poll ask "did anything change?" instead of rebuilding the answer.
