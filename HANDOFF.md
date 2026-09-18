@@ -6452,3 +6452,51 @@ re-run clean -- 39 + 6 passed, nothing broken.
 This is a static frontend file (JS served directly, no server restart needed per `test_s69_html_edits_do_not_
 restart.py`'s own premise) -- Kyle just needs an ordinary browser reload to pick it up, not a server restart.
 Back to case 7's actual live check now that the picture can be seen.
+
+## Real gate-closing pass, part 22: fixed — capture ceilings never checked a single axis, letting a corrupted screenshot through (found live via the part-21 image fix)
+
+Right after part 21 made image sources viewable, Kyle immediately hit a real defect the new viewer exposed:
+the case 5.2 "2020s" Wikipedia capture (1199×33075px) rendered as a garbled, unreadable thin vertical sliver
+in both the drawer thumbnail (didn't load at all) and the full transcript-view image ("looks super weird").
+
+Investigated by pulling the actual PNG file directly (not trusting the browser) via `file` and PIL — confirmed
+1199×33075 = 39,656,925 pixels, safely under the existing `CAPTURE_MAX_TOTAL_PIXELS = 40,000,000` budget, and
+confirmed the PNG itself decodes cleanly with no exception. So this wasn't file corruption from stitching — the
+existing ceilings (`CAPTURE_MAX_TOTAL_PIXELS`, `CAPTURE_MAX_TILES`, `CAPTURE_MAX_ELAPSED_MS`) all check aggregate
+totals, and none of them ever checked a single axis's absolute size. Chrome's own canvas/GPU-texture rendering
+has a separate per-axis limit (commonly cited ~32,767px) that a narrow-but-extremely-tall page (or vice versa)
+can blow through while staying comfortably under the total-pixel budget — a genuine, previously-invisible gap in
+the capture ceiling logic, not a display/CSS issue.
+
+Fixed with a new `CAPTURE_MAX_AXIS_PIXELS = 16,000` ceiling, applied belt-and-suspenders the same way the
+existing pixel-count ceiling already is:
+- `capture-lib.js`'s pure `nsCheckCeilings(progress, ceilings)` gets an optional `maxAxisPixels` check
+  (backward compatible — callers that don't pass it are unaffected).
+- `background.js`'s tile-capture loop gets a preflight check before capturing the *next* tile, so a capture
+  stops cleanly (partial result, `ceiling_axis` reason) before either axis would exceed the limit.
+- `stitchShots()` gets its own hard backstop right before `OffscreenCanvas` allocation, matching the existing
+  total-pixel backstop already there.
+- `popup.js` gets new user-facing wording for the `ceiling_axis` partial-capture reason.
+
+Two new regression tests in `tests/test_s54_send_screenshot.py`. Sanity-checked the established way: reverted
+`background.js`/`capture-lib.js` to pre-fix (`git show HEAD:<path>`), confirmed both new tests correctly FAIL;
+restored the fix, confirmed both PASS. Full `test_s54_send_screenshot.py` (72 tests) and `test_s64_active_tab_
+toctou.py` (5 tests) both re-run clean after the fix landed.
+
+**This touches extension files** (`background.js`, `capture-lib.js`, `popup.js`), not server-side or static-JS
+frontend files like part 21 was — Kyle needs to **reload the Chrome extension itself** (not just refresh the
+page) for this to take effect.
+
+**Not yet fixed by this**: the EXISTING "2020s" image (1199×33075) already in Kyle's database was captured
+before this fix landed and will stay oversized/problematic until it's re-captured — this fix only prevents
+FUTURE captures from producing an image this tall.
+
+**Not yet verified live**: per this mission's standing rule (never mark PASS on symptom-disappearance alone,
+code fix + isolated unit tests aren't sufficient), this needs a live re-test — Kyle re-capturing a very
+tall/narrow page (same shape as case 5.2) after reloading the extension, to confirm the new `ceiling_axis`
+partial-capture path actually triggers and produces a clean, viewable (non-corrupted) image this time, before
+case 7 can be considered closed on this front.
+
+Case 7 itself also still has unconfirmed ground: only the image-viewing mechanism has been checked so far —
+the rest of the provenance card (page title, timestamp, mode wording, "partial" tag, URL, note fields) hasn't
+been explicitly confirmed correct with Kyle yet.
