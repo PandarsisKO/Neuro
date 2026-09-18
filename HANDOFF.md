@@ -6223,3 +6223,18 @@ suite, `release-check`, push. The `/api/sources` tail under a running research p
 because `knowledge.refresh` moves the research fingerprint every pass) is measured and filed, not fixed — it is
 ladder step 2. Three `.py` reloads happened during this pass (one per fix); each waited on the in-flight 300 s
 refresh before the new process took over — expected, and why P0.5 only removed `*.html` from the watch.
+
+## Release hygiene for 0.63.92 (Claude, 2026-09-17 17:40 PT)
+
+`release-check` PASS on `0bfd6ce`, artifact `evals/release/release-check-0.63.92-0bfd6ce-20260918-004814.{json,txt}`
+(run in an isolated copy of the committed tree, Python 3.12 / Linux; `--no-pytest` because the VM cannot keep a
+single process alive for the whole suite — the whole suite was run separately on the same tree in six `-n 4`
+chunks: **2,512 passed, 0 failed**. The two failures reported earlier as "environmental" were a missing
+`.venv/bin/neurosearch` in the isolated checkout, not the code.) Lesson recorded here so no one repeats it: the
+venv's editable install pointed at the MOUNTED repo, so the `neurosearch` console script imported and ran
+`release-check` against the live checkout's tree (its `.env` made the Foundation gate fail). No live data was
+touched — the gate's own fixtures are temp dirs — but it is exactly the trap CLAUDE.md warns about; the isolated
+copy must be what the venv installs.
+
+**Push is pending from a Mac-side session**: 12 commits ahead of `origin/main`, and this VM has no GitHub
+credential (macOS keychain). Codex, or the next agent with the Mac's git, runs the compact sync.
