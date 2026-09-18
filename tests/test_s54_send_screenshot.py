@@ -601,6 +601,49 @@ def test_ceilings_check_actual_progress_not_planned_grid_size() -> None:
     assert over_pixels["reason"] == "ceiling_pixels"
 
 
+def test_ceilings_check_catches_a_single_axis_too_large_even_under_the_total_pixel_budget() -> None:
+    # case 7 repair (2026-09-18): a live 1199x33075 capture (39.6M total pixels -- safely under a 40M budget)
+    # rendered corrupted in the app's own image view, because Chrome's canvas/GPU texture limits are bounded per
+    # AXIS, not just by total pixel count. maxAxisPixels is optional so callers/tests that omit it (above) are
+    # unaffected -- this proves it actually gates when present.
+    narrow_but_very_tall = _run("check-ceilings", [
+        {"elapsedMs": 100, "tilesCaptured": 2, "totalPixels": 39_656_925, "width": 1199, "height": 33075},
+        {"maxElapsedMs": 60000, "maxTiles": 30, "maxTotalPixels": 40_000_000, "maxAxisPixels": 16000}])
+    assert narrow_but_very_tall["reason"] == "ceiling_axis"
+
+    wide_but_short = _run("check-ceilings", [
+        {"elapsedMs": 100, "tilesCaptured": 2, "totalPixels": 39_656_925, "width": 33075, "height": 1199},
+        {"maxElapsedMs": 60000, "maxTiles": 30, "maxTotalPixels": 40_000_000, "maxAxisPixels": 16000}])
+    assert wide_but_short["reason"] == "ceiling_axis", "the check must gate on EITHER axis, not just height"
+
+    comfortably_under = _run("check-ceilings", [
+        {"elapsedMs": 100, "tilesCaptured": 2, "totalPixels": 1000, "width": 1200, "height": 900},
+        {"maxElapsedMs": 60000, "maxTiles": 30, "maxTotalPixels": 40_000_000, "maxAxisPixels": 16000}])
+    assert comfortably_under["reason"] is None
+
+    no_axis_ceiling_given = _run("check-ceilings", [
+        {"elapsedMs": 100, "tilesCaptured": 2, "totalPixels": 1000, "width": 999999, "height": 999999},
+        {"maxElapsedMs": 60000, "maxTiles": 30, "maxTotalPixels": 40_000_000}])
+    assert no_axis_ceiling_given["reason"] is None, "omitting maxAxisPixels must not gate anything -- backward compatible with older callers"
+
+
+def test_the_real_capture_loop_and_stitch_backstop_both_reference_the_new_axis_ceiling() -> None:
+    """String-boundary check on the shipped background.js (same style as the other pinned-shape tests in this
+    file): proves the axis ceiling constant is actually wired into BOTH the preflight-before-next-tile check and
+    the final stitchShots allocation backstop, not just defined and forgotten."""
+    bg = (Path(__file__).resolve().parents[1] / "extension" / "background.js").read_text()
+    assert "CAPTURE_MAX_AXIS_PIXELS" in bg
+    assert "ceiling_axis" in bg
+    assert bg.count("CAPTURE_MAX_AXIS_PIXELS") >= 3, \
+        "expected the constant definition plus at least the tile-loop preflight and the stitchShots hard backstop to reference it"
+    stitch_idx = bg.find("async function stitchShots")
+    assert stitch_idx != -1
+    stitch_body_end = bg.find("\nasync function ", stitch_idx + 1)
+    stitch_body = bg[stitch_idx:stitch_body_end if stitch_body_end != -1 else None]
+    assert "CAPTURE_MAX_AXIS_PIXELS" in stitch_body, \
+        "stitchShots itself must refuse to allocate a canvas with either axis over the limit -- this is the last line of defense"
+
+
 def test_stitch_scale_uses_real_bitmap_width_not_dpr_alone() -> None:
     # a 2x DPR screen would normally suggest scale=2, but the REAL bitmap can differ (zoom, rounding) -- the scale
     # must come from the actual captured bitmap width vs the CSS viewport width, not devicePixelRatio.

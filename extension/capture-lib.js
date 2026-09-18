@@ -171,6 +171,11 @@
     if (progress.elapsedMs > ceilings.maxElapsedMs) return 'ceiling_time';
     if (progress.tilesCaptured > ceilings.maxTiles) return 'ceiling_folds';
     if (progress.totalPixels > ceilings.maxTotalPixels) return 'ceiling_pixels';
+    // repair round (case 7, 2026-09-18): a narrow-but-very-tall page can stay under maxTotalPixels while one
+    // axis alone exceeds what Chrome's canvas/GPU texture limits can render cleanly -- checked in addition to,
+    // not instead of, the total-pixel ceiling above. ceilings.maxAxisPixels is optional so existing callers
+    // that don't pass it (older tests, other call sites) are unaffected.
+    if (ceilings.maxAxisPixels != null && (progress.width > ceilings.maxAxisPixels || progress.height > ceilings.maxAxisPixels)) return 'ceiling_axis';
     return null;
   }
 

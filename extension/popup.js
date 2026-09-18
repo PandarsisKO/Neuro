@@ -199,6 +199,7 @@ const CAPTURE_MODE_WORDS = { full_page: 'the full page', visible_only: 'the visi
 const CAPTURE_REASON_WORDS = { ceiling_pixels: 'the page was very tall — captured as far as the size limit allowed',
                                 ceiling_folds: 'the page was very tall — captured as far as the fold/tile limit allowed',
                                 ceiling_time: 'the page was very tall — captured as far as time allowed',
+                                ceiling_axis: 'the page was very tall or narrow — captured as far as it could be assembled without corrupting the image',
                                 fallback_after_error: 'the full page could not be assembled, so only the visible area was captured' };
 // Failure-state copy (repair round): the tagged errors background.js can raise, in the user's own words — never
 // DOM/mechanism jargon. `error` on a failed/upload_failed record is a message string; these are matched by

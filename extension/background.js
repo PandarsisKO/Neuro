@@ -247,6 +247,13 @@ async function putCapture(rec) { await chrome.storage.local.set({ [captureKey(re
 const CAPTURE_MAX_TOTAL_PIXELS = 40_000_000;   // full-resolution (post-DPR) pixels across every tile, combined
 const CAPTURE_MAX_TILES = 60;                  // 2D grid raises the practical tile count over the old 1D fold cap
 const CAPTURE_MAX_ELAPSED_MS = 60_000;
+const CAPTURE_MAX_AXIS_PIXELS = 16_000;         // repair round (case 7, 2026-09-18): a narrow-but-very-tall (or
+// wide-but-very-long) page can stay comfortably under CAPTURE_MAX_TOTAL_PIXELS while still producing a single
+// axis so large that Chrome's own canvas/GPU-texture size limits (commonly cited around 32,767px per axis,
+// often tighter on real GPU-backed canvases) corrupt or refuse to render it -- found live: a 1199x33075
+// (39.6M total pixels, safely under the 40M ceiling) capture rendered as a garbled sliver in the app's own
+// image view. 16,000 is a deliberately conservative margin under every commonly-documented limit, not a
+// measured exact threshold -- Kyle can raise it if a live test proves more headroom is safe.
 const CAPTURE_WATCHDOG_MS = 20_000;            // in-page self-heal window, armed on every sticky/fixed hide (below)
 const CAPTURE_SETTLE_MS = 140;                 // scroll landing: setTimeout-based wait, not rAF — Phase 1 spike
 const CAPTURE_HIDE_SETTLE_MS = 60;             // measured background-tab rAF throttling to ~1fps, so a bounded
@@ -387,6 +394,10 @@ async function stitchShots(shots, pageWidthCss, pageHeightCss) {
       throw new CaptureMechanismError(
         `refusing to assemble a ${w}x${h} image (${w * h} pixels) — exceeds the ${CAPTURE_MAX_TOTAL_PIXELS}-pixel safety ceiling`);
     }
+    if (w > CAPTURE_MAX_AXIS_PIXELS || h > CAPTURE_MAX_AXIS_PIXELS) {
+      throw new CaptureMechanismError(
+        `refusing to assemble a ${w}x${h} image — one axis exceeds the ${CAPTURE_MAX_AXIS_PIXELS}px safety ceiling (canvas/GPU texture size limits can corrupt an image this large in one dimension even when the total pixel count is fine)`);
+    }
     const canvas = new OffscreenCanvas(w, h);
     const ctx = canvas.getContext('2d');
     for (const { shot, bmp } of bitmaps) ctx.drawImage(bmp, Math.round(shot.x * scale), Math.round(shot.y * scale));
@@ -484,6 +495,10 @@ async function runCapture(tabId, rec) {
       if (capturedScale != null) {
         const projectedPixels = viewportWidth * capturedScale * viewportHeight * capturedScale * (shots.length + 1);
         if (projectedPixels > CAPTURE_MAX_TOTAL_PIXELS) { partialReason = 'ceiling_pixels'; break; }
+        const nextTarget = grid[idx];   // NOT `target` -- that's assigned further down, after this preflight block
+        const projectedW = Math.max(pageW, nextTarget.x + viewportWidth) * capturedScale;
+        const projectedH = Math.max(pageH, nextTarget.y + viewportHeight) * capturedScale;
+        if (projectedW > CAPTURE_MAX_AXIS_PIXELS || projectedH > CAPTURE_MAX_AXIS_PIXELS) { partialReason = 'ceiling_axis'; break; }
       }
 
       const target = grid[idx];
@@ -552,8 +567,8 @@ async function runCapture(tabId, rec) {
       const effScale = capturedScale != null ? capturedScale : dpr;
       const totalPixels = viewportWidth * effScale * viewportHeight * effScale * shots.length;
       const ceilingHit = nsCheckCeilings(
-        { elapsedMs: now() - startedAt, tilesCaptured: shots.length, totalPixels },
-        { maxElapsedMs: CAPTURE_MAX_ELAPSED_MS, maxTiles: CAPTURE_MAX_TILES, maxTotalPixels: CAPTURE_MAX_TOTAL_PIXELS });
+        { elapsedMs: now() - startedAt, tilesCaptured: shots.length, totalPixels, width: pageW * effScale, height: pageH * effScale },
+        { maxElapsedMs: CAPTURE_MAX_ELAPSED_MS, maxTiles: CAPTURE_MAX_TILES, maxTotalPixels: CAPTURE_MAX_TOTAL_PIXELS, maxAxisPixels: CAPTURE_MAX_AXIS_PIXELS });
       if (ceilingHit) { partialReason = ceilingHit; break; }
     }
 
