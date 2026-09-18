@@ -1095,6 +1095,7 @@ def init_db() -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_usage_kind_source ON usage(kind, source_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_status ON jobs(kind, status)")
     conn.commit()
+    _add_job_payload_columns(conn)
     _migrate_source_analysis(conn)
     _backfill_spoken_chars(conn)
     _backfill_job_lanes(conn)
@@ -1108,6 +1109,23 @@ def init_db() -> None:
         snapshot_pre_fix_mismatches()        # 0.63.29: separate the mis-read substitutions from any real ones
     except Exception as e:  # noqa: BLE001
         logging.getLogger(__name__).warning("orphan sweep skipped: %s", e)
+
+
+def _add_job_payload_columns(conn: sqlite3.Connection) -> None:
+    """R8 (narrow, 2026-09-17): `jobs.project_id` / `jobs.source_id` as VIRTUAL generated columns over the payload
+    JSON, plus the indexes `api_project_jobs` needs. Generated (not copied), so they can never drift from the payload
+    — every existing `UPDATE jobs SET payload=?` keeps them right for free — and VIRTUAL, so `ALTER TABLE ADD COLUMN`
+    is legal on an existing database (SQLite allows adding VIRTUAL, never STORED, generated columns). Additive: no
+    rewrite, no backfill, ~2 MB of index on the 79k-row live table. `PRAGMA table_info` hides generated columns, so
+    the presence check uses `table_xinfo`, and MIGRATIONS' plain loop is not used for these."""
+    have = {r[1] for r in conn.execute("PRAGMA table_xinfo(jobs)").fetchall()}
+    if "project_id" not in have:
+        conn.execute("ALTER TABLE jobs ADD COLUMN project_id TEXT GENERATED ALWAYS AS (json_extract(payload, '$.project_id')) VIRTUAL")
+    if "source_id" not in have:
+        conn.execute("ALTER TABLE jobs ADD COLUMN source_id TEXT GENERATED ALWAYS AS (json_extract(payload, '$.source_id')) VIRTUAL")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_project_created ON jobs(project_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_source_created ON jobs(kind, source_id, created_at)")
+    conn.commit()
 
 
 def _backfill_spoken_chars(conn: sqlite3.Connection) -> None:
@@ -2474,6 +2492,34 @@ def list_jobs(limit: int = 50, statuses: tuple[str, ...] | None = None) -> list[
     q += " ORDER BY created_at DESC LIMIT ?"
     args.append(limit)
     return [row_to_dict(r) for r in connect().execute(q, args).fetchall()]  # type: ignore[misc]
+
+
+def list_project_jobs(project_id: str, source_ids: Iterable[str], *, limit: int, statuses: tuple[str, ...] | None = None,
+                      exclude_statuses: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+    """R8: a project's jobs — those whose payload names the project, plus `ingest_source` jobs for its sources —
+    straight from the generated-column indexes, newest first. Replaces `api_project_jobs`'s scan of every active
+    job app-wide plus the 400 most recent (payload JSON decoded per row, then filtered in Python)."""
+    idl = list(dict.fromkeys(source_ids))
+    cond, cargs = "", []
+    if statuses:
+        cond += f" AND status IN ({','.join('?' for _ in statuses)})"
+        cargs += list(statuses)
+    if exclude_statuses:
+        cond += f" AND status NOT IN ({','.join('?' for _ in exclude_statuses)})"
+        cargs += list(exclude_statuses)
+    # Two queries, merged here, on purpose: as one `OR` SQLite must union both index scans and re-sort the whole
+    # union (MULTI-INDEX OR + temp b-tree — measured 205 ms on a copy of the 79k-row live table, no better than the
+    # scan it replaces). Each half on its own walks its index in created_at order and stops at LIMIT: 26 ms.
+    conn = connect()
+    rows = conn.execute(f"SELECT * FROM jobs WHERE project_id=?{cond} ORDER BY created_at DESC LIMIT ?", [project_id, *cargs, limit]).fetchall()
+    if idl:
+        rows += conn.execute(f"SELECT * FROM jobs WHERE kind='ingest_source' AND source_id IN (SELECT value FROM json_each(?)){cond} "
+                             "ORDER BY created_at DESC LIMIT ?", [json.dumps(idl), *cargs, limit]).fetchall()
+    seen: dict[str, Any] = {}
+    for r in rows:
+        seen.setdefault(r["id"], r)
+    out = sorted(seen.values(), key=lambda r: -(r["created_at"] or 0))[:limit]
+    return [row_to_dict(r) for r in out]  # type: ignore[misc]
 
 
 BACKGROUND_LANES = ("slow", "low")

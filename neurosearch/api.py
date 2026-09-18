@@ -1897,20 +1897,13 @@ def api_project_jobs(project_id: str, limit: int = 40) -> list[dict[str, Any]]:
     included, however many there are; `limit` only bounds how many additional recent terminal (done/failed/
     cancelled) jobs ride along for history."""
     ids = set(db.project_source_ids(project_id, ready_only=False))
-
-    def _mine(j: dict[str, Any]) -> bool:
-        pl = j.get("payload") or {}
-        return pl.get("project_id") == project_id or (j["kind"] == "ingest_source" and pl.get("source_id") in ids)
-
-    out = [j for j in db.list_jobs(limit=5000, statuses=db.JOB_ACTIVE) if _mine(j)]
+    # R8 (2026-09-17): two indexed queries (generated `jobs.project_id`/`jobs.source_id` columns) instead of decoding
+    # every active job app-wide plus the 400 most recent to keep this project's in Python — 210 ms on the live table
+    # for a 30-row answer, on every poll tick that saw a job change. Same membership rule, same ordering.
+    out = db.list_project_jobs(project_id, ids, limit=5000, statuses=db.JOB_ACTIVE)
     have = {j["id"] for j in out}
-    budget = len(out) + max(limit, 0)
-    for j in db.list_jobs(limit=max(limit * 10, 400)):
-        if len(out) >= budget:
-            break
-        if j["id"] in have:
-            continue
-        if _mine(j):
+    for j in db.list_project_jobs(project_id, ids, limit=max(limit, 0), exclude_statuses=db.JOB_ACTIVE):
+        if j["id"] not in have:
             out.append(j)
             have.add(j["id"])
     titles = db.source_titles({sid for j in out for sid in ((j.get("payload") or {}).get("source_ids") or [(j.get("payload") or {}).get("source_id")]) if sid})
