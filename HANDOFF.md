@@ -6521,3 +6521,12 @@ relevance, are never sent to the ranker, start unticked with a 🔒 label, and a
 refusal back-fills the gate and is now a permanent failure class (`members_only`, split from the retryable
 `login_wall`). Applies to listings made from now on; already-listed proposals gain the gate only if their download
 is refused. Gate `test_s73`. Server reloaded on delivery.
+
+## Members-only videos are remembered, not forgotten (Claude, 2026-09-18, `44c016f`)
+
+Kyle: a 90+ members-only video should be remembered — maybe worth a membership — though it cannot be ingested.
+Gated videos are ranked again (the score is the memory), still sort last and start unticked; an unchosen gated
+video is filed in the Candidate Index as `needs_membership` with its relevance and reason, shown in the pool with
+🔒 and an "Open on YouTube" link, no Capture action, never a preference signal; a refused download is filed the
+same way. Pre-existing gap fixed on the way: `approve_proposed` filed every skipped candidate scoreless because it
+fetched proposals before it knew the project. Gate `test_s73`.
