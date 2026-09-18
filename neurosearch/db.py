@@ -1104,6 +1104,7 @@ def init_db() -> None:
     _add_job_payload_columns(conn)
     _migrate_source_analysis(conn)
     _backfill_spoken_chars(conn)
+    _reclassify_members_only(conn)
     _backfill_job_lanes(conn)
     _dedupe_claim_evidence(conn)
     _resolve_orphan_invocations(conn)
@@ -1133,6 +1134,23 @@ def _add_job_payload_columns(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_project_created ON jobs(project_id, created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_jobs_kind_source_created ON jobs(kind, source_id, created_at)")
     conn.commit()
+
+
+def _reclassify_members_only(conn: sqlite3.Connection) -> None:
+    """2026-09-18: 22 failed sources on Kyle's library said 'available to this channel's members on level …' — a
+    members-only wording the classifier did not know, filed as retryable `login_wall`. Same rule as `set_source_status`,
+    applied once to rows already on the books: permanent class + the access gate."""
+    try:
+        n = conn.execute("UPDATE sources SET error_class='members_only', access_gate=COALESCE(access_gate, 'members_only') "
+                         "WHERE status='failed' AND (error_class IS NULL OR error_class='login_wall' OR error_class='other') "
+                         "AND (lower(error) LIKE '%members-only%' OR lower(error) LIKE '%members only%' OR lower(error) LIKE '%join this channel%' "
+                         "OR lower(error) LIKE \"%available to this channel's members%\")").rowcount
+        conn.commit()
+        if n:
+            logging.getLogger(__name__).info("reclassified %d failed source(s) as members_only", n)
+    except Exception as e:  # noqa: BLE001
+        conn.rollback()
+        logging.getLogger(__name__).warning("members_only reclassification skipped: %s", e)
 
 
 def _backfill_spoken_chars(conn: sqlite3.Connection) -> None:
@@ -1571,7 +1589,7 @@ def set_source_status(source_id: str, status: str, error: str | None = None) -> 
     cls = failure_class(error) if status == "failed" else None
     with tx() as conn:
         # a listing that did not carry `availability` learns the gate from the download's own refusal
-        if status == "failed" and error and re.search(r"members[- ]only|join this channel", str(error), re.I):
+        if status == "failed" and error and re.search(r"members[- ]only|join this channel|available to this channel's members", str(error), re.I):
             conn.execute("UPDATE sources SET access_gate=COALESCE(access_gate, 'members_only') WHERE id=?", (source_id,))
         if cls:
             conn.execute("UPDATE sources SET status=?, error=?, error_class=CASE WHEN error_class LIKE 'browser_solvable:%' "
@@ -1589,7 +1607,7 @@ FAILURE_CLASSES: tuple[tuple[str, str, bool], ...] = (
     ("not_found", r"http (error )?404|404: not found|no longer exists|nothing at that address", True),
     # 2026-09-18: a members-only refusal is permanent for this app — it never holds the person's membership cookie
     # for bulk YouTube downloads (CLAUDE.md), so a retry cannot succeed. Ordered before the retryable sign-in walls.
-    ("members_only", r"members[- ]only|join this channel", True),
+    ("members_only", r"members[- ]only|join this channel|available to this channel's members", True),
     ("login_wall", r"sign in to confirm|login required|requires authentication", False),
     ("blocked", r"http (error )?40[13]|refused the listing|forbidden|blocked", False),
     ("empty_transcript", r"transcript came back empty|no transcript|captions? (are )?disabled", False),

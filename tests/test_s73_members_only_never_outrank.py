@@ -121,3 +121,14 @@ def test_review_card_never_auto_ticks_a_gated_video_and_labels_it():
     js = (pathlib.Path(__file__).resolve().parent.parent / "neurosearch" / "web" / "js" / "sources.js").read_text()
     assert "|| s.access_gate) off.add(s.id)" in js, "a gated video must start unticked"
     assert "members only" in js and "s.access_gate ===" in js, "the review row must say why it is last"
+
+
+def test_the_level_wording_is_members_only_and_old_rows_are_reclassified(fresh):
+    msg = "[youtube] l9ZNhHQIZ5c: This video is available to this channel's members on level: Think Even Bigger (or any higher level)"
+    assert db.failure_class(msg) == "members_only" and db.failure_is_permanent("members_only")
+    s = db.upsert_source(platform="youtube", external_id="lvl", url="https://youtu.be/lvl", title="t", status="pending")
+    with db.tx() as conn:                                            # a row filed by the old classifier
+        conn.execute("UPDATE sources SET status='failed', error=?, error_class='login_wall' WHERE id=?", (msg, s["id"]))
+    db.init_db()
+    row = db.get_source(s["id"])
+    assert row["error_class"] == "members_only" and row["access_gate"] == "members_only"
