@@ -760,8 +760,11 @@ def synthesize(project_id: str) -> list[dict[str, Any]]:
                 comp_cache[source_id] = None
         return comp_cache[source_id]
 
-    with db.tx() as conn:
-        conn.execute("DELETE FROM community_syntheses WHERE project_id=?", (project_id,))
+    # P0 (docs/SPEED-AUDIT-2026-09-17.md §7): the walk over every Claim's evidence is reading and CPU, and it used to
+    # run INSIDE the write transaction (3.5 s hold on Kyle's project, other writers queued behind it). The rows are
+    # decided first; the DELETE + INSERTs are one short transaction at the end. Same rows, same order.
+    rows: list[tuple] = []
+    if True:                                                          # (indentation kept so the diff stays reviewable)
         for c in claims.list_for_project(project_id):
             if c["status"] in ("rejected", "superseded"):
                 continue
@@ -793,10 +796,12 @@ def synthesize(project_id: str) -> list[dict[str, Any]]:
                         "note": ("based in part on partially captured threads (" + "; ".join(f"{p['captured']} of ~{p['expected']} comments" if p["expected"] else "comment count unknown" for p in partial)
                                  + ") — unseen comments may hold disagreement; this is not full-thread consensus") if partial else None}
             sid = db.new_id()
-            conn.execute("INSERT INTO community_syntheses (id, project_id, kind, claim_id, statement, independent_lines, supporting, contradicting, evidence, created_at, coverage) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                         (sid, project_id, kind, c["id"], c["text"][:300], indep, len(sup), len(con), json.dumps(links), t, json.dumps(coverage) if partial else None))
+            rows.append((sid, project_id, kind, c["id"], c["text"][:300], indep, len(sup), len(con), json.dumps(links), t, json.dumps(coverage) if partial else None))
             out.append({"id": sid, "kind": kind, "claim_id": c["id"], "statement": c["text"][:300], "independent_lines": indep, "supporting": len(sup), "contradicting": len(con), "evidence": links,
                         "coverage": coverage if partial else None})
+    with db.tx() as conn:
+        conn.execute("DELETE FROM community_syntheses WHERE project_id=?", (project_id,))
+        conn.executemany("INSERT INTO community_syntheses (id, project_id, kind, claim_id, statement, independent_lines, supporting, contradicting, evidence, created_at, coverage) VALUES (?,?,?,?,?,?,?,?,?,?,?)", rows)
     order = {"RARE_BUT_SERIOUS": 0, "STRONG_DISAGREEMENT": 1, "MIXED_EXPERIENCE": 2, "FREQUENTLY_REPORTED": 3, "FIRSTHAND_EXAMPLES": 4}
     out.sort(key=lambda x: (order[x["kind"]], -x["independent_lines"]))
     return out

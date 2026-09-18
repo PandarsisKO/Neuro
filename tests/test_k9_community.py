@@ -251,3 +251,19 @@ def test_g7_explore_is_metadata_only_and_ranks_by_mission_not_engagement(monkeyp
     assert candidates.search(pid, "biggest mistake year one")[0]["state"] == "available"
     c = resources.classify(THREAD_URL)
     assert c.kind == "page" and c.default_action == "page"                                       # thread → the community adapter via ingest_url
+
+
+def test_synthesize_decides_outside_the_write_transaction(monkeypatch):
+    """P0 (docs/SPEED-AUDIT-2026-09-17.md §7): the evidence walk ran inside db.tx() -- a 3.5 s writer hold on Kyle's
+    project. Only the DELETE + INSERTs may hold the writer now."""
+    from neurosearch import claims, community, db
+    real = claims.list_for_project
+    seen = []
+
+    def spy(*a, **k):
+        seen.append(db.connect().in_transaction)
+        return real(*a, **k)
+    monkeypatch.setattr(claims, "list_for_project", spy)
+    pid = db.create_project("k9-tx", brief="b")["id"]
+    community.synthesize(pid)
+    assert seen and not any(seen), "the Claim/evidence walk must not run while a write transaction is open"
