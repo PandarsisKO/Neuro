@@ -6252,4 +6252,4 @@ Result under a continuous research pass: `/api/sources` p50 0.70 s / p90 0.86 s,
 across two passes, 98 % hits; idle 266 ms. Residual spikes (5–8 s, ~2 per 10 min) are GIL sharing with
 `assess_project`, measured and filed, not acted on. Gate `tests/test_s72_research_revision_stability.py`.
 Every change was validated live through the app's own API before the next; the live database was never opened.
-16 commits ahead of `origin/main`; push from the Mac still pending. Next: R4.
+20 commits ahead of `origin/main`; push from the Mac still pending. Next: R4.

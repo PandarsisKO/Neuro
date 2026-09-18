@@ -9,7 +9,7 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 p90 0.86 s (was 5.2 / 13–34 s) with 98 % cache hits and zero revision movement across two full passes; New Chat
 p50 12 ms; writer peak 15 ms. Next in the ladder: **R4** durable partial work, then **R5** in-job concurrency
 gated on the P0 invariant (CLAUDE.md), then R9. Do not tune the P0 boundaries without a new measurement. Owed,
-needing Kyle or the Mac: push (16 commits ahead of origin — Codex or a Mac-side agent), two visible windows,
+needing Kyle or the Mac: push (20 commits ahead of origin — Codex or a Mac-side agent), two visible windows,
 first live `harvest_claims` completion with the queue running.
 The Send Screenshot matrix below stays the other open effort; it was not touched.
 
