@@ -119,12 +119,21 @@ globalThis.sourceDrawer = async function sourceDrawer(sid) {
   // into "what it gave you" as if it were evidence itself.
   const cap = d.capture;
   const capModeWords = { full_page: 'the full page', visible_only: 'the visible area', partial_page: 'part of the page' };
+  // repair round (case 7, 2026-09-18): /api/sources/{id}/image has existed since 0.63.0 but nothing in the
+  // frontend ever linked to it -- Send Screenshot's whole point is capturing a page as a picture, and there was
+  // no way to actually SEE it anywhere in the app. A thumbnail here (click through to the full image) plus the
+  // fix in viewTranscript (sources.js) are the two places a screenshot's image needs to be reachable from.
+  const capturedThumb = s.platform === 'image'
+    ? `<a href="/api/sources/${sid}/image" target="_blank" title="open full size"><img src="/api/sources/${sid}/image" loading="lazy"
+         style="max-width:180px;max-height:120px;display:block;margin-top:6px;border:1px solid var(--line);border-radius:4px;object-fit:cover;object-position:top"
+         alt="${esc(s.title || 'captured image')}" onerror="this.parentElement.style.display='none'"></a>` : '';
   const capturedLine = cap ? `<div class="card mt-2" style="background:var(--panel2)">
       <b>📸 Captured${cap.page_title ? ` from ${esc(cap.page_title)}` : ''}</b>
       <span class="muted"> · ${esc(new Date(cap.captured_at * 1000).toLocaleString())}${cap.mode ? ` · ${esc(capModeWords[cap.mode] || cap.mode)}` : ''}</span>
       ${cap.partial_reason ? `<span class="tag" title="the capture stopped before the whole page was assembled">partial</span>` : ''}
       ${cap.url ? `<div><a class="muted" href="${esc(cap.url)}" target="_blank">${esc(cap.url)}</a></div>` : ''}
       ${cap.note ? `<div class="why"><b>Your note (context, not evidence):</b> ${esc(cap.note)}</div>` : ''}
+      ${capturedThumb}
     </div>` : '';
   $('#dlgBody').innerHTML = `
     <div class="row" style="align-items:baseline;gap:8px;flex-wrap:wrap"><b class="text-base">${esc(s.title)}</b>

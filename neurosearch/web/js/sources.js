@@ -353,6 +353,17 @@ globalThis.viewTranscript = async function viewTranscript(id, ordinal) {
   const secLabel = s.platform === 'book' ? Object.fromEntries((s.sections || []).map(x => [x.ordinal, x.label])) : null;
   const lab = t => secLabel ? (secLabel[Math.round(t)] || `section ${Math.round(t)}`) : isDoc ? `p. ${Math.round(t)}` : isWeb ? `§ ${Math.round(t)}` : isSheet ? `sheet ${Math.round(t)}` : fmt(t);
   if (s.platform === 'book') { renderBook(s, ordinal); return; }
+  // repair round (case 7, 2026-09-18): /api/sources/{id}/image has existed since 0.63.0 but nothing in the
+  // frontend ever showed it -- an image source's "Transcript" button only ever showed the OCR'd text, never the
+  // picture itself, which for a screenshot capture is the actual point. Show the image first, OCR text below it.
+  if (s.platform === 'image') {
+    $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/image" target="_blank">open full size ↗</a>
+      <div style="margin-top:8px"><img src="/api/sources/${id}/image" style="max-width:100%;max-height:70vh;display:block;border:1px solid var(--line);border-radius:4px"
+        alt="${esc(s.title || 'captured image')}"></div>
+      <div class="transcript" style="margin-top:10px">${(s.segments || []).map(g => esc(g.text)).join('\n') || '<span class="muted">no text was read from this image</span>'}</div>`;
+    dlg.showModal();
+    return;
+  }
   $('#dlgBody').innerHTML = `<b>${esc(s.title)}</b> <a class="muted" href="/api/sources/${id}/transcript.txt" target="_blank">download .txt</a>
     <div class="transcript">${s.segments.map(g => (link(g.start) ? `<a href="${esc(link(g.start))}" target="_blank"><b>[${lab(g.start)}]</b></a>` : `<b>[${lab(g.start)}]</b>`) + ' ' + esc(g.text)).join('\n')}</div>`;
   dlg.showModal();
