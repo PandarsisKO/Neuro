@@ -6431,3 +6431,24 @@ unrelated config already in the tree (e.g. a pinned model name, a pinned cache_r
 session never opens `data/neurosearch.db` directly, so the fix can't be applied to the live database from here.
 Needs an ordinary server restart (`start.command`, whenever convenient -- not urgent, the count is stable, not
 growing) to actually clear the live row. Back to case 7 (drawer provenance).
+
+## Real gate-closing pass, part 21: fixed — image-platform sources were unviewable in the app (found live during case 7)
+
+Case 7 (drawer provenance) surfaced a real gap: `/api/sources/{id}/image` has existed server-side since 0.63.0,
+but nothing in the frontend ever linked to it. Every image-platform source -- every Send Screenshot capture
+included -- had no way to actually be seen as a picture anywhere in the app; the drawer's "Transcript" button
+and the source row's own button both only ever rendered the OCR'd text (`viewTranscript` in `sources.js` had no
+`platform === 'image'` branch at all).
+
+Fixed in two places: `sourceDrawer`'s "📸 Captured..." provenance card (`research.js`) now includes a clickable
+thumbnail (`capturedThumb`, gated on `s.platform === 'image'`, pointing at the real `/api/sources/${sid}/image`
+endpoint); `viewTranscript` (`sources.js`) now shows the actual image above the OCR'd text for image-platform
+sources, returning early so the generic text-only view never overwrites it. Three new regression tests
+(`tests/test_s71_image_source_viewable.py`), sanity-checked to fail against the pre-fix source (confirmed both
+UI fixes correctly absent/broken) before confirming they pass against the fix. Existing drawer
+(`test_n9_source_drawer.py`), UI-syntax (`test_s5`), and poll-fanout (`test_s61`/`test_s63`/`test_s65`) suites
+re-run clean -- 39 + 6 passed, nothing broken.
+
+This is a static frontend file (JS served directly, no server restart needed per `test_s69_html_edits_do_not_
+restart.py`'s own premise) -- Kyle just needs an ordinary browser reload to pick it up, not a server restart.
+Back to case 7's actual live check now that the picture can be seen.
