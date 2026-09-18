@@ -6326,3 +6326,34 @@ scrollY numerically exact across three reads. The "looks different despite match
 UNRESOLVED, not disproven — recorded here rather than dropped, in case it resurfaces during case 6/7 or a
 future live session on a similarly huge page. Continuing to case 5.3 (redefined: upload/network failure + retry,
 per Kyle's 2026-09-17 amendment — never a forced tab switch).
+
+## Real gate-closing pass, part 17: Send Screenshot case 5.3 (redefined: upload/network failure + retry) — PASS (2026-09-18)
+
+Per Kyle's 2026-09-17 amendment, case 5.3 tests upload/network failure and retry, never a forced tab switch.
+Traced the recovery mechanism in `background.js` first: a failed upload sets `capture:<tabId>` status to
+`upload_failed` (only when the captured blob is confirmed durably saved in IndexedDB — checked directly, not
+inferred from status string), keeping the same `capture_id` and bytes; `retryCapture()` resubmits those same
+bytes under the same `capture_id` via `uploadCapture()`, never recapturing pixels or generating a new identity.
+Server-side, `capture_id` is the end-to-end idempotency key (`db.create_or_get_capture_ingest_request`).
+
+Live mechanism used to trigger a REAL (not simulated) network failure without touching the server `.env` token
+or the database: stopping/restarting the local server via `start.command`. First attempt stopped the server
+before opening the popup — the popup's own project list fetch failed first ("Could not load projects: Failed to
+fetch"), and Send Screenshot no-ops with nothing selected (`if (!pid) return`) — a popup-load dependency,
+distinct from the capture path itself, not a defect. Retimed: server left running through popup load and project
+selection, then stopped only after "Send screenshot" was pressed and capture was already in progress
+(capturing/saving), so the failure landed specifically on the upload step.
+
+Result: popup progressed through capturing → saving → failed at send with "Could not send: ..." and a Retry
+button, exactly as designed. Kyle restarted the server, pressed "Retry send" (confirmed explicitly, not a fresh
+Send Screenshot press), and it succeeded. `server.log` showed exactly ONE new `POST /api/ingest/file 200 OK`
+and exactly one new upload file landed (`upload_a966adaa_screenshot-a9a6127d.png`) -- no duplicate source, no
+trace of the failed attempt server-side (expected: a real connection-refused failure never reaches the server
+to log anything). Scroll-restoration re-check after the failure (step 7 of the procedure) was not obtained --
+Kyle said to move on before providing it -- noted as not independently confirmed for this specific run, though
+the code path (`restoreStylesAndScroll` always runs before `uploadCapture` is ever called, confirmed in parts
+14-16) makes a failure here very unlikely.
+
+**Case 5.3: PASS.** Failure UX correct, retry reuses the same capture identity, no duplicate evidence created.
+Continuing to the dedicated active-tab-switch live test (inserted by Kyle ahead of case 6, to confirm the
+TOCTOU fix from part 14 holds under a real browser tab switch, not just the harness mock).
