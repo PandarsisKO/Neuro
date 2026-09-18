@@ -1542,7 +1542,11 @@ def list_sources(
         where.append("(s.title LIKE ? OR s.channel LIKE ?)"); args += [f"%{query}%", f"%{query}%"]
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY COALESCE(s.published_at, '') DESC, s.created_at DESC LIMIT ? OFFSET ?"
+    # Most recently ADDED first (0.63.93). This listing is capped (2,000 for a project's page, 500 for the library
+    # picker, 20 for the CLI's failed list), and the cap used to fall on publish-date order: a course lesson or a
+    # document carries no publish date, so the rows Kyle had just added were the first ones a full project would
+    # have cut. What entered the library last is what a capped list must never drop; the page re-sorts client-side.
+    sql += " ORDER BY s.created_at DESC, COALESCE(s.published_at, '') DESC LIMIT ? OFFSET ?"
     args += [limit, offset]
     return [row_to_dict(r) for r in connect().execute(sql, args).fetchall()]  # type: ignore[misc]
 
@@ -4638,7 +4642,10 @@ def set_update_status(update_id: int, status: str, decided_by: str = "user") -> 
 # --------------------------------------------------------- conversations
 
 def save_message(conversation_id: str, role: str, content: str, citations: list | None = None,
-                 title: str | None = None, project_id: str | None = None, meta: dict[str, Any] | None = None) -> None:
+                 title: str | None = None, project_id: str | None = None, meta: dict[str, Any] | None = None) -> int:
+    """Returns the new messages.id (CHR0, docs/CHAT-REFRESH-PLAN.md §2): an assistant row records which user row it
+    answered, and a later refresh records which assistant row it started from, as REAL ids — never as "the nearest
+    timestamp". This is the narrowest seam that makes those relationships stable; nothing else about the write changed."""
     with tx() as conn:
         t = now()
         conn.execute(
@@ -4646,19 +4653,39 @@ def save_message(conversation_id: str, role: str, content: str, citations: list 
             (conversation_id, project_id, title, t, t),
         )
         conn.execute("UPDATE conversations SET updated_at=?, title=COALESCE(title, ?) WHERE id=?", (t, title, conversation_id))
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO messages (conversation_id, role, content, citations, created_at, meta) VALUES (?,?,?,?,?,?)",
             (conversation_id, role, content, json.dumps(citations) if citations is not None else None, t,
              json.dumps(meta) if meta else None),
         )
+        return int(cur.lastrowid or 0)
 
 
 def get_messages(conversation_id: str, limit: int = 20) -> list[dict[str, Any]]:
     rows = connect().execute(
-        "SELECT role, content, citations, created_at, meta FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+        "SELECT id, role, content, citations, created_at, meta FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
         (conversation_id, limit),
     ).fetchall()
     return [row_to_dict(r) for r in reversed(rows)]  # type: ignore[misc]
+
+
+def conversation_baseline(conversation_id: str) -> dict[str, Any] | None:
+    """CHR0: the conversation's last SUCCESSFUL knowledge state — the newest assistant row carrying meta.evidence.
+    A failed turn (save_failure: meta.incomplete) or a pre-CHR0 answer has no evidence key and is skipped, so the
+    baseline never advances onto a turn that did not finish. None when no row qualifies (a legacy chat: the
+    Approximate branch, plan §12, decides what to do with that)."""
+    rows = connect().execute(
+        "SELECT id, created_at, meta FROM messages WHERE conversation_id=? AND role='assistant' AND meta IS NOT NULL "
+        "ORDER BY id DESC LIMIT 50", (conversation_id,)).fetchall()
+    for r in rows:
+        try:
+            meta = json.loads(r["meta"] or "{}")
+        except ValueError:
+            continue
+        ev = meta.get("evidence")
+        if isinstance(ev, dict) and not meta.get("incomplete"):
+            return {"message_id": int(r["id"]), "answered_at": float(r["created_at"]), "evidence": ev}
+    return None
 
 
 def first_user_message(conversation_id: str) -> str:

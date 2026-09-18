@@ -152,3 +152,15 @@ land; CR1 without CR2 is already usable through the API for measurement.
 
 Auto-refreshing chats without a click; a nightly "refresh everything" (that is the Project Delta / envelope
 mission in `delta.py`, a different surface); notifying across projects; changing retrieval ranking.
+
+## 16. Execution record
+
+- **CHR0 shipped (2026-09-18).** `db.save_message` returns the new `messages.id`; `db.get_messages` exposes `id`;
+  `db.conversation_baseline(conversation_id)` = newest assistant row with `meta.evidence` and no `meta.incomplete`.
+  `conversation_delta.evidence_snapshot()` builds the block from the FINAL `ctx["hits"]` (initial retrieval +
+  `search_library` additions + full-context chunks), the resolved scope, the retrieval query, and the user row id;
+  it also records `max_claim_evidence_id` and `claim_state` (strength/freshness/status/application of every Claim
+  whose evidence touches a shown source) so CHR1 can name transitions. Incomplete turns write `meta.incomplete`
+  and no `evidence`; `save_failure` unchanged (no `evidence`); link-only turns write a zero-hit baseline. Gate:
+  `tests/test_chr0_conversation_baseline.py` (7 tests). Full suite green apart from `test_p1b_tonight_ui`'s
+  ui-version assertion, which belongs to the concurrent 0.63.94 work in the tree, not to CHR0.

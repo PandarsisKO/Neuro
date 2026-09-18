@@ -424,9 +424,10 @@ def ask(
     # never got. It is saved here, before anything can fail, and the assistant's message is saved separately when
     # there is one. `saved_user` stops the late path writing it twice.
     saved_user = False
+    user_message_id: int | None = None   # CHR0: the assistant row records which user row it answered, by id
     if conversation_id:
         try:
-            db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
+            user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
             saved_user = True
         except Exception as e:  # noqa: BLE001 — never lose the answer because the question could not be filed
             log.warning("could not save the question: %s", e)
@@ -463,8 +464,14 @@ def ask(
             answer = "\n\n".join(parts) or "I couldn't tell what to do with that link."
             if conversation_id:
                 if not saved_user:
-                    db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
-                db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id)
+                    user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
+                # CHR0: a link-only turn used the conversation and its links become ready AFTERWARDS — so it records a
+                # zero-hit baseline (scope as of now, nothing shown) on purpose, and the next delta surfaces them as
+                # newly available rather than as "already known". Plan §2.
+                from .conversation_delta import evidence_snapshot
+                zero = evidence_snapshot(project_id=project_id, scope_source_ids=(project["source_ids"] if project else None) or [],
+                                         retrieval_query="", hits=[], full_context=False, question_message_id=user_message_id)
+                db.save_message(conversation_id, "assistant", answer, citations=[], project_id=project_id, meta={"evidence": zero})
             return {"answer": answer, "citations": [], "hits": [], "web_used": False, "web_sources": [],
                     "project": _pj(project), "conversation_id": conversation_id, "ingest_jobs": ingest_jobs,
                     "actions": actions}
@@ -660,11 +667,22 @@ def ask(
 
     if conversation_id:
         if not saved_user:
-            db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
+            user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
         meta = dict(validation or {})
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
             meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"
+            meta["incomplete"] = True   # CHR0: an unfinished answer is not the conversation's knowledge state
+        else:
+            # CHR0: what this answer could know — FINAL ctx["hits"] (initial retrieval + every search_library
+            # addition + full-context chunks), the scope it ran against, the query it was built from, and the user
+            # row it answers. Write-only; nothing above this line reads it. docs/CHAT-REFRESH-PLAN.md §2.
+            try:
+                from .conversation_delta import evidence_snapshot
+                meta["evidence"] = evidence_snapshot(project_id=project_id, scope_source_ids=source_ids, retrieval_query=rq,
+                                                     hits=ctx["hits"], full_context=bool(full_context), question_message_id=user_message_id)
+            except Exception as e:  # noqa: BLE001 — never lose the answer over its bookkeeping
+                log.warning("evidence snapshot failed: %s", e)
         db.save_message(conversation_id, "assistant", answer, citations=citations, project_id=project_id, meta=meta)
 
     return {
