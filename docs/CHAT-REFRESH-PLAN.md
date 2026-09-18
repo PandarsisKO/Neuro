@@ -129,28 +129,24 @@ check, continuation, save-on-failure):
 |---|---|---|
 | CR0 | `meta.evidence` snapshot on every assistant message | snapshot present, shown ⊇ cited, revision matches `project_research_revision` at answer time |
 | CR1 | `GET /api/conversations/{id}/delta` + Tier 0 counts on the list; cache keyed on revision | adding a ready source in scope moves the delta; adding one out of scope doesn't; a claim status change on a cited source appears; empty delta returns `nothing_new=true` and makes **no** provider call; second call is a cache hit |
-| CR2 | Chat UI: "What's new" panel on the open chat, "nothing new" state (no list badges — decision 3) | JS test in `tests/js/` (same harness as poll containment): panel never fetches while `document.hidden`, one in-flight per chat |
+| CR2 | Chat UI: badge on the chat list, "What's new" panel on the chat, "nothing new" state | JS test in `tests/js/` (same harness as poll containment): panel never fetches while `document.hidden`, one in-flight per chat |
 | CR3 | Tier 2 refresh mode in `qa.ask` + button with cost estimate | fake-provider test: excerpts handed to the model contain only new + previously-cited chunks; synthetic user turn saved with `meta.kind`; refresh answer records `meta.refresh` and its own `meta.evidence`; a chat with no delta cannot trigger a refresh (409) |
-| ~~CR4~~ | dropped — no list badges (decision 3), so nothing needs warming | — |
+| CR4 (later, on trigger) | Tier 0 recomputed by the maintenance worker after ingest/harvest completes, so badges are warm before Kyle opens the project | only if opening a project with many chats measures > 300 ms on Tier 0 |
 
 Order is deliberate: CR0 first so every chat Kyle has from tomorrow on has an exact baseline by the time CR1–3
 land; CR1 without CR2 is already usable through the API for measurement.
 
-## 5. Decisions (Kyle, 2026-09-18)
+## 5. Decisions I need from Kyle before CR0
 
-1. **Refresh target: the whole open chat.** A refresh is one turn that asks "what is new since my last answer
-   across everything this conversation covered" — not the last question only. Consequences for CR1/CR3: the
-   Tier 1 delta and the Tier 2 excerpts are built from *every* user question in the chat (cap raised from 5 to
-   all, with a total-excerpt ceiling of `limit` per question and a global cap so the refresh turn never exceeds
-   a normal turn's excerpt budget; when the cap binds, the most recent questions win). The synthetic user turn
-   reads "Refresh: what's new since <date> in this chat". No picker.
-2. **Refresh answers are harvested into Claims** like any other answer (same `_after_done` path).
-3. **Surface only inside the open chat** — no badges on the chat list. Tier 0 therefore serves only the open
-   chat (one conversation's counts on open), which also removes the only reason CR4 existed; CR4 is dropped.
-4. **Old chats without a snapshot** — Kyle undecided; going with the coarse time-based delta *with a visible
-   caveat* ("baseline: answered <date>; excerpts weren't recorded, so 'new' means 'added since then'"). Cheap
-   to ship, honest, and reversible: hiding it later is one condition. Revisit if the coarse mode produces
-   noise on his real chats.
+1. **Which question does a refresh target by default** — the last one (my recommendation), or the whole chat
+   as one "what changed anywhere in this conversation" turn? The latter is more expensive and diffuses the
+   answer; the picker covers the earlier-question case.
+2. **Should a refresh answer be harvested into Claims like any answer?** I recommend yes (it *is* evidence), but
+   it doubles the surface where a bad refresh could seed a claim.
+3. **Badge on the chat list, or only inside the chat?** List badges are the "I should be aware" moment Kyle
+   described; they are Tier 0 and cheap, but they are one more thing on the screen.
+4. **Old chats (no snapshot):** show the coarse time-based delta with a caveat (recommendation), or hide the
+   feature until the chat has had one post-CR0 answer?
 
 ## 6. Out of scope, on purpose
 
