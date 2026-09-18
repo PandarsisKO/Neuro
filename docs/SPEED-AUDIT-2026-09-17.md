@@ -317,3 +317,64 @@ isolated copy and was copied in once per rung: one restart at 16:09 for 0.63.92.
 `.git/HEAD.lock` were zero-byte leftovers stamped 21:53:08 UTC — one second after commit `22b6b5b` — with no
 git process behind them; removed with Kyle's delete approval. Older zero-byte `refs/tags/v0.6x.lock` files
 and `objects/maintenance.lock` (2026-09-10/11) remain; they block only tag updates and `git maintenance`.
+
+---
+
+## 8. P0 loaded validation — 0.63.92 + `2e386b7` + `0668899` (2026-09-17, 16:35–17:25 PT)
+
+**Load.** Kyle ruled out spending API money to manufacture load, and the queue was empty and paused. The $0
+workload that reproduces the contention class is `POST /api/projects/{id}/research/refresh` with
+`extract=false`: `claims.ensure` — `harvest` + `assess_project` over 17k Claims + `knowledge.refresh`
+(tension detection, target dedupe, community synthesis, node rebuild). It is the same pass `extract_claims`
+runs at the end of every 2-group yield and `refresh_research` runs on the low lane, so it stands in for
+"Claims extraction is running" without a model call. Run back-to-back from a second tab (each pass 300–520 s),
+three runs of 8–12 min. Foreground: a probe in the app tab every ~10 s — New Chat (POST + list + open +
+delete), `/api/version`, `/api/stats`, a view switch Sources → Findings → Research → Chat — plus, in run 3, the
+page's own poll loop live on a visible Sources tab. The live database was never opened.
+
+**Run 1 caught the failure class again.** The new `db:write_hold` ledger logged
+`write lock held 12.1s by knowledge.py:416 dedupe_targets` on the first pass, and on the next:
+`12.2s dedupe_targets` immediately followed by `10.0s api_create_conversation` — New Chat's one-row INSERT
+waiting behind a pairwise-Jaccard loop that ran inside `db.tx()`. Fixed (`2e386b7`: decide outside, write in
+one short `executemany`). Run 2 then surfaced the next-longest hold, `3.5s community.synthesize` (the
+evidence walk over every Claim inside the transaction) with `assess_target` queued 3.6 s behind it. Fixed
+(`0668899`). Both have gates (S66, K9). Neither would have been visible without the ledger.
+
+| gate (Kyle's list) | run 1 (before fixes) | run 3 (after both fixes, visible tab, live poll) | verdict |
+|---|---|---|---|
+| New Chat while background processing is active | p50 129 ms · p90 891 ms · **max 10.5 s** (3 rounds > 1 s, each on a `dedupe_targets` hold) | **p50 80 ms · p90 626 ms · max 2.2 s** (1 of 43 rounds > 1 s; server-side POST max 0.64 s, writer peak 0.19 s) | pass |
+| trivial endpoint (`/api/version`, `/api/stats`) | 4 ms / 146 ms p50 | 4 ms / 151 ms p50, max 191 / 360 ms | pass |
+| view switching Sources → Findings → Research → Chat | requests complete; slowest per switch ≤ 2.3 s | requests complete; no switch's requests exceeded the probe's 1.5 s window in run 3 | pass |
+| `/api/sources` under load (server) | p50 5.4 s · p90 19.4 s · max 25.7 s | **p50 5.6 s · p90 11.7 s · max 27.6 s** (page-observed 5–27 s over 20 refreshes) | **not met — see below** |
+| `caption-recovery` under load (server) | p50 298 ms · max 10.4 s | p50 216 ms · p90 482 ms · max 12.1 s | p50 pass (15 ms idle → 216 ms is GIL sharing); one 12 s outlier unexplained |
+| max simultaneous quiet requests | — | `/api/sources` in flight: **1** (20 refreshes); poll-path requests: 5 at a click fan-out (loud, uncapped by design), quiet cap 2 held | pass |
+| longest `db:write_hold` | **12.4 s** (`dedupe_targets`), 10.0 s (victim) | **0.19 s** peak over the whole run | pass |
+| `database is locked` | 0 | 0 | pass |
+| false lost-lease warnings | 0 | 0 | pass |
+| `harvest_claims` completes and catches mid-run notes | not observed live — the queue was paused and no findings job ran; gate S66 proves both deterministically | owed live, first time a findings job completes with the queue running | open (deterministic gate green) |
+| foreground actions < ~1 s, no multi-second tail from Neuro itself | New Chat tail 10.5 s ← Neuro (writer hold) | one 2.2 s New Chat round (not a writer hold; threadpool/GIL under a CPU-bound pass); everything else sub-second | pass, with the Sources caveat |
+| two visible Neuro tabs | — | not run: the extension cannot open a second window; one visible + one hidden tab: the hidden tab made 0 poll requests in 50 s | owed (Kyle opens a second window) |
+
+Run 2 (dedupe fixed, synthesize not yet, app tab hidden so its poll loop was off): New Chat p50 113 ms,
+p90 1.1 s, max 50 s — the 50 s was the first round after the `.py` reload that delivered the fix, while uvicorn
+waited for the previous pass's 300 s request to drain ("Waiting for connections to close"); a delivery
+artefact, not load. Excluding it, max 1.5 s. Writer peak 3.56 s (synthesize).
+
+**Verdict: P0 closed for what it was scoped to.** Lightweight actions — New Chat, trivial endpoints, view
+switching — stay sub-second at p50 and p90 with the heaviest $0 research pass running continuously, the writer
+is never held past 0.2 s, and the browser cannot stack refreshes. Poll timeout 20 s, quiet cap 2, harvest chunk
+25, hidden-tab pause: unchanged, per Kyle — measured boundaries, not tunables.
+
+**What the loaded run says is next, with numbers (not started, per Kyle):**
+1. **The Sources list under a running research pass is 5–27 s, not because of locks.** Every `knowledge.refresh`
+   rewrites the knowledge nodes, so `db.project_research_revision` moves on every pass and every revision-keyed
+   research cache misses every time: `staleness` 0/22 hits, `potential` **0/11,132**, `gap_terms_core` 0. Each
+   `/api/sources` then recomputes the 452 skipped rows' potential plus gap terms plus staleness from cold, while
+   sharing the GIL with the pass. Idle the same request is 270 ms. This is the cache-key churn the audit filed as
+   P1.2 and belongs in Kyle's ladder step 2 (request-path diet): key the source-side caches on what they read,
+   not on the whole research fingerprint.
+2. **GIL sharing is the floor under everything.** `caption-recovery` — one indexed query, 15 ms idle — is 216 ms
+   p50 with a CPU-bound pass in the same process, and `/api/version` p90 goes 5 → 76 ms. No lock is involved.
+   That ceiling only moves when background work leaves the API process (audit P2.1) — a later, larger decision.
+3. **Research refresh itself is 300–520 s of single-threaded CPU per pass**, dominated by `assess_project`
+   over 17k Claims, `assess_target`, and the node rebuild. It runs on the `low` lane today; it is the load.

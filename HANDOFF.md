@@ -6204,3 +6204,22 @@ Git hygiene: `.git/index.lock` and `.git/HEAD.lock` were stale zero-byte files f
 after `22b6b5b`), removed with Kyle's approval. Seven older zero-byte locks remain (`refs/tags/v0.60.0…
 v0.61.3.lock`, `objects/maintenance.lock`, 09-10/11) — harmless for commits, will block tagging; clear them
 before the next tag.
+
+## P0 responsiveness — loaded validation and closure (Claude, 2026-09-17 16:35–17:30 PT)
+
+Kyle: validate under active background load without spending API money; close the P0 gates; reconcile; do not
+start another rung. Load was `POST …/research/refresh` (`claims.ensure`, $0) back to back — the same pass
+`extract_claims` runs at every yield. The `db:write_hold` ledger paid for itself in the first minute:
+`dedupe_targets` held the writer 12.1–12.4 s per pass with New Chat waiting 10 s behind it, then
+`community.synthesize` 3.5 s. Both fixed with gates (`2e386b7`, `0668899`), plus two validation fixes
+(`070fcea`: `harvest_claims` moved to the `normal` lane because "Pause background" holds `low`, and perf keeps a
+per-key peak since the 200-sample window rolled the 12 s hold out before it could be read). Final run: New Chat
+p50 80 ms / p90 626 ms, writer peak 0.19 s, 0 locked, 0 false lease loss, one `/api/sources` in flight.
+`docs/SPEED-AUDIT-2026-09-17.md` §8 is the record; CLAUDE.md carries the new standing rule; SPEED-MISSION.md's
+top note carries Kyle's re-ordered ladder (R8 → request-path diet → R4 → R5; R9 last).
+
+Owed: two visible windows (Kyle), first live `harvest_claims` completion with the queue running, Mac full
+suite, `release-check`, push. The `/api/sources` tail under a running research pass (5–27 s, 0 % cache hits
+because `knowledge.refresh` moves the research fingerprint every pass) is measured and filed, not fixed — it is
+ladder step 2. Three `.py` reloads happened during this pass (one per fix); each waited on the in-flight 300 s
+refresh before the new process took over — expected, and why P0.5 only removed `*.html` from the watch.

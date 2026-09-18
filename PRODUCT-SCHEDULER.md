@@ -4,12 +4,14 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
-**P0 RESPONSIVENESS (2026-09-17, Kyle's narrowing of the SPEED mission) — shipped as 0.63.92, gate half-read.**
-`docs/SPEED-AUDIT-2026-09-17.md` §7 has the BEFORE→AFTER table. Idle-queue AFTER numbers are in; the
-"while background work is active" numbers are not, because the queue was paused and drained when it went live.
-Next safe action for any agent: after Kyle unpauses background, read `/api/perf?days=1` and `server.log` after
-~an hour and fill in the loaded column; then run the full suite from zero on the Mac; then reconcile
-`SPEED-MISSION.md` (its top note records the supersession) and resume the ladder from fresh measurements.
+**P0 RESPONSIVENESS — CLOSED 2026-09-17 (Kyle).** `docs/SPEED-AUDIT-2026-09-17.md` §8 has the loaded validation
+(three runs under a continuous $0 research pass; two writer holds found and fixed on the way). Two live
+observations are still owed and need Kyle, not engineering: (a) the first `harvest_claims` job completing with the
+queue running (gate S66 covers it deterministically) and (b) two *visible* Neuro windows for six minutes. Next in
+the speed ladder, per Kyle's re-ordering (top note of `SPEED-MISSION.md`): **R8** correctness/hygiene, then the
+request-path diet with `/api/sources` cache-key churn first, then R4, then R5. Do not tune the P0 boundaries
+(20 s poll abort, 2 quiet requests, 25-note harvest chunks, hidden-tab pause) without a new measurement. Still
+owed before "released": a from-zero full suite on the Mac and `release-check` on the current tip.
 The Send Screenshot matrix below stays the other open effort; it was not touched.
 
 **CURRENT-STATE RECONCILIATION — 2026-09-17 (read this first, supersedes the FM1 RECONCILIATION note directly
