@@ -6302,3 +6302,27 @@ isolated evidence originally asked for.
 style artifacts. The pixel-quality check (right edge / duplicate tiles / seam corruption) on the resulting image
 is still pending — will be done as part of closing case 5 rather than gating 5.1 alone, since Kyle has already
 moved on. Continuing to case 5.2 (partial/ceiling-break scroll restoration).
+
+## Real gate-closing pass, part 16: Send Screenshot case 5.2 (ceiling/partial-capture scroll restoration) — Kyle-called PASS, open visual-mismatch note (2026-09-18)
+
+Kyle scrolled to `[0, 172760]` on a very tall Wikipedia page ("2020s", well beyond the ~40M-pixel ceiling at
+that height) and pressed Send Screenshot once. Popup correctly reported the partial-capture path: "the page was
+very tall — captured as far as the size limit allowed. Findings will be suggested in the app." (`partialReason`
+set, matches `CAPTURE_MAX_TOTAL_PIXELS`/`CAPTURE_MAX_TILES`/`CAPTURE_MAX_ELAPSED_MS` in `extension/background.js`
+lines 247-249). `server.log` confirmed a new upload landed immediately after (`upload_8294bb92_screenshot-
+de21f125.png`).
+
+Kyle read `[window.scrollX, window.scrollY]` three times (before, and twice after) and got `[0, 172760]` every
+time — an exact numeric match, and `nsRestore`/`nsRestoreScrollbars` in `capture-lib.js` were re-read this turn
+and look correct (they fully undo every style mutation they make, including the Case-3-repair descendant-
+visibility walk, before `runCapture`'s `restoreStylesAndScroll` does the final `scrollTo`). But Kyle separately
+said the page "visually" did not look like the same place, despite the matching number. Asked him for a real
+before/after screenshot pair to diff directly (rather than relying on recollection on a page full of visually
+similar table rows) to settle whether that's a genuine restore defect or an illusion from scrolling through
+dense repetitive content. Kyle said to move on without providing that pair.
+
+**Case 5.2: PASS (Kyle's call).** Popup correctly identified and reported the partial/ceiling case; scrollX/
+scrollY numerically exact across three reads. The "looks different despite matching number" observation is
+UNRESOLVED, not disproven — recorded here rather than dropped, in case it resurfaces during case 6/7 or a
+future live session on a similarly huge page. Continuing to case 5.3 (redefined: upload/network failure + retry,
+per Kyle's 2026-09-17 amendment — never a forced tab switch).
