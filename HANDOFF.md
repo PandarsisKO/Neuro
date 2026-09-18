@@ -6500,3 +6500,15 @@ case 7 can be considered closed on this front.
 Case 7 itself also still has unconfirmed ground: only the image-viewing mechanism has been checked so far —
 the rest of the provenance card (page title, timestamp, mode wording, "partial" tag, URL, note fields) hasn't
 been explicitly confirmed correct with Kyle yet.
+
+## Regression from P0.2 caught live: harvest starved ingestion (Claude, 2026-09-18 08:00 PT, `90d51b8`)
+
+Kyle added a channel; twenty transcripts sat queued while three "collecting claims from new findings ($0)" jobs
+ran. P0.2's harvest_claims was on the normal lane for the GENERAL workers — the ingestion pool — so a findings
+burst put all three general workers inside harvests (one working, two parked on `_harvest_lock`). Fix: a single
+dedicated `ns-worker-maintenance` thread owns `jobs.MAINTENANCE_KINDS` (`harvest_claims`); general and AI workers
+exclude it. And what the person approves in a review or adds directly now ingests on the priority lane, ahead of
+background ingestion (the findings `user_pick_lane` rule applied to transcripts). Gates in `test_s66`. Live: the
+server reloaded on the change at 07:58:37 PT and transcripts started completing 10 s later. This is the P0
+invariant catching its own implementation; recorded so the pattern (a $0 kind quietly claiming a foreground pool)
+is checked for any new job kind.
