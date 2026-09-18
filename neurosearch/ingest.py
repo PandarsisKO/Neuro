@@ -119,7 +119,8 @@ def ingest_url(
                 proposed += 1
             elif res.created:
                 db.create_job("ingest_source", {"source_id": src["id"], "min_date": min_date,
-                                                "collection_id": coll["id"], "newest_first": kind == "channel"})
+                                                "collection_id": coll["id"], "newest_first": kind == "channel"},
+                              lane="priority")                   # added by the person just now: ahead of background ingestion
                 queued += 1
             else:
                 skipped += 1                                       # pending/failed elsewhere: shared work, not a new job
@@ -242,9 +243,14 @@ def approve_proposed(collection_id: str, source_ids: list[str] | None = None) ->
     for r in rows:
         if r["id"] in chosen:
             db.set_source_status(r["id"], "pending")
+            # 2026-09-18 (Kyle, live): "I requested the channel, so it should be prioritized first so I feel like
+            # things are going at the same speed as I am." A review the person just approved is the strongest
+            # statement of intent ingestion ever receives — the same rule `jobs.user_pick_lane` applies to findings.
+            # Ordering only: same worker pool, same cost.
             db.create_job("ingest_source", {"source_id": r["id"], "min_date": meta.get("min_date"),
                                             "collection_id": collection_id, "newest_first": bool(meta.get("newest_first")),
-                                            "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")})
+                                            "cookies_file": meta.get("cookies_file"), "referer": meta.get("referer")},
+                          lane="priority")
             started += 1
         else:
             db.delete_source(r["id"])

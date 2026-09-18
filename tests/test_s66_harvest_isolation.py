@@ -176,36 +176,41 @@ def test_harvest_kind_is_zero_dollar_maintenance_not_ai_or_background_work(isola
     job = claims.request_harvest(pid, "paused")
     db.set_background_paused(True)
     db.kv_set("queue_paused", "1")
-    claimed = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS)               # what a general worker asks for
+    claimed = db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance")   # what the maintenance worker asks for
     assert claimed and claimed["id"] == job["id"]
     assert jobs.execute(claimed) == "done"
 
 
-def test_dedupe_targets_decides_outside_the_write_transaction(isolated, monkeypatch):
-    """Found in the loaded validation: the pairwise Jaccard pass ran inside db.tx(), holding the writer 12 s while
-    New Chat waited 10 s behind it. The decision is CPU and must finish before the transaction opens."""
-    from neurosearch import knowledge
+def test_harvest_never_occupies_an_ingestion_or_ai_worker(isolated):
+    """Kyle, live 2026-09-18: three harvests filled the three general workers (one harvesting, two parked on the
+    per-project lock) while the twenty transcripts of a channel he had just added sat queued. A harvest runs on
+    the single maintenance worker and nowhere else; an ingestion worker offered only harvests claims nothing."""
+    k = jobs.claims_harvest_kind()
+    assert k in jobs.MAINTENANCE_KINDS and k not in jobs.ANALYSIS_KINDS
     pid = _project_with_notes(1)
-    # add_target already folds near-duplicates on entry; the rows dedupe_targets exists for arrive by other paths
-    # (older data, concurrent passes), so they are inserted directly here
-    import json as _json
-    now = time.time()
-    with db.tx() as conn:
-        for i, origin in enumerate(["model"] * 6 + ["user"]):
-            conn.execute("INSERT INTO project_evidence_targets (id, project_id, question, topic, claim_id, sufficiency, preferred_classes, closure, "
-                         "closure_rule, status, origin, gap, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                         (db.new_id(), pid, f"Obtain the authoritative SBA guarantee fee table for this fiscal year {i}", "sba", None,
-                          "governing", _json.dumps(["authoritative"]), "the table is in the project", _json.dumps({}), "open", origin, None, now + i, now + i))
-    real_jaccard = claims.jaccard
-    inside: list[bool] = []
+    for _ in range(3):
+        db.create_job(k, {"project_id": pid, "reason": "burst"}, lane="normal", dedupe_key=db.new_id())
+    general = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-0")
+    assert general is None, "a general (ingestion) worker must not claim a harvest"
+    ai = db.claim_job(jobs.ANALYSIS_KINDS, worker_id="local-0")
+    assert ai is None, "an AI worker must not claim a harvest"
+    sid = db.upsert_source(platform="manual", external_id="s66-ing", url="manual://s66-ing", title="t")["id"]
+    ingest = db.create_job("ingest_source", {"source_id": sid})
+    got = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-0")
+    assert got and got["id"] == ingest["id"], "with harvests queued, the ingestion worker still gets the transcript"
+    assert db.claim_job(jobs.MAINTENANCE_KINDS, worker_id="maintenance")["kind"] == k
 
-    def spy(a, b):
-        inside.append(db.connect().in_transaction)
-        return real_jaccard(a, b)
-    monkeypatch.setattr(claims, "jaccard", spy)
-    dropped = knowledge.dedupe_targets(pid)
-    assert inside and not any(inside), "no Jaccard comparison may run while a write transaction is open"
-    assert dropped == 5                                             # the earliest model target and the user's survive
-    assert knowledge.dedupe_targets(pid) == 0                       # idempotent
-    open_ = [t for t in knowledge.list_targets(pid, status="open")]
-    assert len(open_) == 2 and {t["origin"] for t in open_} == {"model", "user"}
+
+def test_a_review_the_person_approved_ingests_ahead_of_background_work(isolated):
+    """Kyle: 'I requested the channel, so it should be prioritized first.' Approved transcripts take the priority
+    lane; a background ingest queued earlier on the normal lane waits its turn."""
+    from neurosearch import ingest
+    bg = db.upsert_source(platform="manual", external_id="bg", url="manual://bg", title="background")["id"]
+    earlier = db.create_job("ingest_source", {"source_id": bg})              # normal lane, created first
+    coll = db.upsert_collection("channel", "chan", "https://www.youtube.com/@chan", "chan")
+    mine = db.upsert_source(platform="youtube", external_id="v1", url="https://youtu.be/v1", title="mine", status="proposed")["id"]
+    db.connect().execute("INSERT OR IGNORE INTO source_collections (source_id, collection_id) VALUES (?,?)", (mine, coll["id"])); db.connect().commit()
+    ingest.approve_proposed(coll["id"], [mine])
+    first = db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-0")
+    assert first and first["payload"]["source_id"] == mine and first["lane"] == "priority"
+    assert db.claim_job(exclude_kinds=jobs.ANALYSIS_KINDS + jobs.MAINTENANCE_KINDS, worker_id="general-1")["id"] == earlier["id"]

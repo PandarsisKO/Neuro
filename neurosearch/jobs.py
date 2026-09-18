@@ -47,6 +47,7 @@ RETRY_DELAYS = [10 * 60, 30 * 60, 90 * 60]     # seconds between attempts
 BILLING_RETRY_SECONDS = 30 * 60   # BILLING (credit balance too low) names no resume date, unlike SPEND_CAP — retry on
                                    # a fixed interval until a call succeeds again (providers.py clears the flag then)
 ANALYSIS_KINDS = ("suggest_findings", "suggest_findings_batch", "rank_proposed", "discover", "reembed", "build_plan", "enrich_profiles_batch", "extract_claims")
+MAINTENANCE_KINDS = ("harvest_claims",)     # $0 bookkeeping: its own single worker, never an ingestion or AI slot
 
 
 class Cancelled(RuntimeError):
@@ -658,10 +659,23 @@ def _start_workers(n: int | None = None) -> None:
     power_assertion.start()
     local = settings.ai_profile == "local"
     for i in range(n):
-        # local profile: general workers keep ingestion and leave the AI kinds to the two AI pools
-        t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (i,), {"exclude_kinds": ANALYSIS_KINDS} if local else {}), daemon=True, name=f"ns-worker-{i}")
+        # local profile: general workers keep ingestion and leave the AI kinds to the two AI pools.
+        # 2026-09-18 (Kyle, live): they also leave the $0 MAINTENANCE kinds to the maintenance worker below. The
+        # first cut of P0.2 put `harvest_claims` on the normal lane for these general workers, and the moment a
+        # findings burst queued three harvests the three general workers were all inside them — one harvesting,
+        # two parked on `_harvest_lock` — while the twenty transcripts of a channel Kyle had just added sat queued
+        # with nobody to run them. Ingestion is what the person is waiting on; a harvest is never that.
+        t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, (i,),
+                             {"exclude_kinds": ANALYSIS_KINDS + MAINTENANCE_KINDS} if local else {"exclude_kinds": MAINTENANCE_KINDS}),
+                             daemon=True, name=f"ns-worker-{i}")
         t.start()
         _threads.append(t)
+    # ONE maintenance worker: $0 bookkeeping kinds run here, serialized, so they can neither occupy an ingestion
+    # worker nor an AI worker, and two harvests for one project can never park a second thread on the lock.
+    t = threading.Thread(target=_thread_main, args=(_worker, settings.db_path, ("maintenance", MAINTENANCE_KINDS)),
+                         daemon=True, name="ns-worker-maintenance")
+    t.start()
+    _threads.append(t)
     if local:
         # L1: the local pool (busy = the job waits, never spends) and one API pool for api_requested / api_only jobs
         # 0.42.1: only the FIRST local worker takes the slow lane (Read deeper); the rest keep serving ordinary findings/ranking
