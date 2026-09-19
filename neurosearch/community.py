@@ -228,6 +228,39 @@ def _api_get(path_and_query: str) -> Any:
     raise RuntimeError("Reddit API: unauthorized")
 
 
+def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:
+    """Read one official `/new` listing page as metadata only.
+
+    Whole-catalog scans deliberately have no public-JSON, HTML, browser, archive, or search fallback. Those
+    paths remain valid for individual thread capture and the older query-based Explore feature, but a durable
+    catalog must fail honestly when approved API access is unavailable.
+    """
+    if not reddit_api_configured():
+        raise RuntimeError("Reddit API credentials are required to catalog a subreddit (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET)")
+    if not SUBREDDIT_NAME.fullmatch(subreddit):
+        raise ValueError("invalid subreddit name")
+    from urllib.parse import quote
+    query = f"raw_json=1&limit={max(1, min(limit, 100))}"
+    if after:
+        query += "&after=" + quote(after, safe="")
+    data = _api_get(f"/r/{quote(subreddit)}/new?{query}")
+    listing = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(listing, dict):
+        raise RuntimeError("Reddit API: malformed subreddit listing")
+    rows: list[dict[str, Any]] = []
+    for child in listing.get("children") or []:
+        post = child.get("data") if isinstance(child, dict) else None
+        if not isinstance(post, dict) or not post.get("id") or not post.get("permalink"):
+            continue
+        rows.append({"external_id": f"reddit:{post['id']}", "url": "https://www.reddit.com" + post["permalink"],
+                     "title": post.get("title"), "description": (post.get("selftext") or "")[:2000] or None,
+                     "creator": post.get("author"),
+                     "published_at": time.strftime("%Y-%m-%d", time.gmtime(post.get("created_utc") or 0)) if post.get("created_utc") else None,
+                     "view_count": post.get("score"), "content_type": "post"})
+    next_cursor = listing.get("after")
+    return rows, str(next_cursor) if next_cursor else None
+
+
 def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit json") -> dict[str, Any]:
     """A Reddit comments listing (the two-element [link listing, comment listing] JSON — from the API, the public .json
     endpoint, or the browser extension) → the thread dict every other part of G7 consumes."""

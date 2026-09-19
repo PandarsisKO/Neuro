@@ -218,13 +218,14 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
     if action == "explore":
         assert c.url and (c.kind in EXPLORABLE_NOW or c.kind == "search_query")
         if c.kind == "subreddit":
-            # SUB2: the durable container can be attached now, but enumeration belongs to SUB3. This is
-            # deliberately metadata-only and creates neither a Source nor a job.
+            # SUB3: attach the durable container first, then scan one resumable metadata page per job turn.
             from . import community
             catalog = community.attach_subreddit_catalog(project_id, c.url)
-            return {"kind": c.kind, "action": action, "queued": False, "catalog": True,
-                    "collection_id": catalog["id"], "url": catalog["url"],
-                    "note": "Subreddit catalog is ready. Catalog scanning will be available after the resumable scan gate ships."}
+            job = jobs.enqueue("explore", {"url": catalog["url"], "kind": "subreddit", "project_id": project_id,
+                                            "collection_id": catalog["id"]}, lane="low")
+            return {"kind": c.kind, "action": action, "queued": True, "catalog": True,
+                    "collection_id": catalog["id"], "url": catalog["url"], "job_id": job["id"],
+                    "note": "Subreddit catalog scan queued. It remembers post metadata only; no threads are read."}
         if c.kind in ("website", "website_section", "sitemap", "feed"):
             job = jobs.enqueue("explore", {"url": c.url, "kind": c.kind, "tags": tags or [], "project_id": project_id, "max_items": max_videos or None})
             return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url, "review": True}

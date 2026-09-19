@@ -88,8 +88,9 @@ def test_containers_are_never_fetched_as_pages_unless_chosen():
     assert db.get_job(r2["job_id"])["payload"]["review"] is False
     comm = resources.classify("https://www.reddit.com/r/smallbusiness/")
     catalog = resources.route(comm, pid)
-    assert catalog["queued"] is False and catalog["catalog"] is True
+    assert catalog["queued"] is True and catalog["catalog"] is True
     assert db.get_collection(catalog["collection_id"])["kind"] == "subreddit"
+    assert db.get_job(catalog["job_id"])["kind"] == "explore"
     assert not db.connect().execute("SELECT 1 FROM sources WHERE platform='community'").fetchone()
     with pytest.raises(ValueError):
         resources.route(comm, pid, "ingest")                                                                 # not an action for a community
@@ -111,7 +112,7 @@ def test_api_classify_and_add(client):
     r = client.post(f"/api/projects/{pid}/add", json={"input": "irs.gov"}, headers=H)                    # default = explore (G3)
     assert r.json()["items"][0]["result"]["action"] == "explore" and db.get_job(r.json()["jobs"][0])["kind"] == "explore"
     r = client.post(f"/api/projects/{pid}/add", json={"input": "https://www.reddit.com/r/smallbusiness/"}, headers=H)
-    assert r.json()["items"][0]["result"]["catalog"] is True and not r.json()["jobs"]
+    assert r.json()["items"][0]["result"]["catalog"] is True and r.json()["jobs"]
     r = client.post(f"/api/projects/{pid}/add", json={"input": "https://github.com/anthropics/claude-code", "action": "explore"}, headers=H)
     assert r.json()["items"][0]["result"]["unavailable"] is True
 
@@ -120,8 +121,11 @@ def test_chat_pasted_container_is_detected_not_ingested():
     pid = db.create_project("G2 chat", "brief")["id"]
     before = len(db.list_jobs(200))
     res = qa.ask("https://www.reddit.com/r/smallbusiness/", project_id=pid, conversation_id=db.new_id())
-    assert len(db.list_jobs(200)) == before                                                                 # nothing queued
-    assert res["ingest_jobs"][0]["detected"]["kind"] == "subreddit" and "Subreddit detected" in res["answer"]
+    queued = db.list_jobs(200)
+    assert len(queued) == before + 1 and queued[0]["kind"] == "explore" and queued[0]["payload"]["kind"] == "subreddit"
+    assert res["ingest_jobs"][0]["kind"] == "subreddit"
+    assert res["ingest_jobs"][0]["job_id"]
+    assert "Queued 1 link" in res["answer"]
     res2 = qa.ask("https://youtu.be/dQw4w9WgXcQ", project_id=pid, conversation_id=db.new_id())
     assert res2["ingest_jobs"][0]["job_id"] and "Queued 1 link" in res2["answer"]
     res3 = qa.ask("https://www.youtube.com/@BenKelly", project_id=pid, conversation_id=db.new_id())

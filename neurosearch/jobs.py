@@ -318,6 +318,12 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         from . import claims
         return claims.run_refresh_job(payload, progress)
     if kind == "explore":
+        if payload.get("kind") == "subreddit":
+            from . import reservoir
+            result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"])
+            if result["status"] == "partial":
+                raise Yield("catalog page saved; continuing automatically")
+            return result
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
                                max_items=payload.get("max_items"), progress=progress)

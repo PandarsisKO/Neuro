@@ -127,6 +127,73 @@ def rescan(project_id: str, collection_id: str, *, enumerate: Callable[[str], tu
     return {"changed": True, "new": new_count, "total": len(raw_entries), "candidate_ids": ids, "collection_id": collection_id}
 
 
+# ---------------------------------------------------------------- subreddit catalog scans (SUB3)
+
+SUBREDDIT_PAGE_SIZE = 100
+
+
+def scan_subreddit_page(project_id: str, collection_id: str, *,
+                         fetch_page: Callable[[str, str | None], tuple[list[dict[str, Any]], str | None]] | None = None) -> dict[str, Any]:
+    """Fetch and atomically commit one subreddit listing page.
+
+    Fetching happens before the write transaction. The page's Candidate Index rows, catalog memberships,
+    project reconciliation and cursor checkpoint commit together through ``db.batch``; a crash therefore
+    replays an entire page or none of it. Callers schedule another turn while ``status == 'partial'``.
+    """
+    collection = db.get_collection(collection_id)
+    if not collection or collection.get("kind") != "subreddit":
+        raise ValueError("subreddit scan needs a subreddit catalog")
+    name = collection.get("external_id")
+    if not name:
+        raise ValueError("subreddit catalog is missing its identity")
+    key = _scan_key(project_id, collection_id)
+    try:
+        prior = json.loads(db.kv_get(key) or "{}")
+    except ValueError:
+        prior = {}
+    if prior.get("status") == "complete":
+        return {"collection_id": collection_id, "status": "complete", "new": 0, "total": int(prior.get("total") or 0),
+                "reason": prior.get("reason"), "candidate_ids": []}
+    cursor = prior.get("cursor")
+    fetch = fetch_page
+    if fetch is None:
+        from . import community
+        fetch = lambda sub, after: community.enumerate_subreddit_page(sub, after, limit=SUBREDDIT_PAGE_SIZE)
+    try:
+        rows, next_cursor = fetch(name, cursor)
+    except Exception as e:  # preserve any committed pages and make the block visible/retryable
+        state = {**prior, "status": "blocked", "error": str(e), "updated_at": time.time(), "cursor": cursor,
+                 "total": int(prior.get("total") or 0), "pages": int(prior.get("pages") or 0)}
+        db.kv_set(key, json.dumps(state, sort_keys=True))
+        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["total"], "error": state["error"], "candidate_ids": []}
+    if next_cursor and next_cursor == cursor:
+        next_cursor = None
+        terminal_reason = "cursor did not advance"
+    else:
+        terminal_reason = "listing ended" if not next_cursor else None
+
+    # Compute before remember() mutates either global rows or this project's relationship rows.
+    known = {r["external_id"] for r in db.connect().execute(
+        "SELECT c.external_id FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id WHERE cc.collection_id=?",
+        (collection_id,),
+    ).fetchall()}
+    entries = [r for r in rows if r.get("external_id")]
+    new_count = sum(1 for r in entries if r["external_id"] not in known)
+    now = time.time()
+    status = "complete" if not next_cursor else "partial"
+    state = {"status": status, "cursor": next_cursor, "pages": int(prior.get("pages") or 0) + 1,
+             "total": int(prior.get("total") or 0) + len(entries), "new": int(prior.get("new") or 0) + new_count,
+             "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
+             "reason": terminal_reason, "access": "reddit_api", "endpoint": "new"}
+    with db.batch():
+        ids = candidates.remember(entries, "reddit", project_id,
+                                  {"kind": "subreddit_catalog", "collection_id": collection_id, "subreddit": name})
+        db.link_collection_candidates(collection_id, ids)
+        db.kv_set(key, json.dumps(state, sort_keys=True))
+    return {"collection_id": collection_id, "status": status, "new": new_count, "total": state["total"],
+            "pages": state["pages"], "cursor": next_cursor, "reason": terminal_reason, "candidate_ids": ids}
+
+
 def effective_monitor_active(source_role: str, monitor_policy: str) -> bool:
     """Pure derivation over the stored (source_role, monitor_policy) pair -- CR8 product decision (2026-09-16).
     monitor_policy='on'/'off' always wins outright, regardless of role. 'auto' defers to source_role, and only
