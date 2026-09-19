@@ -82,9 +82,18 @@ def attach_subreddit_catalog(project_id: str | None, url: str) -> dict[str, Any]
     name = subreddit_name(url)
     if not name:
         raise ValueError("not a subreddit container URL")
-    catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
-    if project_id:
-        db.add_project_collections(project_id, [catalog["id"]])
+    # Validate and attach under the same writer reservation; a deleted/unknown
+    # project cannot leave a global catalog behind. Reconcile large catalogs in
+    # short transactions only after this small admission transaction commits.
+    with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        if not project_id or not conn.execute("SELECT 1 FROM projects WHERE id=?", (project_id,)).fetchone():
+            raise ValueError("a subreddit catalog needs an existing project")
+        catalog = db.upsert_collection("subreddit", name, subreddit_url(name), f"r/{name}")
+        db.add_project_collections(project_id, [catalog["id"]], reconcile_candidates=False)
+    db.reconcile_collection_candidates(project_id, catalog["id"])
     return catalog
 
 

@@ -11,6 +11,50 @@ TESTS = Path(__file__).resolve().parent
 REPO_DATA = (TESTS.parent / "data").resolve()
 
 
+def test_bootstrap_blocks_dotenv_from_restoring_stripped_overrides(tmp_path):
+    """Exercise the real bootstrap/config import against an adversarial, synthetic dotenv file."""
+    import subprocess
+    import sys
+
+    dotenv_file = tmp_path / ".env"
+    dotenv_file.write_text("NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT=unwanted-model\n"
+                           "NEUROSEARCH_AI_PROFILE=local\nNEUROSEARCH_FAKE_AI=1\n"
+                           "NEUROSEARCH_DATA_DIR=/not-a-test-database\n")
+    code = """
+import os, runpy, sys, dotenv.main
+from pathlib import Path
+os.environ.pop('PYTHON_DOTENV_DISABLED', None)
+dotenv.main.find_dotenv = lambda *a, **kw: sys.argv[1]
+runpy.run_path('tests/conftest.py')
+from neurosearch.config import settings
+assert settings.ai_profile == 'cloud' and settings.fake_ai is False
+assert 'NEUROSEARCH_TASK_MODEL_FINDINGS_EXTRACT' not in os.environ
+assert Path(settings.data_dir).name.startswith('ns_pytest_')
+"""
+    result = subprocess.run([sys.executable, "-c", code, str(dotenv_file)], cwd=TESTS.parent,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_chat_and_catalog_collection_do_not_enable_fake_ai():
+    import subprocess
+    import sys
+
+    code = """
+import os, runpy
+runpy.run_path('tests/conftest.py')
+for path in ('tests/test_chr0_conversation_baseline.py', 'tests/test_chr1_conversation_delta.py',
+             'tests/test_s74_subreddit_catalog_identity.py'):
+    runpy.run_path(path)
+from neurosearch.config import settings
+assert settings.fake_ai is False
+assert os.environ['NEUROSEARCH_FAKE_AI'] == '0'
+"""
+    result = subprocess.run([sys.executable, "-c", code], cwd=TESTS.parent,
+                            text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_conftest_hard_sets_the_data_dir_before_any_module():
     src = (TESTS / "conftest.py").read_text(encoding="utf-8")
     assert re.search(r'^os\.environ\["NEUROSEARCH_DATA_DIR"\]\s*=\s*tempfile\.mkdtemp', src, re.M), \

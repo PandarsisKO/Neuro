@@ -6,6 +6,10 @@ import os
 
 import pytest
 
+# Keep config.load_dotenv() from restoring values deliberately stripped below.
+# Tests needing dotenv behavior provide their own synthetic file explicitly.
+os.environ["PYTHON_DOTENV_DISABLED"] = "true"
+
 # The developer machine's .env selects the local Claude Code profile. Tests
 # that monkeypatch the Anthropic client must stay on the cloud-shaped adapter;
 # otherwise collection order can launch the real CLI. Local-provider tests set

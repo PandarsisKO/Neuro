@@ -2051,8 +2051,8 @@ def link_collection_candidates(collection_id: str, candidate_ids: Iterable[str])
             "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
             "SELECT cc.candidate_id, pc.project_id, 'available', ?, ?, ? "
             "FROM collection_candidates cc JOIN project_collections pc ON pc.collection_id=cc.collection_id "
-            "WHERE cc.collection_id=?",
-            (json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
+            "WHERE cc.collection_id=? AND cc.candidate_id IN (" + ",".join("?" for _ in ids) + ")",
+            (json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id, *ids),
         )
     return len(ids)
 
@@ -4256,35 +4256,53 @@ def remove_project_sources(project_id: str, source_ids: list[str]) -> None:
         conn.executemany("UPDATE project_sources SET excluded=1, priority=0 WHERE project_id=? AND source_id=?", [(project_id, s) for s in source_ids])
 
 
-def add_project_collections(project_id: str, collection_ids: list[str]) -> None:
+def reconcile_collection_candidates(project_id: str, collection_id: str) -> None:
+    """Attach known candidates and repair null legacy pointers in short, keyset-paged writes.
+
+    Non-null identities are never overwritten. Each chunk rechecks attachment
+    under the writer so a concurrent detach cannot create new relationship rows.
+    """
+    after = ""
+    while True:
+        with batch():
+            conn = connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not project_has_collection(project_id, collection_id):
+                return
+            ids = [row[0] for row in conn.execute(
+                "SELECT candidate_id FROM collection_candidates WHERE collection_id=? AND candidate_id>? "
+                "ORDER BY candidate_id LIMIT 100", (collection_id, after))]
+            if not ids:
+                return
+            marks = ",".join("?" for _ in ids)
+            conn.execute(
+                "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
+                "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
+                f"WHERE platform='reddit' AND source_id IS NULL AND id IN ({marks}) "
+                "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' AND s.external_id=candidates.external_id)",
+                ids,
+            )
+            t = now()
+            conn.execute(
+                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
+                f"SELECT candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates WHERE collection_id=? AND candidate_id IN ({marks})",
+                (project_id, json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id, *ids),
+            )
+            after = ids[-1]
+
+
+def add_project_collections(project_id: str, collection_ids: list[str], *, reconcile_candidates: bool = True) -> None:
     with tx() as conn:
         # CR8: named columns, not bare VALUES(?,?) -- project_collections gained source_role/monitor_policy
         # (both DEFAULT-backed), and a positional VALUES(?,?) breaks the moment the table has more than 2
         # columns. INSERT OR IGNORE leaves an existing row's policy untouched on a re-attach.
         conn.executemany("INSERT OR IGNORE INTO project_collections (project_id, collection_id) VALUES (?,?)",
                          [(project_id, c) for c in collection_ids])
-        # Catalog membership is candidate-only. A project attaching to an existing catalog should be able to
-        # review its remembered rows immediately, while never inheriting another project's captured Sources.
-        t = now()
-        for collection_id in dict.fromkeys(collection_ids):
-            # A thread may have been captured directly before an older catalog candidate was reconciled.
-            # Repair only this attached catalog's unresolved Reddit bridge, once at attachment time; page
-            # scans keep their bounded metadata write and do not rewrite the whole catalog.
-            conn.execute(
-                "UPDATE candidates SET source_id=(SELECT s.id FROM sources s "
-                "WHERE s.platform='community' AND s.external_id=candidates.external_id) "
-                "WHERE platform='reddit' AND source_id IS NULL "
-                "AND id IN (SELECT candidate_id FROM collection_candidates WHERE collection_id=?) "
-                "AND EXISTS (SELECT 1 FROM sources s WHERE s.platform='community' AND s.external_id=candidates.external_id)",
-                (collection_id,),
-            )
-            conn.execute(
-                "INSERT OR IGNORE INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) "
-                "SELECT cc.candidate_id, ?, 'available', ?, ?, ? FROM collection_candidates cc "
-                "WHERE cc.collection_id=?",
-                (project_id, json.dumps({"kind": "catalog", "collection_id": collection_id}), t, t, collection_id),
-            )
         conn.execute("UPDATE projects SET updated_at=? WHERE id=?", (now(), project_id))
+    if reconcile_candidates:
+        for collection_id in dict.fromkeys(collection_ids):
+            reconcile_collection_candidates(project_id, collection_id)
 
 
 def remove_project_collections(project_id: str, collection_ids: list[str]) -> None:

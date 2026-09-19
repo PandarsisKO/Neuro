@@ -21,6 +21,7 @@ import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from typing import Any
 
 from . import db
@@ -196,19 +197,31 @@ def catalog_candidate(project_id: str, collection_id: str, candidate_id: str) ->
         raise LookupError(candidate_id)
 
 
+@contextmanager
+def _catalog_action(project_id: str, collection_id: str, candidate_id: str):
+    # Reserve the existing SQLite writer before checking authority. Detach and
+    # action are serialized; ordinary Candidate Index capture keeps its broader scope.
+    with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        catalog_candidate(project_id, collection_id, candidate_id)
+        yield
+
+
 def catalog_capture(project_id: str, collection_id: str, candidate_id: str, *, reason: str | None = None) -> dict[str, Any]:
-    catalog_candidate(project_id, collection_id, candidate_id)
-    return capture(candidate_id, project_id, reason=reason)
+    with _catalog_action(project_id, collection_id, candidate_id):
+        return capture(candidate_id, project_id, reason=reason)
 
 
 def catalog_dismiss(project_id: str, collection_id: str, candidate_id: str, reason: str | None = None) -> int:
-    catalog_candidate(project_id, collection_id, candidate_id)
-    return dismiss(project_id, candidate_id, reason)
+    with _catalog_action(project_id, collection_id, candidate_id):
+        return dismiss(project_id, candidate_id, reason)
 
 
 def catalog_restore(project_id: str, collection_id: str, candidate_id: str) -> int:
-    catalog_candidate(project_id, collection_id, candidate_id)
-    return restore(project_id, candidate_id)
+    with _catalog_action(project_id, collection_id, candidate_id):
+        return restore(project_id, candidate_id)
 
 
 def capture(candidate_id: str, project_id: str, *, reason: str | None = None) -> dict[str, Any]:
@@ -222,6 +235,8 @@ def capture(candidate_id: str, project_id: str, *, reason: str | None = None) ->
     if not c:
         raise LookupError(candidate_id)
     source = db.get_source(c["source_id"]) if c.get("source_id") else _source_for_candidate_identity(c["platform"], c["external_id"])
+    if c["platform"] == "reddit" and source and (source["platform"] != "community" or source["external_id"] != c["external_id"]):
+        raise LookupError(f"candidate identity conflict: {candidate_id}")
     if source and source.get("status") == "ready":
         from . import identity
         if not c.get("source_id"):
