@@ -323,18 +323,34 @@ def api_subreddit_catalogs(project_id: str) -> dict[str, Any]:
 @app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/refresh", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
     """Queue one explicit head-first metadata refresh through the existing explore job family."""
-    from . import jobs, reservoir
+    from . import reservoir
     if not db.get_project(project_id):
         raise HTTPException(404)
     try:
-        state = reservoir.begin_subreddit_refresh(project_id, collection_id)
+        state = reservoir.request_subreddit_scan(project_id, collection_id, action="refresh")
     except ValueError:
         raise HTTPException(404)
-    collection = db.get_collection(collection_id) or {}
-    job = jobs.enqueue("explore", {"url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
-                                    "collection_id": collection_id, "catalog_run_id": state["run_id"],
-                                    "catalog_generation": state["generation"]}, lane="low")
-    return {"ok": True, "job_id": job["id"], "state": state}
+    return {"ok": True, "job_id": state.get("job_id"), "state": state}
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/resume", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_resume(project_id: str, collection_id: str) -> dict[str, Any]:
+    from . import reservoir
+    try:
+        state = reservoir.request_subreddit_scan(project_id, collection_id, action="resume")
+    except ValueError:
+        raise HTTPException(404)
+    return {"ok": True, "job_id": state.get("job_id"), "state": state}
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/cancel", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_cancel(project_id: str, collection_id: str) -> dict[str, Any]:
+    from . import reservoir
+    try:
+        state = reservoir.request_subreddit_scan(project_id, collection_id, action="cancel")
+    except ValueError:
+        raise HTTPException(404)
+    return {"ok": True, "job_id": state.get("job_id"), "state": state}
 
 
 class CatalogCandidateActIn(BaseModel):

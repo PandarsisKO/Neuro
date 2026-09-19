@@ -2460,6 +2460,8 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     if kind == "ingest_url":
         return f"ingest:{payload.get('url')}"
     if kind == "explore":
+        if payload.get("kind") == "subreddit" and payload.get("catalog_run_id"):
+            return f"explore:subreddit:{payload.get('project_id')}:{payload.get('collection_id')}:{payload['catalog_run_id']}"
         return f"explore:{payload.get('project_id')}:{payload.get('url')}"
     if kind == "enrich_profiles_batch":
         return "profiles:batch"
@@ -3991,15 +3993,21 @@ def provider_wait_jobs(operation: str | None = None) -> list[dict[str, Any]]:
     return [row_to_dict(r) for r in connect().execute(q, (operation,) if operation else ()).fetchall()]  # type: ignore[misc]
 
 
-def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False) -> None:
+def requeue_job(job_id: str, delay: float = 0, message: str | None = None, wait_reason: str | None = None, count_attempt: bool = False,
+                *, expected_run_id: str | None = None) -> bool:
     """Back to the queue after `delay` seconds. wait_reason: retry | budget | rate_limit (budget/rate-limit waits are not
     failures and never count as attempts)."""
     with tx() as conn:
         r = conn.execute("SELECT run_id FROM jobs WHERE id=?", (job_id,)).fetchone()
-        conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
-                     "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?",
-                     (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id))
+        guard = " AND status='running' AND run_id=? AND cancel_requested_at IS NULL" if expected_run_id else ""
+        cur = conn.execute("UPDATE jobs SET status='queued', started_at=NULL, run_id=NULL, worker_id=NULL, lease_until=NULL, not_before=?, message=?, "
+                           "wait_reason=?, attempts=attempts+?, updated_at=? WHERE id=?" + guard,
+                           (now() + delay, message, wait_reason, 1 if count_attempt else 0, now(), job_id,
+                            *([expected_run_id] if expected_run_id else [])))
+        if not cur.rowcount:
+            return False
         job_event(job_id, f"{wait_reason}_wait" if wait_reason else "requeued", run_id=r["run_id"] if r else None, conn=conn, delay=delay, message=(message or "")[:200])
+        return True
 
 
 def requeue_stale_running_jobs() -> int:

@@ -8,7 +8,7 @@ Kyle requested an updated plan for the remaining work; the single canonical reco
 Codex owns SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
 → cached ranking → selected capture → Research/yield → complete UI → operational/real-access acceptance → release.
 **R0 hygiene and the first R1 repair slice passed on isolated `279940d`; R2 is in progress.** R1–R6 have partial corrections but open acceptance gates; R7 is a basic
-UI, and R8/R9 remain unaccepted. This plan-update turn changes documentation only; Kyle controls model/effort.
+UI, and R8/R9 remain unaccepted. Autonomous implementation has resumed; Kyle controls model/effort.
 
 2026-09-19 continuation: `codex/subreddit-continuation` at `/private/tmp/neuro-repair-powMDK/worktree`,
 base `da560a4`, prepared `279940d`, full **2,088 passed**, fake Tier 1 PASS, normal release-check PASS
@@ -19,6 +19,9 @@ R2 work continues separately at `/private/tmp/neuro-repair-powMDK/scan-worktree`
 `codex/subreddit-scan-lifecycle`, from the same tested candidate; the release checkout stayed frozen.
 Current R2 focus: atomic run/job admission, explicit attach/resume/cancel/refresh, actual claim fencing,
 typed access/retry failures and bounded listing termination. Cross-path/upgrade and live acceptance remain open.
+R2's implementation is now prepared in that branch: initial regressions reproduced 11 failures; the expanded
+intersection passed 182 tests, then S76/S74/frontend/repo checks passed 69 after legacy/lease/HTTP-route additions.
+Do not attribute R1's full release artifact to this newer code; freeze and run a new integrated gate next.
 
 Review baseline is `66f4d4d`, tracked tree clean before these docs. Preserve the landed identity, worker,
 observation, yield and cache corrections. Pre-rebase `064d86c` passed 2,074 tests and normal isolated

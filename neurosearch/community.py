@@ -190,6 +190,37 @@ def reddit_api_configured() -> bool:
     return bool(settings.reddit_client_id and settings.reddit_client_secret)
 
 
+class RedditAPIError(RuntimeError):
+    """Typed official-access failure; preserves HTTP/retry advice through durable catalog jobs."""
+
+    def __init__(self, message: str, *, kind: str = "malformed", status: int | None = None,
+                 retry_at: float | None = None, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.kind, self.status, self.retry_at, self.retryable = kind, status, retry_at, retryable
+
+
+def _api_refusal(status: int, headers: dict[str, str], *, token: bool = False) -> RedditAPIError:
+    from email.utils import parsedate_to_datetime
+    import math
+    retry_at = None
+    value = next((v for k, v in headers.items() if k.lower() == "retry-after"), None)
+    if value:
+        try:
+            retry_at = time.time() + max(0, float(value))
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(value).timestamp()
+            except (ValueError, TypeError, OverflowError):
+                pass
+        if retry_at is not None and not math.isfinite(retry_at):
+            retry_at = None
+    kind = "credentials" if token and status in (400, 401, 403) else (
+        "access" if status in (401, 403) else "rate_limit" if status == 429 else "server" if status >= 500 else "http")
+    note = "token request refused" if token else "request refused"
+    return RedditAPIError(f"Reddit API: {note} (HTTP {status})", kind=kind, status=status,
+                          retry_at=retry_at, retryable=status == 429 or 500 <= status <= 599)
+
+
 def _oauth_token() -> str:
     """Application-only OAuth (client_credentials): Reddit's sanctioned way for a script to read public data. Cached until
     it expires. Credentials live only in .env (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET); never in the database."""
@@ -204,13 +235,13 @@ def _oauth_token() -> str:
                               "Accept": "application/json", "Upgrade-Insecure-Requests": None, "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None,
                               "Sec-Fetch-Site": None, "Sec-Fetch-User": None})
     if res.status != 200:
-        raise RuntimeError(f"Reddit API: token request refused (HTTP {res.status}) — check REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env")
+        raise _api_refusal(res.status, res.headers, token=True)
     try:
         tok = json.loads(res.body.decode("utf-8", errors="replace"))
     except ValueError as e:
-        raise RuntimeError("Reddit API: token response was not JSON") from e
-    if not tok.get("access_token"):
-        raise RuntimeError(f"Reddit API: {tok.get('error') or 'no access token in the response'}")
+        raise RedditAPIError("Reddit API: token response was not JSON") from e
+    if not isinstance(tok, dict) or not tok.get("access_token"):
+        raise RedditAPIError("Reddit API: no access token in the response", kind="credentials")
     _OAUTH["token"], _OAUTH["expires"] = tok["access_token"], time.time() + float(tok.get("expires_in") or 3600)
     return _OAUTH["token"]
 
@@ -226,15 +257,13 @@ def _api_get(path_and_query: str) -> Any:
         if res.status == 401 and attempt == 1:
             _OAUTH["token"] = None
             continue
-        if res.status == 429:
-            raise RuntimeError("Reddit API: rate limited (429) — try again in a minute")
         if res.status != 200:
-            raise RuntimeError(f"Reddit API: HTTP {res.status}")
+            raise _api_refusal(res.status, res.headers)
         try:
             return json.loads(res.body.decode("utf-8", errors="replace"))
         except ValueError as e:
-            raise RuntimeError("Reddit API: response was not JSON") from e
-    raise RuntimeError("Reddit API: unauthorized")
+            raise RedditAPIError("Reddit API: response was not JSON") from e
+    raise RedditAPIError("Reddit API: unauthorized", kind="access", status=401)
 
 
 def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:
@@ -245,22 +274,26 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
     catalog must fail honestly when approved API access is unavailable.
     """
     if not reddit_api_configured():
-        raise RuntimeError("Reddit API credentials are required to catalog a subreddit (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET)")
+        raise RedditAPIError("Reddit API credentials are required to catalog a subreddit (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET)", kind="credentials")
     if not SUBREDDIT_NAME.fullmatch(subreddit):
         raise ValueError("invalid subreddit name")
     from urllib.parse import quote
     query = f"raw_json=1&limit={max(1, min(limit, 100))}"
     if after:
         query += "&after=" + quote(after, safe="")
-    data = _api_get(f"/r/{quote(subreddit)}/new?{query}")
+    from .safe_fetch import FetchBlocked
+    try:
+        data = _api_get(f"/r/{quote(subreddit)}/new?{query}")
+    except FetchBlocked as e:
+        raise RedditAPIError(str(e), kind=e.reason, retryable=e.reason in ("dns", "connect", "timeout", "protocol")) from e
     listing = data.get("data") if isinstance(data, dict) else None
-    if not isinstance(listing, dict):
-        raise RuntimeError("Reddit API: malformed subreddit listing")
+    if not isinstance(listing, dict) or not isinstance(listing.get("children"), list):
+        raise RedditAPIError("Reddit API: malformed subreddit listing")
     rows: list[dict[str, Any]] = []
     for child in listing.get("children") or []:
         post = child.get("data") if isinstance(child, dict) else None
         if not isinstance(post, dict) or not post.get("id") or not post.get("permalink"):
-            continue
+            raise RedditAPIError("Reddit API: malformed subreddit listing entry")
         outbound = post.get("url_overridden_by_dest") or post.get("url")
         from urllib.parse import urlparse
         outbound_domain = urlparse(outbound).hostname.lower() if isinstance(outbound, str) and outbound else None
@@ -276,7 +309,9 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
                                   "outbound_domain": outbound_domain,
                                   "availability": availability}})
     next_cursor = listing.get("after")
-    return rows, str(next_cursor) if next_cursor else None
+    if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor):
+        raise RedditAPIError("Reddit API: malformed listing cursor")
+    return rows, next_cursor
 
 
 def thread_from_listing(data: Any, url: str, *, retrieved_via: str = "reddit json") -> dict[str, Any]:

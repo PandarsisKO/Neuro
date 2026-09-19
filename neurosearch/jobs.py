@@ -320,13 +320,19 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
     if kind == "explore":
         if payload.get("kind") == "subreddit":
             from . import reservoir
+            if not payload.get("catalog_run_id") or payload.get("catalog_generation") is None:
+                raise RuntimeError("Legacy catalog job has no run identity; resume or refresh the catalog explicitly.")
             result = reservoir.scan_subreddit_page(payload["project_id"], payload["collection_id"],
                                                     expected_run_id=payload.get("catalog_run_id"),
-                                                    expected_generation=payload.get("catalog_generation"))
+                                                    expected_generation=payload.get("catalog_generation"),
+                                                    expected_job_id=jid, expected_claim_id=job.get("run_id"))
             if result["status"] == "partial":
                 raise Yield("catalog page saved; continuing automatically")
             if result["status"] == "blocked":
-                raise RuntimeError(result.get("error") or "subreddit catalog scan blocked")
+                from .community import RedditAPIError
+                raise RedditAPIError(result.get("error") or "subreddit catalog scan blocked",
+                                     kind=result.get("error_type", "unknown"), status=result.get("http_status"),
+                                     retry_at=result.get("retry_at"), retryable=bool(result.get("retryable")))
             return result
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
@@ -433,6 +439,12 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
     after_done = False
     try:
         result = run_job(job)
+        if job["kind"] == "explore" and (job.get("payload") or {}).get("kind") == "subreddit" and isinstance(result, dict) and result.get("status") == "stale":
+            # A replacement claim/run owns the work. Do not record execution or run post-completion hooks.
+            current = db.get_job(jid) or {}
+            if current.get("run_id") == run_id and (current.get("lease_until") or 0) > time.time():
+                db.finish_job(jid, run_id, "cancelled", message="catalog scan superseded or detached")
+            return (db.get_job(jid) or {}).get("status", "cancelled")
         _record_execution(jid)
         # 2026-09-15 -- `message` used to be the literal string "done" no matter what happened, so a real
         # no-op (every source already current, or an in-flight batch -- findings.py's `_skipped()`) was
@@ -471,8 +483,27 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
         from .media import RateLimited, rate_limit_status
         from .usage import BudgetPaused
         sid = (job.get("payload") or {}).get("source_id")
+        catalog_job = job["kind"] == "explore" and (job.get("payload") or {}).get("kind") == "subreddit"
+        if catalog_job and not isinstance(e, Yield):
+            from .community import RedditAPIError
+            attempts = int(job.get("attempts") or 0) + 1
+            if isinstance(e, RedditAPIError) and e.retryable and attempts < MAX_ATTEMPTS:
+                delay = max(RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)], (e.retry_at or 0) - time.time())
+                if db.requeue_job(jid, delay=delay, message=f"catalog retry {attempts + 1}/{MAX_ATTEMPTS}: {e}",
+                                  wait_reason="rate_limit" if e.status == 429 else "retry", count_attempt=True,
+                                  expected_run_id=run_id):
+                    return "queued"
+            current = db.get_job(jid) or {}
+            cancelled = bool(current.get("cancel_requested_at"))
+            db.finish_job(jid, run_id, "cancelled" if cancelled else "failed", message="cancelled" if cancelled else f"error: {e}")
+            return (db.get_job(jid) or {}).get("status", "failed")
         if isinstance(e, Yield):
-            db.requeue_job(jid, delay=0, message=e.message)
+            if not db.requeue_job(jid, delay=0, message=e.message, expected_run_id=run_id if catalog_job else None):
+                current = db.get_job(jid) or {}
+                if catalog_job and current.get("run_id") == run_id and current.get("cancel_requested_at"):
+                    db.finish_job(jid, run_id, "cancelled", message="cancelled")
+                    return "cancelled"
+                return current.get("status", "failed")
             db.job_event(jid, "yielded", run_id=job.get("run_id"), message=e.message)
             return "queued"
         if isinstance(e, BudgetPaused):

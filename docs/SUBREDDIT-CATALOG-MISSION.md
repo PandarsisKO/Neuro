@@ -8,7 +8,9 @@ Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Origina
 
 Kyle requested review and revision of the supplied whole-subreddit brief, with execution by Codex instead of Claude/Fable. This document supersedes that brief's provisional ladder and agent/model assignments. Its product intent remains: a reusable subreddit catalog, project-relative recommendations, selected thread acquisition, local Research reuse, manual refresh, and honest coverage.
 
-The original Phase A permitted inspection, safe source-only checks, and planning-document edits; it is complete. The original plan-only restriction ended with Kyle's subsequent execution instruction. The current request, “I need you to update the plan for the work that remains,” is documentation only: reconcile the remaining work against current code without starting runtime implementation in this turn.
+The original Phase A and later plan-update-only turn are complete. Kyle subsequently requested autonomous
+continuation in the existing task. Runtime implementation has resumed in isolated checkouts; no model switch,
+delegation, paid access or alternate Reddit acquisition architecture is implied by that authorization.
 
 Phase B began when Kyle explicitly instructed Codex to execute on 2026-09-19. Changing a model setting alone remains insufficient authorization. The executor must not switch models, invoke another coding model, create tasks, or delegate on the basis of this document. Kyle controls the execution configuration.
 
@@ -101,11 +103,11 @@ Two dangerous shortcuts are specifically rejected:
 
 The previous declaration that SUB2–SUB8 were implemented is withdrawn. Useful code exists, but several required behaviors are missing and the new tests prove only a subset of the acceptance contract. Original SUB numbers below remain historical provenance; **SUB-R0–SUB-R9** own all remaining work in this same mission. Section 4's architecture and product contract remains binding.
 
-**R0's baseline gate passed; R1 is the next implementation rung.** R1–R6 contain useful corrections, but
+**R0 hygiene and an R1 boundary slice passed the frozen gate at `279940d`; R2 implementation is prepared.** R1–R6 contain useful corrections, but
 none has passed its full acceptance gate. R7 has a basic first-pass UI, not the complete workflow. R8 and R9
 remain unaccepted. The remaining work includes backend correctness, not only UI and live testing. Section 2
 records exactly which source revisions were tested; a deterministic release-check pass does not close these
-product gates. This revision updates the plan only.
+product gates. Current implementation evidence follows under each rung and in HANDOFF/HARDENING.
 
 | Rung | Outcome | Depends on | Exit gate |
 |---|---|---|---|
@@ -145,6 +147,18 @@ Owners: `db.py`, `identity.py`, `candidates.py`, `community.py`, `resources.py`,
 Exit: canonical variants and direct/browser/search capture converge; cross-post IDs stay distinct; second-project catalog attachment reconciles candidates locally and creates zero Sources/chunks/evidence. Foreign IDs, detached catalogs and non-subreddit collections are rejected before writes/jobs; exclusions and dispositions survive. Upgrade fixtures include existing catalogs/candidates/Sources, not only an empty DB. Reconciliation must not scan and rewrite every catalog member on every page.
 
 ### SUB-R2 — durable scan lifecycle
+
+2026-09-19 continuation: prepared on `codex/subreddit-scan-lifecycle` from R1 `279940d` (plus its evidence
+commit). Run/job admission is now atomic, dedupe is run-scoped only for subreddit jobs, attachment never
+implicitly refreshes completed work, and existing endpoints share the same resume/cancel/refresh owner.
+The page writer fences the actual job claim/lease as well as generation, cancellation and attachment.
+Typed official API failures retain HTTP/Retry-After; retries are bounded and bypass generic string matching
+only for this branch. Cursor cycles/malformed/advancing-empty pages stop as blocked, not complete; run limits
+are pinned. Generic monitored rescans exclude subreddit catalogs. S76 exercises actual claim/execute turns,
+concurrent double-clicks, crash/checkpoint/restart, detach/cancel/reclaim, legacy recovery and typed failures.
+Initial 11 failures reproduced; expanded intersection 182 passed; latest S76/S74/frontend/repo gate 69 passed.
+Full frozen integrated release and live acceptance are not yet run for this candidate. The original remaining
+scope below is retained as the acceptance checklist, not a claim these repaired paths are still absent.
 
 Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API routes. **Implemented:** payload run/generation binding, page/checkpoint compare-and-set, blocked-worker failure and retryable explore jobs.
 

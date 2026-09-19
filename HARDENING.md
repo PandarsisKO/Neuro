@@ -2401,3 +2401,29 @@ with the same key/ dotenv isolation passed Tier 1. Source start/end:
 `279940d18f4723867391ab930c14c038ef091b5f`; artifacts:
 `evals/release/release-check-0.63.94-279940d-20260919-134650.{json,txt}`.
 This is a prepared-code checkpoint, not R1's full cross-path/upgrade acceptance or R9/live release.
+
+## SUB-R2 durable catalog lifecycle — 2026-09-19
+
+Isolation: `/private/tmp/neuro-repair-powMDK/scan-worktree`, branch `codex/subreddit-scan-lifecycle`, runtime
+base `279940d`, with the R1 evidence commit cherry-picked as `514d3ee`. This preserves the other checkout's
+immutable release run. Existing reservoir/queue/API/Community owners only: no new job family, scheduler,
+provider path, schema or dependencies. New resume/cancel routes are project-scoped members of the existing
+catalog family and call its single admission owner, as does refresh and pasted-URL attachment.
+
+Run state and intended job commit together under the writer. Run-specific dedupe prevents a blocked old retry
+from capturing a fresh refresh. Actual worker claim, lease, attachment, run/generation and cancellation fence
+page/error checkpoints. `requeue_job` accepts an optional claim guard; old callers remain unchanged. Cancelled,
+failed or orphaned associated jobs cannot display as active catalog scans. Legacy unbound payloads fail with an
+explicit recovery instruction; explicit resume normalizes/binds their existing checkpoint. Retried success clears
+old errors. Adapter failures preserve HTTP/typed reason/Retry-After, and only typed transient subreddit failures
+retry (at most the existing four attempts). No API bypass fallback. Empty advancing pages and cursor cycles
+block honestly; successful page limits stay pinned to the run. YouTube rescan paths exclude subreddit catalogs.
+
+S76 started with 11 failures/one pass. Actual queue turns now cover partial yield, explicit cancellation/resume,
+completed reattachment, retry deadlines/attempt exhaustion, stale/reclaimed/expired claims, detach during fetch,
+atomic admission and page rollback, crash after commit/reconnect/recovery, parallel double-clicks and foreign
+API actions. A combined S76/S75/S74/K9/K4/indestructible/Foundation/S55/S57 gate passed **182**; after additional
+route/concurrency/legacy/expiry cases, S76/S74/frontend/repo gate passed **69**. Commands use the original private
+venv's Python with `PYTHONPATH=/private/tmp/neuro-repair-powMDK/scan-worktree`, dotenv disabled, private data and
+provider keys unset; fake mode is opted into by scoped fixtures. No live work or paid call was performed.
+Full frozen release still required for this newer code; R1's artifact does not cover it.

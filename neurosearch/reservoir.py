@@ -101,6 +101,8 @@ def rescan(project_id: str, collection_id: str, *, enumerate: Callable[[str], tu
     collection = db.get_collection(collection_id)
     if not collection:
         raise ValueError(f"no such collection: {collection_id}")
+    if collection.get("kind") == "subreddit":
+        raise ValueError("use explicit subreddit catalog refresh, not a YouTube reservoir rescan")
 
     _info, raw_entries = enumerate_fn(collection["url"])
     fp = fingerprint(raw_entries)
@@ -139,42 +141,99 @@ class _StaleSubredditScan(RuntimeError):
 
 
 def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
-    """Begin a new head-first, manual catalog run without touching the provider.
+    """Compatibility entry: admission now creates the run AND its job atomically."""
+    return request_subreddit_scan(project_id, collection_id, action="refresh")
 
-    This is intentionally a state transition, not another queue or scheduler. A later page worker owns the
-    provider call. Keeping the prior completed summary lets the UI describe a failed refresh honestly.
-    """
-    collection = db.get_collection(collection_id)
-    if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
-        raise ValueError("subreddit refresh needs a subreddit catalog")
-    key = _scan_key(project_id, collection_id)
-    raw = db.kv_get(key)
+
+def _scan_state(project_id: str, collection_id: str) -> dict[str, Any]:
     try:
-        prior = json.loads(raw or "{}")
+        value = json.loads(db.kv_get(_scan_key(project_id, collection_id)) or "{}")
+        return value if isinstance(value, dict) else {}
     except ValueError:
-        prior = {}
-    if prior.get("status") in ("queued", "partial"):
-        # Repeated refresh clicks must share the existing durable run and cursor. In particular, do not turn a
-        # queued initial scan into a refresh before it has made its first page commit.
-        return prior
-    t = time.time()
-    known_posts = len(db.collection_candidate_ids(collection_id))
-    mode = "refresh" if prior or known_posts else "initial"
-    previous_completed = None
-    if prior.get("status") == "complete":
-        previous_completed = {k: prior.get(k) for k in ("run_id", "generation", "mode", "known_posts", "new", "pages", "observed", "started_at", "finished_at", "reason")}
-    elif prior.get("previous_completed"):
-        previous_completed = prior["previous_completed"]
-    state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
-             "mode": mode, "status": "queued", "cursor": None, "pages": 0, "observed": 0,
-             "new": 0, "initial_known": 0, "known_posts": len(db.collection_candidate_ids(collection_id)),
-             "baseline_known": known_posts, "started_at": t, "updated_at": t,
-             "finished_at": None, "reason": None, "access": "reddit_api", "endpoint": "new",
-             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
-             "previous_completed": previous_completed}
-    if not db.kv_compare_set(key, raw, json.dumps(state, sort_keys=True)):
-        raise RuntimeError("subreddit scan changed; retry refresh")
-    return state
+        return {}
+
+
+def request_subreddit_scan(project_id: str, collection_id: str, *, action: str) -> dict[str, Any]:
+    """One admission owner, using the existing queue and writer transaction.
+
+    Attach never restarts old work; resume retains checkpoints; refresh is head-first unless an ordinary
+    run is already active. A blocked retry can be explicitly replaced. No provider calls happen here.
+    """
+    from . import jobs
+    if action not in ("attach", "refresh", "resume", "cancel"):
+        raise ValueError("unknown catalog scan action")
+    with db.batch():
+        conn = db.connect()
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        collection = db.get_collection(collection_id)
+        if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
+            raise ValueError("subreddit scan needs an attached subreddit catalog")
+        key = _scan_key(project_id, collection_id)
+        prior = _scan_state(project_id, collection_id)
+        job = db.get_job(prior["job_id"]) if prior.get("job_id") else None
+        active = job and job["status"] in db.JOB_ACTIVE
+        if action == "cancel":
+            if active:
+                db.request_cancel(job["id"])
+            if prior and prior.get("status") != "complete":
+                prior = {**prior, "status": "cancelled", "updated_at": time.time()}
+                db.kv_set(key, json.dumps(prior, sort_keys=True))
+            return prior
+        if prior and action == "attach":
+            return prior
+        if active and (action == "resume" or (prior.get("status") in ("queued", "partial") and not job.get("cancel_requested_at"))):
+            return prior
+        if prior.get("status") == "complete" and action == "resume":
+            return prior
+        t = time.time()
+        if action == "resume" and prior:
+            state = {**prior, "run_id": prior.get("run_id") or db.new_id(),
+                     "generation": int(prior.get("generation") or 1), "mode": prior.get("mode") or "initial",
+                     "page_limit": prior.get("page_limit") or SUBREDDIT_MAX_PAGES,
+                     "observation_limit": prior.get("observation_limit") or SUBREDDIT_MAX_OBSERVATIONS,
+                     "status": "queued", "updated_at": t, "finished_at": None, "reason": None}
+            for field in ("error", "error_type", "http_status", "retry_at", "retryable"):
+                state.pop(field, None)
+        else:
+            if active:
+                db.request_cancel(job["id"])
+            known_posts = conn.execute("SELECT COUNT(*) FROM collection_candidates WHERE collection_id=?", (collection_id,)).fetchone()[0]
+            summary = prior if prior.get("status") == "complete" else prior.get("previous_completed")
+            fields = ("run_id", "generation", "mode", "known_posts", "new", "pages", "observed", "started_at", "finished_at", "reason")
+            previous = {k: summary.get(k) for k in fields} if isinstance(summary, dict) else None
+            state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
+                     "mode": "refresh" if prior or known_posts else "initial", "status": "queued", "cursor": None,
+                     "pages": 0, "observed": 0, "new": 0, "initial_known": 0, "known_posts": known_posts,
+                     "baseline_known": known_posts, "started_at": t, "updated_at": t, "finished_at": None,
+                     "reason": None, "access": "reddit_api", "endpoint": "new", "previous_completed": previous,
+                     "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
+        job = jobs.enqueue("explore", {"url": collection["url"], "kind": "subreddit", "project_id": project_id,
+                                      "collection_id": collection_id, "catalog_run_id": state["run_id"],
+                                      "catalog_generation": state["generation"]}, lane="low")
+        state["job_id"] = job["id"]
+        db.kv_set(key, json.dumps(state, sort_keys=True))
+        return state
+
+
+def _scan_view(scan: dict[str, Any]) -> dict[str, Any]:
+    """Job-derived lifecycle; never display an orphaned/failed job as an active scan."""
+    if not scan:
+        return scan
+    job = db.get_job(scan["job_id"]) if scan.get("job_id") else None
+    out = {**scan, "job_status": db.derived_status(job) if job else None,
+           "retry_at": job.get("not_before") if job else None}
+    if scan.get("status") == "complete":
+        return out
+    if not job:
+        return {**out, "status": "blocked", "error": "Scan has no associated job; resume or refresh explicitly."}
+    if job.get("cancel_requested_at") or job["status"] == "cancelled":
+        out["status"] = "cancelling" if job["status"] == "running" else "cancelled"
+    elif job["status"] == "failed":
+        out.update(status="blocked", error=job.get("message") or scan.get("error"))
+    elif job["status"] == "done":
+        out.update(status="blocked", error="Scan job ended before completion; resume or refresh explicitly.")
+    return out
 
 
 def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
@@ -184,17 +243,14 @@ def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
     out = []
     for row in rows:
         catalog = dict(row)
-        try:
-            scan = json.loads(db.kv_get(_scan_key(project_id, catalog["id"])) or "{}")
-        except ValueError:
-            scan = {}
-        catalog["scan"] = scan
+        catalog["scan"] = _scan_view(_scan_state(project_id, catalog["id"]))
         out.append(catalog)
     return out
 
 
 def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id: str | None = None,
                          expected_generation: int | None = None,
+                         expected_job_id: str | None = None, expected_claim_id: str | None = None,
                          fetch_page: Callable[[str, str | None], tuple[list[dict[str, Any]], str | None]] | None = None) -> dict[str, Any]:
     """Fetch and atomically commit one subreddit listing page.
 
@@ -214,6 +270,24 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
         prior = json.loads(prior_raw or "{}")
     except ValueError:
         prior = {}
+    if not isinstance(prior, dict):
+        prior = {}
+
+    def owns_claim() -> bool:
+        if not db.project_has_collection(project_id, collection_id):
+            return False
+        if expected_job_id is None:
+            return True  # direct deterministic page fixtures; production always supplies the actual claim
+        job = db.get_job(expected_job_id)
+        if not job or prior.get("job_id") != expected_job_id or not expected_claim_id or job.get("run_id") != expected_claim_id or job["status"] != "running" or (job.get("lease_until") or 0) <= time.time():
+            return False
+        if job.get("cancel_requested_at"):
+            from .jobs import Cancelled
+            raise Cancelled()
+        return True
+
+    if not owns_claim():
+        return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
     if expected_run_id and (prior.get("run_id") != expected_run_id or
                             (expected_generation is not None and prior.get("generation") != expected_generation)):
         return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
@@ -228,23 +302,36 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
                  "access": "reddit_api", "endpoint": "new", "page_limit": SUBREDDIT_MAX_PAGES,
                  "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
     cursor = prior.get("cursor")
+    from . import community
+    from .jobs import Cancelled
     fetch = fetch_page
     if fetch is None:
-        from . import community
         fetch = lambda sub, after: community.enumerate_subreddit_page(sub, after, limit=SUBREDDIT_PAGE_SIZE)
     try:
         rows, next_cursor = fetch(name, cursor)
+        seen_cursors = list(prior.get("seen_cursors") or [])
+        if next_cursor and (next_cursor == cursor or next_cursor in seen_cursors):
+            raise community.RedditAPIError("Reddit listing cursor repeated; scan stopped without claiming completion.", kind="cursor_cycle")
+        if next_cursor and not rows:
+            raise community.RedditAPIError("Reddit returned an empty page with another cursor; scan stopped without claiming completion.", kind="empty_page")
+    except Cancelled:
+        raise
     except Exception as e:  # preserve any committed pages and make the block visible/retryable
         state = {**prior, "status": "blocked", "error": str(e), "updated_at": time.time(), "cursor": cursor,
-                 "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0)}
-        if not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
-            return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
-        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"], "error": state["error"], "candidate_ids": []}
-    if next_cursor and next_cursor == cursor:
-        next_cursor = None
-        terminal_reason = "cursor did not advance"
-    else:
-        terminal_reason = "listing ended" if not next_cursor else None
+                 "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0),
+                 "error_type": e.kind if isinstance(e, community.RedditAPIError) else "unknown",
+                 "http_status": e.status if isinstance(e, community.RedditAPIError) else None,
+                 "retry_at": e.retry_at if isinstance(e, community.RedditAPIError) else None,
+                 "retryable": isinstance(e, community.RedditAPIError) and e.retryable}
+        with db.batch():
+            conn = db.connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not owns_claim() or not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
+                return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
+        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"], "candidate_ids": [],
+                **{k: state[k] for k in ("error", "error_type", "http_status", "retry_at", "retryable")}}
+    terminal_reason = "listing ended" if not next_cursor else None
 
     # Compute before remember() mutates either global rows or this project's relationship rows.
     known = {r["external_id"] for r in db.connect().execute(
@@ -259,7 +346,9 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     now = time.time()
     pages = int(prior.get("pages") or 0) + 1
     observed = int(prior.get("observed") or 0) + len(rows)
-    capped = pages >= SUBREDDIT_MAX_PAGES or observed >= SUBREDDIT_MAX_OBSERVATIONS
+    page_limit = int(prior.get("page_limit") or SUBREDDIT_MAX_PAGES)
+    observation_limit = int(prior.get("observation_limit") or SUBREDDIT_MAX_OBSERVATIONS)
+    capped = pages >= page_limit or observed >= observation_limit
     status = "complete" if not next_cursor or capped else "partial"
     terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
     known_posts = len(known) + new_count
@@ -268,16 +357,24 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     oldest = min([d for d in [prior.get("observed_oldest"), *dates] if d], default=None)
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
     state = {**prior, "status": status, "cursor": None if status == "complete" else next_cursor, "pages": pages,
+             "seen_cursors": [*seen_cursors, cursor] if cursor else seen_cursors,
              "observed": observed, "known_posts": known_posts,
              "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
              "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
              "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
              "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
              "observed_oldest": oldest, "observed_newest": newest,
-             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
+             "page_limit": page_limit, "observation_limit": observation_limit}
+    for field in ("error", "error_type", "http_status", "retry_at", "retryable"):
+        state.pop(field, None)
     state_raw = json.dumps(state, sort_keys=True)
     try:
         with db.batch():
+            conn = db.connect()
+            if not conn.in_transaction:
+                conn.execute("BEGIN IMMEDIATE")
+            if not owns_claim():
+                raise _StaleSubredditScan()
             ids = candidates.remember(entries, "reddit", project_id,
                                       {"kind": "subreddit_catalog", "collection_id": collection_id, "subreddit": name})
             db.link_collection_candidates(collection_id, ids)
@@ -320,4 +417,4 @@ def rescan_project(project_id: str, *, enumerate: Callable[[str], tuple[dict, li
     not rescanned-and-discarded: `enumerate` is never called for it. On-demand only -- never called from a
     schedule or nightly hook tonight; CLI-driven (`neurosearch project rescan`)."""
     return [rescan(project_id, cid, enumerate=enumerate, now=now) for cid in db.project_collection_ids(project_id)
-            if is_monitored(project_id, cid)]
+            if (db.get_collection(cid) or {}).get("kind") != "subreddit" and is_monitored(project_id, cid)]
