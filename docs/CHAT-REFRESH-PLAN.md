@@ -929,3 +929,10 @@ those are either checked on a foreground browser or explicitly accepted as a gap
 Gates after the port and final renderer correction: `node tests/js/run-chat-delta.mjs` = 21/21 and
 `tests/test_s50_design_drift.py` = 9/9. The ported code and this record still need the normal commit/release
 ritual; no GitHub push is claimed without verified credentials.
+
+### Delivery update (Codex, 2026-09-19)
+
+The scoped changes were committed as `09be557` and pushed to `origin/main`; remote verification returned the
+same SHA. The release artifact is `evals/release/release-check-0.63.94-09be557-20260919-100142.json`.
+The full ritual completed with 2,019 passed and 33 failures: the known 8 S43 foundation failures plus the
+existing local-model/configuration, S12, S39, and S46 failures. No CHR2-specific failure was introduced.
