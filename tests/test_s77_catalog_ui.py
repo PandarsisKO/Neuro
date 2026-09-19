@@ -15,7 +15,8 @@ from tests.test_s32_course_scanner import _jsdom_installed  # noqa: F401
 @pytest.mark.parametrize("scenario", [
     "escape", "project-switch", "query-race", "stale-action",
     "stale-row-actions", "stale-card-actions", "stale-error", "late-action",
-    "pending-action", "project-reset",
+    "pending-action", "project-reset", "selected-capture", "draft-focus",
+    "reset-source-project", "filtered-count", "late-library",
 ])
 def test_catalog_dom_and_async_ownership(scenario):
     node = shutil.which("node")

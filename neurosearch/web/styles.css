@@ -90,6 +90,10 @@
   .icon-sprite{position:absolute}
   .ic{width:14px;height:14px;vertical-align:-2px;color:currentColor}
   .w-auto{width:auto}
+  .catalog-controls>input{flex:1 1 180px}
+  .catalog-controls>select{flex:1 1 150px}
+  .catalog-controls>.catalog-yield{flex:1 1 260px;min-width:220px}
+  .catalog-choice{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--muted)}
   .mt-1{margin-top:var(--space-1)}
   .mt-2{margin-top:var(--space-2)}
   .when-menu{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex-basis:100%}
@@ -365,6 +369,8 @@
     .view{padding:14px}
     .src img,.src .ico{width:72px;height:40px}
     .msg{max-width:100%}
+    .catalog-controls>.catalog-yield{flex-basis:100%;min-width:0}
+    .catalog-controls>input,.catalog-controls>select{flex-basis:140px}
   }
 /* Foundation: native controls and action links share request acknowledgement without losing labels. */
 select[aria-busy="true"], input[aria-busy="true"], a[aria-busy="true"] { opacity:.55; cursor:progress; outline:2px solid var(--accent); }

@@ -259,6 +259,29 @@ def test_retry_attempts_are_bounded_and_success_clears_old_error(monkeypatch):
     assert not state(pid, cid).get("error") and "provider_status" not in state(pid, cid)
 
 
+def test_retry_wait_survives_a_connection_restart_before_the_next_claim(monkeypatch):
+    """R8a: retry state is durable, not an in-memory worker convenience."""
+    pid, cid, jid = setup()
+    monkeypatch.setattr(community, "enumerate_subreddit_page", lambda *_a, **_kw: (_ for _ in ()).throw(
+        community.RedditApiError(503, "fixture busy", kind="server", retryable=True)
+    ))
+    assert turn() == "queued"
+    waiting = state(pid, cid)
+    assert waiting["status"] == "blocked" and db.get_job(jid)["status"] == "queued"
+
+    # Simulate process restart without touching a user's database: close this
+    # fixture connection and reopen the same fixture path before eligibility.
+    db.close_thread_connection()
+    db.init_db()
+    assert state(pid, cid)["run_id"] == waiting["run_id"]
+    with db.tx() as conn:
+        conn.execute("UPDATE jobs SET not_before=0 WHERE id=?", (jid,))
+    monkeypatch.setattr(community, "enumerate_subreddit_page", lambda *_a, **_kw: ([listing("after-restart")], None))
+    assert turn() == "done"
+    assert state(pid, cid)["status"] == "complete"
+    assert [row["external_id"] for row in db.connect().execute("SELECT external_id FROM candidates")] == ["reddit:after-restart"]
+
+
 @pytest.mark.parametrize("bad_page", ["cycle", "empty"])
 def test_cursor_cycle_and_advancing_empty_page_are_not_success(monkeypatch, bad_page):
     pid, cid, jid = setup()

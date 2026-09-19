@@ -78,6 +78,7 @@ globalThis.openProject = async function openProject(id, view, conv) {
   if (!p) return goHome();
   const fresh = !state.project || state.project.id !== id;
   state.project = p;
+  if (fresh && globalThis.resetSourceProjectState) resetSourceProjectState();
   $('#home').hidden = true; $('#ws').classList.add('active');
   $('#wsName').textContent = p.name; loadSpend();
   // 0.63.12 — the exact count, not the length of a capped list: this said "200" for a project with 17,845.

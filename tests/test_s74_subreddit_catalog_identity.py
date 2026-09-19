@@ -664,6 +664,27 @@ def test_catalog_capture_many_validates_all_ids_before_queuing_any_work(client):
     assert accepted.json() == {"considered": 1, "captured": 1, "attached": 0, "jobs_queued": 1, "failed": []}
 
 
+def test_catalog_capture_explicit_ten_of_four_thousand_never_acquires_the_rest():
+    """Selection is explicit: the catalog is metadata, not an implicit bulk ingest."""
+    project = _project("catalog ten of four thousand")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    rows = [{"external_id": f"reddit:many-{i:04}",
+             "url": f"https://www.reddit.com/r/smallbusiness/comments/many{i:04}/post/",
+             "title": f"Candidate {i}", "content_type": "post"} for i in range(4000)]
+    ids = candidates.remember(rows, "reddit", project, {"kind": "fixture"})
+    assert db.link_collection_candidates(catalog["id"], ids) == 4000
+    chosen = ids[::400][:10]
+
+    result = candidates.catalog_capture_many(project, catalog["id"], chosen)
+
+    assert result == {"considered": 10, "captured": 10, "attached": 0, "jobs_queued": 10, "failed": []}
+    states = db.connect().execute(
+        "SELECT state, COUNT(*) AS n FROM candidate_projects WHERE project_id=? GROUP BY state", (project,)
+    ).fetchall()
+    assert {row["state"]: row["n"] for row in states} == {"acquired": 10, "available": 3990}
+    assert len(db.list_jobs(20)) == 10
+
+
 def test_catalog_recapture_readds_an_explicitly_excluded_ready_source():
     project = _project("catalog recapture exclusion")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")

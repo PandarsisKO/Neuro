@@ -8,12 +8,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const require = createRequire(path.join(root, 'tests/js/package.json'));
 const { JSDOM } = require('jsdom');
 const src = readFileSync(path.join(root, 'neurosearch/web/js/sources.js'), 'utf8').replace(/^export const moduleName.*$/m, '');
-const dom = new JSDOM('<!doctype html><textarea id="inUrls"></textarea><div id="subredditCatalogs"></div>', { url: 'https://fixture.invalid/', runScripts: 'outside-only' });
+const dom = new JSDOM('<!doctype html><textarea id="inUrls"></textarea><input id="libQ"><input id="candQ"><select id="candState"></select><div id="library"></div><div id="candCounts"></div><div id="candidates"></div><div id="subredditCatalogs"></div>', { url: 'https://fixture.invalid/', runScripts: 'outside-only' });
 const w = dom.window;
 w.$ = selector => w.document.querySelector(selector);
 w.esc = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 w.state = { project: { id: 'one' } };
 w.toast = w.loadJobs = () => {};
+w.ICON = {}; w.fmt = value => String(value);
 w.eval(src);
 const defer = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
 const response = title => ({ revision: title, collection: { url: 'https://www.reddit.com/r/fixture/' }, total: 1,
@@ -124,6 +125,53 @@ try {
     await w.openSubredditCatalog('catalog', false);
     assert.equal(w.CATALOG.q, ''); assert.equal(w.CATALOG.page, 0);
     assert.equal(w.CATALOG.projectId, 'two');
+  } else if (scenario === 'selected-capture') {
+    const item = title => ({ id: title, title, url: 'https://www.reddit.com/r/fixture/comments/' + title + '/', capture_status: 'not_captured', state: 'available', metadata: {}, why: [] });
+    w.api = async url => {
+      if (url.endsWith('/yield')) return {};
+      return url.includes('page=1') ? { ...response('second'), total: 2, page: 1, items: [item('second')], next_page: null } : { ...response('first'), total: 2, page: 0, items: [item('first')], next_page: 1 };
+    };
+    await w.openSubredditCatalog('catalog');
+    assert.equal(w.document.querySelectorAll('input[type="checkbox"]').length, 1);
+    await w.toggleCatalogCandidate('first', 'catalog', true);
+    w.CATALOG.page = 1;
+    await w.openSubredditCatalog('catalog', false);
+    await w.toggleCatalogCandidate('second', 'catalog', true);
+    assert.equal(w.$('#subredditCatalogDetail').textContent.includes('Capture selected (2)'), true);
+    const posts = [];
+    w.post = async (url, body) => { posts.push({ url, body }); return { attached: 0, jobs_queued: 2, failed: [] }; };
+    await w.catalogCaptureSelected('catalog');
+    assert.deepEqual(Array.from(posts[0].body.candidate_ids), ['first', 'second']);
+    assert.equal(w.CATALOG.selectedIds.size, 0);
+  } else if (scenario === 'draft-focus') {
+    w.api = async url => url.endsWith('/yield') ? {} : response('one');
+    await w.openSubredditCatalog('catalog');
+    const input = w.$('#subredditCatalogSearch');
+    input.focus(); input.value = 'unsent title'; input.setSelectionRange(3, 8);
+    await w.openSubredditCatalog('catalog', false);
+    const restored = w.$('#subredditCatalogSearch');
+    assert.equal(restored.value, 'unsent title');
+    assert.equal(w.document.activeElement, restored);
+    assert.deepEqual([restored.selectionStart, restored.selectionEnd], [3, 8]);
+  } else if (scenario === 'reset-source-project') {
+    w.$('#library').textContent = 'old library'; w.$('#candidates').textContent = 'old candidates'; w.$('#subredditCatalogs').textContent = 'old catalog';
+    w.CATALOG = { ...w.CATALOG, id: 'catalog', selectedIds: new Set(['one']) };
+    w.resetSourceProjectState();
+    assert.equal(w.$('#library').textContent, ''); assert.equal(w.$('#candidates').textContent, ''); assert.equal(w.$('#subredditCatalogs').textContent, '');
+    assert.equal(w.CATALOG.id, null); assert.equal(w.CATALOG.selectedIds.size, 0);
+  } else if (scenario === 'filtered-count') {
+    w.api = async url => url.endsWith('/yield') ? {} : response('one');
+    await w.openSubredditCatalog('catalog');
+    w.CATALOG.q = 'one';
+    await w.openSubredditCatalog('catalog', false);
+    assert.ok(w.$('#subredditCatalogDetail').textContent.includes('1 matching'));
+  } else if (scenario === 'late-library') {
+    const waiting = defer();
+    w.api = async () => waiting.promise;
+    const old = w.loadLibrary();
+    w.state.project = { id: 'two' }; w.resetSourceProjectState();
+    waiting.resolve([{ id: 'old', title: 'old source' }]); await old;
+    assert.equal(w.$('#library').textContent, '');
   } else throw Error('unknown scenario');
   console.log('PASS ' + scenario);
 } finally { w.close(); }
