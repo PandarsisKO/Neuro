@@ -1,10 +1,11 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
 **Current implementation pointer (2026-09-19):** shared main is intentionally not runtime-delivered.
-Continue from `codex/subreddit-integrated` (`d2d6d1e`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
+Continue from `codex/subreddit-integrated` (runtime `411480b`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
 and its version of this same canonical mission. It reconciles the previously undelivered d318297 work and
-additional safety repairs; focused gate 200 passed, frozen full release PASS with 2,152 tests. Follow-on UI
-ownership/escaping repairs are being gated separately. HANDOFF records the delivery boundary.
+additional safety repairs; focused gate **210 passed**, frozen normal release **PASS (2,162 tests)**, separate
+fake Tier 1 PASS. HANDOFF records exact evidence and remaining R7/R8a/R8b/R9 work. Real Reddit and human visual
+acceptance are not established. The remaining main text below is historical, not current implementation.
 
 Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
@@ -12,7 +13,8 @@ Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Origina
 
 **Current continuation (2026-09-19):** `codex/subreddit-integrated` reconciles the undelivered `d318297`
 implementation with independently verified R0/R1/R2 repairs. HANDOFF's reconciled continuation is the restart
-point. The combined source passed its frozen release check (2,152 tests, Tier 1, Foundation and recovery).
+point. The combined source plus UI ownership repairs passed its frozen release check on `411480b`
+(2,162 tests, Tier 1, Foundation and recovery).
 Runtime work is authorized by Kyle's later continuation instruction, superseding historical plan-only text
 below. Synthetic paired performance evidence is recorded in HARDENING; R7 interaction/visual work, R8a's
 remaining operational proof, R8b and R9 remain open. Deterministic tests are not live acceptance.
@@ -221,7 +223,17 @@ Exit: zero-source catalog yields zero evidence; multiple candidates/evidence joi
 
 ### SUB-R7 — complete the user workflow
 
-Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`. **Implemented:** basic catalog card, per-row capture, refresh, mode/state selector, forward paging, dismiss/restore, explicit bounded capture of displayed rows, scan cancellation and observed coverage/previous-run labels. **Remaining:** full-catalog search, excerpts/reasons, previous-page controls, and browser interaction/visual acceptance. Use normal row controls and action helpers; no independent component or polling framework.
+Owners: existing Sources UI modules, API helpers, shared controls/tokens; consult `DESIGN.md` and `AUDIT.md`.
+**Implemented:** catalog cards, per-row capture, refresh, mode/state selectors, forward/back paging,
+dismiss/restore, bounded displayed-row capture, cancellation, coverage labels, full-catalog title/excerpt search,
+excerpts and grounded reasons. `411480b` adds escaped scan labels, async request ownership and stale-action
+refusal (S77 ten shipped-JS behavior tests). An isolated running candidate rendered 25/5,000 rows and found
+fixture post 4321 by search, with light/dark inspection; this is not real Reddit or human visual acceptance.
+**Remaining:** arbitrary checkbox selection (currently only Capture displayed), draft/focus preservation,
+clear/reset the retained library panel on project switch before its next load, filtered-count wording
+(currently says "1 known" for one search match out of 5,000), and narrow layout (640px squeezes the notice and
+selectors). Complete the browser journey/keyboard/visual gate after repairs. Use existing row controls/action
+helpers; no independent component or polling framework.
 
 Fix late responses painting the wrong project/catalog, shared selection state crossing projects, stale revision recovery retaining an invalid page offset, and list refreshes destroying the open review. Preserve focus/selection appropriately, disable in-flight actions, show progress/error recovery and follow existing hidden-tab/poll limits.
 

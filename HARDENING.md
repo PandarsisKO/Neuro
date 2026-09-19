@@ -2455,3 +2455,29 @@ by the paced fixture. Real HTTP/UI timings, burst scheduling and R8a's remaining
 are still open. No passing threshold was invented from these measurements. R8b still needs approved Reddit
 access, a real capture and browser/human visual acceptance; no access or alternative retrieval architecture
 was assumed or enabled.
+
+### Follow-on UI candidate final checkpoint — 2026-09-19
+
+Frozen start/end source SHA **411480b895da698e8e3fa8f008f8c474856fd3e5**: normal release-check PASS,
+**2,162 tests** (261.87 s, one existing deprecation warning), Foundation 27/27, repo-check, migration,
+crash/recovery, backup/restore, frozen baselines; separate fake Tier 1 PASS. Extended focused suite **210**
+passed. Artifact: `evals/release/release-check-0.63.94-411480b-20260919-141633.json` and text sibling.
+Entry used the private venv, explicit candidate PYTHONPATH, dotenv disabled, provider keys unset, private
+`ui-release` data and fake AI **off**; fixture/eval gates opt in themselves. No source mutation or commit
+occurred during the gate. The following merge/checkpoint changes only documentation/evidence, not runtime/tests.
+
+Real-browser **fixture-only** inspection: served the same frozen source on loopback port 18019 against the
+private 5,000-post measurement DB; fake AI on, provider/Reddit credentials removed, ASGI lifespan/workers off.
+Sources → From library → Review rendered 25 rows; keyboard search for 4321 found the later fixture row,
+showing its stored excerpt/reasons and zero evidence yield. Light and dark desktop views inspected; 640px
+narrow inspection found compressed selectors/notice. Filtered-count wording says "1 known" for one match,
+and entering Sources in a second project retains the old library panel until From library is clicked again.
+New ownership guards prevent its catalog mutation actions from crossing projects, but stale DOM must still
+be cleared as R7 work. Search resets correctly after the new project's library reload. Checkbox selection
+and focus/draft preservation are also open. No real capture/scan was triggered. The temporary browser tab
+was closed, viewport override reset and only the preview's verified PID was terminated; port 8000 untouched.
+
+Production supported Health still reports 0.63.94, fake AI off, healthy integrity/verified backup, two queued
+and one running Claims-maintenance job, zero stale/expired leases. No runtime landing/reload. Prepared and
+committed are not delivered/live-verified. Continue R7 and remaining R8a offline work without needing a new
+product decision; R8b requires approved Reddit access and human visual acceptance, then R9 delivery/version.
