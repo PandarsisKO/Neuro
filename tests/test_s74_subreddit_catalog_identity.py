@@ -378,6 +378,27 @@ def test_catalog_capture_endpoint_uses_the_catalog_scoped_action(client):
     assert candidates.list_for_project(project)[0]["state"] == "acquired"
 
 
+def test_catalog_yield_excludes_rejected_claims_and_nonready_sources():
+    from neurosearch import claims
+    project = _project("yield eligibility")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(project)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    source = identity.resolve_or_create_source(
+        identity.Candidate(platform="community", external_id="reddit:abc123",
+                           url="https://www.reddit.com/r/smallbusiness/comments/abc123/owner_lessons/"),
+        project, initial_status="ready",
+    ).source
+    claim = claims.add_claim(project, "A test claim")
+    claims.add_evidence(claim["id"], source["id"])
+    claims.set_status(claim["id"], "rejected")
+    assert sources_value.subreddit_catalog_yield(project, catalog["id"])["distinct_claims_supported"] == 0
+    claims.set_status(claim["id"], "accepted")
+    assert sources_value.subreddit_catalog_yield(project, catalog["id"])["distinct_claims_supported"] == 1
+    db.set_source_status(source["id"], "failed", "fixture")
+    assert sources_value.subreddit_catalog_yield(project, catalog["id"])["distinct_claims_supported"] == 0
+
+
 def test_catalog_query_pages_a_5000_post_fixture():
     project = _project("catalog scale")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")

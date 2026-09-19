@@ -97,9 +97,11 @@ def subreddit_catalog_yield(project_id: str, collection_id: str) -> dict[str, An
             "high_importance_findings": sum(v["importance"].get("n4plus", 0) for v in selected),
             "claim_evidence_rows": sum(v["claims"].get("evidence_rows", 0) for v in selected),
             "distinct_claims_supported": conn.execute("""SELECT COUNT(DISTINCT e.claim_id) FROM claim_evidence e
-                JOIN project_claims pc ON pc.id=e.claim_id AND pc.project_id=?
+                JOIN project_claims pc ON pc.id=e.claim_id AND pc.project_id=? AND pc.status<>'rejected'
+                JOIN sources s ON s.id=e.source_id AND s.status='ready'
                 WHERE e.source_id IN (SELECT DISTINCT c.source_id FROM collection_candidates cc
-                    JOIN candidates c ON c.id=cc.candidate_id JOIN project_sources ps ON ps.source_id=c.source_id
+                    JOIN candidates c ON c.id=cc.candidate_id JOIN sources cs ON cs.id=c.source_id AND cs.status='ready'
+                    JOIN project_sources ps ON ps.source_id=cs.id
                     WHERE cc.collection_id=? AND ps.project_id=? AND ps.excluded=0)""",
                 (project_id, collection_id, project_id)).fetchone()[0],
             "source_ids": source_ids}
