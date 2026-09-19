@@ -15,11 +15,12 @@ import time
 import logging
 import os
 import re
+import threading
 from typing import Any
 
 from . import contracts, db, titles
 from .config import int_env, settings
-from .search import search
+from .search import hit_from_chunk, search
 
 log = logging.getLogger(__name__)
 
@@ -378,6 +379,8 @@ def _join_continuation(prev: str, nxt: str) -> str:
 
 
 OBSERVER: Any = None      # evals hook: one dict per provider call (task, round, stop_reason, tools, model); never changes behaviour
+_refresh_guard = threading.Lock()
+_refreshing_conversations: set[str] = set()
 
 
 def save_failure(conversation_id: str | None, project_id: str | None, error: str, partial: str = "") -> None:
@@ -408,6 +411,7 @@ def ask(
     limit: int = 14,
     attached_source_ids: list[str] | None = None,
     on_event: Any = None,
+    refresh: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Answer a question. Returns {answer, citations, hits, web_used, project, ingest_jobs, actions}.
     attached_source_ids: sources the user uploaded with this message (0.24.1) — included in the excerpts on this turn.
@@ -434,7 +438,9 @@ def ask(
     user_message_id: int | None = None   # CHR0: the assistant row records which user row it answered, by id
     if conversation_id:
         try:
-            user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
+            user_meta = {"kind": "refresh"} if refresh else None
+            user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id,
+                                              title=titles.for_question(question), meta=user_meta)
             saved_user = True
         except Exception as e:  # noqa: BLE001 — never lose the answer because the question could not be filed
             log.warning("could not save the question: %s", e)
@@ -450,7 +456,8 @@ def ask(
     def phase(name: str, label: str, **extra: Any) -> None:
         emit(type="phase", phase=name, label=label, **extra)
 
-    # 1. URLs in the message -> ingest into this project
+    # 1. URLs in the message -> ingest into this project. A CHR3 refresh is a synthetic, internal question: it
+    # never ingests text from old chats and never broadens the selected delta evidence.
     urls = URL_RE.findall(question)
     ingest_jobs = queue_urls(urls, project_id) if urls else []
     if urls:
@@ -492,8 +499,28 @@ def ask(
 
     priority_ids = db.priority_source_ids(project["id"]) if project else set()
     rq = _retrieval_query(question, history)
-    phase("retrieving", "searching this project's sources…")
-    hits, full_context = _hits_for(rq, limit, source_ids, priority_ids=priority_ids, attached_ids=attached_source_ids)
+    if refresh:
+        # CHR3's hard evidence boundary: the paid turn receives exactly the chunks selected by the deterministic
+        # delta plus previously-cited comparison passages. It must never re-search the corpus just because it is
+        # allowed to call the provider.
+        selected = list(refresh.get("new_chunk_ids") or []) + list(refresh.get("comparison_chunk_ids") or [])
+        rows = db.get_chunks_by_ids(selected)
+        new_ids = {int(cid) for cid in (refresh.get("new_chunk_ids") or [])}
+        hits = []
+        for cid in selected:
+            chunk = rows.get(int(cid))
+            if not chunk:
+                continue
+            hit = hit_from_chunk(chunk, 1.0)
+            if int(cid) not in new_ids:
+                hit["text"] = "[previously cited]\n" + hit["text"]
+            hits.append(hit)
+        hits = hits[:MAX_EXCERPTS]
+        full_context = False
+        phase("retrieving", "gathering the evidence that changed in this chat…")
+    else:
+        phase("retrieving", "searching this project's sources…")
+        hits, full_context = _hits_for(rq, limit, source_ids, priority_ids=priority_ids, attached_ids=attached_source_ids)
     n_srcs = len({h.get("source_id") for h in hits})
     phase("retrieved", ("reading the whole project in context" if full_context else
                         f"read {len(hits)} excerpt{'' if len(hits) == 1 else 's'} from {n_srcs} source{'' if n_srcs == 1 else 's'}"),
@@ -504,7 +531,9 @@ def ask(
     if use_web:
         tools.append({"type": "web_search_20260209", "name": "web_search", "max_uses": 4})
     if project:
-        tools += _project_tools() + _library_tools()
+        # Refresh parity is deliberately narrow: it may save a Finding or record a user-directed project change,
+        # but it may not call search_library and turn a delta synthesis into an unbounded new research pass.
+        tools += _project_tools() if refresh else _project_tools() + _library_tools()
         from .sheets import calculators_for_project
         calcs = calculators_for_project(project["id"])
         if calcs:
@@ -528,7 +557,14 @@ def ask(
     if attached_source_ids:
         attached_titles = [(db.get_source(sid) or {}).get("title") or sid for sid in attached_source_ids]
         note += f"\n(Note: the user attached {', '.join(attached_titles)} to this message; it has been added to the project and its content is in the excerpts marked [attached].)"
-    messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}"})
+    refresh_instruction = ""
+    if refresh:
+        refresh_instruction = ("\n\nReview the newly available evidence against the conclusions and questions already discussed "
+                               "in this conversation. Report only material differences. Separate: what changes an earlier "
+                               "answer, what adds genuinely useful information, and what only confirms what was already known. "
+                               "Call out contradictions explicitly. If the new evidence does not materially change or add anything, "
+                               "say so briefly. Do not retell the conversation.")
+    messages.append({"role": "user", "content": f"{excerpt_part}\n\nQuestion: {question}{note}{refresh_instruction}"})
     from . import usage
 
     answer_parts: list[str] = []
@@ -675,6 +711,8 @@ def ask(
         if not saved_user:
             user_message_id = db.save_message(conversation_id, "user", question, project_id=project_id, title=titles.for_question(question))
         meta = dict(validation or {})
+        if refresh:
+            meta["refresh"] = {k: refresh.get(k) for k in ("baseline_message_id", "since", "delta_summary")}
         meta["generation"] = {k: v for k, v in generation.items() if k != "calls"} | {"last_stop_reason": last_stop, "output_tokens": sum(c["output_tokens"] for c in generation["calls"])}
         if generation["incomplete"]:
             meta["warning"] = (meta.get("warning") + " · " if meta.get("warning") else "") + "answer incomplete: output limit reached twice"
@@ -704,6 +742,43 @@ def ask(
         "invalid_citations": invalid,
         "validation": validation,
     }
+
+
+def refresh_conversation(conversation_id: str, project_id: str | None = None, *, use_web: bool = False,
+                         on_event: Any = None) -> dict[str, Any]:
+    """Run CHR3's explicit, paid synthesis for an existing chat.
+
+    The deterministic delta remains the source of truth.  A refresh is refused when it cannot name a concrete,
+    newly available passage to put in front of the model; this keeps a "nothing new" click from spending a call and
+    prevents an approximate rollup from being represented as evidence it cannot safely identify.
+    """
+    from datetime import datetime
+    from . import conversation_delta
+
+    # Browser-side disabling is useful feedback, not an admission control.  Two tabs (or an impatient double
+    # click racing the DOM update) must not buy two answers or append two synthetic turns to one conversation.
+    with _refresh_guard:
+        if conversation_id in _refreshing_conversations:
+            raise ValueError("This chat is already refreshing.")
+        _refreshing_conversations.add(conversation_id)
+    try:
+        pid = project_id or db.conversation_project(conversation_id)
+        if not pid or not db.get_project(pid):
+            raise ValueError("this chat is not attached to a project")
+        if db.conversation_project(conversation_id) != pid:
+            raise ValueError("this chat belongs to a different project")
+        delta = conversation_delta.get_delta(conversation_id, pid)
+        evidence = conversation_delta.refresh_evidence(conversation_id, pid, delta)
+        if not evidence["new_chunk_ids"]:
+            raise ValueError("There is no concrete new evidence relevant to this chat to refresh yet.")
+        since = evidence.get("since")
+        label = datetime.fromtimestamp(float(since)).strftime("%b %-d") if since else "the last answer"
+        question = f"Refresh: what's new since {label} in this chat?"
+        return ask(question, project_id=pid, conversation_id=conversation_id, use_web=use_web,
+                   on_event=on_event, refresh=evidence)
+    finally:
+        with _refresh_guard:
+            _refreshing_conversations.discard(conversation_id)
 
 
 FULL_CONTEXT_CHARS = 90000  # if everything in scope fits in this, skip retrieval and hand Claude the whole thing
@@ -1214,4 +1289,3 @@ def share_conversation(conversation_id: str, length: str = "long", *, mode: str 
         note = f"covers the most recent {mat['messages']} of {mat['of_messages']} messages"
         out["warning"] = f"{out['warning']} · {note}" if out.get("warning") else note
     return out
-

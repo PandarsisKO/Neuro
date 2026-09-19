@@ -1,8 +1,9 @@
 # Continuous execution — finish acceptance, then Chat Refresh
 
-Status: ACTIVE — execution plan established; CE0 is next.
+Status: ACTIVE — CE0 focused baseline and CE5–CE6 implementation checkpoint complete; continue with CE1–CE4
+acceptance and CE7–CE8 bounded validation.
 Updated: 2026-09-19. Owner: executing agent, currently Codex.
-Planning base: shared `main` at `634aa44027b92f5a75f56378c2f305357d7055f4`.
+Planning base: shared `main` at `aea21ef369603308ef48d5b4eee85d608786ea6e`.
 
 ## 1. Mission and authority
 
@@ -40,7 +41,7 @@ closeout and update those pointers; preserve the feature-specific evidence in it
 | Screenshot | Cases 1–6 have recorded passes; case 6 cosmetic issue deliberately deferred | Case 7 real provenance, including the later ceiling/corruption follow-up; final acceptance/release record |
 | Extension auth | Popup/background/form/pending-poll 401/403 handling exists; eight mocked executable checks passed | Real extension failure/recovery acceptance; repair only demonstrated defects |
 | Course Scanner | Algorithm accepted; actual popup start/cancel and reopen after cancellation observed | Reopen during an active scan and complete through popup; CS7 document ingestion live acceptance is also unproven |
-| Chat | CHR0/CHR1 shipped; CHR2 closed, including narrow light/dark visual checks | CHR3 refresh synthesis and its control are unbuilt |
+| Chat | CHR0/CHR1 shipped; CHR2 closed; CHR3 implemented and focused fake-provider/frontend gates pass in isolation | Paid real-evidence synthesis acceptance, full release ritual and delivery |
 | Subreddit | Integrated runtime `abdefaa`, evidence checkpoint `c842861`, pushed on `codex/subreddit-integrated`; 2,169 tests and normal release-check PASS | Approved access, bounded real listing/capture and visual acceptance, SUB-R9 delivery |
 | Existing research features | CR1–CR6/CR8a/CR8b, LP0–LP5, AD0–AD4A and FM1 built | Real-use observations and the decisions listed in CE9; no wholesale rebuild |
 
@@ -91,15 +92,15 @@ Priority is table order among eligible work. CE10 may resume at the next safe bo
 
 | Rung | Initial state | Dependencies | Exit gate |
 |---|---|---|---|
-| CE0 — establish the execution baseline | READY | None | Isolated source/harness identified, existing repairs reconciled, relevant baseline passing |
+| CE0 — establish the execution baseline | ACCEPTED (focused) | None | Isolated source/harness identified, existing repairs reconciled, relevant baseline passing |
 | CE1 — finish screenshot acceptance | READY after CE0 | Actual Chrome and a real capture | Provenance/partial/image checks pass; evidence tied to source and extension versions |
 | CE2 — accept authentication failure and recovery | READY after CE0 | Actual extension; controlled failure target | Visible 401/403 feedback and successful recovery, with successful capture behavior preserved |
 | CE3 — finish course acceptance | READY after CE0 | Signed-in course; separate cost/access boundary for document import | Active-scan reopen and completion verified; one successful bounded CS7 document import, with blocked-host behavior distinguished |
 | CE4 — release accepted extension repairs | READY after relevant CE1–CE3 work | Concrete candidate; required visual acceptance | Full release ritual, version agreement, delivery and supported live verification |
-| CE5 — CHR3 evidence-context preparation | READY after CE0 and extension work attempted | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
-| CE6 — CHR3 synthesis and persistence | READY after CE5 | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
-| CE7 — CHR3 interaction and visual acceptance | READY after CE6 | Working isolated candidate | Real browser task exercise, clear spend consequence, correct state and required human visual review |
-| CE8 — CHR3 release | READY after CE5–CE7 gates | Exact frozen candidate | Full release ritual, delivered source/version and supported live verification |
+| CE5 — CHR3 evidence-context preparation | ACCEPTED (isolated) | CHR0–CHR2 retained; owning design read | Scoped evidence builder, comparison passages, honest limits and meaningful deterministic tests |
+| CE6 — CHR3 synthesis and persistence | ACCEPTED (isolated) | Existing chat/provider/storage paths | Correct refreshed turn, refusal/failure/retry behavior and fresh successful snapshot |
+| CE7 — CHR3 interaction and visual acceptance | ACTIVE | Working isolated candidate | Real browser task exercise, clear spend consequence, correct state and required human visual review |
+| CE8 — CHR3 release | PREPARED | Exact frozen candidate | Full release ritual, delivered source/version and supported live verification |
 | CE9 — existing-feature acceptance package | READY after CE0; lower priority than eligible CE1–CE8 | Supported reads and existing real evidence | Fresh evidence gathered, eligible live gates run, remaining judgments made concrete |
 | CE10 — subreddit live acceptance and delivery | BLOCKED | Approved official access/configuration; capture cost boundary | SUB-R8b then SUB-R9 pass on reconciled candidate |
 | CE11 — mission closeout | BLOCKED | All in-scope gates resolved | Truthful delivered inventory, no unrecorded blockers; mission archived |
@@ -174,6 +175,10 @@ Approximate/mixed chats keep their uncertainty labels. Unresolvable evidence is 
 Gate: meaningful fixture coverage for old-source changes, >12-message conversations, exclusions/cross-project
 isolation, missing evidence and bounded ordering; empty/context preparation makes no model or embedding call.
 
+**Checkpoint (2026-09-19):** `conversation_delta.refresh_evidence()` is implemented in the isolated candidate.
+It accepts only concrete delta units, resolves findings/Claim evidence plus earlier citations to real chunks, rejects
+sources outside the current project and does no retrieval/provider work. Focused CHR0/CHR1 tests are green.
+
 ### CE6 — CHR3 existing chat execution path
 
 Connect explicit refresh to the existing `answer.chat` contract, provider/cost controls, response/streaming,
@@ -191,6 +196,10 @@ prose never directly promotes a Claim, mutates a plan, or becomes source evidenc
 
 Gate: deterministic integration checks through the real chat seam cover success, empty-delta refusal, concurrent
 admission, failure/retry, exact/approximate provenance, citation scope and unchanged ordinary chat behavior.
+
+**Checkpoint (2026-09-19):** the isolated candidate has `POST /api/conversations/{id}/refresh`, explicit user/assistant
+refresh provenance, a 409 no-evidence refusal, normal fresh evidence snapshots and no corpus-search tools. Focused
+tests cover success, refusal, refresh-topic exclusion, cross-project exclusion and no direct Claim creation.
 
 ### CE7 — CHR3 UI and browser acceptance
 

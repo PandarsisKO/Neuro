@@ -54,7 +54,10 @@ globalThis.renderAnswer = function renderAnswer(text, cites) {
 globalThis.addMsg = function addMsg(role, text, cites = [], extra = {}) {
   const empty = $('#chat .empty'); if (empty) empty.remove();
   const d = document.createElement('div'); d.className = 'msg ' + role;
-  if (role === 'user') d.textContent = text;
+  if (role === 'user') {
+    if (extra.meta?.kind === 'refresh') d.innerHTML = `<span class="chip">↻ ${esc(text)}</span>`;
+    else d.textContent = text;
+  }
   else {
     let h = renderAnswer(text, cites);
     if (cites.length) h += `<div class="cites">` + cites.map(c => c.removed ? `<span class="chip" title="This source was deleted after the answer was written">⚠ [${c.n}] ${esc(c.title)} — source removed</span>` : `<a class="chip" href="${esc(c.link)}" target="_blank">[${c.n}] ${esc(c.title)} @ ${c.timestamp}</a>` + (c.source_id ? ` <a href="#" class="chip" title="See the Claims resting on this source" onclick="whyThisAnswer('${esc(c.source_id)}','${esc(c.timestamp || '')}');return false">why</a>` : '')).join('') + `</div>`;
@@ -510,8 +513,26 @@ globalThis.renderChatDelta = function renderChatDelta(id, r, quiet) {
     <div class="deltaSummary" role="button" tabindex="0" onclick="toggleDeltaExpanded(this)" onkeydown="if(event.key==='Enter')toggleDeltaExpanded(this)">
       <span>✨ What's new</span><span class="muted">${esc(deltaCompactLine(r))}</span>${approxTag}
     </div>
-    <div class="deltaBody" hidden>${renderDeltaExpanded(id, r)}</div>
+    <div class="deltaBody" hidden>${renderDeltaExpanded(id, r)}
+      <div style="margin-top:8px"><button class="small" title="Uses one answer generation to synthesize only the evidence above" onclick="refreshChat('${id}', this)">Refresh this chat · uses one answer</button></div>
+    </div>
   </div>`;
+}
+// CHR3 is always an explicit click: it spends an answer.chat call only after the deterministic delta has shown
+// something meaningful. The server rechecks that concrete delta evidence exists, so a stale card cannot trigger a
+// broad re-search or an empty paid turn.
+globalThis.refreshChat = async function refreshChat(id, btn) {
+  if (!id || id !== state.conv) return;
+  btn.disabled = true; btn.textContent = 'Refreshing…';
+  try {
+    await post('/api/conversations/' + id + '/refresh', { use_web: $('#useWeb').checked });
+    await loadChats();
+    await selectChat(id, false);     // reload persisted synthetic turn + answer; never manufacture a local chat row
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Refresh this chat';
+    const el = $('#chatDelta');
+    if (el && state.conv === id) el.insertAdjacentHTML('beforeend', `<div class="status-bad text-xs" style="margin-top:6px">${esc(e.message)}</div>`);
+  }
 }
 // Item 4: the lazy Approximate/mixed affordance — a real user click, so it goes through loadChatDelta(id, false),
 // the normal acknowledged api() path, never ack:false.

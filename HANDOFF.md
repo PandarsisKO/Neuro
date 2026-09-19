@@ -5,9 +5,13 @@
 Kyle requested a mission and ladder for the recommended continuation. The canonical sequence is now
 [docs/CONTINUOUS-EXECUTION-MISSION.md](docs/CONTINUOUS-EXECUTION-MISSION.md): CE0 baseline → screenshot/auth/course
 acceptance and scoped release → CHR3 whole-chat refresh → existing-feature acceptance; subreddit R8b/R9 resumes
-conditionally when approved access is available. **CE0 is next.** This is a planning checkpoint, not a runtime
-execution or a feature-completion claim. CHR3 is included in the requested continuation; routine rung progression
-does not need another approval, while uncovered spend and genuine human judgments retain their boundaries.
+conditionally when approved access is available. **CE1–CE4 acceptance and CE7 browser/release validation are next.**
+CE0's focused baseline and CHR3's isolated CE5–CE6 implementation checkpoint are complete: concrete delta-only
+evidence selection, a 409 empty-evidence refusal, refresh provenance/fresh baseline, and the explicit cost-labelled
+open-chat control have focused Python and jsdom gates. No real paid synthesis, full release or delivery is claimed;
+those remain bounded by the existing budget and visual-acceptance rules. CHR3 is included in the requested
+continuation; routine rung progression does not need another approval, while uncovered spend and genuine human
+judgments retain their boundaries.
 
 The catalog continuation pointer below still governs that candidate, but catalog access no longer blocks
 independent work. Preserve its integrated branch; prepare other runtime changes in isolation from then-current

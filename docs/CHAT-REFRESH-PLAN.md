@@ -1,9 +1,10 @@
 # Conversation Delta / Chat Refresh — plan
 
 **Status (2026-09-19): CHR0 and CHR1 shipped; CHR2 closed at its verified visual checkpoint (`7b43dc8`).
-CHR3 is QUEUED in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE5–CE8.** Kyle's request
-for that continuation supersedes the earlier stop-after-CHR2 boundary for this next feature. Its design remains
-here; implementation has not started. No new provider budget is authorized by the plan.
+CHR3 is IMPLEMENTED in the isolated continuous-execution candidate; deterministic and fake-provider gates pass.
+Its real paid synthesis and release acceptance remain open in [the continuous-execution mission](CONTINUOUS-EXECUTION-MISSION.md), CE7–CE8.** Kyle's request
+for that continuation supersedes the earlier stop-after-CHR2 boundary. No new provider budget is authorized by
+the plan.
 
 Kyle: *"I might not want to retype out a chat, just see if the intelligence surfaces new information I should be
 aware of based on new findings."* And, sharpening it: *"A refresh is valuable when it saves me from repeating an
@@ -329,8 +330,9 @@ Empty-but-busy: *"Nothing important changed. 15 sources were added to the projec
 conversation covered."* No project change at all: for an automatic Exact check, the temporary checking state
 simply disappears — no persistent card. Legacy chat: the Approximate line, only after the user asks for it.
 
-CHR3 (the paid "Refresh this chat" synthesis call) is out of scope for CHR2: Plan Impact is read-only display
-here, and no dead "Refresh this chat" button is shipped ahead of it.
+CHR3 adds the explicit `Refresh this chat · uses one answer` control only after a meaningful delta is displayed.
+It is never part of polling, chat-list loading or the automatic Exact check; the endpoint rechecks that concrete
+delta evidence exists before it spends a provider call. Plan Impact remains read-only display here.
 
 ## 14. Rungs and gates
 
@@ -952,3 +954,26 @@ existing local-model/configuration, S12, S39, and S46 failures. No CHR2-specific
 The visual follow-up passed, so CHR2 is closed for the tested release scope. The remaining unclaimed coverage is
 only a broader physical-device mobile matrix beyond the verified 500×657 viewport; it is not a blocker for the
 shipped behavior.
+
+### CHR3 implementation checkpoint (Codex, 2026-09-19)
+
+The isolated candidate adds `conversation_delta.refresh_evidence()`, which selects only concrete delta passages:
+new/revised excerpt chunks, cited Findings, and Claim/tension evidence; it separately resolves previously cited
+conversation passages for comparison. Every selected source is rechecked against current project membership, so a
+bad unit cannot leak a twin project's evidence. The routine performs no search, embedding or provider call.
+
+`qa.refresh_conversation()` refuses with HTTP 409 before a model call when there is no concrete new evidence, and
+holds a per-conversation admission guard so concurrent tabs/double clicks cannot buy or persist a second refresh.
+A successful refresh persists a synthetic user turn with `meta.kind='refresh'`, a normal assistant turn with a fresh
+CHR0 snapshot and `meta.refresh` provenance, and uses only the selected context. Its available tools retain normal
+Finding/Pin parity but omit corpus-search tools, so the model cannot turn a refresh into an arbitrary second
+retrieval pass. Refresh prose has no direct Claim or plan-mutation path.
+
+The open-chat card exposes the explicit, cost-labelled control and reloads persisted messages after completion;
+the synthetic prompt renders as a chip. In a separate local fake-AI server with private data, a real browser showed
+the meaningful delta, disclosure and control; one click persisted the chip and cited refresh answer. At 500px wide,
+the page had equal `scrollWidth`/`clientWidth` and the same state remained available after switching to dark theme.
+This is isolated UI wiring evidence, not a paid synthesis or production acceptance. Local gates: `tests/test_chr0_conversation_baseline.py` plus
+`tests/test_chr1_conversation_delta.py` = 63 passed; `node tests/js/run-chat-delta.mjs` = 22 passed; chat failure,
+truncation, frontend-integrity and design-drift tests = 32 passed. The remaining CE7 boundary is a real paid
+synthesis only under an already-approved budget, followed by full release validation in CE8.

@@ -31,8 +31,8 @@ if (/pollTick[\s\S]{0,400}loadChatDelta|loadChatDelta[\s\S]{0,400}pollTick/.test
 else pass('gate 6: loadChatDelta is not referenced from pollTick');
 if (/loadChats[\s\S]*?\n\}/m.test(chatsSrc) && /globalThis\.loadChats = async function[\s\S]*?\n\}/.exec(chatsSrc)[0].includes('Delta')) fail('gate 7: loadChats() references chat delta (a chat-list badge/fetch)');
 else pass('gate 7: loadChats() (the chat-list renderer) has no delta reference');
-if (/propose_updates|plan_narrative\.propose|\/api\/.*refresh|synthesi[sz]e|chat.*refresh.*endpoint/i.test(chatsSrc)) fail('gate 18: chats.js references a CHR3 synthesis/refresh/mutation call');
-else pass('gate 18: no CHR3 provider call, mutation, or refresh endpoint reference in chats.js');
+if (!/globalThis\.refreshChat = async function/.test(chatsSrc) || !/\/api\/conversations\/.*\/refresh/.test(chatsSrc)) fail('gate 18: CHR3 explicit refresh control is not wired to its bounded endpoint');
+else pass('gate 18: CHR3 has an explicit refresh control; it is not part of polling or chat-list loading');
 const askBody = /globalThis\.ask = async function ask\(\)[\s\S]*?\n\}\n/.exec(chatsSrc)?.[0] || '';
 if (!/addMsg\('assistant', r\.answer[\s\S]*?clearChatDelta\(\)/.test(askBody)) fail('gate 9 (static): ask() does not call clearChatDelta() after rendering the new answer');
 else pass('gate 9 (static): ask() clears chat delta UI right after a new answer is added');
@@ -95,6 +95,14 @@ function makeDom() {
   const html = window.document.getElementById('chatDelta').innerHTML;
   if (!html.includes("What's new") || !html.includes('meaningful change')) fail('gate 1: compact "What\'s new" card did not render for an Exact chat with material changes');
   else pass('gate 1: compact card rendered for Exact chat with a real change');
+  const refresh = window.document.querySelector('button[onclick^="refreshChat"]');
+  if (!refresh) fail('gate 18: meaningful delta card did not expose the explicit Refresh this chat control');
+  else {
+    await window.refreshChat('c1', refresh);
+    const calls = window.fetchLog.filter(f => f.path.includes('/refresh'));
+    if (calls.length !== 1) fail(`gate 18: clicking Refresh this chat did not make exactly one bounded refresh request (saw ${calls.length})`);
+    else pass('gate 18: refresh is one explicit request, never an automatic delta poll side effect');
+  }
 }
 
 // gate 2 + 3: Approximate/legacy chat does NOT call /delta on open; clicking the affordance DOES

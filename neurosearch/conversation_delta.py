@@ -13,6 +13,7 @@ excerpts are therefore always a subset of shown ones, which the CHR0 gate assert
 from __future__ import annotations
 
 import logging
+import json
 from typing import Any
 
 from . import db
@@ -866,3 +867,105 @@ def get_delta(conversation_id: str, project_id: str | None = None) -> dict[str, 
     rev = f"{db.conversation_message_revision(conversation_id)}|{db.conversation_delta_revision(pid)}"
     key = f"conversation_delta:{conversation_id}"
     return cache.get_or_compute(key, rev, lambda: for_conversation(conversation_id, pid), label="conversation_delta")
+
+
+# =============================================================================================================
+# CHR3 — the paid synthesis is deliberately built from the delta's evidence, not from another broad retrieval.
+# It lives here, beside the delta, so the source-scope gate cannot drift from the code that decides what changed.
+
+def _citation_chunk_ids(citations: list[dict[str, Any]], allowed_sources: set[str]) -> list[int]:
+    """Resolve persisted chat/Note citations to their closest real chunks.
+
+    Historic citations predate stable chunk ids, but they do contain source_id and usually start/end offsets.  This
+    is intentionally conservative: an unresolved citation contributes no invented passage, and every returned
+    chunk remains within the current project's source membership.
+    """
+    out: list[int] = []
+    for cite in citations:
+        sid = cite.get("source_id")
+        if not sid or sid not in allowed_sources:
+            continue
+        chunks = db.get_chunks(sid)
+        if not chunks:
+            continue
+        start = cite.get("start")
+        if start is None:
+            out.append(int(chunks[0]["id"]))
+            continue
+        nearest = min(chunks, key=lambda c: abs(float(c.get("start") or 0) - float(start)))
+        out.append(int(nearest["id"]))
+    return out
+
+
+def refresh_evidence(conversation_id: str, project_id: str | None = None,
+                     delta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return CHR3's bounded, source-scoped evidence selection.
+
+    ``new`` passages come only from concrete Conversation Delta units: new excerpts, Finding citations, and the
+    source evidence behind changed Claims/tensions.  ``comparison`` passages come only from citations already
+    present in this conversation.  No search call is made here, and no source outside this project's current
+    membership can pass the gate.  The caller turns these chunks into normal chat hits.
+    """
+    pid = project_id or db.conversation_project(conversation_id)
+    if not pid:
+        return {"project_id": None, "new_chunk_ids": [], "comparison_chunk_ids": [], "baseline_message_id": None,
+                "since": None, "delta_summary": {"material": 0, "supporting": 0}}
+    result = delta if delta is not None else get_delta(conversation_id, pid)
+    allowed_sources = set(db.project_source_ids(pid, ready_only=False))
+    units = list(result.get("material_changes") or []) + list(result.get("supporting_changes") or [])
+    new_ids: list[int] = []
+    finding_ids: set[int] = set()
+    claim_ids: set[str] = set()
+    for unit in units:
+        sid = unit.get("source_id")
+        if sid and sid not in allowed_sources:
+            continue
+        new_ids.extend(int(cid) for cid in (unit.get("chunk_ids") or []) if cid is not None)
+        if unit.get("finding_id") is not None:
+            finding_ids.add(int(unit["finding_id"]))
+        if unit.get("claim_id"):
+            claim_ids.add(str(unit["claim_id"]))
+
+    conn = db.connect()
+    if finding_ids:
+        marks = ",".join("?" * len(finding_ids))
+        rows = conn.execute(f"SELECT citations FROM project_notes WHERE id IN ({marks})", tuple(sorted(finding_ids))).fetchall()
+        for row in rows:
+            try:
+                citations = json.loads(row["citations"] or "[]")
+            except ValueError:
+                citations = []
+            new_ids.extend(_citation_chunk_ids(citations, allowed_sources))
+    if claim_ids:
+        marks = ",".join("?" * len(claim_ids))
+        rows = conn.execute(
+            f"SELECT ce.source_id, ce.start FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
+            f"WHERE c.project_id=? AND ce.claim_id IN ({marks})", (pid, *sorted(claim_ids))).fetchall()
+        new_ids.extend(_citation_chunk_ids([{"source_id": r["source_id"], "start": r["start"]} for r in rows], allowed_sources))
+
+    comparison_ids: list[int] = []
+    for row in _rows(conversation_id):
+        if row["role"] != "assistant":
+            continue
+        comparison_ids.extend(_citation_chunk_ids(row.get("citations") or [], allowed_sources))
+
+    def ordered_unique(ids: list[int], *, exclude: set[int] | None = None) -> list[int]:
+        seen = exclude or set()
+        out = []
+        for cid in ids:
+            if cid not in seen:
+                seen.add(cid)
+                out.append(cid)
+        return out
+
+    new_chunk_ids = ordered_unique(new_ids)
+    comparison_chunk_ids = ordered_unique(comparison_ids, exclude=set(new_chunk_ids))
+    baseline = db.conversation_baseline(conversation_id)
+    return {
+        "project_id": pid,
+        "new_chunk_ids": new_chunk_ids,
+        "comparison_chunk_ids": comparison_chunk_ids,
+        "baseline_message_id": baseline.get("message_id") if baseline else None,
+        "since": baseline.get("answered_at") if baseline else result.get("latest_activity_at"),
+        "delta_summary": {"material": len(result.get("material_changes") or []), "supporting": len(result.get("supporting_changes") or [])},
+    }

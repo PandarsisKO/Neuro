@@ -3447,6 +3447,10 @@ class AskIn(BaseModel):
     attached_source_ids: list[str] | None = None      # sources uploaded with this message (0.24.1)
 
 
+class RefreshConversationIn(BaseModel):
+    use_web: bool = False
+
+
 @app.post("/api/ask", dependencies=[Depends(require_auth)])
 async def api_ask(body: AskIn) -> dict[str, Any]:
     cid = body.conversation_id or db.new_id()
@@ -3458,6 +3462,22 @@ async def api_ask(body: AskIn) -> dict[str, Any]:
         log.exception("ask failed")
         qa.save_failure(cid, body.project_id, str(e))
         raise
+
+
+@app.post("/api/conversations/{conversation_id}/refresh", dependencies=[Depends(require_auth)])
+async def api_refresh_conversation(conversation_id: str, body: RefreshConversationIn) -> dict[str, Any]:
+    """CHR3: an explicit paid synthesis of the deterministic Conversation Delta.
+
+    It is intentionally separate from /ask so ordinary questions retain broad retrieval while refreshes are limited
+    to the delta's selected evidence and prior comparison citations.
+    """
+    if db.conversation_project(conversation_id) is None:
+        raise HTTPException(404)
+    try:
+        return await anyio.to_thread.run_sync(
+            lambda: qa.refresh_conversation(conversation_id, use_web=body.use_web))
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
 
 
 SSE_HEARTBEAT = 10.0     # seconds of silence after which the stream sends a keep-alive comment (nothing is ever "frozen")
