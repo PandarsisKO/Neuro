@@ -1,0 +1,22 @@
+{
+  "source_file": "/private/tmp/neuro-repair-powMDK/integrated-worktree/neurosearch/candidates.py",
+  "rows": 5000,
+  "worker_turns": 50,
+  "scan_seconds": 1.2128047499863897,
+  "foreground_samples": 205,
+  "foreground_p90_ms": 12.152957991929725,
+  "foreground_max_ms": 25.273749983171,
+  "max_write_hold_ms": 25.18870899803005,
+  "warning_threshold_ms": 2000.0,
+  "worker_max_tx_elapsed_ms": 14.54704100615345,
+  "fixture_fetch_delay_s": 0.01,
+  "cold_review_ms": 112.08620798424818,
+  "cold_queries": 44,
+  "cold_scores": 5000,
+  "warm_review_p90_ms": 5.500582978129387,
+  "warm_queries": 13.0,
+  "warm_scores": 0,
+  "second_attach_ms": 58.89366701012477,
+  "default_rows": 25,
+  "payload_bytes": 32016
+}

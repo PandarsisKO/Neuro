@@ -2481,3 +2481,25 @@ Production supported Health still reports 0.63.94, fake AI off, healthy integrit
 and one running Claims-maintenance job, zero stale/expired leases. No runtime landing/reload. Prepared and
 committed are not delivered/live-verified. Continue R7 and remaining R8a offline work without needing a new
 product decision; R8b requires approved Reddit access and human visual acceptance, then R9 delivery/version.
+
+### R7 / R8a final offline checkpoint — 2026-09-19
+
+`abdefaa3979575a62d25f7a3728e41cd34c4d3c1` adds real selected capture UX without a new API: checkboxes retain
+up to 100 IDs across pages and call the existing all-or-nothing validation/bounded bulk endpoint. A 4,000-row
+fixture selects ten and proves exactly ten acquire/queue while 3,990 stay available. Source panes clear on a
+fresh project; their late responses are fenced. Detail refresh preserves typed search text, selection range and
+focus. Counts label filtered results as matching; narrow controls wrap their explanatory text below the controls.
+Action refreshes now await their own render, closing a cleanup race found by the DOM harness.
+
+Focused gate: **217 passed**. Final frozen release `abdefaa`: **2,169 passed** in 264.91 s, Foundation 27/27,
+Tier 1, repo-check, migrations, recovery and backup/restore PASS. Artifact:
+`evals/release/release-check-0.63.94-abdefaa-20260919-151545.json`. Final synthetic 5,000-row record:
+`evals/subreddit-catalog/candidate-abdefaa-20260919.json` — 205 foreground samples, 12.15-ms p90, 25.27-ms
+maximum, warm p90 5.50 ms / 13 queries / zero rescoring, 25 rows / 32,016 bytes. A test now simulates a durable
+retry wait across connection restart before it claims/resumes. Browser fixture on loopback verified checkboxes,
+two-page selection, selected-capture refresh, keyboard focus and no console errors; it had fake AI, stripped
+provider/Reddit config, disabled lifespan workers, and only private synthetic data.
+
+R8b was checked only through the supported live status surface: `stats.reddit_api` is **false**. This explicitly
+blocks official scanning and real capture. No credentials were viewed or changed; no Reddit/model request or live
+write occurred. R9 remains withheld: candidate prepared/committed/pushed, not merged, restarted or live-verified.

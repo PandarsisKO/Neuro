@@ -3,26 +3,31 @@
 ## Current continuation pointer — 2026-09-19
 
 Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,
-reconciled runtime candidate is `411480b` on `codex/subreddit-integrated`, at
+reconciled runtime candidate is `abdefaa` on `codex/subreddit-integrated`, at
 `/private/tmp/neuro-repair-powMDK/integrated-worktree`. Read that checkout's HANDOFF and canonical mission.
 It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus independently tested safety
 repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
 checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
 
-**Frozen normal release-check PASS on `411480b`**: 2,162 tests, Foundation, Tier 1, repo-check, migrations,
-recovery and backup/restore. Start/end SHA `411480b895da698e8e3fa8f008f8c474856fd3e5`; 210 focused tests and
-separate fake Tier 1 also pass. Artifact in that branch:
-`evals/release/release-check-0.63.94-411480b-20260919-141633.json`. Only documentation/evidence follows it.
-The candidate includes server-side ownership/claim/retry repairs plus escaped scan text, fenced async UI
-responses and stale-action refusal. HARDENING records paired 5,000-post timings and real-browser fixture checks.
+**Frozen normal release-check PASS on `abdefaa`**: 2,169 tests, Foundation, Tier 1, repo-check, migrations,
+recovery and backup/restore. Start/end SHA `abdefaa3979575a62d25f7a3728e41cd34c4d3c1`; 217 focused tests
+also pass. Artifact: `evals/release/release-check-0.63.94-abdefaa-20260919-151545.json`. The candidate
+includes the server-side ownership/claim/retry repairs plus escaped scan text, fenced async UI responses,
+stale-action refusal, project-safe list clearing, draft focus preservation and arbitrary selected capture.
+HARDENING records paired 5,000-post timings and real-browser fixture checks.
 
-**Next:** finish R7's arbitrary selection and draft/focus preservation; clear the retained library panel on
-project switches; correct filtered-count wording and narrow-toolbar layout; complete remaining R8a operational
-proof. Search and light/dark rendering were checked in an isolated browser, NOT with real Reddit data. R8b
-still needs approved access, real capture and required human visual acceptance; R9 version/delivery is open.
-Do not call the feature complete or switch Reddit retrieval architecture without approval. The live 0.63.94
-app is unchanged: fake AI off, integrity/verified backup healthy, two queued/one running Claims jobs, no stale
-leases. No live DB opening, job cancellation, reload, capture or provider spend. This main update is docs only.
+**Offline implementation is complete; R8b is BLOCKED.** Selection can choose 10 of 4,000 without acquiring
+the other 3,990; selection persists across pages; refresh preserves a search draft/focus; source-list responses
+and DOM clear on project switch; filtered counts and narrow controls are honest. A retry wait survives a
+connection restart before its next claim. The supported live community status reports `reddit_api: false`;
+therefore the app has no configured approved Reddit Data API access. No secret was read, changed or emitted,
+and no Reddit request/capture was made. Do not replace the official path with scraping or claim R8b acceptance.
+
+**Next external dependency:** approved Reddit Data API access configured by the user/admin. Then run one
+bounded official listing, a minimal selected capture and required visual/provenance acceptance, followed by
+R9 version/delivery. The live 0.63.94 app remains unchanged: fake AI off, integrity/verified backup healthy,
+three queued/no leased jobs, no stale leases. No live DB opening, job cancellation, reload, capture or provider
+spend occurred. This branch is prepared and pushed; shared main remains a docs pointer until R8b clears.
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 

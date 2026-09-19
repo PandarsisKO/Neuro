@@ -1,11 +1,12 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
 **Current implementation pointer (2026-09-19):** shared main is intentionally not runtime-delivered.
-Continue from `codex/subreddit-integrated` (runtime `411480b`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
+Continue from `codex/subreddit-integrated` (runtime `abdefaa`, `/private/tmp/neuro-repair-powMDK/integrated-worktree`)
 and its version of this same canonical mission. It reconciles the previously undelivered d318297 work and
-additional safety repairs; focused gate **210 passed**, frozen normal release **PASS (2,162 tests)**, separate
-fake Tier 1 PASS. HANDOFF records exact evidence and remaining R7/R8a/R8b/R9 work. Real Reddit and human visual
-acceptance are not established. The remaining main text below is historical, not current implementation.
+additional safety repairs; focused gate **217 passed**, frozen normal release **PASS (2,169 tests)**, separate
+fake Tier 1 PASS. R7 and R8a's synthetic/offline proof are complete. R8b is BLOCKED because the supported live
+status reports `reddit_api: false`; no real Reddit/browser/provenance acceptance is established. HANDOFF records
+the exact evidence and unblocks R9 only after R8b. The remaining main text below is historical, not current implementation.
 
 Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
@@ -229,11 +230,12 @@ dismiss/restore, bounded displayed-row capture, cancellation, coverage labels, f
 excerpts and grounded reasons. `411480b` adds escaped scan labels, async request ownership and stale-action
 refusal (S77 ten shipped-JS behavior tests). An isolated running candidate rendered 25/5,000 rows and found
 fixture post 4321 by search, with light/dark inspection; this is not real Reddit or human visual acceptance.
-**Remaining:** arbitrary checkbox selection (currently only Capture displayed), draft/focus preservation,
-clear/reset the retained library panel on project switch before its next load, filtered-count wording
-(currently says "1 known" for one search match out of 5,000), and narrow layout (640px squeezes the notice and
-selectors). Complete the browser journey/keyboard/visual gate after repairs. Use existing row controls/action
-helpers; no independent component or polling framework.
+**Completed in `abdefaa`:** checkbox selection (up to 100) through the existing bounded bulk endpoint;
+selection persists across pages and clears after a submitted capture; search drafts/selection/focus survive
+detail refreshes; project switches clear source-pane DOM and reject late list responses; filtered views say
+"matching"; controls wrap accessibly at 640px. The shipped-JS gate covers these races and the browser fixture
+checked selection, selected capture refresh, search, desktop light/dark, narrow layout and keyboard focus.
+Use existing row controls/action helpers; no independent component or polling framework.
 
 Fix late responses painting the wrong project/catalog, shared selection state crossing projects, stale revision recovery retaining an invalid page offset, and list refreshes destroying the open review. Preserve focus/selection appropriately, disable in-flight actions, show progress/error recovery and follow existing hidden-tab/poll limits.
 
@@ -241,9 +243,20 @@ Exit: browser journey from pasted URL to scan → review/search → selection �
 
 ### SUB-R8 — separate offline operational acceptance from live acceptance
 
-**R8a, offline gate:** the 5,000-row fixture now enumerates through 50 actual claimed worker turns, not direct candidate insertion. Complete the remaining perf/write-hold measurements with realistic question vocabulary, foreground interactions during scan, query counts and bounded DOM/payload. Run restart, refresh/exclusion/two-project completion and poisoned model/acquisition checks; record baseline/candidate timings without inventing a threshold.
+**R8a, offline gate — COMPLETE for the synthetic boundary:** the 5,000-row fixture enumerates through 50 actual
+claimed worker turns, not direct insertion. It uses realistic question vocabulary, poisoned model/network/thread
+acquisition, foreground writes, query/scoring counts, bounded 25-row/32-KB payloads and paired baseline/candidate
+measurements. It now also proves retry-wait → connection restart → claim/resume. Existing fixtures cover
+refresh/exclusion/two-project completion. Exact final-candidate run: 205 foreground samples, 12.15-ms p90,
+25.27-ms max; warm 5,000-row review p90 5.50 ms, 13 queries and zero extra scorings. These are local synthetic
+measurements, not an invented universal threshold or real Reddit timing.
 
-**R8b, live gate:** check access/configuration through supported status surfaces, then verify approved working Reddit API access with a bounded official listing request. Run the same catalog/review/refresh flow on real metadata and minimal selected real capture; verify readiness/provenance. Honor existing cost authorization and obtain any still-required metered-cost decision only on a concrete prepared operation. No secrets in chat, live `.env` edits, scraping fallback or new credential service. Reddit's current policy requires explicit Data API approval: the presence of `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` is configuration only, not proof of approval. If access is unavailable, finish eligible offline work and mark R8b BLOCKED with the exact reason; the feature is not release-ready. Record real browser and required human visual acceptance separately.
+**R8b, live gate — BLOCKED:** supported `GET /api/projects/<protected-project>/community/synthesis` on the live
+0.63.94 app returned `stats.reddit_api: false` on 2026-09-19. That means approved official API configuration is
+absent; no `.env` was inspected/changed and no Reddit request was made. The exact unblock is approved Reddit
+Data API access configured by the user/admin. Then verify one bounded official listing, real metadata, a minimal
+selected capture and readiness/provenance, plus required human visual acceptance. No scraping fallback or new
+credential service is authorized. The feature is not release-ready while this remains blocked.
 
 Exit: recorded lifecycle/performance evidence, real API behavior and coverage limits, correct captured content/provenance, and resolved browser findings/visual acceptance. Do not touch the live SQLite DB directly.
 
