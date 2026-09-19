@@ -2377,3 +2377,27 @@ two harness failures. Fake Tier 1 and repo-check passed separately. The FAIL art
 `evals/release/release-check-0.63.94-9bc7962-20260919-104849.json`. This is a test-repair checkpoint, not feature
 acceptance or a release. S68's earlier source-inspection failure did not reproduce in frozen runs and is not
 proven to be order-dependent; prior concurrent source changes make its old result unsuitable as a baseline.
+
+## SUB-R0 hygiene / SUB-R1 boundary repair — 2026-09-19
+
+Prepared `279940d` from `da560a4`, isolated `/private/tmp/neuro-repair-powMDK/worktree`. No live DB access,
+runtime delivery, provider calls or protected-baseline relaxation. Conftest disables dotenv before imports;
+CHR0/CHR1/S74 fake-AI import writes moved to existing scoped fixtures. Executable child-process tests prove
+synthetic dotenv cannot restore task overrides and those modules do not enable fake AI during collection.
+
+Project validation and catalog admission now share a writer transaction. Capture/dismiss/restore prove
+membership in the mutation transaction; a concurrent detach cannot invalidate authority mid-action.
+New pages reconcile only their candidate IDs. Attachment uses keyset chunks of 100 for old membership and
+null-pointer repair, preserving dispositions, exclusions and conflicting non-null pointers. Capture rejects
+a Reddit candidate's mismatched Source instead of attaching unrelated evidence. Eleven new S75 cases include
+a real detach race, a 205-row legacy attachment, zero-write invalid projects and per-page SQL scope enforcement.
+
+The initial eight-case regression run failed all eight before repairs. Expanded intersection gates passed
+104 tests (S75/S74/K2/K3/L1/K9/S70); fixture hygiene gates passed 175. Frozen normal command:
+`env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY PYTHON_DOTENV_DISABLED=true NEUROSEARCH_DATA_DIR=/private/tmp/neuro-repair-powMDK/r1-release NEUROSEARCH_FAKE_AI=0 .venv/bin/neurosearch release-check`.
+Full **2,088 passed** in 250.12 s; Foundation 27; repo-check PASS; release-check PASS. Separate
+`NEUROSEARCH_DATA_DIR=/private/tmp/neuro-repair-powMDK/r1-tier1 NEUROSEARCH_FAKE_AI=1 .venv/bin/neurosearch eval`
+with the same key/ dotenv isolation passed Tier 1. Source start/end:
+`279940d18f4723867391ab930c14c038ef091b5f`; artifacts:
+`evals/release/release-check-0.63.94-279940d-20260919-134650.{json,txt}`.
+This is a prepared-code checkpoint, not R1's full cross-path/upgrade acceptance or R9/live release.

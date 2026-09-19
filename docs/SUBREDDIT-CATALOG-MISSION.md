@@ -130,6 +130,14 @@ Gate: relevant isolation and Foundation tests, then the next full deterministic 
 
 ### SUB-R1 — identity and project boundary repair
 
+2026-09-19 execution checkpoint: isolated `279940d` repairs invalid-project zero-write admission,
+detach/action atomicity, page-scoped reconciliation, 100-ID attachment/legacy repair batches and refusal of
+conflicting non-null Source identity. S75 adds 11 regressions; 104 intersection tests and 2,088 full tests pass;
+normal release-check and fake Tier 1 PASS (artifact/details in HANDOFF/HARDENING). Prepared, not delivered.
+The remaining paragraph below is the original acceptance scope: its implemented boundary cases are now
+covered; complete old-database/direct/browser/search intersection acceptance is still open. R2 can proceed
+against the repaired project boundary without treating this checkpoint as overall feature acceptance.
+
 Owners: `db.py`, `identity.py`, `candidates.py`, `community.py`, `resources.py`, catalog routes in `api.py`. **Implemented:** catalog context/candidate guards, scoped capture/dismiss/restore, Reddit-to-Community identity bridge, and repair of null legacy Source pointers.
 
 **Remaining:** validate the project before `attach_subreddit_catalog` upserts a global collection; an unknown project must leave no orphan writes. Keep authorization and mutation consistent under detach races. `link_collection_candidates` currently reconciles the entire catalog into attached projects on every page; limit page work to changed IDs. Make second-project attachment and legacy pointer repair bounded and idempotent. Add old-database/conflicting-pointer and direct/browser/search identity fixtures; inspect conflicting non-null identities rather than merging destructively. Preserve the generic Candidate Index's intentional cross-project add behavior.

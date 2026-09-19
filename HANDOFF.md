@@ -7,8 +7,18 @@ Kyle requested an updated plan for the remaining work; the single canonical reco
 [docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).
 Codex owns SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
 → cached ranking → selected capture → Research/yield → complete UI → operational/real-access acceptance → release.
-**R0's baseline passed; R1 is next.** R1–R6 have partial corrections but open acceptance gates; R7 is a basic
+**R0 hygiene and the first R1 repair slice passed on isolated `279940d`; R2 is in progress.** R1–R6 have partial corrections but open acceptance gates; R7 is a basic
 UI, and R8/R9 remain unaccepted. This plan-update turn changes documentation only; Kyle controls model/effort.
+
+2026-09-19 continuation: `codex/subreddit-continuation` at `/private/tmp/neuro-repair-powMDK/worktree`,
+base `da560a4`, prepared `279940d`, full **2,088 passed**, fake Tier 1 PASS, normal release-check PASS
+(`evals/release/release-check-0.63.94-279940d-20260919-134650.json`). Start/end source hash stayed
+`279940d18f4723867391ab930c14c038ef091b5f`. No runtime delivery or live verification yet. R1 adds
+atomic project validation/actions, bounded reconciliation and refusal of conflicting candidate/Source pointers.
+R2 work continues separately at `/private/tmp/neuro-repair-powMDK/scan-worktree`, branch
+`codex/subreddit-scan-lifecycle`, from the same tested candidate; the release checkout stayed frozen.
+Current R2 focus: atomic run/job admission, explicit attach/resume/cancel/refresh, actual claim fencing,
+typed access/retry failures and bounded listing termination. Cross-path/upgrade and live acceptance remain open.
 
 Review baseline is `66f4d4d`, tracked tree clean before these docs. Preserve the landed identity, worker,
 observation, yield and cache corrections. Pre-rebase `064d86c` passed 2,074 tests and normal isolated
