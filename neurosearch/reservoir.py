@@ -138,43 +138,118 @@ class _StaleSubredditScan(RuntimeError):
     """A newer manual run replaced this worker while it was fetching a page."""
 
 
+def _subreddit_catalog(project_id: str, collection_id: str) -> dict[str, Any]:
+    collection = db.get_collection(collection_id)
+    if (not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit"
+            or not db.project_has_collection(project_id, collection_id)):
+        raise ValueError("subreddit refresh needs a subreddit catalog")
+    return collection
+
+
+def _scan_state(raw: str | None) -> dict[str, Any]:
+    try:
+        return json.loads(raw or "{}")
+    except ValueError:
+        return {}
+
+
+def _new_subreddit_run(prior: dict[str, Any], collection_id: str) -> dict[str, Any]:
+    """Construct one head-first run.  The caller atomically stores it with its job."""
+    t = time.time()
+    known_posts = len(db.collection_candidate_ids(collection_id))
+    previous_completed = None
+    if prior.get("status") == "complete":
+        previous_completed = {k: prior.get(k) for k in (
+            "run_id", "generation", "mode", "known_posts", "new", "pages", "observed",
+            "started_at", "finished_at", "reason", "observed_oldest", "observed_newest",
+        )}
+    elif prior.get("previous_completed"):
+        previous_completed = prior["previous_completed"]
+    return {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
+            "mode": "refresh" if prior or known_posts else "initial", "status": "queued", "cursor": None,
+            "pages": 0, "observed": 0, "new": 0, "initial_known": 0, "known_posts": known_posts,
+            "baseline_known": known_posts, "started_at": t, "updated_at": t, "finished_at": None,
+            "reason": None, "access": "reddit_api", "endpoint": "new",
+            "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
+            "previous_completed": previous_completed}
+
+
+def _catalog_job_is_active(state: dict[str, Any]) -> bool:
+    job_id = state.get("job_id")
+    job = db.get_job(job_id) if job_id else None
+    return bool(job and job.get("status") in db.JOB_ACTIVE)
+
+
 def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
     """Begin a new head-first, manual catalog run without touching the provider.
 
     This is intentionally a state transition, not another queue or scheduler. A later page worker owns the
     provider call. Keeping the prior completed summary lets the UI describe a failed refresh honestly.
     """
-    collection = db.get_collection(collection_id)
-    if not db.get_project(project_id) or not collection or collection.get("kind") != "subreddit" or not db.project_has_collection(project_id, collection_id):
-        raise ValueError("subreddit refresh needs a subreddit catalog")
+    _subreddit_catalog(project_id, collection_id)
     key = _scan_key(project_id, collection_id)
     raw = db.kv_get(key)
-    try:
-        prior = json.loads(raw or "{}")
-    except ValueError:
-        prior = {}
+    prior = _scan_state(raw)
     if prior.get("status") in ("queued", "partial"):
         # Repeated refresh clicks must share the existing durable run and cursor. In particular, do not turn a
         # queued initial scan into a refresh before it has made its first page commit.
         return prior
-    t = time.time()
-    known_posts = len(db.collection_candidate_ids(collection_id))
-    mode = "refresh" if prior or known_posts else "initial"
-    previous_completed = None
-    if prior.get("status") == "complete":
-        previous_completed = {k: prior.get(k) for k in ("run_id", "generation", "mode", "known_posts", "new", "pages", "observed", "started_at", "finished_at", "reason")}
-    elif prior.get("previous_completed"):
-        previous_completed = prior["previous_completed"]
-    state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
-             "mode": mode, "status": "queued", "cursor": None, "pages": 0, "observed": 0,
-             "new": 0, "initial_known": 0, "known_posts": len(db.collection_candidate_ids(collection_id)),
-             "baseline_known": known_posts, "started_at": t, "updated_at": t,
-             "finished_at": None, "reason": None, "access": "reddit_api", "endpoint": "new",
-             "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
-             "previous_completed": previous_completed}
+    state = _new_subreddit_run(prior, collection_id)
     if not db.kv_compare_set(key, raw, json.dumps(state, sort_keys=True)):
         raise RuntimeError("subreddit scan changed; retry refresh")
     return state
+
+
+def admit_subreddit_scan(project_id: str, collection_id: str, *, refresh: bool = False) -> dict[str, Any]:
+    """Atomically admit a catalog run and its existing explore job.
+
+    ``refresh=False`` is the paste/attach path: it starts a missing initial run,
+    reuses an active run, resumes a terminal run from its checkpoint, and leaves
+    a completed catalog alone.  ``refresh=True`` is the explicit head refresh:
+    it reuses a presently active run but otherwise creates a new generation.
+    State and job are committed together so neither can be stranded by a crash.
+    """
+    collection = _subreddit_catalog(project_id, collection_id)
+    key = _scan_key(project_id, collection_id)
+    with db.batch():
+        raw = db.kv_get(key)
+        prior = _scan_state(raw)
+        active_state = prior.get("status") in ("queued", "partial")
+        if active_state and _catalog_job_is_active(prior):
+            return {"state": prior, "job": db.get_job(prior["job_id"]), "reused": True}
+
+        if refresh:
+            # A non-active explicit refresh is a new head run.  Its run-bound
+            # dedupe key prevents an old retry from being returned here.
+            state = _new_subreddit_run(prior, collection_id)
+        elif not prior:
+            state = _new_subreddit_run({}, collection_id)
+        elif active_state:
+            # Legacy state may predate job_id, or its job may have disappeared.
+            # Preserve this run/cursor and repair the missing admission.
+            state = {**prior, "status": "queued", "updated_at": time.time(), "error": None}
+        elif prior.get("status") == "complete":
+            return {"state": prior, "job": None, "reused": True}
+        elif _catalog_job_is_active(prior):
+            # A retrying job can temporarily have a blocked scan state.  The
+            # paste path resumes it; explicit refresh took the new-run branch.
+            return {"state": prior, "job": db.get_job(prior["job_id"]), "reused": True}
+        else:
+            # Retry a terminal/blocked run from its persisted cursor.  This is
+            # resume, not a silent refresh from the listing head.
+            state = {**prior, "status": "queued", "updated_at": time.time(), "finished_at": None,
+                     "reason": None, "error": None}
+
+        from . import jobs
+        job = jobs.enqueue("explore", {
+            "url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
+            "collection_id": collection_id, "catalog_run_id": state["run_id"],
+            "catalog_generation": state["generation"],
+        }, lane="low")
+        state = {**state, "job_id": job["id"]}
+        if not db.kv_compare_set(key, raw, json.dumps(state, sort_keys=True)):
+            raise RuntimeError("subreddit scan changed; retry admission")
+    return {"state": state, "job": job, "reused": False}
 
 
 def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:

@@ -18,8 +18,9 @@ The catalog module has 22 tests; its 5,000-row fixture proves paging, not a 50-p
 
 The isolated `codex/subreddit-r1` branch has completed the bounded R0/R1 preparation slice: dotenv opt-out,
 S74 import hygiene, no-write invalid attachment, page-bounded reconciliation and 250-item attach batches.
-Focused S74/S51/S43/S55: 64 passed. This is not R1 closure. Next is R2 atomic run/job admission (a fresh run can
-currently dedupe to an old retrying job). Counts/metadata, semantic ranking cache, bulk capture/status and Research
+It also atomically admits catalog scan state with a run-bound explore job; a refresh no longer dedupes to an old
+retry. Focused S74/S51/S43/S55: 64 passed; post-admission S74/K3/S55: 80 passed. This is not R1/R2 closure.
+Next is R2 job-claim fencing plus retry/cancel truthfulness. Counts/metadata, semantic ranking cache, bulk capture/status and Research
 membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
 Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.
 Do not repeat solved baseline diagnosis or treat partial test success as feature acceptance.

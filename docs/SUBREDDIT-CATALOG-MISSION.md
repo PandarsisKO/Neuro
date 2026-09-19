@@ -142,7 +142,9 @@ Exit: canonical variants and direct/browser/search capture converge; cross-post 
 
 Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API routes. **Implemented:** payload run/generation binding, page/checkpoint compare-and-set, blocked-worker failure and retryable explore jobs.
 
-**Remaining, highest correctness priority:** refresh state is created separately from enqueue. A blocked run's old retrying job can win URL dedupe after a new run is created, leaving the new run stranded. Atomically admit or reuse the run and its intended job through the existing transaction/queue owner; record their association and test failure between the current two operations. Define initial, repeated attach, resume, cancel and refresh transitions explicitly: active clicks reuse the run; resume retains cursor/limits; explicit refresh starts at the head; attaching an already-complete catalog does not silently refresh; cancelled/failed jobs cannot leave an apparently active run forever.
+**Implemented in the first R2 slice:** `admit_subreddit_scan` creates or reuses a run and its existing explore job in one short `db.batch`, records `job_id` in scan state, and uses a run-bound catalog dedupe key. An explicit refresh cannot receive an old retrying job; queue creation failure rolls back the new state. Paste/re-attach reuses an active run, resumes a terminal one from its cursor, and leaves a complete catalog alone; explicit refresh begins a new head run. Focused fixtures cover refresh-versus-retry, rollback, repeated paste and completed re-attach.
+
+**Remaining, highest correctness priority:** define cancel actions and keep scan state truthful when the associated job is cancelled, fails or reaches a retry deadline. Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
 
 Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
 
@@ -220,7 +222,11 @@ Retain `63f93a5` (runtime default/worker isolation), `5268aef` (catalog project 
 
 ### R0/R1 preparation checkpoint — pending commit, 2026-09-19
 
-The isolated R1 branch adds the deterministic dotenv opt-out and removes S74's import-time environment mutations. It validates the project before catalog upsert, limits page reconciliation to supplied candidate IDs, and reconciles an already-attached catalog in 250-item batches. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s51_test_isolation.py tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **64 passed**. This is an R0/R1 checkpoint, not R1 closure or an integrated release result. Next: atomic catalog-run/job admission and refresh lifecycle in R2.
+The isolated R1 branch adds the deterministic dotenv opt-out and removes S74's import-time environment mutations. It validates the project before catalog upsert, limits page reconciliation to supplied candidate IDs, and reconciles an already-attached catalog in 250-item batches. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s51_test_isolation.py tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **64 passed**. This is an R0/R1 checkpoint, not R1 closure or an integrated release result.
+
+### R2 atomic-admission checkpoint — pending commit, 2026-09-19
+
+The same isolated branch now atomically admits scan state and a run-bound explore job. A head refresh has a new dedupe identity, so it cannot attach to a queued old retry. A repeat paste reuses only its active run, while a completed catalog stays complete until explicit refresh. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_s55_reservoir_rescan.py -q` — **80 passed**. Remaining R2 work is job-claim fencing, retry/cancel state and typed provider outcomes.
 
 ### Original pass — historical evidence and limits
 

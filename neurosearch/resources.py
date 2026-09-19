@@ -224,13 +224,13 @@ def route(c: Classification, project_id: str | None, action: str | None = None, 
             if not project_id:
                 raise ValueError("a subreddit catalog needs a project")
             catalog = community.attach_subreddit_catalog(project_id, c.url)
-            scan = reservoir.begin_subreddit_refresh(project_id, catalog["id"])
-            job = jobs.enqueue("explore", {"url": catalog["url"], "kind": "subreddit", "project_id": project_id,
-                                            "collection_id": catalog["id"], "catalog_run_id": scan["run_id"],
-                                            "catalog_generation": scan["generation"]}, lane="low")
-            return {"kind": c.kind, "action": action, "queued": True, "catalog": True,
-                    "collection_id": catalog["id"], "url": catalog["url"], "job_id": job["id"],
-                    "note": "Subreddit catalog scan queued. It remembers post metadata only; no threads are read."}
+            admission = reservoir.admit_subreddit_scan(project_id, catalog["id"])
+            job, scan = admission["job"], admission["state"]
+            return {"kind": c.kind, "action": action, "queued": bool(job), "catalog": True,
+                    "collection_id": catalog["id"], "url": catalog["url"], "job_id": (job or {}).get("id"),
+                    "note": ("Subreddit catalog scan queued. It remembers post metadata only; no threads are read."
+                             if job else "Subreddit catalog already has a completed scan; use Refresh to scan from the listing head."),
+                    "scan": scan}
         if c.kind in ("website", "website_section", "sitemap", "feed"):
             job = jobs.enqueue("explore", {"url": c.url, "kind": c.kind, "tags": tags or [], "project_id": project_id, "max_items": max_videos or None})
             return {"kind": c.kind, "action": action, "queued": True, "job_id": job["id"], "url": c.url, "review": True}

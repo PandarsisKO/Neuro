@@ -2466,6 +2466,12 @@ def dedupe_key_for(kind: str, payload: dict[str, Any]) -> str | None:
     if kind == "ingest_url":
         return f"ingest:{payload.get('url')}"
     if kind == "explore":
+        # A catalog job is fenced to its durable scan run.  A head refresh may
+        # legitimately replace an older retrying run; URL-only dedupe would
+        # otherwise hand the new run the old job and strand it forever.
+        if payload.get("kind") == "subreddit":
+            return (f"subreddit-explore:{payload.get('project_id')}:{payload.get('collection_id')}:"
+                    f"{payload.get('catalog_run_id')}")
         return f"explore:{payload.get('project_id')}:{payload.get('url')}"
     if kind == "enrich_profiles_batch":
         return "profiles:batch"

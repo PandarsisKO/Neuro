@@ -231,6 +231,47 @@ def test_catalog_jobs_are_bound_to_their_run_and_refresh_replaces_a_blocked_run(
     assert stale["status"] == "stale" and called == []
 
 
+def test_refresh_gets_its_own_job_when_an_old_retrying_run_is_still_active():
+    project = _project("refresh admission")
+    first = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    first_state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{first['collection_id']}") or "{}")
+    assert first_state["job_id"] == first["job_id"]
+
+    # A failed page reports blocked state while its original explore job is
+    # still active/retryable.  A head refresh must not dedupe to that old job.
+    blocked = reservoir.scan_subreddit_page(
+        project, first["collection_id"], expected_run_id=first_state["run_id"],
+        fetch_page=lambda _sub, _after: (_ for _ in ()).throw(RuntimeError("Reddit API: rate limited (429)")),
+    )
+    assert blocked["status"] == "blocked"
+    refreshed = reservoir.admit_subreddit_scan(project, first["collection_id"], refresh=True)
+    assert refreshed["state"]["run_id"] != first_state["run_id"]
+    assert refreshed["job"]["id"] != first["job_id"]
+    assert refreshed["state"]["job_id"] == refreshed["job"]["id"]
+    assert refreshed["job"]["payload"]["catalog_run_id"] == refreshed["state"]["run_id"]
+    assert db.get_job(first["job_id"])["status"] == "queued"
+
+
+def test_catalog_admission_rolls_back_state_when_job_creation_fails(monkeypatch):
+    project = _project("atomic admission")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    monkeypatch.setattr(jobs, "enqueue", lambda *_a, **_kw: (_ for _ in ()).throw(RuntimeError("queue unavailable")))
+    with pytest.raises(RuntimeError, match="queue unavailable"):
+        reservoir.admit_subreddit_scan(project, catalog["id"])
+    assert db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") is None
+    assert db.list_jobs(20) == []
+
+
+def test_repeated_paste_reuses_an_active_run_but_not_a_completed_catalog():
+    project = _project("route transitions")
+    first = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    again = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    assert again["job_id"] == first["job_id"]
+    reservoir.scan_subreddit_page(project, first["collection_id"], fetch_page=lambda _sub, _after: ([_listing("one")], None))
+    completed = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    assert completed["queued"] is False and completed["job_id"] is None
+
+
 def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
     project = _project("blocked worker")
     queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
