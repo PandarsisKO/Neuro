@@ -1,15 +1,24 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
-## Active subreddit mission — implementation checkpoint, 2026-09-19
+## Active subreddit mission — corrective ladder, 2026-09-19
 
-Kyle authorized Codex execution after the repository-grounded plan review. The canonical record is
-[docs/SUBREDDIT-CATALOG-MISSION.md](docs/SUBREDDIT-CATALOG-MISSION.md). Codex, not Claude, implemented
-SUB2–SUB8 in isolated worktree `/private/tmp/neuro-subreddit-catalog` on branch `codex/subreddit-catalog`.
-After rebasing on current `main` (`db1a049`), the code checkpoints are `2f1a31e`, `6778890`, `5fc590f`, `93444df`, and `516f444`; do not mix these with
-the shared checkout until its delivery review. Focused subsystem, UI, and value checks pass; worktree-bound
-After the rebase, the 281-test consolidated gate, 114-test core module, worktree-bound Tier 1, repository check, and JavaScript syntax check all passed against `516f444`. The complete suite still stops at the documented, pre-existing order-dependent
-`tests/test_core.py::test_ask_tool_loop` failure after 70 tests, so release status is **not passed**. Existing
-course/Sources edits and the unfinished CHR2 handoff remain preserved and are not closed by this mission.
+The feature is **partially implemented, not ready**. The previous SUB2–SUB8 completion claim is withdrawn.
+Kyle requested the remaining execution ladder; the single canonical record is
+[docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).
+Codex executes SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
+→ cached ranking → selected capture → Research/yield → complete UI → operational/real-access acceptance → release.
+All corrective rungs remain open; **SUB-R0 is next**. This turn changes documentation only.
+
+The first code pass (`2f1a31e`, `6778890`, `5fc590f`, `93444df`, `516f444`) already landed on shared `main`
+through `7fdcd2a`. Correction-planning baseline is `7b43dc8`, tracked tree clean before these docs. Build the
+next runtime changes in an isolated checkout of then-current `main`; preserve unrelated untracked work.
+Earlier checks reported 281 subsystem tests, 114 core tests separately, fake Tier 1, repo-check and syntax
+checks passing. They do not close the missing lifecycle, cache, capture-state, UI or real-access gates. The
+5,000-row test proves paging only. Full-suite state/order failures and the release harness need diagnosis in
+R0; no production fake flag or missing worktree CLI path is an acceptable release workaround.
+
+CHR2 is closed by the later verified visual-gate record (`7b43dc8`); do not reopen it. No subreddit live-access,
+visual-acceptance or running-app verification has been established. Landing code is not a release pass.
 
 ## Start here
 

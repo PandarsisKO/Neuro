@@ -4,6 +4,15 @@ Authority: Kyle's `DEVELOPMENT-OPERATING-SYSTEM.md`. Updated 2026-09-16 (NOW sec
 
 ## NOW — one active effort
 
+**SUBREDDIT CORRECTION — 2026-09-19 (supersedes older active-effort orientation below).** Kyle requested
+the ladder to finish the partial subreddit implementation already on `main`. Codex is the executor; Claude
+is no longer executing this mission. Follow [the canonical mission, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority),
+SUB-R0–SUB-R9. All corrective rungs are open; next is R0's isolated baseline/test-harness repair, not another
+feature-complete declaration. This admission records priority and the plan; the ladder-writing turn makes
+documentation changes only. CHR2 is closed at its verified visual checkpoint (`7b43dc8`). Other unfinished
+missions remain at their actual recorded checkpoints and are not closed or restarted by this admission.
+The older NOW entries below remain history, not competing assignments.
+
 **SPEED — observation mode (Kyle, 2026-09-17).** P0 closed · R4/R5 shipped (0.63.40/41) · R8 satisfied with two
 documented triggers (mmap, retention 2026-10-11) · `/api/sources` cache churn closed · R9(c) deferred · twin-project
 unit reuse kept as shipped with the compute-not-state guardrail gated. Process separation reopens only on the
