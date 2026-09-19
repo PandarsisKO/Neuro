@@ -1,0 +1,22 @@
+{
+  "source_file": "/private/tmp/neuro-subreddit-r1/neurosearch/candidates.py",
+  "rows": 5000,
+  "worker_turns": 50,
+  "scan_seconds": 1.1585794999846257,
+  "foreground_samples": 256,
+  "foreground_p90_ms": 4.62795901694335,
+  "foreground_max_ms": 12.183874991023913,
+  "max_write_hold_ms": 19.114291004370898,
+  "warning_threshold_ms": 2000.0,
+  "worker_max_tx_elapsed_ms": 19.116165989544243,
+  "fixture_fetch_delay_s": 0.01,
+  "cold_review_ms": 102.89858299074695,
+  "cold_queries": 44,
+  "cold_scores": 5000,
+  "warm_review_p90_ms": 5.022708006436005,
+  "warm_queries": 13.0,
+  "warm_scores": 0,
+  "second_attach_ms": 27.458166994620115,
+  "default_rows": 25,
+  "payload_bytes": 32016
+}

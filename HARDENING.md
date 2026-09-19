@@ -2407,3 +2407,51 @@ provider keys unset, fake AI disabled at entry and enabled only by fixtures. New
 on the combined source. Live supported Health only: 0.63.94, 2 queued/1 running, no stale leases. No live DB
 opened, no jobs cancelled, no runtime reload, no external acquisition or model spend. R8a unmeasured performance,
 R8b approved access/real browser acceptance and R9 delivery remain open; no completion claim is made for them.
+
+### Integrated frozen gate and follow-on UI repair — 2026-09-19
+
+The combined candidate **d2d6d1ec81774cab8edc864bf5bc72af62d3f3d1** remained unchanged from release start
+to finish: **2,152 passed**, normal release-check PASS, Foundation 27/27, separate fake Tier 1 PASS.
+Artifact: `evals/release/release-check-0.63.94-d2d6d1e-20260919-140513.json` (and text sibling). This proves
+the integrated source, superseding the earlier requirement for a fresh combined run, not live acceptance.
+
+Subsequent shipped-JS DOM tests reproduced four UI defects before repair: scan errors/date text became HTML;
+a late yield response repainted the prior project; an older search response replaced a newer query; and
+displayed capture IDs crossed project switches. Existing `CATALOG` state now carries project ownership,
+request sequence and readiness; every awaited response is fenced, stale row/card actions are refused, and
+late successful mutations cannot re-open a different project's review. Scan labels are escaped. Ten S77
+behavioral scenarios plus frontend integrity pass **16 tests**; these changes require their own full gate.
+No framework, alternate action API or polling mechanism was introduced. This is not full R7 closure:
+arbitrary checkbox selection, focus/draft preservation and real visual/keyboard review remain outstanding.
+
+### R8a synthetic paired measurements — 2026-09-19
+
+Reproduce with `PYTHONPATH=<checkout> CATALOG_FIXTURE_FETCH_DELAY=0.01 <venv>/bin/python
+tools/measure_subreddit_catalog.py`. The tool allocates its own empty temporary DB before importing config,
+disables dotenv, removes provider keys, enables fixture AI and poisons network/model/thread acquisition.
+It uses 50 real claimed explore-worker turns, 100 fixture posts per turn, realistic brief/question vocabulary,
+and concurrent `create_conversation` writes. Its 10-ms mock-fetch delay is outside every transaction, providing
+enough foreground samples; it is NOT real network timing. Run sequentially after the full release workload.
+Paired reports: `evals/subreddit-catalog/{baseline-d318297,candidate-d2d6d1e}-20260919.json`.
+
+| Measurement | d318297 baseline | d2d6d1e candidate |
+|---|---:|---:|
+| 5,000 posts / 50 turns, elapsed | 1.159 s | 1.210 s |
+| Foreground write samples | 256 | 206 |
+| Foreground p90 / maximum | 4.63 / 12.18 ms | 12.12 / 23.50 ms |
+| Worker transaction elapsed maximum | 19.12 ms | 13.03 ms |
+| Cold review / SQL queries / scorings | 102.90 ms / 44 / 5,000 | 102.39 ms / 44 / 5,000 |
+| Warm review p90 / queries / extra scorings | 5.02 ms / 13 / 0 | 5.34 ms / 13 / 0 |
+| Second-project 5,000-row attach | 27.46 ms | 60.84 ms |
+| Default response | 25 rows / 32,016 bytes | 25 rows / 32,017 bytes |
+
+No Sources were created or attached by scan/review/attachment. The extra per-page authority/claim checks and
+separately committed reconciliation have a measurable cost; do not advertise a foreground speedup. These are
+single local trials, not statistical performance equivalence. The existing write-hold timer includes lock-wait
+elapsed time, not exclusive writer ownership; its current warning threshold is 2,000 ms, unchanged. All recorded
+elapsed maxima here were also below the architecture's 250-ms guidance. A zero-delay preflight yielded only two
+foreground samples with 502-ms maximum: useful burst-contention warning, insufficient p90 evidence, NOT hidden
+by the paced fixture. Real HTTP/UI timings, burst scheduling and R8a's remaining lifecycle/workflow acceptance
+are still open. No passing threshold was invented from these measurements. R8b still needs approved Reddit
+access, a real capture and browser/human visual acceptance; no access or alternative retrieval architecture
+was assumed or enabled.

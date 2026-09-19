@@ -9,11 +9,15 @@ It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus i
 repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
 checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
 
-Combined focused gate: 200 passed. A new frozen normal release-check is running on `d2d6d1e`; prior passes
-on `279940d` (2,088 tests) and `9db6b35` (2,123) are not evidence for the combined tree. No runtime delivery,
+Combined focused gate: 200 passed. Frozen normal release-check **PASS on `d2d6d1e`**, including 2,152 tests;
+start/end SHA `d2d6d1ec81774cab8edc864bf5bc72af62d3f3d1`. Follow-on UI ownership/escaping repairs and ten
+shipped-JS DOM regressions are now prepared (16 focused UI/frontend tests passed), awaiting their own frozen
+gate. Synthetic baseline/candidate 5,000-row performance measurements are in HARDENING. No runtime delivery,
 version bump, real Reddit access or live/browser acceptance is claimed. Supported Health found two queued and
 one running Claims-maintenance job, with no stale leases. No live jobs were cancelled or DB opened. This
-pointer-only main update does not reload Python. R8a remaining performance proof, R8b and R9 stay open.
+pointer-only main update does not reload Python. R7 remaining interaction/visual proof, R8a remaining operational
+proof, R8b and R9 stay open. In particular the current UI captures displayed rows, not an arbitrary checkbox
+selection; draft/focus preservation across list/detail refresh also remains to be completed and exercised.
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
@@ -36,8 +40,8 @@ cursor cycle blocks at the last good checkpoint instead of claiming successful c
 
 Combined focused gate: **200 passed**, including S74's 50 actual worker turns/5,000 posts, S75 identity and
 project races, S76 queue lifecycle, Foundation, browser/direct identity, resource routing and write-hold gates.
-The new integrated source still needs its own frozen full release run. Prior isolated candidates `279940d`
-(2,088 tests) and `9db6b35` (2,123 tests) passed normal release-check, but do not establish this combined tree.
+The integrated source passed its frozen full release run: **2,152 tests**, normal release-check, separate fake
+Tier 1. Artifact: `evals/release/release-check-0.63.94-d2d6d1e-20260919-140513.json`.
 
 No runtime delivery/live acceptance yet. Authenticated supported Health observed app 0.63.94, two queued and
 one running job with zero stale leases; no reload, job cancellation or live DB opening was performed.
