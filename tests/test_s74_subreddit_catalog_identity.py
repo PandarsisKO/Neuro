@@ -435,7 +435,21 @@ def test_listing_omitted_author_is_not_a_deletion_signal(monkeypatch):
         {"data": {"id": "three", "permalink": "/r/smallbusiness/comments/three/title/", "title": "C", "removed_by_category": "moderator"}},
     ]}})
     rows, _ = community.enumerate_subreddit_page("smallbusiness")
-    assert [r["metadata"]["availability"] for r in rows] == ["available", "deleted", "removed"]
+    assert [r["metadata"].get("availability") for r in rows] == [None, "deleted", "removed"]
+
+
+def test_omitted_listing_availability_preserves_a_prior_deletion_observation(monkeypatch):
+    project = _project("availability preservation")
+    candidate_id = candidates.remember([_listing("one") | {"observed_metadata": True,
+        "metadata": {"availability": "deleted"}}], "reddit", project, {"kind": "fixture"})[0]
+    monkeypatch.setattr(community, "reddit_api_configured", lambda: True)
+    monkeypatch.setattr(community, "_api_get", lambda _url: {"data": {"after": None, "children": [
+        {"data": {"id": "one", "permalink": "/r/smallbusiness/comments/one/title/", "title": "A"}},
+    ]}})
+    row, _ = community.enumerate_subreddit_page("smallbusiness")
+    candidates.remember(row, "reddit", project, {"kind": "fixture"})
+    stored = db.connect().execute("SELECT metadata_json FROM candidates WHERE id=?", (candidate_id,)).fetchone()
+    assert __import__("json").loads(stored["metadata_json"])["availability"] == "deleted"
 
 
 def test_listing_parser_bounds_rows_and_ignores_malformed_numeric_metadata(monkeypatch):
@@ -475,6 +489,26 @@ def test_scan_counts_unique_posts_but_records_duplicate_listing_observations():
     assert result["total"] == 1 and len(result["candidate_ids"]) == 1
     assert state["known_posts"] == 1 and state["observed"] == 2
     assert state["observed_oldest"] == state["observed_newest"] == "2026-09-18"
+
+
+def test_scan_coverage_uses_precise_utc_timestamp_when_listing_provides_one():
+    project = _project("precise coverage")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    item = _listing("timestamp") | {"metadata": {"created_utc": 1_789_999_000}}
+    reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([item], None))
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
+    assert state["observed_oldest"] == state["observed_newest"] == "2026-09-21T13:56:40Z"
+
+
+def test_refresh_keeps_a_flat_previous_completed_summary():
+    project = _project("flat previous completed")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([_listing("first")], None))
+    prior = reservoir.begin_subreddit_refresh(project, catalog["id"])
+    assert prior["previous_completed"] and "previous_completed" not in prior["previous_completed"]
+    reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([_listing("second")], None))
+    next_run = reservoir.begin_subreddit_refresh(project, catalog["id"])
+    assert next_run["previous_completed"] and "previous_completed" not in next_run["previous_completed"]
 
 
 def test_refresh_tracks_distinct_new_posts_and_semantic_metadata_changes():

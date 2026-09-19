@@ -290,20 +290,31 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
         score = post.get("score") if isinstance(post.get("score"), (int, float)) else None
         comment_count = post.get("num_comments") if isinstance(post.get("num_comments"), int) and post.get("num_comments") >= 0 else None
         created_utc = post.get("created_utc") if isinstance(post.get("created_utc"), (int, float)) and post.get("created_utc") > 0 else None
-        availability = "removed" if post.get("removed_by_category") else ("deleted" if post.get("author") == "[deleted]" else "available")
+        # An omitted author is not a fresh availability observation.  In
+        # particular it must not erase a previously observed deleted/removed
+        # state when a partial listing response is replayed later.
+        availability = None
+        if post.get("removed_by_category"):
+            availability = "removed"
+        elif post.get("author") == "[deleted]":
+            availability = "deleted"
+        elif "author" in post and post.get("author") is not None:
+            availability = "available"
         clear_fields = ["description"] if "selftext" in post and not post.get("selftext") else []
         metadata_clears = ["flair"] if "link_flair_text" in post and not post.get("link_flair_text") else []
+        metadata = {"version": 1, "subreddit": subreddit.lower(), "score": score,
+                    "comment_count": comment_count, "flair": post.get("link_flair_text"),
+                    "created_utc": created_utc, "outbound_url": outbound,
+                    "outbound_domain": outbound_domain}
+        if availability is not None:
+            metadata["availability"] = availability
         rows.append({"external_id": f"reddit:{post_id}", "url": "https://www.reddit.com" + permalink,
                      "title": post.get("title"), "description": (post.get("selftext") or "")[:2000] or None,
                      "creator": post.get("author"),
                      "published_at": time.strftime("%Y-%m-%d", time.gmtime(created_utc)) if created_utc else None,
                      "view_count": score, "content_type": "post", "observed_metadata": True,
                      "observed_clear_fields": clear_fields, "metadata_clears": metadata_clears,
-                     "metadata": {"version": 1, "subreddit": subreddit.lower(), "score": score,
-                                  "comment_count": comment_count, "flair": post.get("link_flair_text"),
-                                  "created_utc": created_utc, "outbound_url": outbound,
-                                  "outbound_domain": outbound_domain,
-                                  "availability": availability}})
+                     "metadata": metadata})
     next_cursor = listing.get("after")
     return rows, str(next_cursor) if next_cursor else None
 

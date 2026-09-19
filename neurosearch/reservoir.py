@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from datetime import UTC, datetime
 from typing import Any, Callable
 
 from . import candidates, db, media
@@ -153,18 +154,27 @@ def _scan_state(raw: str | None) -> dict[str, Any]:
         return {}
 
 
+_COMPLETED_RUN_FIELDS = (
+    "run_id", "generation", "mode", "known_posts", "new", "pages", "observed",
+    "started_at", "finished_at", "reason", "observed_oldest", "observed_newest",
+)
+
+
+def _completed_summary(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Keep one compact prior-run summary, never a recursively growing state blob."""
+    summary = {key: state.get(key) for key in _COMPLETED_RUN_FIELDS}
+    return summary if summary.get("run_id") else None
+
+
 def _new_subreddit_run(prior: dict[str, Any], collection_id: str) -> dict[str, Any]:
     """Construct one head-first run.  The caller atomically stores it with its job."""
     t = time.time()
     known_posts = len(db.collection_candidate_ids(collection_id))
     previous_completed = None
     if prior.get("status") == "complete":
-        previous_completed = {k: prior.get(k) for k in (
-            "run_id", "generation", "mode", "known_posts", "new", "pages", "observed",
-            "started_at", "finished_at", "reason", "observed_oldest", "observed_newest",
-        )}
+        previous_completed = _completed_summary(prior)
     elif prior.get("previous_completed"):
-        previous_completed = prior["previous_completed"]
+        previous_completed = _completed_summary(prior["previous_completed"])
     return {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
             "mode": "refresh" if prior or known_posts else "initial", "status": "queued", "cursor": None,
             "cursor_history": [],
@@ -388,7 +398,15 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     if empty_advanced_page:
         terminal_reason = "listing returned no usable posts with an advancing cursor"
     mode = prior.get("mode") or "initial"
-    dates = [str(r.get("published_at")) for r in entries if r.get("published_at")]
+    def observed_timestamp(entry: dict[str, Any]) -> str | None:
+        metadata = entry.get("metadata")
+        created = metadata.get("created_utc") if isinstance(metadata, dict) else None
+        if isinstance(created, (int, float)) and created > 0:
+            return datetime.fromtimestamp(created, UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+        published = entry.get("published_at")
+        return str(published) if published else None
+
+    dates = [timestamp for entry in entries if (timestamp := observed_timestamp(entry))]
     oldest = min([d for d in [prior.get("observed_oldest"), *dates] if d], default=None)
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
     try:
