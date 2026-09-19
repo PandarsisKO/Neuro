@@ -2,19 +2,21 @@
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
-The feature is **partially implemented, not ready**. The previous SUB2–SUB8 completion claim is withdrawn.
+The feature is **offline-verified but not live-ready**. The previous SUB2–SUB8 completion claim is withdrawn.
 Kyle requested an updated plan for the remaining work; the single canonical record is
 [docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).
 Codex owns SUB-R0–SUB-R9: baseline isolation → identity/project boundaries → durable scan → metadata/counts
 → cached ranking → selected capture → Research/yield → complete UI → operational/real-access acceptance → release.
-**R0's baseline passed; R1 is next.** R1–R6 have partial corrections but open acceptance gates; R7 is a basic
-UI, and R8/R9 remain unaccepted. This plan-update turn changes documentation only; Kyle controls model/effort.
+The corrective implementation through the offline operational gate is complete on isolated branch
+`codex/subreddit-r1`; real Reddit/browser acceptance and delivery remain open. Kyle controls model/effort.
 
 Review baseline is `66f4d4d`, tracked tree clean before these docs. Preserve the landed identity, worker,
 observation, yield and cache corrections. Pre-rebase `064d86c` passed 2,074 tests and normal isolated
 release-check; the artifact is `evals/release/release-check-0.63.94-064d86c-20260919-105954.json`.
-Post-rebase S74/S43/S55 passed 55 tests; there is no full release artifact for the exact delivered tree.
-The catalog module has 22 tests; its 5,000-row fixture proves paging, not a 50-page worker scan.
+Post-rebase S74/S43/S55 passed 55 tests. The isolated candidate `1491921` passed normal release-check,
+including **2,102 tests**, Tier 1, Foundation and deterministic recovery/migration/backup proofs; artifact:
+`evals/release/release-check-0.63.94-1491921-20260919-115720.json`. Its 5,000-row fixture now drives 50 actual
+claimed worker turns, rather than direct candidate insertion.
 
 The isolated `codex/subreddit-r1` branch has completed the bounded R0/R1 preparation slice: dotenv opt-out,
 S74 import hygiene, no-write invalid attachment, page-bounded reconciliation and 250-item attach batches.
@@ -23,12 +25,12 @@ retry, fences commits to the claimed worker run, and derives retry/cancel card s
 Focused S74/S51/S43/S55: 64 passed; post-admission S74/K3/S55: 80 passed; lifecycle S74/K3/core-cancel/S43/S55:
 102 passed; typed-provider/cursor/rescan S74/K3/K9/S55/S57/S43: 128 passed. R2 now has typed 429 waits,
 worker fencing, cancellation truth, cycle/empty-page stops and manual-only rescan policy. Legacy queued payload
-handling and restart proof remain acceptance gaps. Next is R3's atomic new-count attribution and metadata semantics.
-R3's first slice now counts first discovery inside the membership write batch; focused S74/S55: 50 passed.
-Metadata presence/clear semantics, semantic ranking cache, bulk capture/status and Research
-membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
-Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.
-Do not repeat solved baseline diagnosis or treat partial test success as feature acceptance.
+handling is explicitly rejected before network work, and detached workers cannot commit. R3 metadata boundaries,
+catalog-specific ranking/cache views, bulk scoped capture, local Research reuse, normal-membership yield and the
+full review UI are implemented and covered by focused regressions. The remaining acceptance work is R8b: approved
+official Reddit access, bounded real metadata/capture behavior, and browser/visual acceptance on a running candidate.
+The anonymous running-app status surface exposes no credential/access status; do not read `.env`, touch the live
+database or substitute a scraping fallback. Do not treat the offline release pass as live feature acceptance.
 
 CHR2 is closed by the later verified visual-gate record (`7b43dc8`); do not reopen it. No subreddit live-access,
 visual-acceptance or running-app verification has been established. Landing code is not a release pass.

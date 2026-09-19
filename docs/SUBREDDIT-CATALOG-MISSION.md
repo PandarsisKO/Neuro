@@ -1,6 +1,6 @@
 # Subreddit catalog, ranking, selected capture, and refresh
 
-Status: ACTIVE — partial implementation landed; SUB-R0 baseline passed, SUB-R1–SUB-R9 acceptance remains open. NOT FEATURE-COMPLETE OR LIVE-RELEASE-VERIFIED.
+Status: ACTIVE — offline implementation and deterministic release candidate verified; real Reddit/browser acceptance and live delivery remain open. NOT LIVE-RELEASE-VERIFIED.
 Revised: 2026-09-19. Planner and executor: Codex. Claude is no longer executing this mission.
 Current review baseline: `66f4d4d` on `main`, package version `0.63.94`. Original planning/execution baselines and worktrees are historical; resume from then-current `main` in isolation.
 
@@ -261,6 +261,10 @@ Listing parsing is capped at 100 entries and rejects malformed numeric metadata.
 ### R4–R7 catalog workflow checkpoint — `980c2a7`, `1e0d9d7`, `bcaee42`, 2026-09-19
 
 Catalog ranking now has a catalog-specific semantic revision and cached ranked/filter views, with fresh page-level capture status. Recommended review defaults to 25; query, Open Question, firsthand and metadata sort behavior use stable bounded pages. Scoped bulk capture validates all selected IDs before it writes, reports partial execution outcomes and re-adds excluded ready Sources through normal membership. The Sources panel exposes scan coverage/cancellation, review state, bounded displayed capture and dismiss/restore controls. Local Research finds prior catalog metadata without capture, and yield uses standard membership semantics. Legacy run-less jobs and detached scans fail before writes. The 5,000-row lifecycle runs through 50 actual claimed worker turns. Focused lifecycle/research/front-end gates passed **117 tests**; the 5,000-worker fixture passed independently.
+
+### Offline release checkpoint — `1491921`, 2026-09-19
+
+Source-bound Tier 1 passed. Normal isolated `release-check` passed on this candidate: **2,102 tests** in 256.77 seconds plus Foundation, repository hygiene, migration, recovery, identity, frontend, cache and verified backup/restore gates. Artifact: `evals/release/release-check-0.63.94-1491921-20260919-115720.json`. This evidence does not establish approved Reddit API access, a bounded real listing/capture, browser interaction or human visual acceptance; the anonymous running-app status endpoint exposes no credential/access state, and this isolated checkout intentionally has no `.env` or live data.
 
 ### Original pass — historical evidence and limits
 
