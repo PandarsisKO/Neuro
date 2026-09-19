@@ -5,9 +5,9 @@
 Kyle authorized Codex execution after the repository-grounded plan review. The canonical record is
 [docs/SUBREDDIT-CATALOG-MISSION.md](docs/SUBREDDIT-CATALOG-MISSION.md). Codex, not Claude, implemented
 SUB2–SUB8 in isolated worktree `/private/tmp/neuro-subreddit-catalog` on branch `codex/subreddit-catalog`.
-The code checkpoints are `587d5ee`, `1ad5420`, `090bee2`, `5b1eaf8`, and `c05ea16`; do not mix these with
+After rebasing on current `main` (`db1a049`), the code checkpoints are `2f1a31e`, `6778890`, `5fc590f`, `93444df`, and `516f444`; do not mix these with
 the shared checkout until its delivery review. Focused subsystem, UI, and value checks pass; worktree-bound
-Tier 1 passes at `c05ea16`. The complete suite still stops at the documented, pre-existing order-dependent
+After the rebase, the 281-test consolidated gate, 114-test core module, worktree-bound Tier 1, repository check, and JavaScript syntax check all passed against `516f444`. The complete suite still stops at the documented, pre-existing order-dependent
 `tests/test_core.py::test_ask_tool_loop` failure after 70 tests, so release status is **not passed**. Existing
 course/Sources edits and the unfinished CHR2 handoff remain preserved and are not closed by this mission.
 

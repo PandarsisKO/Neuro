@@ -114,7 +114,7 @@ Dependency chain: SUB2 → SUB3 → SUB4 → SUB5 → SUB6 → SUB7 → SUB8 →
 
 ### SUB2 — identity and catalog membership — implementation checkpoint, 2026-09-19
 
-Implemented in `587d5ee` (`subreddit: add durable catalog identity and membership`) in the isolated execution worktree. A pasted supported subreddit URL now canonicalizes to a reusable `subreddit` catalog and creates/attaches only that catalog. `collection_candidates` owns candidate membership; it is explicitly separate from `source_collections`, so catalog attachment never grants project Source membership.
+Implemented in `2f1a31e` (`subreddit: add durable catalog identity and membership`) in the isolated execution worktree. A pasted supported subreddit URL now canonicalizes to a reusable `subreddit` catalog and creates/attaches only that catalog. `collection_candidates` owns candidate membership; it is explicitly separate from `source_collections`, so catalog attachment never grants project Source membership.
 
 The canonical Candidate Index bridge maps listing identity `reddit:reddit:<post-id>` to captured Community Source identity `community:reddit:<post-id>`, including capture-before-discovery and discovery-before-capture. Existing generic collection behavior remains unchanged: its proposed rows do not resolve early simply because a non-ready Source exists.
 
@@ -122,15 +122,15 @@ Focused regression gate: 82 passed, covering SUB2 plus K2/K3/K4/K9/S55. Research
 
 ### SUB3–SUB8 — catalog lifecycle implementation checkpoints, 2026-09-19
 
-`1ad5420` adds authenticated `/r/<name>/new` metadata pagination through the existing Reddit API owner. Each page is fetched outside the write transaction, committed atomically with its catalog membership and cursor checkpoint, then yields through the existing low-lane `explore` job. The catalog branch cannot use public JSON, HTML, browser, archive, search, Source, embedding, or generation fallbacks.
+`6778890` adds authenticated `/r/<name>/new` metadata pagination through the existing Reddit API owner. Each page is fetched outside the write transaction, committed atomically with its catalog membership and cursor checkpoint, then yields through the existing low-lane `explore` job. The catalog branch cannot use public JSON, HTML, browser, archive, search, Source, embedding, or generation fallbacks.
 
-`090bee2` adds bounded observed metadata, semantic `metadata_revision`, distinct known-post accounting, initial-versus-refresh labels, page/observation limits, and a generation compare-and-set. A stale page worker rolls back rather than replacing a newer refresh cursor; absent listing fields retain prior observations.
+`5fc590f` adds bounded observed metadata, semantic `metadata_revision`, distinct known-post accounting, initial-versus-refresh labels, page/observation limits, and a generation compare-and-set. A stale page worker rolls back rather than replacing a newer refresh cursor; absent listing fields retain prior observations.
 
-`5b1eaf8` adds the project-scoped catalog review and refresh API. It provides deterministic modes, states, bounded pages, revision-aware pagination, and capture status while reusing the existing Candidate Index and acquisition route.
+`93444df` adds the project-scoped catalog review and refresh API. It provides deterministic modes, states, bounded pages, revision-aware pagination, and capture status while reusing the existing Candidate Index and acquisition route.
 
-`c05ea16` adds the Sources catalog card and thread-level capture/refresh controls, plus captured-member yield. Yield counts only distinct ready Sources actually included in the project; metadata membership never counts as evidence.
+`516f444` adds the Sources catalog card and thread-level capture/refresh controls, plus captured-member yield. Yield counts only distinct ready Sources actually included in the project; metadata membership never counts as evidence.
 
-Validation after the final code checkpoint: the consolidated catalog/routing/job/rescan/pool/UI/value gate passed **281 tests**, including a 5,000-row paged-catalog fixture; `test_core.py` passed 114/114 in isolation; `node --check` passed for both changed modules; and worktree-bound fake Tier 1 passed at `c05ea16`. `repo-check` passed. A fresh `pytest tests -x -q` still stops at the same inherited `test_ask_tool_loop` failure after 70 passes. `release-check` cannot pass in the fake isolated environment: it correctly rejects fake-AI mode and its worker-lifecycle subprocess assumes a worktree-local `.venv`; it is not release evidence. Live Reddit access, visual acceptance, a supported non-fake release run, and delivery into the shared checkout remain open.
+Validation after the final code checkpoint and clean rebase on `main`: the consolidated catalog/routing/job/rescan/pool/UI/value gate passed **281 tests**, including a 5,000-row paged-catalog fixture; `test_core.py` passed 114/114 in isolation; `node --check` passed for both changed modules; worktree-bound fake Tier 1 passed; and `repo-check` passed. A fresh `pytest tests -x -q` still stops at the same inherited `test_ask_tool_loop` failure after 70 passes. `release-check` cannot pass in the fake isolated environment: it correctly rejects fake-AI mode and its worker-lifecycle subprocess assumes a worktree-local `.venv`; it is not release evidence. Live Reddit access, visual acceptance, a supported non-fake release run, and delivery into the shared checkout remain open.
 
 ## 6. Validation contract
 
