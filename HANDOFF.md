@@ -1,5 +1,20 @@
 # HANDOFF — shared Codex / Claude delivery mechanics
 
+## Current continuation pointer — 2026-09-19
+
+Runtime remains on shared `main`; **do not restart from its stale R1-next checklist below**. The prepared,
+reconciled candidate is `d2d6d1e` on `codex/subreddit-integrated`, at
+`/private/tmp/neuro-repair-powMDK/integrated-worktree`. Read that checkout's HANDOFF and canonical mission.
+It preserves the later, undelivered `codex/subreddit-r1` (`d318297`) work plus independently tested safety
+repairs. The earlier `codex/subreddit-continuation` / `codex/subreddit-scan-lifecycle` branches are historical
+checkpoints, not competing versions to land. Keep their evidence; continue only from the integrated candidate.
+
+Combined focused gate: 200 passed. A new frozen normal release-check is running on `d2d6d1e`; prior passes
+on `279940d` (2,088 tests) and `9db6b35` (2,123) are not evidence for the combined tree. No runtime delivery,
+version bump, real Reddit access or live/browser acceptance is claimed. Supported Health found two queued and
+one running Claims-maintenance job, with no stale leases. No live jobs were cancelled or DB opened. This
+pointer-only main update does not reload Python. R8a remaining performance proof, R8b and R9 stay open.
+
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
 The feature is **partially implemented, not ready**. The previous SUB2–SUB8 completion claim is withdrawn.
