@@ -299,7 +299,7 @@ def api_candidates(project_id: str, q: str | None = None, state: str | None = No
 
 @app.get("/api/projects/{project_id}/subreddit-catalogs/{collection_id}", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog(project_id: str, collection_id: str, q: str | None = None, mode: str = "recommended",
-                          state: str = "available", page: int = 0, limit: int = 50,
+                          state: str = "available", page: int = 0, limit: int = 25,
                           revision: str | None = None) -> dict[str, Any]:
     """Bounded local review for one attached subreddit catalog; it never enumerates or captures by itself."""
     from . import candidates

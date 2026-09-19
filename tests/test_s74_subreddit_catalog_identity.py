@@ -654,7 +654,7 @@ def test_catalog_query_pages_a_5000_post_fixture():
 
 
 def test_catalog_warm_reads_reuse_project_scoring(monkeypatch):
-    from neurosearch import cache
+    from neurosearch import cache, knowledge
     project = _project("catalog cache")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
     ids = candidates.remember([_listing("one"), _listing("two")], "reddit", project, {"kind": "fixture"})
@@ -665,3 +665,33 @@ def test_catalog_warm_reads_reuse_project_scoring(monkeypatch):
     candidates.catalog(project, catalog["id"])
     candidates.catalog(project, catalog["id"], page=0, limit=1)
     assert len(calls) == 2
+    # Global Candidate Index activity outside this catalog must not retire its
+    # ranked view.  A new project question, which affects fit, must.
+    candidates.remember([_listing("outside")], "reddit", project, {"kind": "fixture"})
+    candidates.catalog(project, catalog["id"])
+    assert len(calls) == 2
+    knowledge.add_target(project, "What owner lessons matter when buying a small business?")
+    candidates.catalog(project, catalog["id"])
+    assert len(calls) == 4
+
+
+def test_catalog_search_modes_and_default_limit_follow_review_contract():
+    from neurosearch import knowledge
+    project = _project("catalog modes")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    knowledge.add_target(project, "What seller note standby agreement terms are required for a business purchase?")
+    entries = [
+        _listing("fit") | {"title": "Seller note standby agreement terms required", "description": "business purchase evidence"},
+        _listing("firsthand") | {"title": "I own a bakery", "description": "my experience with unrelated memes"},
+        *[_listing(f"extra{i}") | {"title": f"Catalog item {i}"} for i in range(28)],
+    ]
+    ids = candidates.remember(entries, "reddit", project, {"kind": "fixture"})
+    db.link_collection_candidates(catalog["id"], ids)
+    default = candidates.catalog(project, catalog["id"], state="all")
+    assert default["limit"] == 25 and len(default["items"]) == 25
+    searched = candidates.catalog(project, catalog["id"], q="standby agreement", state="all")
+    assert [item["id"] for item in searched["items"]] == [ids[0]]
+    fits = candidates.catalog(project, catalog["id"], mode="fits_open_question", state="all")
+    assert [item["id"] for item in fits["items"]] == [ids[0]]
+    firsthand = candidates.catalog(project, catalog["id"], mode="firsthand", state="all", limit=50)
+    assert firsthand["items"][0]["id"] == ids[0]

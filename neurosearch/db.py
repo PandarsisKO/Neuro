@@ -2327,6 +2327,29 @@ def project_pool_revision(project_id: str) -> str:
     return "|".join(str(x) for x in r) + "|" + project_research_revision(project_id)
 
 
+def subreddit_catalog_revision(project_id: str, collection_id: str) -> str:
+    """Fingerprint exactly the durable inputs used to rank one subreddit catalog.
+
+    A catalog is a bounded candidate set.  Using ``project_pool_revision`` here
+    made unrelated candidates, skipped Sources, and global discovery traffic
+    invalidate its review cache.  This key tracks only catalog membership and
+    metadata, this project's dispositions, and the local research/source facts
+    that the deterministic fit and creator-yield score actually reads.
+    """
+    r = connect().execute(
+        "SELECT "
+        "(SELECT COUNT(*)||':'||COALESCE(MAX(cc.last_seen_at),0)||':'||COALESCE(MAX(c.metadata_revision),0)||':'||COALESCE(MAX(c.last_seen_at),0) "
+        " FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id WHERE cc.collection_id=?),"
+        "(SELECT COUNT(*)||':'||COALESCE(MAX(cp.updated_at),0)||':'||COALESCE(SUM(COALESCE(cp.relevance,0)),0) "
+        " FROM collection_candidates cc JOIN candidate_projects cp ON cp.candidate_id=cc.candidate_id "
+        " WHERE cc.collection_id=? AND cp.project_id=?),"
+        "(SELECT COUNT(*)||':'||COALESCE(MAX(s.updated_at),0)||':'||COALESCE(SUM(CASE WHEN ps.excluded THEN 1 ELSE 0 END),0) "
+        " FROM project_sources ps JOIN sources s ON s.id=ps.source_id WHERE ps.project_id=?)",
+        (collection_id, collection_id, project_id, project_id),
+    ).fetchone()
+    return "|".join(str(value) for value in r) + "|" + project_research_revision(project_id) + "|" + project_notes_revision(project_id)
+
+
 def conversation_delta_revision(project_id: str) -> str:
     """CHR1 (docs/CHAT-REFRESH-PLAN.md §11): the narrow fingerprint of ONLY what Conversation Delta reads. Deliberately
     NOT project_view_revision — SPEED-AUDIT-2026-09-17.md §9 measured that key invalidating on every job heartbeat

@@ -21,6 +21,7 @@ import json
 import os
 import re
 import time
+from hashlib import sha256
 from typing import Any
 
 from . import db
@@ -120,7 +121,7 @@ def remember(entries: list[dict[str, Any]], platform: str, project_id: str | Non
                               json.dumps(metadata, sort_keys=True, separators=(",", ":")) if metadata is not None else None))
             if project_id:
                 conn.execute("INSERT INTO candidate_projects (candidate_id, project_id, state, origin, first_seen_at, updated_at) VALUES (?,?,?,?,?,?) "
-                             "ON CONFLICT(candidate_id, project_id) DO UPDATE SET updated_at=excluded.updated_at, origin=COALESCE(candidate_projects.origin, excluded.origin)",
+                             "ON CONFLICT(candidate_id, project_id) DO UPDATE SET origin=COALESCE(candidate_projects.origin, excluded.origin)",
                              (cid, project_id, "available", json.dumps(origin), t, t))
             ids.append(cid)
     return ids
@@ -951,84 +952,119 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
             "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}
 
 
+def _catalog_ranked(project_id: str, collection_id: str) -> list[dict[str, Any]]:
+    """Build the score-bearing catalog rows once per catalog semantic revision."""
+    conn = db.connect()
+    rows = conn.execute("""SELECT c.*, cp.state, cp.relevance, cp.relevance_why, cp.reason, cp.origin
+                           FROM collection_candidates cc
+                           JOIN candidates c ON c.id=cc.candidate_id
+                           JOIN candidate_projects cp ON cp.candidate_id=c.id AND cp.project_id=?
+                           JOIN project_collections pc ON pc.collection_id=cc.collection_id AND pc.project_id=?
+                           WHERE cc.collection_id=?""", (project_id, project_id, collection_id)).fetchall()
+    qs, vocab, qidx = gap_terms_cached(project_id)
+    cy = creator_yield(project_id)
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        candidate = db.row_to_dict(row) or {}
+        title, desc = candidate.get("title") or candidate["url"], candidate.get("description") or ""
+        try:
+            metadata = json.loads(candidate.get("metadata_json") or "{}")
+        except ValueError:
+            metadata = {}
+        score, fits, why = _potential(title, desc, qs, vocab, candidate.get("relevance"), [],
+                                      creator=candidate.get("creator"), creator_stats=cy, qindex=qidx)
+        items.append({"id": candidate["id"], "title": title, "description": desc, "url": candidate["url"],
+                      "creator": candidate.get("creator"), "published_at": candidate.get("published_at"),
+                      "state": candidate.get("state"), "potential": score, "fits": fits, "why": why,
+                      "metadata": metadata, "source_id": candidate.get("source_id"),
+                      "firsthand": bool(FIRSTHAND_LANGUAGE.search(title + " " + desc)),
+                      "actions": {"capture": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate['id']}/capture",
+                                              "body": {}, "label": "Capture"},
+                                  "dismiss": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{candidate['id']}/dismiss",
+                                              "body": {}, "label": "Not for this project"}}})
+    return items
+
+
+def _metadata_int(metadata: dict[str, Any], key: str) -> int:
+    value = metadata.get(key)
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+def _catalog_view(items: list[dict[str, Any]], q: str | None, mode: str, state: str) -> tuple[str, list[dict[str, Any]]]:
+    """Filter and deterministically order a cached scored catalog without rescoring it."""
+    terms = _toks(q or "")
+    visible = [item for item in items
+               if (not terms or terms <= _toks(item["title"] + " " + item.get("description", "")))
+               and (state == "all" or item.get("state") == state)]
+    if mode == "fits_open_question":
+        # Area labels are project vocabulary, not an actual Open Question.
+        visible = [item for item in visible if item["fits"] and not str(item["fits"]).startswith("area:")]
+        visible.sort(key=lambda item: (-item["potential"], item["id"]))
+    elif mode == "firsthand":
+        # Fit remains primary: experiential language cannot elevate an irrelevant post.
+        visible.sort(key=lambda item: (-item["potential"], 0 if item["firsthand"] else 1, item["id"]))
+    elif mode == "newest":
+        visible.sort(key=lambda item: (item.get("published_at") or "", item["id"]), reverse=True)
+    elif mode == "most_discussed":
+        visible.sort(key=lambda item: (-_metadata_int(item["metadata"], "comment_count"), -item["potential"], item["id"]))
+    elif mode == "highest_score":
+        visible.sort(key=lambda item: (-_metadata_int(item["metadata"], "score"), -item["potential"], item["id"]))
+    else:
+        mode = "recommended"
+        visible.sort(key=lambda item: (-item["potential"], item["id"]))
+    return mode, visible
+
+
+def _catalog_capture_states(project_id: str, candidate_ids: list[str]) -> dict[str, tuple[str | None, bool]]:
+    """Read acquisition readiness fresh for one returned page, outside rank-cache invalidation."""
+    if not candidate_ids:
+        return {}
+    marks = ",".join("?" for _ in candidate_ids)
+    rows = db.connect().execute(
+        f"""SELECT c.id, s.status AS source_status,
+                   EXISTS(SELECT 1 FROM project_sources ps WHERE ps.project_id=? AND ps.source_id=c.source_id AND ps.excluded=0) AS attached
+            FROM candidates c LEFT JOIN sources s ON s.id=c.source_id WHERE c.id IN ({marks})""",
+        (project_id, *candidate_ids),
+    ).fetchall()
+    return {row["id"]: (row["source_status"], bool(row["attached"])) for row in rows}
+
+
 def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: str = "recommended",
-            state: str = "available", page: int = 0, limit: int = 50, revision: str | None = None) -> dict[str, Any]:
+            state: str = "available", page: int = 0, limit: int = 25, revision: str | None = None) -> dict[str, Any]:
     """A bounded, project-scoped view of one durable catalog.
 
     Catalog membership is global, but disposition and capture readiness are project-relative. This query keeps that
     separation explicit and performs only local ranking over bounded metadata; it never triggers enumeration,
     acquisition, embeddings, or a model call.
     """
+    from . import cache
     collection = catalog_context(project_id, collection_id)
-    current_revision = db.project_pool_revision(project_id) + "|" + collection_id
+    current_revision = db.subreddit_catalog_revision(project_id, collection_id)
     if revision is not None and revision != current_revision:
         raise RuntimeError("catalog revision changed; refresh the page")
     page, limit = max(0, page), max(1, min(limit, 100))
-    conn = db.connect()
-    rows = conn.execute("""SELECT c.*, cp.state, cp.relevance, cp.relevance_why, cp.reason, cp.origin,
-                                  s.status AS source_status, ps.source_id AS attached_source_id,
-                                  cp.updated_at AS state_at
-                           FROM collection_candidates cc
-                           JOIN candidates c ON c.id=cc.candidate_id
-                           JOIN candidate_projects cp ON cp.candidate_id=c.id AND cp.project_id=?
-                           JOIN project_collections pc ON pc.collection_id=cc.collection_id AND pc.project_id=?
-                           LEFT JOIN sources s ON s.id=c.source_id
-                           LEFT JOIN project_sources ps ON ps.project_id=? AND ps.source_id=c.source_id AND ps.excluded=0
-                           WHERE cc.collection_id=?""", (project_id, project_id, project_id, collection_id)).fetchall()
-    qs, vocab, qidx = gap_terms_cached(project_id)
-    cy = creator_yield(project_id)
-    terms = _toks(q or "")
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        c = db.row_to_dict(row) or {}
-        title, desc = c.get("title") or c["url"], c.get("description") or ""
-        if terms and not terms <= _toks(title + " " + desc + " " + (c.get("creator") or "")):
-            continue
-        if state != "all" and c.get("state") != state:
-            continue
-        try:
-            metadata = json.loads(c.get("metadata_json") or "{}")
-        except ValueError:
-            metadata = {}
-        # Ranking is deterministic from the catalog semantic revision. Cache the per-candidate calculation so
-        # paging and state filters reuse it without another scoring pass.
-        from . import cache
-        score, fits, why = cache.get_or_compute(
-            f"subreddit-catalog-score:{project_id}:{collection_id}:{c['id']}", current_revision,
-            lambda: _potential(title, desc, qs, vocab, c.get("relevance"), [], creator=c.get("creator"),
-                               creator_stats=cy, qindex=qidx), label="subreddit_catalog_score")
-        captured = bool(c.get("source_status") == "ready" and c.get("attached_source_id"))
-        firsthand = bool(FIRSTHAND_LANGUAGE.search(title + " " + desc))
-        items.append({"id": c["id"], "title": title, "url": c["url"], "creator": c.get("creator"),
-                      "published_at": c.get("published_at"), "state": c.get("state"), "potential": score,
-                      "fits": fits, "why": why, "metadata": metadata, "captured": captured,
-                      "capture_status": "captured" if captured else ("capturing" if c.get("state") == "acquired" else "not_captured"),
-                      "firsthand": firsthand, "actions": {"capture": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{c['id']}/capture",
-                                                      "body": {}, "label": "Capture"},
-                                                   "dismiss": {"method": "POST", "endpoint": f"/api/projects/{project_id}/subreddit-catalogs/{collection_id}/candidates/{c['id']}/dismiss",
-                                                               "body": {}, "label": "Not for this project"}}})
-    if mode == "fits_open_question":
-        key = lambda i: (0 if i["fits"] else 1, -i["potential"], i["id"])
-    elif mode == "firsthand":
-        key = lambda i: (0 if i["firsthand"] else 1, -i["potential"], i["id"])
-    elif mode == "newest":
-        key = lambda i: (i.get("published_at") or "", i["id"])
-        items.sort(key=key, reverse=True)
-        key = None
-    elif mode == "most_discussed":
-        key = lambda i: (-int(i["metadata"].get("comment_count") or 0), -i["potential"], i["id"])
-    elif mode == "highest_score":
-        key = lambda i: (-int(i["metadata"].get("score") or 0), -i["potential"], i["id"])
-    else:
-        mode = "recommended"
-        key = lambda i: (-i["potential"], i["id"])
-    if key:
-        items.sort(key=key)
+    ranked = cache.get_or_compute(f"subreddit-catalog-ranked:{project_id}:{collection_id}", current_revision,
+                                  lambda: _catalog_ranked(project_id, collection_id), label="subreddit_catalog_ranked")
+    view_key = sha256(f"{mode}\0{state}\0{q or ''}".encode()).hexdigest()
+    mode, items = cache.get_or_compute(
+        f"subreddit-catalog-view:{project_id}:{collection_id}:{view_key}", current_revision,
+        lambda: _catalog_view(ranked, q, mode, state), label="subreddit_catalog_view")
     total = len(items)
     start = page * limit
+    page_items = [dict(item) for item in items[start:start + limit]]
+    readiness = _catalog_capture_states(project_id, [item["id"] for item in page_items])
+    for item in page_items:
+        source_status, attached = readiness.get(item["id"], (None, False))
+        captured = bool(source_status == "ready" and attached)
+        item["captured"] = captured
+        item["capture_status"] = "captured" if captured else (
+            "failed" if item["state"] == "acquired" and source_status == "failed" else
+            "capturing" if item["state"] == "acquired" else "not_captured")
+        item.pop("source_id", None)
+        item.pop("description", None)
     return {"collection": {"id": collection_id, "url": collection.get("url"), "title": collection.get("title")},
             "revision": current_revision, "mode": mode, "state": state, "total": total,
-            "page": page, "limit": limit, "items": items[start:start + limit],
+            "page": page, "limit": limit, "items": page_items,
             "next_page": page + 1 if start + limit < total else None}
 
 
