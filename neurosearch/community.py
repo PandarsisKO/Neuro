@@ -181,6 +181,24 @@ _OAUTH: dict[str, Any] = {"token": None, "expires": 0.0}
 OAUTH_HOST = "https://oauth.reddit.com"
 
 
+class RedditApiError(RuntimeError):
+    """Typed official-API outcome preserved through the durable scan job."""
+
+    def __init__(self, status: int, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.retry_after = retry_after
+
+
+def _retry_after(headers: dict[str, str]) -> float | None:
+    raw = next((value for key, value in headers.items() if key.lower() == "retry-after"), None)
+    try:
+        seconds = float(raw) if raw is not None else None
+    except ValueError:
+        return None
+    return max(1.0, min(seconds, 24 * 3600.0)) if seconds is not None else None
+
+
 def reddit_api_configured() -> bool:
     from .config import settings
     return bool(settings.reddit_client_id and settings.reddit_client_secret)
@@ -200,7 +218,8 @@ def _oauth_token() -> str:
                               "Accept": "application/json", "Upgrade-Insecure-Requests": None, "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None,
                               "Sec-Fetch-Site": None, "Sec-Fetch-User": None})
     if res.status != 200:
-        raise RuntimeError(f"Reddit API: token request refused (HTTP {res.status}) — check REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env")
+        raise RedditApiError(res.status, f"Reddit API: token request refused (HTTP {res.status}) — check REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env",
+                             retry_after=_retry_after(res.headers))
     try:
         tok = json.loads(res.body.decode("utf-8", errors="replace"))
     except ValueError as e:
@@ -223,14 +242,14 @@ def _api_get(path_and_query: str) -> Any:
             _OAUTH["token"] = None
             continue
         if res.status == 429:
-            raise RuntimeError("Reddit API: rate limited (429) — try again in a minute")
+            raise RedditApiError(429, "Reddit API: rate limited (429)", retry_after=_retry_after(res.headers))
         if res.status != 200:
-            raise RuntimeError(f"Reddit API: HTTP {res.status}")
+            raise RedditApiError(res.status, f"Reddit API: HTTP {res.status}", retry_after=_retry_after(res.headers))
         try:
             return json.loads(res.body.decode("utf-8", errors="replace"))
         except ValueError as e:
             raise RuntimeError("Reddit API: response was not JSON") from e
-    raise RuntimeError("Reddit API: unauthorized")
+    raise RedditApiError(401, "Reddit API: unauthorized")
 
 
 def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit: int = 100) -> tuple[list[dict[str, Any]], str | None]:

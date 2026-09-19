@@ -71,6 +71,15 @@ class Yield(Exception):
         self.message = message
 
 
+class CatalogScanBlocked(RuntimeError):
+    """A scan recorded its provider outcome before handing retry policy to the job owner."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__(result.get("error") or "subreddit catalog scan blocked")
+        self.status = result.get("provider_status")
+        self.retry_after = result.get("retry_after")
+
+
 class SimulatedCrash(BaseException):
     """Test hook: the process 'dies' here. Not an Exception on purpose — no handler in the job may swallow it."""
 
@@ -327,7 +336,7 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
             if result["status"] == "partial":
                 raise Yield("catalog page saved; continuing automatically")
             if result["status"] == "blocked":
-                raise RuntimeError(result.get("error") or "subreddit catalog scan blocked")
+                raise CatalogScanBlocked(result)
             return result
         from . import explore
         return explore.explore(payload["url"], payload["kind"], payload.get("project_id"), tags=payload.get("tags"),
@@ -476,6 +485,20 @@ def execute(job: dict[str, Any], worker_id: str = "worker") -> str:
             db.requeue_job(jid, delay=0, message=e.message)
             db.job_event(jid, "yielded", run_id=job.get("run_id"), message=e.message)
             return "queued"
+        if isinstance(e, CatalogScanBlocked):
+            if e.status == 429:
+                delay = max(1.0, float(e.retry_after or 60.0))
+                db.requeue_job(jid, delay=delay, message=f"rate limited — retrying in {int(delay)}s",
+                               wait_reason="rate_limit")
+                return "queued"
+            attempts = int(job.get("attempts") or 0) + 1
+            if isinstance(e.status, int) and 500 <= e.status < 600 and attempts < MAX_ATTEMPTS:
+                delay = RETRY_DELAYS[min(attempts - 1, len(RETRY_DELAYS) - 1)]
+                db.requeue_job(jid, delay=delay, message=f"Reddit API HTTP {e.status}; retry {attempts + 1}/{MAX_ATTEMPTS} in {delay // 60} min",
+                               wait_reason="retry", count_attempt=True)
+                return "queued"
+            db.finish_job(jid, run_id, "failed", message=f"error: {e}")
+            return "failed"
         if isinstance(e, BudgetPaused):
             db.requeue_job(jid, delay=min(e.wait, 3600), message=f"paused: {e}", wait_reason="budget")
             if sid:

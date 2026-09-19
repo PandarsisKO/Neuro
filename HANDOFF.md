@@ -21,7 +21,9 @@ S74 import hygiene, no-write invalid attachment, page-bounded reconciliation and
 It also atomically admits catalog scan state with a run-bound explore job; a refresh no longer dedupes to an old
 retry, fences commits to the claimed worker run, and derives retry/cancel card state from the job ledger.
 Focused S74/S51/S43/S55: 64 passed; post-admission S74/K3/S55: 80 passed; lifecycle S74/K3/core-cancel/S43/S55:
-102 passed. This is not R1/R2 closure. Next is typed provider outcomes, cursor-cycle handling and rescan-policy audit.
+102 passed; typed-provider/cursor/rescan S74/K3/K9/S55/S57/S43: 128 passed. R2 now has typed 429 waits,
+worker fencing, cancellation truth, cycle/empty-page stops and manual-only rescan policy. Legacy queued payload
+handling and restart proof remain acceptance gaps. Next is R3's atomic new-count attribution and metadata semantics.
 Counts/metadata, semantic ranking cache, bulk capture/status and Research
 membership proofs remain prerequisites for the full UI. Split R8 into offline operational proof and live
 Reddit/browser/capture acceptance; unavailable live access blocks that gate, not eligible offline work.

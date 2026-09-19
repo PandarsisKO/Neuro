@@ -333,6 +333,53 @@ def test_catalog_cancel_uses_the_job_ledger_and_catalog_card_is_truthful():
     assert resumed["scan"]["run_id"] == queued["scan"]["run_id"]
 
 
+def test_catalog_rate_limit_uses_typed_retry_after_and_truthful_card_state(monkeypatch):
+    project = _project("typed rate limit")
+    queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)
+    monkeypatch.setattr(community, "enumerate_subreddit_page", lambda *_a, **_kw: (_ for _ in ()).throw(
+        community.RedditApiError(429, "Reddit API: rate limited (429)", retry_after=37)
+    ))
+    claimed = db.claim_job(("explore",), worker_id="test")
+    assert claimed and jobs.execute(claimed, "test") == "queued"
+    job = db.get_job(queued["job_id"])
+    assert job["status"] == "queued" and job["wait_reason"] == "rate_limit"
+    card = reservoir.subreddit_catalogs(project)[0]
+    assert card["scan"]["status"] == "rate_limited"
+    assert card["scan"]["job"]["status"] == "rate_limit_wait"
+    assert card["scan"]["retry_at"] == job["not_before"]
+
+
+def test_subreddit_catalog_is_never_sent_through_generic_monitored_rescan():
+    project = _project("manual catalog only")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    db.set_collection_policy(project, catalog["id"], source_role="primary", monitor_policy="on")
+    calls = []
+    assert reservoir.rescan_project(project, enumerate=lambda url: calls.append(url) or ({}, [])) == []
+    assert calls == []
+
+
+def test_catalog_stops_a_cursor_cycle_with_an_honest_reason():
+    project = _project("cursor cycle")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    pages = [([_listing("a")], "t3_a"), ([_listing("b")], "t3_b"), ([_listing("c")], "t3_a")]
+    for expected in ("partial", "partial", "complete"):
+        result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _s, _a: pages.pop(0))
+        assert result["status"] == expected
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
+    assert state["reason"] == "cursor cycle" and state["cursor"] is None
+    assert state["cursor_history"] == ["t3_a", "t3_b"]
+
+
+def test_catalog_fails_an_advancing_empty_listing_instead_of_looping_to_the_cap():
+    project = _project("empty page")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _s, _a: ([], "t3_next"))
+    assert result["status"] == "blocked"
+    assert result["error"] == "listing returned no usable posts with an advancing cursor"
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
+    assert state["status"] == "blocked" and state["cursor"] is None
+
+
 def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
     project = _project("blocked worker")
     queued = resources.route(resources.classify("https://www.reddit.com/r/smallbusiness/"), project)

@@ -146,7 +146,9 @@ Owners: `community.py`, `reservoir.py`, `jobs.py`, existing queue/dedupe and API
 
 **Implemented in the second R2 slice:** every worker turn fences scan state with the claimed job's `run_id` before fetching; a reclaimed worker therefore causes an older worker's page batch to roll back. Scan limits are read from the run, not mutable constants, and successful retries clear stale errors. Catalog cards derive retry, cancellation and failure truth from the associated job ledger, and a scoped cancel endpoint uses the normal job lifecycle; re-paste resumes the interrupted cursor.
 
-**Remaining, highest correctness priority:** typed provider outcomes must carry status and Retry-After rather than generic exception strings. Handle legacy payloads lacking run fields explicitly. Stop cyclic cursors and advancing-but-empty/malformed listings without falsely reporting success. Audit generic rescan dispatch so subreddit catalogs never enter YouTube enumeration or scheduled monitoring.
+**Implemented in the third R2 slice:** official Reddit errors carry typed status/Retry-After through the scan job; 429 becomes a rate-limit wait and 5xx has bounded retry policy, while access failures remain terminal. Cursor history is bounded to 50 values: cycles terminate with their reason, and advancing empty/malformed pages become a failed scan rather than looping to the application cap. Generic monitored rescan skips subreddit catalogs even if an old policy row marks one active.
+
+**Remaining:** explicitly reject or migrate legacy queued catalog payloads that lack run/generation fields. Exercise a real restart between a retry wait and claim; this is part of R8a's end-to-end lifecycle proof, not a mock-only R2 closure.
 
 Fence commits by the actual worker claim as well as catalog generation; a reclaimed worker in the same generation must not commit. Handle legacy payloads lacking run fields explicitly. Derive scan state and retry/cancel controls from the associated job, clearing obsolete error details after recovery. Honor limits pinned to the run, not subsequently changed defaults.
 
@@ -233,6 +235,10 @@ The same isolated branch now atomically admits scan state and a run-bound explor
 ### R2 lifecycle checkpoint — pending commit, 2026-09-19
 
 The second R2 slice fences commits to the claimed job run, preserves run-pinned limits, clears stale errors after retry, derives catalog-card job truth and adds scoped cancellation. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_core.py::test_cancel_single_job tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **102 passed**. R2 remains open for typed access/rate outcomes, cyclic cursor handling and rescan-policy audit.
+
+### R2 provider/cursor checkpoint — pending commit, 2026-09-19
+
+Official API errors now preserve their HTTP status and Retry-After through the catalog job. Cursor loops and advancing empty pages terminate honestly; generic rescan cannot enumerate a subreddit catalog. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_k9_community.py tests/test_s55_reservoir_rescan.py tests/test_s57_monitor_policy.py tests/test_s43_foundation.py -q` — **128 passed**. R2 implementation is substantially complete; legacy queued payload behavior and restart proof remain acceptance gaps.
 
 ### Original pass — historical evidence and limits
 

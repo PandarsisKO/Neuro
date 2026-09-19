@@ -167,6 +167,7 @@ def _new_subreddit_run(prior: dict[str, Any], collection_id: str) -> dict[str, A
         previous_completed = prior["previous_completed"]
     return {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
             "mode": "refresh" if prior or known_posts else "initial", "status": "queued", "cursor": None,
+            "cursor_history": [],
             "pages": 0, "observed": 0, "new": 0, "initial_known": 0, "known_posts": known_posts,
             "baseline_known": known_posts, "started_at": t, "updated_at": t, "finished_at": None,
             "reason": None, "access": "reddit_api", "endpoint": "new",
@@ -340,7 +341,7 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     if not prior:
         t = time.time()
         prior = {"run_id": db.new_id(), "generation": 1, "mode": "initial", "status": "queued", "cursor": None,
-                 "pages": 0, "observed": 0, "new": 0, "initial_known": 0,
+                 "pages": 0, "observed": 0, "new": 0, "initial_known": 0, "cursor_history": [],
                  "baseline_known": len(db.collection_candidate_ids(collection_id)), "started_at": t, "updated_at": t,
                  "access": "reddit_api", "endpoint": "new", "page_limit": SUBREDDIT_MAX_PAGES,
                  "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
@@ -356,12 +357,20 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
                  "known_posts": len(db.collection_candidate_ids(collection_id)), "pages": int(prior.get("pages") or 0)}
         if not db.kv_compare_set(key, prior_raw, json.dumps(state, sort_keys=True)):
             return {"collection_id": collection_id, "status": "stale", "new": 0, "candidate_ids": []}
-        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"], "error": state["error"], "candidate_ids": []}
+        return {"collection_id": collection_id, "status": "blocked", "new": 0, "total": state["known_posts"],
+                "error": state["error"], "provider_status": getattr(e, "status", None),
+                "retry_after": getattr(e, "retry_after", None), "candidate_ids": []}
+    cursor_history = [str(value) for value in prior.get("cursor_history", []) if value][-50:]
     if next_cursor and next_cursor == cursor:
         next_cursor = None
         terminal_reason = "cursor did not advance"
+    elif next_cursor and str(next_cursor) in cursor_history:
+        next_cursor = None
+        terminal_reason = "cursor cycle"
     else:
         terminal_reason = "listing ended" if not next_cursor else None
+    if next_cursor:
+        cursor_history = [*cursor_history, str(next_cursor)][-50:]
 
     # Compute before remember() mutates either global rows or this project's relationship rows.
     known = {r["external_id"] for r in db.connect().execute(
@@ -379,14 +388,18 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     page_limit = int(prior.get("page_limit") or SUBREDDIT_MAX_PAGES)
     observation_limit = int(prior.get("observation_limit") or SUBREDDIT_MAX_OBSERVATIONS)
     capped = pages >= page_limit or observed >= observation_limit
-    status = "complete" if not next_cursor or capped else "partial"
+    empty_advanced_page = not entries and bool(next_cursor)
+    status = "blocked" if empty_advanced_page else ("complete" if not next_cursor or capped else "partial")
     terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
+    if empty_advanced_page:
+        terminal_reason = "listing returned no usable posts with an advancing cursor"
     known_posts = len(known) + new_count
     mode = prior.get("mode") or "initial"
     dates = [str(r.get("published_at")) for r in entries if r.get("published_at")]
     oldest = min([d for d in [prior.get("observed_oldest"), *dates] if d], default=None)
     newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
-    state = {**prior, "status": status, "cursor": None if status == "complete" else next_cursor, "pages": pages,
+    state = {**prior, "status": status, "cursor": None if status in ("complete", "blocked") else next_cursor,
+             "cursor_history": cursor_history, "pages": pages,
              "observed": observed, "known_posts": known_posts,
              "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
              "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
@@ -394,7 +407,8 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
              "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
              "observed_oldest": oldest, "observed_newest": newest,
              "page_limit": page_limit, "observation_limit": observation_limit,
-             "error": None, "wait_reason": None, "retry_at": None}
+             "error": terminal_reason if empty_advanced_page else None,
+             "wait_reason": None, "retry_at": None}
     state_raw = json.dumps(state, sort_keys=True)
     try:
         with db.batch():
@@ -408,7 +422,7 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
     return {"collection_id": collection_id, "status": status, "new": new_count if mode == "refresh" else 0,
             "initial_known": new_count if mode == "initial" else 0, "total": state["known_posts"],
             "observed": state["observed"], "pages": state["pages"], "cursor": state["cursor"],
-            "reason": terminal_reason, "candidate_ids": ids}
+            "reason": terminal_reason, "error": state["error"], "candidate_ids": ids}
 
 
 def effective_monitor_active(source_role: str, monitor_policy: str) -> bool:
@@ -439,5 +453,8 @@ def rescan_project(project_id: str, *, enumerate: Callable[[str], tuple[dict, li
     (see module docstring's CR8 note) -- a collection that is attached but not monitored is skipped entirely,
     not rescanned-and-discarded: `enumerate` is never called for it. On-demand only -- never called from a
     schedule or nightly hook tonight; CLI-driven (`neurosearch project rescan`)."""
+    # A subreddit catalog has its own manual, cursor-based official-API run.
+    # It is never fed through the older collection rescan adapter (which would
+    # treat the URL as a YouTube-like reservoir) and is never auto-monitored.
     return [rescan(project_id, cid, enumerate=enumerate, now=now) for cid in db.project_collection_ids(project_id)
-            if is_monitored(project_id, cid)]
+            if is_monitored(project_id, cid) and (db.get_collection(cid) or {}).get("kind") != "subreddit"]
