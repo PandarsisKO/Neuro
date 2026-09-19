@@ -122,7 +122,7 @@ LIST_SUMMARY_CHARS = 200          # 0.63.21: same decision, same reason, for the
 # fourteen keys were ~620 KB of a 2,539 KB response — key names included, since every row repeats them. All of them
 # remain on `/api/sources/{id}`, which the drawer, the reader and every action use. (`r6_wave` stays: the R6 gate
 # reads it on the list row as the visible provenance of a fast-wave result.)
-LIST_OMIT_FIELDS = ("channel_url", "relevance_why", "created_at", "updated_at", "external_id", "content_fingerprint",
+LIST_OMIT_FIELDS = ("channel_url", "relevance_why", "updated_at", "external_id", "content_fingerprint",
                     "revision", "canonical_url", "view_count", "audio_path", "language", "relevance",
                     "stage", "spoken_chars")
 
