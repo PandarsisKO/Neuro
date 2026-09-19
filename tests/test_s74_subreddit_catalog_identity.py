@@ -422,7 +422,7 @@ def test_catalog_blocked_worker_never_finishes_successfully(monkeypatch):
 
 def test_catalog_enumerator_requires_official_api_and_keeps_listing_metadata_small(monkeypatch):
     monkeypatch.setattr(community, "reddit_api_configured", lambda: False)
-    with pytest.raises(RuntimeError, match="credentials are required"):
+    with pytest.raises(RuntimeError, match="Approved Reddit Data API access is required"):
         community.enumerate_subreddit_page("smallbusiness")
 
     seen = []

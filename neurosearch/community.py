@@ -205,8 +205,12 @@ def reddit_api_configured() -> bool:
 
 
 def _oauth_token() -> str:
-    """Application-only OAuth (client_credentials): Reddit's sanctioned way for a script to read public data. Cached until
-    it expires. Credentials live only in .env (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET); never in the database."""
+    """Application-only OAuth for approved Reddit Data API access.
+
+    The token is cached until it expires. Credential values live only in .env
+    (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET), never in the database. Their
+    presence does not itself establish Reddit's required access approval.
+    """
     import base64
     from .config import settings
     from .safe_fetch import safe_fetch
@@ -218,7 +222,7 @@ def _oauth_token() -> str:
                               "Accept": "application/json", "Upgrade-Insecure-Requests": None, "Sec-Fetch-Dest": None, "Sec-Fetch-Mode": None,
                               "Sec-Fetch-Site": None, "Sec-Fetch-User": None})
     if res.status != 200:
-        raise RedditApiError(res.status, f"Reddit API: token request refused (HTTP {res.status}) — check REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env",
+        raise RedditApiError(res.status, f"Reddit API: token request refused (HTTP {res.status}) — check approved Data API access and REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env",
                              retry_after=_retry_after(res.headers))
     try:
         tok = json.loads(res.body.decode("utf-8", errors="replace"))
@@ -260,7 +264,7 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
     catalog must fail honestly when approved API access is unavailable.
     """
     if not reddit_api_configured():
-        raise RuntimeError("Reddit API credentials are required to catalog a subreddit (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET)")
+        raise RuntimeError("Approved Reddit Data API access is required to catalog a subreddit; after approval, configure REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env")
     if not SUBREDDIT_NAME.fullmatch(subreddit):
         raise ValueError("invalid subreddit name")
     from urllib.parse import quote
@@ -434,7 +438,7 @@ def read_reddit_thread(url: str) -> dict[str, Any]:
     except RuntimeError as e:
         errors.append(f"server-rendered page: {e}")
     from .acquire import AcquisitionFailure
-    hint = "" if reddit_api_configured() else " · Reddit refuses non-browser clients: use the extension's “Send this page” on the thread, or add REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET to .env"
+    hint = "" if reddit_api_configured() else " · Reddit refuses non-browser clients: use the extension's “Send this page” on the thread, or configure approved Reddit Data API access (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env)"
     raise AcquisitionFailure("; ".join(errors) + hint, adapter="reddit_thread", cls="blocked")
 
 
@@ -466,7 +470,7 @@ def enumerate_reddit(community: str, query: str, *, limit: int = 25, sort: str =
             return rows
         except RuntimeError as e:
             errors.append(f"server-rendered page: {e}")
-        hint = "" if reddit_api_configured() else " · subreddit search needs Reddit API credentials (REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env); threads can still be sent from the extension"
+        hint = "" if reddit_api_configured() else " · subreddit search needs approved Reddit Data API access, then REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET in .env; threads can still be sent from the extension"
         raise RuntimeError("; ".join(errors) + hint)
     out = []
     for ch in data.get("data", {}).get("children", []):

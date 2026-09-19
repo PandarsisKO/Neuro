@@ -215,8 +215,8 @@ def doctor(progress: Any = print, fake_smoke: bool = True) -> dict[str, Any]:
     r.check(claude_code.status_line(wait=True), lh.get("state") in ("ready", "disabled"), lh.get("detail") or "", warn=True)
     r.check("ANTHROPIC_API_KEY configured", bool(settings.anthropic_api_key) or settings.fake_ai, "set" if settings.anthropic_api_key else ("fake mode" if settings.fake_ai else "missing — chat, findings, ranking and planning need it"), warn=True)
     r.check("OPENAI_API_KEY configured", bool(settings.openai_api_key) or settings.fake_ai, "set" if settings.openai_api_key else ("fake mode" if settings.fake_ai else "missing — embeddings and transcription need it"), warn=True)
-    r.check("Reddit API credentials (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,
-            "set" if settings.reddit_client_id else "not set — subreddit search (Explore) needs REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET; threads still arrive via the extension", warn=True)
+    r.check("Reddit Data API configuration (optional)", bool(settings.reddit_client_id and settings.reddit_client_secret) or None,
+            "configured — Reddit approval/access is not verified here" if settings.reddit_client_id else "not configured — catalog scanning needs approved Reddit Data API access, then REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET; threads still arrive via the extension", warn=True)
     r.check("production models", True, {"answer": settings.answer_model, "findings": contracts.contract("findings.extract").model, "ranking": contracts.contract("rank.relevance").model, "embeddings": settings.embedding_model})
     # 0.52.0: a global local-model override silently replaces a per-task, measured model choice on every local call.
     # It is allowed — it is how the free subscription stays usable — but it must be visible, because the difference
