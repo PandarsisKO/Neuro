@@ -926,6 +926,13 @@ isolated server log and the hidden-document guard remains intentional. Light-the
 checks remain genuinely unverified in this automation environment, so CHR2 is not marked fully closed until
 those are either checked on a foreground browser or explicitly accepted as a gap.
 
+### Live visual follow-up (Codex, 2026-09-19)
+
+The previously open visual gap is now checked in the isolated fake-AI browser: at a 500×657 viewport, the exact
+meaningful-change card remained readable in both dark and light themes, the disclosure hierarchy remained intact,
+and neither the document nor body overflowed horizontally. This closes the documented CHR2 visual gap for the
+tested narrow viewport; no mobile-device matrix beyond this viewport is claimed.
+
 Gates after the port and final renderer correction: `node tests/js/run-chat-delta.mjs` = 21/21 and
 `tests/test_s50_design_drift.py` = 9/9. The ported code and this record still need the normal commit/release
 ritual; no GitHub push is claimed without verified credentials.
@@ -936,3 +943,9 @@ The scoped changes were committed as `09be557` and pushed to `origin/main`; remo
 same SHA. The release artifact is `evals/release/release-check-0.63.94-09be557-20260919-100142.json`.
 The full ritual completed with 2,019 passed and 33 failures: the known 8 S43 foundation failures plus the
 existing local-model/configuration, S12, S39, and S46 failures. No CHR2-specific failure was introduced.
+
+### CHR2 closure update (Codex, 2026-09-19)
+
+The visual follow-up passed, so CHR2 is closed for the tested release scope. The remaining unclaimed coverage is
+only a broader physical-device mobile matrix beyond the verified 500×657 viewport; it is not a blocker for the
+shipped behavior.

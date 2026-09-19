@@ -6802,3 +6802,30 @@ the same SHA. Full release artifact: `evals/release/release-check-0.63.94-09be55
 The ritual completed with 2,019 passed and 33 failures: the known 8 S43 foundation failures plus the existing
 local-model/configuration, S12, S39, and S46 failures. No CHR2-specific failure was introduced. CHR2 remains
 open only for the explicitly documented light-theme and narrow-viewport live checks.
+
+## Autonomous follow-up pass (Codex, 2026-09-19)
+
+Closed the remaining safe live checks without touching the live database or transmitting course/video-host
+session cookies:
+
+- CHR2 was verified in the isolated fake-AI browser at a narrow 500×657 viewport in both dark and light themes.
+  The meaningful-change card remained readable, its disclosure hierarchy remained intact, and neither document
+  nor body overflowed horizontally.
+- Course Scanner was started from the real signed-in course page, stopped through the real popup control, and
+  reopened. The popup reported `2 of 3 lessons ready — Stopped by you. What was read is kept.` and preserved the
+  partial scan state after reopening. No import/send action was pressed.
+- The stale P1B test assertion that hard-coded UI version `0.63.92` was updated to follow the package version;
+  this shipped as `db1a049` and is pushed to `origin/main`.
+- With `PYTHON_DOTENV_DISABLED=true` (the honest code/test baseline, excluding the developer `.env` overrides),
+  Foundation passed 27/27 and the whole suite passed 2,049/2,052. The three remaining failures (`test_ask_tool_loop`,
+  the S12 discovery-row test, and the S68 proposed-sources inspection) each pass in isolation and are cross-suite
+  state/order failures. The normal `.env` release run still reports the known model/local-health failures.
+
+No further safe code change was inferred from those order-dependent failures; they need a focused isolation fix,
+not a speculative production change.
+
+## CHR2 closure update (Codex, 2026-09-19)
+
+The narrow light/dark visual check described above passed, so CHR2 is now closed for the tested release scope.
+The only unclaimed coverage is a broader physical-device/mobile matrix beyond the verified 500×657 viewport;
+that is not a blocker for the shipped CHR2 behavior.
