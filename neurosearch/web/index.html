@@ -109,6 +109,11 @@
             <div id="candidates" style="margin-top:8px;max-height:40vh;overflow:auto"></div>
           </div>
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
+            <b>Subreddit catalogs</b>
+            <div class="muted">Catalogs keep post metadata only. Choose individual threads to capture; a catalog itself is never evidence.</div>
+            <div id="subredditCatalogs" style="margin-top:8px"></div>
+          </div>
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px">
             <b>Communities</b> <span class="muted" id="commCounts"></span><div id="commAccess"></div>
             <div class="muted">Lived experience, failure modes and practitioner knowledge — never authority. A thread is one source; its posts are the citations. Missions come from what the research is <i>missing</i> (owner regret, unexpected costs, disagreement), not from topics. Exploring lists candidate threads as cheap metadata; you choose what to acquire.</div>
             <div class="row mt-2"><input id="commName" placeholder="r/smallbusiness" style="max-width:220px"><select id="commMission" class="grow"><option value="">— pick a mission from the research state —</option></select><input id="commQ" placeholder="or a manual query" style="max-width:260px"><button class="small" onclick="exploreCommunity()">Explore</button></div>

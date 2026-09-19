@@ -74,6 +74,34 @@ def compute(project_id: str) -> dict[str, dict[str, Any]]:
     return dict(out)
 
 
+def subreddit_catalog_yield(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Evidence yield for explicitly captured members of one subreddit catalog.
+
+    Candidate membership itself is metadata, never evidence. A member contributes only when its resolved Source is
+    ready and is an included member of this project; the DISTINCT query prevents cross-post/candidate joins from
+    inflating source, finding, or Claim counts.
+    """
+    conn = db.connect()
+    source_ids = [r["source_id"] for r in conn.execute("""SELECT DISTINCT c.source_id
+        FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id
+        JOIN sources s ON s.id=c.source_id AND s.status='ready'
+        JOIN project_sources ps ON ps.source_id=s.id AND ps.project_id=? AND ps.excluded=0
+        WHERE cc.collection_id=? AND c.source_id IS NOT NULL""", (project_id, collection_id)).fetchall()]
+    values = compute(project_id)
+    selected = [values.get(sid, empty()) for sid in source_ids]
+    return {"captured_threads": len(source_ids),
+            "findings": sum(v["findings"].get("approved", 0) for v in selected),
+            "high_importance_findings": sum(v["importance"].get("n4plus", 0) for v in selected),
+            "claim_evidence_rows": sum(v["claims"].get("evidence_rows", 0) for v in selected),
+            "distinct_claims_supported": conn.execute("""SELECT COUNT(DISTINCT e.claim_id) FROM claim_evidence e
+                JOIN project_claims pc ON pc.id=e.claim_id AND pc.project_id=?
+                WHERE e.source_id IN (SELECT DISTINCT c.source_id FROM collection_candidates cc
+                    JOIN candidates c ON c.id=cc.candidate_id JOIN project_sources ps ON ps.source_id=c.source_id
+                    WHERE cc.collection_id=? AND ps.project_id=? AND ps.excluded=0)""",
+                (project_id, collection_id, project_id)).fetchone()[0],
+            "source_ids": source_ids}
+
+
 def score(v: dict[str, Any]) -> int:
     f, imp, cl, u = v["findings"], v["importance"], v["claims"], v["used"]
     other = max(0, f.get("approved", 0) - imp["n4plus"])

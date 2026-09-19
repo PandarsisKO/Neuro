@@ -15,7 +15,7 @@ os.environ["NEUROSEARCH_FAKE_AI"] = "1"
 
 import pytest  # noqa: E402
 
-from neurosearch import candidates, community, db, identity, jobs, reservoir, resources  # noqa: E402
+from neurosearch import candidates, community, db, identity, jobs, reservoir, resources, sources_value  # noqa: E402
 from neurosearch.config import settings  # noqa: E402
 
 
@@ -109,6 +109,9 @@ def test_reddit_candidate_and_community_source_resolve_without_recapture_or_cros
     captured = candidates.capture(candidate_id, second)
     assert captured["job_id"] is None and captured["source_id"] == created.source["id"]
     assert db.project_source_ids(second, ready_only=False) == [created.source["id"]]
+    assert sources_value.subreddit_catalog_yield(second, catalog["id"])["captured_threads"] == 1
+    db.remove_project_sources(second, [created.source["id"]])
+    assert sources_value.subreddit_catalog_yield(second, catalog["id"])["captured_threads"] == 0
     assert db.list_jobs(20) == []
 
 
@@ -245,3 +248,17 @@ def test_catalog_query_is_project_scoped_paged_and_metadata_only():
     assert second_view["total"] == 3 and second_view["items"][0]["id"] == ids[2]
     with pytest.raises(RuntimeError, match="revision changed"):
         candidates.catalog(first, catalog["id"], revision="outdated")
+
+
+def test_catalog_api_exposes_review_refresh_and_yield(client):
+    project = _project("catalog api")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    candidate_id = _remember_post(project)
+    db.link_collection_candidates(catalog["id"], [candidate_id])
+    h = {"Authorization": "Bearer t0k"}
+    view = client.get(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}", headers=h)
+    assert view.status_code == 200 and view.json()["total"] == 1
+    refreshed = client.post(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/refresh", headers=h)
+    assert refreshed.status_code == 200 and refreshed.json()["job_id"]
+    outcome = client.get(f"/api/projects/{project}/subreddit-catalogs/{catalog['id']}/yield", headers=h)
+    assert outcome.status_code == 200 and outcome.json()["captured_threads"] == 0

@@ -794,7 +794,50 @@ globalThis.loadCandidates = async function loadCandidates() {
       ${stt === 'acquired' || x.in_project ? '' : stt === 'needs_membership' ? `<a class="small ghost" href="${esc(x.url)}" target="_blank" rel="noopener" title="Open it on YouTube — if you join the channel, add it again and it will ingest">Open on YouTube</a>` : `<button class="small primary" onclick="candAct('${x.id}','acquire')">${x.in_library ? 'Add from library' : 'Add'}</button>`}
       ${stt === 'user_dismissed' ? `<button class="small ghost" onclick="candAct('${x.id}','restore')">Restore</button>` : stt === 'acquired' ? '' : `<button class="small ghost" onclick="candAct('${x.id}','dismiss')">Dismiss</button>`}</div>`;
   }).join('') || '<div class="muted">Nothing matches.</div>';
+  loadSubredditCatalogs();
 }
+
+globalThis.CATALOG = { id: null, mode: 'recommended', state: 'available', page: 0, revision: null };
+globalThis.loadSubredditCatalogs = async function loadSubredditCatalogs() {
+  const host = $('#subredditCatalogs'); if (!host || !state.project) return;
+  let r; try { r = await api(`/api/projects/${state.project.id}/subreddit-catalogs`); } catch (_) { return; }
+  const label = s => {
+    if (!s || !s.status) return 'never scanned';
+    if (s.status === 'complete') return `${s.known_posts || 0} known posts · ${s.reason || 'finished'}`;
+    if (s.status === 'blocked') return `blocked · ${s.error || 'access unavailable'}`;
+    return `${s.status} · ${s.known_posts || 0} known posts`;
+  };
+  host.innerHTML = (r.items || []).map(c => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line);align-items:flex-start"><span class="grow"><b>r/${esc(c.external_id)}</b><div class="muted text-xs">${esc(label(c.scan))}${c.scan && c.scan.observed ? ` · ${c.scan.observed} listing observations` : ''}</div></span><button class="small" onclick="openSubredditCatalog('${c.id}')">Review</button><button class="small ghost" onclick="refreshSubredditCatalog('${c.id}',this)">Refresh</button></div>`).join('') || '<div class="muted">Paste a supported r/subreddit URL to create a catalog.</div>';
+  if (CATALOG.id && !(r.items || []).some(c => c.id === CATALOG.id)) CATALOG.id = null;
+};
+globalThis.openSubredditCatalog = async function openSubredditCatalog(id, reset = true) {
+  if (reset || CATALOG.id !== id) CATALOG = { id, mode: 'recommended', state: 'available', page: 0, revision: null };
+  const host = $('#subredditCatalogs'); if (!host) return;
+  const p = new URLSearchParams({ mode: CATALOG.mode, state: CATALOG.state, page: String(CATALOG.page), limit: '50' });
+  if (CATALOG.revision) p.set('revision', CATALOG.revision);
+  let r; try { r = await api(`/api/projects/${state.project.id}/subreddit-catalogs/${id}?${p}`); } catch (e) {
+    if ((e.message || '').includes('revision changed')) { CATALOG.revision = null; return openSubredditCatalog(id, false); }
+    toast('Could not load catalog: ' + (e.message || e), 'err'); return;
+  }
+  CATALOG.revision = r.revision;
+  let y = null; try { y = await api(`/api/projects/${state.project.id}/subreddit-catalogs/${id}/yield`); } catch (_) {}
+  const modes = [['recommended', 'recommended'], ['fits_open_question', 'fits an open question'], ['firsthand', 'firsthand'], ['newest', 'newest'], ['most_discussed', 'most discussed'], ['highest_score', 'highest community score']];
+  const stateModes = [['available', 'available'], ['all', 'all states'], ['acquired', 'capturing / captured'], ['user_dismissed', 'dismissed']];
+  const rows = r.items.map(x => `<div class="row" style="padding:5px 0;border-top:1px solid var(--line);align-items:flex-start"><span class="grow"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><div class="muted text-xs">${esc(x.creator || '')}${x.published_at ? ' · ' + esc(x.published_at) : ''}${x.fits ? ' · fits: ' + esc(x.fits) : ''}${x.firsthand ? ' · firsthand language' : ''}${x.metadata.comment_count != null ? ' · ' + esc(String(x.metadata.comment_count)) + ' comments' : ''}${x.metadata.score != null ? ' · score ' + esc(String(x.metadata.score)) : ''} · ${esc(x.capture_status.replace('_', ' '))}</div></span>${x.capture_status === 'captured' ? '' : `<button class="small primary" onclick="catalogCapture('${x.id}','${id}',this)">${x.capture_status === 'capturing' ? 'Capturing…' : 'Capture'}</button>`}</div>`).join('') || '<div class="muted">No catalog rows match this view.</div>';
+  host.insertAdjacentHTML('beforeend', `<div class="card" id="subredditCatalogDetail" style="margin-top:10px"><div class="row"><b class="grow">r/${esc((r.collection.url || '').split('/r/')[1]?.replace('/','') || 'catalog')} · ${r.total} known</b><button class="small ghost" onclick="$('#subredditCatalogDetail').remove();CATALOG.id=null">Close</button></div><div class="row mt-1"><select class="w-auto" onchange="CATALOG.mode=this.value;CATALOG.page=0;openSubredditCatalog('${id}',false)">${modes.map(m => `<option value="${m[0]}" ${r.mode === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select><select class="w-auto" onchange="CATALOG.state=this.value;CATALOG.page=0;openSubredditCatalog('${id}',false)">${stateModes.map(m => `<option value="${m[0]}" ${r.state === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select><span class="muted">${y ? `${y.captured_threads} captured threads · ${y.findings} findings · ${y.distinct_claims_supported} Claims supported` : ''}</span></div><div style="margin-top:7px">${rows}</div>${r.next_page != null ? `<button class="small ghost mt-1" onclick="CATALOG.page=${r.next_page};openSubredditCatalog('${id}',false)">Next 50</button>` : ''}</div>`);
+  const old = document.querySelectorAll('#subredditCatalogDetail'); if (old.length > 1) old[0].remove();
+};
+globalThis.refreshSubredditCatalog = async function refreshSubredditCatalog(id, btn) {
+  if (btn) btn.disabled = true;
+  try { await post(`/api/projects/${state.project.id}/subreddit-catalogs/${id}/refresh`, {}); toast('Catalog refresh queued — metadata only.'); loadSubredditCatalogs(); loadJobs(); }
+  catch (e) { toast('Could not queue refresh: ' + (e.message || e), 'err'); }
+  finally { if (btn) btn.disabled = false; }
+};
+globalThis.catalogCapture = async function catalogCapture(candidateId, catalogId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Capturing…'; }
+  try { const r = await post(`/api/candidates/${candidateId}/acquire`, { project_id: state.project.id }); toast(r.job_id ? 'Thread capture queued.' : 'Thread attached from the library.'); loadJobs(); CATALOG.revision = null; openSubredditCatalog(catalogId, false); }
+  catch (e) { toast('Could not capture: ' + (e.message || e), 'err'); if (btn) { btn.disabled = false; btn.textContent = 'Capture'; } }
+};
 globalThis.candAct = async function candAct(id, act) {
   let reason = null; if (act === 'dismiss') { reason = prompt('Why? (optional — e.g. "not this creator", "wrong jurisdiction", "too old")') || null; }
   const r = await post(`/api/candidates/${id}/${act}`, { project_id: state.project.id, reason });

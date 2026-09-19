@@ -172,6 +172,22 @@ def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, An
     return state
 
 
+def subreddit_catalogs(project_id: str) -> list[dict[str, Any]]:
+    """The project-attached catalog cards, with their latest durable scan state."""
+    rows = db.connect().execute("""SELECT c.* FROM collections c JOIN project_collections pc ON pc.collection_id=c.id
+                                 WHERE pc.project_id=? AND c.kind='subreddit' ORDER BY c.created_at DESC""", (project_id,)).fetchall()
+    out = []
+    for row in rows:
+        catalog = dict(row)
+        try:
+            scan = json.loads(db.kv_get(_scan_key(project_id, catalog["id"])) or "{}")
+        except ValueError:
+            scan = {}
+        catalog["scan"] = scan
+        out.append(catalog)
+    return out
+
+
 def scan_subreddit_page(project_id: str, collection_id: str, *,
                          fetch_page: Callable[[str, str | None], tuple[list[dict[str, Any]], str | None]] | None = None) -> dict[str, Any]:
     """Fetch and atomically commit one subreddit listing page.

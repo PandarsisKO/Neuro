@@ -312,6 +312,14 @@ def api_subreddit_catalog(project_id: str, collection_id: str, q: str | None = N
         raise HTTPException(409, str(e))
 
 
+@app.get("/api/projects/{project_id}/subreddit-catalogs", dependencies=[Depends(require_auth)])
+def api_subreddit_catalogs(project_id: str) -> dict[str, Any]:
+    from . import reservoir
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    return {"items": reservoir.subreddit_catalogs(project_id)}
+
+
 @app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/refresh", dependencies=[Depends(require_auth)])
 def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
     """Queue one explicit head-first metadata refresh through the existing explore job family."""
@@ -326,6 +334,15 @@ def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[s
     job = jobs.enqueue("explore", {"url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
                                     "collection_id": collection_id}, lane="low")
     return {"ok": True, "job_id": job["id"], "state": state}
+
+
+@app.get("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/yield", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_yield(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Measured outcome for captured catalog threads only; catalog metadata never counts as evidence."""
+    from . import sources_value
+    if not db.get_project(project_id) or not db.get_collection(collection_id):
+        raise HTTPException(404)
+    return sources_value.subreddit_catalog_yield(project_id, collection_id)
 
 
 class ScholarSearchIn(BaseModel):
