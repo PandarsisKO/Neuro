@@ -226,23 +226,23 @@ Planning validation (2026-09-19): documentation only, limited to this mission an
 
 Retain `63f93a5` (runtime default/worker isolation), `5268aef` (catalog project boundaries), `7231017` (run-bound workers), `a27f47b` (listing observations), `4fa8ae2` (eligible evidence predicates), and `6597062` (score caching). These are bounded corrections, not closure of R1–R6. `66f4d4d` records their validation checkpoint. Section 2 distinguishes the 2,074-test/pre-rebase release pass from the 55-test/post-rebase focused pass. The feature module now has 22 tests. This remaining-work review corrected stale R0-next pointers and converted each rung into retained behavior, concrete residual work and an exit gate; no runtime implementation occurred during the review.
 
-### R0/R1 preparation checkpoint — pending commit, 2026-09-19
+### R0/R1 preparation checkpoint — `8c492a4`, 2026-09-19
 
 The isolated R1 branch adds the deterministic dotenv opt-out and removes S74's import-time environment mutations. It validates the project before catalog upsert, limits page reconciliation to supplied candidate IDs, and reconciles an already-attached catalog in 250-item batches. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s51_test_isolation.py tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **64 passed**. This is an R0/R1 checkpoint, not R1 closure or an integrated release result.
 
-### R2 atomic-admission checkpoint — pending commit, 2026-09-19
+### R2 atomic-admission checkpoint — `f946b74`, 2026-09-19
 
 The same isolated branch now atomically admits scan state and a run-bound explore job. A head refresh has a new dedupe identity, so it cannot attach to a queued old retry. A repeat paste reuses only its active run, while a completed catalog stays complete until explicit refresh. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_s55_reservoir_rescan.py -q` — **80 passed**.
 
-### R2 lifecycle checkpoint — pending commit, 2026-09-19
+### R2 lifecycle checkpoint — `806066c`, 2026-09-19
 
 The second R2 slice fences commits to the claimed job run, preserves run-pinned limits, clears stale errors after retry, derives catalog-card job truth and adds scoped cancellation. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_core.py::test_cancel_single_job tests/test_s43_foundation.py tests/test_s55_reservoir_rescan.py -q` — **102 passed**. R2 remains open for typed access/rate outcomes, cyclic cursor handling and rescan-policy audit.
 
-### R2 provider/cursor checkpoint — pending commit, 2026-09-19
+### R2 provider/cursor checkpoint — `0a1bf64`, 2026-09-19
 
 Official API errors now preserve their HTTP status and Retry-After through the catalog job. Cursor loops and advancing empty pages terminate honestly; generic rescan cannot enumerate a subreddit catalog. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_k3_resources.py tests/test_k9_community.py tests/test_s55_reservoir_rescan.py tests/test_s57_monitor_policy.py tests/test_s43_foundation.py -q` — **128 passed**. R2 implementation is substantially complete; legacy queued payload behavior and restart proof remain acceptance gaps.
 
-### R3 atomic-count checkpoint — pending commit, 2026-09-19
+### R3 atomic-count checkpoint — `d05211b`, 2026-09-19
 
 Catalog membership and first-discovery counting now share one write batch. A two-project interleaving fixture proves one run receives `initial_known=1`, the other `0`, while both retain the candidate. Focused gate: `PYTHON_DOTENV_DISABLED=true NEUROSEARCH_FAKE_AI=0 … python -m pytest tests/test_s74_subreddit_catalog_identity.py tests/test_s55_reservoir_rescan.py -q` — **50 passed**. Metadata presence/clear semantics, URL validation and full run-count definitions remain open.
 
