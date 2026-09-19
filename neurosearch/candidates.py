@@ -1095,7 +1095,7 @@ def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: 
             "failed" if item["state"] == "acquired" and source_status == "failed" else
             "capturing" if item["state"] == "acquired" else "not_captured")
         item.pop("source_id", None)
-        item.pop("description", None)
+        item["excerpt"] = item.pop("description", None)
     return {"collection": {"id": collection_id, "url": collection.get("url"), "title": collection.get("title")},
             "revision": current_revision, "mode": mode, "state": state, "total": total,
             "page": page, "limit": limit, "items": page_items,

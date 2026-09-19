@@ -811,6 +811,7 @@ def test_catalog_search_modes_and_default_limit_follow_review_contract():
     assert default["limit"] == 25 and len(default["items"]) == 25
     searched = candidates.catalog(project, catalog["id"], q="standby agreement", state="all")
     assert [item["id"] for item in searched["items"]] == [ids[0]]
+    assert searched["items"][0]["excerpt"] == "business purchase evidence"
     fits = candidates.catalog(project, catalog["id"], mode="fits_open_question", state="all")
     assert [item["id"] for item in fits["items"]] == [ids[0]]
     firsthand = candidates.catalog(project, catalog["id"], mode="firsthand", state="all", limit=50)
