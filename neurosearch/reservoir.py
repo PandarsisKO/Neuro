@@ -153,11 +153,17 @@ def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, An
         prior = json.loads(raw or "{}")
     except ValueError:
         prior = {}
+    if prior.get("status") in ("queued", "partial", "blocked"):
+        # Repeated refresh clicks must share the existing durable run and cursor. In particular, do not turn a
+        # queued initial scan into a refresh before it has made its first page commit.
+        return prior
     t = time.time()
+    known_posts = len(db.collection_candidate_ids(collection_id))
+    mode = "refresh" if prior or known_posts else "initial"
     state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
-             "mode": "refresh", "status": "queued", "cursor": None, "pages": 0, "observed": 0,
+             "mode": mode, "status": "queued", "cursor": None, "pages": 0, "observed": 0,
              "new": 0, "initial_known": 0, "known_posts": len(db.collection_candidate_ids(collection_id)),
-             "baseline_known": len(db.collection_candidate_ids(collection_id)), "started_at": t, "updated_at": t,
+             "baseline_known": known_posts, "started_at": t, "updated_at": t,
              "finished_at": None, "reason": None, "access": "reddit_api", "endpoint": "new",
              "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
              "previous_completed": prior if prior.get("status") == "complete" else prior.get("previous_completed")}

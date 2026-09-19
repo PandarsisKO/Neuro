@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any
 
@@ -35,6 +36,7 @@ GATE_LABEL = {"members_only": "members-only — join the channel to make it inge
               "needs_auth": "needs a signed-in account"}
 LOW_RELEVANCE = 50            # a ranked score below this is a "skipped for low relevance", not a "skipped by the limit"
 CONTENT_TYPE = {"youtube": "video", "instagram": "post", "podcast": "podcast", "web": "page", "media": "video", "document": "document", "book": "book"}
+FIRSTHAND_LANGUAGE = re.compile(r"\b(i (?:own|run|built|used|tried|learned)|my experience|we (?:own|run|built|used))\b", re.I)
 
 
 def _source_for_candidate_identity(platform: str, external_id: str) -> dict[str, Any] | None:
@@ -900,6 +902,85 @@ def pool(project_id: str, q: str | None = None, rank_by: str = "fit", limit: int
               "worth_a_look": sum(1 for i in items if i["potential"] >= WORTH_A_LOOK), "fits_a_question": sum(1 for i in items if i["fits"] and not str(i["fits"]).startswith("area:"))}
     return {"total": len(items), "items": items[:limit], "counts": counts, "rank_by": rank_by,
             "explain": "Known but never captured: sources the review skipped (older than the cutoff) and sources seen while exploring. Potential is a $0 scan of the title and description against your open questions, weak areas and the project's own words — a hint for review, never a verdict. Nothing here is evidence until you capture it."}
+
+
+def catalog(project_id: str, collection_id: str, *, q: str | None = None, mode: str = "recommended",
+            state: str = "available", page: int = 0, limit: int = 50, revision: str | None = None) -> dict[str, Any]:
+    """A bounded, project-scoped view of one durable catalog.
+
+    Catalog membership is global, but disposition and capture readiness are project-relative. This query keeps that
+    separation explicit and performs only local ranking over bounded metadata; it never triggers enumeration,
+    acquisition, embeddings, or a model call.
+    """
+    if not db.get_project(project_id):
+        raise LookupError(project_id)
+    collection = db.get_collection(collection_id)
+    if not collection or collection.get("kind") != "subreddit":
+        raise LookupError(collection_id)
+    current_revision = db.project_pool_revision(project_id) + "|" + collection_id
+    if revision is not None and revision != current_revision:
+        raise RuntimeError("catalog revision changed; refresh the page")
+    page, limit = max(0, page), max(1, min(limit, 100))
+    conn = db.connect()
+    rows = conn.execute("""SELECT c.*, cp.state, cp.relevance, cp.relevance_why, cp.reason, cp.origin,
+                                  cp.updated_at AS state_at
+                           FROM collection_candidates cc
+                           JOIN candidates c ON c.id=cc.candidate_id
+                           JOIN candidate_projects cp ON cp.candidate_id=c.id AND cp.project_id=?
+                           JOIN project_collections pc ON pc.collection_id=cc.collection_id AND pc.project_id=?
+                           WHERE cc.collection_id=?""", (project_id, project_id, collection_id)).fetchall()
+    qs, vocab, qidx = gap_terms_cached(project_id)
+    cy = creator_yield(project_id)
+    terms = _toks(q or "")
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        c = db.row_to_dict(row) or {}
+        title, desc = c.get("title") or c["url"], c.get("description") or ""
+        if terms and not terms <= _toks(title + " " + desc + " " + (c.get("creator") or "")):
+            continue
+        if state != "all" and c.get("state") != state:
+            continue
+        try:
+            metadata = json.loads(c.get("metadata_json") or "{}")
+        except ValueError:
+            metadata = {}
+        score, fits, why = _potential(title, desc, qs, vocab, c.get("relevance"), [], creator=c.get("creator"),
+                                      creator_stats=cy, qindex=qidx)
+        source = db.get_source(c["source_id"]) if c.get("source_id") else None
+        captured = bool(source and source.get("status") == "ready" and conn.execute(
+            "SELECT 1 FROM project_sources WHERE project_id=? AND source_id=? AND excluded=0", (project_id, source["id"])).fetchone())
+        firsthand = bool(FIRSTHAND_LANGUAGE.search(title + " " + desc))
+        items.append({"id": c["id"], "title": title, "url": c["url"], "creator": c.get("creator"),
+                      "published_at": c.get("published_at"), "state": c.get("state"), "potential": score,
+                      "fits": fits, "why": why, "metadata": metadata, "captured": captured,
+                      "capture_status": "captured" if captured else ("capturing" if c.get("state") == "acquired" else "not_captured"),
+                      "firsthand": firsthand, "actions": {"capture": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/acquire",
+                                                      "body": {"project_id": project_id}, "label": "Capture"},
+                                                   "dismiss": {"method": "POST", "endpoint": f"/api/candidates/{c['id']}/dismiss",
+                                                               "body": {"project_id": project_id}, "label": "Not for this project"}}})
+    if mode == "fits_open_question":
+        key = lambda i: (0 if i["fits"] else 1, -i["potential"], i["id"])
+    elif mode == "firsthand":
+        key = lambda i: (0 if i["firsthand"] else 1, -i["potential"], i["id"])
+    elif mode == "newest":
+        key = lambda i: (i.get("published_at") or "", i["id"])
+        items.sort(key=key, reverse=True)
+        key = None
+    elif mode == "most_discussed":
+        key = lambda i: (-int(i["metadata"].get("comment_count") or 0), -i["potential"], i["id"])
+    elif mode == "highest_score":
+        key = lambda i: (-int(i["metadata"].get("score") or 0), -i["potential"], i["id"])
+    else:
+        mode = "recommended"
+        key = lambda i: (-i["potential"], i["id"])
+    if key:
+        items.sort(key=key)
+    total = len(items)
+    start = page * limit
+    return {"collection": {"id": collection_id, "url": collection.get("url"), "title": collection.get("title")},
+            "revision": current_revision, "mode": mode, "state": state, "total": total,
+            "page": page, "limit": limit, "items": items[start:start + limit],
+            "next_page": page + 1 if start + limit < total else None}
 
 
 # ---------------------------------------------------------------- AD1: small-batch discovery

@@ -201,6 +201,7 @@ def test_refresh_tracks_distinct_new_posts_and_semantic_metadata_changes():
     assert initial["initial_known"] == 1 and initial["new"] == 0
     started = reservoir.begin_subreddit_refresh(project, catalog["id"])
     assert started["mode"] == "refresh" and started["known_posts"] == 1
+    assert reservoir.begin_subreddit_refresh(project, catalog["id"])["run_id"] == started["run_id"]
     changed = _listing("a") | {"title": "Post a revised", "observed_metadata": True,
                                 "metadata": {"version": 1, "score": -2, "comment_count": 4, "subreddit": "smallbusiness"}}
     refreshed = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([changed, _listing("b")], None))
@@ -221,3 +222,26 @@ def test_stale_scan_cannot_commit_after_a_newer_refresh_starts():
     result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=replaced_mid_fetch)
     assert result["status"] == "stale"
     assert db.collection_candidate_ids(catalog["id"]) == []
+
+
+def test_catalog_query_is_project_scoped_paged_and_metadata_only():
+    first, second = _project("catalog first"), _project("catalog second")
+    catalog = community.attach_subreddit_catalog(first, "https://www.reddit.com/r/smallbusiness/")
+    community.attach_subreddit_catalog(second, "https://www.reddit.com/r/smallbusiness/")
+    ids = candidates.remember([
+        _listing("fit") | {"title": "I bought a small business", "description": "owner lessons", "observed_metadata": True,
+                           "metadata": {"score": 2, "comment_count": 4}},
+        _listing("popular") | {"title": "Unrelated popular thread", "description": "memes", "observed_metadata": True,
+                               "metadata": {"score": 999, "comment_count": 20}},
+        _listing("new") | {"title": "Newest owner report", "description": "I run a business", "published_at": "2026-09-19",
+                           "observed_metadata": True, "metadata": {"score": 1, "comment_count": 1}},
+    ], "reddit", first, {"kind": "fixture"})
+    db.link_collection_candidates(catalog["id"], ids)
+    candidates.dismiss(first, ids[1], "not useful")
+    highest = candidates.catalog(first, catalog["id"], mode="highest_score", state="all", limit=2)
+    assert highest["total"] == 3 and [x["id"] for x in highest["items"]] == [ids[1], ids[0]]
+    assert highest["next_page"] == 1 and highest["items"][0]["metadata"]["score"] == 999
+    second_view = candidates.catalog(second, catalog["id"], state="available", mode="newest", limit=10)
+    assert second_view["total"] == 3 and second_view["items"][0]["id"] == ids[2]
+    with pytest.raises(RuntimeError, match="revision changed"):
+        candidates.catalog(first, catalog["id"], revision="outdated")

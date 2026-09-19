@@ -297,6 +297,37 @@ def api_candidates(project_id: str, q: str | None = None, state: str | None = No
     return {"items": items, "counts": candidates.counts(project_id)}
 
 
+@app.get("/api/projects/{project_id}/subreddit-catalogs/{collection_id}", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog(project_id: str, collection_id: str, q: str | None = None, mode: str = "recommended",
+                          state: str = "available", page: int = 0, limit: int = 50,
+                          revision: str | None = None) -> dict[str, Any]:
+    """Bounded local review for one attached subreddit catalog; it never enumerates or captures by itself."""
+    from . import candidates
+    try:
+        return candidates.catalog(project_id, collection_id, q=q, mode=mode, state=state, page=page,
+                                  limit=max(1, min(limit, 100)), revision=revision)
+    except LookupError:
+        raise HTTPException(404)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+@app.post("/api/projects/{project_id}/subreddit-catalogs/{collection_id}/refresh", dependencies=[Depends(require_auth)])
+def api_subreddit_catalog_refresh(project_id: str, collection_id: str) -> dict[str, Any]:
+    """Queue one explicit head-first metadata refresh through the existing explore job family."""
+    from . import jobs, reservoir
+    if not db.get_project(project_id):
+        raise HTTPException(404)
+    try:
+        state = reservoir.begin_subreddit_refresh(project_id, collection_id)
+    except ValueError:
+        raise HTTPException(404)
+    collection = db.get_collection(collection_id) or {}
+    job = jobs.enqueue("explore", {"url": collection.get("url"), "kind": "subreddit", "project_id": project_id,
+                                    "collection_id": collection_id}, lane="low")
+    return {"ok": True, "job_id": job["id"], "state": state}
+
+
 class ScholarSearchIn(BaseModel):
     query: str
     limit: int = 10
