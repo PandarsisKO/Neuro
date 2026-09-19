@@ -618,8 +618,11 @@ def status_line(wait: bool = False, refresh: bool = True) -> str:
 
     About the model real work runs, not the CLI's own default (0.63.30) — a person reading "Claude Code: ready"
     while every findings job is falling back to the paid API has been told something useless."""
-    h = (health(wait=wait, model=local_model_for(DOMINANT_LOCAL_TASK)) if refresh
-         else health_snapshot(model=local_model_for(DOMINANT_LOCAL_TASK)))
+    model = local_model_for(DOMINANT_LOCAL_TASK)
+    # A status read must not start a hidden provider probe. `health(wait=False)` is the asynchronous probe API;
+    # status surfaces need the last known verdict so a just-recorded local failure is visible immediately.
+    h = (health(wait=True, model=model) if refresh and wait
+         else health_snapshot(model=model))
     st = h.get("state")
     if st == "disabled":
         return "Claude Code: off (cloud profile)"
