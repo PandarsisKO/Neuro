@@ -83,10 +83,41 @@ def test_already_in_library_entries_get_their_source_id_resolved(project_with_co
 def test_origin_carries_the_collection_id(project_with_collection):
     pid, cid = project_with_collection
     r = reservoir.rescan(pid, cid, enumerate=_fake_enumerate(_entries(1)))
-    row = db.connect().execute("SELECT origin FROM candidate_projects WHERE candidate_id=?", (r["candidate_ids"][0],)).fetchone()
+    # The candidate is global; its discovery origin belongs to this project.
+    # Another test/project may already know vid1 through ordinary exploration.
+    row = db.connect().execute("SELECT origin FROM candidate_projects WHERE candidate_id=? AND project_id=?",
+                               (r["candidate_ids"][0], pid)).fetchone()
     import json
     origin = json.loads(row["origin"])
     assert origin["kind"] == "reservoir_rescan" and origin["collection_id"] == cid
+
+
+def test_rescan_preserves_another_projects_distinct_discovery_origin(project_with_collection):
+    """One shared candidate must retain both projects' independent provenance."""
+    import json
+
+    pid, collection_id = project_with_collection
+    other_pid = db.create_project("S55 earlier exploration", brief="other project")["id"]
+    entries = _entries(1, prefix="s55-origin-shared")
+    entry = entries[0]
+    earlier_origin = {"kind": "exploration", "query": "earlier independent search"}
+    candidate_id = candidates.remember(
+        [{"external_id": entry["id"], "url": entry["url"], "title": entry["title"]}],
+        "youtube", other_pid, earlier_origin,
+    )[0]
+
+    scanned = reservoir.rescan(pid, collection_id, enumerate=_fake_enumerate(entries))
+    assert scanned["candidate_ids"] == [candidate_id]
+    origins = {
+        row["project_id"]: json.loads(row["origin"])
+        for row in db.connect().execute(
+            "SELECT project_id, origin FROM candidate_projects "
+            "WHERE candidate_id=? AND project_id IN (?,?)", (candidate_id, other_pid, pid),
+        )
+    }
+    assert origins[other_pid] == earlier_origin
+    assert origins[pid]["kind"] == "reservoir_rescan"
+    assert origins[pid]["collection_id"] == collection_id
 
 
 def test_zero_provider_calls_and_zero_jobs_enqueued(project_with_collection, monkeypatch):
