@@ -246,6 +246,29 @@ def test_catalog_enumerator_requires_official_api_and_keeps_listing_metadata_sma
                                     "outbound_domain": None, "availability": "available"}
 
 
+def test_listing_omitted_author_is_not_a_deletion_signal(monkeypatch):
+    monkeypatch.setattr(community, "reddit_api_configured", lambda: True)
+    monkeypatch.setattr(community, "_api_get", lambda _url: {"data": {"after": None, "children": [
+        {"data": {"id": "one", "permalink": "/r/smallbusiness/comments/one/title/", "title": "A", "author": None}},
+        {"data": {"id": "two", "permalink": "/r/smallbusiness/comments/two/title/", "title": "B", "author": "[deleted]"}},
+        {"data": {"id": "three", "permalink": "/r/smallbusiness/comments/three/title/", "title": "C", "removed_by_category": "moderator"}},
+    ]}})
+    rows, _ = community.enumerate_subreddit_page("smallbusiness")
+    assert [r["metadata"]["availability"] for r in rows] == ["available", "deleted", "removed"]
+
+
+def test_scan_counts_unique_posts_but_records_duplicate_listing_observations():
+    project = _project("duplicate page")
+    catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")
+    first = _listing("same") | {"published_at": "2026-09-18"}
+    duplicate = first | {"title": "newer listing observation"}
+    result = reservoir.scan_subreddit_page(project, catalog["id"], fetch_page=lambda _sub, _after: ([first, duplicate], None))
+    state = __import__("json").loads(db.kv_get(f"reservoir:scan:{project}:{catalog['id']}") or "{}")
+    assert result["total"] == 1 and len(result["candidate_ids"]) == 1
+    assert state["known_posts"] == 1 and state["observed"] == 2
+    assert state["observed_oldest"] == state["observed_newest"] == "2026-09-18"
+
+
 def test_refresh_tracks_distinct_new_posts_and_semantic_metadata_changes():
     project = _project("refresh")
     catalog = community.attach_subreddit_catalog(project, "https://www.reddit.com/r/smallbusiness/")

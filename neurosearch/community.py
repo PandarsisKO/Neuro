@@ -255,6 +255,7 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
         outbound = post.get("url_overridden_by_dest") or post.get("url")
         from urllib.parse import urlparse
         outbound_domain = urlparse(outbound).hostname.lower() if isinstance(outbound, str) and outbound else None
+        availability = "removed" if post.get("removed_by_category") else ("deleted" if post.get("author") == "[deleted]" else "available")
         rows.append({"external_id": f"reddit:{post['id']}", "url": "https://www.reddit.com" + post["permalink"],
                      "title": post.get("title"), "description": (post.get("selftext") or "")[:2000] or None,
                      "creator": post.get("author"),
@@ -264,7 +265,7 @@ def enumerate_subreddit_page(subreddit: str, after: str | None = None, *, limit:
                                   "comment_count": post.get("num_comments"), "flair": post.get("link_flair_text"),
                                   "created_utc": post.get("created_utc"), "outbound_url": outbound,
                                   "outbound_domain": outbound_domain,
-                                  "availability": "deleted" if post.get("removed_by_category") or post.get("author") in ("[deleted]", None) else "available"}})
+                                  "availability": availability}})
     next_cursor = listing.get("after")
     return rows, str(next_cursor) if next_cursor else None
 

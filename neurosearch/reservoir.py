@@ -160,13 +160,18 @@ def begin_subreddit_refresh(project_id: str, collection_id: str) -> dict[str, An
     t = time.time()
     known_posts = len(db.collection_candidate_ids(collection_id))
     mode = "refresh" if prior or known_posts else "initial"
+    previous_completed = None
+    if prior.get("status") == "complete":
+        previous_completed = {k: prior.get(k) for k in ("run_id", "generation", "mode", "known_posts", "new", "pages", "observed", "started_at", "finished_at", "reason")}
+    elif prior.get("previous_completed"):
+        previous_completed = prior["previous_completed"]
     state = {"run_id": db.new_id(), "generation": int(prior.get("generation") or 0) + 1,
              "mode": mode, "status": "queued", "cursor": None, "pages": 0, "observed": 0,
              "new": 0, "initial_known": 0, "known_posts": len(db.collection_candidate_ids(collection_id)),
              "baseline_known": known_posts, "started_at": t, "updated_at": t,
              "finished_at": None, "reason": None, "access": "reddit_api", "endpoint": "new",
              "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS,
-             "previous_completed": prior if prior.get("status") == "complete" else prior.get("previous_completed")}
+             "previous_completed": previous_completed}
     if not db.kv_compare_set(key, raw, json.dumps(state, sort_keys=True)):
         raise RuntimeError("subreddit scan changed; retry refresh")
     return state
@@ -246,22 +251,29 @@ def scan_subreddit_page(project_id: str, collection_id: str, *, expected_run_id:
         "SELECT c.external_id FROM collection_candidates cc JOIN candidates c ON c.id=cc.candidate_id WHERE cc.collection_id=?",
         (collection_id,),
     ).fetchall()}
-    entries = [r for r in rows if r.get("external_id")]
+    # A listing can repeat a post within one page.  Observations retain that fact, while membership and
+    # unique-post counts use each external id exactly once.
+    entries_by_id = {str(r["external_id"]): r for r in rows if r.get("external_id")}
+    entries = list(entries_by_id.values())
     new_count = sum(1 for r in entries if r["external_id"] not in known)
     now = time.time()
     pages = int(prior.get("pages") or 0) + 1
-    observed = int(prior.get("observed") or 0) + len(entries)
+    observed = int(prior.get("observed") or 0) + len(rows)
     capped = pages >= SUBREDDIT_MAX_PAGES or observed >= SUBREDDIT_MAX_OBSERVATIONS
     status = "complete" if not next_cursor or capped else "partial"
     terminal_reason = "application limit reached" if capped and next_cursor else terminal_reason
     known_posts = len(known) + new_count
     mode = prior.get("mode") or "initial"
+    dates = [str(r.get("published_at")) for r in entries if r.get("published_at")]
+    oldest = min([d for d in [prior.get("observed_oldest"), *dates] if d], default=None)
+    newest = max([d for d in [prior.get("observed_newest"), *dates] if d], default=None)
     state = {**prior, "status": status, "cursor": None if status == "complete" else next_cursor, "pages": pages,
              "observed": observed, "known_posts": known_posts,
              "new": int(prior.get("new") or 0) + (new_count if mode == "refresh" else 0),
              "initial_known": int(prior.get("initial_known") or 0) + (new_count if mode == "initial" else 0),
              "started_at": prior.get("started_at") or now, "updated_at": now, "finished_at": now if status == "complete" else None,
              "reason": terminal_reason, "access": "reddit_api", "endpoint": "new",
+             "observed_oldest": oldest, "observed_newest": newest,
              "page_limit": SUBREDDIT_MAX_PAGES, "observation_limit": SUBREDDIT_MAX_OBSERVATIONS}
     state_raw = json.dumps(state, sort_keys=True)
     try:
