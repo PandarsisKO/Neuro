@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f9">
-<meta name="neurosearch-ui-version" content="0.63.92">
+<meta name="neurosearch-ui-version" content="0.63.94">
 <title>Neuro Search</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
@@ -52,6 +52,7 @@
         <span class="muted text-xs" id="shareChatMsg"></span>
         <button class="small ghost danger" onclick="deleteChat()">Delete</button>
       </div>
+      <div id="chatDelta"></div>
       <div id="chat"></div>
       <div id="askbar"><div class="inner">
         <div class="grow">
@@ -176,7 +177,7 @@
               <select id="srcLen" onchange="filterSources()" style="width:auto;font-size:12.5px"><option value="">any length</option><option value="short">under 15 min</option><option value="mid">15–45 min</option><option value="long">45 min +</option><option value="books">books & documents</option></select>
             </label>
             <label class="row" style="gap:4px;width:auto">Sort:
-              <select id="srcSort" onchange="filterSources()" style="width:auto;font-size:12.5px"><option value="default">activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest</option><option value="title">title</option></select>
+              <select id="srcSort" onchange="filterSources()" style="width:auto;font-size:12.5px"><option value="added">recently added</option><option value="default">activity</option><option value="value">most valuable</option><option value="unused">least used</option><option value="longest">longest</option><option value="newest">newest published</option><option value="title">title</option></select>
             </label>
             <label class="row" style="gap:4px;width:auto" title="Group by channel, subreddit, domain or other origin — the same 'channel' every source already carries"><input type="checkbox" id="srcGroupToggle" checked onchange="state.srcGroupBy=this.checked;loadSources()"> Group by origin</label>
           </div>

@@ -122,6 +122,17 @@
   .st{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--chip)}
   .st.ready{color:var(--ok)}.st.failed{color:var(--bad)}.st.skipped{color:var(--muted)}.st.pending,.st.queued{color:var(--muted)}.st.running,.st.active{color:var(--accent);background:var(--user)}.st.done{color:var(--ok)}
   .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:transparent;border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
+  /* CHR2 (docs/CHAT-REFRESH-PLAN.md §13): the "What's new" chat delta panel. Deliberately minimal — it reuses
+     .card/.muted/.chip/.small/.text-xs rather than introducing its own visual language. */
+  .chatDelta .deltaSummary{display:flex;align-items:center;gap:8px;cursor:pointer}
+  .chatDelta .deltaSummary:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:6px}
+  .chatDelta .deltaBody{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .deltaGroup{margin-bottom:10px}
+  .deltaGroup:last-child{margin-bottom:0}
+  .deltaGroupHead{font-weight:600;margin-bottom:4px;cursor:default}
+  details.deltaGroup>summary.deltaGroupHead{cursor:pointer}
+  .deltaRow{padding:3px 0;font-size:13.5px;line-height:1.4}
+  .deltaSupporting{color:var(--muted)}
   @keyframes s{to{transform:rotate(360deg)}}
   dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;width:min(820px,94vw);padding:18px}
   dialog::backdrop{background:rgba(0,0,0,.45)}

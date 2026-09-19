@@ -14,6 +14,7 @@ globalThis.newChat = async function newChat() {
   await loadChats(); await selectChat(c.id); showView('chats');
 }
 globalThis.selectChat = async function selectChat(id, push = true) {
+  clearChatDelta();   // CHR2 item 11: never let a prior chat's What's New sit above the newly selected one
   state.conv = id;
   document.querySelectorAll('#chatList .c').forEach((el, i) => el.classList.toggle('active', state.chats[i]?.id === id));
   const c = state.chats.find(x => x.id === id);
@@ -22,8 +23,9 @@ globalThis.selectChat = async function selectChat(id, push = true) {
     $('#chat').innerHTML = listState('loading', { label: 'Loading this chat…' });
     let ms; try { ms = await api('/api/conversations/' + id); }
     catch (e) { $('#chat').innerHTML = listState('failed', { message: "Couldn't load this chat.", retry: `selectChat('${id}', false)` }); if (push) showView('chats'); $('#q').focus(); return; }
+    if (state.conv !== id) return;   // a newer selectChat() call already took over
     if (!ms.length) { emptyChat(); if (c?.title && (state.project.questions || []).includes(c.title)) $('#q').value = c.title; }
-    else ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false }));
+    else { ms.forEach(m => addMsg(m.role, m.content, m.citations || [], { meta: m.meta || {}, no_pin: false })); scheduleChatDelta(id, ms); }
   } else emptyChat();
   if (push) { showView('chats'); }
   $('#q').focus();
@@ -278,6 +280,7 @@ globalThis.ask = async function ask() {
     if (!r) throw new Error('the answer stream ended before the answer did — nothing was saved; ask again');
     thinking.remove();
     const m = addMsg('assistant', r.answer, r.citations, r);
+    clearChatDelta();   // CHR2 item 11: a new question invalidates the baseline the last What's New was computed against; recompute only the next time this chat is opened
     const c = state.chats.find(x => x.id === state.conv);
     if (c && !c.title) { await put('/api/conversations/' + state.conv, { title: q.slice(0, 60) }); await loadChats(); $('#chatTitle').textContent = q.slice(0, 60); }
     if (r.ingest_jobs?.some(j => j.job_id)) watchIngest(m, r.ingest_jobs.filter(j => j.job_id).map(j => j.job_id));
@@ -311,5 +314,184 @@ globalThis.watchIngest = async function watchIngest(msgEl, jobIds) {
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
 
 
+
+
+// ---- CHR2: Conversation Delta ("What's new") — docs/CHAT-REFRESH-PLAN.md §13 ----
+// Displays CHR1's deterministic /delta result inside the open chat only (no chat-list badge, no new dashboard).
+// Exact chats get one quiet, single-flight check on open; Approximate/legacy chats get a lazy "Check what's new"
+// affordance instead, because the reconstruction there can be slow (~12s measured on a real large legacy chat)
+// and must never run just from opening the chat. CHR3 (the paid refresh synthesis) is out of scope here — this
+// only displays CHR1's already-computed result; it never mutates a Claim or the plan.
+globalThis.CHATDELTA = { conv: null, pendingAuto: null };
+
+// Item 2: a cheap, conservative Exact-vs-legacy preflight over the message rows selectChat() already loaded —
+// no extra network round trip just to decide whether the sometimes-slow /delta endpoint is safe to fire
+// automatically. Conservative on purpose: any doubt about a real answer's evidence completeness reads as
+// "legacy," never "exact" — guessing wrong the other way risks launching a request nobody asked for.
+globalThis.chatDeltaMode = function chatDeltaMode(ms) {
+  const real = (ms || []).filter(m => m.role === 'assistant' && (m.content || '').trim() && !(m.meta || {}).incomplete);
+  if (!real.length) return null;                                // empty/new chat: no What's New UI at all
+  const exact = real.every(m => { const ev = m.meta && m.meta.evidence; return ev && typeof ev === 'object' && ev.complete !== false; });
+  return exact ? 'exact' : 'legacy';
+}
+
+globalThis.clearChatDelta = function clearChatDelta() {
+  CHATDELTA.conv = null; CHATDELTA.pendingAuto = null;
+  const el = $('#chatDelta'); if (el) el.innerHTML = '';
+}
+
+// Item 3/12: called only from selectChat(), right after messages are rendered for THIS open — never from
+// pollTick(), never on a repeating timer. An automatic Exact check must not launch while the tab is hidden; a
+// chat opened while hidden gets exactly one pending check, fired once by the visibilitychange listener below
+// (never a periodic watcher) — if it's still hidden next time the chat is opened, the newer schedule just wins.
+globalThis.scheduleChatDelta = function scheduleChatDelta(id, ms) {
+  CHATDELTA.conv = id; CHATDELTA.pendingAuto = null;
+  const el = $('#chatDelta'); if (!el) return;
+  const mode = chatDeltaMode(ms);
+  if (!mode) { el.innerHTML = ''; return; }
+  if (mode === 'exact') {
+    if (document.hidden) { CHATDELTA.pendingAuto = id; return; }
+    loadChatDelta(id, true);
+  } else {
+    el.innerHTML = renderDeltaAffordance(id);
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && CHATDELTA.pendingAuto && CHATDELTA.pendingAuto === state.conv) {
+    const id = CHATDELTA.pendingAuto; CHATDELTA.pendingAuto = null;
+    loadChatDelta(id, true);
+  }
+});
+
+// Item 3/4: the ONE loader for both paths. `quiet=true` is the automatic Exact check — ack:false, never lights
+// NSACK's bar, exactly the pattern loadJobs()/loadSources() already use for background refreshes. `quiet=false`
+// is the user clicking the Approximate affordance — a normal, acknowledged api() call. Either way this is
+// single-flight per conversation via the same POLL.enter/leave coalescing every other list refresh in this app
+// uses, keyed so two chats' checks can never collide.
+globalThis.loadChatDelta = async function loadChatDelta(id, quiet) {
+  if (!POLL.enter('conversation-delta:' + id, quiet)) return;
+  const el = $('#chatDelta');
+  // Exact checks measure in the hundreds of ms; a loading state that flashes for that long is worse than none,
+  // so it only appears if the (already-launched) request is still running after a short delay.
+  const showLoading = setTimeout(() => {
+    if (state.conv === id) el.innerHTML = `<div class="chatDelta muted text-xs"><span class="spin"></span> ✨ Checking for changes…</div>`;
+  }, quiet ? 350 : 0);
+  if (!quiet && state.conv === id) el.innerHTML = `<div class="chatDelta muted text-xs"><span class="spin"></span> Checking this older conversation…</div>`;
+  let r;
+  try { r = await api('/api/conversations/' + id + '/delta', quiet ? { ack: false } : {}); }
+  catch (e) {
+    clearTimeout(showLoading);
+    POLL.leave('conversation-delta:' + id, q => loadChatDelta(id, q));
+    if (state.conv === id) el.innerHTML = quiet ? '' : `<div class="chatDelta muted text-xs">Couldn't check for changes. <button class="small ghost" onclick="loadChatDelta('${id}', false)">Retry</button></div>`;
+    return;
+  }
+  clearTimeout(showLoading);
+  POLL.leave('conversation-delta:' + id, q => loadChatDelta(id, q));
+  if (state.conv !== id) return;   // Item 11: a late response never paints into a chat the user has since left
+  renderChatDelta(id, r, quiet);
+}
+
+// ---- rendering (Items 5-10): one compact line first, one click to the useful groups, "Show N more" for
+// anything large — never a five-click drill-down, never a raw backend field (overlap=, claim_id=, previous_state)
+// in the DOM.
+globalThis.CHATDELTA_GROUPS = [
+  { key: 'earlier', label: 'Changes an earlier answer', cats: ['contradicts', 'claim_transition'] },
+  { key: 'plan', label: 'Could affect your Master Plan', cats: ['plan_impact'] },
+  { key: 'useful', label: 'Adds useful information', cats: ['resolves_gap', 'new_finding'] },
+];
+globalThis.DELTA_SHOW_SLICE = 8;   // Item 8: a small initial slice per large group; one more click reveals the rest
+
+globalThis.deltaGroupUnits = function deltaGroupUnits(key, r) {
+  if (key === 'plan') {
+    // Item 12: only real, known plan-impact items — r.plan_impacts is already filtered to known:true with items.
+    const flat = [];
+    for (const u of (r.plan_impacts || [])) for (const it of (u.plan_impact && u.plan_impact.items) || []) flat.push(Object.assign({ _kind: 'plan' }, it));
+    return flat;
+  }
+  const g = CHATDELTA_GROUPS.find(x => x.key === key);
+  return (r.material_changes || []).filter(u => g.cats.includes(u.category));
+}
+globalThis.deltaRow = function deltaRow(u) {
+  if (u._kind === 'plan') return `<div class="deltaRow">${esc(u.why || u.label || 'A plan step may be affected.')}</div>`;
+  const seen = u.already_seen_elsewhere_in_chat ? ' <span class="muted text-xs">· Already surfaced later in this chat</span>' : '';
+  const touches = u.touches_questions && u.touches_questions.length > 1 ? `<div class="muted text-xs">Touches ${u.touches_questions.length} things you asked</div>` : '';
+  let text;
+  if (u.category === 'new_excerpt') text = `${esc(u.title || 'New excerpt')}${u.locator ? ' @ ' + esc(u.locator) : ''} — ${esc((u.text || '').slice(0, 160))}`;
+  else if (u.category === 'new_finding') text = esc((u.text || '').slice(0, 200));
+  else text = esc(u.why_relevant || 'This changed since the earlier answer.');
+  return `<div class="deltaRow">${text}${seen}${touches}</div>`;
+}
+globalThis.deltaGroupRows = function deltaGroupRows(key, units) {
+  if (!units.length) return '';
+  const shown = units.slice(0, DELTA_SHOW_SLICE);
+  const rest = units.length - shown.length;
+  const restId = 'deltaRest_' + key + '_' + Math.random().toString(36).slice(2, 8);
+  return shown.map(deltaRow).join('') +
+    (rest > 0 ? `<div id="${restId}" hidden>${units.slice(DELTA_SHOW_SLICE).map(deltaRow).join('')}</div>
+      <button class="small ghost" onclick="const r=$('#${restId}');r.hidden=false;this.remove()">Show ${rest} more</button>` : '');
+}
+// Item 9: rollups and new_claims render as aggregate SENTENCES, never as generated per-row lists.
+globalThis.deltaSupportingSentence = function deltaSupportingSentence(r) {
+  const bits = [];
+  const supporting = r.supporting_changes || [];
+  const excerpts = supporting.filter(u => u.category === 'new_excerpt' || u.category === 'corroborates');
+  const newClaims = supporting.filter(u => u.category === 'new_claim');
+  if (excerpts.length) bits.push(deltaGroupRows('supporting-excerpts', excerpts));
+  if (newClaims.length) bits.push(deltaGroupRows('supporting-claims', newClaims));
+  if (r.new_claims && r.new_claims.total > r.new_claims.shown) bits.push(`<div class="deltaRow muted text-xs">${(r.new_claims.total - r.new_claims.shown).toLocaleString()} more newly relevant Claims</div>`);
+  if (r.rollups && Object.values(r.rollups).some(Boolean)) {
+    const ro = r.rollups;
+    bits.push(`<div class="deltaRow muted text-xs">A lot of research changed since this older chat: ${ro.sources_changed.toLocaleString()} sources · ${ro.findings_added.toLocaleString()} findings · ${ro.claims_added_or_updated.toLocaleString()} Claim updates${ro.claim_evidence_added ? ` · ${ro.claim_evidence_added.toLocaleString()} pieces of evidence` : ''}</div>`);
+  }
+  if (r.approximate_limitations && r.approximate_limitations.length) bits.push(`<div class="deltaRow muted text-xs">${r.approximate_limitations.map(esc).join(' ')}</div>`);
+  return bits.join('');
+}
+globalThis.renderDeltaExpanded = function renderDeltaExpanded(id, r) {
+  let out = '';
+  for (const g of CHATDELTA_GROUPS) {
+    const units = deltaGroupUnits(g.key, r);
+    if (!units.length) continue;   // Item 12: no group renders on an empty/unknown result
+    out += `<div class="deltaGroup"><div class="deltaGroupHead">${esc(g.label)}</div>${deltaGroupRows(g.key, units)}</div>`;
+  }
+  const supportingHtml = deltaSupportingSentence(r);
+  if (supportingHtml) out += `<details class="deltaGroup deltaSupporting"><summary class="deltaGroupHead">More supporting evidence</summary>${supportingHtml}</details>`;
+  if (!out) out = `<div class="deltaRow muted">${r.irrelevant_new_source_count ? `${r.irrelevant_new_source_count} source${r.irrelevant_new_source_count === 1 ? ' was' : 's were'} added or changed, but none matched what this conversation covered.` : 'Nothing important changed.'}</div>`;
+  return out;
+}
+globalThis.deltaCompactLine = function deltaCompactLine(r) {
+  const n = (r.material_changes || []).length;
+  if (!n) return r.irrelevant_new_source_count ? 'Nothing important changed.' : 'Nothing new.';
+  const since = r.latest_activity_at ? new Date(r.latest_activity_at * 1000).toLocaleDateString() : '';
+  return `${n} meaningful change${n === 1 ? '' : 's'}${since ? ' since ' + since : ''}`;
+}
+globalThis.toggleDeltaExpanded = function toggleDeltaExpanded(head) {
+  const body = head.parentElement.querySelector('.deltaBody'); if (body) body.hidden = !body.hidden;
+}
+globalThis.renderChatDelta = function renderChatDelta(id, r, quiet) {
+  const el = $('#chatDelta'); if (!el || state.conv !== id) return;
+  // Item 10a: truly nothing changed. For the automatic Exact check the temporary checking state just disappears
+  // — no persistent card cluttering ordinary chat use; an explicit click still gets a one-line acknowledgement.
+  if (r.nothing_new && !r.irrelevant_new_source_count) {
+    el.innerHTML = quiet ? '' : `<div class="chatDelta muted text-xs">✨ Nothing new since this chat's last question.</div>`;
+    return;
+  }
+  const approxTag = r.mode !== 'exact' ? ' <span class="muted text-xs">· Approximate</span>' : '';
+  el.innerHTML = `<div class="chatDelta card" style="margin-bottom:8px;padding:10px 14px">
+    <div class="deltaSummary" role="button" tabindex="0" onclick="toggleDeltaExpanded(this)" onkeydown="if(event.key==='Enter')toggleDeltaExpanded(this)">
+      <span>✨ What's new</span><span class="muted">${esc(deltaCompactLine(r))}</span>${approxTag}
+    </div>
+    <div class="deltaBody" hidden>${renderDeltaExpanded(id, r)}</div>
+  </div>`;
+}
+// Item 4: the lazy Approximate/mixed affordance — a real user click, so it goes through loadChatDelta(id, false),
+// the normal acknowledged api() path, never ack:false.
+globalThis.renderDeltaAffordance = function renderDeltaAffordance(id) {
+  // CL-6 (design drift gate): no emoji directly inside a <button> label that already says the same thing in
+  // words -- the ✨ marker lives in the surrounding non-button text instead, same as the other delta states.
+  return `<div class="chatDelta muted text-xs" style="margin-bottom:8px">
+    ✨ <button class="small ghost" onclick="loadChatDelta('${id}', false)">Check what's new</button>
+    <span>Older chat · approximate check</span>
+  </div>`;
+}
 
 export const moduleName = "chats";

@@ -1,6 +1,6 @@
 # Conversation Delta / Chat Refresh — plan
 
-**Status (2026-09-18): CHR0 shipped. CHR1 implemented, pending push.** This is no longer a planning-only document.
+**Status (2026-09-18): CHR0 shipped. CHR1 shipped and closed at `308f9d3`. CHR2 in progress.** This is no longer a planning-only document.
 
 Kyle: *"I might not want to retype out a chat, just see if the intelligence surfaces new information I should be
 aware of based on new findings."* And, sharpening it: *"A refresh is valuable when it saves me from repeating an
@@ -291,26 +291,43 @@ transition or a project-wide research total is something this specific chat lear
 
 ## 13. UX (CHR2)
 
-No chat-list badge (Kyle: open chat only). No new research dashboard inside the chat. Progressive disclosure:
+No chat-list badge (Kyle: open chat only). No new research dashboard inside the chat. One region between
+`#chatHead` and `#chat` (`#chatDelta`), attached to the conversation header, never inserted as a fake assistant
+message. Progressive disclosure:
 
 ```
 ✨ What's new
 3 meaningful changes since Sep 14
 ```
 
-Opening it shows, in order and only the groups that exist:
+**The request is NOT made once on every chat open — that was the pre-CHR2 placeholder rule, and it is wrong for
+a large legacy conversation whose reconstruction measures ~12 s (§16.C).** The actual rule, decided during CHR2:
+
+- **Exact chat** (every real successful assistant answer in the conversation has a complete `meta.evidence`
+  snapshot, checked cheaply from the message rows `selectChat()` already loaded — no extra request just to find
+  out): `GET .../delta` fires automatically, once, on open — `ack:false`, single-flight per conversation via
+  `POLL.enter/leave('conversation-delta:<id>', ...)`, never while `document.hidden`, never part of `pollTick()`.
+- **Approximate or mixed chat** (any real successful answer missing `meta.evidence`, or explicitly
+  `complete: false`) and any legacy pre-CHR0 chat: **no automatic request.** A compact "✨ Check what's new ·
+  Older chat · approximate check" affordance is shown instead; the expensive reconstruction runs only when the
+  user clicks it, through the normal acknowledged `api()` call (not `ack:false`).
+- An empty/new chat (no real assistant answers yet) gets no What's New UI at all.
+
+Opening the compact card shows, in order and only the groups that exist:
 
 - **Changes an earlier answer**
-- **Adds useful information**
 - **Could affect your Master Plan** — only when `plan_impact` returned `known=True` with items
-- **More supporting evidence** — collapsed by default
+- **Adds useful information**
+- **More supporting evidence** — collapsed by default, includes rollups/`new_claims` aggregate counts and, for
+  Approximate/mixed results, the `approximate_limitations` text (shown here, once, not as persistent pre-check
+  clutter)
 
 Empty-but-busy: *"Nothing important changed. 15 sources were added to the project, but none matched what this
-conversation covered."* No project change at all: no persistent UI. Legacy chat: the Approximate line. Primary
-paid action: **Refresh this chat · estimated $X.XX**, with a one-line "what you'll get" above it.
+conversation covered."* No project change at all: for an automatic Exact check, the temporary checking state
+simply disappears — no persistent card. Legacy chat: the Approximate line, only after the user asks for it.
 
-Foreground rules apply: the request is made once on chat open (not on the 3 s poll), single-flight per chat
-(`POLL.enter/leave`), never while `document.hidden`.
+CHR3 (the paid "Refresh this chat" synthesis call) is out of scope for CHR2: Plan Impact is read-only display
+here, and no dead "Refresh this chat" button is shipped ahead of it.
 
 ## 14. Rungs and gates
 
@@ -798,3 +815,86 @@ an FTS-relevant source to an unrelated Claim; this document's status lines agree
 CHR2 begins from the product rules recorded in this round's item 4, plus §13's existing UX sketch: compact summary
 first, progressive disclosure, supporting/new-Claim rollups collapsed, no chat-list badge, no polling, Plan Impact
 read-only until an explicit user action.
+### CHR2 — open-chat What's New UI (this round, not yet pushed)
+
+Implements §13 exactly as revised in item 0 above: `#chatDelta` between `#chatHead` and `#chat`
+(`neurosearch/web/index.html`); the Exact-vs-legacy preflight, both loaders, and all rendering in
+`neurosearch/web/js/chats.js`; a handful of new CSS rules reusing existing tokens/classes in
+`neurosearch/web/styles.css`. No new frontend framework, state manager, or polling system — `state`, `api`, `POLL`,
+`NSACK`, `listState` and the existing `<details>`/`.chip`/`.card` disclosure conventions are all reused as-is.
+
+**Preflight (item 2).** `chatDeltaMode(ms)` classifies the conversation from the message rows `selectChat()` already
+loaded, no extra request: every real successful assistant answer (non-empty content, not `meta.incomplete`) must
+carry a `meta.evidence` object with `complete !== false`, or the chat is `'legacy'`; no real assistant answers at
+all is `null` (no What's New UI). This mirrors `conversation_delta._questions()`'s own exact/approximate test
+exactly, so the UI's guess about mode always agrees with what `/delta` would actually compute.
+
+**Automatic Exact check (item 3) / lazy Approximate affordance (item 4).** One loader, `loadChatDelta(id, quiet)`,
+serves both: `quiet=true` is the automatic path (`api(path, {ack:false})`, no `NSACK` acknowledgement, exactly
+`loadJobs`/`loadSources`'s existing convention); `quiet=false` is the user's own click on the "✨ Check what's new"
+affordance (a normal acknowledged `api()` call). Both are single-flight via the SAME `POLL.enter('conversation-delta:
+<id>', quiet)` / `POLL.leave(...)` primitive every other background refresh in this app already uses — no second
+coalescing mechanism. A loading state only appears after a short delay for the (already-launched) automatic check,
+so a normal few-hundred-ms response never flashes one.
+
+**Hidden-document guard (item 12).** `document.hidden` is checked once, at schedule time; a hidden Exact chat sets
+one `CHATDELTA.pendingAuto`, fired once by a single `visibilitychange` listener when the tab becomes visible again
+— no periodic watcher, and only if that pending chat is still the open one.
+
+**Stale-UI prevention (item 11).** `selectChat()` calls `clearChatDelta()` on every entry, before doing anything
+else, and re-checks `state.conv === id` both after the (possibly slow) message fetch and again when a `/delta`
+response lands, so a response for a chat the user has since left is never painted. `ask()` calls `clearChatDelta()`
+immediately after a new answer renders — no automatic recompute; the next `selectChat()` of that conversation
+computes fresh.
+
+**Rendering (items 5-10).** One compact card first (`renderChatDelta`): a one-line summary, a quiet "· Approximate"
+tag when the mode isn't exact, nothing else — click (or Enter, it's a `role="button"`) to expand. Expanded content
+groups `material_changes` into the three named priority groups in order — "Changes an earlier answer", "Could
+affect your Master Plan" (only when `plan_impacts` actually has known items with content — never an empty warning),
+"Adds useful information" — then a separate `<details>` (collapsed by default) for supporting evidence: explicit
+`new_excerpt`/`corroborates`/`new_claim` rows, `new_claims.total - shown` as one sentence, `rollups` as one
+aggregate sentence (never expanded into per-item rows), and `approximate_limitations` text once, only here. Every
+row uses only user-readable fields (`why_relevant`, Finding/excerpt text, Plan Impact `why`/`label`) — no
+`overlap=`, `claim_id=`, or raw `previous_state` ever reaches the DOM. `already_seen_elsewhere_in_chat` renders as a
+quiet inline annotation, never a suppression. A group over 8 items shows the first 8 with a "Show N more" control
+that reveals the rest in one click (the remainder sits in a `hidden` sibling, not truncated/dropped).
+
+**Empty states (item 10).** Truly nothing (`nothing_new` and no `irrelevant_new_source_count`): the automatic
+Exact check's temporary "Checking…" state clears to nothing, no persistent card; the lazy Approximate click still
+gets one quiet acknowledging line. Busy-but-irrelevant (`nothing_new` true but sources changed): the compact card
+renders the existing "Nothing important changed. N sources were added or changed, but none matched what this
+conversation covered" copy.
+
+**CHR3 stayed out (item 13/18).** No synthesis call, no Refresh endpoint, no Claim/plan mutation path — Plan Impact
+is read-only display sourced straight from CHR1's already-computed `plan_impacts`; no product surface today has an
+explicit "review this plan impact" action to link to, so none is added.
+
+**Gates (item 15, all 18).** A new harness, `tests/js/run-chat-delta.mjs`, runs the SHIPPED `api.js`+`chats.js` in
+jsdom against a scripted `uiFetch` — same technique as `run-poll-containment.mjs` — and proves all 18 numbered
+gates (14 behavioral, 4 as static source scans for the ones behavior alone can't observe: gate 6 pollTick
+isolation, gate 7 no chat-list badge/fetch, gate 9's static confirmation that `ask()` calls `clearChatDelta()`,
+gate 18 no CHR3 reference). One correction made while writing the harness: gate 5's "single-flight" does not mean
+"call it 3 times, fetch once ever" — `POLL`'s actual, already-shipped contract is one run + at most one coalesced
+rerun for callers that arrive while it's in flight (identical to `loadJobs`/`loadSources`) — the gate was rewritten
+to assert that real contract (2 requests for 3 back-to-back opens, never 3) rather than a stricter one nothing in
+this codebase implements. `21/21` pass. Also re-ran targeted (`test_chr0_conversation_baseline.py`,
+`test_chr1_conversation_delta.py`, `test_p2_project_delta.py`, `test_k7_chat_truncation.py`,
+`test_s24_lost_chat_and_fk.py`, `test_s26_chat_titles.py`) and the full `test_core.py` + all `tchunk*` groups:
+green, apart from the same three pre-existing, unrelated failures on record throughout this document — plus one
+new, self-inflicted failure caught and fixed in this round: `test_s50_design_drift.py`'s CL-6 check
+(`test_emoji_beside_a_label_the_button_already_states_is_removed`) flagged the "✨ Check what's new" `<button>`
+label; the emoji now sits outside the `<button>` element, in the surrounding text, matching every other delta
+state's existing pattern.
+
+**Manual usability pass (item 16) — partially completed.** No live `neurosearch` server was reachable from this
+session's sandboxed shell (the working copy has no running instance, and this environment cannot start one against
+the real corpus), so states A/B/C could not be clicked through in a live browser this round. Compensated with the
+jsdom behavioral harness above, which exercises the real shipped DOM-manipulation code (not a reimplementation) for
+all three states' underlying logic: an Exact chat with changes rendering a useful compact-then-expanded card
+(state A), an Exact chat with `nothing_new` leaving no persistent card (state B), and a legacy/Approximate chat
+never auto-firing `/delta` with the lazy affordance working correctly (the mechanics of state C — gates 2-4). The
+one thing genuinely unverified is subjective UI feel against the real large legacy conversation
+(`6320f26515a143edb964175ed109f143`, ~12.6s cold) in an actual browser session — recorded here as an open item for
+Kyle to check once this is on a machine with the live app running, rather than claimed as done.
+
+Not yet pushed — `git push` requires a GitHub credential only present on Kyle's Mac, never in this session.
