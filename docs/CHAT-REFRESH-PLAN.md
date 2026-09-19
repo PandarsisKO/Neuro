@@ -898,3 +898,34 @@ one thing genuinely unverified is subjective UI feel against the real large lega
 Kyle to check once this is on a machine with the live app running, rather than claimed as done.
 
 Not yet pushed — `git push` requires a GitHub credential only present on Kyle's Mac, never in this session.
+
+### CHR2 live-gate update (Codex, 2026-09-19)
+
+The isolated Mac pass was resumed against `.chr2_livetest/` with `NEUROSEARCH_FAKE_AI=1` and a copied project
+database; the normal checkout, live database, and paid providers were not used. The two CHR2 fixes from the
+isolated worktree were ported to the real checkout: the conversation-message revision cache key in `db.py`, and
+the display-only jargon/dedup helpers in `chats.js`. The live meaningful-change pass also exposed a third
+presentation leak in claim-transition rows: raw state arrays and the backend word `Claim` were reaching the DOM.
+The renderer now turns that row into a plain-language evidence-assessment sentence while preserving the
+deterministic delta category and payload.
+
+Live Test A now passes on the exact chat `9cf17d525d9847658656e8027aa631a7` in the copied project. After a
+relevant source/evidence addition and a deterministic strength transition, the real page showed:
+
+- `✨ What's new` with `1 meaningful change since 9/18/2026`;
+- `Changes an earlier answer` with the evidence-assessment sentence;
+- collapsed `More supporting evidence` containing the new source excerpt;
+- no raw `previous_state`, `current_state`, `claim_id`, `overlap=`, or `Claim` backend label in the rendered
+  delta DOM.
+
+The direct deterministic response matched the live card (`mode=exact`, one material change, one supporting
+excerpt), and the card remained non-blocking. The exact `nothing_new` state had already been observed cleanly;
+the legacy Approximate pass had already been observed end-to-end on the real large conversation, including
+loading feedback, progressive disclosure, rollups, and limitations. The exact auto-check was observed in the
+isolated server log and the hidden-document guard remains intentional. Light-theme and narrow-viewport visual
+checks remain genuinely unverified in this automation environment, so CHR2 is not marked fully closed until
+those are either checked on a foreground browser or explicitly accepted as a gap.
+
+Gates after the port and final renderer correction: `node tests/js/run-chat-delta.mjs` = 21/21 and
+`tests/test_s50_design_drift.py` = 9/9. The ported code and this record still need the normal commit/release
+ritual; no GitHub push is claimed without verified credentials.

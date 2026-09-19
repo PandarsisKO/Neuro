@@ -2294,6 +2294,20 @@ def conversation_delta_revision(project_id: str) -> str:
                      f"tensions={r[2]}", f"targets={r[3]}", f"plan={r[4] or 'none'}"])
 
 
+def conversation_message_revision(conversation_id: str) -> str:
+    """CHR2: append-only fingerprint for this conversation's own messages.
+
+    The project revision does not move when a conversation gains another turn without a project-level change,
+    so the delta cache also needs this conversation-scoped fingerprint. COUNT paired with MAX(id) catches the
+    delete-then-reinsert case as well as ordinary appends.
+    """
+    r = connect().execute(
+        "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM messages WHERE conversation_id=?",
+        (conversation_id,),
+    ).fetchone()
+    return f"{r[0]}:{r[1]}"
+
+
 def project_view_revision(project_id: str) -> dict[str, str]:
     """R2: the cheap fingerprint of everything the Sources view renders — measured at ~6 ms against the 440 ms the
     view itself costs, which is what lets a 3 s poll ask "did anything change?" instead of rebuilding the answer.

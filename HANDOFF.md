@@ -6773,3 +6773,23 @@ compact Claim rollups, no jargon leaks, no cross-chat stale-paint bug when switc
 No application code outside the two files above was touched. No CHR1 relevance/semantics, Claim logic,
 Approximate reconstruction, backend performance, or Plan-mutation code was touched or reopened, per Kyle's
 explicit fix-scope limits for this pass.
+
+## CHR2 live-gate update: Codex continuation (2026-09-19)
+
+The isolated server was resumed on `127.0.0.1:8010` with `NEUROSEARCH_FAKE_AI=1` and the copied
+`.chr2_livetest/data` snapshot. No live SQLite database was opened. Test A was completed against the real
+isolated browser page for exact chat `9cf17d525d9847658656e8027aa631a7`: a relevant source/evidence addition
+and a deterministic strength transition produced `1 meaningful change since 9/18/2026`, the expected earlier-
+answer group, and collapsed supporting evidence. The returned delta and rendered card agreed.
+
+That live pass found one additional display leak beyond the two fixes Claude recorded: claim-transition rows
+rendered raw state arrays and the backend label `Claim`. `deltaJargonFreeText` now converts that row to a
+plain-language evidence-assessment sentence. Live DOM inspection confirmed no `previous_state`,
+`current_state`, `claim_id`, `overlap=`, or raw `Claim` label remains in the card. The original Test C legacy
+pass and the exact `nothing_new` pass remain as described above. Light-theme and narrow-viewport rendering are
+still unverified; CHR2 therefore remains open pending that explicit gap, not falsely marked complete.
+
+Ported CHR2 code and the final display correction are currently modified in the main checkout. Validation:
+`node tests/js/run-chat-delta.mjs` 21/21 and `.venv/bin/pytest -q tests/test_s50_design_drift.py` 9/9.
+The next delivery step is to commit these changes with the execution-record update; do not push without a
+verified GitHub credential.

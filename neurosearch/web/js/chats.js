@@ -411,6 +411,23 @@ globalThis.deltaGroupUnits = function deltaGroupUnits(key, r) {
   const g = CHATDELTA_GROUPS.find(x => x.key === key);
   return (r.material_changes || []).filter(u => g.cats.includes(u.category));
 }
+// CHR2 live-usability fix: keep backend-only terminology out of normal chat and collapse repeated generic
+// tension rows without changing what the delta engine detects or counts.
+globalThis.deltaJargonFreeText = function deltaJargonFreeText(u) {
+  if (u.kind === 'tension') return 'A contradiction appeared in research this answer relied on.';
+  // Claim transitions carry backend-oriented state arrays in why_relevant. Keep the distinctive subject,
+  // but turn the transition into ordinary research language before it reaches the chat DOM.
+  if (u.category === 'claim_transition' && typeof u.why_relevant === 'string') {
+    const m = u.why_relevant.match(/^Claim\s+"([\s\S]*?)"\s+changed:/);
+    if (m) return `The evidence assessment changed for “${m[1]}”.`;
+    return 'The evidence assessment changed for something this answer relied on.';
+  }
+  if (u.kind === 'evidence_target' && typeof u.why_relevant === 'string') {
+    const m = u.why_relevant.match(/resolved:\s*(.*)$/s);
+    if (m) return `Resolved: ${m[1]}`;
+  }
+  return null;
+}
 globalThis.deltaRow = function deltaRow(u) {
   if (u._kind === 'plan') return `<div class="deltaRow">${esc(u.why || u.label || 'A plan step may be affected.')}</div>`;
   const seen = u.already_seen_elsewhere_in_chat ? ' <span class="muted text-xs">· Already surfaced later in this chat</span>' : '';
@@ -418,16 +435,29 @@ globalThis.deltaRow = function deltaRow(u) {
   let text;
   if (u.category === 'new_excerpt') text = `${esc(u.title || 'New excerpt')}${u.locator ? ' @ ' + esc(u.locator) : ''} — ${esc((u.text || '').slice(0, 160))}`;
   else if (u.category === 'new_finding') text = esc((u.text || '').slice(0, 200));
-  else text = esc(u.why_relevant || 'This changed since the earlier answer.');
-  return `<div class="deltaRow">${text}${seen}${touches}</div>`;
+  else text = esc(deltaJargonFreeText(u) || u.why_relevant || 'This changed since the earlier answer.');
+  return `<div class="deltaRow"><span class="deltaRowText">${text}</span>${seen}${touches}</div>`;
+}
+globalThis.deltaDedupeRows = function deltaDedupeRows(units) {
+  const seen = new Map();
+  const order = [];
+  for (const u of units) {
+    const text = deltaRow(u);
+    if (seen.has(text)) { seen.get(text).n++; continue; }
+    const entry = { text, n: 1 };
+    seen.set(text, entry);
+    order.push(entry);
+  }
+  return order.map(({ text, n }) => n === 1 ? text : text.replace('</span>', ` <span class="muted text-xs">× ${n}</span></span>`));
 }
 globalThis.deltaGroupRows = function deltaGroupRows(key, units) {
   if (!units.length) return '';
-  const shown = units.slice(0, DELTA_SHOW_SLICE);
-  const rest = units.length - shown.length;
+  const rows = deltaDedupeRows(units);
+  const shown = rows.slice(0, DELTA_SHOW_SLICE);
+  const rest = rows.length - shown.length;
   const restId = 'deltaRest_' + key + '_' + Math.random().toString(36).slice(2, 8);
-  return shown.map(deltaRow).join('') +
-    (rest > 0 ? `<div id="${restId}" hidden>${units.slice(DELTA_SHOW_SLICE).map(deltaRow).join('')}</div>
+  return shown.join('') +
+    (rest > 0 ? `<div id="${restId}" hidden>${rows.slice(DELTA_SHOW_SLICE).join('')}</div>
       <button class="small ghost" onclick="const r=$('#${restId}');r.hidden=false;this.remove()">Show ${rest} more</button>` : '');
 }
 // Item 9: rollups and new_claims render as aggregate SENTENCES, never as generated per-row lists.
