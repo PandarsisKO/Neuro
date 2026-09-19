@@ -272,13 +272,21 @@ def conversation_seen_chunk_ids(conversation_id: str) -> set[int]:
     return seen
 
 
-def conversation_last_known_claim_state(conversation_id: str) -> dict[str, list]:
+def conversation_last_known_claim_state(conversation_id: str, *, exclude_message_id: int | None = None) -> dict[str, list]:
     """The last state this conversation actually knew for each touched Claim — folded chronologically across every
     successful snapshot (later overwrites earlier), so a transition is judged against what the conversation was
-    told, not against the Claim's state at only the newest turn."""
+    told, not against the Claim's state at only the newest turn.
+
+    `exclude_message_id` (Kyle, 2026-09-18, fifth correction): when computing "did some OTHER answer in this chat
+    already see this state" for a specific question, that question's OWN answer row must not count as "elsewhere"
+    -- without this, a single-question conversation (or the question being evaluated itself) would trivially fold
+    its own claim_state into `known` and then compare it against itself, always reporting
+    already_seen_elsewhere_in_chat=True even though nothing else in the chat actually saw it. Callers computing a
+    per-question "elsewhere" annotation pass that question's own `answer_message_id` here; the single
+    whole-conversation call some other reader might want (none currently) would omit it."""
     known: dict[str, list] = {}
     for r in _rows(conversation_id):
-        if r["role"] != "assistant":
+        if r["role"] != "assistant" or r["id"] == exclude_message_id:
             continue
         ev = r["meta"].get("evidence")
         if isinstance(ev, dict):
@@ -427,9 +435,13 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
     #   2. (Exact mode only) the Claim was part of THIS answer's own recorded claim_state — a real historical fact,
     #      strictly stronger than mere source-touch, and the reason Exact mode does not need weak lexical overlap
     #      to trust a historically-known Claim (Kyle: "remains relevant even with weak lexical overlap");
-    #   3. the Claim's evidence touches a newly-available source that produced an ACTUAL FTS hit for this
-    #      question's retrieval_query — mere membership in `newly_available` does not count (that was the bug: a
-    #      Claim on an unrelated brand-new source is not "relevant" just because the source happens to be new);
+    #   3. the Claim has its OWN evidence excerpt on a newly-available source that produced an ACTUAL FTS hit for
+    #      this question's retrieval_query — judged at the EVIDENCE level, not the source level (Kyle's fourth
+    #      correction, 2026-09-18): a source can cover many topics, so "this source is topically relevant" does
+    #      NOT make every Claim that happens to have evidence on it relevant too (the bug the regression test
+    #      caught: an unrelated microphone-brand Claim became "relevant" purely because it shared a source with
+    #      genuinely on-topic seller-financing material). Mere membership in `newly_available` never counted either
+    #      (a Claim on an unrelated brand-new source is not "relevant" just because the source happens to be new);
     #   4. the Claim's own text passes the same topical-overlap test used for retrieval-query routing elsewhere.
     # Plan impact is deliberately NOT a signal here — "Plan impact increases the importance of a relevant change.
     # It does not establish conversation relevance by itself" — so it is applied downstream, in for_conversation(),
@@ -439,7 +451,23 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
     if q["mode"] == "exact":
         relevant_claim_ids |= set(q["claim_state"].keys())
     if fts_hit_source_ids:
-        relevant_claim_ids |= set(_touched_claims_for_sources(project_id, fts_hit_source_ids).keys())
+        # Kyle's correction, 2026-09-18 (fourth pass): a source being topically relevant does NOT make every
+        # Claim that happens to have evidence on it relevant -- a source can cover many topics (the regression
+        # test that caught this: a seller-financing source whose FTS hit made an unrelated microphone-brand Claim
+        # "relevant" purely by co-location). Relevance must be judged at the EVIDENCE level, not the source level:
+        # a Claim reached only through fts_hit_source_ids is relevant only if it has its OWN evidence excerpt on
+        # that hit source that itself overlaps this question's retrieval_query -- the narrowest existing seam
+        # (claim_evidence.excerpt), not a fuzzy locator-to-chunk reconstruction (not attempted unless measurement
+        # ever proves it necessary).
+        marks = ",".join("?" * len(fts_hit_source_ids))
+        for r in conn.execute(
+                f"SELECT DISTINCT ce.claim_id, ce.excerpt FROM claim_evidence ce JOIN project_claims c ON c.id=ce.claim_id "
+                f"WHERE c.project_id=? AND ce.source_id IN ({marks})",
+                (project_id, *fts_hit_source_ids)).fetchall():
+            if r["claim_id"] in relevant_claim_ids:
+                continue
+            if _claims.overlap(q["retrieval_query"], r["excerpt"] or "") >= OVERLAP_THRESHOLD:
+                relevant_claim_ids.add(r["claim_id"])
     for cid, c in touched.items():
         if cid in relevant_claim_ids:
             continue
@@ -475,6 +503,11 @@ def delta_for_question(project_id: str, q: dict[str, Any], *, current_scope: set
                 units.append({"kind": "claim", "category": "new_claim", "question_message_id": q["question_message_id"],
                              "question": q["question"], "claim_id": cid, "previous_state": None, "current_state": cur,
                              "relation": "new", "already_seen_elsewhere_in_chat": latest_seen_elsewhere is not None,
+                             # ranking signal only (Kyle's second correction, part 2): how strongly this Claim's own
+                             # text matches this question's retrieval_query, used downstream in for_conversation()
+                             # to pick a small, deterministic explicit sample out of a potentially large new_claim
+                             # population -- never a relevance gate here, relevance was already decided above.
+                             "overlap_score": _claims.overlap(q["retrieval_query"], c["text"]),
                              "why_relevant": f'Claim "{c["text"][:100]}" is newly relevant to this answer'})
                 continue
             transitioned = previous_for_this_answer != cur
@@ -663,22 +696,25 @@ def for_conversation(conversation_id: str, project_id: str | None = None) -> dic
     if not pid:
         return {"mode": "none", "nothing_new": True, "questions_checked": 0, "material_changes": [],
                "supporting_changes": [], "irrelevant_new_source_count": 0, "plan_impacts": [],
-               "rollups": None, "approximate_limitations": []}
+               "rollups": None, "new_claims": None, "approximate_limitations": []}
     questions = _questions(conversation_id)
     if not questions:
         baseline = db.conversation_baseline(conversation_id)
         return {"mode": "approximate" if baseline is None else "exact", "nothing_new": True, "questions_checked": 0,
                "material_changes": [], "supporting_changes": [], "irrelevant_new_source_count": 0, "plan_impacts": [],
-               "rollups": None, "approximate_limitations": []}
+               "rollups": None, "new_claims": None, "approximate_limitations": []}
 
     current_scope = set(db.project_source_ids(pid, ready_only=True))
     seen = conversation_seen_chunk_ids(conversation_id)
-    last_known = conversation_last_known_claim_state(conversation_id)
 
     all_units: list[dict[str, Any]] = []
     for q in questions:
+        # per-question "elsewhere" state (Kyle's fifth correction): excludes THIS question's own answer row, so
+        # the already_seen_elsewhere_in_chat annotation means "another successful answer in this conversation
+        # recorded this state," never "this same answer's own snapshot."
+        last_known_elsewhere = conversation_last_known_claim_state(conversation_id, exclude_message_id=q["answer_message_id"])
         all_units.extend(delta_for_question(pid, q, current_scope=current_scope, conversation_seen=seen,
-                                            last_known_claim_state=last_known))
+                                            last_known_claim_state=last_known_elsewhere))
 
     # Rollup units (approximate mode only — see delta_for_question) never go through _merge/plan-impact/sort as-is:
     # they carry aggregate id SETS, not per-claim narrative fields. One exception is resolved here, once, for the
@@ -719,6 +755,28 @@ def for_conversation(conversation_id: str, project_id: str | None = None) -> dic
     _attach_plan_impact(pid, [u for u in merged if u["category"] in ("contradicts", "claim_transition")])
     # re-sort: plan_impact category may have been promoted by _attach_plan_impact
     merged.sort(key=lambda u: (CATEGORY_ORDER[u["category"]], -max(t["question_message_id"] for t in u["touches_questions"])))
+
+    # new_claims progressive disclosure (Kyle, 2026-09-18, second correction, part 2): "new_claim" means a Claim is
+    # newly relevant to an earlier answer with no provable prior state -- real, but the lowest-priority category
+    # (CATEGORY_ORDER's last slot, sorted alongside `corroborates`), never one of the "must stay individually
+    # enumerated" categories (contradicts, plan_impact, claim_transition, resolves_gap, new_finding). A synthetic
+    # worst-case benchmark produced ~3,000 of these for one Exact-mode conversation when every seeded Claim happened
+    # to be topically on-point -- an automatically-opened Exact chat should never get a 3,000-object payload for the
+    # category that matters least. `_merge()` has already deduped these to one unit per Claim (across every question
+    # that found it, with `touches_questions` accumulated), so this step operates on the FINAL population, not a
+    # per-question one. Rank deterministically -- (1) strongest Claim-text/retrieval_query overlap, (2) number of
+    # questions touched, (3) claim_id as a stable tie-break -- keep a small explicit sample, and report the rest as
+    # a count. This is not silent dropping: explicit examples + total = the complete population, same principle as
+    # the Approximate rollup's aggregate counts (§16, first hardening round).
+    NEW_CLAIM_EXPLICIT_CAP = 5
+    new_claim_units = [u for u in merged if u["category"] == "new_claim"]
+    new_claims: dict[str, int] | None = None
+    if new_claim_units:
+        ranked = sorted(new_claim_units,
+                        key=lambda u: (-(u.get("overlap_score") or 0.0), -len(u["touches_questions"]), u["claim_id"]))
+        kept_ids = {u["claim_id"] for u in ranked[:NEW_CLAIM_EXPLICIT_CAP]}
+        merged = [u for u in merged if u["category"] != "new_claim" or u["claim_id"] in kept_ids]
+        new_claims = {"total": len(new_claim_units), "shown": min(len(new_claim_units), NEW_CLAIM_EXPLICIT_CAP)}
 
     modes = {q["mode"] for q in questions}
     mode = "exact" if modes == {"exact"} else "approximate" if modes == {"approximate"} else "mixed"
@@ -789,6 +847,7 @@ def for_conversation(conversation_id: str, project_id: str | None = None) -> dic
         "irrelevant_new_source_count": irrelevant,
         "plan_impacts": [u for u in merged if u.get("plan_impact", {}).get("known") and u["plan_impact"].get("items")],
         "rollups": rollups,
+        "new_claims": new_claims,
         "approximate_limitations": approximate_limitations,
     }
 

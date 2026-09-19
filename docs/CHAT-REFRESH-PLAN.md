@@ -367,7 +367,7 @@ recorded and still used — only the claims that depend on the fields that faile
 "never seen"/"transitioned" statements) are withheld. Gate:
 `test_incomplete_bookkeeping_marks_the_snapshot_not_complete`.
 
-### CHR1 — first cut shipped/pushed at `da0b2d7`; a hardening pass (below) is implemented in the working tree, NOT yet committed/pushed
+### CHR1 — first cut shipped/pushed at `da0b2d7`; two hardening rounds (below) shipped/pushed at `7016f14` and `719f2f7`
 
 `search.search_fts()` — the FTS5-only leg of `search()`, factored out of a shared `_hits_from_ranked()` tail
 (book-weighting, priority reservation, per-source cap, final sort) so the two entry points cannot drift; never
@@ -563,7 +563,7 @@ belonging to a concurrent lane's uncommitted 0.63.94 UI work (`test_p1b_tonight_
 value, `test_s68` ×2) — confirmed unrelated: none of those three tests touch `conversation_delta.py`, `qa.py`, or
 any file this pass changed.
 
-### CHR1 hardening pass, second round (2026-09-18, review of `7016f14`) — implemented in the working tree, NOT yet committed/pushed
+### CHR1 hardening pass, second round — shipped, pushed (`719f2f7`)
 
 Kyle's review of `7016f14` found three further correctness problems, all in `conversation_delta.py`'s Exact-mode
 and target-resolution logic, none of which the first round's relevance gate had touched.
@@ -697,7 +697,104 @@ computation actually runs.
 Full suite re-run after A-D: `tests/test_chr0_conversation_baseline.py` 8/8, `tests/test_chr1_conversation_delta.py`
 43/43 (32 from the first round + 11 new gates: A1-A6, B, C1-C3, D), `tests/test_k_retrieval_fixes.py` +
 `tests/test_s24_lost_chat_and_fk.py`, `test_core.py` + all `tchunk*` groups — green, apart from the same three
-pre-existing, unrelated failures on record above.
+pre-existing, unrelated failures on record above. Pushed as `719f2f7`.
 
-**Not yet done:** `git commit` + push of this second hardening round. Stopping here for review before CHR2, as
-instructed.
+### CHR1 hardening pass, third round — final correction pass before CHR2 (2026-09-18, review of `719f2f7`)
+
+Kyle's review of `719f2f7` found two remaining correctness problems (both caught by his own reading of the C2 test
+and the synthetic benchmark's raw numbers), plus a documentation-currency fix. Explicitly scoped as the LAST CHR1
+correction pass — CHR2 review follows this, not another hardening round.
+
+**1. Relevance signal 3 (the FTS-hit-source route) leaked from source-level to Claim-level.** The rule was "a
+newly-available source produced an FTS hit for this question → every Claim with evidence on that source is
+relevant." That is one level too coarse: a source can cover many topics, so a genuinely on-topic source hitting FTS
+does not make an unrelated Claim on that same source relevant — caught directly by `test_gateC2`'s own fixture (a
+seller-financing source's FTS hit made an unrelated microphone-brand Claim's contradiction surface). Fixed:
+relevance via this route now requires the Claim to have its OWN `claim_evidence.excerpt` on the hit source that
+itself overlaps the question's `retrieval_query` (`claims.overlap(retrieval_query, excerpt) >= OVERLAP_THRESHOLD`)
+— the narrowest existing seam, no fuzzy locator-to-chunk reconstruction attempted (not needed; can revisit only if
+measurement ever proves this insufficient). Historical relevance (signals 1 and 2 — `shown_source_ids` touch and
+Exact mode's `claim_state` membership) is unchanged. `test_gateC2` was split into two gates matching Kyle's
+instruction: `test_gateC2a` (FTS-relevant source + an unrelated Claim whose own evidence excerpt does not overlap
+the query → does NOT surface) and `test_gateC2b` (same source-discovery shape, but the Claim's own evidence excerpt
+IS on-topic even though the Claim's own text wording is weak/generic → DOES surface) — making source-level
+discovery and Claim-level relevance two independently-tested things instead of one conflated gate.
+
+**2. `already_seen_elsewhere_in_chat` could be trivially true against a question's own snapshot.**
+`conversation_last_known_claim_state()` folds `claim_state` across every assistant row in the WHOLE conversation,
+including the very row being evaluated — so a single-question conversation's own transition would fold its own
+post-change state into "known," then compare it against itself and always report `already_seen_elsewhere_in_chat:
+true`, even though nothing else in the chat actually saw it. `already_seen_elsewhere_in_chat` is annotation-only
+(never gates whether the transition surfaces — that principle from the second round is unchanged), but an
+annotation that lies is still a bug. Fixed: `conversation_last_known_claim_state()` now takes an optional
+`exclude_message_id`, and `for_conversation()` calls it once PER question, excluding that question's own
+`answer_message_id`, so "elsewhere" means what it says — another successful answer in this conversation, never this
+one. Gates: `test_gateE1` (a single-question conversation's own transition is never flagged seen-elsewhere) and
+`test_gateE2` (the existing two-question scenario, now explicitly asserting the flag IS true when a later question
+independently re-records the same state).
+
+**3. Exact mode's `new_claim` category had no bound — the output-contract half of Kyle's second-round finding.**
+The synthetic benchmark had already surfaced ~3,000 individual `new_claim` objects in a worst-case scenario; the
+semantic category was correct (a Claim newly relevant to an earlier answer with no provable prior state IS real,
+low-priority information) but the output contract was not — an automatically-opened Exact chat should never receive
+a 3,000-object payload for the category that matters least. Applied the same progressive-disclosure principle
+already used for the Approximate rollup: after `_merge()` produces the final, deduped `new_claim` population (one
+unit per Claim across every question that found it, `touches_questions` already accumulated), rank deterministically
+— (1) strongest overlap between `retrieval_query` and the Claim's own text (a new `overlap_score` field, computed
+once at unit-creation time, purely a ranking signal — relevance itself was already decided before this unit was
+created), (2) number of questions touched, (3) `claim_id` as a stable tie-break — keep the top `NEW_CLAIM_EXPLICIT_CAP
+= 5` as explicit units, and report a new top-level `new_claims: {"total": N, "shown": min(N, 5)}` field (`None` when
+no `new_claim` units exist). The strong categories (`contradicts`, `plan_impact`, `claim_transition`, `resolves_gap`,
+`new_finding`) are completely untouched by this mechanism — it filters `merged` by `category == "new_claim"`
+specifically, nothing else. Gates: `test_gateF1` (a 20-candidate population caps at 5 explicit units, `new_claims`
+reports the exact total of 20); `test_gateF4` (two independent calls produce the identical explicit sample in the
+identical order — deterministic, not insertion-order-dependent); `test_gateF5` (`nothing_new` stays `False` when
+the only new information is a handful of rolled-up `new_claim`s, none of which happen to be individually visible
+beyond the cap); `test_gateF6` (8 independently-relevant contradictions all surface — none capped, proving the
+mechanism is scoped to `new_claim` alone); `test_gateF7` (`new_claims.total` exceeds `new_claims.shown` once the
+population exceeds the cap, so CHR3 can always tell there's more than what it's holding).
+
+**Re-measurement.** Real corpus (same three legacy conversations; item 1's tighter relevance signal reduced
+`contradicts`/`resolves_gap` further on top of the second round's numbers):
+
+| conversation | cold | material_changes | supporting_changes | `contradicts` | `resolves_gap` | `new_finding` |
+|---|---|---|---|---|---|---|
+| 3 questions  | 3.69 s  | 7  | 29  | 2  | 2  | 3 |
+| 10 questions | 5.28 s  | 91 | 99  | 49 | 17 | 25 |
+| 14 questions (largest real) | 12.60 s | 84 | 128 | 25 | 53 | 6 |
+
+Synthetic Exact-mode benchmark, re-run with all three fixes (same 300-source/3,000-Claim seed-and-grow methodology,
+throwaway `tempfile.mkdtemp()` — never the live db or the snapshot):
+
+| conversation | cold | material_changes | supporting_changes | `new_claims.total` | `new_claims.shown` | response JSON |
+|---|---|---|---|---|---|---|
+| 3 questions  | 113 ms | 0 | 17 | 3,000 | 5 | 12.1 KB |
+| 10 questions | 401 ms | 0 | 17 | 3,000 | 5 | 22.1 KB |
+| 14 questions | 629 ms | 0 | 51 | 3,000 | 5 | 43.3 KB |
+
+Before this round's fix 3, the same synthetic conversations returned `supporting_changes` of 3,012/3,012/3,046 and
+a proportionally sized JSON body (megabytes at true worst-case scale); now the response body is bounded regardless
+of how many Claims are legitimately newly-relevant — a mature Exact-mode project cannot flood an automatically-run
+chat-open request. Cold latency for the synthetic benchmark is unaffected by this round (unchanged from the second
+round's numbers within noise) — as expected, this was a response-size fix, not a latency one.
+
+**4. Legacy Approximate latency — recorded, deliberately not touched this round.** Largest real legacy chat cold
+time remains ~12.6s; the dominant cost (`_touched_claims_for_sources()`, still the majority of cold time across all
+three hardening rounds) remains a measured, reported finding awaiting sign-off, not something optimized speculatively
+here. Kyle's product recommendation for CHR2 is recorded rather than implemented in CHR1: Exact chats run
+Conversation Delta automatically on chat open; Approximate legacy chats get a lazy, user-triggered "Check what's
+new" affordance instead of an automatic multi-second foreground computation — no chat-list badge, no polling. CHR2
+owns implementing this split.
+
+Full suite after this round: `tests/test_chr0_conversation_baseline.py` 8/8, `tests/test_chr1_conversation_delta.py`
+51/51 (43 from the second round, net +8: `test_gateC2a`/`test_gateC2b` replacing the old `test_gateC2`,
+`test_gateE1`/`test_gateE2`, `test_gateF1`/`test_gateF4`/`test_gateF5`/`test_gateF6`/`test_gateF7`),
+`tests/test_k_retrieval_fixes.py` + `tests/test_s24_lost_chat_and_fk.py`, `test_core.py` + all `tchunk*` groups —
+green, apart from the same three pre-existing, unrelated failures on record throughout this document.
+
+**CHR1 is closed as of this round**, per Kyle's exit criteria: targeted and full suites green; Exact-mode synthetic
+response size is bounded; `new_claims.total` remains exact even when capped; Claim relevance no longer leaks from
+an FTS-relevant source to an unrelated Claim; this document's status lines agree with what's actually on GitHub.
+CHR2 begins from the product rules recorded in this round's item 4, plus §13's existing UX sketch: compact summary
+first, progressive disclosure, supporting/new-Claim rollups collapsed, no chat-list badge, no polling, Plan Impact
+read-only until an explicit user action.

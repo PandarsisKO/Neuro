@@ -691,6 +691,127 @@ def test_gateB_earlier_questions_claim_transition_is_not_erased_by_a_later_quest
     assert any(t["question_message_id"] == q1_id for t in unit["touches_questions"])
 
 
+def test_gateE1_single_question_transition_is_not_flagged_seen_elsewhere():
+    """Kyle's fifth correction (2026-09-18): already_seen_elsewhere_in_chat must mean ANOTHER successful answer in
+    this conversation recorded the resulting state -- not "some snapshot, including this very answer's own." A
+    single-question conversation has no "elsewhere" at all."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    c = claims.add_claim(pid, "Seller notes typically run five years.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="1:00", excerpt="five years")
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # only question
+    time.sleep(0.01)
+    db.connect().execute("UPDATE project_claims SET strength='strong', updated_at=? WHERE id=?", (db.now(), c["id"]))
+    db.connect().commit()
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    unit = next((u for u in all_units if u.get("claim_id") == c["id"]), None)
+    assert unit is not None
+    assert unit["already_seen_elsewhere_in_chat"] is False
+
+
+def test_gateE2_transition_seen_by_a_later_question_is_flagged_seen_elsewhere():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    c = claims.add_claim(pid, "Seller notes typically run five years.", claim_type="market")
+    claims.add_evidence(c["id"], sid, locator="1:00", excerpt="five years")
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # Q1
+    time.sleep(0.01)
+    db.connect().execute("UPDATE project_claims SET strength='strong', updated_at=? WHERE id=?", (db.now(), c["id"]))
+    db.connect().commit()
+    time.sleep(0.01)
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)   # Q2, independently re-records the new state
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    unit = next((u for u in all_units if u.get("claim_id") == c["id"]), None)
+    assert unit is not None
+    assert unit["already_seen_elsewhere_in_chat"] is True
+
+
+def test_gateF1_large_new_claim_population_is_capped_and_totaled():
+    """Kyle's final correction (2026-09-18, item 2): new_claim is real but low-priority -- an automatically-opened
+    Exact chat must not receive thousands of nearly-identical objects for it. A large population of newly-relevant
+    Claims collapses to a small explicit sample plus an exact total, never silently dropped."""
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    for i in range(20):
+        c = claims.add_claim(pid, f"Newly relevant seller financing detail number {i}.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"detail {i}")
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    new_claim_units = [u for u in all_units if u["category"] == "new_claim"]
+    assert len(new_claim_units) <= 5
+    assert delta["new_claims"] == {"total": 20, "shown": len(new_claim_units)}
+    assert delta["new_claims"]["shown"] == 5
+
+
+def test_gateF4_new_claim_ranking_is_deterministic_across_identical_runs():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    for i in range(20):
+        c = claims.add_claim(pid, f"Newly relevant seller financing detail number {i}.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"detail {i}")
+    d1 = cd.for_conversation(conv, pid)
+    d2 = cd.for_conversation(conv, pid)
+    ids1 = [u["claim_id"] for u in d1["material_changes"] + d1["supporting_changes"] if u["category"] == "new_claim"]
+    ids2 = [u["claim_id"] for u in d2["material_changes"] + d2["supporting_changes"] if u["category"] == "new_claim"]
+    assert ids1 == ids2 and ids1   # same explicit sample, same order, both runs
+
+
+def test_gateF5_nothing_new_is_false_when_only_rolled_up_new_claims_exist():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    for i in range(3):   # below the cap -- none of this is about capping, just that it counts as "something new"
+        c = claims.add_claim(pid, f"Newly relevant seller financing detail number {i}.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"detail {i}")
+    delta = cd.for_conversation(conv, pid)
+    assert delta["new_claims"]["total"] == 3
+    assert delta["nothing_new"] is False
+
+
+def test_gateF6_strong_categories_are_not_capped_by_the_new_claim_mechanism():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    tension_claim_ids = []
+    for i in range(8):   # well above NEW_CLAIM_EXPLICIT_CAP
+        c = claims.add_claim(pid, f"Seller financing disputed detail number {i}.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"disputed detail {i}")
+        _insert_tension(pid, c["id"])
+        tension_claim_ids.append(c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    contradicts_ids = {u["claim_id"] for u in all_units if u["category"] == "contradicts"}
+    assert set(tension_claim_ids) <= contradicts_ids   # every one surfaces -- contradicts is never rolled up/capped
+
+
+def test_gateF7_new_claims_total_exceeds_shown_when_population_is_large():
+    pid = _golden()
+    sid = evals.load_golden()["sources"]["yt01"]
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    time.sleep(0.01)
+    for i in range(20):
+        c = claims.add_claim(pid, f"Newly relevant seller financing detail number {i}.", claim_type="market")
+        claims.add_evidence(c["id"], sid, locator=f"{i}:00", excerpt=f"detail {i}")
+    delta = cd.for_conversation(conv, pid)
+    assert delta["new_claims"]["total"] == 20
+    assert delta["new_claims"]["shown"] < delta["new_claims"]["total"]
+
+
 def test_gateC1_exact_mode_contradiction_on_unrelated_newly_attached_source_does_not_surface():
     pid = _golden()
     conv = db.create_conversation(pid)["id"]
@@ -706,7 +827,11 @@ def test_gateC1_exact_mode_contradiction_on_unrelated_newly_attached_source_does
     assert not any(u.get("claim_id") == c["id"] for u in all_units)
 
 
-def test_gateC2_exact_mode_contradiction_via_fts_hit_on_new_source_surfaces():
+def test_gateC2a_fts_relevant_source_does_not_grant_relevance_to_an_unrelated_claims_evidence():
+    """Kyle's fourth correction (2026-09-18): source-level topical relevance must not leak to a Claim whose OWN
+    evidence excerpt on that source has nothing to do with the question -- a source can cover many topics. The
+    Claim's evidence excerpt itself ("microphone brand mention") does not overlap the seller-financing query, even
+    though the source it lives on does (via a different passage), so this contradiction must NOT surface."""
     pid = _golden()
     conv = db.create_conversation(pid)["id"]
     qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
@@ -718,6 +843,28 @@ def test_gateC2_exact_mode_contradiction_via_fts_hit_on_new_source_surfaces():
         "fixture sanity: the new source must be FTS-findable for this test to mean anything"
     c = claims.add_claim(pid, "The presenter recommends a specific microphone brand for recording.", claim_type="market")
     claims.add_evidence(c["id"], fts_sid, locator="0:05", excerpt="microphone brand mention")
+    _insert_tension(pid, c["id"])
+    delta = cd.for_conversation(conv, pid)
+    all_units = delta["material_changes"] + delta["supporting_changes"]
+    assert not any(u.get("claim_id") == c["id"] for u in all_units)
+
+
+def test_gateC2b_fts_relevant_source_grants_relevance_when_the_claims_own_evidence_excerpt_matches():
+    """Same source-discovery shape as C2a, but this Claim's own evidence EXCERPT on the hit source is itself
+    on-topic (even though the Claim's own text wording is weak/generic) -- evidence-level relevance, not mere
+    source co-location, is what should let it surface."""
+    pid = _golden()
+    conv = db.create_conversation(pid)["id"]
+    qa.ask("What are the seller financing terms typically offered?", project_id=pid, conversation_id=conv)
+    fts_sid = _new_source(pid, "Another seller financing video",
+                          "This video covers seller financing standby note terms and typical structures in detail.")
+    time.sleep(0.01)
+    from neurosearch.search import search_fts
+    assert search_fts("What are the seller financing terms typically offered?", source_ids=[fts_sid]), \
+        "fixture sanity: the new source must be FTS-findable for this test to mean anything"
+    c = claims.add_claim(pid, "Some structuring detail worth noting.", claim_type="market")   # weak/generic wording
+    claims.add_evidence(c["id"], fts_sid, locator="0:10",
+                        excerpt="seller financing standby note terms are typically five years")   # on-topic excerpt
     _insert_tension(pid, c["id"])
     delta = cd.for_conversation(conv, pid)
     all_units = delta["material_changes"] + delta["supporting_changes"]
