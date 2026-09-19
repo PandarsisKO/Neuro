@@ -2,6 +2,14 @@
 
 ## Active subreddit mission — corrective ladder, 2026-09-19
 
+**This branch is superseded for continuation.** Its frozen `9db6b35` passed 2,123 tests and normal
+release-check (`evals/release/release-check-0.63.94-9db6b35-20260919-135821.json`); source remained
+`9db6b35914d85a60624874a2d83b839d7cca6a16` at start/end. Subsequently found undelivered `d318297`
+with later catalog/ranking/UI work. Continue ONLY from `codex/subreddit-integrated` at
+`/private/tmp/neuro-repair-powMDK/integrated-worktree`: it preserves that work and ports these additional
+safety regressions/fixes into the existing owners. This branch remains historical evidence, not a second
+implementation to land independently. Integrated `d2d6d1e` has a new full gate running. Live runtime untouched.
+
 The feature is **partially implemented, not ready**. The previous SUB2–SUB8 completion claim is withdrawn.
 Kyle requested an updated plan for the remaining work; the single canonical record is
 [docs/SUBREDDIT-CATALOG-MISSION.md, Section 5](docs/SUBREDDIT-CATALOG-MISSION.md#5-corrective-execution-ladder--current-authority).
