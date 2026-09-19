@@ -438,6 +438,17 @@ def test_listing_omitted_author_is_not_a_deletion_signal(monkeypatch):
     assert [r["metadata"]["availability"] for r in rows] == ["available", "deleted", "removed"]
 
 
+def test_listing_parser_bounds_rows_and_ignores_malformed_numeric_metadata(monkeypatch):
+    monkeypatch.setattr(community, "reddit_api_configured", lambda: True)
+    children = [{"data": {"id": f"p{i}", "permalink": f"/r/smallbusiness/comments/p{i}/title/", "title": "A",
+                          "score": "many", "num_comments": -1, "created_utc": "later"}} for i in range(101)]
+    monkeypatch.setattr(community, "_api_get", lambda _url: {"data": {"after": None, "children": children}})
+    rows, _ = community.enumerate_subreddit_page("smallbusiness")
+    assert len(rows) == 100
+    assert rows[0]["metadata"]["score"] is None and rows[0]["metadata"]["comment_count"] is None
+    assert rows[0]["metadata"]["created_utc"] is None and rows[0]["published_at"] is None
+
+
 def test_observed_metadata_can_explicitly_clear_text_and_flair_without_treating_omission_as_clear():
     project = _project("metadata clear")
     candidate_id = candidates.remember([_listing("clear") | {"description": "old text", "observed_metadata": True,

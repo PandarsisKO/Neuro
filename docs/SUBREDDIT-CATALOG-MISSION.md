@@ -166,7 +166,9 @@ Owners: the same scan owners and canonical candidate writer. **Implemented:** sa
 
 **Implemented in the second R3 slice:** explicit observed clears for text/flair are distinct from omitted provider fields, preserving old observations only for true omission. Reddit listing parsing now rejects malformed post IDs/permalinks and invalid outbound URLs before candidate creation.
 
-**Remaining:** validate malformed numbers/strings and availability presence; bound parsed page size and excerpt length. Store precise UTC observation bounds in current and previous completed summaries, and invalidate semantic revisions only when relevant values change. Observed dates do not imply continuous or exhaustive coverage.
+**Implemented in the third R3 slice:** parser work is capped at 100 listing children per page, and malformed score/comment/timestamp values are omitted rather than stored as misleading metadata.
+
+**Remaining:** availability presence, precise UTC observation bounds in current/previous completed summaries, and full semantic-revision proof. Observed dates do not imply continuous or exhaustive coverage.
 
 Exit: 5,000 rows through 50 actual page commits, with overlap, same-page duplicates, concurrent projects, replay, cap, malformed optional metadata and repeated refreshes. Counts remain exact; run storage stays bounded; user decisions and existing Source identity remain unchanged. Malformed metadata cannot turn into a phantom successfully empty catalog.
 
